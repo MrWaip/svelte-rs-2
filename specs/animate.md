@@ -58,31 +58,19 @@
 - Existing analyzer tests: `crates/svelte_analyze/src/tests.rs`
 - Existing compiler cases: `tasks/compiler_tests/cases2/animate_*`
 
-## Tasks
-
-- Validation:
-  add analyzer coverage for `animation_duplicate`, placement outside `{#each}`, and `illegal_await_expression` for animate directive expressions in `crates/svelte_analyze/src/passes/template_validation.rs`.
-- Analyzer data:
-  keep `fragment_facts`/`each_context_index` as the single source for keyed-each animate classification; extend tests if placement logic changes.
-- Codegen:
-  confirm `gen_animate_directive` and keyed-each `EACH_IS_ANIMATED` handling remain correct for `RegularElement` and `SvelteElement`.
-- Tests:
-  keep compiler snapshots for positive output paths in `tasks/compiler_tests/cases2/`; keep negative validation coverage in `crates/svelte_analyze/src/tests.rs` until compiler error-fixture support exists.
-
-## Implementation order
-
-1. Fill analyzer diagnostic gaps (`animation_duplicate`, outside-keyed-each coverage, `illegal_await_expression`).
-2. Add/keep positive compiler snapshots for animate-specific codegen shapes.
-3. Re-run animate compiler cases and analyzer validation tests.
-
-## Discovered bugs
-
-- FIXED: `animation_duplicate` is now emitted from `template_validation` for the second and later `animate:` directives on the same element.
-- FIXED: `illegal_await_expression` is now emitted for animate directive expressions using existing expression-analysis `has_await` metadata.
-- OPEN: compiler test harness only supports successful JS/CSS snapshot cases, so animate error cases remain analyzer-test coverage for now.
-
 ## Test cases
 
-- Existing compiler cases: `animate_basic`, `animate_params`, `animate_dotted_name`, `animate_reactive_params`, `animate_with_spread`, `animate_blockers`
-- Existing analyzer tests: `validate_each_animation_missing_key`, `validate_each_animation_invalid_placement`, `validate_each_animation_duplicate`, `validate_animate_directive_illegal_await_expression`, `fragment_facts_track_each_body_child_shape_and_animate`, `fragment_facts_track_svelte_element_animate_in_each_body`
-- Added audit cases: `animate_svelte_element`, `animate_with_const_tag`
+- [x] `animate_basic`
+- [x] `animate_params`
+- [x] `animate_dotted_name`
+- [x] `animate_reactive_params`
+- [x] `animate_with_spread`
+- [x] `animate_blockers`
+- [x] `validate_each_animation_missing_key`
+- [x] `validate_each_animation_invalid_placement`
+- [x] `validate_each_animation_duplicate`
+- [x] `validate_animate_directive_illegal_await_expression`
+- [x] `fragment_facts_track_each_body_child_shape_and_animate`
+- [x] `fragment_facts_track_svelte_element_animate_in_each_body`
+- [x] `animate_svelte_element`
+- [x] `animate_with_const_tag`

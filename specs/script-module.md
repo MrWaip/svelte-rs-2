@@ -25,17 +25,17 @@
 
 ## Use cases
 
-- `[x]` Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
-- `[x]` Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`)
-- `[x]` Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
-- `[x]` Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
-- `[x]` Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
-- `[x]` Module-level export specifiers (`export { foo, bar }`) emit at top level (test: `script_module_export_specifiers`)
-- `[x]` Module-level imports merge with runtime imports at top of output (test: `script_module_imports`)
-- `[x]` Empty module script produces no extra output (test: `script_module_empty`)
-- `[x]` `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
-- `[x]` Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
-- `[ ]` Module exports ordering when instance template uses snippets — module exports must sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; also a module-exported plain function must NOT be wrapped in `$.get(...)` at call sites in template scope (test: `script_module_exports_ordering_with_snippets`, `#[ignore]`, M)
+- [x] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
+- [x] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`)
+- [x] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
+- [x] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
+- [x] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
+- [x] Module-level export specifiers (`export { foo, bar }`) emit at top level (test: `script_module_export_specifiers`)
+- [x] Module-level imports merge with runtime imports at top of output (test: `script_module_imports`)
+- [x] Empty module script produces no extra output (test: `script_module_empty`)
+- [x] `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
+- [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
+- [ ] Module exports ordering when instance template uses snippets — module exports must sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; also a module-exported plain function must NOT be wrapped in `$.get(...)` at call sites in template scope (test: `script_module_exports_ordering_with_snippets`, `#[ignore]`, M)
 
 ## Out of scope
 
@@ -68,12 +68,12 @@
 
 ## Test cases
 
-- `[x]` `script_module_exports`
-- `[x]` `script_module_runes`
-- `[x]` `script_module_instance_ref`
-- `[x]` `script_module_only`
-- `[x]` `script_module_with_instance`
-- `[x]` `script_module_export_specifiers`
-- `[x]` `script_module_imports`
-- `[x]` `script_module_empty`
-- `[ ]` `script_module_exports_ordering_with_snippets` (`#[ignore]`)
+- [x] `script_module_exports`
+- [x] `script_module_runes`
+- [x] `script_module_instance_ref`
+- [x] `script_module_only`
+- [x] `script_module_with_instance`
+- [x] `script_module_export_specifiers`
+- [x] `script_module_imports`
+- [x] `script_module_empty`
+- [ ] `script_module_exports_ordering_with_snippets` (`#[ignore]`)

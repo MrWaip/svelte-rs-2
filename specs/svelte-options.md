@@ -53,9 +53,9 @@
 - [x] `customElement={{ tag, extend }}` forwards the custom element wrapper expression.
 - [x] `customElement={{ shadow: ... }}` without `tag` emits the constructor without `customElements.define(...)`.
 - [x] `customElement={null}` is ignored for Svelte 4 compatibility.
-- [ ] `preserveWhitespace={true|false}` affects template whitespace lowering and output.
-- [ ] `accessors={true|false}` affects legacy component accessor generation when runes are off.
-- [ ] `immutable={true|false}` affects legacy equality/reactivity behavior when runes are off.
+- [x] `preserveWhitespace={true|false}` affects template whitespace lowering and output.
+- [x] `accessors={true|false}` affects legacy component accessor generation when runes are off.
+- [x] `immutable={true|false}` affects legacy equality/reactivity behavior when runes are off.
 - [x] Runes-mode warnings are emitted for deprecated `accessors` and `immutable`, and inline `customElement` warns when the compile flag is missing.
 - [x] Parser diagnostics cover unknown attributes, invalid values, deprecated `tag`, invalid custom-element names, and forbidden children.
 
@@ -85,30 +85,25 @@
 - Rust codegen CE emission: `crates/svelte_codegen_client/src/custom_element.rs`
 - Compiler integration tests: `tasks/compiler_tests/test_v3.rs`
 
-## Tasks
-
-- Parser: keep `SvelteOptions` extraction and diagnostics aligned with the reference parser, including static-value restrictions and custom-element object validation.
-- Analyze: merge inline `runes`, `accessors`, `immutable`, and `customElement` semantics into `AnalysisData` instead of relying only on top-level `CompileOptions`.
-- Analyze: thread `preserveWhitespace` through lowering/template execution so whitespace trimming follows inline options.
-- Codegen: consume analysis-owned legacy option state for accessor generation and immutable-mode behavior.
-- Compiler: define precedence between compile options and inline `<svelte:options>` once and pass resolved values into analyze/codegen consistently.
-- Tests: keep parser/analyzer unit tests for diagnostics and add compiler snapshot tests for option-driven behavior changes.
-
-## Implementation order
-
-1. Resolve option precedence in `svelte_compiler` / analyze entry points.
-2. Thread resolved runes / legacy flags / whitespace into analyze.
-3. Update codegen and lowering to use analysis-owned resolved options.
-4. Unignore failing compiler tests and add any remaining validation coverage.
-
-## Discovered bugs
-
-- FIXED: `component.options.preserve_whitespace` now resolves into analyze-owned state and disables whitespace cleanup in lowering when enabled inline.
-- FIXED: `component.options.accessors` and `component.options.immutable` now resolve into analyze/codegen state instead of affecting warnings only.
-
 ## Test cases
 
-- Existing passing compiler cases: `svelte_options_basic`, `css_injected`, `namespace_svg`, `namespace_mathml`, `custom_element_props`, `custom_element_props_config`, `custom_element_boolean_default`, `custom_element_exports`, `custom_element_shadow_none`, `custom_element_object_full`, `custom_element_shadow_open`, `custom_element_extend`, `custom_element_no_tag`, `host_basic`, `host_props_rest`
-- Existing unit coverage: parser tests for namespace/html/css/customElement/null compatibility/diagnostics and analyzer tests for warning behavior
-- Added during this audit: `svelte_options_runes_false_override`, `svelte_options_accessors_legacy`, `svelte_options_immutable_legacy`, `svelte_options_preserve_whitespace`
-- Closed audit cases: `svelte_options_runes_false_override`, `svelte_options_accessors_legacy`, `svelte_options_immutable_legacy`, `svelte_options_preserve_whitespace`
+- [x] `svelte_options_basic`
+- [x] `css_injected`
+- [x] `namespace_svg`
+- [x] `namespace_mathml`
+- [x] `custom_element_props`
+- [x] `custom_element_props_config`
+- [x] `custom_element_boolean_default`
+- [x] `custom_element_exports`
+- [x] `custom_element_shadow_none`
+- [x] `custom_element_object_full`
+- [x] `custom_element_shadow_open`
+- [x] `custom_element_extend`
+- [x] `custom_element_no_tag`
+- [x] `host_basic`
+- [x] `host_props_rest`
+- [x] Parser tests for namespace/html/css/customElement/null compatibility and diagnostics, plus analyzer warning coverage
+- [x] `svelte_options_runes_false_override`
+- [x] `svelte_options_accessors_legacy`
+- [x] `svelte_options_immutable_legacy`
+- [x] `svelte_options_preserve_whitespace`

@@ -19,12 +19,12 @@
 
 ## Use cases
 
-- `[x]` Parse empty `{@debug}` tags and preserve the empty identifier list
-- `[x]` Parse one or more comma-separated identifiers
-- `[x]` Reject non-identifier arguments with `debug_tag_invalid_arguments`
-- `[x]` Emit client debug effects in top-level and nested fragments, including each-block context values
-- `[x]` Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`
-- `[x]` Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax
+- [x] Parse empty `{@debug}` tags and preserve the empty identifier list
+- [x] Parse one or more comma-separated identifiers
+- [x] Reject non-identifier arguments with `debug_tag_invalid_arguments`
+- [x] Emit client debug effects in top-level and nested fragments, including each-block context values
+- [x] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`
+- [x] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax
 
 ## Reference
 
@@ -43,7 +43,7 @@
 
 ## Test cases
 
-- `[x]` `debug_basic`
-- `[x]` `debug_in_blocks`
-- `[x]` `debug_non_dev`
-- `[x]` `debug_non_runes_untrack`
+- [x] `debug_basic`
+- [x] `debug_in_blocks`
+- [x] `debug_non_dev`
+- [x] `debug_non_runes_untrack`

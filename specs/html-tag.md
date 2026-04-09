@@ -21,15 +21,15 @@
 
 ## Use cases
 
-- `[x]` Parse `{@html expr}` and preserve the JS expression span
-- `[x]` Emit standalone HTML insertion in the default HTML namespace
-- `[x]` Emit controlled parent-`innerHTML` update when `{@html}` is the only child of an element
-- `[x]` Emit async `{@html await expr}` through the async wrapper path
-- `[x]` Emit top-level `svg` namespace `{@html}` via `<svelte:options namespace="svg" />`
-- `[x]` Emit top-level `mathml` namespace `{@html}` via `<svelte:options namespace="mathml" />`
-- `[x]` Namespace propagation for non-controlled nested `svg` / `mathml`
-- `[ ]` Preserve reference behavior for non-repaired hydration mismatches / `svelte-ignore hydration_html_changed`
-- `[ ]` Runes-mode invalid-opening-tag diagnostics
+- [x] Parse `{@html expr}` and preserve the JS expression span
+- [x] Emit standalone HTML insertion in the default HTML namespace
+- [x] Emit controlled parent-`innerHTML` update when `{@html}` is the only child of an element
+- [x] Emit async `{@html await expr}` through the async wrapper path
+- [x] Emit top-level `svg` namespace `{@html}` via `<svelte:options namespace="svg" />`
+- [x] Emit top-level `mathml` namespace `{@html}` via `<svelte:options namespace="mathml" />`
+- [x] Namespace propagation for non-controlled nested `svg` / `mathml`
+- [ ] Preserve reference behavior for non-repaired hydration mismatches / `svelte-ignore hydration_html_changed`
+- [ ] Runes-mode invalid-opening-tag diagnostics
 
 ## Reference
 
@@ -56,13 +56,13 @@
 
 ## Test cases
 
-- `[x]` `html_tag`
-- `[x]` `html_tag_controlled`
-- `[x]` `html_tag_svg`
-- `[x]` `async_html_basic`
-- `[x]` `html_tag_mathml`
-- `[x]` `html_tag_nested_svg`
-- `[x]` `html_tag_basic` (parser unit test)
-- `[x]` `html_tag_complex_expression` (parser unit test)
-- `[ ]` `html_tag_nested_mathml`
-- `[ ]` hydration mismatch / ignore coverage once the harness can assert it
+- [x] `html_tag`
+- [x] `html_tag_controlled`
+- [x] `html_tag_svg`
+- [x] `async_html_basic`
+- [x] `html_tag_mathml`
+- [x] `html_tag_nested_svg`
+- [x] `html_tag_basic` (parser unit test)
+- [x] `html_tag_complex_expression` (parser unit test)
+- [ ] `html_tag_nested_mathml`
+- [ ] hydration mismatch / ignore coverage once the harness can assert it
