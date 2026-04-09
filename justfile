@@ -62,20 +62,12 @@ napi-build-release:
 napi-prepare-platform:
     npm run --prefix packages/svelte-rs2 prepare-platform-package
 
-# Create npm tarballs for main package and current platform package
+# Create npm tarballs for main package and all platform packages
 napi-pack:
     npm pack ./packages/svelte-rs2 --silent
-    TARGET="$(node -p "`${process.platform}-${process.arch}`")"; \
-    if [ "$TARGET" = "linux-x64" ]; then \
-      npm pack ./packages/svelte-rs2-linux-x64-gnu --silent; \
-    elif [ "$TARGET" = "darwin-arm64" ]; then \
-      npm pack ./packages/svelte-rs2-darwin-arm64 --silent; \
-    elif [ "$TARGET" = "darwin-x64" ]; then \
-      npm pack ./packages/svelte-rs2-darwin-x64 --silent; \
-    else \
-      echo "Unsupported target for pack: $TARGET" >&2; \
-      exit 1; \
-    fi
+    npm pack ./packages/svelte-rs2-linux-x64-gnu --silent
+    npm pack ./packages/svelte-rs2-darwin-arm64 --silent
+    npm pack ./packages/svelte-rs2-darwin-x64 --silent
 
 # Publish current-platform package to npm (dry-run by default)
 napi-publish-platform tag='canary' dry='true':
