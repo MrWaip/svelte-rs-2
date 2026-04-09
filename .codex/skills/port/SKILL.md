@@ -86,6 +86,8 @@ If the feature requires changes that do not fit the existing architecture, flag 
 
 Write the plan to `specs/<feature-name>.md` following the `spec-template` skill. The `Current state` section goes first.
 
+This plan-phase spec update is only to record scope, sequencing, and resume context. Do not mark use cases as completed before implementation and verification.
+
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 **Present the plan and wait for approval before proceeding.**
@@ -177,6 +179,8 @@ Update tracking:
 - update `specs/<feature>.md`
 - move completed feature to `Done` in `ROADMAP.md` when appropriate
 - add newly discovered items to the spec Use cases as unchecked checkboxes
+
+Mark use cases or the feature as completed only after the selected implementation and verification steps have passed.
 
 Benchmark only when the feature adds new syntax or other benchmark-relevant constructs.
 

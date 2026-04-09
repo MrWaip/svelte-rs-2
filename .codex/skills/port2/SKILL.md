@@ -36,14 +36,15 @@ Treat optional headings such as `Execution slices`, `Next slice`, or `Non-goals`
 
 ## Scope Contract
 
-This skill ports **one slice only**.
+This skill ports one bounded session-sized slice.
 
 A slice must satisfy all of these rules:
 
 - covers one cohesive behavior cluster
 - has explicit owning layer or justified multi-layer flow
-- contains at most 3 use cases
-- introduces at most 1 new infrastructural concept
+- is as large as is still reasonable to implement and verify within the current session without quality dropping
+- may include multiple related use cases when together they produce a more useful milestone than a tiny partial port
+- must not encourage shortcuts, speculative optimizations, or rushed architecture decisions just to close more scope
 - has clear non-goals for the current run
 
 If the spec does not already define slices explicitly, derive one from the existing `Use cases` and `Tasks` before coding.
@@ -72,7 +73,7 @@ If new behavior is discovered:
 
 - if it is outside the selected slice, add it to the spec as an unchecked use case and leave it for a later slice
 - if it is required to complete the selected slice, include it only if it fits within the existing slice limits
-- if it would add a second independent infrastructural concept or otherwise widen the slice materially, stop, update the spec, and report the blocker instead of expanding scope silently
+- if it would widen the slice so much that implementation quality or verification confidence would likely drop, stop, update the spec, and report the blocker instead of expanding scope silently
 
 Spec updates are allowed during the run. Scope expansion is not.
 
@@ -91,6 +92,8 @@ Research four things:
 
 When auto-selecting a slice, group use cases by shared owning layer, shared missing data flow, or shared parser/analyze/codegen dependency.
 
+Prefer the largest useful slice that still has a clean ownership story, a clear verification strategy, and a high-confidence path to systematic implementation in one session.
+
 If the next slice is ambiguous, narrow it before proceeding. Do not start coding with a fuzzy slice.
 
 ### Step 2: Slice Definition
@@ -103,6 +106,8 @@ Produce a slice definition with these sections:
 4. Expected files to change
 5. Verification strategy
 
+Choose the slice size for usefulness, not minimalism. Prefer a meaningful milestone over a tiny fragment when both fit safely within one session.
+
 If implementing the slice would require architecture changes that do not fit existing boundaries, stop and ask for approval. Do not improvise structural changes.
 
 ### Step 3: Update Spec
@@ -114,6 +119,8 @@ Update `Current state` with:
 - current slice name
 - why this slice comes next
 - non-goals for this run
+
+This pre-implementation update is only for planning and resume context. Do not mark use cases as completed in this step.
 
 Do not reshape the spec template just to use this skill. Prefer updating `Current state`, `Use cases`, and `Tasks`.
 
@@ -177,7 +184,7 @@ Implement the slice in the correct layer order:
 2. analyze only if the slice needs new derived data
 3. transform or codegen only after required parser or analysis support exists
 
-If a second infrastructural concept becomes necessary mid-run, stop, update the spec, and report the blocker instead of widening the slice.
+If the work stops being session-sized or starts pressuring the implementation toward shortcuts, stop, update the spec, and report the blocker instead of widening the slice.
 
 Unit tests are mandatory for every new parser or analyze behavior.
 
@@ -212,6 +219,8 @@ Update the spec:
 - update `Current state`
 - name the next slice
 - record any newly discovered unchecked use cases
+
+Mark use cases as completed only here, after implementation and verification succeed.
 
 Move the ROADMAP item only when all spec use cases for the feature are complete.
 
