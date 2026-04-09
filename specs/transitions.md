@@ -1,10 +1,13 @@
 # Transitions
 
 ## Current state
-- **Working**: 11/16 use cases
-- **Missing**: 5/16 use cases
-- **Next**: port analyzer validation for `transition_duplicate`, `transition_conflict`, and `illegal_await_expression`
-- Last updated: 2026-04-07
+- **Working**: 16/16 use cases
+- **Missing**: 0/16 use cases
+- **Current slice**: remaining analyzer validation completed
+- **Done this session**: `template_validation` now rejects duplicate and conflicting transition directives on a single element, matching the reference element validator for `transition:`, `in:`, and `out:` combinations.
+- **Done this session**: transition directive values now emit `illegal_await_expression` using the existing expression-analysis `has_await` metadata, keeping `await` validation in the analyzer instead of codegen.
+- **Next**: no additional transition slice is required within this spec's client-side scope; compiler negative-case snapshots remain limited by the current test harness.
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -41,12 +44,12 @@
 - [x] Delay transition setup behind async blockers when the directive value depends on blocker-producing expressions.
 - [x] Emit local/global flags in client codegen for `transition:fade|local` and `transition:fade|global`.
 - [x] Preserve the special `{:else if}` local-transition path so flattened else-if branches compile through `$.if(..., true)` when they contain transitions.
-- [ ] Reject duplicate `transition:` directives on one element via `transition_duplicate`. Diagnostic kind exists in `svelte_diagnostics`, but `template_validation` does not emit it.
-- [ ] Reject duplicate `in:` directives on one element via `transition_duplicate`. Diagnostic kind exists in `svelte_diagnostics`, but `template_validation` does not emit it.
-- [ ] Reject duplicate `out:` directives on one element via `transition_duplicate`. Diagnostic kind exists in `svelte_diagnostics`, but `template_validation` does not emit it.
-- [ ] Reject `transition:` together with `in:` on one element via `transition_conflict`. Diagnostic kind exists in `svelte_diagnostics`, but `template_validation` does not emit it.
-- [ ] Reject `transition:` together with `out:` on one element via `transition_conflict`. Diagnostic kind exists in `svelte_diagnostics`, but `template_validation` does not emit it.
-- [ ] Reject `await` expressions inside transition directive values via `illegal_await_expression`. Reference analyze handles this in `TransitionDirective.js`; our analyzer currently does not.
+- [x] Reject duplicate `transition:` directives on one element via `transition_duplicate`.
+- [x] Reject duplicate `in:` directives on one element via `transition_duplicate`.
+- [x] Reject duplicate `out:` directives on one element via `transition_duplicate`.
+- [x] Reject `transition:` together with `in:` on one element via `transition_conflict`.
+- [x] Reject `transition:` together with `out:` on one element via `transition_conflict`.
+- [x] Reject `await` expressions inside transition directive values via `illegal_await_expression`.
 
 ## Out of scope
 
@@ -96,9 +99,9 @@
 
 ## Discovered bugs
 
-- OPEN: `transition_duplicate` is declared in `svelte_diagnostics` but not emitted from `crates/svelte_analyze/src/passes/template_validation.rs`.
-- OPEN: `transition_conflict` is declared in `svelte_diagnostics` but not emitted from `crates/svelte_analyze/src/passes/template_validation.rs`.
-- OPEN: `illegal_await_expression` is declared in `svelte_diagnostics`, but transition directive expressions are not checked for it.
+- FIXED: `transition_duplicate` is now emitted from `crates/svelte_analyze/src/passes/template_validation.rs` for duplicate `transition:`, `in:`, and `out:` directives on a single element.
+- FIXED: `transition_conflict` is now emitted from `crates/svelte_analyze/src/passes/template_validation.rs` for `transition:` combined with `in:` or `out:` on one element.
+- FIXED: `illegal_await_expression` is now emitted for transition directive expressions using the existing expression-analysis `has_await` metadata.
 - OPEN: compiler test harness only supports successful snapshot cases, so transition validation failures need analyzer-test coverage for now.
 
 ## Test cases

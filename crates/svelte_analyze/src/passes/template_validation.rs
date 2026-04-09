@@ -15,8 +15,9 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, UseDirective,
-    SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
+    TransitionDirective, TransitionDirection, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
+    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
@@ -564,11 +565,46 @@ enum BindExpressionShape {
     Invalid,
 }
 
-/// Per-element state for detecting mixed event syntax (S5 attributes + legacy on:).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransitionDirectiveKind {
+    Transition,
+    In,
+    Out,
+}
+
+impl TransitionDirectiveKind {
+    fn from_direction(direction: &TransitionDirection) -> Self {
+        match direction {
+            TransitionDirection::Both => Self::Transition,
+            TransitionDirection::In => Self::In,
+            TransitionDirection::Out => Self::Out,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Transition => "transition",
+            Self::In => "in",
+            Self::Out => "out",
+        }
+    }
+
+    fn occupies_intro(self) -> bool {
+        !matches!(self, Self::Out)
+    }
+
+    fn occupies_outro(self) -> bool {
+        !matches!(self, Self::In)
+    }
+}
+
+/// Per-element validation state for mixed event syntax and directive conflicts.
 #[derive(Default)]
 struct ElementEventState {
     has_s5_events: bool,
     has_animate_directive: bool,
+    intro_transition: Option<TransitionDirectiveKind>,
+    outro_transition: Option<TransitionDirectiveKind>,
     /// Span and event name of the first `on:` directive seen on this element.
     first_on_directive: Option<(Span, String)>,
 }
@@ -925,6 +961,60 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 DiagnosticKind::IllegalAwaitExpression,
                 expression_span,
             ));
+        }
+    }
+
+    fn visit_transition_directive(
+        &mut self,
+        dir: &TransitionDirective,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        let kind = TransitionDirectiveKind::from_direction(&dir.direction);
+
+        if let Some(state) = self.element_event_state.last_mut() {
+            let existing = if kind.occupies_intro() {
+                state.intro_transition.or_else(|| {
+                    kind.occupies_outro().then_some(state.outro_transition).flatten()
+                })
+            } else if kind.occupies_outro() {
+                state.outro_transition
+            } else {
+                None
+            };
+
+            if let Some(existing) = existing {
+                let diagnostic = if existing == kind {
+                    DiagnosticKind::TransitionDuplicate {
+                        type_: kind.label().to_string(),
+                    }
+                } else {
+                    DiagnosticKind::TransitionConflict {
+                        type_: kind.label().to_string(),
+                        existing: existing.label().to_string(),
+                    }
+                };
+                ctx.warnings_mut().push(Diagnostic::error(diagnostic, dir.name));
+            }
+
+            if kind.occupies_intro() {
+                state.intro_transition = Some(kind);
+            }
+            if kind.occupies_outro() {
+                state.outro_transition = Some(kind);
+            }
+        }
+
+        if let Some(expression_span) = dir.expression_span {
+            if ctx
+                .data
+                .attr_expression(dir.id)
+                .is_some_and(|info| info.has_await)
+            {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::IllegalAwaitExpression,
+                    expression_span,
+                ));
+            }
         }
     }
 
