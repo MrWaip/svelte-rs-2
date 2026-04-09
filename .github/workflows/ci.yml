@@ -17,3 +17,22 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+  napi-canary-smoke:
+    name: N-API Canary Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup rust toolchain and cache
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run N-API canary smoke
+        run: node packages/svelte-rs2/scripts/smoke.mjs
