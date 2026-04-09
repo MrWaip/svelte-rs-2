@@ -20,6 +20,19 @@
           "enable": false
         }
       }
+    },
+    {
+      "extensions": ["js", "mjs", "cjs", "ts", "mts", "cts", "d.ts"],
+      "command": ["typescript-language-server", "--stdio"],
+      "rootDir": "reference",
+      "restartInterval": 30,
+      "initializationOptions": {
+        "hostInfo": "cclsp",
+        "preferences": {
+          "includeCompletionsForModuleExports": true,
+          "includeCompletionsWithInsertText": true
+        }
+      }
     }
   ]
 }

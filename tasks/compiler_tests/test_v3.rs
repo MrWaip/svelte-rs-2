@@ -1120,7 +1120,6 @@ fn animate_svelte_element() {
 }
 
 #[rstest]
-#[ignore = "missing: animate with @const sibling in keyed each (codegen)"]
 fn animate_with_const_tag() {
     assert_compiler("animate_with_const_tag");
 }

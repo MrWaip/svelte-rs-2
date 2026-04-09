@@ -124,10 +124,7 @@ impl<'a> Builder<'a> {
         if let Expression::CallExpression(call) = &expr {
             if call.arguments.is_empty()
                 && !call.optional
-                && matches!(
-                    &call.callee,
-                    Expression::Identifier(_) | Expression::StaticMemberExpression(_)
-                )
+                && matches!(&call.callee, Expression::Identifier(_))
             {
                 if let Expression::CallExpression(call) = expr {
                     let call = call.unbox();
