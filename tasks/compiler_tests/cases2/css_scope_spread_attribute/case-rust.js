@@ -10,6 +10,6 @@ export default function App($$anchor, $$props) {
 	$.attribute_effect(p, () => ({
 		...rest,
 		"data-extra": "x"
-	}));
+	}), void 0, void 0, void 0, "svelte-qv4ee3");
 	$.append($$anchor, p);
 }

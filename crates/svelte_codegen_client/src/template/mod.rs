@@ -560,11 +560,18 @@ fn emit_single_block<'a>(
             return;
         }
         FragmentItem::ComponentNode(id) if !ctx.is_dynamic_component(*id) => {
-            if !is_root {
+            // svelte:self in a non-root context needs a $.comment() anchor (not standalone).
+            // All other non-dynamic components (including root-level) use $$anchor directly.
+            if ctx.is_svelte_self(*id) && !is_root {
+                // Fall through to the general $.comment() path below.
+            } else {
+                // Consume "fragment" counter on every path (root or not) to match the
+                // reference compiler's identifier numbering, which always allocates the
+                // fragment id even when it ends up unused (is_standalone path).
                 ctx.gen_ident("fragment");
+                gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
+                return;
             }
-            gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
-            return;
         }
         FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
             unreachable!("SingleBlock should not contain Element or TextConcat")

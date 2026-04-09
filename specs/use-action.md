@@ -1,10 +1,11 @@
 # `use:action`
 
 ## Current state
-- **Working**: 9/11 use cases
-- **Missing**: 2/11 use cases
-- **Next**: port parser/codegen support for non-identifier dotted directive segments like `use:a.b-c`, then add analyzer validation for `illegal_await_expression` in action arguments
-- Last updated: 2026-04-07
+- **Working**: 10/11 use cases
+- **Missing**: 1/11 use cases
+- **Done**: parser now handles hyphenated dotted segments via `parse_directive_name_span` in `walk_js.rs`; scanner extended to consume `-` in name segments
+- **Next**: add analyzer validation for `illegal_await_expression` in action arguments
+- Last updated: 2026-04-08
 
 ## Source
 
@@ -24,7 +25,7 @@
 
 - [x] Parse `use:name` and `use:name={expr}` into `Attribute::UseDirective` with preserved directive-name and optional argument spans.
 - [x] Parse dotted directive names whose member segments are valid identifiers, such as `use:actions.tooltip`.
-- [ ] Parse dotted directive names whose later segments are not valid identifiers, such as `use:actions.tooltip-extra`. Reference client transform lowers these via computed member access; our scanner stops at `-`.
+- [x] Parse dotted directive names whose later segments are not valid identifiers, such as `use:actions.tooltip-extra`. Scanner now reads `-` in segments; `walk_js.rs` converts to bracket notation before OXC parsing (test: `use_action_dotted_hyphen`).
 - [x] Walk action argument expressions through semantics/analyze so symbol references, dynamicity, and async blockers are recorded like other attribute expressions.
 - [ ] Reject `await` expressions inside action arguments via `illegal_await_expression`. The diagnostic kind exists, but no `use:`-specific analyzer validation emits it today.
 - [x] Emit `$.action(node, handler)` for plain actions on regular elements.

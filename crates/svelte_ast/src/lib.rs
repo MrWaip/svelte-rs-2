@@ -151,6 +151,27 @@ pub fn is_whitespace_removable_parent(name: &str) -> bool {
     WHITESPACE_REMOVABLE_ELEMENTS.contains(&name)
 }
 
+/// Special Svelte pseudo-element names that are handled as components.
+pub const SVELTE_COMPONENT: &str = "svelte:component";
+/// Special Svelte pseudo-element for recursive self-reference.
+pub const SVELTE_SELF: &str = "svelte:self";
+/// Transparent wrapper for named slot content (`<svelte:fragment slot="name">`).
+pub const SVELTE_FRAGMENT: &str = "svelte:fragment";
+/// Component options tag.
+pub const SVELTE_OPTIONS: &str = "svelte:options";
+/// Renders into `<head>` at SSR time; no-op on the client.
+pub const SVELTE_HEAD: &str = "svelte:head";
+/// Binds to `window` event listeners and properties.
+pub const SVELTE_WINDOW: &str = "svelte:window";
+/// Binds to `document` event listeners and properties.
+pub const SVELTE_DOCUMENT: &str = "svelte:document";
+/// Binds to `document.body` event listeners.
+pub const SVELTE_BODY: &str = "svelte:body";
+/// Dynamic element tag (`<svelte:element this={tag}>`).
+pub const SVELTE_ELEMENT: &str = "svelte:element";
+/// Error boundary (`<svelte:boundary>`).
+pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
+
 /// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);

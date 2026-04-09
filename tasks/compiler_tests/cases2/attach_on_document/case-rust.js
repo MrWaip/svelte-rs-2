@@ -3,4 +3,5 @@ export default function App($$anchor) {
 	function track(node) {
 		return () => {};
 	}
+	$.attach($.document, () => track);
 }

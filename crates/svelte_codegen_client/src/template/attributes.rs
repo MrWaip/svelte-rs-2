@@ -339,9 +339,19 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             .expect("has_class_attribute set but no class attr id");
         build_class_attr_value(ctx, el_id, class_attr_id)
     } else {
-        // No class expression attribute — use static class or empty string
+        // No class expression attribute — use static class (or empty) with scope hash baked in.
         let static_class = ctx.static_class(el_id).unwrap_or("");
-        ctx.b.str_expr(static_class)
+        let hash = ctx.css_hash();
+        if ctx.is_css_scoped(el_id) && !hash.is_empty() {
+            let combined = if static_class.is_empty() {
+                hash
+            } else {
+                ctx.b.alloc_str(&format!("{static_class} {hash}"))
+            };
+            ctx.b.str_expr(combined)
+        } else {
+            ctx.b.str_expr(static_class)
+        }
     };
 
     // --- Build class directives object ---
@@ -351,9 +361,18 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     let has_state = ctx.class_needs_state(el_id);
 
+    // When the class value is a dynamic expression (has_class_attr), the scope hash
+    // goes as the 4th argument. When it's a static string, it was already baked in above.
+    let hash = ctx.css_hash();
+    let scope_arg = if has_class_attr && ctx.is_css_scoped(el_id) && !hash.is_empty() {
+        ctx.b.str_expr(hash)
+    } else {
+        ctx.b.null_expr()
+    };
+
     // --- Generate $.set_class() call ---
     if let Some(dir_obj) = directives_obj {
-        // With directives: $.set_class(el, 1, value, null, prev, { ... })
+        // With directives: $.set_class(el, 1, value, scope_hash, prev, { ... })
         if has_state {
             let classes_name = ctx.gen_ident("classes");
             let set_class_call = ctx.b.call_expr(
@@ -362,7 +381,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
                     Arg::Ident(el_name),
                     Arg::Num(1.0),
                     Arg::Expr(class_value),
-                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Expr(scope_arg),
                     Arg::Ident(&classes_name),
                     Arg::Expr(dir_obj),
                 ],
@@ -380,7 +399,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
                     Arg::Ident(el_name),
                     Arg::Num(1.0),
                     Arg::Expr(class_value),
-                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Expr(scope_arg),
                     Arg::Expr(ctx.b.object_expr(vec![])),
                     Arg::Expr(dir_obj),
                 ],
@@ -512,6 +531,9 @@ fn build_style_concat<'a>(
 }
 
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
+///
+/// Returns `Some(ns_thunk)` when a dynamic `xmlns` attribute is found — the thunk
+/// `() => expr` is used as the namespace argument to `$.element(...)` for `<svelte:element>`.
 pub(crate) fn process_attrs_spread<'a>(
     ctx: &mut Ctx<'a>,
     el_id: NodeId,
@@ -522,9 +544,10 @@ pub(crate) fn process_attrs_spread<'a>(
     include_style_base: bool,
     init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
-) {
+) -> Option<Expression<'a>> {
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
+    let mut ns_thunk: Option<Expression<'a>> = None;
 
     for attr in attrs {
         let attr_id = attr.id();
@@ -557,6 +580,10 @@ pub(crate) fn process_attrs_spread<'a>(
                         let name_alloc = ctx.b.alloc_str(&a.name);
                         props.push(ObjProp::KeyValue(name_alloc, ctx.b.rid_expr(&handler_name)));
                     } else {
+                        if a.name == "xmlns" {
+                            let clone = ctx.b.clone_expr(&expr);
+                            ns_thunk = Some(ctx.b.thunk(clone));
+                        }
                         let name_alloc = ctx.b.alloc_str(&a.name);
                         props.push(ObjProp::KeyValue(name_alloc, expr));
                     }
@@ -660,15 +687,29 @@ pub(crate) fn process_attrs_spread<'a>(
         props.push(ObjProp::Computed(style_key_expr, style_obj));
     }
 
-    // $.attribute_effect(el, () => ({...})) — skip if no renderable properties
+    // $.attribute_effect(el, () => ({...})[, void 0, void 0, void 0, hash]) — skip if empty.
+    // When the element is CSS-scoped, args 3-5 are void 0 placeholders for memoizer
+    // sync/async/blockers (unused in our non-async path), and arg 6 is the scope hash.
     if !props.is_empty() {
         let obj = ctx.b.object_expr(props);
         let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
-        init.push(ctx.b.call_stmt(
-            "$.attribute_effect",
-            [Arg::Ident(el_name), Arg::Expr(arrow)],
-        ));
+        let hash = ctx.css_hash();
+        let args: Vec<Arg<'a, '_>> = if ctx.is_css_scoped(el_id) && !hash.is_empty() {
+            vec![
+                Arg::Ident(el_name),
+                Arg::Expr(arrow),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Str(hash.to_string()),
+            ]
+        } else {
+            vec![Arg::Ident(el_name), Arg::Expr(arrow)]
+        };
+        init.push(ctx.b.call_stmt("$.attribute_effect", args));
     }
+
+    ns_thunk
 }
 
 // ---------------------------------------------------------------------------

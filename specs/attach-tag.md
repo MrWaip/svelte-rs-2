@@ -1,10 +1,9 @@
 # `{@attach}`
 
 ## Current state
-- **Working**: 9/10 use cases
-- **Missing**: 1 use case
-- **Next**: Add `{@attach}` codegen support to `<svelte:document>` in `crates/svelte_codegen_client/src/template/svelte_document.rs`
-- Last updated: 2026-04-07
+- **Working**: 10/10 use cases — Complete
+- **Done**: added `Attribute::AttachTag` arm to `gen_svelte_document` calling `gen_attach_tag(ctx, attr_id, "$.document", stmts)`
+- Last updated: 2026-04-08
 
 ## Source
 
@@ -33,7 +32,7 @@
 - [x] Allow inline arrow attachments and conditional/falsy attachment expressions on elements
 - [x] Emit component attachment props with `[$.attachment()]` keys for static expressions
 - [x] Emit dynamic component attachment wrappers that re-read reactive attachment expressions
-- [ ] Emit `{@attach}` on `<svelte:document>` using the same runtime attach path as other attachment-bearing targets
+- [x] Emit `{@attach}` on `<svelte:document>` using the same runtime attach path as other attachment-bearing targets (test: `attach_on_document`)
 
 ## Out of scope
 
@@ -101,4 +100,4 @@
 - [x] `attach_blockers`
 - [x] `attach_on_component`
 - [x] `attach_on_component_dynamic`
-- [ ] `attach_on_document`
+- [x] `attach_on_document`

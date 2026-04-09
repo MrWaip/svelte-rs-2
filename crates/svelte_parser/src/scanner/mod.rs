@@ -475,10 +475,12 @@ impl<'a> Scanner<'a> {
     }
 
     fn use_directive(&mut self, mut name_span: Span) -> Result<Attribute, Diagnostic> {
-        // Consume dotted name segments: use:a.b.c
+        // Consume dotted name segments: use:a.b.c or use:a.b-hyphen.c
+        // Segments may contain hyphens (e.g. `tooltip-extra`), which require bracket
+        // notation in JS output but are valid Svelte directive name segments.
         while self.peek() == Some('.') {
             self.advance(); // consume '.'
-            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
                 self.advance();
             }
             name_span = Span::new(name_span.start, self.current as u32);
