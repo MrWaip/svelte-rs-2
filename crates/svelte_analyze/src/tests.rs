@@ -3587,6 +3587,21 @@ fn fragment_facts_track_each_body_child_shape_and_animate() {
 }
 
 #[test]
+fn fragment_facts_track_svelte_element_animate_in_each_body() {
+    let (component, data) = analyze_source(
+        r#"<script>import { flip } from 'svelte/animate'; let tag = 'div'; let items = [{ id: 1, value: 'x' }];</script>
+{#each items as item (item.id)}
+    <svelte:element this={tag} animate:flip>{item.value}</svelte:element>
+{/each}"#,
+    );
+
+    let each = find_each_block(&component.fragment, &component, "items").expect("expected each");
+
+    assert!(data.fragment_has_direct_animate_child(&FragmentKey::EachBody(each.id)));
+    assert!(data.each_has_animate(each.id));
+}
+
+#[test]
 fn fragment_facts_single_child_supports_block_empty() {
     let (component, data, diags) = analyze_source_with_diags("{#if ok} {/if}");
     let block = find_if_block(&component.fragment, &component, "ok").expect("expected if block");

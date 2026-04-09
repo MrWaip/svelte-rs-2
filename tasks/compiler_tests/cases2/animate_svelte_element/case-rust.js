@@ -11,10 +11,11 @@ export default function App($$anchor) {
 	}]);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
-	$.each(node, 17, () => items, (item) => item.id, ($$anchor, item) => {
+	$.each(node, 25, () => items, (item) => item.id, ($$anchor, item) => {
 		var fragment_1 = $.comment();
 		var node_1 = $.first_child(fragment_1);
 		$.element(node_1, () => tag, false, ($$element, $$anchor) => {
+			$.animation($$element, () => flip, null);
 			var text = $.text();
 			$.template_effect(() => $.set_text(text, $.get(item).name));
 			$.append($$anchor, text);
