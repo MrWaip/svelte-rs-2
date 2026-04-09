@@ -1,8 +1,8 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 7/8 use cases
-- **Next**: keep parity checks in `/qa`; dev-mode equality rewrites still need explicit coverage and ownership in this spec
+- **Working**: 7/7 roadmap-owned use cases
+- **Next**: complete; any future dev-only equality rewrite work should be tracked in a separate dev-codegen parity spec instead of keeping this roadmap-closed text/expression spec open
 - Last updated: 2026-04-07
 
 ## Source
@@ -21,14 +21,17 @@
 
 ## Use cases
 
-- `[x]` Standalone static text nodes compile to static DOM text
-- `[x]` Standalone expression tags compile at root and inside elements
-- `[x]` Mixed text and expression sequences compile for root, regular elements, and `<title>`
-- `[x]` SVG whitespace handling works for ignorable inter-element whitespace and `<text>` content
-- `[x]` Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
-- `[x]` Template validation rejects invalid text / expression placement with `node_invalid_placement`
-- `[x]` Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
-- `[ ]` Dev-mode equality expressions lower through `$.strict_equals(...)` / `$.equals(...)` instead of raw `===` / `==` when expression tags and related template expressions are compiled in dev mode
+- [x] Standalone static text nodes compile to static DOM text
+- [x] Standalone expression tags compile at root and inside elements
+- [x] Mixed text and expression sequences compile for root, regular elements, and `<title>`
+- [x] SVG whitespace handling works for ignorable inter-element whitespace and `<text>` content
+- [x] Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
+- [x] Template validation rejects invalid text / expression placement with `node_invalid_placement`
+- [x] Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
+
+## Out of scope
+
+- Dev-only equality rewrites via `$.strict_equals(...)` / `$.equals(...)`; if this parity work is revived, track it in a separate dev-codegen spec instead of the roadmap-closed text/expression feature
 
 ## Reference
 
@@ -55,18 +58,18 @@
 
 ## Test cases
 
-- `[x]` `single_text_node`
-- `[x]` `single_interpolation`
-- `[x]` `static_interpolation`
-- `[x]` `inline_await_text_concat`
-- `[x]` `title_variants`
-- `[x]` `svg_inner_whitespace_trimming`
-- `[x]` `svg_text_preserves_whitespace`
-- `[x]` `ts_strip_expression_tag`
-- `[x]` `text_entity_decoding`
-- `[x]` `text_entity_decoding_root`
-- `[x]` `title_entity_decoding`
-- `[x]` `validate_text_invalid_placement` (analyzer)
-- `[x]` `validate_expression_tag_invalid_placement` (analyzer)
-- `[x]` `validate_text_bidirectional_control_warning` (analyzer)
-- `[x]` `validate_text_bidirectional_control_warning_ignored` (analyzer)
+- [x] `single_text_node`
+- [x] `single_interpolation`
+- [x] `static_interpolation`
+- [x] `inline_await_text_concat`
+- [x] `title_variants`
+- [x] `svg_inner_whitespace_trimming`
+- [x] `svg_text_preserves_whitespace`
+- [x] `ts_strip_expression_tag`
+- [x] `text_entity_decoding`
+- [x] `text_entity_decoding_root`
+- [x] `title_entity_decoding`
+- [x] `validate_text_invalid_placement` (analyzer)
+- [x] `validate_expression_tag_invalid_placement` (analyzer)
+- [x] `validate_text_bidirectional_control_warning` (analyzer)
+- [x] `validate_text_bidirectional_control_warning_ignored` (analyzer)

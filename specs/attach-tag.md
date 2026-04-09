@@ -75,19 +75,6 @@
 - `tasks/compiler_tests/cases2/attach_on_component_dynamic/`
 - `tasks/compiler_tests/cases2/attach_on_document/`
 
-## Tasks
-
-- Parser: no change expected; scanner and attribute conversion already produce `Attribute::AttachTag` for attribute-position `{@attach expr}`
-- Analyze: no change expected for the documented surface; existing attach expression walking and illegal-await validation already cover generic attributes
-- Codegen: extend `gen_svelte_document` to lower `Attribute::AttachTag` to `$.attach($.document, thunk(expr))`, plus blocker handling if the target path can expose async blockers there
-- Tests: keep existing passing attach coverage, add `attach_on_document`, and unignore it once the special-element codegen path is implemented
-
-## Implementation order
-
-- Add the missing `<svelte:document>` compiler test and confirm the failure shape
-- Port the `AttachTag` handling into `svelte_document.rs`
-- Re-run `attach_on_document` and the existing attach suite
-
 ## Test cases
 
 - [x] `attach_basic`

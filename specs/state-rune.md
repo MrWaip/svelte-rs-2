@@ -86,12 +86,6 @@ Audit of existing implementation
   - `crates/svelte_codegen_client/src/script/traverse.rs` — variable declaration transforms
   - `crates/svelte_transform/src/rune_refs.rs` — should_proxy(), runtime helper builders
 
-## Tasks
-
-- [x] Codegen: thread the top-level `$state` destructure label into nested dev-mode array carriers for object patterns
-- [x] Tests: add focused e2e coverage for object destructured `$state` dev labels
-- [ ] Legacy follow-up: keep `$.deep_read_state()` isolated as out-of-scope Tier 7 work
-
 ## Test cases
 
 - [x] `hello_state`

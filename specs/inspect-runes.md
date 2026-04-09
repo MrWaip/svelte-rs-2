@@ -20,15 +20,15 @@
 
 ## Use cases
 
-- `[x]` `$inspect(...)` in dev rewrites to `$.inspect(...)` with `console.log`
-- `[x]` `$inspect(...).with(callback)` in dev rewrites to `$.inspect(...)` with the provided callback
-- `[x]` `$inspect(...)` is stripped in prod builds
-- `[x]` `$inspect.trace(label?)` rewrites the surrounding function body to `$.trace(...)`
-- `[x]` `$inspect.trace(label?)` works in async functions and template event handlers
-- `[x]` `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
-- `[x]` `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
-- `[x]` `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
-- `[x]` `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
+- [x] `$inspect(...)` in dev rewrites to `$.inspect(...)` with `console.log`
+- [x] `$inspect(...).with(callback)` in dev rewrites to `$.inspect(...)` with the provided callback
+- [x] `$inspect(...)` is stripped in prod builds
+- [x] `$inspect.trace(label?)` rewrites the surrounding function body to `$.trace(...)`
+- [x] `$inspect.trace(label?)` works in async functions and template event handlers
+- [x] `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
+- [x] `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
+- [x] `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
+- [x] `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
 
 ## Reference
 
@@ -52,11 +52,11 @@
 
 ## Test cases
 
-- `[x]` `inspect_basic`
-- `[x]` `inspect_with_callback`
-- `[x]` `inspect_prod_strip`
-- `[x]` `inspect_trace_basic`
-- `[x]` `inspect_trace_contexts`
-- `[x]` `inspect_trace_prod_strip`
-- `[x]` `inspect_trace_reactive_contexts`
-- `[x]` analyzer unit tests for inspect validation
+- [x] `inspect_basic`
+- [x] `inspect_with_callback`
+- [x] `inspect_prod_strip`
+- [x] `inspect_trace_basic`
+- [x] `inspect_trace_contexts`
+- [x] `inspect_trace_prod_strip`
+- [x] `inspect_trace_reactive_contexts`
+- [x] analyzer unit tests for inspect validation

@@ -116,31 +116,28 @@
 - `tasks/compiler_tests/cases2/event_attr_passive_window/`
 - `specs/attach-tag.md`
 
-## Tasks
-
-- Parser: add shared root-only duplicate and placement validation for `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` before/while converting them into dedicated nodes.
-- Analyze: add shared special-element validation that rejects children with `svelte_meta_invalid_content`.
-- Analyze: add illegal attribute validation for `<svelte:window>` / `<svelte:document>` and the `<svelte:body>`-specific diagnostic path.
-- Codegen: extend `crates/svelte_codegen_client/src/template/svelte_document.rs` to handle `Attribute::AttachTag`.
-- Tests: keep current compiler parity tests green and add focused parser/analyzer regression tests for the missing diagnostics.
-
-## Implementation order
-
-1. Land parser/analyzer regression tests for duplicate, placement, invalid children, and illegal attributes.
-2. Implement parser root-only validation for all three tags.
-3. Implement analyzer validation for children and illegal attributes.
-4. Port `<svelte:document {@attach ...}>` codegen and unignore the existing compiler case.
-5. Re-run the focused parser/analyzer/compiler suite.
-
-## Discovered bugs
-
-- OPEN: the parser currently converts these tags at the root but does not report `svelte_meta_duplicate` or `svelte_meta_invalid_placement` for `<svelte:window>`, `<svelte:document>`, or `<svelte:body>`.
-- OPEN: the analyzer has diagnostic types for illegal special-element content and attributes, but there is no validation path emitting them for `<svelte:window>`, `<svelte:document>`, or `<svelte:body>`.
-- OPEN: `<svelte:document {@attach ...}>` is parsed and tracked but not emitted in client codegen.
-
 ## Test cases
 
-- Existing passing compiler coverage: `svelte_window_event_legacy`, `svelte_window_event_attr`, `svelte_window_bind_scroll`, `svelte_window_bind_size`, `svelte_window_bind_online`, `svelte_window_reactive`, `svelte_window_combined`, `svelte_document_events`, `svelte_document_bindings`, `svelte_document_bubble`, `svelte_document_combined`, `svelte_body_event_attr`, `svelte_body_event_legacy`, `svelte_body_action`, `svelte_body_combined`, `special_elements_all`, `root_with_special_elements`, `head_with_special_elements`, `head_position_with_body`, `event_attr_passive_window`
-- Existing ignored compiler coverage: `attach_on_document`
-- Added parser coverage in this audit: duplicate and invalid-placement diagnostics for the root-only special-element family
-- Added analyzer coverage in this audit: illegal-attribute and invalid-content diagnostics for the special-element family
+- [x] `svelte_window_event_legacy`
+- [x] `svelte_window_event_attr`
+- [x] `svelte_window_bind_scroll`
+- [x] `svelte_window_bind_size`
+- [x] `svelte_window_bind_online`
+- [x] `svelte_window_reactive`
+- [x] `svelte_window_combined`
+- [x] `svelte_document_events`
+- [x] `svelte_document_bindings`
+- [x] `svelte_document_bubble`
+- [x] `svelte_document_combined`
+- [x] `svelte_body_event_attr`
+- [x] `svelte_body_event_legacy`
+- [x] `svelte_body_action`
+- [x] `svelte_body_combined`
+- [x] `special_elements_all`
+- [x] `root_with_special_elements`
+- [x] `head_with_special_elements`
+- [x] `head_position_with_body`
+- [x] `event_attr_passive_window`
+- [ ] `attach_on_document`
+- [x] Parser coverage for duplicate and invalid-placement diagnostics for the root-only special-element family
+- [x] Analyzer coverage for illegal-attribute and invalid-content diagnostics for the special-element family

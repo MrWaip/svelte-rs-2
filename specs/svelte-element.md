@@ -70,28 +70,6 @@
   - `crates/svelte_codegen_client/src/template/attributes.rs`
   - `tasks/compiler_tests/test_v3.rs`
 
-## Tasks
-
-- Parser:
-  - Emit `SvelteElementMissingThis` for absent or valueless `this`
-  - Emit `SvelteElementInvalidThis` warning for string-literal `this` while preserving current compat lowering
-- Analyze:
-  - Confirm whether any `<svelte:element>`-specific CSS metadata is still missing once codegen parity lands
-- Codegen:
-  - Thread dynamic `xmlns` through the optional namespace thunk argument to `$.element`
-  - Emit dev-only `$.validate_dynamic_element_tag`
-  - Emit dev-only `$.validate_void_dynamic_element` when the fragment is non-empty
-- Tests:
-  - Keep the existing happy-path suite
-  - Add focused compiler cases for dynamic namespace and dev validation
-  - Add parser or diagnostic coverage for missing/invalid `this`
-
-## Implementation order
-
-1. Codegen parity for dynamic namespace and dev validation
-2. Parser diagnostics for `this`
-3. Re-check CSS/scoping parity if any `<svelte:element>`-specific gaps remain
-
 ## Test cases
 
 - [x] `svelte_element_basic`

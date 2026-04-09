@@ -77,35 +77,18 @@
 - Rust client transition emission: `crates/svelte_codegen_client/src/template/events/actions.rs`
 - Existing compiler cases: `tasks/compiler_tests/cases2/transition_*`
 
-## Tasks
-
-- Parser:
-  keep `TransitionDirective` direction/modifier parsing in `crates/svelte_parser/src/scanner/mod.rs` and `crates/svelte_parser/src/attr_convert.rs` as the single source for `transition:` / `in:` / `out:`.
-- Analyzer validation:
-  add duplicate/conflict detection for transition directives in `crates/svelte_analyze/src/passes/template_validation.rs`, matching reference `validate_element`.
-- Analyzer async validation:
-  add `illegal_await_expression` coverage for transition directive values in `crates/svelte_analyze/src/passes/template_validation.rs`.
-- Codegen:
-  confirm the `{:else if}` transition path continues to compile through the `$.if(..., true)` branch and keep `gen_transition_directive` aligned with reference flag ordering.
-- Tests:
-  keep successful codegen coverage in `tasks/compiler_tests/cases2/transition_*`; keep negative validation coverage in `crates/svelte_analyze/src/tests.rs` until compiler error-fixture support exists.
-
-## Implementation order
-
-1. Verify the new positive compiler case for the `{:else if}` path.
-2. Port analyzer validation for duplicate/conflict transition directives.
-3. Port analyzer validation for `illegal_await_expression` in transition directive values.
-4. Re-run transition compiler cases plus analyzer validation tests.
-
-## Discovered bugs
-
-- FIXED: `transition_duplicate` is now emitted from `crates/svelte_analyze/src/passes/template_validation.rs` for duplicate `transition:`, `in:`, and `out:` directives on a single element.
-- FIXED: `transition_conflict` is now emitted from `crates/svelte_analyze/src/passes/template_validation.rs` for `transition:` combined with `in:` or `out:` on one element.
-- FIXED: `illegal_await_expression` is now emitted for transition directive expressions using the existing expression-analysis `has_await` metadata.
-- OPEN: compiler test harness only supports successful snapshot cases, so transition validation failures need analyzer-test coverage for now.
-
 ## Test cases
 
-- Existing compiler cases: `transition_basic`, `transition_params`, `transition_in`, `transition_out`, `transition_in_out_separate`, `transition_local`, `transition_global`, `transition_dotted_name`, `transition_in_if`, `transition_reactive_params`, `transition_blockers`
-- Added compiler case: `transition_elseif_local`
-- Added analyzer cases: duplicate `transition:`, duplicate `in:`, duplicate `out:`, conflicting `transition:` + `in:`, conflicting `transition:` + `out:`, `await` inside transition directive value
+- [x] `transition_basic`
+- [x] `transition_params`
+- [x] `transition_in`
+- [x] `transition_out`
+- [x] `transition_in_out_separate`
+- [x] `transition_local`
+- [x] `transition_global`
+- [x] `transition_dotted_name`
+- [x] `transition_in_if`
+- [x] `transition_reactive_params`
+- [x] `transition_blockers`
+- [x] `transition_elseif_local`
+- [x] Analyzer coverage for duplicate `transition:`, duplicate `in:`, duplicate `out:`, conflicting `transition:` + `in:`, conflicting `transition:` + `out:`, and `await` inside transition directive values

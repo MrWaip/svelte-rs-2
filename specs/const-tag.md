@@ -30,16 +30,16 @@
 
 ## Use cases
 
-- `[x]` Simple identifier binding inside an allowed block parent such as `{#each}` or `{#if}`
-- `[x]` Destructured binding patterns (`{ x, y }`) with derived reads through the generated temp binding
-- `[x]` Multiple independent `{@const}` tags in one fragment
-- `[x]` TypeScript annotations on `{@const}` declarations are stripped before client codegen
-- `[x]` `{@const}` inside `if` / `else if` branches
-- `[x]` `{@const}` inside `{#key}` blocks
-- `[x]` `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path
-- `[x]` Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`)
-- `[x]` Invalid placement should report `const_tag_invalid_placement`
-- `[x]` Invalid declaration shapes should report `const_tag_invalid_expression`
+- [x] Simple identifier binding inside an allowed block parent such as `{#each}` or `{#if}`
+- [x] Destructured binding patterns (`{ x, y }`) with derived reads through the generated temp binding
+- [x] Multiple independent `{@const}` tags in one fragment
+- [x] TypeScript annotations on `{@const}` declarations are stripped before client codegen
+- [x] `{@const}` inside `if` / `else if` branches
+- [x] `{@const}` inside `{#key}` blocks
+- [x] `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path
+- [x] Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`)
+- [x] Invalid placement should report `const_tag_invalid_placement`
+- [x] Invalid declaration shapes should report `const_tag_invalid_expression`
 
 ## Out of scope
 
@@ -88,21 +88,20 @@
 
 ## Test cases
 
-- `[x]` `const_tag`
-- `[x]` `const_tag_destructured`
-- `[x]` `const_tag_destructured_multi`
-- `[x]` `const_tag_destructured_if`
-- `[x]` `const_tag_dev`
-- `[x]` `ts_strip_const_tag`
-- `[x]` `const_tag_key_block`
-- `[x]` `boundary_const_tag`
-- `[x]` `boundary_const_in_snippet`
-- `[x]` `if_else_chain_with_const`
-- `[x]` `const_tag_await`
-- `[x]` `const_tag_component`
-- `[ ]` `validate_const_tag_invalid_placement_root` (ignored — missing template validation)
-- `[ ]` `compile_const_tag_invalid_expression` (ignored — missing const-tag declaration validation)
-- Covered by `experimental-async` spec:
-  - `async_const_tag`
-  - `async_const_derived_chain`
-  - `async_boundary_const`
+- [x] `const_tag`
+- [x] `const_tag_destructured`
+- [x] `const_tag_destructured_multi`
+- [x] `const_tag_destructured_if`
+- [x] `const_tag_dev`
+- [x] `ts_strip_const_tag`
+- [x] `const_tag_key_block`
+- [x] `boundary_const_tag`
+- [x] `boundary_const_in_snippet`
+- [x] `if_else_chain_with_const`
+- [x] `const_tag_await`
+- [x] `const_tag_component`
+- [x] `validate_const_tag_invalid_placement_root`
+- [x] `validate_const_tag_invalid_expression`
+- [x] `async_const_tag` (covered by `experimental-async`)
+- [x] `async_const_derived_chain` (covered by `experimental-async`)
+- [x] `async_boundary_const` (covered by `experimental-async`)

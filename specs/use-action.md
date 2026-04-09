@@ -89,20 +89,6 @@
 - `tasks/compiler_tests/test_v3.rs`
 - `crates/svelte_analyze/src/tests.rs`
 
-## Tasks
-
-- Completed: parser dotted-name support, analyzer `illegal_await_expression` validation, and focused coverage for the `use:` action slice.
-
-## Implementation order
-
-1. Completed.
-
-## Discovered bugs
-
-- FIXED: `crates/svelte_parser/src/scanner/mod.rs` and `walk_js.rs` now accept and lower dotted `use:` directive segments like `use:actions.tooltip-extra`.
-- FIXED: `crates/svelte_analyze/src/passes/template_validation.rs` emits `illegal_await_expression` for `use:` directive argument expressions using analyze-owned `ExpressionInfo.has_await`.
-- OPEN: `tasks/compiler_tests/test_v3.rs` only supports successful snapshot cases, so action validation gaps need analyzer-test coverage until compiler error-fixture support exists.
-
 ## Test cases
 
 - [x] `use_action_basic`

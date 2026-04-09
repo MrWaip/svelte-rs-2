@@ -72,21 +72,6 @@
 - `crates/svelte_analyze/src/passes/template_validation/a11y.rs` — current Rust implementation surface
 - `crates/svelte_analyze/src/tests/a11y.rs` — analyzer warning coverage
 
-## Tasks
-
-- Keep A11y warning ownership in a dedicated analyzer spec instead of mixing it back into generic diagnostics infrastructure
-- Implement role-transition warnings in `svelte_analyze` using the existing interactivity classification and role helpers
-- Implement the remaining element-content warning cluster in `svelte_analyze`
-- Add or update unit coverage for the remaining warning variants; current audit added ignored regression tests for the highest-priority missing cases
-- Sync `ROADMAP.md` and related specs when the remaining open use case closes
-
-## Implementation order
-
-- Land role-transition warnings first
-- Land the remaining element-content checks after that
-- Re-run or extend warning coverage
-- Mark the `ROADMAP.md` item done once all A11y use cases are `[x]`
-
 ## Test cases
 
 - [x] unit: basic A11y attribute checks

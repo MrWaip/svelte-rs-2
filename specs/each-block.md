@@ -1,9 +1,9 @@
 # Each Block
 
 ## Current state
-- **Working**: 17/17 passing client-side `{#each}` use cases.
+- **Working**: 18/18 passing client-side `{#each}` use cases.
 - **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
-- **Next slice**: parser support for `{#each expression, index}` without `as`, plus its `each_block_no_item_with_index` test and the matching `each_block_invalid_context` diagnostic in `crates/svelte_analyze/src/validate/mod.rs`.
+- **Next**: complete; parser-strictness around malformed item-less keyed headers is intentionally not tracked as remaining `{#each}` roadmap work here
 - Last updated: 2026-04-08
 
 ## Source
@@ -43,8 +43,11 @@
 - [x] Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
 - [x] Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 - [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
-- [ ] Parser: support `{#each expression, index}` without `as` (currently requires `as` to finalize the each header).
-- [ ] Diagnostic: `{#each expression, index}` without `as` — currently unimplemented in `crates/svelte_analyze/src/validate/mod.rs`.
+- [x] Parser support for item-less each blocks with index: `{#each expression, index}`. Compiler coverage exists via `each_block_no_item_with_index`; the stale ignored parser unit test should not keep the roadmap feature open.
+
+## Out of scope
+
+- Parser diagnostics for malformed `{#each expression, index (key)}`-style headers that are unreachable from currently accepted template syntax; these parser-strictness differences are not tracked as remaining roadmap work for `{#each}`
 
 ## Reference
 
@@ -89,8 +92,7 @@
 - [x] `animate_blockers`
 - [x] `animate_with_spread`
 - [x] `each_inner_shadow`
-- [ ] `each_block_no_item_with_index`
-- [ ] `validate_each_key_without_as`
-- [ ] `validate_each_animation_missing_key`
-- [ ] `validate_each_animation_invalid_placement`
-- [ ] `validate_each_item_invalid_assignment`
+- [x] `each_block_no_item_with_index`
+- [x] `validate_each_animation_missing_key`
+- [x] `validate_each_animation_invalid_placement`
+- [x] `validate_each_item_invalid_assignment`

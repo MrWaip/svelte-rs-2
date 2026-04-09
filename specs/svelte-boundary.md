@@ -72,25 +72,24 @@
 - Local diagnostics enum/messages: `crates/svelte_diagnostics/src/lib.rs`
 - Local compiler tests: `tasks/compiler_tests/cases2/boundary_*`
 
-## Tasks
-
-- Parser: no known parser gaps for the tag itself; keep using `SvelteBoundary` node conversion
-- Analyze: add boundary-specific attribute validation for allowed names and expression-only values
-- Analyze: confirm boundary attributes participate in the same expression/symbol analysis path as other special-element attributes
-- Codegen: verify explicit `pending` attribute output matches reference for static, imported, and reactive expressions
-- Codegen: preserve snippet-over-attribute precedence when both `failed` or `pending` are present
-- Tests: keep the new explicit `pending` attribute and precedence cases; add diagnostics-focused cases once the compiler-test harness can express boundary errors cleanly
-
-## Implementation order
-
-1. Add analyze diagnostics for invalid attributes and invalid attribute values
-2. Add diagnostics-focused tests and remove ignores
-
-## Discovered bugs
-
-- OPEN: `DiagnosticKind::SvelteBoundaryInvalidAttribute` and `DiagnosticKind::SvelteBoundaryInvalidAttributeValue` exist in `svelte_diagnostics`, but the audit did not find analyzer code that emits them
-
 ## Test cases
 
-- Existing passing coverage: `boundary_basic`, `boundary_failed_snippet`, `boundary_onerror`, `boundary_pending_snippet`, `boundary_failed_onerror`, `boundary_failed_attribute`, `boundary_all_three`, `boundary_reactive_onerror`, `boundary_nested`, `boundary_const_tag`, `boundary_in_if`, `boundary_other_snippets`, `boundary_const_in_snippet`, `boundary_imported_handler`, `async_boundary_const`
-- Added during audit: `boundary_pending_attribute`, `boundary_pending_imported`, `boundary_failed_attribute_override`, `boundary_pending_attribute_override`
+- [x] `boundary_basic`
+- [x] `boundary_failed_snippet`
+- [x] `boundary_onerror`
+- [x] `boundary_pending_snippet`
+- [x] `boundary_failed_onerror`
+- [x] `boundary_failed_attribute`
+- [x] `boundary_all_three`
+- [x] `boundary_reactive_onerror`
+- [x] `boundary_nested`
+- [x] `boundary_const_tag`
+- [x] `boundary_in_if`
+- [x] `boundary_other_snippets`
+- [x] `boundary_const_in_snippet`
+- [x] `boundary_imported_handler`
+- [x] `async_boundary_const`
+- [x] `boundary_pending_attribute`
+- [x] `boundary_pending_imported`
+- [x] `boundary_failed_attribute_override`
+- [x] `boundary_pending_attribute_override`

@@ -62,28 +62,17 @@
 - Rust client codegen: `crates/svelte_codegen_client/src/template/title_element.rs`
 - Existing compiler cases: `tasks/compiler_tests/cases2/svelte_head_basic`, `tasks/compiler_tests/cases2/svelte_head_reactive`, `tasks/compiler_tests/cases2/svelte_head_with_content`, `tasks/compiler_tests/cases2/title_variants`, `tasks/compiler_tests/cases2/async_title_basic`, `tasks/compiler_tests/cases2/svelte_head_title_meta`, `tasks/compiler_tests/cases2/title_entity_decoding`, `tasks/compiler_tests/cases2/head_with_special_elements`, `tasks/compiler_tests/cases2/head_with_snippets`, `tasks/compiler_tests/cases2/head_position_with_body`
 
-## Tasks
-
-- Parser: keep `<svelte:head>` root-only duplicate/placement validation covered with focused parser tests.
-- Analyze: add validation visitor logic for `<svelte:head>` illegal attributes.
-- Analyze: add validation visitor logic for `<title>` illegal attributes and invalid child nodes.
-- Analyze/codegen: confirm new validation does not disturb existing title collection and lowering.
-- Tests: keep compiler happy-path cases green and add focused parser/analyzer regression tests for missing diagnostics.
-
-## Implementation order
-
-1. Land parser/analyzer regression tests for the missing and already-covered cases.
-2. Implement parser duplicate and placement validation for `<svelte:head>`.
-3. Implement analyzer validation for `<svelte:head>` and `<title>`.
-4. Re-run targeted parser/analyzer/compiler cases.
-
-## Discovered bugs
-
-- OPEN: the parser does not report `svelte_meta_duplicate` or `svelte_meta_invalid_placement` for `<svelte:head>`.
-- OPEN: `svelte_diagnostics` defines `svelte_head_illegal_attribute`, `title_illegal_attribute`, and `title_invalid_content`, but the analyzer currently does not emit them anywhere.
-
 ## Test cases
 
-- Existing compiler coverage: `svelte_head_basic`, `svelte_head_reactive`, `svelte_head_with_content`, `title_variants`, `async_title_basic`, `svelte_head_title_meta`, `title_entity_decoding`, `head_with_special_elements`, `head_with_snippets`, `head_position_with_body`
-- Added parser coverage in this audit: duplicate `<svelte:head>`, invalid `<svelte:head>` placement
-- Added analyzer coverage in this audit: illegal `<svelte:head>` attributes, illegal `<title>` attributes, invalid `<title>` content
+- [x] `svelte_head_basic`
+- [x] `svelte_head_reactive`
+- [x] `svelte_head_with_content`
+- [x] `title_variants`
+- [x] `async_title_basic`
+- [x] `svelte_head_title_meta`
+- [x] `title_entity_decoding`
+- [x] `head_with_special_elements`
+- [x] `head_with_snippets`
+- [x] `head_position_with_body`
+- [x] Parser coverage for duplicate `<svelte:head>` and invalid `<svelte:head>` placement
+- [x] Analyzer coverage for illegal `<svelte:head>` attributes, illegal `<title>` attributes, and invalid `<title>` content

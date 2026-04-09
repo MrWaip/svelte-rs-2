@@ -1,67 +1,87 @@
 ---
 name: spec-template
-description: Canonical structure and rules for files under `specs/`. Use when creating a new spec, revising a spec layout, or updating `Current state`, `Use cases`, `Reference`, or `Tasks` sections during `audit` or `port`.
+description: MUST consult when creating or updating spec files in specs/. Contains the canonical spec structure, naming rules, scope rules, and effort markers. Use this skill whenever /port or /audit creates a new spec, or when updating an existing spec's structure.
+paths:
+  - "specs/*.md"
 ---
 
 # Spec Template
 
 ## Naming
+File name = feature name in kebab-case: `state-rune.md`, `each-block.md`.
+For ROADMAP tier items: `<tier-id>-<short-name>.md` (e.g. `5a-diagnostics-infrastructure.md`).
 
-Use kebab-case:
+## Structure
 
-- `state-rune.md`
-- `each-block.md`
-
-For roadmap-tier work, use `<tier-id>-<short-name>.md`.
-
-## Fixed section order
+Sections in fixed order. Most important first.
 
 ```markdown
 # <Feature name>
 
 ## Current state
 - **Working**: N/M use cases
-- **Missing**: K use cases
-- **Next**: ...
+- **Next**: [one specific actionable item, or "complete"]
 - Last updated: <date>
 
 ## Source
+<ROADMAP item reference or user request>
 
 ## Syntax variants
+<!-- All syntactic forms of this feature, one per line -->
+<!-- Extracted from reference/docs/ and reference compiler parser -->
+```svelte
+{#feature expression}...{/feature}
+{#feature expression}...{:clause value}...{/feature}
+```
 
 ## Use cases
 
+- [x] <description> (test: <test_name>)
+- [ ] <description> — if partially implemented, say what works and what remains; otherwise note the next layer/task (test: <test_name>, #[ignore], quick fix)
+
 ## Out of scope
 
+- <item explicitly not in scope, e.g. SSR variant or removed feature>
+
 ## Reference
+### Svelte
+- <list of reference compiler files>
 
-## Tasks
-
-## Implementation order
-
-## Discovered bugs
+### Our code
+- <list of our crate files>
 
 ## Test cases
+
+- [x] <test_name>
+- [ ] <test_name>
 ```
 
-Put `Current state` first. It is the session handoff section.
-
 ## Scope rules
-
-- client-side only unless explicitly stated otherwise
-- `[ ]` means still open; if partially implemented, keep it unchecked and describe what already works plus what remains
-- `[x]` means implemented and covered by test
-- Use cases: flat list of checkboxes only — no `###` subsections
+- **Client-side only.** No SSR use cases.
+- `[ ]` = in scope and still open; partial work stays `[ ]` with the completed part and remaining gap described inline
+- `[x]` = done with test
+- Use cases: flat list of bullets `- [x]` — no numbered lists, no `###` subsections
 - Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
+- Omit `Out of scope` and `Syntax variants` sections if empty/not applicable
 
-## Effort markers
+## Test cases rules
+- Flat checklist only — no subsections ("Existing", "Added during audit", etc.)
+- `[x]` = test passes, `[ ]` = test is `#[ignore]` or skipped
+- Test names extracted from `(test: ...)` annotations in use cases
 
-- quick fix
-- moderate
-- needs infrastructure
+## Effort markers for [ ] use cases
+- **quick fix** — one file, add match arm or call by analogy
+- **moderate** — 2-3 files, existing infrastructure
+- **needs infrastructure** — new analysis pass, AST type, or codegen module
+
+## Sections that do NOT belong in specs
+- `Tasks` — implementation hints go inline with `[ ]` use cases
+- `Discovered bugs` — OPEN bugs become `[ ]` use cases; FIXED bugs are deleted
+- `Implementation order` — order is implied by use case sequence
+- `Test cases` subsections — always flat checklist
 
 ## Lifecycle
-
-1. Create the spec during `audit` or `port`.
-2. Update `Current state` after each session.
-3. Keep completed specs as long-term reference instead of deleting them.
+1. Created by `/port` step 3 or `/audit` step 3
+2. Updated after each session — Current state section
+3. Complete when all use cases `[x]` → move feature to ROADMAP Done
+4. Never deleted — remains as reference
