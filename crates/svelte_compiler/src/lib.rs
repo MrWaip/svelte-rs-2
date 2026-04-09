@@ -56,6 +56,39 @@ fn resolved_runes_option(component: &svelte_ast::Component, options: &CompileOpt
         .unwrap_or(true)
 }
 
+fn resolved_accessors_option(
+    component: &svelte_ast::Component,
+    options: &CompileOptions,
+) -> bool {
+    component
+        .options
+        .as_ref()
+        .and_then(|opts| opts.accessors)
+        .unwrap_or(options.accessors)
+}
+
+fn resolved_immutable_option(
+    component: &svelte_ast::Component,
+    options: &CompileOptions,
+) -> bool {
+    component
+        .options
+        .as_ref()
+        .and_then(|opts| opts.immutable)
+        .unwrap_or(options.immutable)
+}
+
+fn resolved_preserve_whitespace_option(
+    component: &svelte_ast::Component,
+    options: &CompileOptions,
+) -> bool {
+    component
+        .options
+        .as_ref()
+        .and_then(|opts| opts.preserve_whitespace)
+        .unwrap_or(options.preserve_whitespace)
+}
+
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
@@ -77,6 +110,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         custom_element: options.custom_element,
         experimental_async: options.experimental.async_,
         runes: resolved_runes_option(&component, options),
+        accessors: resolved_accessors_option(&component, options),
+        immutable: resolved_immutable_option(&component, options),
+        preserve_whitespace: resolved_preserve_whitespace_option(&component, options),
         dev: options.dev,
         component_name: name.clone(),
         filename_basename: options

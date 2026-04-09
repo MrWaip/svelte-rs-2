@@ -1402,19 +1402,16 @@ fn svelte_options_runes_false_override() {
 }
 
 #[rstest]
-#[ignore = "missing: inline accessors option in legacy mode (codegen)"]
 fn svelte_options_accessors_legacy() {
     assert_compiler("svelte_options_accessors_legacy");
 }
 
 #[rstest]
-#[ignore = "missing: inline immutable option in legacy mode (analyze/codegen)"]
 fn svelte_options_immutable_legacy() {
     assert_compiler("svelte_options_immutable_legacy");
 }
 
 #[rstest]
-#[ignore = "missing: inline preserveWhitespace option plumbing (analyze/codegen)"]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
 }

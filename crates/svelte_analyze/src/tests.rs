@@ -2214,6 +2214,9 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             custom_element: true,
             experimental_async: false,
             runes: true,
+            accessors: false,
+            immutable: false,
+            preserve_whitespace: false,
             dev: true,
             component_name: "Self".to_string(),
             filename_basename: "Self.svelte".to_string(),
@@ -2290,6 +2293,42 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
     assert!(!plan.needs_push);
     assert!(plan.needs_props_param);
     assert!(!plan.has_exports);
+}
+
+#[test]
+fn runtime_plan_accessors_require_push_and_exports() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let count = 1;</script><p>{count}</p>",
+        AnalyzeOptions {
+            runes: false,
+            accessors: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let plan = data.output.runtime_plan;
+
+    assert!(plan.needs_push);
+    assert!(plan.has_component_exports);
+    assert!(plan.needs_props_param);
+    assert!(data.script.accessors);
+}
+
+#[test]
+fn runtime_plan_immutable_legacy_requires_push() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let items = [1, 2];</script><p>{items.length}</p>",
+        AnalyzeOptions {
+            runes: false,
+            immutable: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let plan = data.output.runtime_plan;
+
+    assert!(plan.needs_push);
+    assert!(!plan.has_component_exports);
+    assert!(plan.needs_props_param);
+    assert!(data.script.immutable);
 }
 
 #[test]
@@ -4380,6 +4419,41 @@ fn validate_options_immutable_no_warn_in_legacy_mode() {
         },
     );
     assert_no_warning(&diags, "options_deprecated_immutable");
+}
+
+#[test]
+fn options_preserve_whitespace_keeps_raw_text_nodes() {
+    let (component, data) = analyze_source_with_options(
+        "<div>\n\thello\n\t<span>world</span>\n\t!\n</div>",
+        AnalyzeOptions {
+            preserve_whitespace: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    let div = find_element(&component.fragment, &component, "div")
+        .unwrap_or_else(|| panic!("expected div element"));
+    let lowered = data
+        .template
+        .fragments
+        .lowered
+        .get(&FragmentKey::Element(div.id))
+        .unwrap_or_else(|| panic!("expected lowered fragment"));
+    let text = lowered
+        .items
+        .iter()
+        .find_map(|item| match item {
+            FragmentItem::TextConcat { parts, .. } => Some(parts),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected preserved text concat"));
+    let rendered = text
+        .iter()
+        .filter_map(|part| part.text_value(&component.source))
+        .collect::<String>();
+
+    assert!(rendered.contains("\n\thello\n\t"));
+    assert!(data.script.preserve_whitespace);
 }
 
 #[test]

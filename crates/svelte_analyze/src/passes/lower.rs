@@ -36,6 +36,7 @@ pub fn lower(component: &Component, data: &mut AnalysisData) {
         .as_ref()
         .and_then(|o| o.namespace.as_ref())
         == Some(&Namespace::Mathml);
+    let preserve_whitespace = data.script.preserve_whitespace;
     lower_fragment(
         &component.fragment,
         FragmentKey::Root,
@@ -45,6 +46,7 @@ pub fn lower(component: &Component, data: &mut AnalysisData) {
         initial_in_svg,
         initial_in_svg,
         initial_in_mathml,
+        preserve_whitespace,
     );
 }
 
@@ -159,6 +161,7 @@ fn lower_fragment(
     in_svg_non_text: bool, // whitespace removal: true inside SVG non-text and table-like elements
     in_svg_ns: bool,       // actual SVG namespace: true only when inside a real SVG subtree
     in_mathml: bool,
+    preserve_whitespace: bool,
 ) {
     lower_nodes(
         &fragment.nodes,
@@ -169,6 +172,7 @@ fn lower_fragment(
         in_svg_non_text,
         in_svg_ns,
         in_mathml,
+        preserve_whitespace,
     );
 }
 
@@ -181,10 +185,18 @@ fn lower_nodes(
     in_svg_non_text: bool,
     in_svg_ns: bool,
     in_mathml: bool,
+    preserve_whitespace: bool,
 ) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
-    let items = build_items_from_nodes(nodes, component, inside_head, in_svg_non_text, store);
+    let items = build_items_from_nodes(
+        nodes,
+        component,
+        inside_head,
+        in_svg_non_text,
+        preserve_whitespace,
+        store,
+    );
 
     // Pre-compute fragment blocker indices (experimental.async)
     if data.script.blocker_data.has_async {
@@ -251,6 +263,7 @@ fn lower_nodes(
                     child_svg,
                     child_svg_ns,
                     child_mathml,
+                    preserve_whitespace,
                 );
             }
             Node::ComponentNode(cn) => {
@@ -291,6 +304,7 @@ fn lower_nodes(
                     false,
                     false,
                     false,
+                    preserve_whitespace,
                 );
 
                 let mut slot_mappings: Vec<(NodeId, FragmentKey)> = Vec::new();
@@ -319,6 +333,7 @@ fn lower_nodes(
                         false,
                         false,
                         false,
+                        preserve_whitespace,
                     );
                     slot_mappings.push((slot_el_id, frag_key));
                 }
@@ -338,6 +353,7 @@ fn lower_nodes(
                     in_svg_non_text,
                     in_svg_ns,
                     in_mathml,
+                    preserve_whitespace,
                 );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
@@ -350,6 +366,7 @@ fn lower_nodes(
                         in_svg_non_text,
                         in_svg_ns,
                         in_mathml,
+                        preserve_whitespace,
                     );
                     // Detect elseif: alternate has a single IfBlock child marked as elseif
                     let is_elseif = data.template.fragments.lowered.get(&alt_key).is_some_and(|lf| {
@@ -372,6 +389,7 @@ fn lower_nodes(
                     in_svg_non_text,
                     in_svg_ns,
                     in_mathml,
+                    preserve_whitespace,
                 );
                 if let Some(fb) = &block.fallback {
                     lower_nodes(
@@ -383,6 +401,7 @@ fn lower_nodes(
                         in_svg_non_text,
                         in_svg_ns,
                         in_mathml,
+                        preserve_whitespace,
                     );
                 }
             }
@@ -396,6 +415,7 @@ fn lower_nodes(
                     false,
                     false,
                     false,
+                    preserve_whitespace,
                 );
             }
             Node::KeyBlock(block) => {
@@ -408,6 +428,7 @@ fn lower_nodes(
                     in_svg_non_text,
                     in_svg_ns,
                     in_mathml,
+                    preserve_whitespace,
                 );
             }
             Node::SvelteHead(head) => {
@@ -420,6 +441,7 @@ fn lower_nodes(
                     false,
                     false,
                     false,
+                    preserve_whitespace,
                 );
             }
             Node::SvelteElement(el) => {
@@ -432,6 +454,7 @@ fn lower_nodes(
                     in_svg_non_text,
                     in_svg_ns,
                     in_mathml,
+                    preserve_whitespace,
                 );
             }
             Node::SvelteBoundary(b) => {
@@ -444,6 +467,7 @@ fn lower_nodes(
                     false,
                     false,
                     false,
+                    preserve_whitespace,
                 );
             }
             Node::AwaitBlock(block) => {
@@ -457,6 +481,7 @@ fn lower_nodes(
                         in_svg_non_text,
                         in_svg_ns,
                         in_mathml,
+                        preserve_whitespace,
                     );
                 }
                 if let Some(ref t) = block.then {
@@ -469,6 +494,7 @@ fn lower_nodes(
                         in_svg_non_text,
                         in_svg_ns,
                         in_mathml,
+                        preserve_whitespace,
                     );
                 }
                 if let Some(ref c) = block.catch {
@@ -481,6 +507,7 @@ fn lower_nodes(
                         in_svg_non_text,
                         in_svg_ns,
                         in_mathml,
+                        preserve_whitespace,
                     );
                 }
             }
@@ -547,6 +574,7 @@ fn build_items(
     component: &Component,
     inside_head: bool,
     can_remove_entirely: bool,
+    preserve_whitespace: bool,
     store: &AstStore,
 ) -> Vec<FragmentItem> {
     build_items_from_nodes(
@@ -554,6 +582,7 @@ fn build_items(
         component,
         inside_head,
         can_remove_entirely,
+        preserve_whitespace,
         store,
     )
 }
@@ -563,6 +592,7 @@ fn build_items_from_nodes(
     component: &Component,
     inside_head: bool,
     can_remove_entirely: bool,
+    preserve_whitespace: bool,
     store: &AstStore,
 ) -> Vec<FragmentItem> {
     let source = &component.source;
@@ -576,29 +606,43 @@ fn build_items_from_nodes(
         }
     }
 
-    let mut start = 0;
-    while start < filtered.len() {
-        if let Node::Text(t) = filtered[start].node {
-            if is_ws_only(t.value(source)) {
-                start += 1;
-                continue;
+    let filtered = if preserve_whitespace {
+        let mut end = filtered.len();
+        while end > 0 {
+            if let Node::Text(t) = filtered[end - 1].node {
+                if is_ws_only(t.value(source)) {
+                    end -= 1;
+                    continue;
+                }
             }
+            break;
         }
-        break;
-    }
-
-    let mut end = filtered.len();
-    while end > start {
-        if let Node::Text(t) = filtered[end - 1].node {
-            if is_ws_only(t.value(source)) {
-                end -= 1;
-                continue;
+        &filtered[..end]
+    } else {
+        let mut start = 0;
+        while start < filtered.len() {
+            if let Node::Text(t) = filtered[start].node {
+                if is_ws_only(t.value(source)) {
+                    start += 1;
+                    continue;
+                }
             }
+            break;
         }
-        break;
-    }
 
-    let filtered = &filtered[start..end];
+        let mut end = filtered.len();
+        while end > start {
+            if let Node::Text(t) = filtered[end - 1].node {
+                if is_ws_only(t.value(source)) {
+                    end -= 1;
+                    continue;
+                }
+            }
+            break;
+        }
+
+        &filtered[start..end]
+    };
     let len = filtered.len();
 
     if len == 0 {
@@ -640,7 +684,11 @@ fn build_items_from_nodes(
                     None
                 };
 
-                let trimmed = trim_text(value, is_first, is_last, prev, next, prev_text_ends_ws);
+                let trimmed = if preserve_whitespace {
+                    Cow::Borrowed(value)
+                } else {
+                    trim_text(value, is_first, is_last, prev, next, prev_text_ends_ws)
+                };
 
                 prev_text_ends_ws = ends_with_ws(&trimmed);
 
@@ -942,7 +990,7 @@ mod tests {
         let src = "\n  hello  \n";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["hello"]);
@@ -953,7 +1001,7 @@ mod tests {
         let src = "hello\n  world";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["hello\n  world"]);
@@ -964,7 +1012,7 @@ mod tests {
         let src = "\r\n\thello\r\n";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["hello"]);
@@ -974,7 +1022,7 @@ mod tests {
     fn pure_whitespace_only_is_removed() {
         let src = "  \n\t  ";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let items = build_items(&comp.fragment, &comp, false, false, &comp.store);
+        let items = build_items(&comp.fragment, &comp, false, false, false, &comp.store);
         assert!(items.is_empty());
     }
 
@@ -983,7 +1031,7 @@ mod tests {
         let src = "{expr}\n  hello";
         let comp = make_component(src, vec![expr_node(), text_node(6, src.len() as u32)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["\n  hello"]);
@@ -994,7 +1042,7 @@ mod tests {
         let src = "hello  \n{expr}";
         let comp = make_component(src, vec![text_node(0, 8), expr_node()]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["hello  \n"]);
@@ -1005,7 +1053,7 @@ mod tests {
         let src = "\n\n";
         let comp = make_component(src, vec![text_node(0, 1), text_node(1, 2)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert!(texts.is_empty());
@@ -1016,7 +1064,7 @@ mod tests {
         let src = "hello\n\n  world";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["hello\n\n  world"]);
@@ -1027,7 +1075,7 @@ mod tests {
         let src = "{a}\n  \n{b}";
         let comp = make_component(src, vec![expr_node(), text_node(3, 7), expr_node()]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["\n  \n"]);
@@ -1038,7 +1086,7 @@ mod tests {
         let src = "{expr}\n  hello\n  x";
         let comp = make_component(src, vec![expr_node(), text_node(6, 16), text_node(16, 18)]);
         let texts = collect_text_parts(
-            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &build_items(&comp.fragment, &comp, false, false, false, &comp.store),
             &comp.source,
         );
         assert_eq!(texts, vec!["\n  hello ", "x"]);
@@ -1070,7 +1118,7 @@ mod tests {
     fn unchanged_text_still_uses_text_span_after_source_hoisting() {
         let src = "hello";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let items = build_items(&comp.fragment, &comp, false, false, &comp.store);
+        let items = build_items(&comp.fragment, &comp, false, false, false, &comp.store);
         let FragmentItem::TextConcat { parts, has_expr } = &items[0] else {
             panic!("expected TextConcat");
         };
@@ -1107,12 +1155,12 @@ mod tests {
         let comp = make_component(src, vec![el1, text, el2]);
 
         // Without can_remove_entirely: whitespace collapses to " " and is kept
-        let items_html = build_items(&comp.fragment, &comp, false, false, &comp.store);
+        let items_html = build_items(&comp.fragment, &comp, false, false, false, &comp.store);
         let texts_html = collect_text_parts(&items_html, &comp.source);
         assert_eq!(texts_html, vec![" "]);
 
         // With can_remove_entirely: whitespace is dropped entirely
-        let items_svg = build_items(&comp.fragment, &comp, false, true, &comp.store);
+        let items_svg = build_items(&comp.fragment, &comp, false, true, false, &comp.store);
         let texts_svg = collect_text_parts(&items_svg, &comp.source);
         assert!(
             texts_svg.is_empty(),

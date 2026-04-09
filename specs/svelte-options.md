@@ -1,10 +1,11 @@
 # <svelte:options>
 
 ## Current state
-- **Working**: 15/18 use cases
-- **Done this session**: inline `<svelte:options runes={false} />` now overrides compile-time `CompileOptions.runes` before analysis starts, so the component follows legacy semantics even when the API forced runes mode.
-- **Missing**: 3 use cases
-- **Next**: wire legacy `accessors`/`immutable`, then thread `preserveWhitespace` through lowering/codegen.
+- **Working**: 18/18 use cases
+- **Done this session**: inline `<svelte:options accessors={true} />`, `immutable={true}`, and `preserveWhitespace={true}` now resolve through the compiler/analyze/codegen pipeline instead of only affecting diagnostics. Analyze owns the resolved legacy flags and whitespace mode, runtime-plan/codegen use them for legacy `$.push`/`$.pop`, accessor exports, immutable prop flags/coarse-grained reads, and lowering skips whitespace cleanup when requested.
+- **Done previously**: inline `<svelte:options runes={false} />` overrides compile-time `CompileOptions.runes` before analysis starts, so the component follows legacy semantics even when the API forced runes mode.
+- **Missing**: 0 use cases
+- **Next**: no open implementation work in this spec
 - Last updated: 2026-04-09
 
 ## Source
@@ -102,16 +103,12 @@
 
 ## Discovered bugs
 
-- OPEN: `component.options.preserve_whitespace` is parsed but not consumed by analyze or codegen.
-- OPEN: `component.options.accessors` and `component.options.immutable` only participate in warning validation; legacy behavior still follows top-level compile options only.
+- FIXED: `component.options.preserve_whitespace` now resolves into analyze-owned state and disables whitespace cleanup in lowering when enabled inline.
+- FIXED: `component.options.accessors` and `component.options.immutable` now resolve into analyze/codegen state instead of affecting warnings only.
 
 ## Test cases
 
 - Existing passing compiler cases: `svelte_options_basic`, `css_injected`, `namespace_svg`, `namespace_mathml`, `custom_element_props`, `custom_element_props_config`, `custom_element_boolean_default`, `custom_element_exports`, `custom_element_shadow_none`, `custom_element_object_full`, `custom_element_shadow_open`, `custom_element_extend`, `custom_element_no_tag`, `host_basic`, `host_props_rest`
 - Existing unit coverage: parser tests for namespace/html/css/customElement/null compatibility/diagnostics and analyzer tests for warning behavior
 - Added during this audit: `svelte_options_runes_false_override`, `svelte_options_accessors_legacy`, `svelte_options_immutable_legacy`, `svelte_options_preserve_whitespace`
-- Failing audit cases:
-- `svelte_options_runes_false_override` — ignored as `missing: inline runes=false override precedence (compiler/analyze)` — effort: moderate
-- `svelte_options_accessors_legacy` — ignored as `missing: inline accessors option in legacy mode (codegen)` — effort: moderate
-- `svelte_options_immutable_legacy` — ignored as `missing: inline immutable option in legacy mode (analyze/codegen)` — effort: moderate
-- `svelte_options_preserve_whitespace` — ignored as `missing: inline preserveWhitespace option plumbing (analyze/codegen)` — effort: needs infrastructure
+- Closed audit cases: `svelte_options_runes_false_override`, `svelte_options_accessors_legacy`, `svelte_options_immutable_legacy`, `svelte_options_preserve_whitespace`

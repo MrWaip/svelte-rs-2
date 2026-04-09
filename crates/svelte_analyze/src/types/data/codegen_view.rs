@@ -16,6 +16,15 @@ impl<'a> CodegenView<'a> {
     pub fn runes(&self) -> bool {
         self.data.script.runes
     }
+    pub fn accessors(&self) -> bool {
+        self.data.script.accessors
+    }
+    pub fn immutable(&self) -> bool {
+        self.data.script.immutable
+    }
+    pub fn preserve_whitespace(&self) -> bool {
+        self.data.script.preserve_whitespace
+    }
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.data.output.runtime_plan
     }

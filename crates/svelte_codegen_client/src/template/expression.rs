@@ -33,12 +33,14 @@ pub(crate) fn take_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression
 pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.node_expr_handle(node_id));
     finalize_await_exprs(ctx, Some(node_id), &mut expr);
+    expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.expression(node_id));
     expr
 }
 
 pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.attr_expr_handle(attr_id));
     finalize_await_exprs(ctx, Some(attr_id), &mut expr);
+    expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.attr_expression(attr_id));
     expr
 }
 
@@ -93,6 +95,62 @@ impl<'a> VisitMut<'a> for AwaitExprFinalizer<'_, 'a> {
 fn finalize_await_exprs<'a>(ctx: &Ctx<'a>, ignore_node: Option<NodeId>, expr: &mut Expression<'a>) {
     let mut finalizer = AwaitExprFinalizer { ctx, ignore_node };
     finalizer.visit_expression(expr);
+}
+
+fn maybe_wrap_legacy_coarse_expr<'a>(
+    ctx: &Ctx<'a>,
+    expr: Expression<'a>,
+    info: Option<&ExpressionInfo>,
+) -> Expression<'a> {
+    let Some(info) = info else {
+        return expr;
+    };
+    if ctx.query.runes() {
+        return expr;
+    }
+    let needs_wrap = info.has_call
+        || matches!(
+            info.kind,
+            ExpressionKind::MemberExpression | ExpressionKind::Assignment
+        );
+    if !needs_wrap {
+        return expr;
+    }
+
+    let mut seq_parts: Vec<Expression<'a>> = Vec::new();
+    for &sym in &info.ref_symbols {
+        let is_prop_source = ctx.query.scoping().is_prop_source(sym);
+        let is_template = ctx.query.scoping().is_template_declaration(sym);
+        let is_import = ctx.query.scoping().is_import(sym);
+        let is_rest_prop = ctx.query.scoping().is_rest_prop(sym);
+        if !(is_prop_source || is_template || is_import || is_rest_prop)
+        {
+            continue;
+        }
+
+        let getter = if is_prop_source {
+            ctx.b
+                .call_expr(ctx.query.symbol_name(sym), std::iter::empty::<Arg<'a, '_>>())
+        } else {
+            ctx.b.rid_expr(ctx.query.symbol_name(sym))
+        };
+        let getter = ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)]);
+        seq_parts.push(getter);
+    }
+
+    if seq_parts.is_empty() {
+        return expr;
+    }
+    let mut iter = seq_parts.into_iter();
+    let mut sequence = iter
+        .next()
+        .unwrap_or_else(|| panic!("legacy coarse expression should have deps"));
+    for next in iter.chain(std::iter::once(
+        ctx.b.call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(expr))]),
+    )) {
+        sequence = ctx.b.seq_expr([sequence, next]);
+    }
+    sequence
 }
 
 // ---------------------------------------------------------------------------
