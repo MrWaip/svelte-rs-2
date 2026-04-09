@@ -95,7 +95,9 @@ Then run all compiler tests:
 just test-compiler
 ```
 
-If the fix breaks other tests, stop and report. Do not fix other tests in the same run.
+Do not consider the task complete until `just test-compiler` has been run and its result has been reported to the user explicitly.
+
+If the fix breaks other tests, stop and report the regression count or failing cases you observed. Do not fix other tests in the same run.
 
 If the test still fails after 3 fix attempts, stop and report what you tried.
 
