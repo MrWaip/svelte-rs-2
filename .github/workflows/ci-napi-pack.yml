@@ -1,0 +1,102 @@
+name: CI N-API Pack
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ci-napi-pack.yml'
+      - '.github/workflows/canary-publish.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'packages/**'
+      - 'scripts/set-canary-version.mjs'
+  pull_request:
+    paths:
+      - '.github/workflows/ci-napi-pack.yml'
+      - '.github/workflows/canary-publish.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'packages/**'
+      - 'scripts/set-canary-version.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22.13.0'
+  RUST_CHANNEL: 'nightly-2026-03-09'
+  NPM_CONFIG_CACHE: ${{ github.workspace }}/.npm-cache
+
+jobs:
+  build-platform:
+    name: Pack Platform (${{ matrix.package_name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            package_dir: packages/svelte-rs2-linux-x64-gnu
+            package_name: '@mrwaip/svelte-rs2-linux-x64-gnu'
+            tarball_name: mrwaip-svelte-rs2-linux-x64-gnu-0.0.0-canary.0.tgz
+          - runner: macos-15
+            package_dir: packages/svelte-rs2-darwin-arm64
+            package_name: '@mrwaip/svelte-rs2-darwin-arm64'
+            tarball_name: mrwaip-svelte-rs2-darwin-arm64-0.0.0-canary.0.tgz
+          - runner: macos-15-intel
+            package_dir: packages/svelte-rs2-darwin-x64
+            package_name: '@mrwaip/svelte-rs2-darwin-x64'
+            tarball_name: mrwaip-svelte-rs2-darwin-x64-0.0.0-canary.0.tgz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: ${{ env.RUST_CHANNEL }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run smoke tests
+        run: node packages/svelte-rs2/scripts/smoke.mjs
+
+      - name: Build release addon
+        run: cargo build -p napi_compiler --release
+
+      - name: Prepare current platform package
+        run: node packages/svelte-rs2/scripts/prepare-platform-package.mjs
+
+      - name: Pack current platform package
+        run: npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP"
+
+      - name: Verify tarball contains native addon
+        shell: bash
+        run: |
+          TARBALL="$RUNNER_TEMP/${{ matrix.tarball_name }}"
+          tar -tzf "$TARBALL" | grep 'package/svelte-rs2.node'
+
+  pack-main:
+    name: Pack Main Package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Pack main package
+        run: npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP"
+
+      - name: Verify main package tarball
+        shell: bash
+        run: |
+          TARBALL="$RUNNER_TEMP/mrwaip-svelte-rs2-0.0.0-canary.0.tgz"
+          tar -tzf "$TARBALL" | grep 'package/compiler/index.js'
+          tar -tzf "$TARBALL" | grep 'package/compiler/index.d.ts'

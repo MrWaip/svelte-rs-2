@@ -3,17 +3,20 @@ name: CI
 on:
   push:
 
+env:
+  RUST_CHANNEL: 'nightly-2026-03-09'
+
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup rust toolchain and cache
         uses: moonrepo/setup-rust@v1
         with:
-          channel: stable
+          channel: ${{ env.RUST_CHANNEL }}
 
       - name: Run tests
         run: cargo test --workspace

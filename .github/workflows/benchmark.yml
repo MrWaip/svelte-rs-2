@@ -6,17 +6,20 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  RUST_CHANNEL: 'nightly-2026-03-09'
+
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
-          channel: stable
+          channel: ${{ env.RUST_CHANNEL }}
           cache-target: release
           bins: cargo-codspeed
 
