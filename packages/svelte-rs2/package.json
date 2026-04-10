@@ -15,6 +15,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrWaip/svelte-rs-2"
+  },
   "scripts": {
     "smoke": "node ./scripts/smoke.mjs",
     "prepare-platform-package": "node ./scripts/prepare-platform-package.mjs"
