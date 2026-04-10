@@ -33,6 +33,8 @@ jobs:
         with:
           channel: ${{ env.RUST_CHANNEL }}
           targets: wasm32-unknown-unknown
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version ${{ env.WASM_PACK_VERSION }} --locked

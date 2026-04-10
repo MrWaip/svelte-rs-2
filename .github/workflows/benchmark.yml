@@ -22,6 +22,8 @@ jobs:
           channel: ${{ env.RUST_CHANNEL }}
           cache-target: release
           bins: cargo-codspeed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Build the benchmark target(s)
         run: cargo codspeed build

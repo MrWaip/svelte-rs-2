@@ -17,6 +17,8 @@ jobs:
         uses: moonrepo/setup-rust@v1
         with:
           channel: ${{ env.RUST_CHANNEL }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Run tests
         run: cargo test --workspace
