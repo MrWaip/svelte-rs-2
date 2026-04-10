@@ -5,6 +5,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrWaip/svelte-rs-2"
+  },
   "main": "svelte-rs2.node",
   "files": [
     "svelte-rs2.node"
