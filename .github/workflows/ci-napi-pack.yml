@@ -55,7 +55,10 @@ jobs:
       - name: Setup Rust toolchain
         uses: moonrepo/setup-rust@v1
         with:
+          cache-target: release
           channel: ${{ env.RUST_CHANNEL }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
