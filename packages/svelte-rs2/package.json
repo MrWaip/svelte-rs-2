@@ -2,11 +2,18 @@
   "name": "@mrwaip/svelte-rs2",
   "version": "0.0.0-canary.0",
   "type": "module",
+  "files": [
+    "README.md",
+    "compiler"
+  ],
   "exports": {
     "./compiler": {
       "types": "./compiler/index.d.ts",
       "default": "./compiler/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "smoke": "node ./scripts/smoke.mjs",

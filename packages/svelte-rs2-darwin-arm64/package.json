@@ -2,6 +2,9 @@
   "name": "@mrwaip/svelte-rs2-darwin-arm64",
   "version": "0.0.0-canary.0",
   "type": "commonjs",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "svelte-rs2.node",
   "files": [
     "svelte-rs2.node"
