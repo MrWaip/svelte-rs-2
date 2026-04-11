@@ -2,8 +2,8 @@
 
 ## Current state
 
-- **Working**: 0 recorded unknown items
-- **Next**: first unowned repro or failing test discovered by `/diagnose`
+- **Working**: 1 recorded unknown item
+- **Next**: TS `$props` + `$bindable` checkbox binding emits non-reference codegen for `bind:checked` and `{disabled}` shorthand
 - Last updated: 2026-04-11
 
 ## Source
@@ -11,6 +11,8 @@
 - User request: create a durable triage spec for problems that do not yet map to one owning feature spec
 
 ## Use cases
+
+- [ ] TS `$props` + `$bindable` checkbox binding emits non-reference codegen for `bind:checked` and `{disabled}` shorthand — layer: codegen; repro/test: props_bindable_checkbox_disabled_shorthand_ts; candidate specs: specs/props-bindable.md, specs/bind-directives.md; suggested spec: none
 
 ## Out of scope
 
@@ -31,3 +33,5 @@
 - `tasks/compiler_tests/cases2/`
 
 ## Test cases
+
+- [ ] props_bindable_checkbox_disabled_shorthand_ts
