@@ -1305,6 +1305,11 @@ mod runes {
         ignore = "known mismatch: analyzer reports extra state_referenced_locally warning for inspected $state value"
     );
     diagnostic_case!(
+        validate_inspect_derived_no_state_referenced_locally_warning,
+        "runes/validate_inspect_derived_no_state_referenced_locally_warning",
+        ignore = "diagnose-diagnostics: pending fix"
+    );
+    diagnostic_case!(
         validate_inspect_trace_wrong_arg_count,
         "runes/validate_inspect_trace_wrong_arg_count"
     );
