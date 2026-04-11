@@ -2782,6 +2782,298 @@ fn li_role_menuitem_uses_reference_exception_without_warning() {
 }
 
 #[test]
+fn static_element_interactions_warning_respects_svelte_ignore() {
+    let source = r#"
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+    onmouseenter={() => {}}
+    onmouseleave={() => {}}
+>
+    Hover me
+</div>
+"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_no_static_element_interactions"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn icon_button_warns_for_missing_explicit_label() {
+    let source = r#"<button><svg aria-hidden="true"></svg></button>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_consider_explicit_label"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn button_with_text_does_not_warn_for_missing_explicit_label() {
+    let source = r#"<button>Submit</button>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_consider_explicit_label"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn anchor_hash_href_warns_for_invalid_attribute() {
+    let source = r##"<a href="#">jump</a>"##;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_invalid_attribute"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn anchor_with_valid_href_and_text_has_no_a11y_content_warning() {
+    let source = r#"<a href="/home">Home</a>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes.iter().all(|code| !matches!(
+            *code,
+            "a11y_invalid_attribute" | "a11y_consider_explicit_label"
+        )),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn label_without_for_or_control_warns_for_missing_associated_control() {
+    let source = r#"<label>Username</label>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_label_has_associated_control"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn label_with_nested_input_does_not_warn_for_missing_associated_control() {
+    let source = r#"<label><input /></label>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_label_has_associated_control"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn label_with_for_attribute_does_not_warn_for_missing_associated_control() {
+    let source = r#"<label for="name">Username</label>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_label_has_associated_control"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn empty_h1_warns_for_missing_content() {
+    let source = r#"<h1></h1>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_missing_content"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn h1_with_text_does_not_warn_for_missing_content() {
+    let source = r#"<h1>Title</h1>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_missing_content"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn video_with_caption_track_does_not_warn_for_missing_captions() {
+    let source = r#"<video src="movie.mp4"><track kind="captions" /></video>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_media_has_caption"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn figure_with_edge_figcaption_does_not_warn_for_figcaption_index() {
+    let source = r#"<figure><figcaption>Caption</figcaption><img alt="" /></figure>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes.iter().all(|code| !matches!(
+            *code,
+            "a11y_figcaption_parent" | "a11y_figcaption_index"
+        )),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn invalid_input_autocomplete_warns() {
+    let source = r#"<input type="text" autocomplete="totally-wrong" />"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_autocomplete_valid"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn valid_input_autocomplete_does_not_warn() {
+    let source = r#"<input type="text" autocomplete="name" />"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_autocomplete_valid"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn redundant_img_alt_warns() {
+    let source = r#"<img alt="image of a cat" />"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_img_redundant_alt"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn th_scope_does_not_warn_for_misplaced_scope() {
+    let source = r#"<th scope="col">value</th>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(
+        actual_codes
+            .iter()
+            .all(|code| *code != "a11y_misplaced_scope"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
 fn snippet_hoistability_taints_computed_key_script_reference() {
     let (component, data) = analyze_source(
         r#"<script>

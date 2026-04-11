@@ -1,16 +1,18 @@
 # A11y warnings
 
 ## Current state
-- **Working**: 11/12 use cases
-- **Current slice completed**: `A11yNoNoninteractiveElementToInteractiveRole`. Semantic non-interactive elements now warn when a static `role` token forces them into an interactive role, and the reference exception table is respected for cases such as `<li role="menuitem">`.
+- **Working**: 16/16 use cases
+- **Current slice completed**: `A11yAutocompleteValid` + `A11yImgRedundantAlt` + `A11yMisplacedScope`. Invalid static `autocomplete` values now warn, redundant image wording in static `alt` warns, and `scope` on non-`<th>` elements now matches the reference warning span.
+- **Previous slice completed**: `A11yMissingContent` + `A11yMediaHasCaption` + `A11yFigcaption*`. Empty headings now warn for missing content, `<video src>` without a caption track warns, `<figcaption>` outside `<figure>` warns, and middle-position figcaptions in `<figure>` now match the reference.
 - **Drift normalized (2026-04-11)**: `a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button` was a stale mismatch marker. Both npm `svelte/compiler` and Rust report no diagnostics for `<div role="button"></div>`, so the case is now only a no-warning regression guard and not evidence that `A11yNoNoninteractiveElementToInteractiveRole` is complete.
-- **Why this slice came next**: it closed the last missing role-transition warning with analyzer-only changes by broadening semantic-role-based interactivity just enough for landmark elements and by porting the reference exceptions for noninteractive-to-interactive role transitions
+- **Count normalized (2026-04-11)**: the old single “element-content cluster” checkbox hid multiple independent warning groups. It is now split into focused use cases so progress can resume cleanly.
+- **Why this slice came next**: it was the last remaining analyzer-only cluster, and all three warnings are driven by static attribute inspection in the same validation module rather than by new fragment traversal or cross-pass data flow.
 - **Done so far**: implemented the basic A11y cluster (`A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`); implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`; implemented `A11yNoRedundantRoles` and `A11yRoleHasRequiredAriaProps`; implemented `A11yNoInteractiveElementToNoninteractiveRole` and `A11yNoNoninteractiveElementToInteractiveRole`; implemented `A11yRoleSupportsAriaProps` and `A11yRoleSupportsAriaPropsImplicit`; implemented `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, and `A11yNoNoninteractiveTabindex`; implemented ARIA value-type validation for known static `aria-*` attributes, matching the reference helper behavior for generic, boolean, idlist, integer, token, tokenlist, and tristate warnings; implemented the interaction/event warning cluster for click-keyboard pairing, noninteractive/static element handlers, and mouse/focus-blur pairing
 - **Audit revision (2026-04-07)**: reference parity review found two still-missing areas that the initial extracted spec had undercounted: role-transition warnings (`A11yNoInteractiveElementToNoninteractiveRole`, `A11yNoNoninteractiveElementToInteractiveRole`) and the broader element-content cluster
-- **Missing**: 2 use cases — `svelte-ignore a11y_no_static_element_interactions` suppression parity and the element-content A11y cluster
-- **Next**: return to `svelte-ignore a11y_no_static_element_interactions` on `mouseenter`/`mouseleave`, then the element-content cluster
-- **Verification**: `cargo test -p svelte_analyze footer_role_button_warns_for_noninteractive_to_interactive_role`, `cargo test -p svelte_analyze li_role_menuitem_uses_reference_exception_without_warning`, `just test-diagnostic-case a11y_no_noninteractive_element_to_interactive_role_warns_for_footer_role_button`, `just test-diagnostic-case a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button`, `just test-analyzer`, and `just test-diagnostics`
-- **Non-goals for the completed slice**: `svelte-ignore a11y_no_static_element_interactions`, the element-content cluster, non-A11y diagnostics, and any parser/codegen changes
+- **Missing**: none for this spec
+- **Next**: feature complete for the current spec scope
+- **Verification**: `cargo test -p svelte_analyze invalid_input_autocomplete_warns`, `cargo test -p svelte_analyze valid_input_autocomplete_does_not_warn`, `cargo test -p svelte_analyze redundant_img_alt_warns`, `cargo test -p svelte_analyze th_scope_does_not_warn_for_misplaced_scope`, `just test-diagnostic-case a11y_autocomplete_valid_warns_for_invalid_input_token`, `just test-diagnostic-case a11y_img_redundant_alt_warns_for_redundant_image_wording`, `just test-diagnostic-case a11y_misplaced_scope_warns_on_td`, `just test-analyzer`, and `just test-diagnostics`
+- **Non-goals for the completed slice**: non-A11y diagnostics and any parser/codegen changes
 - Last updated: 2026-04-11
 
 ## Source
@@ -54,8 +56,11 @@
 - [x] A11y ARIA role/attribute interaction checks: `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, `A11yNoNoninteractiveTabindex`
 - [x] A11y ARIA value-type validation: `A11yIncorrectAriaAttributeType`, `A11yIncorrectAriaAttributeTypeBoolean`, `A11yIncorrectAriaAttributeTypeIdlist`, `A11yIncorrectAriaAttributeTypeInteger`, `A11yIncorrectAriaAttributeTypeToken`, `A11yIncorrectAriaAttributeTypeTokenlist`, `A11yIncorrectAriaAttributeTypeTristate` (reference helper maps schema type `id` through the generic `A11yIncorrectAriaAttributeType` path rather than the dedicated `...TypeId` warning)
 - [x] A11y interaction/event checks: `A11yClickEventsHaveKeyEvents`, `A11yNoNoninteractiveElementInteractions`, `A11yNoStaticElementInteractions`, `A11yMouseEventsHaveKeyEvents`
-- [ ] `svelte-ignore a11y_no_static_element_interactions` suppresses `A11yNoStaticElementInteractions` for a static element with `mouseenter`/`mouseleave` handlers (diagnostic case: `a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave`)
-- [ ] A11y element-content checks: `A11yConsiderExplicitLabel`, `A11yInvalidAttribute`, `A11yAutocompleteValid`, `A11yImgRedundantAlt`, `A11yLabelHasAssociatedControl`, `A11yMissingContent`, `A11yMediaHasCaption`, `A11yFigcaptionParent`, `A11yFigcaptionIndex`, `A11yMisplacedScope`
+- [x] `svelte-ignore a11y_no_static_element_interactions` suppresses `A11yNoStaticElementInteractions` for a static element with `mouseenter`/`mouseleave` handlers (diagnostic case: `a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave`)
+- [x] A11y element-content checks for the shared `a/button` branch: `A11yConsiderExplicitLabel`, `A11yInvalidAttribute`
+- [x] A11y label-control association check: `A11yLabelHasAssociatedControl`
+- [x] A11y child-content/structure checks: `A11yMissingContent`, `A11yMediaHasCaption`, `A11yFigcaptionParent`, `A11yFigcaptionIndex`
+- [x] Remaining A11y static-attribute/content-token checks: `A11yAutocompleteValid`, `A11yImgRedundantAlt`, `A11yMisplacedScope`
 
 ## Out of scope
 
@@ -88,11 +93,21 @@
 - [x] unit: `A11yIncorrectAriaAttributeType*` (with reference-aligned generic handling for schema type `id`)
 - [x] unit: `A11yClickEventsHaveKeyEvents` / `A11yNoNoninteractiveElementInteractions` / `A11yNoStaticElementInteractions` / `A11yMouseEventsHaveKeyEvents`
 - [x] diagnostic parity: `a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation_with_text`
-- [ ] diagnostic parity: `a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave` (`tasks/diagnostic_tests`, ignored: `diagnose-diagnostics: pending fix`)
-- [ ] ignored unit: `a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation`
+- [x] diagnostic parity: `a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave`
+- [x] diagnostic parity: `a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation`
 - [x] diagnostic parity no-warning regression: `a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button` (reference snapshot is empty)
 - [x] diagnostic parity: `a11y_no_noninteractive_element_to_interactive_role_warns_for_footer_role_button`
-- [ ] ignored unit: `a11y_consider_explicit_label_warns_for_icon_button`
-- [ ] ignored unit: `a11y_invalid_attribute_warns_for_anchor_hash_href`
-- [ ] ignored unit: `a11y_label_has_associated_control_warns_without_for_or_control`
-- [ ] unit: `A11yConsiderExplicitLabel` / `A11yInvalidAttribute` / `A11yAutocompleteValid` / `A11yImgRedundantAlt` / `A11yLabelHasAssociatedControl` / `A11yMissingContent` / `A11yMediaHasCaption` / `A11yFigcaption*` / `A11yMisplacedScope`
+- [x] diagnostic parity: `a11y_consider_explicit_label_warns_for_icon_button`
+- [x] diagnostic parity: `a11y_invalid_attribute_warns_for_anchor_hash_href`
+- [x] diagnostic parity: `a11y_label_has_associated_control_warns_without_for_or_control`
+- [x] diagnostic parity: `a11y_missing_content_warns_for_empty_h1`
+- [x] diagnostic parity: `a11y_media_has_caption_warns_for_video_without_caption_track`
+- [x] diagnostic parity: `a11y_figcaption_parent_warns_outside_figure`
+- [x] diagnostic parity: `a11y_figcaption_index_warns_for_middle_figcaption`
+- [x] diagnostic parity: `a11y_autocomplete_valid_warns_for_invalid_input_token`
+- [x] diagnostic parity: `a11y_img_redundant_alt_warns_for_redundant_image_wording`
+- [x] diagnostic parity: `a11y_misplaced_scope_warns_on_td`
+- [x] unit: `A11yConsiderExplicitLabel` / `A11yInvalidAttribute`
+- [x] unit: `A11yLabelHasAssociatedControl`
+- [x] unit: `A11yMissingContent` / `A11yMediaHasCaption` / `A11yFigcaption*`
+- [x] unit: `A11yAutocompleteValid` / `A11yImgRedundantAlt` / `A11yMisplacedScope`

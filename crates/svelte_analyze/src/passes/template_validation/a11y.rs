@@ -14,6 +14,7 @@ enum AriaValueKind {
     Tristate,
 }
 
+#[derive(Clone, Copy)]
 enum StaticAttributeValue<'a> {
     Text(&'a str),
     True,
@@ -26,6 +27,76 @@ enum ElementInteractivity {
     Static,
 }
 
+const A11Y_LABELABLE_ELEMENTS: &[&str] = &[
+    "button", "input", "keygen", "meter", "output", "progress", "select", "textarea",
+];
+const A11Y_REQUIRED_CONTENT: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
+const A11Y_AUTOCOMPLETE_ADDRESS_TYPE_TOKENS: &[&str] = &["shipping", "billing"];
+const A11Y_AUTOCOMPLETE_FIELD_NAME_TOKENS: &[&str] = &[
+    "",
+    "on",
+    "off",
+    "name",
+    "honorific-prefix",
+    "given-name",
+    "additional-name",
+    "family-name",
+    "honorific-suffix",
+    "nickname",
+    "username",
+    "new-password",
+    "current-password",
+    "one-time-code",
+    "organization-title",
+    "organization",
+    "street-address",
+    "address-line1",
+    "address-line2",
+    "address-line3",
+    "address-level4",
+    "address-level3",
+    "address-level2",
+    "address-level1",
+    "country",
+    "country-name",
+    "postal-code",
+    "cc-name",
+    "cc-given-name",
+    "cc-additional-name",
+    "cc-family-name",
+    "cc-number",
+    "cc-exp",
+    "cc-exp-month",
+    "cc-exp-year",
+    "cc-csc",
+    "cc-type",
+    "transaction-currency",
+    "transaction-amount",
+    "language",
+    "bday",
+    "bday-day",
+    "bday-month",
+    "bday-year",
+    "sex",
+    "url",
+    "photo",
+];
+const A11Y_AUTOCOMPLETE_CONTACT_TYPE_TOKENS: &[&str] =
+    &["home", "work", "mobile", "fax", "pager"];
+const A11Y_AUTOCOMPLETE_CONTACT_FIELD_NAME_TOKENS: &[&str] = &[
+    "tel",
+    "tel-country-code",
+    "tel-national",
+    "tel-area-code",
+    "tel-local",
+    "tel-local-prefix",
+    "tel-local-suffix",
+    "tel-extension",
+    "email",
+    "impp",
+];
+const A11Y_REDUNDANT_IMG_ALT_TOKENS: &[&str] = &["image", "picture", "photo"];
+
 pub(super) fn check_element_warnings(
     el: &Element,
     attrs: &[Attribute],
@@ -36,6 +107,12 @@ pub(super) fn check_element_warnings(
     missing_attr_diag: Option<Diagnostic>,
     ctx: &mut VisitContext<'_>,
 ) {
+    if let Some(attr) = ctx.data.attribute(el.id, attrs, "scope") {
+        if el.name != "th" {
+            ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yMisplacedScope, attr_value_span(attr));
+        }
+    }
+
     if matches!(el.name.as_str(), "marquee" | "blink") {
         ctx.warnings_mut().push(Diagnostic::warning(
             DiagnosticKind::A11yDistractingElements {
@@ -78,6 +155,7 @@ pub(super) fn check_element_warnings(
     check_a11y_role_warnings(el, attrs, ctx);
     check_a11y_role_supported_aria_props_warnings(el, attrs, ctx);
     check_a11y_role_attribute_interaction_warnings(el, attrs, ctx);
+    check_a11y_element_specific_content_warnings(el, attrs, ctx);
 }
 
 fn static_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<StaticAttributeValue<'a>> {
@@ -580,13 +658,14 @@ fn check_a11y_role_attribute_interaction_warnings(
             .map(String::as_str)
             .collect::<Vec<_>>();
         if !interactive_handlers.is_empty() {
-            ctx.warnings_mut().push(Diagnostic::warning(
+            ctx.push_warning_if_not_ignored(
+                el.id,
                 DiagnosticKind::A11yNoStaticElementInteractions {
                     element: el.name.clone(),
                     handler: format_handler_list(&interactive_handlers),
                 },
                 el.span,
-            ));
+            );
         }
     }
 
@@ -645,6 +724,189 @@ fn check_a11y_role_attribute_interaction_warnings(
             },
             el.span,
         ));
+    }
+}
+
+fn check_a11y_element_specific_content_warnings(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &mut VisitContext<'_>,
+) {
+    let has_spread = ctx.data.has_spread(el.id);
+    let is_labelled = ["aria-label", "aria-labelledby", "title"]
+        .into_iter()
+        .any(|name| ctx.data.has_attribute(el.id, name));
+
+    match el.name.as_str() {
+        "a" | "button" => {
+            let inert_is_static = ctx
+                .data
+                .attribute(el.id, attrs, "inert")
+                .and_then(|attr| static_attr_value(attr, ctx.source))
+                .is_some();
+            let is_hidden = ctx
+                .data
+                .attribute(el.id, attrs, "aria-hidden")
+                .and_then(|attr| static_text_attr_value(attr, ctx.source))
+                .is_some_and(|value| value == "true")
+                || inert_is_static;
+
+            if !has_spread && !is_hidden && !is_labelled && !has_content(&el.fragment, ctx) {
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yConsiderExplicitLabel,
+                    el.span,
+                );
+            }
+
+            if el.name == "button" {
+                return;
+            }
+
+            let href_attr = ctx
+                .data
+                .attribute(el.id, attrs, "href")
+                .or_else(|| ctx.data.attribute(el.id, attrs, "xlink:href"));
+            let Some(href_attr) = href_attr else {
+                return;
+            };
+            let Some(href_value) = static_text_attr_value(href_attr, ctx.source) else {
+                return;
+            };
+
+            if href_value.is_empty() || href_value == "#" || has_javascript_prefix(href_value) {
+                let href_attribute = attr_named_name(href_attr).unwrap_or("href").to_string();
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yInvalidAttribute {
+                        href_value: href_value.to_string(),
+                        href_attribute,
+                    },
+                    attr_value_span(href_attr),
+                );
+            }
+        }
+        "label" => {
+            if has_spread
+                || ctx.data.has_attribute(el.id, "for")
+                || has_associated_control(&el.fragment, ctx)
+            {
+                return;
+            }
+
+            ctx.push_warning_if_not_ignored(
+                el.id,
+                DiagnosticKind::A11yLabelHasAssociatedControl,
+                el.span,
+            );
+        }
+        "input" => {
+            let type_attr = ctx.data.attribute(el.id, attrs, "type");
+            let autocomplete_attr = ctx.data.attribute(el.id, attrs, "autocomplete");
+
+            if let (Some(type_attr), Some(autocomplete_attr)) = (type_attr, autocomplete_attr) {
+                let autocomplete_value = static_attr_value(autocomplete_attr, ctx.source);
+                if !is_valid_autocomplete(autocomplete_value) {
+                    let value = static_attr_value_text(autocomplete_value).unwrap_or("true");
+                    let type_ = static_text_attr_value(type_attr, ctx.source).unwrap_or("...");
+                    ctx.push_warning_if_not_ignored(
+                        el.id,
+                        DiagnosticKind::A11yAutocompleteValid {
+                            value: value.to_string(),
+                            type_: type_.to_string(),
+                        },
+                        attr_value_span(autocomplete_attr),
+                    );
+                }
+            }
+        }
+        "img" => {
+            let alt_value = ctx
+                .data
+                .attribute(el.id, attrs, "alt")
+                .and_then(|attr| static_text_attr_value(attr, ctx.source));
+            let aria_hidden = ctx
+                .data
+                .attribute(el.id, attrs, "aria-hidden")
+                .and_then(|attr| static_attr_value(attr, ctx.source));
+
+            if !has_spread
+                && aria_hidden.is_none()
+                && alt_value.is_some_and(is_redundant_img_alt)
+            {
+                ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yImgRedundantAlt, el.span);
+            }
+        }
+        "video" => {
+            let aria_hidden_is_static = ctx
+                .data
+                .attribute(el.id, attrs, "aria-hidden")
+                .and_then(|attr| static_attr_value(attr, ctx.source))
+                .is_some_and(|value| matches!(value, StaticAttributeValue::Text("true")));
+            if has_spread
+                || ctx.data.has_attribute(el.id, "muted")
+                || aria_hidden_is_static
+                || !ctx.data.has_attribute(el.id, "src")
+            {
+                return;
+            }
+
+            if !video_has_caption_track(&el.fragment, ctx) {
+                ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yMediaHasCaption, el.span);
+            }
+        }
+        "figcaption" => {
+            let is_direct_child_of_figure = ctx.data.parent(el.id).is_some_and(|parent| {
+                parent.kind == ParentKind::Element
+                    && ctx
+                        .store
+                        .get(parent.id)
+                        .as_element()
+                        .is_some_and(|parent_el| parent_el.name == "figure")
+            });
+            if !is_direct_child_of_figure {
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yFigcaptionParent,
+                    el.span,
+                );
+            }
+        }
+        "figure" => {
+            let children = visible_figure_children(&el.fragment, ctx);
+            let Some(index) = children.iter().position(|&child_id| {
+                ctx.store
+                    .get(child_id)
+                    .as_element()
+                    .is_some_and(|child| child.name == "figcaption")
+            }) else {
+                return;
+            };
+
+            if index != 0 && index != children.len() - 1 {
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yFigcaptionIndex,
+                    ctx.store.get(children[index]).span(),
+                );
+            }
+        }
+        _ => {}
+    }
+
+    if !has_spread
+        && !is_labelled
+        && !ctx.data.elements.flags.is_bound_contenteditable(el.id)
+        && A11Y_REQUIRED_CONTENT.contains(&el.name.as_str())
+        && !has_content(&el.fragment, ctx)
+    {
+        ctx.push_warning_if_not_ignored(
+            el.id,
+            DiagnosticKind::A11yMissingContent {
+                name: el.name.clone(),
+            },
+            el.span,
+        );
     }
 }
 
@@ -766,6 +1028,209 @@ fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
         .collect()
 }
 
+fn has_content(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+    for &child_id in &fragment.nodes {
+        let child = ctx.store.get(child_id);
+        match child {
+            Node::Text(text) if text.value(ctx.source).trim().is_empty() => continue,
+            Node::Element(child_el) => {
+                let popover_is_static = ctx
+                    .data
+                    .attribute(child_el.id, &child_el.attributes, "popover")
+                    .and_then(|attr| static_attr_value(attr, ctx.source))
+                    .is_some();
+                if popover_is_static {
+                    continue;
+                }
+
+                if child_el.name == "img" && ctx.data.has_attribute(child_el.id, "alt") {
+                    return true;
+                }
+
+                if child_el.name == "selectedcontent" {
+                    return true;
+                }
+
+                if !has_content(&child_el.fragment, ctx) {
+                    continue;
+                }
+            }
+            _ => {}
+        }
+
+        // Follow the reference compiler's conservative behavior and treat any
+        // remaining child kind as content once it survives the special cases above.
+        return true;
+    }
+
+    false
+}
+
+fn static_attr_value_text(value: Option<StaticAttributeValue<'_>>) -> Option<&str> {
+    match value {
+        Some(StaticAttributeValue::Text(text)) => Some(text),
+        Some(StaticAttributeValue::True) | None => None,
+    }
+}
+
+fn has_associated_control(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+    fragment.nodes.iter().copied().any(|child_id| {
+        node_has_associated_control(ctx.store.get(child_id), ctx)
+    })
+}
+
+fn is_valid_autocomplete(autocomplete: Option<StaticAttributeValue<'_>>) -> bool {
+    let Some(autocomplete) = autocomplete else {
+        return true;
+    };
+
+    let StaticAttributeValue::Text(autocomplete) = autocomplete else {
+        return false;
+    };
+
+    if autocomplete.is_empty() {
+        return true;
+    }
+
+    let lower = autocomplete.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return true;
+    }
+
+    let tokens = lower.split_whitespace().collect::<Vec<_>>();
+    let mut index = 0;
+
+    if tokens.get(index).is_some_and(|token| token.starts_with("section-")) {
+        index += 1;
+    }
+    if tokens
+        .get(index)
+        .is_some_and(|token| A11Y_AUTOCOMPLETE_ADDRESS_TYPE_TOKENS.contains(token))
+    {
+        index += 1;
+    }
+    if tokens
+        .get(index)
+        .is_some_and(|token| A11Y_AUTOCOMPLETE_FIELD_NAME_TOKENS.contains(token))
+    {
+        index += 1;
+    } else {
+        if tokens
+            .get(index)
+            .is_some_and(|token| A11Y_AUTOCOMPLETE_CONTACT_TYPE_TOKENS.contains(token))
+        {
+            index += 1;
+        }
+        if tokens
+            .get(index)
+            .is_some_and(|token| A11Y_AUTOCOMPLETE_CONTACT_FIELD_NAME_TOKENS.contains(token))
+        {
+            index += 1;
+        } else {
+            return false;
+        }
+    }
+    if tokens.get(index).is_some_and(|token| *token == "webauthn") {
+        index += 1;
+    }
+
+    index == tokens.len()
+}
+
+fn is_redundant_img_alt(alt: &str) -> bool {
+    alt.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .any(|token| {
+            let lower = token.to_ascii_lowercase();
+            A11Y_REDUNDANT_IMG_ALT_TOKENS.contains(&lower.as_str())
+        })
+}
+
+fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+    let Some(track) = fragment.nodes.iter().find_map(|&child_id| {
+        ctx.store.get(child_id).as_element().filter(|child| child.name == "track")
+    }) else {
+        return false;
+    };
+
+    track.attributes.iter().any(|attr| match attr {
+        Attribute::SpreadAttribute(_) => true,
+        Attribute::StringAttribute(attr) => {
+            attr.name == "kind" && attr.value_span.source_text(ctx.source) == "captions"
+        }
+        _ => false,
+    })
+}
+
+fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_>) -> Vec<NodeId> {
+    fragment
+        .nodes
+        .iter()
+        .copied()
+        .filter(|&child_id| match ctx.store.get(child_id) {
+            Node::Comment(_) => false,
+            Node::Text(text) => !text.value(ctx.source).trim().is_empty(),
+            _ => true,
+        })
+        .collect()
+}
+
+fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
+    match node {
+        Node::Element(el) => {
+            if A11Y_LABELABLE_ELEMENTS.contains(&el.name.as_str()) || el.name == "slot" {
+                return true;
+            }
+
+            has_associated_control(&el.fragment, ctx)
+        }
+        // Match the reference analyzer's conservative behavior for dynamic descendants:
+        // if the label contains a component-like control target, don't warn.
+        Node::ComponentNode(_) | Node::RenderTag(_) | Node::SvelteElement(_) => true,
+        Node::IfBlock(block) => {
+            has_associated_control(&block.consequent, ctx)
+                || block
+                    .alternate
+                    .as_ref()
+                    .is_some_and(|fragment| has_associated_control(fragment, ctx))
+        }
+        Node::EachBlock(block) => {
+            has_associated_control(&block.body, ctx)
+                || block
+                    .fallback
+                    .as_ref()
+                    .is_some_and(|fragment| has_associated_control(fragment, ctx))
+        }
+        Node::SnippetBlock(block) => has_associated_control(&block.body, ctx),
+        Node::KeyBlock(block) => has_associated_control(&block.fragment, ctx),
+        Node::SvelteHead(node) => has_associated_control(&node.fragment, ctx),
+        Node::SvelteWindow(node) => has_associated_control(&node.fragment, ctx),
+        Node::SvelteDocument(node) => has_associated_control(&node.fragment, ctx),
+        Node::SvelteBody(node) => has_associated_control(&node.fragment, ctx),
+        Node::SvelteBoundary(node) => has_associated_control(&node.fragment, ctx),
+        Node::AwaitBlock(block) => {
+            block
+                .pending
+                .as_ref()
+                .is_some_and(|fragment| has_associated_control(fragment, ctx))
+                || block
+                    .then
+                    .as_ref()
+                    .is_some_and(|fragment| has_associated_control(fragment, ctx))
+                || block
+                    .catch
+                    .as_ref()
+                    .is_some_and(|fragment| has_associated_control(fragment, ctx))
+        }
+        Node::Text(_)
+        | Node::Comment(_)
+        | Node::ExpressionTag(_)
+        | Node::HtmlTag(_)
+        | Node::ConstTag(_)
+        | Node::DebugTag(_)
+        | Node::Error(_) => false,
+    }
+}
+
 fn is_hidden_from_screen_reader(el: &Element, attrs: &[Attribute], ctx: &VisitContext<'_>) -> bool {
     if el.name == "input" {
         if let Some(input_type) = ctx
@@ -803,6 +1268,13 @@ fn has_disabled_attribute(id: NodeId, attrs: &[Attribute], ctx: &VisitContext<'_
         .attribute(id, attrs, "aria-disabled")
         .and_then(|attr| static_text_attr_value(attr, ctx.source))
         .is_some_and(|value| value == "true")
+}
+
+fn has_javascript_prefix(value: &str) -> bool {
+    value
+        .trim_start_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .get(..11)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("javascript:"))
 }
 
 fn element_interactivity(

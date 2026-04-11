@@ -1,6 +1,12 @@
 [
   {
     "severity": "warning",
+    "code": "a11y_consider_explicit_label",
+    "start": 0,
+    "end": 37
+  },
+  {
+    "severity": "warning",
     "code": "a11y_no_interactive_element_to_noninteractive_role",
     "start": 0,
     "end": 37

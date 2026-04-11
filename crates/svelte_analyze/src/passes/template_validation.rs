@@ -10,22 +10,21 @@
 use oxc_ast::ast::{
     AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement,
 };
-use oxc_ast_visit::{Visit, walk};
+use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
-    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
-    Node, NodeId, OnDirectiveLegacy, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
-    SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SnippetBlock, SvelteBody, SvelteDocument,
+    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
+    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
     SvelteElement, SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective,
-    is_svg,
+    SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::passes::binding_properties::{BINDING_NAMES, binding_property};
+use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
 use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};

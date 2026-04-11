@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_img_redundant_alt",
+    "end": 28,
+    "severity": "warning",
+    "start": 0
+  }
+]

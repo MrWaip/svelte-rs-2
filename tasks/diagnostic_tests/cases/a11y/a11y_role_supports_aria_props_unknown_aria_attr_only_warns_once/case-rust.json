@@ -1,6 +1,12 @@
 [
   {
     "severity": "warning",
+    "code": "a11y_consider_explicit_label",
+    "start": 0,
+    "end": 31
+  },
+  {
+    "severity": "warning",
     "code": "a11y_unknown_aria_attribute",
     "start": 19,
     "end": 20
