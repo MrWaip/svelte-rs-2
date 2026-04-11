@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_invalid_type",
+    "end": 109,
+    "severity": "error",
+    "start": 92
+  }
+]

@@ -540,6 +540,96 @@ mod attributes {
     );
 }
 
+mod bind {
+    use super::*;
+
+    diagnostic_case!(validate_bind_invalid_name, "bind/validate_bind_invalid_name");
+    diagnostic_case!(
+        validate_bind_invalid_expression,
+        "bind/validate_bind_invalid_expression",
+        ignore = "known mismatch: analyzer reports extra non_reactive_update alongside bind_invalid_expression"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_value,
+        "bind/validate_bind_invalid_value",
+        ignore = "known mismatch: analyzer reports bind_invalid_value while npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_bind_plain_let_is_valid,
+        "bind/validate_bind_plain_let_is_valid",
+        ignore = "known mismatch: analyzer and npm svelte/compiler report non_reactive_update on different spans"
+    );
+    diagnostic_case!(
+        validate_attribute_contenteditable_missing,
+        "bind/validate_attribute_contenteditable_missing"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_target,
+        "bind/validate_bind_invalid_target"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_name_with_special_element_candidates,
+        "bind/validate_bind_invalid_name_with_special_element_candidates",
+        ignore = "known mismatch: analyzer reports extra attribute_contenteditable_missing alongside bind_invalid_name"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_parens,
+        "bind/validate_bind_invalid_parens"
+    );
+    diagnostic_case!(
+        validate_bind_getter_setter_without_parens,
+        "bind/validate_bind_getter_setter_without_parens"
+    );
+    diagnostic_case!(
+        validate_bind_group_invalid_expression,
+        "bind/validate_bind_group_invalid_expression"
+    );
+    diagnostic_case!(
+        validate_bind_sequence_reports_all_relevant_errors,
+        "bind/validate_bind_sequence_reports_all_relevant_errors",
+        ignore = "known mismatch: analyzer reports extra bind_invalid_expression and bind_invalid_parens beyond npm svelte/compiler"
+    );
+    diagnostic_case!(
+        validate_bind_group_invalid_snippet_parameter,
+        "bind/validate_bind_group_invalid_snippet_parameter",
+        ignore = "known mismatch: analyzer reports bind_group_invalid_snippet_parameter in addition to npm svelte/compiler snippet_parameter_assignment"
+    );
+    diagnostic_case!(
+        validate_attribute_contenteditable_dynamic,
+        "bind/validate_attribute_contenteditable_dynamic"
+    );
+    diagnostic_case!(
+        validate_attribute_invalid_type,
+        "bind/validate_attribute_invalid_type"
+    );
+    diagnostic_case!(
+        validate_attribute_invalid_multiple,
+        "bind/validate_attribute_invalid_multiple"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_each_rest,
+        "bind/validate_bind_invalid_each_rest",
+        ignore = "known mismatch: analyzer reports bind_invalid_each_rest as a warning while npm svelte/compiler reports an error"
+    );
+    diagnostic_case!(
+        validate_bind_checked_radio_target,
+        "bind/validate_bind_checked_radio_target"
+    );
+    diagnostic_case!(
+        validate_bind_files_wrong_input_type,
+        "bind/validate_bind_files_wrong_input_type"
+    );
+    diagnostic_case!(
+        validate_bind_member_expression_no_error,
+        "bind/validate_bind_member_expression_no_error",
+        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning"
+    );
+    diagnostic_case!(
+        validate_bind_getter_setter_no_error,
+        "bind/validate_bind_getter_setter_no_error"
+    );
+}
+
 mod components {
     use super::*;
 
@@ -578,12 +668,68 @@ mod events {
     use super::*;
 
     diagnostic_case!(
+        on_directive_invalid_modifier,
+        "events/on_directive_invalid_modifier",
+        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+    );
+    diagnostic_case!(
+        on_directive_passive_nonpassive_conflict,
+        "events/on_directive_passive_nonpassive_conflict",
+        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax,
+        "events/on_directive_mixed_syntax",
+        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_element,
+        "events/on_directive_mixed_syntax_svelte_element",
+        ignore = "known mismatch: analyzer reports extra event_directive_deprecated warning for legacy on: syntax"
+    );
+    diagnostic_case!(
         on_directive_deprecated_in_runes_mode,
         "events/on_directive_deprecated_in_runes_mode"
     );
     diagnostic_case!(
         on_directive_not_deprecated_in_non_runes_mode,
         "events/on_directive_not_deprecated_in_non_runes_mode"
+    );
+}
+
+mod directives {
+    use super::*;
+
+    diagnostic_case!(
+        validate_transition_duplicate_in,
+        "directives/validate_transition_duplicate_in"
+    );
+    diagnostic_case!(
+        validate_transition_duplicate_out,
+        "directives/validate_transition_duplicate_out"
+    );
+    diagnostic_case!(
+        validate_transition_conflict_in,
+        "directives/validate_transition_conflict_in"
+    );
+    diagnostic_case!(
+        validate_transition_conflict_out,
+        "directives/validate_transition_conflict_out"
+    );
+    diagnostic_case!(
+        validate_use_directive_illegal_await_expression,
+        "directives/validate_use_directive_illegal_await_expression",
+        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_transition_illegal_await_expression,
+        "directives/validate_transition_illegal_await_expression",
+        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_animate_directive_illegal_await_expression,
+        "directives/validate_animate_directive_illegal_await_expression",
+        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
     );
 }
 
@@ -693,6 +839,19 @@ mod props {
         validate_props_id_invalid_placement_inside_function,
         "props/validate_props_id_invalid_placement_inside_function"
     );
+    diagnostic_case!(
+        validate_props_illegal_name_rest_member_access,
+        "props/validate_props_illegal_name_rest_member_access"
+    );
+    diagnostic_case!(
+        validate_props_illegal_name_identifier_pattern_member_access,
+        "props/validate_props_illegal_name_identifier_pattern_member_access"
+    );
+    diagnostic_case!(
+        validate_props_normal_member_access_no_error,
+        "props/validate_props_normal_member_access_no_error",
+        ignore = "known mismatch: npm svelte/compiler reports state_referenced_locally while analyzer reports no diagnostics"
+    );
 }
 
 mod runes {
@@ -757,6 +916,15 @@ mod runes {
     diagnostic_case!(
         validate_state_too_many_args,
         "runes/validate_state_too_many_args"
+    );
+    diagnostic_case!(validate_state_valid_positions, "runes/validate_state_valid_positions");
+    diagnostic_case!(
+        validate_state_constructor_private_field,
+        "runes/validate_state_constructor_private_field"
+    );
+    diagnostic_case!(
+        validate_state_nested_class_in_constructor,
+        "runes/validate_state_nested_class_in_constructor"
     );
     diagnostic_case!(
         validate_state_raw_too_many_args,
@@ -1036,12 +1204,130 @@ mod slots {
     use super::*;
 
     diagnostic_case!(
+        slot_attribute_invalid_expression_value,
+        "slots/slot_attribute_invalid_expression_value"
+    );
+    diagnostic_case!(slot_attribute_static_value_ok, "slots/slot_attribute_static_value_ok");
+    diagnostic_case!(
+        slot_attribute_duplicate_reports_second_named_slot,
+        "slots/slot_attribute_duplicate_reports_second_named_slot"
+    );
+    diagnostic_case!(
+        slot_default_duplicate_reports_implicit_default_content,
+        "slots/slot_default_duplicate_reports_implicit_default_content"
+    );
+    diagnostic_case!(
+        slot_distinct_named_slots_do_not_conflict,
+        "slots/slot_distinct_named_slots_do_not_conflict"
+    );
+    diagnostic_case!(
+        slot_default_duplicate_ignores_whitespace_and_other_named_slots,
+        "slots/slot_default_duplicate_ignores_whitespace_and_other_named_slots"
+    );
+    diagnostic_case!(
+        const_tag_inside_slotted_element_is_allowed,
+        "slots/const_tag_inside_slotted_element_is_allowed"
+    );
+    diagnostic_case!(
         slot_attribute_invalid_placement_root,
         "slots/slot_attribute_invalid_placement_root"
     );
     diagnostic_case!(
         slot_attribute_invalid_placement_nested_inside_component,
         "slots/slot_attribute_invalid_placement_nested_inside_component"
+    );
+}
+
+mod const_tag {
+    use super::*;
+
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_root,
+        "const_tag/validate_const_tag_invalid_placement_root"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_inside_element,
+        "const_tag/validate_const_tag_invalid_placement_inside_element"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_each,
+        "const_tag/validate_const_tag_valid_placement_each"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_if,
+        "const_tag/validate_const_tag_valid_placement_if"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_key,
+        "const_tag/validate_const_tag_valid_placement_key"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_expression,
+        "const_tag/validate_const_tag_invalid_expression"
+    );
+    diagnostic_case!(
+        validate_const_tag_parenthesized_sequence_ok,
+        "const_tag/validate_const_tag_parenthesized_sequence_ok"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_reference_component_children_async,
+        "const_tag/validate_const_tag_invalid_reference_component_children_async",
+        ignore = "known mismatch: analyzer reports extra snippet_conflict alongside const_tag_invalid_reference"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_reference_boundary_failed_async,
+        "const_tag/validate_const_tag_invalid_reference_boundary_failed_async"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_reference_boundary_pending_async,
+        "const_tag/validate_const_tag_invalid_reference_boundary_pending_async"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_reference_skipped_without_async,
+        "const_tag/validate_const_tag_invalid_reference_skipped_without_async"
+    );
+    diagnostic_case!(
+        validate_const_tag_reference_inside_snippet_scope_is_allowed_async,
+        "const_tag/validate_const_tag_reference_inside_snippet_scope_is_allowed_async"
+    );
+}
+
+mod each {
+    use super::*;
+
+    diagnostic_case!(
+        validate_each_animation_missing_key,
+        "each/validate_each_animation_missing_key"
+    );
+    diagnostic_case!(
+        validate_each_animation_invalid_placement,
+        "each/validate_each_animation_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_each_animation_duplicate,
+        "each/validate_each_animation_duplicate"
+    );
+    diagnostic_case!(
+        validate_each_item_invalid_assignment,
+        "each/validate_each_item_invalid_assignment"
+    );
+    diagnostic_case!(
+        validate_each_item_invalid_assignment_bind_identifier,
+        "each/validate_each_item_invalid_assignment_bind_identifier"
+    );
+    diagnostic_case!(
+        validate_each_item_bind_member_expression_no_invalid_assignment,
+        "each/validate_each_item_bind_member_expression_no_invalid_assignment"
+    );
+    diagnostic_case!(
+        validate_each_item_invalid_assignment_array_destructure,
+        "each/validate_each_item_invalid_assignment_array_destructure",
+        ignore = "known mismatch: analyzer reports each_item_invalid_assignment for array destructure while npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_each_item_invalid_assignment_nested_object_destructure,
+        "each/validate_each_item_invalid_assignment_nested_object_destructure",
+        ignore = "known mismatch: analyzer reports each_item_invalid_assignment for nested object destructure while npm svelte/compiler reports no diagnostic"
     );
 }
 
@@ -1089,6 +1375,22 @@ mod template {
     use super::*;
 
     diagnostic_case!(
+        invalid_text_parent_uses_topology_ancestor_lookup,
+        "template/invalid_text_parent_uses_topology_ancestor_lookup"
+    );
+    diagnostic_case!(
+        await_valid_then_catch_no_unexpected_character,
+        "template/await_valid_then_catch_no_unexpected_character"
+    );
+    diagnostic_case!(
+        debug_tag_valid_runes_no_unexpected_character,
+        "template/debug_tag_valid_runes_no_unexpected_character"
+    );
+    diagnostic_case!(
+        debug_tag_non_runes_skips_opening_tag_check,
+        "template/debug_tag_non_runes_skips_opening_tag_check"
+    );
+    diagnostic_case!(
         validate_key_block_empty_warns,
         "template/validate_key_block_empty_warns"
     );
@@ -1097,11 +1399,42 @@ mod template {
         "template/validate_text_invalid_placement"
     );
     diagnostic_case!(
+        validate_expression_tag_invalid_placement,
+        "template/validate_expression_tag_invalid_placement"
+    );
+    diagnostic_case!(
         validate_text_bidirectional_control_warning,
         "template/validate_text_bidirectional_control_warning"
     );
     diagnostic_case!(
         validate_text_bidirectional_control_warning_ignored,
         "template/validate_text_bidirectional_control_warning_ignored"
+    );
+    diagnostic_case!(
+        textarea_invalid_content_fires,
+        "template/textarea_invalid_content_fires"
+    );
+    diagnostic_case!(
+        textarea_no_conflict_without_value_attr,
+        "template/textarea_no_conflict_without_value_attr"
+    );
+    diagnostic_case!(
+        validate_non_reactive_update_for_direct_template_read,
+        "template/validate_non_reactive_update_for_direct_template_read",
+        ignore = "known mismatch: analyzer reports non_reactive_update on a different span than npm svelte/compiler"
+    );
+    diagnostic_case!(
+        validate_non_reactive_update_no_warning_across_function_boundary,
+        "template/validate_non_reactive_update_no_warning_across_function_boundary",
+        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled button while analyzer reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_non_reactive_update_bind_this_no_warning_without_dynamic_block,
+        "template/validate_non_reactive_update_bind_this_no_warning_without_dynamic_block"
+    );
+    diagnostic_case!(
+        validate_non_reactive_update_bind_this_warns_inside_if_block,
+        "template/validate_non_reactive_update_bind_this_warns_inside_if_block",
+        ignore = "known mismatch: analyzer reports non_reactive_update on a different span than npm svelte/compiler"
     );
 }

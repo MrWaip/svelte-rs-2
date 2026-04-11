@@ -1,0 +1,8 @@
+[
+  {
+    "code": "snippet_parameter_assignment",
+    "end": 75,
+    "severity": "error",
+    "start": 54
+  }
+]

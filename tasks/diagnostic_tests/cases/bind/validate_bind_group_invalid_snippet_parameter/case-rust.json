@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "error",
+    "code": "bind_group_invalid_snippet_parameter",
+    "start": 66,
+    "end": 74
+  },
+  {
+    "severity": "error",
+    "code": "snippet_parameter_assignment",
+    "start": 66,
+    "end": 74
+  }
+]

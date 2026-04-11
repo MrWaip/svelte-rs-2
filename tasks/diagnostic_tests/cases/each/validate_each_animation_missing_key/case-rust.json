@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "animation_missing_key",
+    "start": 111,
+    "end": 115
+  }
+]

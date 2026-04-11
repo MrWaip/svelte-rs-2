@@ -1,0 +1,8 @@
+[
+  {
+    "code": "props_illegal_name",
+    "end": 58,
+    "severity": "error",
+    "start": 51
+  }
+]

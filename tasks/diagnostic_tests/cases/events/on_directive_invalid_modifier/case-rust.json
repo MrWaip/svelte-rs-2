@@ -1,0 +1,26 @@
+[
+  {
+    "severity": "error",
+    "code": "event_handler_invalid_modifier",
+    "start": 39,
+    "end": 44
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_click_events_have_key_events",
+    "start": 31,
+    "end": 63
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_no_static_element_interactions",
+    "start": 31,
+    "end": 63
+  },
+  {
+    "severity": "warning",
+    "code": "event_directive_deprecated",
+    "start": 39,
+    "end": 44
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "const_tag_invalid_expression",
+    "start": 21,
+    "end": 52
+  }
+]

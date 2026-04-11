@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "error",
+    "code": "attribute_contenteditable_missing",
+    "start": 71,
+    "end": 76
+  },
+  {
+    "severity": "error",
+    "code": "bind_invalid_name",
+    "start": 71,
+    "end": 76
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "transition_duplicate",
+    "start": 84,
+    "end": 87
+  }
+]

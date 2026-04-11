@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "bind_invalid_each_rest",
+    "start": 131,
+    "end": 135
+  }
+]

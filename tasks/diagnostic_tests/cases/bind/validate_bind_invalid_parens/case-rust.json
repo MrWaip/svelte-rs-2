@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "bind_invalid_parens",
+    "start": 66,
+    "end": 105
+  }
+]

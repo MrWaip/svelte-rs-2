@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "error",
+    "code": "bind_invalid_expression",
+    "start": 96,
+    "end": 104
+  },
+  {
+    "severity": "warning",
+    "code": "non_reactive_update",
+    "start": 37,
+    "end": 43
+  }
+]
