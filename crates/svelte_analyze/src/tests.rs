@@ -2583,6 +2583,41 @@ fn rich_content_facts_drive_customizable_select_detection() {
 }
 
 #[test]
+fn inspect_does_not_trigger_state_referenced_locally_for_rune_args() {
+    let cases = [
+        (
+            "<script>let a = $state(1); $inspect(a);</script>",
+            Vec::<&str>::new(),
+        ),
+        (
+            "<script>let a = $state(1); $inspect(a).with(console.log);</script>",
+            Vec::<&str>::new(),
+        ),
+        (
+            "<script>let a = $state(1); $inspect(a).with();</script>",
+            vec!["rune_invalid_arguments_length"],
+        ),
+        (
+            "<script>let a = $state(1); $inspect(a).with(console.log, console.warn);</script>",
+            vec!["rune_invalid_arguments_length"],
+        ),
+        (
+            "<script>let count = $state(3); let doubled = $derived(count * 2); $inspect(doubled);</script>",
+            Vec::<&str>::new(),
+        ),
+    ];
+
+    for (source, expected_codes) in cases {
+        let (_, _, diags) = analyze_source_with_diags(source);
+        let actual_codes = diags.iter().map(|diag| diag.kind.code()).collect::<Vec<_>>();
+        assert_eq!(
+            actual_codes, expected_codes,
+            "unexpected diagnostics for source: {source}"
+        );
+    }
+}
+
+#[test]
 fn snippet_hoistability_taints_computed_key_script_reference() {
     let (component, data) = analyze_source(
         r#"<script>
