@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "const_tag_invalid_reference",
+    "start": 76,
+    "end": 79
+  }
+]

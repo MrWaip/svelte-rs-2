@@ -1,0 +1,26 @@
+[
+  {
+    "severity": "error",
+    "code": "mixed_event_handler_syntaxes",
+    "start": 66,
+    "end": 71
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_click_events_have_key_events",
+    "start": 46,
+    "end": 82
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_no_static_element_interactions",
+    "start": 46,
+    "end": 82
+  },
+  {
+    "severity": "warning",
+    "code": "event_directive_deprecated",
+    "start": 66,
+    "end": 71
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "bind_invalid_expression",
+    "end": 105,
+    "severity": "error",
+    "start": 84
+  }
+]

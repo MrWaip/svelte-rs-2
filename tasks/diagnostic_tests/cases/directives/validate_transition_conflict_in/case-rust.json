@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "transition_conflict",
+    "start": 92,
+    "end": 95
+  }
+]

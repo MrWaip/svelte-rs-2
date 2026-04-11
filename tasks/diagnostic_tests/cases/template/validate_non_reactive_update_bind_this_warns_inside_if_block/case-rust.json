@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "non_reactive_update",
+    "start": 20,
+    "end": 24
+  }
+]

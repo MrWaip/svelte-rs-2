@@ -1,0 +1,8 @@
+[
+  {
+    "code": "each_item_invalid_assignment",
+    "end": 105,
+    "severity": "error",
+    "start": 88
+  }
+]

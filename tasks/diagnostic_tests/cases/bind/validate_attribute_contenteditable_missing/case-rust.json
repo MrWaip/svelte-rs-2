@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "attribute_contenteditable_missing",
+    "start": 61,
+    "end": 65
+  }
+]

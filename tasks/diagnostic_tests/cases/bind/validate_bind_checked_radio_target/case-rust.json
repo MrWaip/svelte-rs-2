@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "bind_invalid_target",
+    "start": 80,
+    "end": 87
+  }
+]

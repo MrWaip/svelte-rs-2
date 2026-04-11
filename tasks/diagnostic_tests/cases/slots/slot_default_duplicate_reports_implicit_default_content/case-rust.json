@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "slot_default_duplicate",
+    "start": 32,
+    "end": 55
+  }
+]

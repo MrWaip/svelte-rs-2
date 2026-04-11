@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_contenteditable_dynamic",
+    "end": 102,
+    "severity": "error",
+    "start": 76
+  }
+]

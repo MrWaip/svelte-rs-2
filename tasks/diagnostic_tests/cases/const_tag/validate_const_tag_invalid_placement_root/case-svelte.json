@@ -1,0 +1,8 @@
+[
+  {
+    "code": "const_tag_invalid_placement",
+    "end": 28,
+    "severity": "error",
+    "start": 0
+  }
+]

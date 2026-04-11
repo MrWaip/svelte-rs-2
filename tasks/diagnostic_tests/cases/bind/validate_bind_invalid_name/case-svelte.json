@@ -1,0 +1,8 @@
+[
+  {
+    "code": "bind_invalid_name",
+    "end": 65,
+    "severity": "error",
+    "start": 48
+  }
+]

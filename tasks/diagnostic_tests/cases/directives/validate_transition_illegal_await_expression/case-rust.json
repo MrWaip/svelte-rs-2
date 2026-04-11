@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "illegal_await_expression",
+    "start": 142,
+    "end": 154
+  }
+]

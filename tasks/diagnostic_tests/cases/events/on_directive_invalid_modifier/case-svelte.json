@@ -1,0 +1,8 @@
+[
+  {
+    "code": "event_handler_invalid_modifier",
+    "end": 56,
+    "severity": "error",
+    "start": 36
+  }
+]
