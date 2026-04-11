@@ -9,7 +9,7 @@ test-diagnostics:
 
 # Run a single diagnostic test case
 test-diagnostic-case name:
-    cargo test -p diagnostic_tests --test diagnostic_tests {{name}}
+    cargo test -p diagnostic_tests --test diagnostic_tests {{name}} -- --include-ignored
 
 # Run all compiler integration tests
 test-compiler:
@@ -17,11 +17,11 @@ test-compiler:
 
 # Run a single compiler test case
 test-case name:
-    cargo test -p compiler_tests --test compiler_tests_v3 {{name}}
+    cargo test -p compiler_tests --test compiler_tests_v3 {{name}} -- --include-ignored
 
 # Run a single compiler test case with output
 test-case-verbose name:
-    cargo test -p compiler_tests --test compiler_tests_v3 {{name}} -- --nocapture
+    cargo test -p compiler_tests --test compiler_tests_v3 {{name}} -- --include-ignored --nocapture
 
 # Run all tests across all crates
 test-all:
