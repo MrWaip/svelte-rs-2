@@ -1,0 +1,37 @@
+
+	svg.svelte-1kjtqer {
+		width: 100%;
+		height: 100%;
+	}
+
+	.clock-face.svelte-1kjtqer {
+		stroke: #333;
+		fill: white;
+	}
+
+	.minor.svelte-1kjtqer {
+		stroke: #999;
+		stroke-width: 0.5;
+	}
+
+	.major.svelte-1kjtqer {
+		stroke: #333;
+		stroke-width: 1;
+	}
+
+	.hour.svelte-1kjtqer {
+		stroke: #333;
+	}
+
+	.minute.svelte-1kjtqer {
+		stroke: #666;
+	}
+
+	.second.svelte-1kjtqer,
+	.second-counterweight.svelte-1kjtqer {
+		stroke: rgb(180, 0, 0);
+	}
+
+	.second-counterweight.svelte-1kjtqer {
+		stroke-width: 3;
+	}

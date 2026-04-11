@@ -1,10 +1,10 @@
 # Each Block
 
 ## Current state
-- **Working**: 18/18 passing client-side `{#each}` use cases.
-- **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
-- **Next**: complete; parser-strictness around malformed item-less keyed headers is intentionally not tracked as remaining `{#each}` roadmap work here
-- Last updated: 2026-04-08
+- **Working**: 18/19 passing client-side `{#each}` use cases.
+- **New diagnosis (2026-04-11)**: nested `{#each}` callback params in runes mode are being rewritten to `$.get(...)` inside template-attribute expressions (`transform="rotate(...)"`), which diverges from reference output for non-reactive loop params. Captured by ignored parity case `clock_svg_derived_onmount`. Likely first owning layer: template expression transform/classification for each-scope identifiers.
+- **Next**: fix each-scope identifier classification so non-reactive nested each params (`minute`, `offset`) are emitted as plain identifiers in template expressions, then unignore `clock_svg_derived_onmount`.
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -44,6 +44,7 @@
 - [x] Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 - [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
 - [x] Parser support for item-less each blocks with index: `{#each expression, index}`. Compiler coverage exists via `each_block_no_item_with_index`; the stale ignored parser unit test should not keep the roadmap feature open.
+- [ ] Nested each callback params in runes mode remain plain identifiers in template-attribute expressions (no `$.get(...)` wrapping and no extra fallback coercion noise) when the collection expression is non-reactive literals. (test: `clock_svg_derived_onmount`)
 
 ## Out of scope
 
@@ -96,3 +97,4 @@
 - [x] `validate_each_animation_missing_key`
 - [x] `validate_each_animation_invalid_placement`
 - [x] `validate_each_item_invalid_assignment`
+- [ ] `clock_svg_derived_onmount`
