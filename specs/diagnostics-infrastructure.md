@@ -1,13 +1,13 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 24/25 use cases — infrastructure + non-A11y warning emission slices
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
+- **Working**: 25/26 use cases — infrastructure + non-A11y warning emission slices
+- **Done this session**: added diagnostic parity harness under `tasks/diagnostic_tests/`; `just generate` now writes `case-svelte.json` reference diagnostics and tests write `case-rust.json` for visual comparison. Earlier completed items remain: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
 - **Missing**: 1 use case — `NodeInvalidPlacementSsr`
 - **Next**: implement the standalone SSR placement warning
 - **Non-goals for this run**: no A11y warnings in this spec, no parser or codegen changes
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- Last updated: 2026-04-07
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -39,6 +39,7 @@ ROADMAP Tier 5, item 5a
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
 - [x] Options warnings: `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, `OptionsMissingCustomElement`
 - [x] Perf warnings: `PerfAvoidInlineClass`, `PerfAvoidNestedClass`
+- [x] Diagnostic parity harness with generated `case-svelte.json` / `case-rust.json` snapshots (test: integration)
 - [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`
 
 ## Reference
@@ -57,6 +58,8 @@ ROADMAP Tier 5, item 5a
 - `crates/svelte_analyze/src/types/data.rs` — IgnoreData side table in AnalysisData
 - `crates/svelte_analyze/src/lib.rs` — AnalyzeOptions, warning_filter
 - `crates/svelte_compiler/src/lib.rs` — compile entry point, AnalyzeOptions construction
+- `tasks/diagnostic_tests/test_diagnostics.rs` — diagnostic parity harness
+- `tasks/generate_test_cases/generate.mjs` — reference diagnostic snapshot generation
 
 ## Test cases
 
@@ -73,6 +76,7 @@ ROADMAP Tier 5, item 5a
 - [x] unit: `warning_filter` applied after analysis
 - [x] integration: ignore stack push/pop in walker
 - [x] integration: `ctx.warn()` API
+- [x] integration: diagnostic parity snapshot harness (`case-svelte.json` / `case-rust.json`)
 - [x] compile: all ~165 semantic error enum variants
 - [x] compile: `AnalyzeOptions` struct
 - [x] unit: `SvelteComponentDeprecated` / `SvelteSelfDeprecated`
