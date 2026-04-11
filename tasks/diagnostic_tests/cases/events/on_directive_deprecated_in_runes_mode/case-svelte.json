@@ -1,0 +1,20 @@
+[
+  {
+    "code": "a11y_click_events_have_key_events",
+    "end": 59,
+    "severity": "warning",
+    "start": 35
+  },
+  {
+    "code": "a11y_no_static_element_interactions",
+    "end": 59,
+    "severity": "warning",
+    "start": 35
+  },
+  {
+    "code": "event_directive_deprecated",
+    "end": 52,
+    "severity": "warning",
+    "start": 40
+  }
+]

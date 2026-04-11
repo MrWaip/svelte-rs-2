@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "attribute_unquoted_sequence",
+    "start": 48,
+    "end": 53
+  }
+]

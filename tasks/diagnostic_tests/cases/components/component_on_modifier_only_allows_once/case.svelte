@@ -1,0 +1,1 @@
+<Comp on:done|capture={() => {}} />

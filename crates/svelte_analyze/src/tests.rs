@@ -2536,64 +2536,6 @@ let x = $state.is(a, b);
 }
 
 #[test]
-#[ignore = "missing: <svelte:head> illegal attribute validation (analyze)"]
-fn validate_svelte_head_illegal_attribute() {
-    let diags = analyze_with_diags(r#"<svelte:head lang="en"></svelte:head>"#);
-    assert_has_error(&diags, "svelte_head_illegal_attribute");
-}
-
-#[test]
-#[ignore = "missing: <svelte:window>/<svelte:document> illegal attribute validation (analyze)"]
-fn validate_svelte_window_and_document_illegal_attributes() {
-    for source in [
-        r#"<svelte:window class="x" />"#,
-        r#"<svelte:window {...props} />"#,
-        r#"<svelte:document class="x" />"#,
-        r#"<svelte:document {...props} />"#,
-    ] {
-        let diags = analyze_with_diags(source);
-        assert_has_error(&diags, "illegal_element_attribute");
-    }
-}
-
-#[test]
-#[ignore = "missing: <svelte:body> illegal attribute validation (analyze)"]
-fn validate_svelte_body_illegal_attributes() {
-    for source in [
-        r#"<svelte:body class="x" />"#,
-        r#"<svelte:body {...props} />"#,
-    ] {
-        let diags = analyze_with_diags(source);
-        assert_has_error(&diags, "svelte_body_illegal_attribute");
-    }
-}
-
-#[test]
-#[ignore = "missing: special-element child validation (analyze)"]
-fn validate_svelte_special_elements_invalid_content() {
-    for name in ["window", "document", "body"] {
-        let source = format!("<svelte:{name}>child</svelte:{name}>");
-        let diags = analyze_with_diags(&source);
-        assert_has_error(&diags, "svelte_meta_invalid_content");
-    }
-}
-
-#[test]
-#[ignore = "missing: <title> illegal attribute validation (analyze)"]
-fn validate_title_illegal_attribute() {
-    let diags = analyze_with_diags(r#"<svelte:head><title class="x">Hello</title></svelte:head>"#);
-    assert_has_error(&diags, "title_illegal_attribute");
-}
-
-#[test]
-#[ignore = "missing: <title> child content validation (analyze)"]
-fn validate_title_invalid_content() {
-    let diags =
-        analyze_with_diags(r#"<svelte:head><title><span>Hello</span></title></svelte:head>"#);
-    assert_has_error(&diags, "title_invalid_content");
-}
-
-#[test]
 fn validate_transition_duplicate_transition() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -3246,26 +3188,6 @@ class Foo {
 </script>"#,
     );
     assert_no_errors(&diags);
-}
-
-#[test]
-fn validate_host_invalid_placement_without_custom_element() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let host = $host();
-</script>"#,
-    );
-    assert_has_error(&diags, "host_invalid_placement");
-}
-
-#[test]
-fn validate_host_invalid_arguments() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let host = $host(1);
-</script>"#,
-    );
-    assert_has_error(&diags, "rune_invalid_arguments");
 }
 
 #[test]
@@ -4434,70 +4356,6 @@ console.log(rest.normalProp);
 }
 
 #[test]
-fn validate_custom_element_props_identifier_warns() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
-<script>
-const props = $props();
-</script>
-<p>{props.x}</p>"#,
-        AnalyzeOptions {
-            custom_element: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "custom_element_props_identifier");
-}
-
-#[test]
-fn validate_custom_element_props_rest_warns() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
-<script>
-let { x, ...rest } = $props();
-</script>
-<p>{x}</p>"#,
-        AnalyzeOptions {
-            custom_element: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "custom_element_props_identifier");
-}
-
-#[test]
-fn validate_custom_element_props_destructured_no_warn() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
-<script>
-let { x, y } = $props();
-</script>
-<p>{x}{y}</p>"#,
-        AnalyzeOptions {
-            custom_element: true,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "custom_element_props_identifier");
-}
-
-#[test]
-fn validate_custom_element_with_explicit_props_config_no_warn() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement={{ tag: 'x-foo', props: { x: { reflect: true, type: 'Number' } } }} />
-<script>
-const props = $props();
-</script>
-<p>{props.x}</p>"#,
-        AnalyzeOptions {
-            custom_element: true,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "custom_element_props_identifier");
-}
-
-#[test]
 fn options_preserve_whitespace_keeps_raw_text_nodes() {
     let (component, data) = analyze_source_with_options(
         "<div>\n\thello\n\t<span>world</span>\n\t!\n</div>",
@@ -4552,30 +4410,6 @@ fn on_directive_passive_nonpassive_conflict() {
 }
 
 #[test]
-fn on_directive_deprecated_in_runes_mode() {
-    let diags = analyze_with_options_diags(
-        "<script>function f(){}</script><div on:click={f}></div>",
-        AnalyzeOptions {
-            runes: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "event_directive_deprecated");
-}
-
-#[test]
-fn on_directive_not_deprecated_in_non_runes_mode() {
-    let diags = analyze_with_options_diags(
-        "<script>function f(){}</script><div on:click={f}></div>",
-        AnalyzeOptions {
-            runes: false,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "event_directive_deprecated");
-}
-
-#[test]
 fn on_directive_mixed_syntax() {
     let diags = analyze_with_diags(
         "<script>function f(){} function g(){}</script><div onclick={f} on:click={g}></div>",
@@ -4589,30 +4423,6 @@ fn on_directive_mixed_syntax_svelte_element() {
         r#"<script>let tag = $state("div"); function f(){} function g(){}</script><svelte:element this={tag} onclick={f} on:click={g}></svelte:element>"#,
     );
     assert_has_error(&diags, "mixed_event_handler_syntaxes");
-}
-
-#[test]
-fn svelte_component_deprecated_warns_in_runes_mode() {
-    let diags = analyze_with_options_diags(
-        "<script>import A from './A.svelte'; let current = A;</script><svelte:component this={current}></svelte:component>",
-        AnalyzeOptions {
-            runes: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "svelte_component_deprecated");
-}
-
-#[test]
-fn svelte_component_deprecated_no_warn_in_legacy_mode() {
-    let diags = analyze_with_options_diags(
-        "<script>import A from './A.svelte'; let current = A;</script><svelte:component this={current}></svelte:component>",
-        AnalyzeOptions {
-            runes: false,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "svelte_component_deprecated");
 }
 
 #[test]
@@ -4691,31 +4501,6 @@ fn svelte_self_deprecated_uses_reserved_word_deconflicted_component_name() {
                 if name == "class_1" && basename == "class.svelte"
         )
     });
-}
-
-#[test]
-fn svelte_self_deprecated_no_warn_in_legacy_mode() {
-    let diags = analyze_with_options_diags(
-        "<svelte:self></svelte:self>",
-        AnalyzeOptions {
-            runes: false,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "svelte_self_deprecated");
-}
-
-#[test]
-fn slot_attribute_invalid_placement_root() {
-    let diags = analyze_with_diags(r#"<script></script><div slot="foo">content</div>"#);
-    assert_has_error(&diags, "slot_attribute_invalid_placement");
-}
-
-#[test]
-fn slot_attribute_invalid_placement_nested_inside_component() {
-    let diags =
-        analyze_with_diags(r#"<Comp><section><div slot="foo">content</div></section></Comp>"#);
-    assert_has_error(&diags, "slot_attribute_invalid_placement");
 }
 
 #[test]
@@ -5006,72 +4791,6 @@ fn const_tag_inside_slotted_element_is_allowed() {
 // ---------------------------------------------------------------------------
 // attribute_quoted
 // ---------------------------------------------------------------------------
-
-#[test]
-fn attribute_quoted_on_component() {
-    let diags = analyze_with_diags(r#"<script>let x = $state('val');</script><Comp foo="{x}" />"#);
-    assert_has_warning(&diags, "attribute_quoted");
-}
-
-#[test]
-fn component_invalid_directive_use() {
-    let diags = analyze_with_diags(r#"<Comp use:tooltip />"#);
-    assert_has_error(&diags, "component_invalid_directive");
-}
-
-#[test]
-fn component_on_modifier_only_allows_once() {
-    let diags = analyze_with_diags(r#"<Comp on:done|capture={() => {}} />"#);
-    assert_has_error(&diags, "event_handler_invalid_component_modifier");
-}
-
-#[test]
-fn component_attribute_illegal_colon_warns() {
-    let diags = analyze_with_diags(r#"<Comp foo:bar="x" />"#);
-    assert_has_warning(&diags, "attribute_illegal_colon");
-}
-
-#[test]
-fn component_attribute_unquoted_sequence_errors() {
-    let diags = analyze_with_diags(r#"<script>let value = 'x';</script><Comp foo=a{value} />"#);
-    assert_has_error(&diags, "attribute_unquoted_sequence");
-}
-
-#[test]
-fn regular_element_attribute_unquoted_sequence_errors() {
-    let diags = analyze_with_diags(r#"<script>let value = 'x';</script><div foo=a{value}></div>"#);
-    assert_has_error(&diags, "attribute_unquoted_sequence");
-}
-
-#[test]
-fn custom_element_attribute_unquoted_sequence_errors() {
-    let diags =
-        analyze_with_diags(r#"<script>let value = 'x';</script><my-el foo=a{value}></my-el>"#);
-    assert_has_error(&diags, "attribute_unquoted_sequence");
-}
-
-#[test]
-fn svelte_element_attribute_unquoted_sequence_errors() {
-    let diags = analyze_with_diags(
-        r#"<script>let value = 'x'; let tag = 'div';</script><svelte:element this={tag} foo=a{value} />"#,
-    );
-    assert_has_error(&diags, "attribute_unquoted_sequence");
-}
-
-#[test]
-fn attribute_quoted_custom_element() {
-    let diags =
-        analyze_with_diags(r#"<script>let x = $state('val');</script><my-el foo="{x}"></my-el>"#);
-    assert_has_warning(&diags, "attribute_quoted");
-}
-
-#[test]
-fn attribute_quoted_regular_element_no_warn() {
-    // Non-custom regular elements must not get attribute_quoted.
-    let diags =
-        analyze_with_diags(r#"<script>let x = $state('val');</script><div foo="{x}"></div>"#);
-    assert!(!diags.iter().any(|d| d.kind.code() == "attribute_quoted"));
-}
 
 // ---------------------------------------------------------------------------
 // attribute_global_event_reference

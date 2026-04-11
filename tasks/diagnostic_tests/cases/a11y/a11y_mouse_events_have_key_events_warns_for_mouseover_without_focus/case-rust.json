@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_mouse_events_have_key_events",
+    "start": 0,
+    "end": 32
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_no_static_element_interactions",
+    "start": 0,
+    "end": 32
+  }
+]

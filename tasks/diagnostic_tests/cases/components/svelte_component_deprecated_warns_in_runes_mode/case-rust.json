@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "svelte_component_deprecated",
+    "start": 64,
+    "end": 116
+  }
+]

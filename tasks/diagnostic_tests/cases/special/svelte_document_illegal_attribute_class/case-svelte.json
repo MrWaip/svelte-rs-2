@@ -1,0 +1,8 @@
+[
+  {
+    "code": "illegal_element_attribute",
+    "end": 26,
+    "severity": "error",
+    "start": 17
+  }
+]

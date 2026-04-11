@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_illegal_colon",
+    "end": 17,
+    "severity": "warning",
+    "start": 6
+  }
+]

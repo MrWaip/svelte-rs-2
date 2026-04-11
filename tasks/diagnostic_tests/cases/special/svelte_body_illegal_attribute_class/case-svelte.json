@@ -1,0 +1,8 @@
+[
+  {
+    "code": "svelte_body_illegal_attribute",
+    "end": 22,
+    "severity": "error",
+    "start": 13
+  }
+]

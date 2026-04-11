@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_label_has_associated_control",
+    "end": 23,
+    "severity": "warning",
+    "start": 0
+  }
+]
