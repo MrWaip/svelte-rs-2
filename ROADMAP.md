@@ -3,6 +3,56 @@
 Scope: client-side compilation only (no SSR, no legacy mode).
 Details per feature live in `specs/` — run `/audit <feature>` to generate or update a spec.
 
+## Delivery Clusters
+
+These roadmap buckets are grouped into larger delivery clusters so work can be prioritized as coherent milestones instead of isolated feature checkboxes.
+
+### 1. Core Client Compiler Parity
+
+- Runes & Script
+- Template
+- Attributes & Spreads
+- Events
+- Bindings
+- Directives
+- Special Elements
+- CSS
+- Custom Elements
+
+Goal: match `svelte/compiler` for normal client-side component compilation before expanding the integration surface.
+
+### 2. Validation Parity
+
+- Validation & Diagnostics
+- A11y Warnings
+
+Goal: align warnings, errors, spans, and severity once the owning runtime/compiler behavior is in place.
+
+### 3. Optimizations
+
+- Benchmark-driven hot-path work in `svelte_component_semantics`, `svelte_analyze`, `svelte_transform`, and `svelte_codegen_client`
+- Allocation cleanup, redundant traversal removal, and data-flow tightening in already-stable client paths
+- Large-scale compile throughput and memory work after the main client parity slices stop churning
+
+Goal: optimize the stabilized client compiler before expanding the tooling surface or starting SSR work.
+
+### 4. Tooling And Integration Surface
+
+- Source Maps
+- Modules `.svelte.js` / `.svelte.ts`
+- Compiler Infrastructure
+
+Goal: stabilize the compiler contract for downstream tools after core compile parity is solid.
+
+### 5. Triage And Deferred Compatibility
+
+- Unknown / Triage
+- Legacy Svelte 4
+
+Goal: keep new repros tracked without diluting the main Svelte 5 client-compiler push.
+
+SSR remains a separate future track. This roadmap stays client-only until these clusters are in better shape.
+
 ---
 
 ## Runes & Script

@@ -1,0 +1,19 @@
+[data-tags~="active"].svelte-v4glr4 {
+  color: red;
+}
+
+[data-lang|="en"].svelte-v4glr4 {
+  color: blue;
+}
+
+[data-url^="https://"].svelte-v4glr4 {
+  color: green;
+}
+
+[data-url$=".com"].svelte-v4glr4 {
+  color: orange;
+}
+
+[data-url*="example"].svelte-v4glr4 {
+  color: purple;
+}

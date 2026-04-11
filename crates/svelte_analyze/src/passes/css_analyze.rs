@@ -48,7 +48,7 @@ pub fn analyze_css_pass(
 
     // Phase 3: prune — backward-match every selector against the template, populate
     // `used_selectors` and mark every matched element in `scoped_elements`.
-    super::css_prune::prune_and_warn(stylesheet, css_text, data, diagnostics);
+    super::css_prune::prune_and_warn(component, stylesheet, css_text, data, diagnostics);
 }
 
 // ---------------------------------------------------------------------------

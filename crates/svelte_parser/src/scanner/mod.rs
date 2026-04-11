@@ -22,6 +22,7 @@ pub struct Scanner<'a> {
     start: usize,
     prev: usize,
     current: usize,
+    fragment_depth: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +55,7 @@ impl<'a> Scanner<'a> {
             prev: 0,
             current: 0,
             start: 0,
+            fragment_depth: 0,
         }
     }
 
@@ -121,10 +123,22 @@ impl<'a> Scanner<'a> {
     }
 
     fn add_token(&mut self, token_type: TokenType) {
-        self.tokens.push(Token {
+        self.push_token(
             token_type,
-            span: Span::new(self.start as u32, self.current as u32),
-        });
+            Span::new(self.start as u32, self.current as u32),
+        );
+    }
+
+    fn push_token(&mut self, token_type: TokenType, span: Span) {
+        self.tokens.push(Token { token_type, span });
+    }
+
+    fn enter_fragment(&mut self) {
+        self.fragment_depth += 1;
+    }
+
+    fn leave_fragment(&mut self) {
+        self.fragment_depth = self.fragment_depth.saturating_sub(1);
     }
 
     fn advance(&mut self) -> char {
@@ -394,12 +408,16 @@ impl<'a> Scanner<'a> {
             return Ok(());
         }
 
-        if name == "script" {
-            return self.script_tag(&attributes, name_span);
-        }
-
-        if name == "style" {
-            return self.style_tag(name_span);
+        if matches!(name, "script" | "style") && !self_closing {
+            return if self.fragment_depth == 0 {
+                if name == "script" {
+                    self.script_tag(&attributes, name_span)
+                } else {
+                    self.style_tag(name_span)
+                }
+            } else {
+                self.raw_text_element(name, name_span, attributes)
+            };
         }
 
         self.add_token(TokenType::StartTag(StartTag {
@@ -407,6 +425,9 @@ impl<'a> Scanner<'a> {
             name_span,
             self_closing,
         }));
+        if !self_closing {
+            self.enter_fragment();
+        }
 
         Ok(())
     }
@@ -913,6 +934,87 @@ impl<'a> Scanner<'a> {
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name_span }));
+        self.leave_fragment();
+
+        Ok(())
+    }
+
+    fn raw_text_element(
+        &mut self,
+        tag_name: &str,
+        name_span: Span,
+        attributes: Vec<Attribute>,
+    ) -> Result<(), Diagnostic> {
+        let open_tag_span = Span::new(self.start as u32, self.current as u32);
+        self.push_token(
+            TokenType::StartTag(StartTag {
+                attributes,
+                name_span,
+                self_closing: false,
+            }),
+            open_tag_span,
+        );
+        self.enter_fragment();
+
+        let content_start = self.current;
+        let mut content_end = self.current;
+        let mut end_tag_start = self.current;
+        let mut end_name_span = SPAN;
+        let mut found_end_tag = false;
+
+        while !self.is_at_end() {
+            let ch = self.advance();
+            if ch != '<' {
+                continue;
+            }
+
+            let candidate_start = self.prev;
+            if !self.match_char('/') {
+                continue;
+            }
+
+            let close_name_start = self.current;
+            if self.identifier() != tag_name {
+                continue;
+            }
+
+            content_end = candidate_start;
+            end_tag_start = candidate_start;
+            end_name_span = self.span(close_name_start, self.current);
+            found_end_tag = true;
+            break;
+        }
+
+        if found_end_tag {
+            if content_start < content_end {
+                self.push_token(TokenType::Text, self.span(content_start, content_end));
+            }
+
+            self.skip_whitespace();
+            if !self.match_char('>') {
+                return Err(Diagnostic::unexpected_token(Span::new(
+                    end_tag_start as u32,
+                    self.current as u32,
+                )));
+            }
+
+            self.push_token(
+                TokenType::EndTag(token::EndTag {
+                    name_span: end_name_span,
+                }),
+                Span::new(end_tag_start as u32, self.current as u32),
+            );
+            self.leave_fragment();
+            return Ok(());
+        }
+
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            content_start as u32,
+            self.current as u32,
+        )));
+        if content_start < self.current {
+            self.push_token(TokenType::Text, self.span(content_start, self.current));
+        }
 
         Ok(())
     }
@@ -1452,6 +1554,7 @@ impl<'a> Scanner<'a> {
                 let expression_span = self.collect_js_expression()?;
 
                 self.add_token(TokenType::StartIfTag(StartIfTag { expression_span }));
+                self.enter_fragment();
 
                 Ok(())
             }
@@ -1460,6 +1563,7 @@ impl<'a> Scanner<'a> {
             "key" => {
                 let expression_span = self.collect_js_expression()?;
                 self.add_token(TokenType::StartKeyTag(StartKeyTag { expression_span }));
+                self.enter_fragment();
                 Ok(())
             }
             "await" => self.start_await_tag(),
@@ -1497,6 +1601,7 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndIfTag);
+                self.leave_fragment();
 
                 Ok(())
             }
@@ -1511,6 +1616,7 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndEachTag);
+                self.leave_fragment();
 
                 Ok(())
             }
@@ -1525,6 +1631,7 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndSnippetTag);
+                self.leave_fragment();
 
                 Ok(())
             }
@@ -1539,6 +1646,7 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndKeyTag);
+                self.leave_fragment();
 
                 Ok(())
             }
@@ -1553,6 +1661,7 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndAwaitTag);
+                self.leave_fragment();
 
                 Ok(())
             }
@@ -1962,6 +2071,7 @@ impl<'a> Scanner<'a> {
         self.add_token(TokenType::StartSnippetTag(token::StartSnippetTag {
             expression_span,
         }));
+        self.enter_fragment();
 
         Ok(())
     }
@@ -2119,6 +2229,7 @@ impl<'a> Scanner<'a> {
             index_span,
             key_span,
         }));
+        self.enter_fragment();
 
         Ok(())
     }
@@ -2185,6 +2296,7 @@ impl<'a> Scanner<'a> {
                     error_span: None,
                     initial_clause: token::AwaitInitialClause::Then,
                 }));
+                self.enter_fragment();
             }
             Some("catch") => {
                 // Short form: {#await expr catch err}
@@ -2201,6 +2313,7 @@ impl<'a> Scanner<'a> {
                     error_span: binding_span,
                     initial_clause: token::AwaitInitialClause::Catch,
                 }));
+                self.enter_fragment();
             }
             _ => {
                 // Implicit form: {#await expr}
@@ -2210,6 +2323,7 @@ impl<'a> Scanner<'a> {
                     error_span: None,
                     initial_clause: token::AwaitInitialClause::Pending,
                 }));
+                self.enter_fragment();
             }
         }
 

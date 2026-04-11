@@ -546,6 +546,37 @@ fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Compon
     (component, data)
 }
 
+fn analyze_source_with_css(source: &str) -> (Component, AnalysisData) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (mut data, _parsed, diags) = analyze(&component, js_result);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
+        panic!("expected style block");
+    };
+    assert!(
+        css_diags.is_empty(),
+        "unexpected css diagnostics: {css_diags:?}"
+    );
+    let mut css_pass_diags = Vec::new();
+    analyze_css_pass(
+        &component,
+        &stylesheet,
+        false,
+        &mut data,
+        &mut css_pass_diags,
+    );
+    assert!(
+        css_pass_diags.is_empty(),
+        "unexpected css analyze diagnostics: {css_pass_diags:?}"
+    );
+    (component, data)
+}
+
 fn analyze_source_with_diags(
     source: &str,
 ) -> (Component, AnalysisData, Vec<svelte_diagnostics::Diagnostic>) {
@@ -1319,6 +1350,105 @@ fn template_element_index_tracks_css_candidates() {
     assert!(id_candidates.contains(&div.id));
     assert!(!id_candidates.contains(&span.id));
     assert!(id_candidates.contains(&p.id));
+}
+
+#[test]
+fn attribute_presence_selector_scopes_only_matching_elements() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>[data-role] { color: red; }</style>
+<div data-role="banner"></div>
+<span></span>"#,
+    );
+    let div = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let span = find_element(&component.fragment, &component, "span").expect("no element <span>");
+
+    assert!(data.is_css_scoped(div.id));
+    assert!(!data.is_css_scoped(span.id));
+}
+
+#[test]
+fn attribute_value_selectors_match_static_attributes() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+[data-state="on"] { color: red; }
+[data-state="on" i] { color: blue; }
+[data-state="on" s] { color: green; }
+[type="BUTTON"] { color: purple; }
+</style>
+<div data-state="on"></div>
+<div data-state="On"></div>
+<div data-state="off"></div>
+<button type="button" aria-label="run"></button>"#,
+    );
+
+    let exact = find_nth_element(&component.fragment, &component, "div", 0).expect("exact div");
+    let insensitive =
+        find_nth_element(&component.fragment, &component, "div", 1).expect("insensitive div");
+    let no_match = find_nth_element(&component.fragment, &component, "div", 2).expect("off div");
+    let button = find_element(&component.fragment, &component, "button").expect("button");
+
+    assert!(data.is_css_scoped(exact.id));
+    assert!(data.is_css_scoped(insensitive.id));
+    assert!(!data.is_css_scoped(no_match.id));
+    assert!(data.is_css_scoped(button.id));
+}
+
+#[test]
+fn attribute_matcher_operators_match_static_text_values() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+[data-tags~="active"] { color: red; }
+[data-lang|="en"] { color: blue; }
+[data-url^="https://"] { color: green; }
+[data-url$=".com"] { color: orange; }
+[data-url*="example"] { color: purple; }
+</style>
+<div data-tags="card active"></div>
+<div data-lang="en-US"></div>
+<div data-url="https://example.com"></div>
+<span data-tags="inactive"></span>
+<div data-lang="bengali"></div>
+<div data-url="http://sample.org"></div>"#,
+    );
+
+    let class_match =
+        find_nth_element(&component.fragment, &component, "div", 0).expect("class div");
+    let lang_match = find_nth_element(&component.fragment, &component, "div", 1).expect("lang div");
+    let href_match = find_nth_element(&component.fragment, &component, "div", 2).expect("href div");
+    let class_no_match = find_element(&component.fragment, &component, "span").expect("span");
+    let lang_no_match =
+        find_nth_element(&component.fragment, &component, "div", 3).expect("second lang div");
+    let href_no_match =
+        find_nth_element(&component.fragment, &component, "div", 4).expect("second href div");
+
+    assert!(data.is_css_scoped(class_match.id));
+    assert!(data.is_css_scoped(lang_match.id));
+    assert!(data.is_css_scoped(href_match.id));
+    assert!(!data.is_css_scoped(class_no_match.id));
+    assert!(!data.is_css_scoped(lang_no_match.id));
+    assert!(!data.is_css_scoped(href_no_match.id));
+}
+
+#[test]
+fn attribute_selector_names_are_casefolded_for_static_matching() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+[DATA-ROLE] { color: red; }
+[TYPE="BUTTON"] { color: blue; }
+[viewbox] { border: 1px solid green; }
+</style>
+<div DATA-role="banner"></div>
+<button TYPE="button" aria-label="run"></button>
+<svg viewBox="0 0 10 10"></svg>"#,
+    );
+
+    let div = find_element(&component.fragment, &component, "div").expect("div");
+    let button = find_element(&component.fragment, &component, "button").expect("button");
+    let svg = find_element(&component.fragment, &component, "svg").expect("svg");
+
+    assert!(data.is_css_scoped(div.id));
+    assert!(data.is_css_scoped(button.id));
+    assert!(data.is_css_scoped(svg.id));
 }
 
 #[test]
