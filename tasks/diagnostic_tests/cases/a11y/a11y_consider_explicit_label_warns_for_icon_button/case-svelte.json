@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_consider_explicit_label",
+    "end": 47,
+    "severity": "warning",
+    "start": 0
+  }
+]

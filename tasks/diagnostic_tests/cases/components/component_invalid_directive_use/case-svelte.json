@@ -1,0 +1,8 @@
+[
+  {
+    "code": "component_invalid_directive",
+    "end": 17,
+    "severity": "error",
+    "start": 6
+  }
+]

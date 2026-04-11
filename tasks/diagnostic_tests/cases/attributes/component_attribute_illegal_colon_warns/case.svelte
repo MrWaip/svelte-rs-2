@@ -1,0 +1,1 @@
+<Comp foo:bar="x" />

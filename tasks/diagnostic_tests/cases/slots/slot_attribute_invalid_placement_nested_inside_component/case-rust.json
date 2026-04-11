@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "slot_attribute_invalid_placement",
+    "start": 15,
+    "end": 44
+  }
+]

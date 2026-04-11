@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "event_handler_invalid_component_modifier",
+    "start": 9,
+    "end": 13
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_invalid_attribute",
+    "end": 11,
+    "severity": "warning",
+    "start": 3
+  }
+]

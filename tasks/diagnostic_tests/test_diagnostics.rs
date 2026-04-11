@@ -433,6 +433,38 @@ mod a11y {
         "a11y/a11y_no_static_element_interactions_no_warning_with_explicit_role"
     );
     diagnostic_case!(
+        a11y_mouse_events_have_key_events_warns_for_mouseover_without_focus,
+        "a11y/a11y_mouse_events_have_key_events_warns_for_mouseover_without_focus"
+    );
+    diagnostic_case!(
+        a11y_mouse_events_have_key_events_warns_for_mouseout_without_blur,
+        "a11y/a11y_mouse_events_have_key_events_warns_for_mouseout_without_blur"
+    );
+    diagnostic_case!(
+        a11y_mouse_events_have_key_events_no_warning_with_paired_handler,
+        "a11y/a11y_mouse_events_have_key_events_no_warning_with_paired_handler"
+    );
+    diagnostic_case!(
+        a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation,
+        "a11y/a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation",
+        ignore = "known mismatch: analyzer is missing this warning and npm svelte/compiler also reports a11y_consider_explicit_label"
+    );
+    diagnostic_case!(
+        a11y_invalid_attribute_warns_for_anchor_hash_href,
+        "a11y/a11y_invalid_attribute_warns_for_anchor_hash_href",
+        ignore = "known mismatch: analyzer is missing a11y_invalid_attribute and npm svelte/compiler also reports a11y_consider_explicit_label"
+    );
+    diagnostic_case!(
+        a11y_label_has_associated_control_warns_without_for_or_control,
+        "a11y/a11y_label_has_associated_control_warns_without_for_or_control",
+        ignore = "known mismatch: analyzer is missing a11y_label_has_associated_control"
+    );
+    diagnostic_case!(
+        a11y_consider_explicit_label_warns_for_icon_button,
+        "a11y/a11y_consider_explicit_label_warns_for_icon_button",
+        ignore = "known mismatch: analyzer is missing a11y_consider_explicit_label"
+    );
+    diagnostic_case!(
         a11y_no_noninteractive_tabindex_warns_for_div,
         "a11y/a11y_no_noninteractive_tabindex_warns_for_div"
     );
@@ -474,6 +506,38 @@ mod attributes {
         "attributes/attribute_global_event_reference_local_binding",
         ignore = "known mismatch: reference repro includes extra/missing warnings beyond attribute_global_event_reference in current fixture"
     );
+    diagnostic_case!(
+        attribute_quoted_on_component,
+        "attributes/attribute_quoted_on_component"
+    );
+    diagnostic_case!(
+        attribute_quoted_custom_element,
+        "attributes/attribute_quoted_custom_element"
+    );
+    diagnostic_case!(
+        attribute_quoted_regular_element_no_warn,
+        "attributes/attribute_quoted_regular_element_no_warn"
+    );
+    diagnostic_case!(
+        component_attribute_illegal_colon_warns,
+        "attributes/component_attribute_illegal_colon_warns"
+    );
+    diagnostic_case!(
+        component_attribute_unquoted_sequence_errors,
+        "attributes/component_attribute_unquoted_sequence_errors"
+    );
+    diagnostic_case!(
+        regular_element_attribute_unquoted_sequence_errors,
+        "attributes/regular_element_attribute_unquoted_sequence_errors"
+    );
+    diagnostic_case!(
+        custom_element_attribute_unquoted_sequence_errors,
+        "attributes/custom_element_attribute_unquoted_sequence_errors"
+    );
+    diagnostic_case!(
+        svelte_element_attribute_unquoted_sequence_errors,
+        "attributes/svelte_element_attribute_unquoted_sequence_errors"
+    );
 }
 
 mod components {
@@ -486,6 +550,40 @@ mod components {
     diagnostic_case!(
         component_name_lowercase_plain_html_element,
         "components/component_name_lowercase_plain_html_element"
+    );
+    diagnostic_case!(
+        svelte_component_deprecated_warns_in_runes_mode,
+        "components/svelte_component_deprecated_warns_in_runes_mode"
+    );
+    diagnostic_case!(
+        svelte_component_deprecated_no_warn_in_legacy_mode,
+        "components/svelte_component_deprecated_no_warn_in_legacy_mode"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_no_warn_in_legacy_mode,
+        "components/svelte_self_deprecated_no_warn_in_legacy_mode",
+        ignore = "known mismatch: npm svelte/compiler reports svelte_self_invalid_placement while analyzer emits no diagnostic"
+    );
+    diagnostic_case!(
+        component_invalid_directive_use,
+        "components/component_invalid_directive_use"
+    );
+    diagnostic_case!(
+        component_on_modifier_only_allows_once,
+        "components/component_on_modifier_only_allows_once"
+    );
+}
+
+mod events {
+    use super::*;
+
+    diagnostic_case!(
+        on_directive_deprecated_in_runes_mode,
+        "events/on_directive_deprecated_in_runes_mode"
+    );
+    diagnostic_case!(
+        on_directive_not_deprecated_in_non_runes_mode,
+        "events/on_directive_not_deprecated_in_non_runes_mode"
     );
 }
 
@@ -518,6 +616,23 @@ mod options {
     diagnostic_case!(
         validate_options_custom_element_no_warn_with_compiler_flag,
         "options/validate_options_custom_element_no_warn_with_compiler_flag"
+    );
+    diagnostic_case!(
+        validate_custom_element_props_identifier_warns,
+        "options/validate_custom_element_props_identifier_warns"
+    );
+    diagnostic_case!(
+        validate_custom_element_props_rest_warns,
+        "options/validate_custom_element_props_rest_warns",
+        ignore = "known mismatch: Rust warning span highlights the rest binding while npm svelte/compiler highlights the rest identifier usage"
+    );
+    diagnostic_case!(
+        validate_custom_element_props_destructured_no_warn,
+        "options/validate_custom_element_props_destructured_no_warn"
+    );
+    diagnostic_case!(
+        validate_custom_element_with_explicit_props_config_no_warn,
+        "options/validate_custom_element_with_explicit_props_config_no_warn"
     );
 }
 
@@ -560,5 +675,98 @@ mod props {
     diagnostic_case!(
         props_identifier_no_store_rune_conflict,
         "props/props_identifier_no_store_rune_conflict"
+    );
+}
+
+mod host {
+    use super::*;
+
+    diagnostic_case!(
+        validate_host_invalid_placement_without_custom_element,
+        "host/validate_host_invalid_placement_without_custom_element",
+        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning alongside host_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_host_invalid_arguments,
+        "host/validate_host_invalid_arguments",
+        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning alongside rune_invalid_arguments"
+    );
+}
+
+mod special {
+    use super::*;
+
+    diagnostic_case!(
+        svelte_head_illegal_attribute,
+        "special/svelte_head_illegal_attribute",
+        ignore = "known mismatch: analyzer is missing svelte_head_illegal_attribute"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_class,
+        "special/svelte_window_illegal_attribute_class",
+        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window>"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_spread,
+        "special/svelte_window_illegal_attribute_spread",
+        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window> spread"
+    );
+    diagnostic_case!(
+        svelte_document_illegal_attribute_class,
+        "special/svelte_document_illegal_attribute_class",
+        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document>"
+    );
+    diagnostic_case!(
+        svelte_document_illegal_attribute_spread,
+        "special/svelte_document_illegal_attribute_spread",
+        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document> spread"
+    );
+    diagnostic_case!(
+        svelte_body_illegal_attribute_class,
+        "special/svelte_body_illegal_attribute_class",
+        ignore = "known mismatch: analyzer is missing svelte_body_illegal_attribute"
+    );
+    diagnostic_case!(
+        svelte_body_illegal_attribute_spread,
+        "special/svelte_body_illegal_attribute_spread",
+        ignore = "known mismatch: analyzer is missing svelte_body_illegal_attribute for spread"
+    );
+    diagnostic_case!(
+        svelte_window_invalid_content,
+        "special/svelte_window_invalid_content",
+        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:window>"
+    );
+    diagnostic_case!(
+        svelte_document_invalid_content,
+        "special/svelte_document_invalid_content",
+        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:document>"
+    );
+    diagnostic_case!(
+        svelte_body_invalid_content,
+        "special/svelte_body_invalid_content",
+        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:body>"
+    );
+    diagnostic_case!(
+        title_illegal_attribute,
+        "special/title_illegal_attribute",
+        ignore = "known mismatch: analyzer is missing title_illegal_attribute"
+    );
+    diagnostic_case!(
+        title_invalid_content,
+        "special/title_invalid_content",
+        ignore = "known mismatch: analyzer is missing title_invalid_content"
+    );
+}
+
+mod slots {
+    use super::*;
+
+    diagnostic_case!(
+        slot_attribute_invalid_placement_root,
+        "slots/slot_attribute_invalid_placement_root"
+    );
+    diagnostic_case!(
+        slot_attribute_invalid_placement_nested_inside_component,
+        "slots/slot_attribute_invalid_placement_nested_inside_component"
     );
 }
