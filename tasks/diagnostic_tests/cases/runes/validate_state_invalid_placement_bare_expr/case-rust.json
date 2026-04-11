@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "state_invalid_placement",
+    "start": 9,
+    "end": 18
+  }
+]

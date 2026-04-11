@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "derived_invalid_export",
+    "start": 34,
+    "end": 75
+  }
+]

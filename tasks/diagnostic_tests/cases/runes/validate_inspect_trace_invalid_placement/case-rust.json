@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "inspect_trace_invalid_placement",
+    "start": 58,
+    "end": 74
+  }
+]

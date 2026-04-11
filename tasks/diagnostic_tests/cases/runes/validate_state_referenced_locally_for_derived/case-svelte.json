@@ -1,0 +1,8 @@
+[
+  {
+    "code": "state_referenced_locally",
+    "end": 87,
+    "severity": "warning",
+    "start": 82
+  }
+]

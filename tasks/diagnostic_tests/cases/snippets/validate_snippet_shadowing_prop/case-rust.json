@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "snippet_shadowing_prop",
+    "start": 37,
+    "end": 44
+  }
+]

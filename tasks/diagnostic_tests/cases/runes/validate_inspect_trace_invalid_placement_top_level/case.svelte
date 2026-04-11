@@ -1,0 +1,3 @@
+<script>
+$inspect.trace();
+</script>

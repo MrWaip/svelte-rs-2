@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "bindable_invalid_location",
+    "start": 25,
+    "end": 36
+  }
+]
