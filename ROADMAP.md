@@ -47,7 +47,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [x] Svelte 5 event attributes — [spec](specs/events.md)
 - [x] Event delegation — [spec](specs/events.md)
 - [x] Event modifiers (capture, passive) — [spec](specs/events.md)
-- [x] `on:event` legacy — [spec](specs/events.md)
+- [ ] `on:event` legacy — [spec](specs/events.md)
 
 ## Bindings
 

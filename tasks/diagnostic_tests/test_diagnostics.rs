@@ -940,6 +940,11 @@ mod events {
         on_directive_not_deprecated_in_non_runes_mode,
         "events/on_directive_not_deprecated_in_non_runes_mode"
     );
+    diagnostic_case!(
+        on_directive_not_deprecated_in_non_runes_mode_svelte_window,
+        "events/on_directive_not_deprecated_in_non_runes_mode_svelte_window",
+        ignore = "diagnose-diagnostics: pending fix"
+    );
 }
 
 mod directives {
