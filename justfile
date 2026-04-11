@@ -55,13 +55,13 @@ playground:
     cd docs && python3 -m http.server 8080
 
 # Build the debug addon, wire it into the local package, and run the JS smoke test
-smoke-npm-package:
+npm-smoke:
     cargo build -p napi_compiler
     node packages/svelte-rs2/scripts/prepare-local-main-package.mjs
     node packages/svelte-rs2/scripts/smoke.mjs
 
 # Build production-like local npm tarballs for testing in a consumer app
-local-pack:
+npm-build:
     cargo build -p napi_compiler --release
     npm run --prefix packages/svelte-rs2 prepare-platform-package
     npm pack ./packages/svelte-rs2 --silent
