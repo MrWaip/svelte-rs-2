@@ -62,6 +62,11 @@ napi-build-release:
 napi-prepare-platform:
     npm run --prefix packages/svelte-rs2 prepare-platform-package
 
+# Build release addon and copy it into the current-platform npm package
+napi-local-platform:
+    just napi-build-release
+    just napi-prepare-platform
+
 # Create npm tarballs for main package and all platform packages
 napi-pack:
     npm pack ./packages/svelte-rs2 --silent
