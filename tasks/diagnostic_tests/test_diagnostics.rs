@@ -446,6 +446,11 @@ mod a11y {
         "a11y/a11y_no_static_element_interactions_no_warning_with_explicit_role"
     );
     diagnostic_case!(
+        a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave,
+        "a11y/a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave",
+        ignore = "diagnose-diagnostics: pending fix"
+    );
+    diagnostic_case!(
         a11y_mouse_events_have_key_events_warns_for_mouseover_without_focus,
         "a11y/a11y_mouse_events_have_key_events_warns_for_mouseover_without_focus"
     );
