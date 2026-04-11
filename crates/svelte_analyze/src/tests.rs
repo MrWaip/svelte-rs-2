@@ -4715,6 +4715,46 @@ fn svelte_self_deprecated_warns_with_configured_self_import_hint() {
 }
 
 #[test]
+fn svelte_self_deprecated_uses_deconflicted_component_name() {
+    let diags = analyze_with_options_diags(
+        "<script>let Counter = 0;</script><svelte:self></svelte:self>",
+        AnalyzeOptions {
+            runes: true,
+            component_name: "Counter".to_string(),
+            filename_basename: "Counter.svelte".to_string(),
+            ..Default::default()
+        },
+    );
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
+                if name == "Counter_1" && basename == "Counter.svelte"
+        )
+    });
+}
+
+#[test]
+fn svelte_self_deprecated_uses_reserved_word_deconflicted_component_name() {
+    let diags = analyze_with_options_diags(
+        "<svelte:self></svelte:self>",
+        AnalyzeOptions {
+            runes: true,
+            component_name: "class".to_string(),
+            filename_basename: "class.svelte".to_string(),
+            ..Default::default()
+        },
+    );
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
+                if name == "class_1" && basename == "class.svelte"
+        )
+    });
+}
+
+#[test]
 fn svelte_self_deprecated_no_warn_in_legacy_mode() {
     let diags = analyze_with_options_diags(
         "<svelte:self></svelte:self>",

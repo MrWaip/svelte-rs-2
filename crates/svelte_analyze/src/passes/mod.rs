@@ -8,6 +8,7 @@ pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod element_flags;
 mod executor;
+pub(crate) mod finalize_component_name;
 pub(crate) mod hoistable;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
@@ -27,6 +28,7 @@ pub(crate) enum PassKey {
     ClassifyRenderTags,
     AnalyzeScript,
     BuildComponentSemantics,
+    FinalizeComponentName,
     MarkRunes,
     PrepareAwaitBindings,
     ExtractCeConfig,
@@ -56,6 +58,7 @@ pub(crate) enum DataToken {
     ParsedExpressions,
     ScriptInfo,
     ScriptScoping,
+    ComponentName,
     RuneMarks,
     AwaitBindings,
     CeConfig,
@@ -103,6 +106,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::BuildComponentSemantics,
         requires: &[DataToken::ParsedExpressions, DataToken::ScriptInfo],
         produces: &[DataToken::ScriptScoping, DataToken::TemplateSemantics],
+    },
+    PassDescriptor {
+        key: PassKey::FinalizeComponentName,
+        requires: &[DataToken::ScriptScoping],
+        produces: &[DataToken::ComponentName],
     },
     PassDescriptor {
         key: PassKey::MarkRunes,
@@ -226,6 +234,7 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::ClassifyRenderTags,
     PassKey::AnalyzeScript,
     PassKey::BuildComponentSemantics,
+    PassKey::FinalizeComponentName,
     PassKey::MarkRunes,
     PassKey::PrepareAwaitBindings,
     PassKey::ExtractCeConfig,

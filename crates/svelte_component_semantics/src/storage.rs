@@ -282,6 +282,14 @@ impl ComponentSemantics {
             .collect()
     }
 
+    /// Collect names declared in component top-level scopes only.
+    pub fn collect_component_top_level_symbol_names(&self) -> FxHashSet<CompactString> {
+        self.symbol_ids()
+            .filter(|&sym| self.is_component_top_level_symbol(sym))
+            .map(|sym| CompactString::from(self.symbol_name(sym)))
+            .collect()
+    }
+
     // -- Fragment scopes --
 
     /// Register a scope for a template fragment key.
@@ -494,5 +502,45 @@ mod tests {
         assert!(sem.is_component_top_level_symbol(sym_root));
         assert!(sem.is_component_top_level_symbol(sym_module));
         assert!(!sem.is_component_top_level_symbol(sym_nested));
+    }
+
+    #[test]
+    fn collect_component_top_level_symbol_names_excludes_nested_scopes() {
+        let mut sem = ComponentSemantics::new();
+        let root = sem.root_scope_id();
+        let module = sem.add_scope(root, ScopeFlags::Top | ScopeFlags::Function);
+        sem.set_module_scope_id(module);
+
+        sem.add_binding(
+            root,
+            "instance_top",
+            Span::default(),
+            SymbolFlags::empty(),
+            OxcNodeId::DUMMY,
+            SymbolOwner::InstanceScript,
+        );
+        sem.add_binding(
+            module,
+            "module_top",
+            Span::default(),
+            SymbolFlags::empty(),
+            OxcNodeId::DUMMY,
+            SymbolOwner::ModuleScript,
+        );
+        let nested = sem.add_child_scope(root);
+        sem.add_binding(
+            nested,
+            "nested_local",
+            Span::default(),
+            SymbolFlags::empty(),
+            OxcNodeId::DUMMY,
+            SymbolOwner::InstanceScript,
+        );
+
+        let names = sem.collect_component_top_level_symbol_names();
+
+        assert!(names.contains("instance_top"));
+        assert!(names.contains("module_top"));
+        assert!(!names.contains("nested_local"));
     }
 }

@@ -124,6 +124,7 @@ pub struct OutputPlanData {
     pub dynamic_nodes: NodeBitSet,
     pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
+    pub component_name: String,
     pub custom_element: bool,
     pub runtime_plan: RuntimePlan,
     pub ignore_data: IgnoreData,
@@ -137,6 +138,7 @@ impl OutputPlanData {
             dynamic_nodes: NodeBitSet::new(node_count),
             alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
+            component_name: String::new(),
             custom_element: false,
             runtime_plan: RuntimePlan::default(),
             ignore_data: IgnoreData::new(),
@@ -192,6 +194,9 @@ impl AnalysisData {
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.output.dynamic_nodes.contains(&id)
+    }
+    pub fn component_name(&self) -> &str {
+        &self.output.component_name
     }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool {
         self.output.alt_is_elseif.contains(&id)
