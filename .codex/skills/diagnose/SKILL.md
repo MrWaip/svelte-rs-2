@@ -38,6 +38,8 @@ Every run must end with:
 - Do not hand-edit generated `case-svelte.js` or `case-rust.js`.
 - Do not use this skill for diagnostic parity against npm `svelte/compiler`; use `diagnose-diagnostics` instead.
 - Prefer the smallest focused persistent test over keeping one giant repro.
+- When this skill creates a new compiler test case that is expected to fail until follow-up implementation, register it as `#[ignore = "diagnose: pending fix"]` so the default suite stays green.
+- The follow-up `/port` or fix session that implements the behavior must remove that `#[ignore]`.
 - Do not choose a spec arbitrarily when ownership is ambiguous.
 
 ## Workflow
@@ -96,9 +98,19 @@ Decision rule:
 If an e2e compiler test is needed:
 
 1. add minimal `tasks/compiler_tests/cases2/<name>/case.svelte`
-2. add the matching entry in `tasks/compiler_tests/test_v3.rs`
+2. add the matching ignored entry in `tasks/compiler_tests/test_v3.rs`
 3. run `just generate`
 4. review generated `case-svelte.js`
+
+Register new diagnosis-owned cases like this:
+
+```rust
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn <name>() {
+    assert_compiler("<name>");
+}
+```
 
 Before implementation follow-up, treat `case-svelte.js` as the reference artifact. Do not rely on pre-fix `case-rust.js` as anything more than evidence of failure.
 

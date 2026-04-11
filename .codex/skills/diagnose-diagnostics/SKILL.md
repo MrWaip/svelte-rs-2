@@ -37,6 +37,8 @@ Every run must end with:
 - `case-rust.json` is for human comparison only; never treat it as the oracle.
 - Prefer the smallest focused diagnostic repro over broad output fixtures.
 - Do not add diagnostic-parity cases under `tasks/compiler_tests/`.
+- When this skill creates a new diagnostic parity case that is expected to fail until follow-up implementation, register it as `#[ignore = "diagnose-diagnostics: pending fix"]` so the default suite stays green.
+- The follow-up `/port` or fix session that implements the behavior must remove that `#[ignore]`.
 - Do not choose a spec arbitrarily when ownership is ambiguous.
 
 ## Workflow
@@ -91,11 +93,21 @@ Default test mapping:
 If a diagnostic parity test is needed:
 
 1. add minimal `tasks/diagnostic_tests/cases/<name>/case.svelte`
-2. add the matching entry in `tasks/diagnostic_tests/test_diagnostics.rs`
+2. add the matching ignored entry in `tasks/diagnostic_tests/test_diagnostics.rs`
 3. run `just generate`
 4. review generated `case-svelte.json`
 5. run `just test-diagnostic-case <name>`
 6. review generated `case-rust.json`
+
+Register new diagnosis-owned cases like this:
+
+```rust
+#[rstest]
+#[ignore = "diagnose-diagnostics: pending fix"]
+fn <name>() {
+    assert_diagnostics("<name>");
+}
+```
 
 Before implementation follow-up, treat `case-svelte.json` as the reference artifact.
 
