@@ -1436,53 +1436,39 @@ mod special {
     );
     diagnostic_case!(
         svelte_window_illegal_attribute_class,
-        "special/svelte_window_illegal_attribute_class",
-        ignore =
-            "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window>"
+        "special/svelte_window_illegal_attribute_class"
     );
     diagnostic_case!(
         svelte_window_illegal_attribute_spread,
-        "special/svelte_window_illegal_attribute_spread",
-        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window> spread"
+        "special/svelte_window_illegal_attribute_spread"
     );
     diagnostic_case!(
         svelte_document_illegal_attribute_class,
-        "special/svelte_document_illegal_attribute_class",
-        ignore =
-            "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document>"
+        "special/svelte_document_illegal_attribute_class"
     );
     diagnostic_case!(
         svelte_document_illegal_attribute_spread,
-        "special/svelte_document_illegal_attribute_spread",
-        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document> spread"
+        "special/svelte_document_illegal_attribute_spread"
     );
     diagnostic_case!(
         svelte_body_illegal_attribute_class,
-        "special/svelte_body_illegal_attribute_class",
-        ignore = "known mismatch: analyzer is missing svelte_body_illegal_attribute"
+        "special/svelte_body_illegal_attribute_class"
     );
     diagnostic_case!(
         svelte_body_illegal_attribute_spread,
-        "special/svelte_body_illegal_attribute_spread",
-        ignore = "known mismatch: analyzer is missing svelte_body_illegal_attribute for spread"
+        "special/svelte_body_illegal_attribute_spread"
     );
     diagnostic_case!(
         svelte_window_invalid_content,
-        "special/svelte_window_invalid_content",
-        ignore =
-            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:window>"
+        "special/svelte_window_invalid_content"
     );
     diagnostic_case!(
         svelte_document_invalid_content,
-        "special/svelte_document_invalid_content",
-        ignore =
-            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:document>"
+        "special/svelte_document_invalid_content"
     );
     diagnostic_case!(
         svelte_body_invalid_content,
-        "special/svelte_body_invalid_content",
-        ignore =
-            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:body>"
+        "special/svelte_body_invalid_content"
     );
     diagnostic_case!(
         title_illegal_attribute,

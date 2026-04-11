@@ -6,7 +6,7 @@ use svelte_ast::{
     UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
-use svelte_span::Span;
+use svelte_span::{GetSpan, Span};
 
 use crate::scanner::token;
 use crate::Parser;
@@ -43,6 +43,8 @@ impl<'a> Parser<'a> {
         let mut seen: FxHashSet<(&str, &str)> = FxHashSet::default();
 
         for attr in token_attrs {
+            let attr_id = self.reserve_id();
+            let attr_span = attr.span();
             match attr {
                 token::Attribute::HTMLAttribute(html_attr) => {
                     // Extract name once; &'a str tied to the source lifetime, no allocation yet.
@@ -91,7 +93,8 @@ impl<'a> Parser<'a> {
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
                             Attribute::StringAttribute(StringAttribute {
-                                id: self.reserve_id(),
+                                id: attr_id,
+                                span: attr_span,
                                 name: name.to_string(),
                                 value_span: *span,
                             })
@@ -100,7 +103,8 @@ impl<'a> Parser<'a> {
                             let name = name.to_string();
                             let event_name = name.strip_prefix("on").map(|s| s.to_string());
                             Attribute::ExpressionAttribute(ExpressionAttribute {
-                                id: self.reserve_id(),
+                                id: attr_id,
+                                span: attr_span,
                                 name,
                                 expression_span: expr_tag.expression_span,
                                 shorthand: false,
@@ -110,7 +114,8 @@ impl<'a> Parser<'a> {
                         token::AttributeValue::Concatenation(concat) => {
                             let parts = self.convert_concat_parts(&concat.parts);
                             Attribute::ConcatenationAttribute(ConcatenationAttribute {
-                                id: self.reserve_id(),
+                                id: attr_id,
+                                span: attr_span,
                                 name: name.to_string(),
                                 quoted: matches!(
                                     self.source.as_bytes().get(concat.span.start as usize),
@@ -121,7 +126,8 @@ impl<'a> Parser<'a> {
                         }
                         token::AttributeValue::Empty => {
                             Attribute::BooleanAttribute(BooleanAttribute {
-                                id: self.reserve_id(),
+                                id: attr_id,
+                                span: attr_span,
                                 name: name.to_string(),
                             })
                         }
@@ -136,7 +142,8 @@ impl<'a> Parser<'a> {
                     {
                         // Skip the "..." prefix so expression_span covers only the spread expression
                         attributes.push(Attribute::SpreadAttribute(SpreadAttribute {
-                            id: self.reserve_id(),
+                            id: attr_id,
+                            span: attr_span,
                             expression_span: svelte_span::Span::new(
                                 expr_tag.expression_span.start + 3,
                                 expr_tag.expression_span.end,
@@ -144,7 +151,8 @@ impl<'a> Parser<'a> {
                         }));
                     } else {
                         attributes.push(Attribute::Shorthand(Shorthand {
-                            id: self.reserve_id(),
+                            id: attr_id,
+                            span: attr_span,
                             expression_span: expr_tag.expression_span,
                         }));
                     }
@@ -164,7 +172,8 @@ impl<'a> Parser<'a> {
                         Some(cd.expression_span)
                     };
                     attributes.push(Attribute::ClassDirective(ClassDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: cd_name.to_string(),
                         expression_span,
                         shorthand: cd.shorthand,
@@ -204,7 +213,8 @@ impl<'a> Parser<'a> {
                         }
                     };
                     attributes.push(Attribute::StyleDirective(StyleDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: sd_name.to_string(),
                         value,
                         important: sd.important,
@@ -226,7 +236,8 @@ impl<'a> Parser<'a> {
                         Some(bd.expression_span)
                     };
                     attributes.push(Attribute::BindDirective(BindDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: bd_name.to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
@@ -239,7 +250,8 @@ impl<'a> Parser<'a> {
                         Some(ud.expression_span)
                     };
                     attributes.push(Attribute::UseDirective(UseDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: ud.name_span,
                         expression_span,
                     }));
@@ -252,7 +264,8 @@ impl<'a> Parser<'a> {
                         None
                     };
                     attributes.push(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: od.name_span.source_text(self.source).to_string(),
                         name_span: od.name_span,
                         expression_span,
@@ -275,7 +288,8 @@ impl<'a> Parser<'a> {
                         _ => TransitionDirection::Both,
                     };
                     attributes.push(Attribute::TransitionDirective(TransitionDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: td.name_span,
                         expression_span,
                         modifiers: td
@@ -293,14 +307,16 @@ impl<'a> Parser<'a> {
                         None
                     };
                     attributes.push(Attribute::AnimateDirective(AnimateDirective {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         name: ad.name_span,
                         expression_span,
                     }));
                 }
                 token::Attribute::AttachTag(at) => {
                     attributes.push(Attribute::AttachTag(svelte_ast::AttachTag {
-                        id: self.reserve_id(),
+                        id: attr_id,
+                        span: attr_span,
                         expression_span: at.expression_span,
                     }));
                 }

@@ -1,3 +1,4 @@
+use svelte_span::GetSpan;
 pub use svelte_span::Span;
 
 const VOID_ELEMENTS: &[&str] = &[
@@ -686,6 +687,10 @@ macro_rules! impl_attr_enum {
             pub fn id(&self) -> NodeId {
                 match self { $( Attribute::$Variant(a) => a.id, )+ }
             }
+
+            pub fn span(&self) -> Span {
+                match self { $( Attribute::$Variant(a) => a.span, )+ }
+            }
         }
     };
 }
@@ -760,9 +765,16 @@ impl Attribute {
     }
 }
 
+impl GetSpan for Attribute {
+    fn span(&self) -> Span {
+        self.span()
+    }
+}
+
 #[derive(Clone)]
 pub struct StringAttribute {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     pub value_span: Span,
 }
@@ -770,6 +782,7 @@ pub struct StringAttribute {
 #[derive(Clone)]
 pub struct ExpressionAttribute {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     /// Span of just the JS expression.
     pub expression_span: Span,
@@ -781,12 +794,14 @@ pub struct ExpressionAttribute {
 #[derive(Clone)]
 pub struct BooleanAttribute {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
 }
 
 #[derive(Clone)]
 pub struct ConcatenationAttribute {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     /// `true` when the source used quotes (`foo="a{b}"`), `false` for unquoted forms (`foo=a{b}`).
     pub quoted: bool,
@@ -805,6 +820,7 @@ pub enum ConcatPart {
 #[derive(Clone)]
 pub struct Shorthand {
     pub id: NodeId,
+    pub span: Span,
     pub expression_span: Span,
 }
 
@@ -812,12 +828,14 @@ pub struct Shorthand {
 #[derive(Clone)]
 pub struct SpreadAttribute {
     pub id: NodeId,
+    pub span: Span,
     pub expression_span: Span,
 }
 
 #[derive(Clone)]
 pub struct ClassDirective {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     /// Span of the JS expression. None means shorthand (class:name).
     pub expression_span: Option<Span>,
@@ -827,6 +845,7 @@ pub struct ClassDirective {
 #[derive(Clone)]
 pub struct StyleDirective {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     pub value: StyleDirectiveValue,
     pub important: bool,
@@ -847,6 +866,7 @@ pub enum StyleDirectiveValue {
 #[derive(Clone)]
 pub struct BindDirective {
     pub id: NodeId,
+    pub span: Span,
     pub name: String,
     /// Span of the JS expression. None means shorthand (bind:name).
     pub expression_span: Option<Span>,
@@ -857,6 +877,7 @@ pub struct BindDirective {
 #[derive(Clone)]
 pub struct UseDirective {
     pub id: NodeId,
+    pub span: Span,
     /// Directive name span (e.g., "tooltip" in `use:tooltip`, "a.b" in `use:a.b`).
     pub name: Span,
     /// Span of the argument expression. None if no expression (`use:name`).
@@ -867,6 +888,7 @@ pub struct UseDirective {
 #[derive(Clone)]
 pub struct OnDirectiveLegacy {
     pub id: NodeId,
+    pub span: Span,
     /// Event name (e.g., "click" in `on:click`).
     pub name: String,
     /// Span of the event name in source (e.g., "click" span in `on:click`).
@@ -956,6 +978,7 @@ pub enum TransitionDirection {
 #[derive(Clone)]
 pub struct TransitionDirective {
     pub id: NodeId,
+    pub span: Span,
     /// Transition function name span (e.g., "fade", "fly", "custom.fn").
     pub name: Span,
     /// Span of the argument expression. None if no expression.
@@ -970,6 +993,7 @@ pub struct TransitionDirective {
 #[derive(Clone)]
 pub struct AnimateDirective {
     pub id: NodeId,
+    pub span: Span,
     /// Directive name span (e.g., "flip" in `animate:flip`, "custom.fn" in `animate:custom.fn`).
     pub name: Span,
     /// Span of the argument expression. None if no expression (`animate:name`).
@@ -981,6 +1005,7 @@ pub struct AnimateDirective {
 #[derive(Clone)]
 pub struct AttachTag {
     pub id: NodeId,
+    pub span: Span,
     /// Span of the JS expression inside `{@attach expr}`.
     pub expression_span: Span,
 }

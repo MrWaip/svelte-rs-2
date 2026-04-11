@@ -158,6 +158,43 @@ fn component_colon_attribute_parses_as_plain_attribute() {
 }
 
 #[test]
+fn element_attribute_spans_are_preserved_in_ast() {
+    let c = parse(r#"<div class="x" {...props} on:click|once={handler} use:act={setup}></div>"#);
+    let Node::Element(element) = node_at(&c, 0) else {
+        panic!("expected Element");
+    };
+
+    let spans: Vec<_> = element
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+
+    assert_eq!(
+        spans,
+        vec![
+            r#"class="x""#,
+            "{...props}",
+            "on:click|once={handler}",
+            "use:act={setup}",
+        ]
+    );
+}
+
+#[test]
+fn attach_attribute_span_is_preserved_in_ast() {
+    let c = parse(r#"<svelte:document {@attach track} />"#);
+    let Node::SvelteDocument(document) = node_at(&c, 0) else {
+        panic!("expected SvelteDocument");
+    };
+    let Some(attr) = document.attributes.first() else {
+        panic!("expected attach attribute");
+    };
+
+    assert_eq!(c.source_text(attr.span()), "{@attach track}");
+}
+
+#[test]
 fn component_name_with_underscore_self_closing_parses() {
     let c = parse("<Derived_1 />");
     let Node::ComponentNode(component) = node_at(&c, 0) else {
@@ -881,7 +918,6 @@ fn svelte_head_invalid_placement_inside_block_reports_diagnostic() {
 }
 
 #[test]
-#[ignore = "missing: duplicate root-only special-element validation (parser)"]
 fn svelte_special_elements_duplicate_report_diagnostic() {
     for name in ["window", "document", "body"] {
         let source = format!("<svelte:{name}></svelte:{name}><svelte:{name}></svelte:{name}>");
@@ -896,7 +932,6 @@ fn svelte_special_elements_duplicate_report_diagnostic() {
 }
 
 #[test]
-#[ignore = "missing: root-only special-element placement validation (parser)"]
 fn svelte_special_elements_invalid_placement_inside_block_report_diagnostic() {
     for name in ["window", "document", "body"] {
         let source = format!("{{#if ok}}<svelte:{name}></svelte:{name}>{{/if}}");
@@ -1114,6 +1149,64 @@ fn await_catch_before_then_no_panic() {
             .any(|d| d.kind.code() == "block_duplicate_clause"),
         "unexpected block_duplicate_clause for out-of-order catch/then: {diags:?}"
     );
+}
+
+#[test]
+fn special_elements_invalid_placement_inside_await_branches_report_diagnostic() {
+    let source = "{#await promise}<svelte:window></svelte:window>{:then value}<svelte:document></svelte:document>{:catch error}<svelte:body></svelte:body>{/await}";
+    let (_, diags) = parse_with_diagnostics(source);
+
+    for name in ["svelte:window", "svelte:document", "svelte:body"] {
+        assert!(
+            diags.iter().any(|d| {
+                matches!(
+                    &d.kind,
+                    svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
+                        name: actual_name
+                    } if actual_name == name
+                )
+            }),
+            "expected svelte_meta_invalid_placement for {name}, got {diags:?}"
+        );
+    }
+}
+
+#[test]
+fn await_branches_convert_svelte_element_and_boundary() {
+    let c = parse(
+        "{#await promise}<svelte:element this={tag} />{:then value}<svelte:boundary><p /></svelte:boundary>{:catch error}<div />{/await}",
+    );
+    let Node::AwaitBlock(block) = node_at(&c, 0) else {
+        panic!("expected AwaitBlock");
+    };
+
+    let pending = block.pending.as_ref().expect("expected pending fragment");
+    let then = block.then.as_ref().expect("expected then fragment");
+
+    assert!(matches!(
+        frag_node_at(&c, pending, 0),
+        Node::SvelteElement(_)
+    ));
+    assert!(matches!(frag_node_at(&c, then, 0), Node::SvelteBoundary(_)));
+}
+
+#[test]
+fn converted_special_nodes_still_recurse_for_nested_special_elements() {
+    let c = parse(
+        "<svelte:window><svelte:element this={tag} /><svelte:boundary><p /></svelte:boundary></svelte:window>",
+    );
+    let Node::SvelteWindow(window) = node_at(&c, 0) else {
+        panic!("expected SvelteWindow");
+    };
+
+    assert!(matches!(
+        frag_node_at(&c, &window.fragment, 0),
+        Node::SvelteElement(_)
+    ));
+    assert!(matches!(
+        frag_node_at(&c, &window.fragment, 1),
+        Node::SvelteBoundary(_)
+    ));
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use svelte_span::Span;
 
 use super::*;
 
@@ -2835,6 +2836,38 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
 
     assert!(rendered.contains("\n\thello\n\t"));
     assert!(data.script.preserve_whitespace);
+}
+
+#[test]
+fn special_element_invalid_content_uses_child_bounds() {
+    let (_component, _data, diags) =
+        analyze_source_with_diags("<svelte:window>child</svelte:window>");
+
+    assert_eq!(diags.len(), 1, "unexpected diagnostics: {diags:?}");
+    assert_eq!(diags[0].kind.code(), "svelte_meta_invalid_content");
+    assert_eq!(diags[0].span, Span::new(15, 20));
+}
+
+#[test]
+fn special_elements_allow_document_attach_and_body_use() {
+    let source = r#"<script>
+function track(node) { return () => {}; }
+function act(node) {}
+</script>
+<svelte:document {@attach track} />
+<svelte:body use:act />"#;
+    let (_component, _data, diags) = analyze_source_with_diags(source);
+
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn special_element_illegal_attribute_uses_full_attr_span() {
+    let (_component, _data, diags) = analyze_source_with_diags(r#"<svelte:document class="x" />"#);
+
+    assert_eq!(diags.len(), 1, "unexpected diagnostics: {diags:?}");
+    assert_eq!(diags[0].kind.code(), "illegal_element_attribute");
+    assert_eq!(diags[0].span, Span::new(17, 26));
 }
 
 // -----------------------------------------------------------------------

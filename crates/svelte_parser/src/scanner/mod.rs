@@ -415,21 +415,18 @@ impl<'a> Scanner<'a> {
         let mut attributes: Vec<Attribute> = vec![];
 
         loop {
+            self.skip_whitespace();
+
             let peeked = self.peek();
-
-            if peeked.is_none() {
+            let Some(ch) = peeked else {
                 break;
-            }
-
-            let ch = peeked.unwrap();
+            };
 
             if ch == '/' || ch == '>' {
                 break;
             }
 
-            self.skip_whitespace();
-
-            let peeked = self.peek();
+            let attr_start = self.current;
 
             let attr_result = if peeked == Some('{') {
                 if self.source[self.current..].starts_with("{@attach") {
@@ -471,7 +468,7 @@ impl<'a> Scanner<'a> {
             };
 
             match attr_result {
-                Ok(attr) => attributes.push(attr),
+                Ok(attr) => attributes.push(attr.with_span(self.span(attr_start, self.current))),
                 Err(d) => {
                     self.recover(d);
                     break;
@@ -491,7 +488,11 @@ impl<'a> Scanner<'a> {
             value = self.attribute_value()?;
         }
 
-        Ok(Attribute::HTMLAttribute(HTMLAttribute { name_span, value }))
+        Ok(Attribute::HTMLAttribute(HTMLAttribute {
+            span: SPAN,
+            name_span,
+            value,
+        }))
     }
 
     fn class_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
@@ -499,6 +500,7 @@ impl<'a> Scanner<'a> {
             let res = self.expression_tag()?;
 
             return Ok(Attribute::ClassDirective(ClassDirective {
+                span: SPAN,
                 expression_span: res.expression_span,
                 name_span,
                 shorthand: false,
@@ -506,6 +508,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::ClassDirective(ClassDirective {
+            span: SPAN,
             name_span,
             expression_span: name_span,
             shorthand: true,
@@ -537,6 +540,7 @@ impl<'a> Scanner<'a> {
             let value = self.attribute_value()?;
 
             return Ok(Attribute::StyleDirective(StyleDirective {
+                span: SPAN,
                 value,
                 name_span,
                 shorthand: false,
@@ -545,6 +549,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::StyleDirective(StyleDirective {
+            span: SPAN,
             name_span,
             value: AttributeValue::Empty,
             shorthand: true,
@@ -557,6 +562,7 @@ impl<'a> Scanner<'a> {
             let res = self.expression_tag()?;
 
             return Ok(Attribute::BindDirective(BindDirective {
+                span: SPAN,
                 expression_span: res.expression_span,
                 name_span,
                 shorthand: false,
@@ -564,6 +570,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::BindDirective(BindDirective {
+            span: SPAN,
             name_span,
             expression_span: name_span,
             shorthand: true,
@@ -589,6 +596,7 @@ impl<'a> Scanner<'a> {
             let res = self.expression_tag()?;
 
             return Ok(Attribute::UseDirective(UseDirective {
+                span: SPAN,
                 expression_span: res.expression_span,
                 name_span,
                 shorthand: false,
@@ -596,6 +604,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::UseDirective(UseDirective {
+            span: SPAN,
             name_span,
             expression_span: name_span,
             shorthand: true,
@@ -616,6 +625,7 @@ impl<'a> Scanner<'a> {
         if self.match_char('=') {
             let res = self.expression_tag()?;
             return Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+                span: SPAN,
                 name_span,
                 expression_span: res.expression_span,
                 modifiers,
@@ -625,6 +635,7 @@ impl<'a> Scanner<'a> {
 
         // No expression — bubble event
         Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+            span: SPAN,
             name_span,
             expression_span: SPAN,
             modifiers,
@@ -660,6 +671,7 @@ impl<'a> Scanner<'a> {
         if self.match_char('=') {
             let res = self.expression_tag()?;
             return Ok(Attribute::TransitionDirective(TransitionDirective {
+                span: SPAN,
                 name_span,
                 expression_span: res.expression_span,
                 modifiers,
@@ -669,6 +681,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::TransitionDirective(TransitionDirective {
+            span: SPAN,
             name_span,
             expression_span: SPAN,
             modifiers,
@@ -691,6 +704,7 @@ impl<'a> Scanner<'a> {
         if self.match_char('=') {
             let res = self.expression_tag()?;
             return Ok(Attribute::AnimateDirective(AnimateDirective {
+                span: SPAN,
                 name_span,
                 expression_span: res.expression_span,
                 has_expression: true,
@@ -698,6 +712,7 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::AnimateDirective(AnimateDirective {
+            span: SPAN,
             name_span,
             expression_span: SPAN,
             has_expression: false,
@@ -716,7 +731,10 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
         let expression_span = self.collect_js_expression()?;
 
-        Ok(AttachTagToken { expression_span })
+        Ok(AttachTagToken {
+            span: SPAN,
+            expression_span,
+        })
     }
 
     fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {

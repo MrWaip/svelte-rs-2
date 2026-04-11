@@ -1,4 +1,5 @@
 use svelte_diagnostics::DiagnosticKind;
+use svelte_span::GetSpan;
 
 use super::*;
 
@@ -138,6 +139,33 @@ fn start_tag_attributes() {
     );
 
     assert!(tokens[1].token_type == TokenType::EOF);
+}
+
+#[test]
+fn attribute_tokens_capture_full_source_spans() {
+    let source = "<div class='x' {...props} on:click|once={handler} style:color|important {@attach attach} />";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+
+    let spans: Vec<_> = start_tag
+        .attributes
+        .iter()
+        .map(|attr| attr.span().source_text(source))
+        .collect();
+
+    assert_eq!(
+        spans,
+        vec![
+            "class='x'",
+            "{...props}",
+            "on:click|once={handler}",
+            "style:color|important",
+            "{@attach attach}",
+        ]
+    );
 }
 
 #[test]

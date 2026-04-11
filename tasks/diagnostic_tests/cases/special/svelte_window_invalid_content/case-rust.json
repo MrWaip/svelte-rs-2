@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "error",
+    "code": "svelte_meta_invalid_content",
+    "start": 15,
+    "end": 20
+  }
+]

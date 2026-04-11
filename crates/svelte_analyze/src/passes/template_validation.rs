@@ -15,9 +15,9 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
-    TransitionDirection, TransitionDirective, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
-    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
+    SvelteElement, SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective,
+    SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
@@ -672,6 +672,32 @@ impl TemplateValidationVisitor {
             ));
         }
     }
+
+    fn visit_special_element(
+        &mut self,
+        kind: SpecialElementKind,
+        attributes: &[Attribute],
+        fragment: &Fragment,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        if let Some(span) = fragment_content_span(fragment, ctx) {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteMetaInvalidContent {
+                    name: kind.element_name().to_string(),
+                },
+                span,
+            ));
+        }
+
+        for attr in attributes {
+            if kind.allows_attribute(attr) {
+                continue;
+            }
+
+            ctx.warnings_mut()
+                .push(Diagnostic::error(kind.illegal_attr_kind(), attr.span()));
+        }
+    }
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
@@ -862,6 +888,33 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.element_event_state.push(ElementEventState::default());
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
+    }
+
+    fn visit_svelte_window(&mut self, window: &SvelteWindow, ctx: &mut VisitContext<'_>) {
+        self.visit_special_element(
+            SpecialElementKind::Window,
+            &window.attributes,
+            &window.fragment,
+            ctx,
+        );
+    }
+
+    fn visit_svelte_document(&mut self, document: &SvelteDocument, ctx: &mut VisitContext<'_>) {
+        self.visit_special_element(
+            SpecialElementKind::Document,
+            &document.attributes,
+            &document.fragment,
+            ctx,
+        );
+    }
+
+    fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_>) {
+        self.visit_special_element(
+            SpecialElementKind::Body,
+            &body.attributes,
+            &body.fragment,
+            ctx,
+        );
     }
 
     fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
@@ -1750,6 +1803,54 @@ fn attr_value_span(attr: &Attribute) -> Span {
         Attribute::AnimateDirective(attr) => attr.expression_span.unwrap_or(attr.name),
         Attribute::AttachTag(attr) => attr.expression_span,
     }
+}
+
+#[derive(Clone, Copy)]
+enum SpecialElementKind {
+    Window,
+    Document,
+    Body,
+}
+
+impl SpecialElementKind {
+    fn element_name(self) -> &'static str {
+        match self {
+            Self::Window => SVELTE_WINDOW,
+            Self::Document => SVELTE_DOCUMENT,
+            Self::Body => SVELTE_BODY,
+        }
+    }
+
+    fn illegal_attr_kind(self) -> DiagnosticKind {
+        match self {
+            Self::Window | Self::Document => DiagnosticKind::IllegalElementAttribute {
+                name: self.element_name().to_string(),
+            },
+            Self::Body => DiagnosticKind::SvelteBodyIllegalAttribute,
+        }
+    }
+
+    fn allows_attribute(self, attr: &Attribute) -> bool {
+        match attr {
+            Attribute::ExpressionAttribute(attr) => attr.event_name.is_some(),
+            Attribute::OnDirectiveLegacy(_) => true,
+            Attribute::BindDirective(_) => matches!(self, Self::Window | Self::Document),
+            Attribute::UseDirective(_) => matches!(self, Self::Body),
+            Attribute::AttachTag(_) => matches!(self, Self::Document),
+            _ => false,
+        }
+    }
+}
+
+fn fragment_content_span(fragment: &Fragment, ctx: &VisitContext<'_>) -> Option<Span> {
+    let first = fragment.nodes.first()?;
+    let last = fragment.nodes.last()?;
+    Some(
+        ctx.store
+            .get(*first)
+            .span()
+            .merge(&ctx.store.get(*last).span()),
+    )
 }
 
 fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
