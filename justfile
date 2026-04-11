@@ -62,8 +62,16 @@ napi-build-release:
 napi-prepare-platform:
     npm run --prefix packages/svelte-rs2 prepare-platform-package
 
-# Build release addon and copy it into the current-platform npm package
+# Copy current-platform debug addon into the local main npm package
+napi-prepare-local-main:
+    node packages/svelte-rs2/scripts/prepare-local-main-package.mjs
+
+# Build both local-development binaries:
+# - debug addon into packages/svelte-rs2/compiler/native for file: main package usage
+# - release addon into the current-platform npm package for platform override usage
 napi-local-platform:
+    just napi-build
+    just napi-prepare-local-main
     just napi-build-release
     just napi-prepare-platform
 
