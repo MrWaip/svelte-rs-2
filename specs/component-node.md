@@ -1,14 +1,12 @@
 # ComponentNode
 
 ## Current state
-- **Working**: 15/15 component-tag use cases
-- **Current slice:** root-aware dotted dynamic component refs
-- **Completed slice:** root-aware dotted dynamic component refs
-- **Done in this slice:** analyze now retains the resolved component root symbol for any bound component tag, and client codegen rebuilds dotted dynamic refs from `TemplateBindingReadKind`, so roots like `<registry.Widget />` lower through the same `Identifier` / `ThunkCall` / `$.get` / `$.safe_get` / `$$props` semantics as ordinary template reads
-- **Why this slice came next:** post-implementation review found one remaining codegen gap: dotted dynamic component refs still bypassed template binding read semantics for their root binding, so props-backed roots like `<registry.Widget />` lowered as plain `registry.Widget` instead of `$$props.registry.Widget`
-- **Repro:** `just test-case component_dynamic_dotted_props_root`
-- **Next:** `component-node` use cases are fully covered again; if future reference gaps are found, record them as new unchecked use cases before resuming
-- **Verification:** `just generate`, `just test-case component_dynamic_dotted_props_root`, `just test-case component_dynamic_dotted`, `just test-case component_dynamic_props_access`, `just test-case component_local_underscored_bind_this`, `just test-analyzer`, and `just test-compiler` passed on 2026-04-11
+- **Working**: 15/16 component-tag use cases
+- **Current slice:** diagnose follow-up for component `onclick` callback props that mutate `$state`
+- **Done this session:** added ignored parity repro `diagnose_component_onclick_state`; Rust currently memoizes inline `onclick={() => count++}` into a derived getter on component props, while reference output keeps the inline callback expression directly in props
+- **Repro:** `just test-case-verbose diagnose_component_onclick_state`
+- **Next:** decide whether callback-prop memoization ownership belongs to analyze classification (`has_call`) or component prop emission in client codegen, then port a fix and unignore the diagnosis case
+- **Verification:** `just generate` passed; `just test-case-verbose diagnose_component_onclick_state` fails with JS mismatch on 2026-04-11 (expected for diagnosis tracking)
 - Last updated: 2026-04-11
 
 ## Source
@@ -40,6 +38,7 @@
 - [x] Default children lower to `children` prop plus `$$slots.default` (tests: `component_children`, `component_element_children`)
 - [x] Snippet children and snippet props lower correctly (tests: `component_snippet_prop`, `component_snippet_with_children`, `component_multiple_snippets`, `component_snippet_only`)
 - [x] Complex expression props memoize when needed (tests: `component_prop_has_call`, `component_prop_has_call_multi`, `component_prop_has_call_mixed`, `component_prop_memo_state`)
+- [ ] Inline callback component props that mutate `$state` (for example `onclick={() => count++}`) should stay as direct callback expressions instead of being memoized through derived getter wrappers (test: `diagnose_component_onclick_state`)
 - [x] `on:` directives on components serialize into `$$events`, including dev-mode shared-handler wrapping parity (tests: `component_events`, `component_events_dev_apply`)
 - [x] Child nodes with `slot="name"` serialize into named `$$slots.<name>` instead of default children (tests: `component_named_slot`)
 - [x] Runes-mode dotted or stateful component references lower through `$.component(...)`, including dotted roots whose first segment is a lowercase JS identifier containing `_` or `$` and dynamic refs read from `$$props` (tests: `component_dynamic_dotted`, `component_dynamic_dotted_identifier_root`, `component_dynamic_props_access`)
@@ -86,5 +85,6 @@
 - [x] `component_dynamic_props_access`
 - [x] `component_dynamic_dotted_props_root`
 - [x] `component_local_underscored_bind_this`
+- [ ] `diagnose_component_onclick_state`
 - [x] analyzer unit tests: component invalid directive, component `on:` modifier validation, component illegal colon warning, component unquoted attribute sequence
 - [x] analyzer unit tests: duplicate named slot, explicit default-slot conflict, distinct named slots, whitespace-only default-slot false-positive guard
