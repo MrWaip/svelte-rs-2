@@ -1,4 +1,4 @@
 interface:
   display_name: "Diagnose"
-  short_description: "Diagnose a component through the pipeline"
-  default_prompt: "Use $diagnose to compile this component, classify the mismatches by layer, and turn them into focused tests."
+  short_description: "Diagnose repros into durable follow-up work"
+  default_prompt: "Use $diagnose to analyze this repro, isolate the root cause, add focused tests, and record the next spec-owned step."

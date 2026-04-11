@@ -85,7 +85,7 @@
 
 ## Source
 
-User request: pause feature work and research a comprehensive `svelte_analyze` query/index refactor so new `$port2` slices stop creating local infrastructure and pass-local workarounds.
+User request: pause feature work and research a comprehensive `svelte_analyze` query/index refactor so new `$port` slices stop creating local infrastructure and pass-local workarounds.
 
 ## Syntax variants
 

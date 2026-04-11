@@ -1,6 +1,6 @@
 ---
 name: spec-template
-description: MUST consult when creating or updating spec files in specs/. Contains the canonical spec structure, naming rules, scope rules, and effort markers. Use this skill whenever /port or /audit creates a new spec, or when updating an existing spec's structure.
+description: MUST consult when creating or updating spec files in specs/. Contains the canonical spec structure, naming rules, scope rules, and effort markers. Use this skill whenever /audit creates a new spec, or when updating an existing spec's structure.
 paths:
   - "specs/*.md"
 ---
@@ -81,7 +81,7 @@ Sections in fixed order. Most important first.
 - `Test cases` subsections — always flat checklist
 
 ## Lifecycle
-1. Created by `/port` step 3 or `/audit` step 3
+1. Created by `/audit` when a feature needs a tracked spec; `/port` resumes from an existing spec
 2. Updated after each session — Current state section
 3. Complete when all use cases `[x]` → move feature to ROADMAP Done
 4. Never deleted — remains as reference

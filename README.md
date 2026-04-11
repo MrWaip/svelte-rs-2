@@ -27,7 +27,7 @@ See [ROADMAP.md](./ROADMAP.md) for the full feature checklist.
 
 ### Портирование фичи
 1. `/audit <feature>` — gap-анализ, создание spec + тестов
-2. `/port specs/<file>.md` — реализация по спеке
+2. `/port specs/<file>.md` — реализация следующего slice по spec
 3. `/qa` — проверка quality guidelines
 4. `/sync-docs` — синхронизация ROADMAP/CODEBASE_MAP
 
@@ -41,7 +41,7 @@ See [ROADMAP.md](./ROADMAP.md) for the full feature checklist.
 2. `/qa`
 
 ### Исследование
-- `/diagnose <component>` — прогнать компонент через пайплайн, найти что сломано
+- `/diagnose <component>` — прогнать repro через пайплайн, выделить root cause, добавить focused tests и записать follow-up в spec или `ROADMAP.md`
 - `/audit <feature>` — gap-анализ vs reference compiler
 - `/explain-test <name>` — что делает тест, почему падает
 - `/bench` — Rust vs JS перформанс

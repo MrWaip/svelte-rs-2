@@ -81,5 +81,5 @@ Report:
 
 Recommended next commands:
 
-- `/port specs/<name>.md` for infrastructure work
+- `/port specs/<name>.md` for bounded follow-up implementation
 - `/fix-test <name>` for quick-fix and moderate tests

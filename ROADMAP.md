@@ -114,6 +114,10 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] `preserveComments` option
 - [ ] HMR
 
+## Unknown / Triage
+
+- [ ] Unknown or not-yet-owned repros — [spec](specs/unknown.md)
+
 ## Legacy Svelte 4
 
 - [ ] `<slot>` + `let:`

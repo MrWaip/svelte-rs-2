@@ -59,7 +59,7 @@ Section order is fixed. Most important things go at the top.
 - `Out of scope` — plain list for explicitly excluded things (SSR, removed features, future tiers)
 
 ### Lifecycle
-1. Created: `/port` step 3 or `/audit` step 3 (template: `spec-template` skill)
+1. Created: `/audit` step 3 (template: `spec-template` skill). `/port` resumes from an existing spec.
 2. Updated: after each session — Current state section (at the top!)
 3. Completed: when all Use cases are `[x]` → feature is Done in ROADMAP
 4. Not deleted — kept as reference
@@ -98,7 +98,7 @@ Match the JS output exactly. Design internals for Rust: direct recursion over si
 
 **Exception** — `svelte_analyze` uses a single-pass composite visitor (`walker.rs`). Codegen uses direct recursion.
 
-To port a new feature: `/port <feature>`. To audit existing feature completeness: `/audit <feature>`.
+To start a new feature: `/audit <feature>`. To implement the next approved slice from a spec: `/port specs/<file>.md`.
 To fix existing code problems (bugs, workarounds, missing tests): `/improve <description>`.
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
