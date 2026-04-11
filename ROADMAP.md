@@ -22,7 +22,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] Element — [spec](specs/element.md)
 - [x] `<Component>` / component — [spec](specs/component-node.md)
 - [x] `{#if}` / `{:else}` — [spec](specs/if-block.md)
-- [x] `{#each}` — [spec](specs/each-block.md)
+- [ ] `{#each}` — [spec](specs/each-block.md)
 - [x] `{#await}` — [spec](specs/await-block.md)
 - [x] `{#key}` — [spec](specs/key-block.md)
 - [x] `{#snippet}` / `{@render}` — [spec](specs/snippet-block.md)
