@@ -2,7 +2,10 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey};
+use svelte_analyze::{
+    scope::SymbolId, ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey,
+    TemplateBindingReadKind,
+};
 use svelte_ast::{Attribute, Namespace, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
@@ -405,8 +408,9 @@ pub(crate) fn gen_component<'a>(
             ("$$component", thunk)
         } else {
             let intermediate = cn_name.replace('.', "_");
-            let intermediate_ref: &str = ctx.b.alloc_str(&intermediate);
-            let component_ref = build_dotted_member_expr(ctx, &cn_name);
+            let intermediate_name = ctx.gen_ident(&intermediate);
+            let intermediate_ref: &str = ctx.b.alloc_str(&intermediate_name);
+            let component_ref = build_dynamic_component_ref(ctx, id, &cn_name);
             let thunk = ctx.b.thunk(component_ref);
             (intermediate_ref, thunk)
         };
@@ -825,18 +829,50 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
     ctx.b.call_expr("$.spread_props", args)
 }
 
-/// Build a member expression chain from a dotted name like `"registry.Widget"`.
-/// Produces `registry.Widget` as `StaticMemberExpression(Identifier("registry"), "Widget")`.
-fn build_dotted_member_expr<'a>(ctx: &Ctx<'a>, dotted_name: &str) -> Expression<'a> {
-    let mut parts = dotted_name.split('.');
-    let first = parts
-        .next()
-        .expect("dotted name must have at least one part");
-    let mut expr = ctx.b.rid_expr(first);
-    for part in parts {
-        expr = ctx.b.static_member_expr(expr, part);
+fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Expression<'a> {
+    let symbol_name = ctx.symbol_name(sym_id);
+    match ctx.query.view.scoping().template_binding_read_kind(sym_id) {
+        TemplateBindingReadKind::Identifier => ctx.b.rid_expr(symbol_name),
+        TemplateBindingReadKind::ThunkCall => ctx.b.call_expr(symbol_name, []),
+        TemplateBindingReadKind::RuneGet => ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)]),
+        TemplateBindingReadKind::RuneSafeGet => {
+            ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
+        }
+        TemplateBindingReadKind::PropsAccess => {
+            let prop_name = ctx
+                .query
+                .view
+                .scoping()
+                .prop_non_source_name(sym_id)
+                .unwrap_or_else(|| panic!("PropsAccess read kind missing prop name"));
+            ctx.b.static_member_expr(ctx.b.rid_expr("$$props"), prop_name)
+        }
     }
-    expr
+}
+
+fn build_dynamic_component_ref<'a>(
+    ctx: &Ctx<'a>,
+    component_id: NodeId,
+    component_name: &str,
+) -> Expression<'a> {
+    if let Some((root_name, _)) = component_name.split_once('.') {
+        let mut parts = component_name.split('.');
+        let _ = parts.next();
+        let mut expr = ctx
+            .component_binding_sym(component_id)
+            .map(|sym_id| build_component_binding_read_expr(ctx, sym_id))
+            .unwrap_or_else(|| ctx.b.rid_expr(root_name));
+        for part in parts {
+            expr = ctx.b.static_member_expr(expr, part);
+        }
+        return expr;
+    }
+
+    let Some(sym_id) = ctx.component_binding_sym(component_id) else {
+        return ctx.b.rid_expr(component_name);
+    };
+
+    build_component_binding_read_expr(ctx, sym_id)
 }
 
 /// Recover the slot name from an element's `slot="..."` attribute.

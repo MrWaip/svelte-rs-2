@@ -506,6 +506,9 @@ impl<'a> Ctx<'a> {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.query.view.component_props(id)
     }
+    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
+        self.query.view.component_binding_sym(id)
+    }
     pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
         self.query.view.component_css_props(id)
     }

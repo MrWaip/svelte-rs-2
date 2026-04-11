@@ -262,6 +262,9 @@ impl<'a> CodegenView<'a> {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.data.elements.flags.component_props(id)
     }
+    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
+        self.data.elements.flags.component_binding_sym(id)
+    }
     pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
         self.data.elements.flags.component_css_props(id)
     }

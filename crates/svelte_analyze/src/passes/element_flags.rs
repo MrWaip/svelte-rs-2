@@ -45,6 +45,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                 flags
             })
     }
+
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
@@ -205,8 +206,22 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         let data = &mut *ctx.data;
-        // Dotted component names and <svelte:component> are dynamic → $.component(...)
-        if cn.name.contains('.') || cn.name == SVELTE_COMPONENT {
+        let base_name = cn
+            .name
+            .split('.')
+            .next()
+            .unwrap_or_else(|| cn.name.as_str());
+        if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
+            data.elements.flags.component_binding_sym.insert(cn.id, sym_id);
+            let is_dynamic = ctx.runes && !data.scoping.is_normal_binding(sym_id);
+            if is_dynamic {
+                data.elements.flags.is_dynamic_component.insert(cn.id);
+            }
+        }
+        if ctx.runes && cn.name.contains('.') {
+            data.elements.flags.is_dynamic_component.insert(cn.id);
+        }
+        if cn.name == SVELTE_COMPONENT {
             data.elements.flags.is_dynamic_component.insert(cn.id);
         }
         if cn.name == SVELTE_SELF {

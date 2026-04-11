@@ -96,6 +96,7 @@ pub struct ElementFlags {
     pub(crate) has_dynamic_class_directives: NodeBitSet,
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
+    pub(crate) component_binding_sym: NodeTable<SymbolId>,
     /// `--*` attributes on a component — routed through `<svelte-css-wrapper>` /
     /// `<g>` + `$.css_props(...)` instead of being passed as ordinary props.
     /// Each entry stores the full attribute name (with `--` prefix) and the
@@ -140,6 +141,7 @@ impl ElementFlags {
             has_dynamic_class_directives: NodeBitSet::new(node_count),
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
+            component_binding_sym: NodeTable::new(node_count),
             component_css_props: NodeTable::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
@@ -211,6 +213,9 @@ impl ElementFlags {
     }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
+        self.component_binding_sym.get(id).copied()
     }
     pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
         self.component_css_props

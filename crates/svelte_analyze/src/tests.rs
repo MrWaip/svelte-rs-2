@@ -1,4 +1,5 @@
 use crate::types::script::RuneKind;
+use crate::TemplateBindingReadKind;
 use oxc_ast::ast::{CallExpression, Program};
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
@@ -613,6 +614,32 @@ fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text:
     );
 }
 
+fn assert_dynamic_component(data: &AnalysisData, component: &Component, name: &str) {
+    let id = find_component_node_id(&component.fragment, component, name)
+        .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
+    assert!(
+        data.elements.flags.is_dynamic_component(id),
+        "expected ComponentNode '{name}' to be dynamic"
+    );
+}
+
+fn assert_component_ref_kind(
+    data: &AnalysisData,
+    component: &Component,
+    name: &str,
+    expected: TemplateBindingReadKind,
+) {
+    let id = find_component_node_id(&component.fragment, component, name)
+        .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
+    let sym_id = data
+        .elements
+        .flags
+        .component_binding_sym(id)
+        .unwrap_or_else(|| panic!("expected component binding symbol for '{name}'"));
+    let actual = data.scoping.template_binding_read_kind(sym_id);
+    assert_eq!(actual, expected);
+}
+
 fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text: &str) {
     let block = find_if_block(&component.fragment, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
@@ -1009,6 +1036,59 @@ fn if_block_test_is_dynamic() {
     assert_symbol(&data, "show");
     assert_is_rune(&data, "show");
     assert_dynamic_if_block(&data, &c, "show");
+}
+
+#[test]
+fn component_rune_bindings_are_dynamic() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    import Widget from './Widget.svelte';
+    const Derived_1 = $derived(Widget);
+</script>
+
+<Derived_1 />
+
+{#if true}
+    {@const Const_0 = Widget}
+    <Const_0 />
+{/if}"#,
+    );
+
+    assert_dynamic_component(&data, &component, "Derived_1");
+    assert_dynamic_component(&data, &component, "Const_0");
+    assert_component_ref_kind(
+        &data,
+        &component,
+        "Derived_1",
+        TemplateBindingReadKind::RuneGet,
+    );
+    assert_component_ref_kind(
+        &data,
+        &component,
+        "Const_0",
+        TemplateBindingReadKind::RuneGet,
+    );
+}
+
+#[test]
+fn component_prop_binding_uses_props_access_ref() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    let { Widget } = $props();
+</script>
+
+<Widget />"#,
+    );
+
+    assert_dynamic_component(&data, &component, "Widget");
+    assert_component_ref_kind(
+        &data,
+        &component,
+        "Widget",
+        TemplateBindingReadKind::PropsAccess,
+    );
 }
 
 // — new tests —

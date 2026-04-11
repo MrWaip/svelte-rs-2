@@ -16,6 +16,15 @@ pub struct Rune {
     pub is_proxy_init: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TemplateBindingReadKind {
+    Identifier,
+    ThunkCall,
+    RuneGet,
+    RuneSafeGet,
+    PropsAccess,
+}
+
 /// Per-symbol classification bits stored in `ComponentSemantics::state`.
 /// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
 mod sym_class {
@@ -307,6 +316,44 @@ impl ComponentScoping {
             && !self.is_getter(sym_id)
             && !self.is_each_block_var(sym_id)
             && !self.is_store(sym_id)
+    }
+
+    pub fn template_binding_read_kind(&self, sym_id: SymbolId) -> TemplateBindingReadKind {
+        if !self.is_component_top_level_symbol(sym_id) {
+            if self.is_expr_local(sym_id)
+                || self.is_snippet_name(sym_id)
+                || self.is_each_non_reactive(sym_id)
+            {
+                return TemplateBindingReadKind::Identifier;
+            }
+
+            if self.is_getter(sym_id) {
+                return TemplateBindingReadKind::ThunkCall;
+            }
+
+            return TemplateBindingReadKind::RuneGet;
+        }
+
+        if self.is_prop_source(sym_id) {
+            return TemplateBindingReadKind::ThunkCall;
+        }
+
+        if self.prop_non_source_name(sym_id).is_some() {
+            return TemplateBindingReadKind::PropsAccess;
+        }
+
+        if let Some(kind) = self.rune_kind(sym_id) {
+            let needs_get = self.is_mutated(sym_id) || kind.is_derived();
+            if needs_get {
+                return if self.is_var_declared_state(sym_id) {
+                    TemplateBindingReadKind::RuneSafeGet
+                } else {
+                    TemplateBindingReadKind::RuneGet
+                };
+            }
+        }
+
+        TemplateBindingReadKind::Identifier
     }
 
     pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {

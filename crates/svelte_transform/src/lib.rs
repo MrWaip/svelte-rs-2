@@ -420,34 +420,30 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 .scoping
                 .is_component_top_level_symbol(sym_id);
 
-            if !is_root {
-                if self.ctx.analysis.scoping.is_expr_local(sym_id)
-                    || self.ctx.analysis.scoping.is_snippet_name(sym_id)
-                    || self.ctx.analysis.scoping.is_each_non_reactive(sym_id)
-                {
-                    // Arrow function parameter, template snippet name, or
-                    // each-block var with key_is_item optimization — leave as-is
-                } else if self.ctx.analysis.scoping.is_getter(sym_id) {
+            match self.ctx.analysis.scoping.template_binding_read_kind(sym_id) {
+                svelte_analyze::TemplateBindingReadKind::Identifier => {
+                    if !is_root {
+                        // Arrow function parameter, template snippet name, or
+                        // each-block var with key_is_item optimization — leave as-is
+                    }
+                }
+                svelte_analyze::TemplateBindingReadKind::ThunkCall => {
                     *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
-                } else {
+                }
+                svelte_analyze::TemplateBindingReadKind::RuneGet => {
                     *it = rune_refs::make_rune_get(self.ctx.alloc, name);
                 }
-                return;
-            }
-
-            if self.ctx.analysis.scoping.is_prop_source(sym_id) {
-                *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
-            } else if let Some(prop_name) = self.ctx.analysis.scoping.prop_non_source_name(sym_id) {
-                let prop_name = prop_name.to_string();
-                *it = rune_refs::make_props_access(self.ctx.alloc, &prop_name);
-            } else if let Some(kind) = self.ctx.analysis.scoping.rune_kind(sym_id) {
-                let needs_get = self.ctx.analysis.scoping.is_mutated(sym_id) || kind.is_derived();
-                if needs_get {
-                    *it = if self.ctx.analysis.scoping.is_var_declared_state(sym_id) {
-                        rune_refs::make_rune_safe_get(self.ctx.alloc, name)
-                    } else {
-                        rune_refs::make_rune_get(self.ctx.alloc, name)
-                    };
+                svelte_analyze::TemplateBindingReadKind::RuneSafeGet => {
+                    *it = rune_refs::make_rune_safe_get(self.ctx.alloc, name);
+                }
+                svelte_analyze::TemplateBindingReadKind::PropsAccess => {
+                    let prop_name = self
+                        .ctx
+                        .analysis
+                        .scoping
+                        .prop_non_source_name(sym_id)
+                        .unwrap_or_else(|| panic!("PropsAccess read kind missing prop name"));
+                    *it = rune_refs::make_props_access(self.ctx.alloc, prop_name);
                 }
             }
             return;
