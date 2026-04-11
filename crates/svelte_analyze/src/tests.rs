@@ -703,6 +703,22 @@ fn assert_bind_target_symbol_name(
     );
 }
 
+fn assert_bind_is_prop_source(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+    expected: bool,
+) {
+    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+        .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
+    assert_eq!(
+        data.template.bind_semantics.is_prop_source(dir_id),
+        expected,
+        "unexpected prop-source classification for bind:{bind_name} on <{tag_name}>",
+    );
+}
+
 fn assert_shorthand_symbol_name(
     data: &AnalysisData,
     component: &Component,
@@ -1450,6 +1466,25 @@ fn bind_group_records_expression_value_attr_only() {
         data.template.bind_semantics.bind_group_value_attr(bind_id),
         Some(value_attr_id)
     );
+}
+
+#[test]
+fn bind_checked_marks_bindable_props_source_nodes() {
+    let (component, data) = analyze_source(
+        r#"<script lang="ts">
+	type Props = {
+		checked?: boolean;
+		disabled?: boolean;
+	};
+
+	let { checked = $bindable(false), disabled = false }: Props = $props();
+</script>
+
+<input type="checkbox" bind:checked {disabled} />"#,
+    );
+
+    assert_bind_target_symbol_name(&data, &component, "input", "checked", "checked");
+    assert_bind_is_prop_source(&data, &component, "input", "checked", true);
 }
 
 #[test]

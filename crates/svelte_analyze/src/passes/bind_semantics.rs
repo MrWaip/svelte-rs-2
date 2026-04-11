@@ -52,6 +52,9 @@ impl<'s> BindSemanticsVisitor<'s> {
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
         if let Some(sym_id) = data.bind_target_symbol(dir.id) {
+            if data.scoping.is_prop_source(sym_id) {
+                data.template.bind_semantics.prop_source_nodes.insert(dir.id);
+            }
             if Self::is_mutable_rune(sym_id, data) {
                 data.template
                     .bind_semantics
