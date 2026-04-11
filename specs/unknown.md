@@ -2,7 +2,7 @@
 
 ## Current state
 
-- **Working**: 1 recorded unknown item
+- **Working**: 2 recorded unknown items
 - **Next**: Input shorthand `{value}` / `{disabled}` on `<input>` from `$props()` lowers as generic attrs instead of input-special runtime updates
 - Last updated: 2026-04-11
 
@@ -13,6 +13,7 @@
 ## Use cases
 
 - [ ] Input shorthand `{value}` / `{disabled}` on `<input>` from `$props()` should lower through input-special value/boolean paths (`$.remove_input_defaults`, `$.set_value`, `input.disabled = ...`) but currently compiles as generic attributes — layer: analysis; repro/test: diagnose_props_bindable_icon_component; candidate specs: bind-directives.md, element.md; suggested spec: bind-directives.md
+- [ ] Inspecting `$derived` in `$inspect(...)` incorrectly warns `state_referenced_locally` — layer: analysis; repro/test: validate_inspect_derived_no_state_referenced_locally_warning; candidate specs: inspect-runes.md, derived-state.md; suggested spec: inspect-runes.md
 ## Out of scope
 
 - Implementing compiler fixes directly in this spec
@@ -33,3 +34,4 @@
 
 ## Test cases
 - [ ] diagnose_props_bindable_icon_component
+- [ ] validate_inspect_derived_no_state_referenced_locally_warning
