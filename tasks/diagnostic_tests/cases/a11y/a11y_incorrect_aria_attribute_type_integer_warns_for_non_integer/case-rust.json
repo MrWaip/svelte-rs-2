@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_incorrect_aria_attribute_type_integer",
+    "start": 20,
+    "end": 23
+  }
+]

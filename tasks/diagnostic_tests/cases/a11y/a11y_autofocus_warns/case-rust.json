@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_autofocus",
+    "start": 0,
+    "end": 19
+  }
+]

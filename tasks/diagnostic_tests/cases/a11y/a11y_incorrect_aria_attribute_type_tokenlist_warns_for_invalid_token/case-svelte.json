@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_incorrect_aria_attribute_type_tokenlist",
+    "end": 33,
+    "severity": "warning",
+    "start": 5
+  }
+]

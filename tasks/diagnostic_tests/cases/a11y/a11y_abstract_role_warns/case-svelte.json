@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_no_abstract_role",
+    "end": 18,
+    "severity": "warning",
+    "start": 5
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "warning",
+    "code": "component_name_lowercase",
+    "start": 54,
+    "end": 64
+  },
+  {
+    "severity": "warning",
+    "code": "element_invalid_self_closing_tag",
+    "start": 54,
+    "end": 64
+  }
+]

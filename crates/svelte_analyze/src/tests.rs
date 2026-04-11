@@ -4498,58 +4498,6 @@ const props = $props();
 }
 
 #[test]
-fn validate_options_accessors_warns_in_runes_mode() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options accessors={true} />
-<p>ok</p>"#,
-        AnalyzeOptions {
-            runes: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "options_deprecated_accessors");
-}
-
-#[test]
-fn validate_options_accessors_no_warn_in_legacy_mode() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options accessors={true} />
-<p>ok</p>"#,
-        AnalyzeOptions {
-            runes: false,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "options_deprecated_accessors");
-}
-
-#[test]
-fn validate_options_immutable_warns_in_runes_mode() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options immutable={true} />
-<p>ok</p>"#,
-        AnalyzeOptions {
-            runes: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning(&diags, "options_deprecated_immutable");
-}
-
-#[test]
-fn validate_options_immutable_no_warn_in_legacy_mode() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options immutable={true} />
-<p>ok</p>"#,
-        AnalyzeOptions {
-            runes: false,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "options_deprecated_immutable");
-}
-
-#[test]
 fn options_preserve_whitespace_keeps_raw_text_nodes() {
     let (component, data) = analyze_source_with_options(
         "<div>\n\thello\n\t<span>world</span>\n\t!\n</div>",
@@ -4582,105 +4530,6 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
 
     assert!(rendered.contains("\n\thello\n\t"));
     assert!(data.script.preserve_whitespace);
-}
-
-#[test]
-fn validate_options_custom_element_warns_without_compiler_flag() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement="x-foo" />
-<p>ok</p>"#,
-        AnalyzeOptions::default(),
-    );
-    assert_has_warning(&diags, "options_missing_custom_element");
-}
-
-#[test]
-fn validate_options_custom_element_no_warn_with_compiler_flag() {
-    let diags = analyze_with_options_diags(
-        r#"<svelte:options customElement="x-foo" />
-<p>ok</p>"#,
-        AnalyzeOptions {
-            custom_element: true,
-            ..Default::default()
-        },
-    );
-    assert_no_warning(&diags, "options_missing_custom_element");
-}
-
-#[test]
-fn validate_perf_avoid_nested_class_no_warning_at_instance_top_level() {
-    let diags = analyze_with_diags(
-        r#"<script>
-class Foo {}
-</script>"#,
-    );
-    assert_no_warning(&diags, "perf_avoid_nested_class");
-}
-
-#[test]
-fn validate_perf_avoid_nested_class_warns_in_instance_nested_function() {
-    let diags = analyze_with_diags(
-        r#"<script>
-function outer() {
-    class Foo {}
-}
-</script>"#,
-    );
-    assert_has_warning(&diags, "perf_avoid_nested_class");
-}
-
-#[test]
-fn validate_perf_avoid_nested_class_no_warning_at_module_top_level() {
-    let diags = analyze_with_diags(
-        r#"<script module>
-class Foo {}
-</script>"#,
-    );
-    assert_no_warning(&diags, "perf_avoid_nested_class");
-}
-
-#[test]
-fn validate_perf_avoid_nested_class_warns_in_module_nested_function() {
-    let diags = analyze_with_diags(
-        r#"<script module>
-function outer() {
-    class Foo {}
-}
-</script>"#,
-    );
-    assert_has_warning(&diags, "perf_avoid_nested_class");
-}
-
-#[test]
-fn validate_perf_avoid_inline_class_warns_at_instance_top_level() {
-    let diags = analyze_with_diags(
-        r#"<script>
-const value = new class {}();
-</script>"#,
-    );
-    assert_has_warning(&diags, "perf_avoid_inline_class");
-}
-
-#[test]
-fn validate_perf_avoid_inline_class_no_warning_at_module_top_level() {
-    let diags = analyze_with_diags(
-        r#"<script module>
-const value = new class {}();
-</script>"#,
-    );
-    assert_no_warning(&diags, "perf_avoid_inline_class");
-}
-
-#[test]
-fn validate_perf_avoid_inline_class_warns_in_nested_function() {
-    let diags = analyze_with_diags(
-        r#"<script>
-function outer() {
-    const value = new class {}();
-}
-</script>"#,
-    );
-    assert_has_warning(&diags, "perf_avoid_inline_class");
 }
 
 // -----------------------------------------------------------------------
@@ -5228,33 +5077,6 @@ fn attribute_quoted_regular_element_no_warn() {
 // attribute_global_event_reference
 // ---------------------------------------------------------------------------
 
-#[test]
-fn attribute_global_event_reference_on_missing_binding() {
-    let diags = analyze_with_diags(r#"<button onclick={onclick}></button>"#);
-    assert_has_warning(&diags, "attribute_global_event_reference");
-}
-
-#[test]
-fn attribute_global_event_reference_on_local_binding_no_warn() {
-    let diags = analyze_with_diags(
-        r#"<script>const onclick = () => {}</script><button onclick={onclick}></button>"#,
-    );
-    assert_no_warning(&diags, "attribute_global_event_reference");
-}
-
 // ---------------------------------------------------------------------------
 // component_name_lowercase
 // ---------------------------------------------------------------------------
-
-#[test]
-fn component_name_lowercase_on_unused_import() {
-    let diags =
-        analyze_with_diags(r#"<script>import widget from './widget.js';</script><widget />"#);
-    assert_has_warning(&diags, "component_name_lowercase");
-}
-
-#[test]
-fn component_name_lowercase_on_plain_html_element_no_warn() {
-    let diags = analyze_with_diags(r#"<widget />"#);
-    assert_no_warning(&diags, "component_name_lowercase");
-}

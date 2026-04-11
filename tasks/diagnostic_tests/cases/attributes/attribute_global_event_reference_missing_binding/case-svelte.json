@@ -1,0 +1,14 @@
+[
+  {
+    "code": "attribute_global_event_reference",
+    "end": 25,
+    "severity": "warning",
+    "start": 8
+  },
+  {
+    "code": "a11y_consider_explicit_label",
+    "end": 35,
+    "severity": "warning",
+    "start": 0
+  }
+]

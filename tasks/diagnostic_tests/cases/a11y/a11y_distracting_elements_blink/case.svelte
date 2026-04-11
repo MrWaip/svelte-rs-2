@@ -1,0 +1,1 @@
+<blink>flash</blink>

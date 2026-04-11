@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_noninteractive_tabindex",
+    "start": 50,
+    "end": 51
+  }
+]

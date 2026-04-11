@@ -1,0 +1,8 @@
+[
+  {
+    "code": "options_missing_custom_element",
+    "end": 37,
+    "severity": "warning",
+    "start": 16
+  }
+]

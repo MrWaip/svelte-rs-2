@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_missing_attribute",
+    "start": 14,
+    "end": 22
+  }
+]

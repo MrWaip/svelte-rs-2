@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_distracting_elements",
+    "start": 0,
+    "end": 25
+  }
+]
