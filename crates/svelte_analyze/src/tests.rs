@@ -1,8 +1,8 @@
-use crate::types::script::RuneKind;
 use crate::TemplateBindingReadKind;
+use crate::types::script::RuneKind;
 use oxc_ast::ast::{CallExpression, Program};
-use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::walk_call_expression;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 use svelte_span::Span;
@@ -2499,10 +2499,11 @@ fn fragment_facts_capture_single_expression_queries() {
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
     ));
-    assert!(data
-        .elements
-        .flags
-        .needs_textarea_value_lowering(textarea.id));
+    assert!(
+        data.elements
+            .flags
+            .needs_textarea_value_lowering(textarea.id)
+    );
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
     assert!(matches!(
@@ -2690,6 +2691,94 @@ fn inspect_does_not_trigger_state_referenced_locally_for_rune_args() {
             "unexpected diagnostics for source: {source}"
         );
     }
+}
+
+#[test]
+fn shorthand_anchor_href_is_indexed_for_a11y_presence_checks() {
+    let source = r#"
+<script lang="ts">
+    import type { Snippet } from 'svelte';
+
+    type Props = {
+        href?: string;
+        target?: string;
+        rel?: string;
+        underline?: boolean;
+        children?: Snippet;
+    };
+
+    let { href = '#', target = '_self', rel = '', underline = true, children }: Props = $props();
+</script>
+
+<a {href} {target} {rel} class="ui-link" style:text-decoration={underline ? 'underline' : 'none'}>
+    {@render children?.()}
+</a>
+"#;
+
+    let (component, data, diags) = analyze_source_with_diags(source);
+    let anchor = find_element(&component.fragment, &component, "a").expect("expected anchor");
+
+    assert!(
+        data.has_attribute(anchor.id, "href"),
+        "expected shorthand href to be indexed as a named attribute"
+    );
+    assert!(matches!(
+        data.attribute(anchor.id, &anchor.attributes, "href"),
+        Some(Attribute::Shorthand(_))
+    ));
+    assert!(
+        diags
+            .iter()
+            .all(|diag| diag.kind.code() != "a11y_missing_attribute"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn button_role_presentation_with_text_warns_for_interactive_to_noninteractive_role() {
+    let source = r#"<button role="presentation">Close</button>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_no_interactive_element_to_noninteractive_role"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn footer_role_button_warns_for_noninteractive_to_interactive_role() {
+    let source = r#"<footer role="button">Footer</footer>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["a11y_no_noninteractive_element_to_interactive_role"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn li_role_menuitem_uses_reference_exception_without_warning() {
+    let source = r#"<li role="menuitem">Item</li>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert!(actual_codes.is_empty(), "unexpected diagnostics: {diags:?}");
 }
 
 #[test]

@@ -310,8 +310,10 @@ fn check_a11y_aria_attribute_warnings(
 
 fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
     let has_spread = ctx.data.has_spread(el.id);
-    let implicit_role = implicit_role_for_element(el, attrs, ctx);
-    let is_parent_section_or_article = has_sectioning_ancestor(el.id, ctx);
+    let semantic_role = semantic_role_for_element(el, attrs, ctx);
+    let interactivity = element_interactivity(el, attrs, ctx);
+    let is_interactive = interactivity == ElementInteractivity::Interactive;
+    let is_non_interactive = interactivity == ElementInteractivity::NonInteractive;
 
     for attr in attrs {
         let Some(name) = attr_named_name(attr) else {
@@ -356,20 +358,36 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
                 ));
             }
 
-            if implicit_role == Some(role)
-                && !matches!(el.name.as_str(), "ul" | "ol" | "li" | "menu")
-                && !(el.name == "a" && !ctx.data.has_attribute(el.id, "href"))
+            if !has_spread
+                && is_interactive
+                && (is_non_interactive_role(Some(role)) || is_presentation_role(Some(role)))
             {
                 ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoRedundantRoles {
+                    DiagnosticKind::A11yNoInteractiveElementToNoninteractiveRole {
+                        element: el.name.clone(),
                         role: role.to_string(),
                     },
-                    attr_value_span(attr),
+                    el.span,
                 ));
             }
 
-            if !is_parent_section_or_article
-                && nested_implicit_role(el.name.as_str()).is_some_and(|nested| nested == role)
+            if !has_spread
+                && is_non_interactive
+                && is_interactive_role(Some(role))
+                && !is_noninteractive_element_to_interactive_role_exception(el.name.as_str(), role)
+            {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yNoNoninteractiveElementToInteractiveRole {
+                        element: el.name.clone(),
+                        role: role.to_string(),
+                    },
+                    el.span,
+                ));
+            }
+
+            if semantic_role == Some(role)
+                && !matches!(el.name.as_str(), "ul" | "ol" | "li" | "menu")
+                && !(el.name == "a" && !ctx.data.has_attribute(el.id, "href"))
             {
                 ctx.warnings_mut().push(Diagnostic::warning(
                     DiagnosticKind::A11yNoRedundantRoles {
@@ -656,6 +674,18 @@ fn implicit_role_for_element<'a>(
     }
 }
 
+fn semantic_role_for_element<'a>(
+    el: &Element,
+    attrs: &'a [Attribute],
+    ctx: &VisitContext<'a>,
+) -> Option<&'static str> {
+    implicit_role_for_element(el, attrs, ctx).or_else(|| {
+        (!has_sectioning_ancestor(el.id, ctx))
+            .then(|| nested_implicit_role(el.name.as_str()))
+            .flatten()
+    })
+}
+
 fn nested_implicit_role(name: &str) -> Option<&'static str> {
     lookup_static_pair(super::A11Y_NESTED_IMPLICIT_ROLES, name)
 }
@@ -672,15 +702,7 @@ fn is_semantic_role_element<'a>(
     ctx: &VisitContext<'a>,
     role: &str,
 ) -> bool {
-    if implicit_role_for_element(el, attrs, ctx).is_some_and(|implicit| implicit == role) {
-        return true;
-    }
-
-    !has_sectioning_ancestor(el.id, ctx)
-        && matches!(
-            (el.name.as_str(), role),
-            ("header", "banner") | ("footer", "contentinfo")
-        )
+    semantic_role_for_element(el, attrs, ctx).is_some_and(|semantic| semantic == role)
 }
 
 fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_>) -> bool {
@@ -788,7 +810,7 @@ fn element_interactivity(
     attrs: &[Attribute],
     ctx: &VisitContext<'_>,
 ) -> ElementInteractivity {
-    if let Some(role) = implicit_role_for_element(el, attrs, ctx) {
+    if let Some(role) = semantic_role_for_element(el, attrs, ctx) {
         return if is_interactive_role(Some(role)) {
             ElementInteractivity::Interactive
         } else {
@@ -834,6 +856,13 @@ fn element_interactivity(
         }
         _ => ElementInteractivity::Static,
     }
+}
+
+fn is_noninteractive_element_to_interactive_role_exception(name: &str, role: &str) -> bool {
+    super::A11Y_NON_INTERACTIVE_ELEMENT_TO_INTERACTIVE_ROLE_EXCEPTIONS
+        .iter()
+        .find_map(|(element, roles)| (*element == name).then_some(*roles))
+        .is_some_and(|roles| roles.contains(&role))
 }
 
 fn is_interactive_role(role: Option<&str>) -> bool {
