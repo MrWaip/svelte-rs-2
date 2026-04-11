@@ -2,18 +2,20 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::ExprSite;
+use svelte_analyze::{
+    ExprSite, NamespaceKind, is_regular_dom_property, normalize_regular_attribute_name,
+};
 use svelte_ast::{Attribute, Element, NodeId};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
-use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
+use super::bind::{BindPlacement, emit_bind_group_value, gen_bind_directive};
 use super::events::{
     build_event_handler_s5, dev_event_handler, gen_animate_directive, gen_attach_tag,
     gen_on_directive_legacy, gen_transition_directive, gen_use_directive,
 };
-use super::expression::{build_attr_concat, get_attr_expr, MemoAttr};
+use super::expression::{MemoAttr, MemoAttrUpdate, build_attr_concat, get_attr_expr};
 
 /// Build an object property for a directive expression.
 /// Handles the three-way branch: mutated rune -> `$.get(name)`, same-name -> shorthand, else -> key-value.
@@ -37,6 +39,159 @@ fn build_directive_prop<'a>(
     } else {
         ObjProp::KeyValue(name_alloc, expr)
     }
+}
+
+enum RegularAttrUpdate {
+    Call {
+        setter_fn: &'static str,
+        attr_name: Option<String>,
+    },
+    Assignment {
+        property: String,
+    },
+}
+
+fn is_html_attr_namespace(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
+    !matches!(
+        ctx.query.view.namespace(el_id),
+        Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) | Some(NamespaceKind::AnnotationXml)
+    )
+}
+
+fn has_static_text_attribute(el: &Element, name: &str) -> bool {
+    el.attributes
+        .iter()
+        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == name))
+}
+
+fn has_static_true_boolean_attribute(el: &Element, name: &str) -> bool {
+    el.attributes
+        .iter()
+        .any(|attr| matches!(attr, Attribute::BooleanAttribute(ba) if ba.name == name))
+}
+
+fn regular_attr_update(
+    ctx: &Ctx<'_>,
+    el_id: NodeId,
+    tag_name: &str,
+    attr_name: &str,
+) -> RegularAttrUpdate {
+    let el = ctx.element(el_id);
+
+    if attr_name == "value" {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_value",
+            attr_name: None,
+        };
+    }
+
+    if attr_name == "checked" {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_checked",
+            attr_name: None,
+        };
+    }
+
+    if attr_name == "selected" {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_selected",
+            attr_name: None,
+        };
+    }
+
+    if attr_name == "defaultValue"
+        && (has_static_text_attribute(el, "value")
+            || (tag_name == "textarea" && !el.fragment.nodes.is_empty()))
+    {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_default_value",
+            attr_name: None,
+        };
+    }
+
+    if attr_name == "defaultChecked" && has_static_true_boolean_attribute(el, "checked") {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_default_checked",
+            attr_name: None,
+        };
+    }
+
+    if attr_name == "style" {
+        return RegularAttrUpdate::Call {
+            setter_fn: "$.set_style",
+            attr_name: None,
+        };
+    }
+
+    // Upstream only makes name normalization namespace-aware; special-value setters like
+    // `$.set_value(...)` stay shared, and plain DOM-property assignment remains the fallback.
+    if is_regular_dom_property(attr_name) {
+        return RegularAttrUpdate::Assignment {
+            property: attr_name.to_string(),
+        };
+    }
+
+    RegularAttrUpdate::Call {
+        setter_fn: if attr_name.starts_with("xlink") {
+            "$.set_xlink_attribute"
+        } else {
+            "$.set_attribute"
+        },
+        attr_name: Some(attr_name.to_string()),
+    }
+}
+
+fn push_regular_attr_update<'a>(
+    ctx: &mut Ctx<'a>,
+    target: &mut Vec<Statement<'a>>,
+    el_name: &str,
+    update: RegularAttrUpdate,
+    val: Expression<'a>,
+) {
+    match update {
+        RegularAttrUpdate::Call {
+            setter_fn,
+            attr_name,
+        } => {
+            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(el_name)];
+            if let Some(name) = attr_name {
+                args.push(Arg::Str(name));
+            }
+            args.push(Arg::Expr(val));
+            target.push(ctx.b.call_stmt(setter_fn, args));
+        }
+        RegularAttrUpdate::Assignment { property } => {
+            target.push(ctx.b.assign_stmt(
+                AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(el_name), &property)),
+                val,
+            ));
+        }
+    }
+}
+
+fn memoize_regular_attr_update<'a>(
+    memo_attrs: &mut Vec<MemoAttr<'a>>,
+    attr_id: NodeId,
+    el_name: &str,
+    update: RegularAttrUpdate,
+    expr: Expression<'a>,
+) {
+    let update = match update {
+        RegularAttrUpdate::Call {
+            setter_fn,
+            attr_name,
+        } => MemoAttrUpdate::Call {
+            setter_fn,
+            attr_name,
+        },
+        RegularAttrUpdate::Assignment { property } => MemoAttrUpdate::Assignment { property },
+    };
+    memo_attrs.push(MemoAttr {
+        attr_id,
+        el_name: el_name.to_string(),
+        update,
+        expr,
+    });
 }
 
 /// Process a single attribute (non-spread path).
@@ -64,6 +219,7 @@ pub(crate) fn process_attr<'a>(
     } else {
         init as &mut Vec<_>
     };
+    let html_attr_namespace = is_html_attr_namespace(ctx, el_id);
 
     match attr {
         Attribute::StringAttribute(a)
@@ -158,56 +314,25 @@ pub(crate) fn process_attr<'a>(
                 emit_bind_group_value(ctx, el_name, attr_id, val, init, update);
                 return;
             }
+            let attr_name = normalize_regular_attribute_name(&a.name, html_attr_namespace);
+            let attr_update = regular_attr_update(ctx, el_id, tag_name, &attr_name);
             // Memoize dynamic attrs with has_call/await — extract into dependency array
             let needs_memo = is_dyn && attr_needs_memo;
             if needs_memo {
-                let (setter_fn, attr_name) = if a.name == "value" && tag_name == "input" {
-                    ("$.set_value", None)
-                } else if a.name == "style" {
-                    ("$.set_style", None)
-                } else {
-                    ("$.set_attribute", Some(a.name.clone()))
-                };
-                memo_attrs.push(MemoAttr {
-                    attr_id,
-                    setter_fn,
-                    el_name: el_name.to_string(),
-                    attr_name,
-                    expr: val,
-                });
-            } else if a.name == "value" && tag_name == "input" {
-                target.push(
-                    ctx.b
-                        .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(val)]),
-                );
-            } else if a.name == "style" {
-                target.push(
-                    ctx.b
-                        .call_stmt("$.set_style", [Arg::Ident(el_name), Arg::Expr(val)]),
-                );
+                memoize_regular_attr_update(memo_attrs, attr_id, el_name, attr_update, val);
             } else {
-                target.push(ctx.b.call_stmt(
-                    "$.set_attribute",
-                    [Arg::Ident(el_name), Arg::StrRef(&a.name), Arg::Expr(val)],
-                ));
+                push_regular_attr_update(ctx, target, el_name, attr_update, val);
             }
         }
         Attribute::ConcatenationAttribute(a) => {
             if a.name == "class" {
                 // Concatenated class attributes share the set_class path so directives and
                 // element-level class handling stay consistent with class={expr}.
-            } else if a.name == "style" {
-                let val = build_attr_concat(ctx, attr_id, &a.parts);
-                target.push(
-                    ctx.b
-                        .call_stmt("$.set_style", [Arg::Ident(el_name), Arg::Expr(val)]),
-                );
             } else {
+                let attr_name = normalize_regular_attribute_name(&a.name, html_attr_namespace);
+                let attr_update = regular_attr_update(ctx, el_id, tag_name, &attr_name);
                 let val = build_attr_concat(ctx, attr_id, &a.parts);
-                target.push(ctx.b.call_stmt(
-                    "$.set_attribute",
-                    [Arg::Ident(el_name), Arg::StrRef(&a.name), Arg::Expr(val)],
-                ));
+                push_regular_attr_update(ctx, target, el_name, attr_update, val);
             }
         }
         Attribute::Shorthand(a) => {
@@ -216,11 +341,11 @@ pub(crate) fn process_attr<'a>(
                 .query
                 .component
                 .source_text(a.expression_span)
+                .trim()
                 .to_string();
-            target.push(ctx.b.call_stmt(
-                "$.set_attribute",
-                [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
-            ));
+            let attr_name = normalize_regular_attribute_name(&name, html_attr_namespace);
+            let attr_update = regular_attr_update(ctx, el_id, tag_name, &attr_name);
+            push_regular_attr_update(ctx, target, el_name, attr_update, val);
         }
         Attribute::BindDirective(bind) => {
             if bind.name == "value"

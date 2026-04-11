@@ -1,13 +1,14 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 21/21 use cases
-- **Next**: complete; continue only if a future audit finds new attribute/spread work not already owned by `specs/element.md`, `specs/bind-directives.md`, `specs/events.md`, or `specs/a11y-warnings.md`
+- **Working**: 22/22 use cases
+- **Next**: complete; continue only if a future audit finds more regular non-spread attr gaps not already owned by neighboring specs
+- **Current slice completed**: `Dynamic Input/Property Attr Lowering`. Regular non-spread attrs now follow the same reference-like update matrix across expression, concatenation, and shorthand forms: HTML attr names normalize through the same alias table as Svelte, `<input>` `value` / `checked` paths trigger `needs_input_defaults`, and codegen routes `value`, `checked`, `selected`, and DOM-property attrs like `disabled` / `readonly` away from the generic `$.set_attribute(...)` fallback. That matrix remains reference-aligned for non-HTML namespaces too; only HTML name normalization is namespace-sensitive.
 - **Current slice completed**: `attribute_unquoted_sequence` parity outside components. The scanner already emitted unquoted concatenations as `ConcatenationAttribute`; analyze now rejects them consistently across all relevant attribute owners.
-- **Spec ownership status**: no further implementation-owned slice remains here; related remaining work is tracked in neighboring specs (`events`, `bind-directives`, `element`, `a11y-warnings`).
-- **Non-goals for this completed run**: parser/scanner changes, bind-coupled diagnostics owned by `specs/bind-directives.md`, customizable `select` / `optgroup` / `selectedcontent` handling owned by `specs/element.md`, and a11y warnings.
+- **Spec ownership status**: complete again; spread attrs, bind-coupled diagnostics, and customizable select handling remain owned by neighboring specs.
+- **Non-goals for this completed run**: spread attr parity, custom-element attr lowering, bind runtime mismatches like `props_bindable_checkbox_disabled_shorthand_ts`, parser/scanner changes, customizable `select` / `optgroup` / `selectedcontent` handling owned by `specs/element.md`, and a11y warnings.
 - **Constraint**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- Last updated: 2026-04-09
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -40,6 +41,7 @@
 - [x] Dynamic `style` attributes compile for string/object inputs (tests: `style_attr_dynamic`, `style_attr_object`)
 - [x] `<svelte:element>` supports plain attrs, spreads, `class:` and `style:` (tests: `svelte_element_attributes`, `svelte_element_spread`, `svelte_element_class_directive`, `svelte_element_style_directive`)
 - [x] Form-element special cases for dynamic textarea children and `<option>{expr}</option>` are covered by focused compiler cases (tests: `textarea_child_value_dynamic`, `option_expr_child_value`)
+- [x] Regular non-spread dynamic attrs follow the reference property/special-value update matrix instead of always falling through `$.set_attribute(...)` — covers `value`, `checked`, `selected`, and DOM-property attrs like `disabled` / `readonly` across expression, concatenation, and shorthand forms; `<input>` variants also set `needs_input_defaults` when required, and non-HTML namespace cases stay aligned with current reference lowering (tests: `input_dynamic_special_attrs`, `svg_dynamic_special_attrs`, `diagnose_props_bindable_icon_component`)
 - [x] Spread attributes compose with `class={...}` / `class:*` through a single `$.attribute_effect(...)` shape (test: `spread_class_directive`)
 - [x] Spread attributes compose with `style={...}` / `style:*` through a single `$.attribute_effect(...)` shape (test: `spread_style_directive`)
 - [x] Regular-element `autofocus` lowers through `$.autofocus(...)` (test: `element_autofocus`)
@@ -100,8 +102,11 @@
 - [x] `textarea_child_value_dynamic`
 - [x] `option_expr_child_value`
 - [x] `element_autofocus`
+- [x] `input_dynamic_special_attrs`
+- [x] `svg_dynamic_special_attrs`
 - [x] `spread_class_directive`
 - [x] `spread_style_directive`
+- [x] `diagnose_props_bindable_icon_component`
 - [x] `component_attribute_unquoted_sequence_errors`
 - [x] `regular_element_attribute_unquoted_sequence_errors`
 - [x] `custom_element_attribute_unquoted_sequence_errors`

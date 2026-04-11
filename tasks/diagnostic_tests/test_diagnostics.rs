@@ -505,7 +505,10 @@ mod a11y {
     );
     diagnostic_case!(a11y_unknown_role_warns, "a11y/a11y_unknown_role_warns");
     diagnostic_case!(a11y_abstract_role_warns, "a11y/a11y_abstract_role_warns");
-    diagnostic_case!(a11y_tabindex_zero_no_warning, "a11y/a11y_tabindex_zero_no_warning");
+    diagnostic_case!(
+        a11y_tabindex_zero_no_warning,
+        "a11y/a11y_tabindex_zero_no_warning"
+    );
     diagnostic_case!(
         a11y_tabindex_negative_no_warning,
         "a11y/a11y_tabindex_negative_no_warning"
@@ -698,7 +701,10 @@ mod css_prune {
         "css_prune/multiple_selectors_mixed",
         ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
     );
-    diagnostic_case!(class_selector_static_match, "css_prune/class_selector_static_match");
+    diagnostic_case!(
+        class_selector_static_match,
+        "css_prune/class_selector_static_match"
+    );
     diagnostic_case!(
         class_selector_no_match,
         "css_prune/class_selector_no_match",
@@ -711,8 +717,14 @@ mod css_prune {
         "css_prune/id_selector_no_match",
         ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
     );
-    diagnostic_case!(global_functional_always_used, "css_prune/global_functional_always_used");
-    diagnostic_case!(global_block_always_used, "css_prune/global_block_always_used");
+    diagnostic_case!(
+        global_functional_always_used,
+        "css_prune/global_functional_always_used"
+    );
+    diagnostic_case!(
+        global_block_always_used,
+        "css_prune/global_block_always_used"
+    );
     diagnostic_case!(
         descendant_combinator_match,
         "css_prune/descendant_combinator_match"
@@ -726,7 +738,10 @@ mod css_prune {
         "css_prune/descendant_combinator_no_match",
         ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
     );
-    diagnostic_case!(child_combinator_direct_match, "css_prune/child_combinator_direct_match");
+    diagnostic_case!(
+        child_combinator_direct_match,
+        "css_prune/child_combinator_direct_match"
+    );
     diagnostic_case!(
         child_combinator_indirect_no_match,
         "css_prune/child_combinator_indirect_no_match",
@@ -761,19 +776,28 @@ mod css_prune {
         "css_prune/media_query_unused_selector",
         ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
     );
-    diagnostic_case!(media_query_used_selector, "css_prune/media_query_used_selector");
+    diagnostic_case!(
+        media_query_used_selector,
+        "css_prune/media_query_used_selector"
+    );
     diagnostic_case!(
         spread_attribute_conservative_class_match,
         "css_prune/spread_attribute_conservative_class_match"
     );
     diagnostic_case!(nested_element_match, "css_prune/nested_element_match");
-    diagnostic_case!(deeply_nested_descendant, "css_prune/deeply_nested_descendant");
+    diagnostic_case!(
+        deeply_nested_descendant,
+        "css_prune/deeply_nested_descendant"
+    );
 }
 
 mod bind {
     use super::*;
 
-    diagnostic_case!(validate_bind_invalid_name, "bind/validate_bind_invalid_name");
+    diagnostic_case!(
+        validate_bind_invalid_name,
+        "bind/validate_bind_invalid_name"
+    );
     diagnostic_case!(
         validate_bind_invalid_expression,
         "bind/validate_bind_invalid_expression",
@@ -998,7 +1022,8 @@ mod options {
     diagnostic_case!(
         options_deprecated_accessors_runes,
         "options/options_deprecated_accessors_runes",
-        ignore = "known mismatch: Rust warning span is 0..0 while reference spans the accessors option"
+        ignore =
+            "known mismatch: Rust warning span is 0..0 while reference spans the accessors option"
     );
     diagnostic_case!(
         options_deprecated_accessors_legacy,
@@ -1007,7 +1032,8 @@ mod options {
     diagnostic_case!(
         options_deprecated_immutable_runes,
         "options/options_deprecated_immutable_runes",
-        ignore = "known mismatch: Rust warning span is 0..0 while reference spans the immutable option"
+        ignore =
+            "known mismatch: Rust warning span is 0..0 while reference spans the immutable option"
     );
     diagnostic_case!(
         options_deprecated_immutable_legacy,
@@ -1181,9 +1207,15 @@ mod runes {
         validate_state_too_many_args,
         "runes/validate_state_too_many_args"
     );
-    diagnostic_case!(validate_state_frozen_renamed, "runes/validate_state_frozen_renamed");
+    diagnostic_case!(
+        validate_state_frozen_renamed,
+        "runes/validate_state_frozen_renamed"
+    );
     diagnostic_case!(validate_state_is_removed, "runes/validate_state_is_removed");
-    diagnostic_case!(validate_state_valid_positions, "runes/validate_state_valid_positions");
+    diagnostic_case!(
+        validate_state_valid_positions,
+        "runes/validate_state_valid_positions"
+    );
     diagnostic_case!(
         validate_state_constructor_private_field,
         "runes/validate_state_constructor_private_field"
@@ -1268,7 +1300,10 @@ mod runes {
         validate_effect_tracking_with_argument,
         "runes/validate_effect_tracking_with_argument"
     );
-    diagnostic_case!(validate_state_eager_no_args, "runes/validate_state_eager_no_args");
+    diagnostic_case!(
+        validate_state_eager_no_args,
+        "runes/validate_state_eager_no_args"
+    );
     diagnostic_case!(
         validate_state_eager_too_many_args,
         "runes/validate_state_eager_too_many_args"
@@ -1289,7 +1324,10 @@ mod runes {
         validate_inspect_requires_arguments,
         "runes/validate_inspect_requires_arguments"
     );
-    diagnostic_case!(validate_inspect_zero_args, "runes/validate_inspect_zero_args");
+    diagnostic_case!(
+        validate_inspect_zero_args,
+        "runes/validate_inspect_zero_args"
+    );
     diagnostic_case!(
         validate_inspect_one_or_more_args_ok,
         "runes/validate_inspect_one_or_more_args_ok"
@@ -1399,7 +1437,8 @@ mod special {
     diagnostic_case!(
         svelte_window_illegal_attribute_class,
         "special/svelte_window_illegal_attribute_class",
-        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window>"
+        ignore =
+            "known mismatch: analyzer is missing illegal_element_attribute for <svelte:window>"
     );
     diagnostic_case!(
         svelte_window_illegal_attribute_spread,
@@ -1409,7 +1448,8 @@ mod special {
     diagnostic_case!(
         svelte_document_illegal_attribute_class,
         "special/svelte_document_illegal_attribute_class",
-        ignore = "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document>"
+        ignore =
+            "known mismatch: analyzer is missing illegal_element_attribute for <svelte:document>"
     );
     diagnostic_case!(
         svelte_document_illegal_attribute_spread,
@@ -1429,17 +1469,20 @@ mod special {
     diagnostic_case!(
         svelte_window_invalid_content,
         "special/svelte_window_invalid_content",
-        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:window>"
+        ignore =
+            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:window>"
     );
     diagnostic_case!(
         svelte_document_invalid_content,
         "special/svelte_document_invalid_content",
-        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:document>"
+        ignore =
+            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:document>"
     );
     diagnostic_case!(
         svelte_body_invalid_content,
         "special/svelte_body_invalid_content",
-        ignore = "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:body>"
+        ignore =
+            "known mismatch: analyzer is missing svelte_meta_invalid_content for <svelte:body>"
     );
     diagnostic_case!(
         title_illegal_attribute,
@@ -1477,7 +1520,10 @@ mod slots {
         slot_attribute_invalid_expression_value,
         "slots/slot_attribute_invalid_expression_value"
     );
-    diagnostic_case!(slot_attribute_static_value_ok, "slots/slot_attribute_static_value_ok");
+    diagnostic_case!(
+        slot_attribute_static_value_ok,
+        "slots/slot_attribute_static_value_ok"
+    );
     diagnostic_case!(
         slot_attribute_duplicate_reports_second_named_slot,
         "slots/slot_attribute_duplicate_reports_second_named_slot"
@@ -1606,7 +1652,8 @@ mod each {
     diagnostic_case!(
         validate_each_key_without_as,
         "each/validate_each_key_without_as",
-        ignore = "known mismatch: each_key_without_as is unreachable from valid Svelte template syntax"
+        ignore =
+            "known mismatch: each_key_without_as is unreachable from valid Svelte template syntax"
     );
 }
 
@@ -1630,7 +1677,10 @@ mod snippets {
         validate_snippet_shadowing_prop,
         "snippets/validate_snippet_shadowing_prop"
     );
-    diagnostic_case!(validate_snippet_conflict, "snippets/validate_snippet_conflict");
+    diagnostic_case!(
+        validate_snippet_conflict,
+        "snippets/validate_snippet_conflict"
+    );
     diagnostic_case!(
         fragment_facts_track_non_trivial_child_counts,
         "snippets/fragment_facts_track_non_trivial_child_counts"

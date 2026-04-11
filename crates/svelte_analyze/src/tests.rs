@@ -778,6 +778,22 @@ fn assert_element_needs_var(
     );
 }
 
+fn assert_nth_element_needs_input_defaults(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    target_index: usize,
+    expected: bool,
+) {
+    let el = find_nth_element(&component.fragment, component, tag_name, target_index)
+        .unwrap_or_else(|| panic!("no element <{tag_name}> at index {target_index}"));
+    assert_eq!(
+        data.elements.flags.needs_input_defaults(el.id),
+        expected,
+        "unexpected needs_input_defaults for <{tag_name}> at index {target_index}",
+    );
+}
+
 fn assert_has_dynamic_class_directives(
     data: &AnalysisData,
     component: &Component,
@@ -2464,6 +2480,26 @@ fn fragment_facts_capture_single_expression_queries() {
 }
 
 #[test]
+fn input_dynamic_special_attrs_mark_input_defaults() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let value = $state('');
+let checked = $state(false);
+let disabled = false;
+</script>
+<input {value} />
+<input value={value} />
+<input checked={checked} />
+<input {disabled} />"#,
+    );
+
+    assert_nth_element_needs_input_defaults(&data, &component, "input", 0, true);
+    assert_nth_element_needs_input_defaults(&data, &component, "input", 1, true);
+    assert_nth_element_needs_input_defaults(&data, &component, "input", 2, true);
+    assert_nth_element_needs_input_defaults(&data, &component, "input", 3, false);
+}
+
+#[test]
 fn fragment_facts_track_each_body_child_shape_and_animate() {
     let (component, data) = analyze_source(
         r#"<script>import { flip } from 'svelte/animate'; let items = [{ id: 1, value: 'x' }];</script>
@@ -2609,7 +2645,10 @@ fn inspect_does_not_trigger_state_referenced_locally_for_rune_args() {
 
     for (source, expected_codes) in cases {
         let (_, _, diags) = analyze_source_with_diags(source);
-        let actual_codes = diags.iter().map(|diag| diag.kind.code()).collect::<Vec<_>>();
+        let actual_codes = diags
+            .iter()
+            .map(|diag| diag.kind.code())
+            .collect::<Vec<_>>();
         assert_eq!(
             actual_codes, expected_codes,
             "unexpected diagnostics for source: {source}"

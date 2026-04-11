@@ -21,12 +21,13 @@ export default function App($$anchor, $$props) {
 		});
 	}
 	var input = $.sibling(node, 2);
+	$.remove_input_defaults(input);
 	$.reset(div);
 	$.template_effect(() => {
-		$.set_attribute(input, "value", value());
+		$.set_value(input, value());
 		$.set_attribute(input, "placeholder", placeholder());
 		$.set_attribute(input, "type", type());
-		$.set_attribute(input, "disabled", disabled());
+		input.disabled = disabled();
 	});
 	$.append($$anchor, div);
 	$.pop();
