@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_role_has_required_aria_props",
+    "end": 20,
+    "severity": "warning",
+    "start": 5
+  }
+]
