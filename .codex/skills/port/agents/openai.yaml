@@ -1,4 +1,4 @@
 interface:
   display_name: "Port"
-  short_description: "Port a feature from spec to code"
-  default_prompt: "Use $port to implement this feature from spec and verify it layer by layer."
+  short_description: "Port one approved slice from a spec"
+  default_prompt: "Use $port to implement the next approved slice from this spec and verify only that slice."

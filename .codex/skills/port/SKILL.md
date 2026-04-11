@@ -1,9 +1,9 @@
 ---
 name: port
-description: Port a Svelte compiler feature from the reference JS compiler to our Rust implementation. Use when the user asks to port, implement, or add support for a Svelte feature, or when continuing work from a related `specs/*.md` file.
+description: Port one session-sized slice of a Svelte compiler feature from spec to the Rust implementation. Use when a feature already has a spec and Codex should implement the next bounded slice, not the whole feature, while keeping strict parser/analyze/codegen boundaries.
 ---
 
-# Port Svelte Feature
+# Port One Slice
 
 **Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
 
@@ -11,189 +11,230 @@ Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `
 
 The command argument is either:
 
-- A spec file path (contains `/` or ends with `.md`) — go straight to "Resume from spec" below
-- A feature description (for example `$derived`, `{@html}`, `style:prop`) — read `ROADMAP.md`, find the matching item, then check for existing spec
+- a spec file path
+- a feature description that already maps to a spec
+
+If no matching spec exists, stop and recommend `/audit <feature>` first.
+
+If multiple specs plausibly match the feature description, stop and list the candidate spec files. Do not choose arbitrarily.
 
 ## Resume From Spec
 
-If the argument is a spec file path, or a matching spec was found by search:
+If the argument is a spec path, or a matching spec was found:
 
 1. Read the spec file
-2. Check the `Current state` section — what is done, what is next
-3. Skip to the appropriate step in EXECUTE PHASE
-4. Do not re-run the PLAN PHASE unless the spec file says the plan needs revision
+2. Read `Current state` first
+3. Find the next incomplete slice
+4. Do not widen scope beyond that slice in the current run
 
-## Session Continuation
+If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a slice.
 
-If the argument is a feature description rather than a path, search for an existing spec:
+Derive the slice from the existing spec structure in this order:
 
-Run `Glob("specs/*.md")` and scan the results for a file matching this feature. Names may differ — for example argument `$state` may map to file `state-rune.md`. If found, go to "Resume from spec" above. If no matching spec exists, proceed to PLAN PHASE.
+1. explicit slice notes in `Current state`
+2. unchecked or partial items in `Use cases`
+3. concrete file or layer groupings in `Tasks`
+4. `Implementation order`, if present
+
+Treat optional headings such as `Execution slices`, `Next slice`, or `Non-goals` as hints when they exist, not as required structure.
+
+## Scope Contract
+
+This skill ports one bounded session-sized slice.
+
+A slice must satisfy all of these rules:
+
+- covers one cohesive behavior cluster
+- has explicit owning layer or justified multi-layer flow
+- is as large as is still reasonable to implement and verify within the current session without quality dropping
+- may include multiple related use cases when together they produce a more useful milestone than a tiny partial port
+- must not encourage shortcuts, speculative optimizations, or rushed architecture decisions just to close more scope
+- has clear non-goals for the current run
+
+If the spec does not already define slices explicitly, derive one from the existing `Use cases` and `Tasks` before coding.
 
 ## Approach
 
-Use Svelte reference to understand the expected output, not to copy the implementation.
+Use the reference compiler to understand expected output, not to copy structure.
 
 Do not port:
 
-- visitor or walker dispatch patterns
+- visitor or walker dispatch patterns mechanically
 - mutable AST metadata
 - JS-specific workarounds
-- intermediate abstractions that only exist for compatibility in the reference compiler
+- broad "make the whole feature pass" batches
 
 Do:
 
-- match the JS output exactly
-- simplify control flow when Rust makes it natural
-- keep functions short and focused
+- match reference observable behavior exactly for the selected slice
+- keep implementation aligned with crate boundaries
+
+## When New Use Cases Are Discovered
+
+Discovery during implementation is expected.
+
+If new behavior is discovered:
+
+- if it is outside the selected slice, add it to the spec as an unchecked use case and leave it for a later slice
+- if it is required to complete the selected slice, include it only if it fits within the existing slice limits
+- if it would widen the slice so much that implementation quality or verification confidence would likely drop, stop, update the spec, and report the blocker instead of expanding scope silently
+
+Spec updates are allowed during the run. Scope expansion is not.
 
 ## PLAN PHASE
 
-These steps are read-only. Complete them before writing any code.
+These steps are planning-only. Do not write files during this phase.
 
-### Step 1: Parallel Research
+### Step 1: Load Slice Context
 
-Research three things:
+Research four things:
 
-1. Trace the feature through all relevant phases of the reference compiler. Focus on runtime calls, arguments, conditions, and edge cases.
-2. Find what is already implemented in our Rust compiler for this feature: AST types, analysis passes, codegen, and tests.
-3. Search `reference/compiler/tests/` for snapshot inputs and outputs, plus other references to the feature.
+1. Which incomplete use cases in the spec naturally belong to the next slice
+2. Which layers own the missing behavior for this slice
+3. Which tests already cover part of the slice
+4. Which neighboring use cases are explicitly out of scope for this run
 
-After all three are complete, synthesize findings. Read only the files identified as critical for planning details.
+When auto-selecting a slice, group use cases by shared owning layer, shared missing data flow, or shared parser/analyze/codegen dependency.
 
-Output: what the feature requires end-to-end, what is already done, and what is missing.
+Prefer the largest useful slice that still has a clean ownership story, a clear verification strategy, and a high-confidence path to systematic implementation in one session.
 
-### Step 2: Use-Case Checklist
+If the next slice is ambiguous, narrow it before proceeding. Do not start coding with a fuzzy slice.
 
-Produce a structured list grouped by category. Number every case. Mark which are already handled.
+### Step 2: Slice Definition
 
-If more than 10 use cases exist, present them to the user in batches and get explicit selection before proceeding. After selection, record:
+Produce a slice definition with these sections:
 
-- selected for porting
-- not selected
+1. Included use cases
+2. Excluded use cases
+3. Owning layer
+4. Expected files to change
+5. Verification strategy
 
-Add each non-selected case as an unchecked checkbox in the spec's Use cases section. If there is no corresponding spec, report that explicitly instead of recording it elsewhere.
+Choose the slice size for usefulness, not minimalism. Prefer a meaningful milestone over a tiny fragment when both fit safely within one session.
 
-### Step 3: Implementation Plan
+If implementing the slice would require architecture changes that do not fit existing boundaries, stop and ask for approval. Do not improvise structural changes.
 
-Produce a concrete plan:
+### Step 3: Draft Spec Update
 
-- files to create for test cases
-- files to modify in AST, parser, analyze, transform if needed, and codegen
-- specific changes per layer
-- execution order
+Prepare a proposed update for the same spec file that was selected earlier so the next session can resume cleanly.
 
-If the feature requires changes that do not fit the existing architecture, flag this explicitly and wait for approval. Do not improvise structural changes.
+Draft `Current state` updates with:
 
-Write the plan to `specs/<feature-name>.md` following the `spec-template` skill. The `Current state` section goes first.
+- current slice name
+- why this slice comes next
+- non-goals for this run
 
-This plan-phase spec update is only to record scope, sequencing, and resume context. Do not mark use cases as completed before implementation and verification.
+This pre-implementation spec update is only for planning and resume context. Do not mark use cases as completed in this step.
+
+Do not apply the spec update yet. Present the slice plan and the proposed spec update, then wait for approval.
+
+Do not reshape the spec template just to use this skill. Prefer updating `Current state`, `Use cases`, and `Tasks`.
 
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
-**Present the plan and wait for approval before proceeding.**
+**Present the slice plan and wait for approval before proceeding. After approval, apply the planned update to the same spec file before writing code.**
 
 ## EXECUTE PHASE
 
 Start here only after plan approval. Steps are sequential.
 
-### Step 4: Branch
+### Step 4: Choose Verification Strategy
 
-Check current branch:
+Choose the smallest correct verification surface for the selected slice before writing code.
 
-```bash
-git branch --show-current
-```
+Use e2e compiler tests only when the slice must be checked against reference compiler output.
 
-- If on a `claude/*` branch: stay on it
-- If on any other non-`master` branch: switch to `master` first, then create a new branch
-- If on `master`: create a feature branch
+Use unit tests when the behavior is owned by one layer and does not need end-to-end snapshot comparison.
 
-Verify with `git branch --show-current`. If still on `master`, stop and fix before proceeding. Never commit directly to `master`.
+Default mapping:
 
-### Step 5: Test Cases
+- parser syntax and AST shape -> parser unit tests in `test.rs` modules
+- analysis metadata, symbol logic, ownership, diagnostics -> analyzer unit tests in `test.rs` modules
+- codegen or end-user compiler output that must match the reference compiler -> `tasks/compiler_tests/` e2e coverage
 
-Create one test case per selected use case from Step 2:
+For parser-only or analyze-only slices, prefer layer-local tests and exact AST or analysis expectations unless end-to-end output parity is required.
 
-1. `tasks/compiler_tests/cases2/<feature>_<variant>/case.svelte` — minimal component for that use case
-2. Add test in `tasks/compiler_tests/test_v3.rs`: `#[rstest] fn <test_name>() { assert_compiler("<test_name>"); }`
+Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless the point of the slice is an end-to-end compiler snapshot that must be compared with the reference compiler.
 
-After creating all case files, run `just generate` once to generate all `case-svelte.js` files. If it fails, stop and report. Do not attempt to fix the generator.
+If the slice needs both:
 
-After generation, read each `case-svelte.js` and verify the output matches expectations from planning. If the output looks wrong, fix `case.svelte` before implementing anything.
+- add unit tests for layer-local behavior
+- add the minimum e2e coverage needed to verify observable compiler output
 
-After creating and running tests, update `specs/<feature>.md` `Current state` with progress.
+### Step 5: Add Tests For This Slice
+
+Create or extend only the tests selected in Step 4.
+
+For unit tests:
+
+- add them in the owning crate's `test.rs` modules following existing project patterns
+- keep them focused on the behavior owned by that layer
+
+For e2e tests:
+
+1. add minimal `tasks/compiler_tests/cases2/<name>/case.svelte`
+2. add the matching entry in `tasks/compiler_tests/test_v3.rs`
+3. run `just generate` to produce `case-svelte.js`
+4. verify generated reference output before implementing
+
+Before implementation, only treat `case-svelte.js` as the reference artifact to review. Do not treat pre-implementation `case-rust.js` output as meaningful.
+
+`case-svelte.js` and `case-rust.js` are generated artifacts. Never edit them manually. They may change only through generation or compiler output.
 
 Rules:
 
-- never edit `case-svelte.js` or `case-rust.js`
-- one thing per case, minimal component
-- use snake_case names
+- do not add tests for excluded use cases in this run
+- if an existing small test already covers the slice, extend it instead of adding a duplicate
 
-### Step 6: Parser And AST
+### Step 6: Implement Only The Owning Changes
 
-If new syntax is needed:
+Implement the slice in the correct layer order:
 
-1. Add types to `crates/svelte_ast/src/lib.rs`
-2. Add parsing to `crates/svelte_parser/src/lib.rs`
-3. Add parser unit tests following project test patterns
+1. parser and AST only if the slice needs new syntax
+2. analyze only if the slice needs new derived data
+3. transform or codegen only after required parser or analysis support exists
 
-### Step 7: Analysis And Codegen
+If the work stops being session-sized or starts pressuring the implementation toward shortcuts, stop, update the spec, and report the blocker instead of widening the slice.
 
-If new metadata is needed:
+Unit tests are mandatory for every new parser or analyze behavior.
 
-1. Add or extend a pass in `crates/svelte_analyze/src/`
-2. Add analyze unit tests following project test patterns
+### Step 7: Verify The Slice
 
-Unit tests are mandatory for every new analysis pass or parser change.
+If relevant tests already fail before this slice, record that baseline first. Verify that the slice fixes or implements its included use cases without introducing additional regressions. Do not widen scope to fix unrelated baseline failures.
 
-Implement codegen in the corresponding `svelte_codegen_client` module.
-
-Key differences from Svelte:
-
-- direct recursive functions, not AST walker dispatch
-- `AnalysisData` side tables, not mutated AST metadata
-- use repo architecture rules rather than JS compiler structure
-
-Update `specs/<feature>.md` `Current state` with progress so far.
-
-### Step 8: Verify And Finalize
-
-Verify each test case individually:
+Verify every included test case individually:
 
 ```bash
 just test-case <test_name>
 ```
 
-Cross-check against the Step 2 checklist and confirm every selected use case has a passing test.
+Run this only for e2e tests created for the slice.
 
-Run full suite:
+Run the relevant unit test command for layer-local coverage, then run:
 
 ```bash
 just test-compiler
 ```
 
-If a test fails after 3 attempts, stop and report what was tried. Do not fix unrelated tests in the same run.
+Cross-check that:
 
-Update tracking:
+- every included use case passes
+- no new regressions were introduced beyond the recorded baseline
+- excluded use cases remain excluded
 
-- update `specs/<feature>.md`
-- move completed feature to `Done` in `ROADMAP.md` when appropriate
-- add newly discovered items to the spec Use cases as unchecked checkboxes
+If a test still fails after 3 attempts, stop and report what was tried. Do not silently expand scope.
 
-Mark use cases or the feature as completed only after the selected implementation and verification steps have passed.
+### Step 8: Finalize The Slice
 
-Benchmark only when the feature adds new syntax or other benchmark-relevant constructs.
+Before updating the spec, inspect the diff and confirm that unrelated files were not changed and that generated files changed only through the documented generation or test flow.
 
-## Summary
+Update the spec:
 
-Report:
+- mark completed use cases
+- update `Current state`
+- name the next slice
+- record any newly discovered unchecked use cases
 
-- changes
-- decisions
-- tests
-- next steps
+Mark use cases as completed only here, after implementation and verification succeed.
 
-Then recommend:
-
-- `/qa`
-- `/sync-docs`
+Move the ROADMAP item only when all spec use cases for the feature are complete.

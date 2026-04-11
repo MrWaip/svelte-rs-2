@@ -13,7 +13,6 @@ description: Project status and production-oriented next-step triage workflow. U
 6. Return a short prioritized list of runnable commands:
    - `fix-test <name>`
    - `port specs/<name>.md`
-   - `port2 specs/<name>.md`
    - `audit <feature>`
    - `improve <path-or-description>`
    - `review-boundaries`

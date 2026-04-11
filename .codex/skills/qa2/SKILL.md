@@ -1,6 +1,6 @@
 ---
 name: qa2
-description: Review recent implementation work for material, defensible issues in correctness, architecture, regression risk, and missing test coverage. Use after port2, fix-test, improve, or other code changes when Codex should act like a strict reviewer and avoid low-value style or comment nitpicks.
+description: Review recent implementation work for material, defensible issues in correctness, architecture, regression risk, and missing test coverage. Use after port, fix-test, improve, or other code changes when Codex should act like a strict reviewer and avoid low-value style or comment nitpicks.
 ---
 
 # Review Material Quality

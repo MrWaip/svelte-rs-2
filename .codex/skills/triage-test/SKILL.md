@@ -1,6 +1,6 @@
 ---
 name: triage-test
-description: Triage one failing compiler test to decide whether it should be fixed locally, escalated into a slice for port2, or sent back to audit/spec work. Use when a failing test may hide a larger architectural or feature-completeness gap and Codex should classify the work before implementing.
+description: Triage one failing compiler test to decide whether it should be fixed locally, escalated into a slice for port, or sent back to audit/spec work. Use when a failing test may hide a larger architectural or feature-completeness gap and Codex should classify the work before implementing.
 ---
 
 # Triage Failing Test
@@ -18,7 +18,7 @@ This skill does not assume the test is a small fix.
 The output must classify the failure as one of:
 
 - `local-fix` — one bounded bug in an existing implementation path
-- `slice-gap` — missing behavior that belongs in a bounded `port2` slice
+- `slice-gap` — missing behavior that belongs in a bounded `port` slice
 - `spec-gap` — the feature or use-case map is incomplete and needs `audit` or spec revision first
 
 ## Approach
@@ -111,7 +111,7 @@ Produce a recommendation with these sections:
 `Next command` must be exactly one of:
 
 - `/fix-test <name>` for `local-fix`
-- `/port2 <spec-or-feature>` for `slice-gap`
+- `/port <spec-or-feature>` for `slice-gap`
 - `/audit <feature>` or spec update for `spec-gap`
 
 If the classification is `slice-gap` or `spec-gap`, stop after reporting. Do not start implementation in this skill.
@@ -171,5 +171,5 @@ Report:
 Then recommend:
 
 - `/qa` after a completed `local-fix`
-- `/port2` for bounded feature work
+- `/port` for bounded feature work
 - `/audit` when the spec is incomplete
