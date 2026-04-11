@@ -145,6 +145,36 @@ fn css_unused_injected() {
 }
 
 #[rstest]
+fn css_nested_style() {
+    assert_compiler("css_nested_style");
+}
+
+#[rstest]
+fn css_scoped_id_selector() {
+    assert_compiler("css_scoped_id_selector");
+}
+
+#[rstest]
+fn css_scoped_attr_presence() {
+    assert_compiler("css_scoped_attr_presence");
+}
+
+#[rstest]
+fn css_scoped_attr_value_selector() {
+    assert_compiler("css_scoped_attr_value_selector");
+}
+
+#[rstest]
+fn css_scoped_attr_matcher_operators() {
+    assert_compiler("css_scoped_attr_matcher_operators");
+}
+
+#[rstest]
+fn css_scoped_attr_name_casefolding() {
+    assert_compiler("css_scoped_attr_name_casefolding");
+}
+
+#[rstest]
 fn script_module_exports_ordering_with_snippets() {
     assert_compiler("script_module_exports_ordering_with_snippets");
 }

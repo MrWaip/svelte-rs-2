@@ -460,6 +460,37 @@ fn style_tag_with_angle_brackets() {
     }
 }
 
+#[test]
+fn nested_style_tag_scans_as_plain_element_with_text_child() {
+    let source = "<div><style>.foo { color: red; }</style></div>";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+
+    assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+    assert!(matches!(tokens[1].token_type, TokenType::StartTag(_)));
+    assert!(matches!(tokens[2].token_type, TokenType::Text));
+    assert!(matches!(tokens[3].token_type, TokenType::EndTag(_)));
+    assert!(matches!(tokens[4].token_type, TokenType::EndTag(_)));
+    assert!(matches!(tokens[5].token_type, TokenType::EOF));
+
+    let TokenType::StartTag(ref div_tag) = tokens[0].token_type else {
+        panic!("expected outer div start tag");
+    };
+    assert_eq!(div_tag.name_span.source_text(source), "div");
+
+    let TokenType::StartTag(ref style_tag) = tokens[1].token_type else {
+        panic!("expected nested style start tag");
+    };
+    assert_eq!(style_tag.name_span.source_text(source), "style");
+
+    assert_eq!(tokens[2].span.source_text(source), ".foo { color: red; }");
+
+    let TokenType::EndTag(ref style_end) = tokens[3].token_type else {
+        panic!("expected nested style end tag");
+    };
+    assert_eq!(style_end.name_span.source_text(source), "style");
+}
+
 fn assert_start_each_tag_with_key(
     source: &str,
     token: &Token,

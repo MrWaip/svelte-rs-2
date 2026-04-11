@@ -484,6 +484,49 @@ fn duplicate_style_tag_returns_diagnostic() {
     );
 }
 
+#[test]
+fn nested_style_tag_is_parsed_as_element_not_component_css() {
+    let c = parse("<div><style>.foo { color: red; }</style></div>");
+    assert!(
+        c.css.is_none(),
+        "nested style must not become component.css"
+    );
+
+    let Node::Element(div) = node_at(&c, 0) else {
+        panic!("expected outer div element");
+    };
+    let Node::Element(style) = frag_node_at(&c, &div.fragment, 0) else {
+        panic!("expected nested style element");
+    };
+    assert_eq!(style.name, "style");
+    assert_eq!(style.fragment.nodes.len(), 1);
+    assert_eq!(
+        c.source_text(frag_node_at(&c, &style.fragment, 0).span()),
+        ".foo { color: red; }"
+    );
+}
+
+#[test]
+fn nested_style_tag_inside_block_stays_in_fragment() {
+    let c = parse("{#if ok}<style>.foo { color: red; }</style>{/if}");
+    assert!(
+        c.css.is_none(),
+        "block-local style must not become component.css"
+    );
+
+    let Node::IfBlock(if_block) = node_at(&c, 0) else {
+        panic!("expected if block");
+    };
+    let Node::Element(style) = frag_node_at(&c, &if_block.consequent, 0) else {
+        panic!("expected style element in if block");
+    };
+    assert_eq!(style.name, "style");
+    assert_eq!(
+        c.source_text(frag_node_at(&c, &style.fragment, 0).span()),
+        ".foo { color: red; }"
+    );
+}
+
 // --- Each block key tests (Bug #3) ---
 
 fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {

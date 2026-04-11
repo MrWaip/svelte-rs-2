@@ -808,6 +808,10 @@ mod css_prune {
         spread_attribute_conservative_class_match,
         "css_prune/spread_attribute_conservative_class_match"
     );
+    diagnostic_case!(
+        concat_attribute_selector_no_match,
+        "css_prune/concat_attribute_selector_no_match"
+    );
     diagnostic_case!(nested_element_match, "css_prune/nested_element_match");
     diagnostic_case!(
         deeply_nested_descendant,

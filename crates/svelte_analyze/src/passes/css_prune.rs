@@ -1,5 +1,6 @@
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
+use svelte_ast::{Attribute, Component as SvelteComponent, Node, NodeId};
 use svelte_css::{
     AtRule, CombinatorKind, ComplexSelector, RelativeSelector, SimpleSelector, StyleRule,
     StyleSheet, Visit,
@@ -7,9 +8,7 @@ use svelte_css::{
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::GetSpan;
 
-use svelte_ast::NodeId;
-
-use crate::types::data::{ElementFacts, TemplateElementIndex};
+use crate::types::data::{ElementFacts, NamespaceKind, TemplateElementIndex};
 use crate::types::node_table::NodeBitSet;
 use crate::AnalysisData;
 
@@ -22,6 +21,7 @@ use crate::AnalysisData;
 /// reached by a non-global selector chain in `css.scoped_elements`, and
 /// emits `css_unused_selector` warnings for unmatched selectors.
 pub(crate) fn prune_and_warn(
+    component: &SvelteComponent,
     stylesheet: &StyleSheet,
     css_source: &str,
     data: &mut AnalysisData,
@@ -32,6 +32,8 @@ pub(crate) fn prune_and_warn(
     let mut used = FxHashSet::default();
     let scoped = &mut data.output.css.scoped_elements;
     let mut pruner = PruneVisitor {
+        component,
+        css_source,
         elements,
         element_facts,
         used: &mut used,
@@ -54,6 +56,8 @@ pub(crate) fn prune_and_warn(
 // ---------------------------------------------------------------------------
 
 struct PruneVisitor<'a, 'b> {
+    component: &'a SvelteComponent,
+    css_source: &'a str,
     elements: &'a TemplateElementIndex,
     element_facts: &'a ElementFacts,
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
@@ -92,6 +96,8 @@ impl Visit for PruneVisitor<'_, '_> {
             for elem_id in candidate_elements(self.elements, selectors.last().copied().unwrap()) {
                 if apply_selector(
                     &selectors,
+                    self.component,
+                    self.css_source,
                     self.elements,
                     self.element_facts,
                     elem_id,
@@ -164,6 +170,8 @@ fn is_unscoped_pseudo_class(pc: &svelte_css::PseudoClassSelector) -> bool {
 /// through a combinator) in `scoped`.
 fn apply_selector(
     selectors: &[&RelativeSelector],
+    component: &SvelteComponent,
+    css_source: &str,
     elements: &TemplateElementIndex,
     element_facts: &ElementFacts,
     elem_id: NodeId,
@@ -177,7 +185,14 @@ fn apply_selector(
     let last_idx = selectors.len() - 1;
     let last_sel = selectors[last_idx];
 
-    if !relative_selector_matches(last_sel, elements, element_facts, elem_id) {
+    if !relative_selector_matches(
+        last_sel,
+        component,
+        css_source,
+        elements,
+        element_facts,
+        elem_id,
+    ) {
         return false;
     }
 
@@ -189,7 +204,16 @@ fn apply_selector(
 
     // Need to match remaining selectors via combinators
     let rest = &selectors[..last_idx];
-    if apply_combinator(rest, last_sel, elements, element_facts, elem_id, scoped) {
+    if apply_combinator(
+        rest,
+        last_sel,
+        component,
+        css_source,
+        elements,
+        element_facts,
+        elem_id,
+        scoped,
+    ) {
         scoped.insert(elem_id);
         return true;
     }
@@ -201,6 +225,8 @@ fn apply_selector(
 fn apply_combinator(
     remaining: &[&RelativeSelector],
     current_sel: &RelativeSelector,
+    component: &SvelteComponent,
+    css_source: &str,
     elements: &TemplateElementIndex,
     element_facts: &ElementFacts,
     elem_id: NodeId,
@@ -220,7 +246,15 @@ fn apply_combinator(
             // Check all ancestors
             let mut current = elements.parent_element(elem_id);
             while let Some(parent_id) = current {
-                if apply_selector(remaining, elements, element_facts, parent_id, scoped) {
+                if apply_selector(
+                    remaining,
+                    component,
+                    css_source,
+                    elements,
+                    element_facts,
+                    parent_id,
+                    scoped,
+                ) {
                     return true;
                 }
                 current = elements.parent_element(parent_id);
@@ -231,7 +265,15 @@ fn apply_combinator(
         CombinatorKind::Child => {
             // Check direct parent only
             if let Some(parent_id) = elements.parent_element(elem_id) {
-                if apply_selector(remaining, elements, element_facts, parent_id, scoped) {
+                if apply_selector(
+                    remaining,
+                    component,
+                    css_source,
+                    elements,
+                    element_facts,
+                    parent_id,
+                    scoped,
+                ) {
                     return true;
                 }
             }
@@ -240,7 +282,15 @@ fn apply_combinator(
         }
         CombinatorKind::NextSibling => {
             if let Some(prev_id) = elements.previous_sibling(elem_id) {
-                if apply_selector(remaining, elements, element_facts, prev_id, scoped) {
+                if apply_selector(
+                    remaining,
+                    component,
+                    css_source,
+                    elements,
+                    element_facts,
+                    prev_id,
+                    scoped,
+                ) {
                     return true;
                 }
             }
@@ -248,7 +298,15 @@ fn apply_combinator(
         }
         CombinatorKind::SubsequentSibling => {
             for prev_id in elements.previous_siblings(elem_id) {
-                if apply_selector(remaining, elements, element_facts, prev_id, scoped) {
+                if apply_selector(
+                    remaining,
+                    component,
+                    css_source,
+                    elements,
+                    element_facts,
+                    prev_id,
+                    scoped,
+                ) {
                     return true;
                 }
             }
@@ -269,6 +327,8 @@ fn all_global(selectors: &[&RelativeSelector]) -> bool {
 /// Check if a relative selector matches a specific template element.
 fn relative_selector_matches(
     selector: &RelativeSelector,
+    component: &SvelteComponent,
+    css_source: &str,
     elements: &TemplateElementIndex,
     element_facts: &ElementFacts,
     elem_id: NodeId,
@@ -302,7 +362,14 @@ fn relative_selector_matches(
                     // Check the last selector of the :global() args
                     if !inner.is_empty() {
                         let last = inner.last().unwrap();
-                        if relative_selector_matches(last, elements, element_facts, elem_id) {
+                        if relative_selector_matches(
+                            last,
+                            component,
+                            css_source,
+                            elements,
+                            element_facts,
+                            elem_id,
+                        ) {
                             return true;
                         }
                     }
@@ -320,9 +387,16 @@ fn relative_selector_matches(
                 }
                 // Other pseudo-classes: conservative match (assume they could match)
             }
-            SimpleSelector::Attribute(_) => {
-                // Conservative: attribute selectors always match
-                // (full attribute value matching is a future slice)
+            SimpleSelector::Attribute(attr) => {
+                if !element_matches_attribute_selector(
+                    component,
+                    css_source,
+                    element_facts,
+                    elem_id,
+                    attr,
+                ) {
+                    return false;
+                }
             }
             SimpleSelector::PseudoElement(_)
             | SimpleSelector::Nesting(_)
@@ -340,6 +414,45 @@ fn relative_selector_matches(
 // Attribute matching helpers
 // ---------------------------------------------------------------------------
 
+const HTML_CASE_INSENSITIVE_ATTRIBUTES: &[&str] = &[
+    "accept-charset",
+    "autocapitalize",
+    "autocomplete",
+    "behavior",
+    "charset",
+    "crossorigin",
+    "decoding",
+    "dir",
+    "direction",
+    "draggable",
+    "enctype",
+    "enterkeyhint",
+    "fetchpriority",
+    "formenctype",
+    "formmethod",
+    "formtarget",
+    "hidden",
+    "http-equiv",
+    "inputmode",
+    "kind",
+    "loading",
+    "method",
+    "preload",
+    "referrerpolicy",
+    "rel",
+    "rev",
+    "role",
+    "rules",
+    "scope",
+    "shape",
+    "spellcheck",
+    "target",
+    "translate",
+    "type",
+    "valign",
+    "wrap",
+];
+
 /// Check if an element has a class that matches `name`.
 fn element_has_class(element_facts: &ElementFacts, elem_id: NodeId, name: &str) -> bool {
     element_facts.has_static_class(elem_id, name) || element_facts.may_match_class(elem_id)
@@ -347,6 +460,163 @@ fn element_has_class(element_facts: &ElementFacts, elem_id: NodeId, name: &str) 
 
 fn element_has_id(element_facts: &ElementFacts, elem_id: NodeId, expected: &str) -> bool {
     element_facts.static_id(elem_id) == Some(expected) || element_facts.may_match_id(elem_id)
+}
+
+fn element_has_attribute_presence(
+    component: &SvelteComponent,
+    element_facts: &ElementFacts,
+    elem_id: NodeId,
+    attr_name: &str,
+) -> bool {
+    if element_facts.has_spread(elem_id) {
+        return true;
+    }
+
+    let Some(attrs) = element_attributes(component, elem_id) else {
+        return false;
+    };
+
+    attrs
+        .iter()
+        .any(|attr| attribute_name_matches_selector(component, attr, attr_name))
+}
+
+fn element_matches_attribute_selector(
+    component: &SvelteComponent,
+    css_source: &str,
+    element_facts: &ElementFacts,
+    elem_id: NodeId,
+    selector: &svelte_css::AttributeSelector,
+) -> bool {
+    let attr_name = selector.name.as_str();
+    if selector.matcher.is_none() && selector.value.is_none() {
+        return element_has_attribute_presence(component, element_facts, elem_id, attr_name);
+    }
+
+    if element_facts.has_spread(elem_id) {
+        return true;
+    }
+
+    let Some(attrs) = element_attributes(component, elem_id) else {
+        return false;
+    };
+
+    let operator = selector
+        .matcher
+        .map(|span| span.source_text(css_source).trim())
+        .unwrap_or("");
+    let expected = selector
+        .value
+        .map(|span| span.source_text(css_source))
+        .unwrap_or("");
+    let flags = selector
+        .flags
+        .map(|span| span.source_text(css_source).trim());
+    let case_insensitive =
+        attribute_selector_case_insensitive(element_facts, elem_id, attr_name, flags);
+
+    for attr in attrs {
+        if !attribute_name_matches_selector(component, attr, attr_name) {
+            continue;
+        }
+        match attr {
+            Attribute::StringAttribute(attr) => {
+                if test_attribute(
+                    operator,
+                    expected,
+                    case_insensitive,
+                    attr.value_span.source_text(&component.source),
+                ) {
+                    return true;
+                }
+            }
+            Attribute::BooleanAttribute(_) => {}
+            // Dynamic or directive-backed attrs stay conservative in this slice.
+            Attribute::ExpressionAttribute(_)
+            | Attribute::ConcatenationAttribute(_)
+            | Attribute::Shorthand(_)
+            | Attribute::BindDirective(_)
+            | Attribute::ClassDirective(_)
+            | Attribute::StyleDirective(_)
+            | Attribute::OnDirectiveLegacy(_) => return true,
+            Attribute::SpreadAttribute(_)
+            | Attribute::UseDirective(_)
+            | Attribute::TransitionDirective(_)
+            | Attribute::AnimateDirective(_)
+            | Attribute::AttachTag(_) => {}
+        }
+    }
+
+    false
+}
+
+fn attribute_name_matches_selector(
+    component: &SvelteComponent,
+    attr: &Attribute,
+    selector_name: &str,
+) -> bool {
+    match attr {
+        Attribute::Shorthand(attr) => attr
+            .expression_span
+            .source_text(&component.source)
+            .trim()
+            .eq_ignore_ascii_case(selector_name),
+        _ => attr
+            .name()
+            .is_some_and(|attr_name| attr_name.eq_ignore_ascii_case(selector_name)),
+    }
+}
+
+fn element_attributes<'a>(
+    component: &'a SvelteComponent,
+    elem_id: NodeId,
+) -> Option<&'a [Attribute]> {
+    match component.store.get(elem_id) {
+        Node::Element(element) => Some(&element.attributes),
+        Node::SvelteElement(element) => Some(&element.attributes),
+        _ => None,
+    }
+}
+
+fn attribute_selector_case_insensitive(
+    element_facts: &ElementFacts,
+    elem_id: NodeId,
+    attr_name: &str,
+    flags: Option<&str>,
+) -> bool {
+    let has_case_sensitive_flag = flags.is_some_and(|flags| flags.contains('s'));
+    flags.is_some_and(|flags| flags.contains('i'))
+        || (!has_case_sensitive_flag
+            && !matches!(
+                element_facts.namespace(elem_id),
+                Some(NamespaceKind::Svg | NamespaceKind::MathMl | NamespaceKind::AnnotationXml)
+            )
+            && HTML_CASE_INSENSITIVE_ATTRIBUTES
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(attr_name)))
+}
+
+fn test_attribute(operator: &str, expected: &str, case_insensitive: bool, value: &str) -> bool {
+    let (expected, value) = if case_insensitive {
+        (expected.to_lowercase(), value.to_lowercase())
+    } else {
+        (expected.to_owned(), value.to_owned())
+    };
+
+    match operator {
+        "=" => value == expected,
+        "~=" => value.split_whitespace().any(|part| part == expected),
+        "|=" => {
+            value == expected
+                || value
+                    .strip_prefix(expected.as_str())
+                    .is_some_and(|rest| rest.starts_with('-'))
+        }
+        "^=" => value.starts_with(expected.as_str()),
+        "$=" => value.ends_with(expected.as_str()),
+        "*=" => value.contains(expected.as_str()),
+        _ => false,
+    }
 }
 
 fn candidate_elements(

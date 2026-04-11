@@ -1,0 +1,16 @@
+
+	[data-state="on"].svelte-85638w {
+		color: red;
+	}
+
+	[data-state="on" i].svelte-85638w {
+		background: blue;
+	}
+
+	[data-state="on" s].svelte-85638w {
+		border-color: green;
+	}
+
+	[type="BUTTON"].svelte-85638w {
+		color: purple;
+	}
