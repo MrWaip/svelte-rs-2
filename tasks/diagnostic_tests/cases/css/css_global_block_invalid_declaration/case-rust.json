@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "css_global_block_invalid_declaration",
+    "start": 11,
+    "end": 21
+  }
+]

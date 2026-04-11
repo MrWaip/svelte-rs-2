@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_global_block_invalid_placement",
+    "end": 19,
+    "severity": "error",
+    "start": 12
+  }
+]

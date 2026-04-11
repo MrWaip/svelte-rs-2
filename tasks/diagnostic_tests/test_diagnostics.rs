@@ -558,6 +558,116 @@ mod attributes {
     );
 }
 
+mod css {
+    use super::*;
+
+    diagnostic_case!(
+        css_global_block_invalid_placement,
+        "css/css_global_block_invalid_placement",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_invalid_placement,
+        "css/css_global_invalid_placement",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_invalid_placement_multiple_non_global_after,
+        "css/css_global_invalid_placement_multiple_non_global_after",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_invalid_placement_end_ok,
+        "css/css_global_invalid_placement_end_ok"
+    );
+    diagnostic_case!(
+        css_global_invalid_placement_start_ok,
+        "css/css_global_invalid_placement_start_ok"
+    );
+    diagnostic_case!(
+        css_global_invalid_selector_list,
+        "css/css_global_invalid_selector_list",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_type_selector_invalid_placement,
+        "css/css_type_selector_invalid_placement",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_invalid_selector,
+        "css/css_global_invalid_selector",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_modifier_start,
+        "css/css_global_block_invalid_modifier_start",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_combinator,
+        "css/css_global_block_invalid_combinator",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_list,
+        "css/css_global_block_invalid_list",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_declaration,
+        "css/css_global_block_invalid_declaration"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_modifier,
+        "css/css_global_block_invalid_modifier",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_nesting_selector_invalid_placement,
+        "css/css_nesting_selector_invalid_placement",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_nesting_selector_valid_in_global,
+        "css/css_nesting_selector_valid_in_global"
+    );
+    diagnostic_case!(
+        css_selector_invalid,
+        "css/css_selector_invalid",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_with_nested_rules_ok,
+        "css/css_global_block_with_nested_rules_ok"
+    );
+    diagnostic_case!(
+        css_global_block_descendant_ok,
+        "css/css_global_block_descendant_ok",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_nesting_modifier_start_in_global_block,
+        "css/css_global_nesting_modifier_start_in_global_block",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_global_block_invalid_list_mixed,
+        "css/css_global_block_invalid_list_mixed",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        css_nesting_in_compound_global_block_ok,
+        "css/css_nesting_in_compound_global_block_ok",
+        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+    );
+    diagnostic_case!(
+        valid_scoped_css_no_diagnostics,
+        "css/valid_scoped_css_no_diagnostics",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans that do not overlap npm svelte/compiler on this repro"
+    );
+}
+
 mod bind {
     use super::*;
 
