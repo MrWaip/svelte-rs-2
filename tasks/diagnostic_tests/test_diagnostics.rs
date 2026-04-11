@@ -167,3 +167,8 @@ fn write_actual_diagnostics(case: &str, actual: &[ExpectedDiagnostic]) {
 fn a11y_accesskey() {
     assert_diagnostics("a11y_accesskey");
 }
+
+#[rstest]
+fn props_identifier_no_store_rune_conflict() {
+    assert_diagnostics("props_identifier_no_store_rune_conflict");
+}

@@ -4377,6 +4377,16 @@ let x = $state(0);
 }
 
 #[test]
+fn validate_props_identifier_no_store_rune_conflict() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let props = $props();
+</script>"#,
+    );
+    assert_no_error(&diags, "store_rune_conflict");
+}
+
+#[test]
 fn validate_store_invalid_subscription_in_module() {
     let diags = analyze_with_diags(
         r#"<script>

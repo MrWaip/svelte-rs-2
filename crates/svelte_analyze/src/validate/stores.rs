@@ -127,7 +127,12 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
             if is_rune_name(name) && name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];
                 let root = self.data.scoping.root_scope_id();
-                if self.data.scoping.find_binding(root, base).is_some() {
+                if self
+                    .data
+                    .scoping
+                    .find_binding(root, base)
+                    .is_some_and(|sym_id| !is_props_binding(&self.data, sym_id))
+                {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {
                             name: base.to_string(),
@@ -140,4 +145,12 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
 
         walk_call_expression(self, call);
     }
+}
+
+fn is_props_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
+    // `$props()` identifier/rest bindings are special compiler-owned bindings, not
+    // user-authored locals that can be mistaken for store subscriptions.
+    data.scoping.is_prop_source(sym_id)
+        || data.scoping.prop_non_source_name(sym_id).is_some()
+        || data.scoping.is_rest_prop(sym_id)
 }

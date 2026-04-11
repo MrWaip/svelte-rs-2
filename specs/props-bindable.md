@@ -1,10 +1,11 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 15/17 use cases
+- **Working**: 19/22 use cases
 - **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
+- **Completed (2026-04-11)**: identifier-pattern `$props()` bindings no longer trigger a false-positive `store_rune_conflict`; analyzer store validation now excludes props-owned bindings and the focused parity case `props_identifier_no_store_rune_conflict` passes alongside the existing positive `store_rune_conflict` analyzer test.
 - **Next**: Verify and add coverage for `$props()` and `$props.id()` rejection inside `<script module>` (`ast_type !== 'instance'` check in reference `CallExpression.js`), then track dev-mode ownership mutation validation here instead of leaving it only in ROADMAP.
-- Last updated: 2026-04-07
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -37,6 +38,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `$props.id()` validation edge cases covered by compiler-level pipeline tests
 - [x] `$bindable()` validation: `bindable_invalid_location` and argument-count checks
 - [x] `$props()` validation: `props_invalid_placement`, `props_duplicate`, and rune argument-count checks
+- [x] Identifier-pattern `$props()` bindings like `let props = $props()` must not emit a false-positive `store_rune_conflict` warning (diagnostic test: `props_identifier_no_store_rune_conflict`)
 - [ ] `$props()` and `$props.id()` rejected inside `<script module>` — reference: `ast_type !== 'instance'` check in `CallExpression.js`
 - [x] `$props.id()` validation: `props_id_invalid_placement`, duplicate detection with `$props()`, zero-argument enforcement
 - [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
@@ -90,3 +92,5 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] analyze unit: `props_invalid_pattern`
 - [x] analyze unit: `props_illegal_name` MemberExpression on rest_prop (3 tests)
 - [x] analyze unit: `custom_element_props_identifier` warning (4 tests)
+- [x] analyze unit: `validate_props_identifier_no_store_rune_conflict`
+- [x] `props_identifier_no_store_rune_conflict`
