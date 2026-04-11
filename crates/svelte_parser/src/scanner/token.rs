@@ -60,6 +60,7 @@ pub struct StartEachTag {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct HTMLAttribute {
+    pub span: Span,
     pub name_span: Span,
     pub value: AttributeValue,
 }
@@ -82,6 +83,7 @@ pub enum Attribute {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct AnimateDirective {
+    pub span: Span,
     /// Name after "animate:" (e.g., "flip" in `animate:flip`).
     pub name_span: Span,
     /// Expression span if `={expr}` was provided.
@@ -93,12 +95,14 @@ pub struct AnimateDirective {
 /// {@attach expr} — element attachment (Svelte 5.29+)
 #[derive(Debug, PartialEq, Eq)]
 pub struct AttachTagToken {
+    pub span: Span,
     /// Span of the JS expression inside `{@attach expr}`.
     pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassDirective {
+    pub span: Span,
     pub shorthand: bool,
     pub name_span: Span,
     pub expression_span: Span,
@@ -106,6 +110,7 @@ pub struct ClassDirective {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct StyleDirective {
+    pub span: Span,
     pub shorthand: bool,
     pub name_span: Span,
     pub value: AttributeValue,
@@ -114,6 +119,7 @@ pub struct StyleDirective {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BindDirective {
+    pub span: Span,
     pub shorthand: bool,
     pub name_span: Span,
     pub expression_span: Span,
@@ -121,6 +127,7 @@ pub struct BindDirective {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct UseDirective {
+    pub span: Span,
     pub shorthand: bool,
     pub name_span: Span,
     pub expression_span: Span,
@@ -129,6 +136,7 @@ pub struct UseDirective {
 /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Debug, PartialEq, Eq)]
 pub struct OnDirectiveLegacy {
+    pub span: Span,
     /// Event name after "on:" (e.g., "click" in `on:click`).
     pub name_span: Span,
     /// Handler expression. Empty if bubble event (no `={...}`).
@@ -141,6 +149,7 @@ pub struct OnDirectiveLegacy {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TransitionDirective {
+    pub span: Span,
     /// Name after the directive prefix (e.g., "fade" in `transition:fade`).
     pub name_span: Span,
     /// Expression span if `={expr}` was provided.
@@ -189,6 +198,41 @@ pub struct Token {
 impl GetSpan for Token {
     fn span(&self) -> Span {
         self.span
+    }
+}
+
+impl Attribute {
+    pub fn with_span(mut self, span: Span) -> Self {
+        match &mut self {
+            Attribute::HTMLAttribute(attr) => attr.span = span,
+            Attribute::ExpressionTag(attr) => attr.span = span,
+            Attribute::ClassDirective(attr) => attr.span = span,
+            Attribute::StyleDirective(attr) => attr.span = span,
+            Attribute::BindDirective(attr) => attr.span = span,
+            Attribute::UseDirective(attr) => attr.span = span,
+            Attribute::OnDirectiveLegacy(attr) => attr.span = span,
+            Attribute::TransitionDirective(attr) => attr.span = span,
+            Attribute::AnimateDirective(attr) => attr.span = span,
+            Attribute::AttachTag(attr) => attr.span = span,
+        }
+        self
+    }
+}
+
+impl GetSpan for Attribute {
+    fn span(&self) -> Span {
+        match self {
+            Attribute::HTMLAttribute(attr) => attr.span,
+            Attribute::ExpressionTag(attr) => attr.span,
+            Attribute::ClassDirective(attr) => attr.span,
+            Attribute::StyleDirective(attr) => attr.span,
+            Attribute::BindDirective(attr) => attr.span,
+            Attribute::UseDirective(attr) => attr.span,
+            Attribute::OnDirectiveLegacy(attr) => attr.span,
+            Attribute::TransitionDirective(attr) => attr.span,
+            Attribute::AnimateDirective(attr) => attr.span,
+            Attribute::AttachTag(attr) => attr.span,
+        }
     }
 }
 

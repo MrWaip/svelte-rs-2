@@ -1,10 +1,9 @@
 # `<svelte:window>` / `<svelte:document>` / `<svelte:body>`
 
 ## Current state
-- **Working**: 9/13 use cases
-- **Missing**: 4 use cases
-- **Next**: implement parser root-only duplicate/placement validation for all three tags, analyzer validation for children and illegal attributes, then port `{@attach}` codegen for `<svelte:document>`
-- Last updated: 2026-04-07
+- **Working**: 13/13 use cases
+- **Next**: complete
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -46,15 +45,15 @@
 ## Use cases
 
 - [x] Parse top-level `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` into dedicated AST nodes instead of leaving them as regular elements.
-- [ ] Reject duplicate `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` tags with `svelte_meta_duplicate`.
-- [ ] Reject `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` outside the component top level with `svelte_meta_invalid_placement`.
-- [ ] Reject children inside `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` with `svelte_meta_invalid_content`.
-- [ ] Reject non-event attributes and spread attributes on `<svelte:window>` / `<svelte:document>` with `illegal_element_attribute`, and on `<svelte:body>` with `svelte_body_illegal_attribute`.
+- [x] Reject duplicate `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` tags with `svelte_meta_duplicate`.
+- [x] Reject `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` outside the component top level with `svelte_meta_invalid_placement`.
+- [x] Reject children inside `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` with `svelte_meta_invalid_content`.
+- [x] Reject non-event attributes and spread attributes on `<svelte:window>` / `<svelte:document>` with `illegal_element_attribute`, and on `<svelte:body>` with `svelte_body_illegal_attribute`.
 - [x] Generate `<svelte:window>` event listeners for both Svelte 5 event attributes and legacy `on:` directives, including shared event modifier handling.
 - [x] Generate `<svelte:window>` bindings for `innerWidth`, `innerHeight`, `outerWidth`, `outerHeight`, `scrollX`, `scrollY`, `online`, and `devicePixelRatio`.
 - [x] Generate `<svelte:document>` event listeners for both Svelte 5 event attributes and legacy `on:` directives, including modifier/bubbling behavior shared with other event targets.
 - [x] Generate `<svelte:document>` bindings for `activeElement`, `fullscreenElement`, `pointerLockElement`, and `visibilityState`.
-- [ ] Generate `{@attach}` on `<svelte:document>`.
+- [x] Generate `{@attach}` on `<svelte:document>`.
 - [x] Generate `<svelte:body>` event listeners for both Svelte 5 event attributes and legacy `on:` directives.
 - [x] Generate `use:` actions on `<svelte:body>`.
 - [x] Preserve mixed special-element output when `<svelte:head>`, `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` coexist in one component.
@@ -138,6 +137,6 @@
 - [x] `head_with_special_elements`
 - [x] `head_position_with_body`
 - [x] `event_attr_passive_window`
-- [ ] `attach_on_document`
+- [x] `attach_on_document`
 - [x] Parser coverage for duplicate and invalid-placement diagnostics for the root-only special-element family
 - [x] Analyzer coverage for illegal-attribute and invalid-content diagnostics for the special-element family

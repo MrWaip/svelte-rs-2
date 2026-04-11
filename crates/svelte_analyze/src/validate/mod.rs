@@ -397,8 +397,7 @@ fn validate_svelte_options_warnings(
         };
 
         if let Some(kind) = kind {
-            let span = component.store.get(attr.id()).span();
-            diags.push(Diagnostic::warning(kind, span));
+            diags.push(Diagnostic::warning(kind, attr.span()));
         }
     }
 }

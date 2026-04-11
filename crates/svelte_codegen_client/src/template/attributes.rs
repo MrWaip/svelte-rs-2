@@ -3,19 +3,19 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{
-    ExprSite, NamespaceKind, is_regular_dom_property, normalize_regular_attribute_name,
+    is_regular_dom_property, normalize_regular_attribute_name, ExprSite, NamespaceKind,
 };
 use svelte_ast::{Attribute, Element, NodeId};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
-use super::bind::{BindPlacement, emit_bind_group_value, gen_bind_directive};
+use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
 use super::events::{
     build_event_handler_s5, dev_event_handler, gen_animate_directive, gen_attach_tag,
     gen_on_directive_legacy, gen_transition_directive, gen_use_directive,
 };
-use super::expression::{MemoAttr, MemoAttrUpdate, build_attr_concat, get_attr_expr};
+use super::expression::{build_attr_concat, get_attr_expr, MemoAttr, MemoAttrUpdate};
 
 /// Build an object property for a directive expression.
 /// Handles the three-way branch: mutated rune -> `$.get(name)`, same-name -> shorthand, else -> key-value.

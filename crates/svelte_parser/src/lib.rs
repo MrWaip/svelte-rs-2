@@ -494,6 +494,10 @@ impl<'a> Parser<'a> {
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 
+        // Root-only special elements need parser-owned duplicate / placement validation before
+        // top-level conversion rewrites the valid cases into dedicated AST nodes.
+        self.validate_root_only_special_elements(&component);
+
         // Convert <svelte:head> elements to SvelteHead nodes
         Self::convert_svelte_head(&mut component);
 

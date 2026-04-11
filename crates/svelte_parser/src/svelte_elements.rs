@@ -10,6 +10,75 @@ use svelte_span::Span;
 use crate::{validate_custom_element_tag, Parser, TagError};
 
 impl<'a> Parser<'a> {
+    pub(crate) fn validate_root_only_special_elements(&mut self, component: &Component) {
+        #[derive(Default)]
+        struct Seen {
+            window: bool,
+            document: bool,
+            body: bool,
+        }
+
+        let mut seen = Seen::default();
+        let mut current_level = component.fragment.nodes.clone();
+        let mut next_level = Vec::new();
+        let mut at_root = true;
+
+        while !current_level.is_empty() {
+            next_level.clear();
+
+            for &id in &current_level {
+                let node = component.store.get(id);
+
+                if let Node::Element(el) = node {
+                    if matches!(
+                        el.name.as_str(),
+                        "svelte:window" | "svelte:document" | "svelte:body"
+                    ) {
+                        let already_seen = match el.name.as_str() {
+                            "svelte:window" => seen.window,
+                            "svelte:document" => seen.document,
+                            "svelte:body" => seen.body,
+                            _ => unreachable!("only root-only special elements are tracked here"),
+                        };
+
+                        if already_seen {
+                            self.recover(Diagnostic::error(
+                                svelte_diagnostics::DiagnosticKind::SvelteMetaDuplicate {
+                                    name: el.name.clone(),
+                                },
+                                el.span,
+                            ));
+                        } else {
+                            match el.name.as_str() {
+                                "svelte:window" => seen.window = true,
+                                "svelte:document" => seen.document = true,
+                                "svelte:body" => seen.body = true,
+                                _ => {
+                                    unreachable!("only root-only special elements are tracked here")
+                                }
+                            }
+                        }
+
+                        if !at_root {
+                            self.recover(Diagnostic::error(
+                                svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
+                                    name: el.name.clone(),
+                                },
+                                el.span,
+                            ));
+                        }
+                    }
+                }
+
+                extend_child_node_ids(node, &mut next_level);
+            }
+
+            current_level.clear();
+            std::mem::swap(&mut current_level, &mut next_level);
+            at_root = false;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // <svelte:options> extraction
     // -----------------------------------------------------------------------
@@ -429,9 +498,30 @@ fn extend_child_node_ids(node: &Node, buf: &mut Vec<NodeId>) {
         }
         Node::SnippetBlock(block) => buf.extend_from_slice(&block.body.nodes),
         Node::KeyBlock(block) => buf.extend_from_slice(&block.fragment.nodes),
+        Node::SvelteWindow(window) => buf.extend_from_slice(&window.fragment.nodes),
+        Node::SvelteDocument(document) => buf.extend_from_slice(&document.fragment.nodes),
+        Node::SvelteBody(body) => buf.extend_from_slice(&body.fragment.nodes),
         Node::SvelteHead(head) => buf.extend_from_slice(&head.fragment.nodes),
         Node::SvelteElement(el) => buf.extend_from_slice(&el.fragment.nodes),
         Node::SvelteBoundary(b) => buf.extend_from_slice(&b.fragment.nodes),
-        _ => {}
+        Node::AwaitBlock(block) => {
+            if let Some(pending) = &block.pending {
+                buf.extend_from_slice(&pending.nodes);
+            }
+            if let Some(then) = &block.then {
+                buf.extend_from_slice(&then.nodes);
+            }
+            if let Some(catch) = &block.catch {
+                buf.extend_from_slice(&catch.nodes);
+            }
+        }
+        Node::Text(_)
+        | Node::Comment(_)
+        | Node::ExpressionTag(_)
+        | Node::RenderTag(_)
+        | Node::HtmlTag(_)
+        | Node::ConstTag(_)
+        | Node::DebugTag(_)
+        | Node::Error(_) => {}
     }
 }

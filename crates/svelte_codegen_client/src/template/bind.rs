@@ -248,8 +248,10 @@ pub(crate) fn gen_bind_directive<'a>(
             if is_prop_source {
                 // Bindable props already lower to a prop accessor callable, so bind:checked
                 // should pass it through directly instead of wrapping it in rune closures.
-                ctx.b
-                    .call_stmt("$.bind_checked", [Arg::Ident(el_name), Arg::Ident(&var_name)])
+                ctx.b.call_stmt(
+                    "$.bind_checked",
+                    [Arg::Ident(el_name), Arg::Ident(&var_name)],
+                )
             } else {
                 let getter = build_binding_getter(ctx, &var_name, is_rune);
                 let setter = build_binding_setter(ctx, var_name, is_rune);
