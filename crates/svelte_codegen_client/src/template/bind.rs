@@ -159,6 +159,7 @@ pub(crate) fn gen_bind_directive<'a>(
 ) -> Option<BindPlacement<'a>> {
     // Pre-computed by analysis — no string-based symbol re-resolution needed.
     let is_rune = ctx.is_mutable_rune_target(bind.id);
+    let is_prop_source = ctx.is_prop_source_node(bind.id);
 
     // Function bindings: bind:prop={(get_fn), (set_fn)} via SequenceExpression.
     // bind:this has its own SequenceExpression handling below; bind:group disallows it.
@@ -244,12 +245,19 @@ pub(crate) fn gen_bind_directive<'a>(
             )
         }
         "checked" => {
-            let getter = build_binding_getter(ctx, &var_name, is_rune);
-            let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_checked",
-                [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-            )
+            if is_prop_source {
+                // Bindable props already lower to a prop accessor callable, so bind:checked
+                // should pass it through directly instead of wrapping it in rune closures.
+                ctx.b
+                    .call_stmt("$.bind_checked", [Arg::Ident(el_name), Arg::Ident(&var_name)])
+            } else {
+                let getter = build_binding_getter(ctx, &var_name, is_rune);
+                let setter = build_binding_setter(ctx, var_name, is_rune);
+                ctx.b.call_stmt(
+                    "$.bind_checked",
+                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                )
+            }
         }
         "group" => {
             ctx.state.needs_binding_group = true;
