@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_global_block_invalid_combinator",
+    "end": 21,
+    "severity": "error",
+    "start": 12
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "error",
+    "code": "css_global_invalid_placement",
+    "start": 4,
+    "end": 15
+  },
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 1,
+    "end": 18
+  }
+]

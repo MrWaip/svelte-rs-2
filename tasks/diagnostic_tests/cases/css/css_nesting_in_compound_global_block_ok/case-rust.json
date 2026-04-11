@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 1,
+    "end": 13
+  },
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 16,
+    "end": 21
+  }
+]

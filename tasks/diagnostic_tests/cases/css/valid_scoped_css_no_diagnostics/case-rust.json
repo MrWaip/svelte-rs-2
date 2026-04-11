@@ -1,0 +1,20 @@
+[
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 1,
+    "end": 2
+  },
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 19,
+    "end": 23
+  },
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 70,
+    "end": 85
+  }
+]

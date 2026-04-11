@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_global_invalid_selector",
+    "end": 25,
+    "severity": "error",
+    "start": 10
+  }
+]

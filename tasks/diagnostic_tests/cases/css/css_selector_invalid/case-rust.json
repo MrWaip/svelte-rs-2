@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "error",
+    "code": "css_selector_invalid",
+    "start": 1,
+    "end": 2
+  },
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 1,
+    "end": 7
+  }
+]
