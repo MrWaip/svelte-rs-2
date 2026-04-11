@@ -20,35 +20,35 @@ See [ROADMAP.md](./ROADMAP.md) for the full feature checklist.
 
 ## Workflow
 
-Проект использует Claude Code с набором специализированных команд и агентов.
+This project uses Claude Code with a set of specialized commands and agents.
 
-### Начало сессии
-`/status` — обзор проекта: активные спеки, ignored тесты, ROADMAP next, известный долг
+### Session Start
+`/status` — project overview: active specs, ignored tests, next ROADMAP item, known debt
 
-### Портирование фичи
-1. `/audit <feature>` — gap-анализ, создание spec + тестов
-2. `/port specs/<file>.md` — реализация следующего slice по spec
-3. `/qa` — проверка quality guidelines
-4. `/sync-docs` — синхронизация ROADMAP/CODEBASE_MAP
+### Feature Porting
+1. `/audit <feature>` — gap analysis, create a spec and tests
+2. `/port specs/<file>.md` — implement the next slice from the spec
+3. `/qa` — review for material quality issues
+4. `/sync-docs` — sync ROADMAP and CODEBASE_MAP
 
-### Починка теста
-1. `/explain-test <name>` (опционально — понять что тестирует)
-2. `/fix-test <name>` — диагностика + fix
-3. `/qa` (опционально)
+### Test Triage
+1. `/explain-test <name>` (optional — understand what the test covers)
+2. `/triage-test <name>` — classify the work as `local-fix`, `slice-gap`, or `spec-gap`
+3. `/qa` (optional)
 
-### Техдолг / рефакторинг
-1. `/improve <description>` — диагностика + fix + тесты
+### Tech Debt / Refactoring
+1. `/improve <description>` — diagnosis, fix, and tests
 2. `/qa`
 
-### Исследование
-- `/diagnose <component>` — прогнать repro через пайплайн, выделить root cause, добавить focused tests и записать follow-up в spec или `ROADMAP.md`
-- `/audit <feature>` — gap-анализ vs reference compiler
-- `/explain-test <name>` — что делает тест, почему падает
-- `/bench` — Rust vs JS перформанс
+### Investigation
+- `/diagnose <component>` — run the repro through the pipeline, isolate the root cause, add focused tests, and record follow-up work in a spec or `ROADMAP.md`
+- `/audit <feature>` — gap analysis vs the reference compiler
+- `/explain-test <name>` — what the test does and why it fails
+- `/bench` — Rust vs JS performance
 
-### Обслуживание
-- `/sync-docs` — синхронизация документации с кодом
-- `/add-test <name>` — test-first: создать тест до реализации
+### Maintenance
+- `/sync-docs` — synchronize documentation with the code
+- `/add-test <name>` — test-first: create a test before implementation
 
 ---
 
