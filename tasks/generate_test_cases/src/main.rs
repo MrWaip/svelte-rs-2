@@ -7,12 +7,15 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn main() {
-    let svelte_files = glob("./tasks/compiler_tests/cases2/**/*.svelte")
+    let compiler_svelte_files = glob("./tasks/compiler_tests/cases2/**/*.svelte")
         .expect("Failed to read glob pattern for .svelte");
-    let module_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.js")
+    let compiler_module_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.js")
         .expect("Failed to read glob pattern for .svelte.js");
-    let files: Vec<String> = svelte_files
-        .chain(module_files)
+    let diagnostic_svelte_files = glob("./tasks/diagnostic_tests/cases/**/*.svelte")
+        .expect("Failed to read glob pattern for diagnostic .svelte");
+    let files: Vec<String> = compiler_svelte_files
+        .chain(compiler_module_files)
+        .chain(diagnostic_svelte_files)
         .map(|entry| entry.unwrap().display().to_string())
         .collect();
 
@@ -45,6 +48,17 @@ fn main() {
     for (path, case) in &results {
         let dir = Path::new(path).parent().unwrap();
 
+        if let Some(diagnostics) = case.get("diagnostics") {
+            let diagnostics_path = dir.join("case-svelte.json");
+            let diagnostics_json =
+                serde_json::to_string_pretty(diagnostics).expect("Failed to serialize diagnostics");
+            File::create(&diagnostics_path)
+                .unwrap()
+                .write_all(diagnostics_json.as_bytes())
+                .unwrap();
+            continue;
+        }
+
         // Write case-svelte.js (formatted via OXC)
         let js_src = case["js"].as_str().expect("js field missing");
         let js_path = dir.join("case-svelte.js");
@@ -56,7 +70,7 @@ fn main() {
         let result = codegen.build(&parsed.program);
         js_file.write_all(result.code.as_bytes()).unwrap();
 
-        // Write case-svelte.css when the component has a <style> block
+        // Write case-svelte.css when a reference file exists.
         if let Some(css) = case["css"].as_str() {
             let css_path = dir.join("case-svelte.css");
             File::create(&css_path)

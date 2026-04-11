@@ -13,12 +13,6 @@ fn a11y_distracting_elements_blink() {
 }
 
 #[test]
-fn a11y_accesskey_warns() {
-    let diags = analyze_with_diags(r#"<div accesskey="a">content</div>"#);
-    assert_has_warning(&diags, "a11y_accesskey");
-}
-
-#[test]
 fn a11y_positive_tabindex_warns() {
     let diags = analyze_with_diags(r#"<div tabindex="2">content</div>"#);
     assert_has_warning(&diags, "a11y_positive_tabindex");
