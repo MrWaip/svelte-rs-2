@@ -1,7 +1,7 @@
 # Each Block
 
 ## Current state
-- **Working**: 18/19 passing client-side `{#each}` use cases.
+- **Working**: 18/20 passing client-side `{#each}` use cases.
 - **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
 - **Open bug (2026-04-11 diagnose)**: keyed `{#each}` with key expression exactly equal to the index identifier (example: `{#each facts as fact, i (i)}`) does not match reference output. Rust currently emits a generic key callback `(fact, i) => i` and sets each flags to `23`, while the reference emits `$.index` and flags `21` (test: `each_key_is_index_literal_diagnose`, ignored pending fix).
 - **Next**: fix index-key specialization so `{#each ... , i (i)}` emits `$.index` plus matching each flags, then unignore `each_key_is_index_literal_diagnose`
@@ -46,6 +46,7 @@
 - [x] Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 - [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
 - [x] Parser support for item-less each blocks with index: `{#each expression, index}`. Compiler coverage exists via `each_block_no_item_with_index`; the stale ignored parser unit test should not keep the roadmap feature open.
+- [ ] Nested each callback params in runes mode remain plain identifiers in template-attribute expressions (no `$.get(...)` wrapping and no extra fallback coercion noise) when the collection expression is non-reactive literals. (test: `clock_svg_derived_onmount`)
 
 ## Out of scope
 
@@ -99,3 +100,4 @@
 - [x] `validate_each_animation_missing_key`
 - [x] `validate_each_animation_invalid_placement`
 - [x] `validate_each_item_invalid_assignment`
+- [ ] `clock_svg_derived_onmount`
