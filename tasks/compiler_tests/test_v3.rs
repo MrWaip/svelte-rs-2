@@ -2792,3 +2792,9 @@ fn diagnose_props_bindable_icon_component() {
 fn props_bindable_checkbox_disabled_shorthand_ts() {
     assert_compiler("props_bindable_checkbox_disabled_shorthand_ts");
 }
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_component_onclick_state() {
+    assert_compiler("diagnose_component_onclick_state");
+}
