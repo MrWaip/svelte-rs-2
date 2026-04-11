@@ -36,6 +36,11 @@ This project uses Claude Code with a set of specialized commands and agents.
 2. `/triage-test <name>` — classify the work as `local-fix`, `slice-gap`, or `spec-gap`
 3. `/qa` (optional)
 
+### Diagnostic Parity
+1. `/add-diagnostic-test <name>` — create a focused diagnostic parity case under `tasks/diagnostic_tests/`
+2. `/diagnose-diagnostics <component|case>` — isolate a false positive, false negative, or span mismatch against npm `svelte/compiler`
+3. `/port specs/<file>.md` — implement the owning fix after the mismatch is reduced to one durable case
+
 ### Tech Debt / Refactoring
 1. `/improve <description>` — diagnosis, fix, and tests
 2. `/qa`
@@ -49,6 +54,10 @@ This project uses Claude Code with a set of specialized commands and agents.
 ### Maintenance
 - `/sync-docs` — synchronize documentation with the code
 - `/add-test <name>` — test-first: create a test before implementation
+- `/add-diagnostic-test <name>` — test-first: create a diagnostic parity case before implementation
+
+### Snapshot Generation
+- `just generate` — regenerate reference snapshots for both `tasks/compiler_tests/` and `tasks/diagnostic_tests/`
 
 ---
 

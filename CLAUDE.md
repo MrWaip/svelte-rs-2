@@ -102,6 +102,13 @@ To start a new feature: `/audit <feature>`. To implement the next approved slice
 To fix existing code problems (bugs, workarounds, missing tests): `/improve <description>`.
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
+Diagnostic parity against npm `svelte/compiler` uses `tasks/diagnostic_tests/`, not `tasks/compiler_tests/`.
+Generated diagnostic snapshots are:
+- `tasks/diagnostic_tests/cases/*/case-svelte.json` — reference diagnostics from npm `svelte/compiler`
+- `tasks/diagnostic_tests/cases/*/case-rust.json` — actual Rust diagnostics for human comparison
+
+`just generate` updates both compiler-output snapshots and diagnostic snapshots.
+
 When discovering new items, add them to the matching spec `Use cases` as unchecked checkboxes . If there is no matching spec, report that explicitly to the user instead of recording the item elsewhere.
 
 For legacy Svelte 4 features, see the `legacy-conventions` skill.
