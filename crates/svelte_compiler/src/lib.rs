@@ -86,7 +86,7 @@ fn resolved_preserve_whitespace_option(
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
-    let name = options.component_name();
+    let candidate_name = options.component_name();
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (mut component, js_result, mut diagnostics) =
@@ -108,7 +108,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         immutable: resolved_immutable_option(&component, options),
         preserve_whitespace: resolved_preserve_whitespace_option(&component, options),
         dev: options.dev,
-        component_name: name.clone(),
+        component_name: candidate_name,
         filename_basename: options
             .filename
             .rsplit_once('/')
@@ -175,6 +175,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
         let mut ident_gen =
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
+        let name = analysis.component_name().to_string();
+        let _ = ident_gen.gen(&name);
         let transform_data = svelte_transform::transform_component(
             &js_alloc,
             &component,

@@ -82,6 +82,114 @@ fn error_recovery_returns_diagnostics() {
 }
 
 #[test]
+fn compile_filename_derived_name_is_sanitized() {
+    let opts = CompileOptions {
+        filename: "src/routes/+page.svelte".into(),
+        ..Default::default()
+    };
+    let result = compile("", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert_eq!(
+        js,
+        r#"import * as $ from "svelte/internal/client";
+export default function _page($$anchor) {}
+"#
+    );
+}
+
+#[test]
+fn compile_explicit_name_reserved_word_is_deconflicted() {
+    let opts = CompileOptions {
+        name: Some("class".into()),
+        ..Default::default()
+    };
+    let result = compile("", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert_eq!(
+        js,
+        r#"import * as $ from "svelte/internal/client";
+export default function class_1($$anchor) {}
+"#
+    );
+}
+
+#[test]
+fn compile_explicit_name_conflict_is_deconflicted() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        ..Default::default()
+    };
+    let result = compile("<script>let App = 0;</script>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert_eq!(
+        js,
+        r#"import * as $ from "svelte/internal/client";
+export default function App_1($$anchor) {
+	let App = 0;
+}
+"#
+    );
+}
+
+#[test]
+fn compile_filename_derived_name_conflict_is_deconflicted() {
+    let opts = CompileOptions {
+        filename: "src/routes/counter.svelte".into(),
+        ..Default::default()
+    };
+    let result = compile("<script>let Counter = 0;</script>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert_eq!(
+        js,
+        r#"import * as $ from "svelte/internal/client";
+export default function Counter_1($$anchor) {
+	let Counter = 0;
+}
+"#
+    );
+}
+
+#[test]
+fn compile_component_name_ignores_nested_scope_bindings() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        ..Default::default()
+    };
+    let result = compile("<script>function demo() { let App = 0; }</script>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("export default function App($$anchor)"),
+        "expected nested local binding to not rename component export, got: {js}"
+    );
+}
+
+#[test]
+fn compile_component_name_conflicts_with_module_scope_bindings() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        ..Default::default()
+    };
+    let result = compile("<script module>let App = 0;</script>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("export default function App_1($$anchor)"),
+        "expected module-scope binding to rename component export, got: {js}"
+    );
+}
+
+#[test]
 fn analyze_runs_despite_parse_errors() {
     // Analyze always runs even when the parser reports errors, so that both
     // parse-layer and analyze-layer diagnostics surface in one pass.

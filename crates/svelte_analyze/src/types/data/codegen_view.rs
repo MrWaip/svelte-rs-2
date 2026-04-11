@@ -28,6 +28,9 @@ impl<'a> CodegenView<'a> {
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.data.output.runtime_plan
     }
+    pub fn component_name(&self) -> &str {
+        self.data.component_name()
+    }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.is_dynamic(id)
     }

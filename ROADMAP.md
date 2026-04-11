@@ -109,6 +109,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## Compiler Infrastructure
 
+- [x] Filename-derived component naming — [spec](specs/filename-derived-component-name.md)
 - [ ] `discloseVersion` option
 - [ ] `preserveComments` option
 - [ ] HMR

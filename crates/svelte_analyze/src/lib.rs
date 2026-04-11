@@ -87,6 +87,7 @@ pub fn analyze_with_options<'a>(
     data.script.immutable = options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
     data.output.custom_element = options.custom_element;
+    data.output.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
     let execution_order = passes::resolve_default_execution_order()
         .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));

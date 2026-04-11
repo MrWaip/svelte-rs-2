@@ -64,26 +64,66 @@ impl CompileOptions {
     /// Resolve the component function name.
     /// Priority: explicit `name` → stem of `filename` → `"Component"`.
     pub fn component_name(&self) -> String {
-        if let Some(ref name) = self.name {
-            return name.clone();
-        }
-
-        let path = self.filename.as_str();
-
-        // Strip directory prefix — take everything after the last `/` or `\`
-        let basename = path
-            .rsplit_once('/')
-            .or_else(|| path.rsplit_once('\\'))
-            .map_or(path, |(_, name)| name);
-
-        // Strip `.svelte` extension (or any extension)
-        let stem = basename.rsplit_once('.').map_or(basename, |(stem, _)| stem);
-
-        if stem.is_empty() {
-            "Component".to_string()
+        let candidate = if let Some(ref name) = self.name {
+            name.clone()
         } else {
-            stem.to_string()
+            let parts: Vec<&str> = self
+                .filename
+                .split(['/', '\\'])
+                .filter(|part| !part.is_empty())
+                .collect();
+            let basename = parts.last().copied().unwrap_or(&self.filename);
+            let last_dir = parts
+                .get(parts.len().saturating_sub(2))
+                .copied()
+                .filter(|dir| *dir != "src");
+
+            let mut name = basename
+                .strip_suffix(".svelte")
+                .unwrap_or(basename)
+                .to_string();
+            if name == "index" {
+                if let Some(dir) = last_dir {
+                    name = dir.to_string();
+                }
+            }
+
+            if name.is_empty() {
+                "Component".to_string()
+            } else {
+                let mut chars = name.chars();
+                let first = chars.next().unwrap();
+                let mut capitalized = String::new();
+                capitalized.extend(first.to_uppercase());
+                capitalized.extend(chars);
+                capitalized
+            }
+        };
+
+        let mut sanitized: String = candidate
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '$') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+
+        if sanitized.is_empty() {
+            return "Component".to_string();
         }
+
+        if sanitized
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_digit())
+        {
+            sanitized.replace_range(0..1, "_");
+        }
+
+        sanitized
     }
 }
 
@@ -155,7 +195,7 @@ mod tests {
     #[test]
     fn component_name_from_filename() {
         let opts = CompileOptions {
-            filename: "src/routes/Counter.svelte".to_string(),
+            filename: "src/routes/counter.svelte".to_string(),
             ..Default::default()
         };
         assert_eq!(opts.component_name(), "Counter");
@@ -172,10 +212,18 @@ mod tests {
     }
 
     #[test]
+    fn component_name_explicit_sanitized() {
+        let opts = CompileOptions {
+            name: Some("+page".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(opts.component_name(), "_page");
+    }
+
+    #[test]
     fn component_name_default_fallback() {
         let opts = CompileOptions::default();
-        // "(unknown)" → stem is "(unknown)"
-        assert_eq!(opts.component_name(), "(unknown)");
+        assert_eq!(opts.component_name(), "_unknown_");
     }
 
     #[test]
@@ -185,6 +233,42 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(opts.component_name(), "Component");
+    }
+
+    #[test]
+    fn component_name_index_uses_parent_dir() {
+        let opts = CompileOptions {
+            filename: "src/routes/blog/index.svelte".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(opts.component_name(), "Blog");
+    }
+
+    #[test]
+    fn component_name_index_under_src_stays_index() {
+        let opts = CompileOptions {
+            filename: "src/index.svelte".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(opts.component_name(), "Index");
+    }
+
+    #[test]
+    fn component_name_filename_sanitized() {
+        let opts = CompileOptions {
+            filename: "src/routes/+page.svelte".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(opts.component_name(), "_page");
+    }
+
+    #[test]
+    fn component_name_filename_leading_digit_sanitized() {
+        let opts = CompileOptions {
+            filename: "src/routes/123-widget.svelte".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(opts.component_name(), "_23_widget");
     }
 
     #[test]

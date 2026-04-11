@@ -3,7 +3,10 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
 
-use super::{bundles, collect_symbols, content_types, js_analyze, lower, mark_runes, post_resolve};
+use super::{
+    bundles, collect_symbols, content_types, finalize_component_name, js_analyze, lower,
+    mark_runes, post_resolve,
+};
 
 fn run_template_bundle<'a, const N: usize>(
     component: &Component,
@@ -15,13 +18,14 @@ fn run_template_bundle<'a, const N: usize>(
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
+    let component_name = data.output.component_name.clone();
     let mut ctx = walker::VisitContext::new(
         root,
         data,
         &component.store,
         source,
         runes,
-        &options.component_name,
+        &component_name,
         &options.filename_basename,
     );
     walker::walk_template(&component.fragment, &mut ctx, visitors);
@@ -39,6 +43,7 @@ fn run_parsed_template_bundle<'a, const N: usize>(
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
+    let component_name = data.output.component_name.clone();
     let mut ctx = walker::VisitContext::with_parsed(
         root,
         data,
@@ -46,7 +51,7 @@ fn run_parsed_template_bundle<'a, const N: usize>(
         parsed,
         source,
         runes,
-        &options.component_name,
+        &component_name,
         &options.filename_basename,
     );
     walker::walk_template(&component.fragment, &mut ctx, visitors);
@@ -85,6 +90,9 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::BuildComponentSemantics => {
             super::build_component_semantics::build(component, parsed, data);
+        }
+        super::PassKey::FinalizeComponentName => {
+            finalize_component_name::run(data);
         }
         super::PassKey::MarkRunes => {
             if runes {
