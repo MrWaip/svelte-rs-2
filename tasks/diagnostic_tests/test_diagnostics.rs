@@ -1101,6 +1101,11 @@ mod props {
         "props/validate_props_normal_member_access_no_error",
         ignore = "known mismatch: npm svelte/compiler reports state_referenced_locally while analyzer reports no diagnostics"
     );
+    diagnostic_case!(
+        validate_props_typed_children_snippet_no_diagnostic,
+        "props/validate_props_typed_children_snippet_no_diagnostic",
+        ignore = "diagnose-diagnostics: pending fix"
+    );
 }
 
 mod runes {
