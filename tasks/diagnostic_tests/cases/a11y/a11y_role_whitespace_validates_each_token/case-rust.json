@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_abstract_role",
+    "start": 11,
+    "end": 23
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_unknown_role",
+    "start": 11,
+    "end": 23
+  }
+]
