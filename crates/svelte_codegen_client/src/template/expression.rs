@@ -694,11 +694,20 @@ pub(crate) fn emit_memoized_text_effect<'a>(
 }
 
 /// Attribute update that needs call memoization — expression extracted into dependency array.
+pub(crate) enum MemoAttrUpdate {
+    Call {
+        setter_fn: &'static str,
+        attr_name: Option<String>,
+    },
+    Assignment {
+        property: String,
+    },
+}
+
 pub(crate) struct MemoAttr<'a> {
     pub attr_id: NodeId,
-    pub setter_fn: &'static str,
     pub el_name: String,
-    pub attr_name: Option<String>,
+    pub update: MemoAttrUpdate,
     pub expr: Expression<'a>,
 }
 
@@ -725,21 +734,15 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
         return;
     }
 
-    // Collect memo data: (param_name, setter_fn, el_name, attr_name, expr)
+    // Collect memo data: (param_name, el_name, update, expr)
     let memo_count = memo_attrs.len();
     let mut param_names: Vec<String> = Vec::with_capacity(memo_count);
-    let mut memo_data: Vec<(NodeId, &'static str, String, Option<String>, Expression<'a>)> =
+    let mut memo_data: Vec<(NodeId, String, MemoAttrUpdate, Expression<'a>)> =
         Vec::with_capacity(memo_count);
 
     for (i, memo) in memo_attrs.into_iter().enumerate() {
         param_names.push(format!("${i}"));
-        memo_data.push((
-            memo.attr_id,
-            memo.setter_fn,
-            memo.el_name,
-            memo.attr_name,
-            memo.expr,
-        ));
+        memo_data.push((memo.attr_id, memo.el_name, memo.update, memo.expr));
     }
 
     // Build getter thunks and setter stmts (needs references to param_names)
@@ -750,14 +753,29 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
     deps.extra_blockers.extend(extra_blockers);
     let mut callback_body = regular_updates;
 
-    for (i, (attr_id, setter_fn, el_name, attr_name, expr)) in memo_data.into_iter().enumerate() {
-        // setter_fn(el_name, "attr_name"?, $N) — el_name and $N are identifiers
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(ctx.b.rid_expr(&el_name))];
-        if let Some(name) = attr_name {
-            args.push(Arg::Str(name));
+    for (i, (attr_id, el_name, update, expr)) in memo_data.into_iter().enumerate() {
+        let memo_expr = ctx.b.rid_expr(&param_names[i]);
+        match update {
+            MemoAttrUpdate::Call {
+                setter_fn,
+                attr_name,
+            } => {
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(ctx.b.rid_expr(&el_name))];
+                if let Some(name) = attr_name {
+                    args.push(Arg::Str(name));
+                }
+                args.push(Arg::Expr(memo_expr));
+                callback_body.push(ctx.b.call_stmt(setter_fn, args));
+            }
+            MemoAttrUpdate::Assignment { property } => {
+                callback_body.push(ctx.b.assign_stmt(
+                    AssignLeft::StaticMember(
+                        ctx.b.static_member(ctx.b.rid_expr(&el_name), &property),
+                    ),
+                    memo_expr,
+                ));
+            }
         }
-        args.push(Arg::Expr(ctx.b.rid_expr(&param_names[i])));
-        callback_body.push(ctx.b.call_stmt(setter_fn, args));
 
         let attr_deps = ctx
             .expr_deps(ExprSite::Attr(attr_id))

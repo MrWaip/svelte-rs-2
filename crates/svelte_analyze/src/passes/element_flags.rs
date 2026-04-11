@@ -45,6 +45,10 @@ impl<'src> ElementFlagsVisitor<'src> {
                 flags
             })
     }
+
+    fn marks_input_defaults(name: &str) -> bool {
+        matches!(name, "value" | "checked")
+    }
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
@@ -149,7 +153,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 if ea.name == "class" {
                     ctx.data.elements.flags.class_attr_id.insert(el_id, ea.id);
                 }
-                if ea.name == "value" && ctx.element_name() == Some("input") {
+                if ctx.element_name() == Some("input") && Self::marks_input_defaults(&ea.name) {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
@@ -176,11 +180,20 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 if attr.name == "class" {
                     ctx.data.elements.flags.class_attr_id.insert(el_id, attr.id);
                 }
+                if ctx.element_name() == Some("input") && Self::marks_input_defaults(&attr.name) {
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
             }
             Attribute::BindDirective(bd) => {
                 if ctx.element_name() == Some("input")
                     && matches!(bd.name.as_str(), "value" | "checked" | "group")
                 {
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
+            }
+            Attribute::Shorthand(attr) => {
+                let name = self.source_text(attr.expression_span).trim();
+                if ctx.element_name() == Some("input") && Self::marks_input_defaults(name) {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
             }

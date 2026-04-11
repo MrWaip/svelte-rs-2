@@ -2767,6 +2767,16 @@ fn bind_select_static_option_value() {
 }
 
 #[rstest]
+fn input_dynamic_special_attrs() {
+    assert_compiler("input_dynamic_special_attrs");
+}
+
+#[rstest]
+fn svg_dynamic_special_attrs() {
+    assert_compiler("svg_dynamic_special_attrs");
+}
+
+#[rstest]
 fn each_index_text_no_coalesce() {
     assert_compiler("each_index_text_no_coalesce");
 }
@@ -2782,7 +2792,6 @@ fn snippet_destructure_default_mutated_state_ref() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_props_bindable_icon_component() {
     assert_compiler("diagnose_props_bindable_icon_component");
 }
