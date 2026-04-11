@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_accesskey",
+    "start": 16,
+    "end": 17
+  }
+]

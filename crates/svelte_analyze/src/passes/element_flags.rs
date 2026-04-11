@@ -45,7 +45,6 @@ impl<'src> ElementFlagsVisitor<'src> {
                 flags
             })
     }
-
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
@@ -212,7 +211,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             .next()
             .unwrap_or_else(|| cn.name.as_str());
         if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
-            data.elements.flags.component_binding_sym.insert(cn.id, sym_id);
+            data.elements
+                .flags
+                .component_binding_sym
+                .insert(cn.id, sym_id);
             let is_dynamic = ctx.runes && !data.scoping.is_normal_binding(sym_id);
             if is_dynamic {
                 data.elements.flags.is_dynamic_component.insert(cn.id);

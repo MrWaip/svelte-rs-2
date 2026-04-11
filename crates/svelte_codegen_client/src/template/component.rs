@@ -845,7 +845,8 @@ fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Exp
                 .scoping()
                 .prop_non_source_name(sym_id)
                 .unwrap_or_else(|| panic!("PropsAccess read kind missing prop name"));
-            ctx.b.static_member_expr(ctx.b.rid_expr("$$props"), prop_name)
+            ctx.b
+                .static_member_expr(ctx.b.rid_expr("$$props"), prop_name)
         }
     }
 }

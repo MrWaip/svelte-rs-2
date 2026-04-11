@@ -240,6 +240,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagnostic_tests"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "rstest",
+ "serde",
+ "serde_json",
+ "svelte_compiler",
+ "svelte_diagnostics",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

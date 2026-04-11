@@ -9,6 +9,7 @@ const results = {};
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const isModule = file.endsWith('.svelte.js') || file.endsWith('.svelte.ts');
+  const isDiagnosticCase = file.includes('tasks/diagnostic_tests/cases/');
 
   // Per-case config override
   const caseDir = dirname(file);
@@ -16,6 +17,13 @@ for (const file of files) {
   let caseConfig = {};
   if (existsSync(configPath)) {
     caseConfig = JSON.parse(readFileSync(configPath, "utf8"));
+  }
+
+  if (isDiagnosticCase) {
+    results[file] = {
+      diagnostics: generateDiagnostics(text, caseConfig),
+    };
+    continue;
   }
 
   const result = isModule
@@ -36,3 +44,28 @@ for (const file of files) {
   results[file] = { js: code, css: result.css?.code ?? null };
 }
 console.log(JSON.stringify(results));
+
+function generateDiagnostics(source, caseConfig) {
+  try {
+    const result = compile(source, {
+      discloseVersion: false,
+      dev: false,
+      name: "App",
+      modernAst: true,
+      runes: true,
+      ...caseConfig,
+    });
+    return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
+  } catch (error) {
+    return [normalizeDiagnostic(error, "error")];
+  }
+}
+
+function normalizeDiagnostic(diagnostic, severity) {
+  return {
+    severity,
+    code: diagnostic.code,
+    start: diagnostic.position?.[0] ?? diagnostic.start?.character ?? 0,
+    end: diagnostic.position?.[1] ?? diagnostic.end?.character ?? diagnostic.position?.[0] ?? 0,
+  };
+}

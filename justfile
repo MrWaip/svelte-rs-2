@@ -3,6 +3,14 @@ generate:
     cd tasks/generate_test_cases && npm install --silent
     cargo run -p generate_test_cases
 
+# Run all diagnostic integration tests
+test-diagnostics:
+    cargo test -p diagnostic_tests --test diagnostic_tests
+
+# Run a single diagnostic test case
+test-diagnostic-case name:
+    cargo test -p diagnostic_tests --test diagnostic_tests {{name}}
+
 # Run all compiler integration tests
 test-compiler:
     cargo test -p compiler_tests --test compiler_tests_v3
