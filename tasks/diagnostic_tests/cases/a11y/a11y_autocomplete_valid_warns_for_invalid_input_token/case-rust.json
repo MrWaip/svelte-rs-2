@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_autocomplete_valid",
+    "start": 33,
+    "end": 46
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_media_has_caption",
+    "start": 0,
+    "end": 31
+  }
+]

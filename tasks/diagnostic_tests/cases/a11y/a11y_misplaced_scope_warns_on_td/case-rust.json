@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_misplaced_scope",
+    "start": 11,
+    "end": 14
+  }
+]

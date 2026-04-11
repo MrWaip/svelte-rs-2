@@ -333,8 +333,7 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_no_redundant_roles_warns_for_native_semantics,
-        "a11y/a11y_no_redundant_roles_warns_for_native_semantics",
-        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
+        "a11y/a11y_no_redundant_roles_warns_for_native_semantics"
     );
     diagnostic_case!(
         a11y_no_redundant_roles_warns_for_top_level_header_banner,
@@ -374,18 +373,15 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_role_supports_aria_props_warns_for_implicit_role,
-        "a11y/a11y_role_supports_aria_props_warns_for_implicit_role",
-        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
+        "a11y/a11y_role_supports_aria_props_warns_for_implicit_role"
     );
     diagnostic_case!(
         a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop,
-        "a11y/a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop",
-        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled button"
+        "a11y/a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop"
     );
     diagnostic_case!(
         a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once,
-        "a11y/a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once",
-        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
+        "a11y/a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once"
     );
     diagnostic_case!(
         a11y_role_supports_aria_props_no_warning_without_role,
@@ -413,8 +409,7 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_interactive_supports_focus_no_warning_for_native_interactive_element,
-        "a11y/a11y_interactive_supports_focus_no_warning_for_native_interactive_element",
-        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled interactive button"
+        "a11y/a11y_interactive_supports_focus_no_warning_for_native_interactive_element"
     );
     diagnostic_case!(
         a11y_click_events_have_key_events_warns_for_visible_noninteractive_element,
@@ -426,8 +421,7 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_click_events_have_key_events_no_warning_for_interactive_element,
-        "a11y/a11y_click_events_have_key_events_no_warning_for_interactive_element",
-        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled interactive button"
+        "a11y/a11y_click_events_have_key_events_no_warning_for_interactive_element"
     );
     diagnostic_case!(
         a11y_no_noninteractive_element_interactions_warns_for_noninteractive_role,
@@ -447,8 +441,7 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave,
-        "a11y/a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave",
-        ignore = "diagnose-diagnostics: pending fix"
+        "a11y/a11y_no_static_element_interactions_ignored_on_mouseenter_mouseleave"
     );
     diagnostic_case!(
         a11y_mouse_events_have_key_events_warns_for_mouseover_without_focus,
@@ -464,8 +457,7 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation,
-        "a11y/a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation",
-        ignore = "known mismatch: analyzer still misses a11y_consider_explicit_label for unlabeled button"
+        "a11y/a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation"
     );
     diagnostic_case!(
         a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation_with_text,
@@ -473,18 +465,43 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_invalid_attribute_warns_for_anchor_hash_href,
-        "a11y/a11y_invalid_attribute_warns_for_anchor_hash_href",
-        ignore = "known mismatch: analyzer is missing a11y_invalid_attribute and npm svelte/compiler also reports a11y_consider_explicit_label"
+        "a11y/a11y_invalid_attribute_warns_for_anchor_hash_href"
+    );
+    diagnostic_case!(
+        a11y_autocomplete_valid_warns_for_invalid_input_token,
+        "a11y/a11y_autocomplete_valid_warns_for_invalid_input_token"
+    );
+    diagnostic_case!(
+        a11y_img_redundant_alt_warns_for_redundant_image_wording,
+        "a11y/a11y_img_redundant_alt_warns_for_redundant_image_wording"
+    );
+    diagnostic_case!(
+        a11y_misplaced_scope_warns_on_td,
+        "a11y/a11y_misplaced_scope_warns_on_td"
+    );
+    diagnostic_case!(
+        a11y_missing_content_warns_for_empty_h1,
+        "a11y/a11y_missing_content_warns_for_empty_h1"
+    );
+    diagnostic_case!(
+        a11y_media_has_caption_warns_for_video_without_caption_track,
+        "a11y/a11y_media_has_caption_warns_for_video_without_caption_track"
+    );
+    diagnostic_case!(
+        a11y_figcaption_parent_warns_outside_figure,
+        "a11y/a11y_figcaption_parent_warns_outside_figure"
+    );
+    diagnostic_case!(
+        a11y_figcaption_index_warns_for_middle_figcaption,
+        "a11y/a11y_figcaption_index_warns_for_middle_figcaption"
     );
     diagnostic_case!(
         a11y_label_has_associated_control_warns_without_for_or_control,
-        "a11y/a11y_label_has_associated_control_warns_without_for_or_control",
-        ignore = "known mismatch: analyzer is missing a11y_label_has_associated_control"
+        "a11y/a11y_label_has_associated_control_warns_without_for_or_control"
     );
     diagnostic_case!(
         a11y_consider_explicit_label_warns_for_icon_button,
-        "a11y/a11y_consider_explicit_label_warns_for_icon_button",
-        ignore = "known mismatch: analyzer is missing a11y_consider_explicit_label"
+        "a11y/a11y_consider_explicit_label_warns_for_icon_button"
     );
     diagnostic_case!(
         a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button,

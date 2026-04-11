@@ -97,7 +97,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## A11y Warnings
 
-- [ ] A11y warnings — [spec](specs/a11y-warnings.md)
+- [x] A11y warnings — [spec](specs/a11y-warnings.md)
 
 ## Modules `.svelte.js` / `.svelte.ts`
 

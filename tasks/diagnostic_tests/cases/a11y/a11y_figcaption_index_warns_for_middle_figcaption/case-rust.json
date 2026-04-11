@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_figcaption_index",
+    "start": 32,
+    "end": 64
+  }
+]

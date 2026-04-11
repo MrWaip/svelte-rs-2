@@ -1,4 +1,5 @@
 use super::*;
+use svelte_diagnostics::DiagnosticKind;
 
 pub(crate) struct VisitContext<'a> {
     pub scope: ScopeId,
@@ -146,6 +147,24 @@ impl<'a> VisitContext<'a> {
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {
         std::mem::take(&mut self.warnings)
+    }
+
+    pub(crate) fn push_warning_if_not_ignored(
+        &mut self,
+        node_id: NodeId,
+        kind: DiagnosticKind,
+        span: Span,
+    ) {
+        if self
+            .data
+            .output
+            .ignore_data
+            .is_ignored(node_id, kind.code())
+        {
+            return;
+        }
+
+        self.warnings.push(Diagnostic::warning(kind, span));
     }
 
     pub(crate) fn push(&mut self, r: ParentRef) {
