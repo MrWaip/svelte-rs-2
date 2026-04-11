@@ -2,10 +2,9 @@
 
 ## Current state
 
-- **Working**: 1 recorded unknown item
+- **Working**: 2 recorded unknown item
 - **Next**: Input shorthand `{value}` / `{disabled}` on `<input>` from `$props()` lowers as generic attrs instead of input-special runtime updates
 - **Moved (2026-04-11)**: Inspecting rune values in `$inspect(...)` incorrectly warning `state_referenced_locally` now belongs to `specs/inspect-runes.md`
-- Last updated: 2026-04-11
 
 ## Source
 
@@ -14,6 +13,8 @@
 ## Use cases
 
 - [ ] Input shorthand `{value}` / `{disabled}` on `<input>` from `$props()` should lower through input-special value/boolean paths (`$.remove_input_defaults`, `$.set_value`, `input.disabled = ...`) but currently compiles as generic attributes — layer: analysis; repro/test: diagnose_props_bindable_icon_component; candidate specs: bind-directives.md, element.md; suggested spec: bind-directives.md
+- [ ] TS `$props` + `$bindable` checkbox binding emits non-reference codegen for `bind:checked` and `{disabled}` shorthand — layer: codegen; repro/test: props_bindable_checkbox_disabled_shorthand_ts; candidate specs: specs/props-bindable.md, specs/bind-directives.md; suggested spec: none
+
 ## Out of scope
 
 - Implementing compiler fixes directly in this spec
@@ -34,3 +35,4 @@
 
 ## Test cases
 - [ ] diagnose_props_bindable_icon_component
+- [ ] props_bindable_checkbox_disabled_shorthand_ts
