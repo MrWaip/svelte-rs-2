@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_aria_activedescendant_has_tabindex",
+    "end": 33,
+    "severity": "warning",
+    "start": 5
+  }
+]

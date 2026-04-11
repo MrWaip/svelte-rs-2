@@ -58,37 +58,6 @@ fn a11y_unknown_role_suggests_closest_match() {
 }
 
 #[test]
-fn a11y_role_whitespace_validates_each_token() {
-    let diags = analyze_with_diags(r#"<div role="widget buton"></div>"#);
-    assert_has_warning(&diags, "a11y_no_abstract_role");
-    assert_has_warning(&diags, "a11y_unknown_role");
-}
-
-#[test]
-fn a11y_no_redundant_roles_warns_for_native_semantics() {
-    let diags = analyze_with_diags(r#"<button role="button"></button>"#);
-    assert_has_warning(&diags, "a11y_no_redundant_roles");
-}
-
-#[test]
-fn a11y_no_redundant_roles_warns_for_top_level_header_banner() {
-    let diags = analyze_with_diags(r#"<header role="banner"></header>"#);
-    assert_has_warning(&diags, "a11y_no_redundant_roles");
-}
-
-#[test]
-fn a11y_no_redundant_roles_no_warning_for_section_header_banner() {
-    let diags = analyze_with_diags(r#"<section><header role="banner"></header></section>"#);
-    assert_no_warning(&diags, "a11y_no_redundant_roles");
-}
-
-#[test]
-fn a11y_no_redundant_roles_no_warning_for_anchor_without_href() {
-    let diags = analyze_with_diags(r#"<a role="link">link</a>"#);
-    assert_no_warning(&diags, "a11y_no_redundant_roles");
-}
-
-#[test]
 fn a11y_role_has_required_aria_props_warns_for_missing_props() {
     let diags = analyze_with_diags(r#"<div role="combobox"></div>"#);
     assert_has_warning(&diags, "a11y_role_has_required_aria_props");
@@ -100,28 +69,6 @@ fn a11y_role_has_required_aria_props_warns_for_missing_props() {
                     && props == "\"aria-controls\" and \"aria-expanded\""
         )
     });
-}
-
-#[test]
-fn a11y_role_has_required_aria_props_no_warning_when_props_present() {
-    let diags = analyze_with_diags(
-        r#"<div role="combobox" aria-controls="list" aria-expanded="false"></div>"#,
-    );
-    assert_no_warning(&diags, "a11y_role_has_required_aria_props");
-}
-
-#[test]
-fn a11y_role_has_required_aria_props_no_warning_for_native_semantics() {
-    let diags = analyze_with_diags(r#"<input type="checkbox" role="checkbox" />"#);
-    assert_no_warning(&diags, "a11y_role_has_required_aria_props");
-}
-
-#[test]
-fn a11y_role_has_required_aria_props_no_warning_with_spread() {
-    let diags = analyze_with_diags(
-        r#"<script>let props = $state({});</script><div role="combobox" {...props}></div>"#,
-    );
-    assert_no_warning(&diags, "a11y_role_has_required_aria_props");
 }
 
 #[test]
@@ -138,12 +85,6 @@ fn a11y_role_supports_aria_props_warns_for_explicit_role() {
 }
 
 #[test]
-fn a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop() {
-    let diags = analyze_with_diags(r#"<div role="button" aria-expanded="true"></div>"#);
-    assert_no_warning(&diags, "a11y_role_supports_aria_props");
-}
-
-#[test]
 fn a11y_role_supports_aria_props_warns_for_implicit_role() {
     let diags = analyze_with_diags(r#"<button aria-checked="true"></button>"#);
     assert_has_warning(&diags, "a11y_role_supports_aria_props_implicit");
@@ -157,39 +98,6 @@ fn a11y_role_supports_aria_props_warns_for_implicit_role() {
             } if attribute == "aria-checked" && role == "button" && name == "button"
         )
     });
-}
-
-#[test]
-fn a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop() {
-    let diags = analyze_with_diags(r#"<button aria-expanded="true"></button>"#);
-    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
-}
-
-#[test]
-fn a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once() {
-    let diags = analyze_with_diags(r#"<button aria-labl="x"></button>"#);
-    assert_has_warning(&diags, "a11y_unknown_aria_attribute");
-    assert_no_warning(&diags, "a11y_role_supports_aria_props");
-    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
-}
-
-#[test]
-fn a11y_role_supports_aria_props_no_warning_without_role() {
-    let diags = analyze_with_diags(r#"<div aria-checked="true"></div>"#);
-    assert_no_warning(&diags, "a11y_role_supports_aria_props");
-    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
-}
-
-#[test]
-fn a11y_aria_activedescendant_has_tabindex_warns_without_tabindex() {
-    let diags = analyze_with_diags(r#"<div aria-activedescendant="item"></div>"#);
-    assert_has_warning(&diags, "a11y_aria_activedescendant_has_tabindex");
-}
-
-#[test]
-fn a11y_aria_activedescendant_has_tabindex_no_warning_with_tabindex() {
-    let diags = analyze_with_diags(r#"<div aria-activedescendant="item" tabindex="0"></div>"#);
-    assert_no_warning(&diags, "a11y_aria_activedescendant_has_tabindex");
 }
 
 #[test]

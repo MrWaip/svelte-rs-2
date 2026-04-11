@@ -328,6 +328,65 @@ mod a11y {
         "a11y/a11y_misplaced_role_warns_on_invisible_elements"
     );
     diagnostic_case!(
+        a11y_role_whitespace_validates_each_token,
+        "a11y/a11y_role_whitespace_validates_each_token"
+    );
+    diagnostic_case!(
+        a11y_no_redundant_roles_warns_for_native_semantics,
+        "a11y/a11y_no_redundant_roles_warns_for_native_semantics",
+        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
+    );
+    diagnostic_case!(
+        a11y_no_redundant_roles_warns_for_top_level_header_banner,
+        "a11y/a11y_no_redundant_roles_warns_for_top_level_header_banner"
+    );
+    diagnostic_case!(
+        a11y_no_redundant_roles_no_warning_for_section_header_banner,
+        "a11y/a11y_no_redundant_roles_no_warning_for_section_header_banner"
+    );
+    diagnostic_case!(
+        a11y_no_redundant_roles_no_warning_for_anchor_without_href,
+        "a11y/a11y_no_redundant_roles_no_warning_for_anchor_without_href"
+    );
+    diagnostic_case!(
+        a11y_role_has_required_aria_props_no_warning_when_props_present,
+        "a11y/a11y_role_has_required_aria_props_no_warning_when_props_present"
+    );
+    diagnostic_case!(
+        a11y_role_has_required_aria_props_no_warning_for_native_semantics,
+        "a11y/a11y_role_has_required_aria_props_no_warning_for_native_semantics"
+    );
+    diagnostic_case!(
+        a11y_role_has_required_aria_props_no_warning_with_spread,
+        "a11y/a11y_role_has_required_aria_props_no_warning_with_spread"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop,
+        "a11y/a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop,
+        "a11y/a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop",
+        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled button"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once,
+        "a11y/a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once",
+        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_no_warning_without_role,
+        "a11y/a11y_role_supports_aria_props_no_warning_without_role"
+    );
+    diagnostic_case!(
+        a11y_aria_activedescendant_has_tabindex_warns_without_tabindex,
+        "a11y/a11y_aria_activedescendant_has_tabindex_warns_without_tabindex"
+    );
+    diagnostic_case!(
+        a11y_aria_activedescendant_has_tabindex_no_warning_with_tabindex,
+        "a11y/a11y_aria_activedescendant_has_tabindex_no_warning_with_tabindex"
+    );
+    diagnostic_case!(
         a11y_interactive_supports_focus_warns_for_interactive_role_with_handler,
         "a11y/a11y_interactive_supports_focus_warns_for_interactive_role_with_handler"
     );

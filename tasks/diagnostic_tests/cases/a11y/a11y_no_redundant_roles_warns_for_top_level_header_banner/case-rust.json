@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_redundant_roles",
+    "start": 14,
+    "end": 20
+  }
+]
