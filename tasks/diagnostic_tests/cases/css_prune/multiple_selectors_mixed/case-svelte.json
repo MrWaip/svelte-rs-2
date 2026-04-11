@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_unused_selector",
+    "end": 40,
+    "severity": "warning",
+    "start": 38
+  }
+]
