@@ -51,4 +51,4 @@ Include:
 - what the test covers
 - whether it passed or failed
 - diff summary if it fails
-- the next recommended command, usually `fix-test <name>` or `port specs/<feature>.md`
+- the next recommended command, usually `triage-test <name>` or `port specs/<feature>.md`

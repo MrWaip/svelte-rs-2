@@ -63,7 +63,7 @@ Use `.codex/skills/` workflows with original command naming:
 - `port`
 - `add-test`
 - `explain-test`
-- `fix-test`
+- `triage-test`
 - `diagnose`
 - `improve`
 - `qa`
