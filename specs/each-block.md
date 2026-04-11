@@ -1,10 +1,11 @@
 # Each Block
 
 ## Current state
-- **Working**: 18/18 passing client-side `{#each}` use cases.
+- **Working**: 18/19 passing client-side `{#each}` use cases.
 - **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
-- **Next**: complete; parser-strictness around malformed item-less keyed headers is intentionally not tracked as remaining `{#each}` roadmap work here
-- Last updated: 2026-04-08
+- **Open bug (2026-04-11 diagnose)**: keyed `{#each}` with key expression exactly equal to the index identifier (example: `{#each facts as fact, i (i)}`) does not match reference output. Rust currently emits a generic key callback `(fact, i) => i` and sets each flags to `23`, while the reference emits `$.index` and flags `21` (test: `each_key_is_index_literal_diagnose`, ignored pending fix).
+- **Next**: fix index-key specialization so `{#each ... , i (i)}` emits `$.index` plus matching each flags, then unignore `each_key_is_index_literal_diagnose`
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -30,6 +31,7 @@
 - [x] Item iteration with index: `{#each items as item, i}`.
 - [x] Non-keyed each-block index identifier in interpolated text is NOT wrapped in `?? ""` (reference treats bare `index` as `is_defined`). Keyed each blocks transform `i` into `$.get(i)` (a call expression), so those correctly keep the `?? ""` fallback. (test: `each_index_text_no_coalesce`)
 - [x] Keyed each blocks, including key expressions that reference the index.
+- [ ] Keyed each blocks where the key expression is exactly the index identifier should emit `$.index` and the same each flags as the reference compiler (test: `each_key_is_index_literal_diagnose`).
 - [x] Key-is-item optimization in runes mode.
 - [x] Destructured object and array patterns.
 - [x] Destructured defaults inside each context.
@@ -76,6 +78,7 @@
 - [x] `each_block`
 - [x] `each_keyed_index`
 - [x] `each_key_uses_index`
+- [ ] `each_key_is_index_literal_diagnose`
 - [x] `each_key_is_item`
 - [x] `each_destructured_obj`
 - [x] `each_destructured_array`

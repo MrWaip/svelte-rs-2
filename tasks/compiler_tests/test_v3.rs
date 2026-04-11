@@ -2168,6 +2168,12 @@ fn each_keyed_index() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn each_key_is_index_literal_diagnose() {
+    assert_compiler("each_key_is_index_literal_diagnose");
+}
+
+#[rstest]
 fn each_key_uses_index() {
     assert_compiler("each_key_uses_index");
 }
