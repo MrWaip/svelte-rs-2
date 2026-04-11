@@ -110,7 +110,7 @@ Produce a recommendation with these sections:
 
 `Next command` must be exactly one of:
 
-- `/fix-test <name>` for `local-fix`
+- `/triage-test <name>` for `local-fix`
 - `/port <spec-or-feature>` for `slice-gap`
 - `/audit <feature>` or spec update for `spec-gap`
 

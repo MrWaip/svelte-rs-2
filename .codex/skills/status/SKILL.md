@@ -11,7 +11,7 @@ description: Project status and production-oriented next-step triage workflow. U
 4. Read deferred work and a bounded set of `TODO` markers in `crates/`, focusing on architectural debt, missing infrastructure, or review-worthy boundary risks.
 5. Prefer larger coherent work packages over isolated quick wins when they can be completed systematically without shortcuts.
 6. Return a short prioritized list of runnable commands:
-   - `fix-test <name>`
+   - `triage-test <name>`
    - `port specs/<name>.md`
    - `audit <feature>`
    - `improve <path-or-description>`

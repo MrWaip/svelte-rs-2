@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fix Test"
-  short_description: "Reproduce and fix one failing test"
-  default_prompt: "Use $fix-test to reproduce and fix this single failing compiler test case."

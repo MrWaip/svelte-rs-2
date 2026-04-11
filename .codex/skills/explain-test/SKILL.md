@@ -11,6 +11,6 @@ description: Read-only workflow for explaining what a compiler test case covers 
 4. List the Svelte features exercised by the input.
 5. If failing, classify meaningful mismatches by parser, analyze, transform, or codegen.
 6. Show the likely code path in our compiler that handles those features.
-7. Recommend the next command, usually `fix-test <name>` or `port specs/<feature>.md`.
+7. Recommend the next command, usually `triage-test <name>` or `port specs/<feature>.md`.
 
 Read-only by default: do not edit files in this workflow.
