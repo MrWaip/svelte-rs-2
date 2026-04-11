@@ -2786,3 +2786,9 @@ fn snippet_destructure_default_mutated_state_ref() {
 fn diagnose_props_bindable_icon_component() {
     assert_compiler("diagnose_props_bindable_icon_component");
 }
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn props_bindable_checkbox_disabled_shorthand_ts() {
+    assert_compiler("props_bindable_checkbox_disabled_shorthand_ts");
+}
