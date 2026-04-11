@@ -2774,3 +2774,9 @@ fn snippet_destructure_default_state_ref() {
 fn snippet_destructure_default_mutated_state_ref() {
     assert_compiler("snippet_destructure_default_mutated_state_ref");
 }
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_svg_city_icon() {
+    assert_compiler("diagnose_svg_city_icon");
+}

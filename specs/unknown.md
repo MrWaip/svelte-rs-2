@@ -2,8 +2,8 @@
 
 ## Current state
 
-- **Working**: 0 recorded unknown items
-- **Next**: first unowned repro or failing test discovered by `/diagnose`
+- **Working**: 1 recorded unknown item
+- **Next**: TS script comment leaks into client output and perturbs template cursor state
 - Last updated: 2026-04-11
 
 ## Source
@@ -11,6 +11,8 @@
 - User request: create a durable triage spec for problems that do not yet map to one owning feature spec
 
 ## Use cases
+
+- [ ] TS script comment leaks into client output and perturbs template cursor state — layer: codegen; repro/test: diagnose_svg_city_icon; candidate specs: none; suggested spec: typescript-script-stripping
 
 ## Out of scope
 
@@ -31,3 +33,5 @@
 - `tasks/compiler_tests/cases2/`
 
 ## Test cases
+
+- [ ] diagnose_svg_city_icon
