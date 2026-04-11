@@ -8,10 +8,12 @@ All common operations are in the `justfile`. Use `just` instead of raw cargo com
 
 | Command | What it does |
 |---|---|
-| `just generate` | Generate `case-svelte.js` for all compiler test cases (runs node + oxc) |
+| `just generate` | Generate reference snapshots for both compiler-output and diagnostic-parity test cases |
 | `just test-compiler` | Run all compiler integration tests |
 | `just test-case <name>` | Run a single compiler test case |
 | `just test-case-verbose <name>` | Run a single compiler test case with output |
+| `just test-diagnostics` | Run all diagnostic parity integration tests |
+| `just test-diagnostic-case <name>` | Run a single diagnostic parity test case |
 | `just test-all` | Run all tests across all crates |
 | `just test-parser` | Run parser tests |
 | `just test-analyzer` | Run analyzer tests |
@@ -44,6 +46,7 @@ Rules:
 - **Parser** -- `crates/svelte_parser` tests, span-based pattern per `/test-pattern`
 - **Analyze** -- `crates/svelte_analyze/src/tests.rs`, entry: `analyze_source()` -> `(Component, AnalysisData)`
 - **Compiler integration** -- `tasks/compiler_tests/cases2/`, each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual)
+- **Diagnostic integration** -- `tasks/diagnostic_tests/cases/`, each case has `case.svelte` (input), `case-svelte.json` (reference diagnostics from npm `svelte/compiler`), `case-rust.json` (actual Rust diagnostics for visual diff)
 
 ---
 
