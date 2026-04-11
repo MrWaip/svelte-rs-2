@@ -1,11 +1,11 @@
 # Events
 
 ## Current state
-- **Working**: feature complete for client-side event handling in this spec's scope
+- **Working**: 11/12 use cases complete; one diagnostic-parity mismatch remains
 - **Done this session**: normalized the cross-spec count drift, implemented dev-mode `$.apply(...)` wrapping for non-inline event handlers, and matched reference dev handler naming for Svelte 5 event attributes plus legacy `on:` directives
 - **Scope note**: component `$$events` forwarding is tracked in `specs/component-node.md` and is already complete there; it is not remaining work for this spec
-- **Remaining**: no open event-owned client-side use cases in this spec; compiler negative snapshots are not part of this feature
-- Last updated: 2026-04-09
+- **Remaining**: analyzer incorrectly emits `event_directive_deprecated` for legacy `on:` on `<svelte:window>` in non-runes mode (diagnostic case: `on_directive_not_deprecated_in_non_runes_mode_svelte_window`)
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -35,6 +35,7 @@
 - [x] `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` accept both Svelte 5 event attributes and legacy `on:` syntax in the same special-element code paths (tests: `svelte_window_event_attr`, `svelte_document_events`, `svelte_body_event_attr`)
 - [x] Legacy `nonpassive` modifier preserves an undefined capture slot and passes explicit passive `false` (`on_directive_nonpassive`)
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
+- [ ] Non-runes mode must not emit `event_directive_deprecated` for legacy `on:` directives on `<svelte:window>` (diagnostic test: `on_directive_not_deprecated_in_non_runes_mode_svelte_window`)
 - [x] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` is implemented in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
 - [x] Dev-mode `$.apply()` + event handler naming (tests: `event_attr_dev_apply`, `on_directive_dev_apply`)
 
@@ -88,3 +89,5 @@
 - [x] `svelte_window_event_legacy`
 - [x] `on_directive_nonpassive`
 - [x] `component_events` (covered in `specs/component-node.md`)
+- [ ] `on_directive_not_deprecated_in_non_runes_mode_svelte_window` (diagnose-diagnostics: pending fix)
+
