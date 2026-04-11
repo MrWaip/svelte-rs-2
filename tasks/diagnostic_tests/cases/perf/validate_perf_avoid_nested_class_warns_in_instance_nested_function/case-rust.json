@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "perf_avoid_nested_class",
+    "start": 32,
+    "end": 44
+  }
+]

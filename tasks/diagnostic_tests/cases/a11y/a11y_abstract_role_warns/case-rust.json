@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_abstract_role",
+    "start": 11,
+    "end": 17
+  }
+]

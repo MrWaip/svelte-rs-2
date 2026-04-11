@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_aria_attributes",
+    "start": 18,
+    "end": 19
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_click_events_have_key_events",
+    "end": 63,
+    "severity": "warning",
+    "start": 0
+  }
+]

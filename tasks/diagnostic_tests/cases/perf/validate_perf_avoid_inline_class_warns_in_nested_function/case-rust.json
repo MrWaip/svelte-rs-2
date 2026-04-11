@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "perf_avoid_inline_class",
+    "start": 46,
+    "end": 60
+  }
+]

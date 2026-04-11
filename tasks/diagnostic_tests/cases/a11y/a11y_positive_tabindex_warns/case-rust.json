@@ -1,0 +1,14 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_noninteractive_tabindex",
+    "start": 15,
+    "end": 16
+  },
+  {
+    "severity": "warning",
+    "code": "a11y_positive_tabindex",
+    "start": 15,
+    "end": 16
+  }
+]

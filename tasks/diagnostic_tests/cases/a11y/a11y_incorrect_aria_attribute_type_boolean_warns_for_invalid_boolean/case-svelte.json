@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_incorrect_aria_attribute_type_boolean",
+    "end": 24,
+    "severity": "warning",
+    "start": 5
+  }
+]

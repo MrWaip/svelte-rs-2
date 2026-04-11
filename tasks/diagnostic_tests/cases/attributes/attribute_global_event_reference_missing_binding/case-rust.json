@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "attribute_global_event_reference",
+    "start": 17,
+    "end": 24
+  }
+]

@@ -1,0 +1,1 @@
+<div role="widget"></div>

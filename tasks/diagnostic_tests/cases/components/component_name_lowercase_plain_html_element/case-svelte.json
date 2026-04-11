@@ -1,0 +1,8 @@
+[
+  {
+    "code": "element_invalid_self_closing_tag",
+    "end": 10,
+    "severity": "warning",
+    "start": 0
+  }
+]

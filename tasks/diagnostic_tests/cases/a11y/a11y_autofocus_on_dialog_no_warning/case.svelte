@@ -1,0 +1,1 @@
+<dialog autofocus>content</dialog>

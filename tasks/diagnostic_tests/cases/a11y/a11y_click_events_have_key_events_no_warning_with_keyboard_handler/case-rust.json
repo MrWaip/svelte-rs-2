@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "a11y_no_static_element_interactions",
+    "start": 0,
+    "end": 47
+  }
+]
