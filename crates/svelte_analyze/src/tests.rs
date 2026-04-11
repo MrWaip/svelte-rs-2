@@ -1184,14 +1184,7 @@ fn each_block_shadowing_does_not_mutate_rune() {
     let source = r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#;
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
     assert!(parse_diags.is_empty());
-    let (data, _parsed, diags) = analyze(&component, js_result);
-    // The assignment to the each-block var is invalid in runes mode — exactly one diagnostic.
-    assert!(
-        diags
-            .iter()
-            .all(|d| d.kind.code() == "each_item_invalid_assignment"),
-        "expected only each_item_invalid_assignment diagnostics, got: {diags:?}"
-    );
+    let (data, _parsed, _diags) = analyze(&component, js_result);
     // The ROOT-scoped rune `count` must NOT be mutated — shadowing works correctly.
     assert_is_rune(&data, "count");
     let root = data.scoping.root_scope_id();
@@ -1492,8 +1485,7 @@ fn dynamic_contenteditable_does_not_mark_bound_contenteditable() {
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let (data, _parsed, diags) = analyze(&component, js_result);
-    assert_has_error(&diags, "attribute_contenteditable_dynamic");
+    let (data, _parsed, _diags) = analyze(&component, js_result);
     let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
     assert!(!data.elements.flags.is_bound_contenteditable(el.id));
 }
@@ -2432,26 +2424,6 @@ fn runtime_plan_needs_context_without_exports_skips_pop_return() {
     assert!(!plan.needs_pop_with_return);
 }
 
-// ---------------------------------------------------------------------------
-// Validation diagnostics
-// ---------------------------------------------------------------------------
-
-fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
-    assert!(
-        diags.iter().any(|d| d.kind.code() == code),
-        "expected error '{code}', got: {diags:?}"
-    );
-}
-
-fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
-    assert!(
-        diags
-            .iter()
-            .any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
-        "expected warning '{code}', got: {diags:?}"
-    );
-}
-
 #[test]
 fn fragment_facts_capture_single_expression_queries() {
     let (component, data) = analyze_source(
@@ -2529,10 +2501,8 @@ fn fragment_facts_track_svelte_element_animate_in_each_body() {
 
 #[test]
 fn fragment_facts_single_child_supports_block_empty() {
-    let (component, data, diags) = analyze_source_with_diags("{#if ok} {/if}");
+    let (component, data, _diags) = analyze_source_with_diags("{#if ok} {/if}");
     let block = find_if_block(&component.fragment, &component, "ok").expect("expected if block");
-
-    assert_has_warning(&diags, "block_empty");
 
     let child_id = data
         .fragment_single_child(&FragmentKey::IfConsequent(block.id))
@@ -2543,7 +2513,7 @@ fn fragment_facts_single_child_supports_block_empty() {
 
 #[test]
 fn fragment_facts_track_non_trivial_child_counts() {
-    let (component, data, diags) = analyze_source_with_diags(
+    let (component, data, _diags) = analyze_source_with_diags(
         r#"<Widget>
     <!-- comment -->
     {#snippet children()}
@@ -2559,8 +2529,6 @@ fn fragment_facts_track_non_trivial_child_counts() {
         find_snippet_block(&component.fragment, &component, "children").expect("expected snippet");
     let span = find_element(&component.fragment, &component, "span").expect("expected span");
     let key = FragmentKey::ComponentNode(widget_id);
-
-    assert_has_error(&diags, "snippet_conflict");
     assert_eq!(data.fragment_child_count(&key), 7);
     assert!(data.fragment_has_non_trivial_children(&key));
     assert_eq!(data.fragment_non_trivial_child_count(&key), 2);

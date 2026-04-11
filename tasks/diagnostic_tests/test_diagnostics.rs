@@ -668,6 +668,103 @@ mod css {
     );
 }
 
+mod css_prune {
+    use super::*;
+
+    diagnostic_case!(
+        type_selector_matches_element,
+        "css_prune/type_selector_matches_element"
+    );
+    diagnostic_case!(
+        type_selector_no_match,
+        "css_prune/type_selector_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(
+        type_selector_case_insensitive_css,
+        "css_prune/type_selector_case_insensitive_css"
+    );
+    diagnostic_case!(
+        universal_selector_always_matches,
+        "css_prune/universal_selector_always_matches"
+    );
+    diagnostic_case!(
+        multiple_selectors_mixed,
+        "css_prune/multiple_selectors_mixed",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(class_selector_static_match, "css_prune/class_selector_static_match");
+    diagnostic_case!(
+        class_selector_no_match,
+        "css_prune/class_selector_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(class_directive_match, "css_prune/class_directive_match");
+    diagnostic_case!(id_selector_match, "css_prune/id_selector_match");
+    diagnostic_case!(
+        id_selector_no_match,
+        "css_prune/id_selector_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(global_functional_always_used, "css_prune/global_functional_always_used");
+    diagnostic_case!(global_block_always_used, "css_prune/global_block_always_used");
+    diagnostic_case!(
+        descendant_combinator_match,
+        "css_prune/descendant_combinator_match"
+    );
+    diagnostic_case!(
+        descendant_combinator_deep_match,
+        "css_prune/descendant_combinator_deep_match"
+    );
+    diagnostic_case!(
+        descendant_combinator_no_match,
+        "css_prune/descendant_combinator_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(child_combinator_direct_match, "css_prune/child_combinator_direct_match");
+    diagnostic_case!(
+        child_combinator_indirect_no_match,
+        "css_prune/child_combinator_indirect_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(
+        adjacent_sibling_combinator_match,
+        "css_prune/adjacent_sibling_combinator_match"
+    );
+    diagnostic_case!(
+        adjacent_sibling_combinator_no_match,
+        "css_prune/adjacent_sibling_combinator_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(
+        general_sibling_combinator_match,
+        "css_prune/general_sibling_combinator_match"
+    );
+    diagnostic_case!(
+        general_sibling_combinator_no_match,
+        "css_prune/general_sibling_combinator_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(
+        no_elements_all_unused,
+        "css_prune/no_elements_all_unused",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(keyframes_not_warned, "css_prune/keyframes_not_warned");
+    diagnostic_case!(
+        media_query_unused_selector,
+        "css_prune/media_query_unused_selector",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(media_query_used_selector, "css_prune/media_query_used_selector");
+    diagnostic_case!(
+        spread_attribute_conservative_class_match,
+        "css_prune/spread_attribute_conservative_class_match"
+    );
+    diagnostic_case!(nested_element_match, "css_prune/nested_element_match");
+    diagnostic_case!(deeply_nested_descendant, "css_prune/deeply_nested_descendant");
+}
+
 mod bind {
     use super::*;
 
@@ -1470,6 +1567,10 @@ mod each {
         "each/validate_each_item_invalid_assignment"
     );
     diagnostic_case!(
+        each_block_shadowing_does_not_mutate_rune,
+        "each/each_block_shadowing_does_not_mutate_rune"
+    );
+    diagnostic_case!(
         validate_each_item_invalid_assignment_bind_identifier,
         "each/validate_each_item_invalid_assignment_bind_identifier"
     );
@@ -1516,6 +1617,10 @@ mod snippets {
     );
     diagnostic_case!(validate_snippet_conflict, "snippets/validate_snippet_conflict");
     diagnostic_case!(
+        fragment_facts_track_non_trivial_child_counts,
+        "snippets/fragment_facts_track_non_trivial_child_counts"
+    );
+    diagnostic_case!(
         validate_snippet_children_without_other_content_has_no_conflict,
         "snippets/validate_snippet_children_without_other_content_has_no_conflict"
     );
@@ -1556,6 +1661,10 @@ mod template {
     diagnostic_case!(
         validate_key_block_empty_warns,
         "template/validate_key_block_empty_warns"
+    );
+    diagnostic_case!(
+        fragment_facts_single_child_supports_block_empty,
+        "template/fragment_facts_single_child_supports_block_empty"
     );
     diagnostic_case!(
         validate_text_invalid_placement,
