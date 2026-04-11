@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{compile, CompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, Namespace, compile};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -465,7 +465,11 @@ mod a11y {
     diagnostic_case!(
         a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation,
         "a11y/a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation",
-        ignore = "known mismatch: analyzer is missing this warning and npm svelte/compiler also reports a11y_consider_explicit_label"
+        ignore = "known mismatch: analyzer still misses a11y_consider_explicit_label for unlabeled button"
+    );
+    diagnostic_case!(
+        a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation_with_text,
+        "a11y/a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation_with_text"
     );
     diagnostic_case!(
         a11y_invalid_attribute_warns_for_anchor_hash_href,
@@ -484,8 +488,11 @@ mod a11y {
     );
     diagnostic_case!(
         a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button,
-        "a11y/a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button",
-        ignore = "known mismatch: analyzer is missing noninteractive element to interactive role warning"
+        "a11y/a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button"
+    );
+    diagnostic_case!(
+        a11y_no_noninteractive_element_to_interactive_role_warns_for_footer_role_button,
+        "a11y/a11y_no_noninteractive_element_to_interactive_role_warns_for_footer_role_button"
     );
     diagnostic_case!(
         a11y_no_noninteractive_tabindex_warns_for_div,
@@ -1139,8 +1146,7 @@ mod props {
     );
     diagnostic_case!(
         validate_props_typed_children_snippet_no_diagnostic,
-        "props/validate_props_typed_children_snippet_no_diagnostic",
-        ignore = "diagnose-diagnostics: pending fix"
+        "props/validate_props_typed_children_snippet_no_diagnostic"
     );
 }
 

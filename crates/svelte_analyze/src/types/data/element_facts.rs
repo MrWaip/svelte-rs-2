@@ -110,7 +110,7 @@ impl ElementFactsEntry {
         }
 
         Self {
-            attr_index: AttrIndex::build(attrs),
+            attr_index: AttrIndex::build(attrs, source),
             has_spread,
             has_runtime_attrs,
             namespace,

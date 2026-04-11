@@ -17,16 +17,13 @@ pub struct AttrIndex {
 }
 
 impl AttrIndex {
-    pub fn build(attrs: &[Attribute]) -> Self {
+    pub fn build(attrs: &[Attribute], source: &str) -> Self {
         let mut by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>> = FxHashMap::default();
         let mut by_id = FxHashMap::default();
         for (i, attr) in attrs.iter().enumerate() {
             by_id.insert(attr.id(), i as u16);
-            if let Some(name) = attr.name() {
-                by_name
-                    .entry(CompactString::from(name))
-                    .or_default()
-                    .push(i as u16);
+            if let Some(name) = attr_index_name(attr, source) {
+                by_name.entry(name).or_default().push(i as u16);
             }
         }
         Self { by_name, by_id }
@@ -66,5 +63,17 @@ impl AttrIndex {
     pub fn find_by_id<'a>(&self, attrs: &'a [Attribute], id: NodeId) -> Option<&'a Attribute> {
         let pos = *self.by_id.get(&id)?;
         Some(&attrs[pos as usize])
+    }
+}
+
+fn attr_index_name(attr: &Attribute, source: &str) -> Option<CompactString> {
+    match attr {
+        Attribute::Shorthand(attr) => {
+            // Shorthand presence checks already use raw source text elsewhere, so the
+            // normalized attribute index must expose the same name to keep lookups coherent.
+            let name = attr.expression_span.source_text(source).trim();
+            (!name.is_empty()).then(|| CompactString::from(name))
+        }
+        _ => attr.name().map(CompactString::from),
     }
 }

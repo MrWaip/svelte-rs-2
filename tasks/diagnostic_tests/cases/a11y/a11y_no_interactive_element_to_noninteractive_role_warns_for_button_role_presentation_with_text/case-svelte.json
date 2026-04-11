@@ -1,0 +1,8 @@
+[
+  {
+    "code": "a11y_no_interactive_element_to_noninteractive_role",
+    "end": 42,
+    "severity": "warning",
+    "start": 0
+  }
+]

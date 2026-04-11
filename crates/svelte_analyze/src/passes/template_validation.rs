@@ -10,21 +10,22 @@
 use oxc_ast::ast::{
     AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement,
 };
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
+    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
+    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
+    Node, NodeId, OnDirectiveLegacy, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
+    SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SnippetBlock, SvelteBody, SvelteDocument,
     SvelteElement, SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective,
-    SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    is_svg,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
+use crate::passes::binding_properties::{BINDING_NAMES, binding_property};
 use crate::scope::ComponentScoping;
 use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
@@ -315,6 +316,49 @@ const A11Y_IMPLICIT_ROLES: &[(&str, &str)] = &[
 
 const A11Y_NESTED_IMPLICIT_ROLES: &[(&str, &str)] =
     &[("header", "banner"), ("footer", "contentinfo")];
+
+const A11Y_NON_INTERACTIVE_ELEMENT_TO_INTERACTIVE_ROLE_EXCEPTIONS: &[(&str, &[&str])] = &[
+    (
+        "ul",
+        &[
+            "listbox",
+            "menu",
+            "menubar",
+            "radiogroup",
+            "tablist",
+            "tree",
+            "treegrid",
+        ],
+    ),
+    (
+        "ol",
+        &[
+            "listbox",
+            "menu",
+            "menubar",
+            "radiogroup",
+            "tablist",
+            "tree",
+            "treegrid",
+        ],
+    ),
+    (
+        "menu",
+        &[
+            "listbox",
+            "menu",
+            "menubar",
+            "radiogroup",
+            "tablist",
+            "tree",
+            "treegrid",
+        ],
+    ),
+    ("li", &["menuitem", "option", "row", "tab", "treeitem"]),
+    ("table", &["grid"]),
+    ("td", &["gridcell"]),
+    ("fieldset", &["radiogroup", "presentation"]),
+];
 
 const A11Y_INPUT_IMPLICIT_ROLES: &[(&str, &str)] = &[
     ("button", "button"),
