@@ -8,7 +8,7 @@ pub(crate) mod utils;
 mod validate;
 pub(crate) mod walker;
 
-pub use scope::ComponentScoping;
+pub use scope::{ComponentScoping, TemplateBindingReadKind};
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockAnalysis,
     BlockerData, ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo,

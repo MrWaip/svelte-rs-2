@@ -158,6 +158,55 @@ fn component_colon_attribute_parses_as_plain_attribute() {
 }
 
 #[test]
+fn component_name_with_underscore_self_closing_parses() {
+    let c = parse("<Derived_1 />");
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    assert_eq!(component.name, "Derived_1");
+    assert!(component.self_closing);
+}
+
+#[test]
+fn component_name_with_underscore_non_self_closing_parses() {
+    let c = parse("<Const_0></Const_0>");
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    assert_eq!(component.name, "Const_0");
+    assert!(!component.self_closing);
+}
+
+#[test]
+fn lowercase_tag_name_with_underscore_is_rejected() {
+    let (_, diagnostics) = Parser::new("<div_foo></div_foo>").parse();
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostic for lowercase tag name with underscore"
+    );
+}
+
+#[test]
+fn dotted_component_name_with_lowercase_identifier_root_parses() {
+    let c = parse("<registry_name.Widget />");
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    assert_eq!(component.name, "registry_name.Widget");
+    assert!(component.self_closing);
+}
+
+#[test]
+fn dotted_component_name_with_lowercase_identifier_root_non_self_closing_parses() {
+    let c = parse("<registry_name.Widget></registry_name.Widget>");
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    assert_eq!(component.name, "registry_name.Widget");
+    assert!(!component.self_closing);
+}
+
+#[test]
 fn nested_if_in_element() {
     let c = parse("<div>{#if true}inside{/if}</div>");
     assert_node(&c, 0, "<div>{#if true}inside{/if}</div>");

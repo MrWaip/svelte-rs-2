@@ -1339,6 +1339,26 @@ fn template_effect_multiple_call_deps() {
     assert_compiler("template_effect_multiple_call_deps");
 }
 
+#[rstest]
+fn component_local_underscored_bind_this() {
+    assert_compiler("component_local_underscored_bind_this");
+}
+
+#[rstest]
+fn component_dynamic_dotted_identifier_root() {
+    assert_compiler("component_dynamic_dotted_identifier_root");
+}
+
+#[rstest]
+fn component_dynamic_props_access() {
+    assert_compiler("component_dynamic_props_access");
+}
+
+#[rstest]
+fn component_dynamic_dotted_props_root() {
+    assert_compiler("component_dynamic_dotted_props_root");
+}
+
 // ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------

@@ -1,14 +1,14 @@
 # ComponentNode
 
 ## Current state
-- **Working**: 14/14 component-tag use cases
-- **Current slice:** dotted JS-identifier component roots and shared template binding reads
-- **Completed slice:** component event dev-mode handler parity in `svelte_codegen_client`
-- **Done in this slice:** parser tag scanning now accepts dotted component roots whose first segment is a lowercase JS identifier containing `_` or `$`, such as `<registry_name.Widget />`, while still rejecting lowercase plain element names like `<div_foo>`; shared template binding read classification now lives in `ComponentScoping` and is reused by analyze, transform, and client codegen instead of being duplicated across phases
-- **Why this slice came next:** post-implementation review found one remaining parser gap for lowercase JS-identifier dotted roots and one architecture gap where analyze and transform still duplicated the same template binding read rules
-- **Repro:** `just test-case component_dynamic_dotted_identifier_root` and `just test-case component_dynamic_props_access`
+- **Working**: 15/15 component-tag use cases
+- **Current slice:** root-aware dotted dynamic component refs
+- **Completed slice:** root-aware dotted dynamic component refs
+- **Done in this slice:** analyze now retains the resolved component root symbol for any bound component tag, and client codegen rebuilds dotted dynamic refs from `TemplateBindingReadKind`, so roots like `<registry.Widget />` lower through the same `Identifier` / `ThunkCall` / `$.get` / `$.safe_get` / `$$props` semantics as ordinary template reads
+- **Why this slice came next:** post-implementation review found one remaining codegen gap: dotted dynamic component refs still bypassed template binding read semantics for their root binding, so props-backed roots like `<registry.Widget />` lowered as plain `registry.Widget` instead of `$$props.registry.Widget`
+- **Repro:** `just test-case component_dynamic_dotted_props_root`
 - **Next:** `component-node` use cases are fully covered again; if future reference gaps are found, record them as new unchecked use cases before resuming
-- **Verification:** `cargo test -p svelte_parser component_name_with_underscore`, `cargo test -p svelte_parser dotted_component_name_with_lowercase_identifier_root`, `cargo test -p svelte_parser lowercase_tag_name_with_underscore_is_rejected`, `cargo test -p svelte_analyze component_rune_bindings_are_dynamic`, `cargo test -p svelte_analyze component_prop_binding_uses_props_access_ref`, `just test-case component_dynamic_dotted_identifier_root`, `just test-case component_dynamic_props_access`, `just test-case component_dynamic_dotted`, `just test-case component_local_underscored_bind_this`, `just test-parser`, `just test-analyzer`, and `just test-compiler` passed on 2026-04-11
+- **Verification:** `just generate`, `just test-case component_dynamic_dotted_props_root`, `just test-case component_dynamic_dotted`, `just test-case component_dynamic_props_access`, `just test-case component_local_underscored_bind_this`, `just test-analyzer`, and `just test-compiler` passed on 2026-04-11
 - Last updated: 2026-04-11
 
 ## Source
@@ -26,6 +26,7 @@
 - `<Component><div slot="footer" /></Component>`
 - `<foo.bar />`
 - `<registry_name.Widget />`
+- `<registry.Widget />`
 - `<Derived_1 bind:this={refs[1]} />`
 - `{#if cond}{@const Const_0 = Widget}<Const_0 bind:this={refs[0]} />{/if}`
 
@@ -42,6 +43,7 @@
 - [x] `on:` directives on components serialize into `$$events`, including dev-mode shared-handler wrapping parity (tests: `component_events`, `component_events_dev_apply`)
 - [x] Child nodes with `slot="name"` serialize into named `$$slots.<name>` instead of default children (tests: `component_named_slot`)
 - [x] Runes-mode dotted or stateful component references lower through `$.component(...)`, including dotted roots whose first segment is a lowercase JS identifier containing `_` or `$` and dynamic refs read from `$$props` (tests: `component_dynamic_dotted`, `component_dynamic_dotted_identifier_root`, `component_dynamic_props_access`)
+- [x] Runes-mode dotted dynamic component refs whose root binding is non-normal use the same template binding read semantics as ordinary template reads, including `$props()`-backed roots like `<registry.Widget />` (test: `component_dynamic_dotted_props_root`)
 - [x] Runes-mode local component bindings whose tag names include `_` or digits, including `<Derived_1>` from `$derived(Widget)` and `<Const_0>` from `{@const}`, parse and lower through the dynamic-component path with `bind:this` (test: `component_local_underscored_bind_this`)
 - [x] Analyze emits component-specific validation/warnings for invalid directives and attribute edge cases (component-tag directives/modifiers, direct attribute-name/value checks, duplicate named slots, and explicit default-slot conflicts)
 
@@ -82,6 +84,7 @@
 - [x] `component_dynamic_dotted`
 - [x] `component_dynamic_dotted_identifier_root`
 - [x] `component_dynamic_props_access`
+- [x] `component_dynamic_dotted_props_root`
 - [x] `component_local_underscored_bind_this`
 - [x] analyzer unit tests: component invalid directive, component `on:` modifier validation, component illegal colon warning, component unquoted attribute sequence
 - [x] analyzer unit tests: duplicate named slot, explicit default-slot conflict, distinct named slots, whitespace-only default-slot false-positive guard

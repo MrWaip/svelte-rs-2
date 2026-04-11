@@ -164,6 +164,70 @@ impl<'a> Scanner<'a> {
         self.slice_source(start, self.current)
     }
 
+    fn is_js_identifier_start(ch: char) -> bool {
+        ch.is_alphabetic() || matches!(ch, '_' | '$')
+    }
+
+    fn js_identifier_segment(&mut self) -> &'a str {
+        let start = self.current;
+
+        if !self.peek().is_some_and(Self::is_js_identifier_start) {
+            return self.slice_source(start, start);
+        }
+
+        self.advance();
+        while let Some(ch) = self.peek() {
+            if ch.is_alphanumeric() || matches!(ch, '_' | '$') {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.slice_source(start, self.current)
+    }
+
+    fn try_component_tag_name(&mut self) -> Option<&'a str> {
+        let start = self.current;
+        let name = self.js_identifier_segment();
+
+        if name.is_empty() {
+            return None;
+        }
+
+        if name.starts_with(|ch: char| ch.is_uppercase()) {
+            self.consume_dotted_tag_suffix();
+            return Some(self.slice_source(start, self.current));
+        }
+
+        if self.peek() != Some('.') {
+            self.current = start;
+            return None;
+        }
+
+        let dotted_start = self.current;
+        self.consume_dotted_tag_suffix();
+        if self.current == dotted_start {
+            self.current = start;
+            return None;
+        }
+
+        Some(self.slice_source(start, self.current))
+    }
+
+    fn consume_dotted_tag_suffix(&mut self) {
+        while self.peek() == Some('.') {
+            let dot_pos = self.current;
+            self.advance();
+
+            let segment = self.scan_js_identifier();
+            if segment.is_empty() {
+                self.current = dot_pos;
+                break;
+            }
+        }
+    }
+
     fn slice_source(&self, start: usize, end: usize) -> &'a str {
         &self.source[start..end]
     }
@@ -289,7 +353,11 @@ impl<'a> Scanner<'a> {
 
     fn start_tag(&mut self) -> Result<(), Diagnostic> {
         let name_start = self.current;
-        let name = self.identifier();
+        let name = if let Some(name) = self.try_component_tag_name() {
+            name
+        } else {
+            self.identifier()
+        };
 
         if name.is_empty() {
             return Err(Diagnostic::invalid_tag_name(
@@ -298,22 +366,7 @@ impl<'a> Scanner<'a> {
         }
 
         // Consume dotted component name segments: <registry.Widget />
-        while self.peek() == Some('.') {
-            let dot_pos = self.current;
-            self.advance(); // consume '.'
-            let seg_start = self.current;
-            while self
-                .peek()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
-            {
-                self.advance();
-            }
-            if self.current == seg_start {
-                // No identifier after dot — revert
-                self.current = dot_pos;
-                break;
-            }
-        }
+        self.consume_dotted_tag_suffix();
 
         // Handle `svelte:*` special element names (e.g., svelte:options, svelte:head)
         if name == "svelte" && self.peek() == Some(':') {
@@ -810,7 +863,11 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         let name_start = self.current;
-        let name = self.identifier();
+        let name = if let Some(name) = self.try_component_tag_name() {
+            name
+        } else {
+            self.identifier()
+        };
 
         if name.is_empty() {
             return Err(Diagnostic::invalid_tag_name(
@@ -819,21 +876,7 @@ impl<'a> Scanner<'a> {
         }
 
         // Consume dotted component name segments: </registry.Widget>
-        while self.peek() == Some('.') {
-            let dot_pos = self.current;
-            self.advance();
-            let seg_start = self.current;
-            while self
-                .peek()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
-            {
-                self.advance();
-            }
-            if self.current == seg_start {
-                self.current = dot_pos;
-                break;
-            }
-        }
+        self.consume_dotted_tag_suffix();
 
         // Handle `svelte:*` special element names
         if name == "svelte" && self.peek() == Some(':') {
