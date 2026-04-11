@@ -1,10 +1,11 @@
 # `$inspect` / `$inspect.trace`
 
 ## Current state
-- **Working**: 9/9 use cases — feature complete
+- **Working**: 10/10 use cases — feature complete
+- **Done (2026-04-11)**: `StateRefLocallyValidator` now treats `$inspect(...)` arguments as one function-depth deeper, matching the reference compiler and clearing the remaining inspect diagnostic parity mismatches for inspected `$state`/`$derived` values
 - **Done**: added `InspectWith` and `InspectTrace` RuneKind variants; extended `detect_rune_from_call` to detect both; added placement + argument-count validation in `RuneValidator`; removed 5 pre-existing `#[ignore]` test attributes
 - **Next**: no action needed; monitor for regressions in future rune-detection or validation changes
-- Last updated: 2026-04-03
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -29,6 +30,7 @@
 - [x] `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
 - [x] `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
 - [x] `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
+- [x] `$inspect(...)` and `$inspect(...).with(callback)` do not emit `state_referenced_locally` for inspected rune values
 
 ## Reference
 
@@ -60,3 +62,8 @@
 - [x] `inspect_trace_prod_strip`
 - [x] `inspect_trace_reactive_contexts`
 - [x] analyzer unit tests for inspect validation
+- [x] `validate_inspect_one_or_more_args_ok`
+- [x] `validate_inspect_with_wrong_arg_count_zero`
+- [x] `validate_inspect_with_wrong_arg_count_two`
+- [x] `validate_inspect_with_one_arg_ok`
+- [x] `validate_inspect_derived_no_state_referenced_locally_warning`

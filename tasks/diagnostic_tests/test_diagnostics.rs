@@ -1282,8 +1282,7 @@ mod runes {
     diagnostic_case!(validate_inspect_zero_args, "runes/validate_inspect_zero_args");
     diagnostic_case!(
         validate_inspect_one_or_more_args_ok,
-        "runes/validate_inspect_one_or_more_args_ok",
-        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning for inspected $state value"
+        "runes/validate_inspect_one_or_more_args_ok"
     );
     diagnostic_case!(
         validate_inspect_with_requires_callback,
@@ -1291,23 +1290,19 @@ mod runes {
     );
     diagnostic_case!(
         validate_inspect_with_wrong_arg_count_zero,
-        "runes/validate_inspect_with_wrong_arg_count_zero",
-        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning alongside rune_invalid_arguments_length"
+        "runes/validate_inspect_with_wrong_arg_count_zero"
     );
     diagnostic_case!(
         validate_inspect_with_wrong_arg_count_two,
-        "runes/validate_inspect_with_wrong_arg_count_two",
-        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning alongside rune_invalid_arguments_length"
+        "runes/validate_inspect_with_wrong_arg_count_two"
     );
     diagnostic_case!(
         validate_inspect_with_one_arg_ok,
-        "runes/validate_inspect_with_one_arg_ok",
-        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning for inspected $state value"
+        "runes/validate_inspect_with_one_arg_ok"
     );
     diagnostic_case!(
         validate_inspect_derived_no_state_referenced_locally_warning,
-        "runes/validate_inspect_derived_no_state_referenced_locally_warning",
-        ignore = "diagnose-diagnostics: pending fix"
+        "runes/validate_inspect_derived_no_state_referenced_locally_warning"
     );
     diagnostic_case!(
         validate_inspect_trace_wrong_arg_count,

@@ -4,11 +4,5 @@
     "code": "rune_invalid_arguments_length",
     "start": 28,
     "end": 46
-  },
-  {
-    "severity": "warning",
-    "code": "state_referenced_locally",
-    "start": 37,
-    "end": 38
   }
 ]

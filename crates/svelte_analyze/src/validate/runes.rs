@@ -350,7 +350,7 @@ fn validate_state_referenced_locally_derived(
         offset,
         diags,
         in_state_rune_arg: false,
-        derived_call_depth: 0,
+        call_depth_offset: 0,
         _phantom: std::marker::PhantomData,
     };
     v.visit_program(program);
@@ -363,10 +363,9 @@ struct StateRefLocallyValidator<'a, 'b> {
     /// True when currently inside arguments of a `$state`/`$state.raw` call,
     /// without a function boundary in between. Determines `type_` in the diagnostic.
     in_state_rune_arg: bool,
-    /// Incremented when entering `$derived`/`$derived.by` call arguments.
-    /// Mirrors the reference compiler's `function_depth += 1` for `$derived` calls:
-    /// references inside `$derived(...)` are semantically deeper and should not warn.
-    derived_call_depth: u32,
+    /// Incremented when entering call arguments that the reference compiler treats
+    /// as one function-depth deeper for `state_referenced_locally`.
+    call_depth_offset: u32,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -405,10 +404,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
             .data
             .scoping
             .function_depth(self.data.scoping.symbol_scope_id(sym_id));
-        // Add derived_call_depth to mirror the reference compiler's function_depth += 1 for $derived:
-        // references inside $derived(...) are semantically one level deeper and should not warn.
+        // `$derived(...)`, `$derived.by(...)`, and `$inspect(...)` arguments are analyzed
+        // one function-depth deeper by the reference compiler for this warning.
         let ref_depth =
-            self.data.scoping.function_depth(reference.scope_id()) + self.derived_call_depth;
+            self.data.scoping.function_depth(reference.scope_id()) + self.call_depth_offset;
         if ref_depth != decl_depth {
             return;
         }
@@ -439,11 +438,19 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
             }
             Some(k) if k.is_derived() => {
                 self.visit_expression(&call.callee);
-                self.derived_call_depth += 1;
+                self.call_depth_offset += 1;
                 for arg in &call.arguments {
                     self.visit_argument(arg);
                 }
-                self.derived_call_depth -= 1;
+                self.call_depth_offset -= 1;
+            }
+            Some(RuneKind::Inspect) => {
+                self.visit_expression(&call.callee);
+                self.call_depth_offset += 1;
+                for arg in &call.arguments {
+                    self.visit_argument(arg);
+                }
+                self.call_depth_offset -= 1;
             }
             _ => walk_call_expression(self, call),
         }
@@ -454,10 +461,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
     ) {
         let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
+        let prev_call_depth = std::mem::replace(&mut self.call_depth_offset, 0);
         walk_arrow_function_expression(self, arrow);
         self.in_state_rune_arg = prev_state_arg;
-        self.derived_call_depth = prev_derived_depth;
+        self.call_depth_offset = prev_call_depth;
     }
 
     fn visit_function(
@@ -466,10 +473,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         flags: oxc_semantic::ScopeFlags,
     ) {
         let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
+        let prev_call_depth = std::mem::replace(&mut self.call_depth_offset, 0);
         walk_function(self, func, flags);
         self.in_state_rune_arg = prev_state_arg;
-        self.derived_call_depth = prev_derived_depth;
+        self.call_depth_offset = prev_call_depth;
     }
 }
 
