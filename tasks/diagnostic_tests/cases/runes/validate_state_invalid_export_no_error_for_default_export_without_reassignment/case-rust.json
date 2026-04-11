@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "module_illegal_default_export",
+    "start": 41,
+    "end": 62
+  }
+]

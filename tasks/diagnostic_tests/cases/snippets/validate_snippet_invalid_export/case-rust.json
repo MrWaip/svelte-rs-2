@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "snippet_invalid_export",
+    "start": 14,
+    "end": 22
+  }
+]

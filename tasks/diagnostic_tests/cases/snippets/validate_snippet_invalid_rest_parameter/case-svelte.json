@@ -1,0 +1,8 @@
+[
+  {
+    "code": "snippet_invalid_rest_parameter",
+    "end": 22,
+    "severity": "error",
+    "start": 15
+  }
+]

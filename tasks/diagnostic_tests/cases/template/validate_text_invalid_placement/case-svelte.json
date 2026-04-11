@@ -1,0 +1,8 @@
+[
+  {
+    "code": "node_invalid_placement",
+    "end": 10,
+    "severity": "error",
+    "start": 7
+  }
+]

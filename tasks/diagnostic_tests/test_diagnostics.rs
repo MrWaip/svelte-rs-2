@@ -676,6 +676,263 @@ mod props {
         props_identifier_no_store_rune_conflict,
         "props/props_identifier_no_store_rune_conflict"
     );
+    diagnostic_case!(
+        validate_props_invalid_placement_inside_function,
+        "props/validate_props_invalid_placement_inside_function"
+    );
+    diagnostic_case!(validate_props_duplicate, "props/validate_props_duplicate");
+    diagnostic_case!(
+        validate_props_and_props_id_coexist,
+        "props/validate_props_and_props_id_coexist"
+    );
+    diagnostic_case!(
+        validate_props_invalid_pattern_computed_key,
+        "props/validate_props_invalid_pattern_computed_key"
+    );
+    diagnostic_case!(
+        validate_props_id_invalid_placement_inside_function,
+        "props/validate_props_id_invalid_placement_inside_function"
+    );
+}
+
+mod runes {
+    use super::*;
+
+    diagnostic_case!(
+        validate_effect_invalid_placement_fn_arg,
+        "runes/validate_effect_invalid_placement_fn_arg"
+    );
+    diagnostic_case!(
+        validate_effect_pre_invalid_placement_assignment,
+        "runes/validate_effect_pre_invalid_placement_assignment"
+    );
+    diagnostic_case!(
+        validate_effect_wrong_arg_count,
+        "runes/validate_effect_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_derived_wrong_arg_count,
+        "runes/validate_derived_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_derived_by_wrong_arg_count,
+        "runes/validate_derived_by_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_derived_rune_invalid_usage_in_non_runes_mode,
+        "runes/validate_derived_rune_invalid_usage_in_non_runes_mode",
+        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for $derived in non-runes mode on this repro"
+    );
+    diagnostic_case!(
+        validate_derived_destructured_rune_invalid_usage_in_non_runes_mode,
+        "runes/validate_derived_destructured_rune_invalid_usage_in_non_runes_mode",
+        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for destructured $derived in non-runes mode on this repro"
+    );
+    diagnostic_case!(
+        validate_derived_rune_allowed_in_runes_mode,
+        "runes/validate_derived_rune_allowed_in_runes_mode"
+    );
+    diagnostic_case!(
+        validate_derived_invalid_export,
+        "runes/validate_derived_invalid_export"
+    );
+    diagnostic_case!(
+        validate_derived_invalid_export_specifier,
+        "runes/validate_derived_invalid_export_specifier",
+        ignore = "known mismatch: analyzer reports derived_invalid_export for export specifier but npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_derived_invalid_default_export,
+        "runes/validate_derived_invalid_default_export",
+        ignore = "known mismatch: npm svelte/compiler reports module_illegal_default_export while analyzer reports derived_invalid_export plus state_referenced_locally"
+    );
+    diagnostic_case!(
+        validate_state_invalid_placement_bare_expr,
+        "runes/validate_state_invalid_placement_bare_expr"
+    );
+    diagnostic_case!(
+        validate_state_invalid_placement_fn_arg,
+        "runes/validate_state_invalid_placement_fn_arg"
+    );
+    diagnostic_case!(
+        validate_state_too_many_args,
+        "runes/validate_state_too_many_args"
+    );
+    diagnostic_case!(
+        validate_state_raw_too_many_args,
+        "runes/validate_state_raw_too_many_args"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_for_derived,
+        "runes/validate_state_referenced_locally_for_derived"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_derived_no_warning_across_fn_boundary,
+        "runes/validate_state_referenced_locally_derived_no_warning_across_fn_boundary"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_for_reassigned_state,
+        "runes/validate_state_referenced_locally_for_reassigned_state"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_for_primitive_state,
+        "runes/validate_state_referenced_locally_for_primitive_state"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_no_warning_for_proxy_state,
+        "runes/validate_state_referenced_locally_no_warning_for_proxy_state"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_for_state_raw,
+        "runes/validate_state_referenced_locally_for_state_raw"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_no_warning_across_fn_boundary_state,
+        "runes/validate_state_referenced_locally_no_warning_across_fn_boundary_state"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_for_reassigned_state,
+        "runes/validate_state_invalid_export_for_reassigned_state",
+        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports state_invalid_export"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_for_reassigned_state_raw,
+        "runes/validate_state_invalid_export_for_reassigned_state_raw",
+        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports state_invalid_export"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_no_error_without_reassignment,
+        "runes/validate_state_invalid_export_no_error_without_reassignment",
+        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_for_reassigned_state_export_specifier,
+        "runes/validate_state_invalid_export_for_reassigned_state_export_specifier",
+        ignore = "known mismatch: analyzer reports state_invalid_export for module export specifier while npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_for_reassigned_state_default_export,
+        "runes/validate_state_invalid_export_for_reassigned_state_default_export"
+    );
+    diagnostic_case!(
+        validate_state_invalid_export_no_error_for_default_export_without_reassignment,
+        "runes/validate_state_invalid_export_no_error_for_default_export_without_reassignment"
+    );
+    diagnostic_case!(
+        validate_effect_pre_wrong_arg_count,
+        "runes/validate_effect_pre_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_effect_root_wrong_arg_count,
+        "runes/validate_effect_root_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_effect_tracking_with_argument,
+        "runes/validate_effect_tracking_with_argument"
+    );
+    diagnostic_case!(validate_state_eager_no_args, "runes/validate_state_eager_no_args");
+    diagnostic_case!(
+        validate_state_eager_too_many_args,
+        "runes/validate_state_eager_too_many_args"
+    );
+    diagnostic_case!(
+        validate_bindable_invalid_location,
+        "runes/validate_bindable_invalid_location"
+    );
+    diagnostic_case!(
+        validate_bindable_invalid_location_inside_arrow,
+        "runes/validate_bindable_invalid_location_inside_arrow"
+    );
+    diagnostic_case!(
+        validate_bindable_too_many_args,
+        "runes/validate_bindable_too_many_args"
+    );
+    diagnostic_case!(
+        validate_inspect_requires_arguments,
+        "runes/validate_inspect_requires_arguments"
+    );
+    diagnostic_case!(validate_inspect_zero_args, "runes/validate_inspect_zero_args");
+    diagnostic_case!(
+        validate_inspect_one_or_more_args_ok,
+        "runes/validate_inspect_one_or_more_args_ok",
+        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning for inspected $state value"
+    );
+    diagnostic_case!(
+        validate_inspect_with_requires_callback,
+        "runes/validate_inspect_with_requires_callback"
+    );
+    diagnostic_case!(
+        validate_inspect_with_wrong_arg_count_zero,
+        "runes/validate_inspect_with_wrong_arg_count_zero",
+        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning alongside rune_invalid_arguments_length"
+    );
+    diagnostic_case!(
+        validate_inspect_with_wrong_arg_count_two,
+        "runes/validate_inspect_with_wrong_arg_count_two",
+        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning alongside rune_invalid_arguments_length"
+    );
+    diagnostic_case!(
+        validate_inspect_with_one_arg_ok,
+        "runes/validate_inspect_with_one_arg_ok",
+        ignore = "known mismatch: analyzer reports extra state_referenced_locally warning for inspected $state value"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_wrong_arg_count,
+        "runes/validate_inspect_trace_wrong_arg_count"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_too_many_args,
+        "runes/validate_inspect_trace_too_many_args"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_invalid_placement,
+        "runes/validate_inspect_trace_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_invalid_placement_top_level,
+        "runes/validate_inspect_trace_invalid_placement_top_level"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_invalid_placement_not_first_stmt,
+        "runes/validate_inspect_trace_invalid_placement_not_first_stmt"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_zero_args_ok,
+        "runes/validate_inspect_trace_zero_args_ok"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_one_arg_ok,
+        "runes/validate_inspect_trace_one_arg_ok"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_valid_in_arrow,
+        "runes/validate_inspect_trace_valid_in_arrow"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_generator_invalid,
+        "runes/validate_inspect_trace_generator_invalid"
+    );
+    diagnostic_case!(
+        validate_inspect_trace_generator_rejected,
+        "runes/validate_inspect_trace_generator_rejected"
+    );
+}
+
+mod stores {
+    use super::*;
+
+    diagnostic_case!(
+        validate_store_rune_conflict,
+        "stores/validate_store_rune_conflict"
+    );
+    diagnostic_case!(
+        validate_store_invalid_scoped_subscription,
+        "stores/validate_store_invalid_scoped_subscription"
+    );
+    diagnostic_case!(
+        validate_store_invalid_subscription_in_module,
+        "stores/validate_store_invalid_subscription_in_module"
+    );
 }
 
 mod host {
@@ -758,6 +1015,23 @@ mod special {
     );
 }
 
+mod module {
+    use super::*;
+
+    diagnostic_case!(
+        validate_module_illegal_default_export,
+        "module/validate_module_illegal_default_export"
+    );
+    diagnostic_case!(
+        validate_module_illegal_default_export_function,
+        "module/validate_module_illegal_default_export_function"
+    );
+    diagnostic_case!(
+        validate_module_illegal_default_export_specifier,
+        "module/validate_module_illegal_default_export_specifier"
+    );
+}
+
 mod slots {
     use super::*;
 
@@ -768,5 +1042,66 @@ mod slots {
     diagnostic_case!(
         slot_attribute_invalid_placement_nested_inside_component,
         "slots/slot_attribute_invalid_placement_nested_inside_component"
+    );
+}
+
+mod snippets {
+    use super::*;
+
+    diagnostic_case!(
+        validate_snippet_parameter_assignment,
+        "snippets/validate_snippet_parameter_assignment"
+    );
+    diagnostic_case!(
+        validate_snippet_parameter_assignment_in_nested_target,
+        "snippets/validate_snippet_parameter_assignment_in_nested_target",
+        ignore = "known mismatch: analyzer reports snippet_parameter_assignment for nested destructuring target while npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_snippet_invalid_rest_parameter,
+        "snippets/validate_snippet_invalid_rest_parameter"
+    );
+    diagnostic_case!(
+        validate_snippet_shadowing_prop,
+        "snippets/validate_snippet_shadowing_prop"
+    );
+    diagnostic_case!(validate_snippet_conflict, "snippets/validate_snippet_conflict");
+    diagnostic_case!(
+        validate_snippet_children_without_other_content_has_no_conflict,
+        "snippets/validate_snippet_children_without_other_content_has_no_conflict"
+    );
+    diagnostic_case!(
+        validate_snippet_invalid_export,
+        "snippets/validate_snippet_invalid_export",
+        ignore = "known mismatch: analyzer and npm svelte/compiler report snippet_invalid_export on different spans"
+    );
+    diagnostic_case!(
+        validate_snippet_invalid_export_no_false_positive,
+        "snippets/validate_snippet_invalid_export_no_false_positive"
+    );
+    diagnostic_case!(
+        validate_snippet_invalid_export_module_bound_no_fire,
+        "snippets/validate_snippet_invalid_export_module_bound_no_fire"
+    );
+}
+
+mod template {
+    use super::*;
+
+    diagnostic_case!(
+        validate_key_block_empty_warns,
+        "template/validate_key_block_empty_warns"
+    );
+    diagnostic_case!(
+        validate_text_invalid_placement,
+        "template/validate_text_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_text_bidirectional_control_warning,
+        "template/validate_text_bidirectional_control_warning"
+    );
+    diagnostic_case!(
+        validate_text_bidirectional_control_warning_ignored,
+        "template/validate_text_bidirectional_control_warning_ignored"
     );
 }

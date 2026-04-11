@@ -1,0 +1,8 @@
+[
+  {
+    "code": "props_invalid_pattern",
+    "end": 27,
+    "severity": "error",
+    "start": 15
+  }
+]

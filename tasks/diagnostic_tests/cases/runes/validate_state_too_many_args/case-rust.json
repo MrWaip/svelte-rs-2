@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "rune_invalid_arguments_length",
+    "start": 17,
+    "end": 29
+  }
+]

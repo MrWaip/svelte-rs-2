@@ -1,0 +1,8 @@
+[
+  {
+    "code": "bidirectional_control_characters",
+    "end": 11,
+    "severity": "warning",
+    "start": 10
+  }
+]
