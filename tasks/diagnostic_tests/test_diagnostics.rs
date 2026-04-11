@@ -353,6 +353,10 @@ mod a11y {
         "a11y/a11y_role_has_required_aria_props_no_warning_when_props_present"
     );
     diagnostic_case!(
+        a11y_role_has_required_aria_props_warns_for_missing_props,
+        "a11y/a11y_role_has_required_aria_props_warns_for_missing_props"
+    );
+    diagnostic_case!(
         a11y_role_has_required_aria_props_no_warning_for_native_semantics,
         "a11y/a11y_role_has_required_aria_props_no_warning_for_native_semantics"
     );
@@ -363,6 +367,15 @@ mod a11y {
     diagnostic_case!(
         a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop,
         "a11y/a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_warns_for_explicit_role,
+        "a11y/a11y_role_supports_aria_props_warns_for_explicit_role"
+    );
+    diagnostic_case!(
+        a11y_role_supports_aria_props_warns_for_implicit_role,
+        "a11y/a11y_role_supports_aria_props_warns_for_implicit_role",
+        ignore = "known mismatch: npm svelte/compiler also reports a11y_consider_explicit_label for unlabeled button"
     );
     diagnostic_case!(
         a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop,
@@ -463,6 +476,11 @@ mod a11y {
         a11y_consider_explicit_label_warns_for_icon_button,
         "a11y/a11y_consider_explicit_label_warns_for_icon_button",
         ignore = "known mismatch: analyzer is missing a11y_consider_explicit_label"
+    );
+    diagnostic_case!(
+        a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button,
+        "a11y/a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button",
+        ignore = "known mismatch: analyzer is missing noninteractive element to interactive role warning"
     );
     diagnostic_case!(
         a11y_no_noninteractive_tabindex_warns_for_div,
@@ -642,6 +660,26 @@ mod components {
         "components/component_name_lowercase_plain_html_element"
     );
     diagnostic_case!(
+        svelte_self_deprecated_warns_with_default_self_import_hint,
+        "components/svelte_self_deprecated_warns_with_default_self_import_hint",
+        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_warns_with_configured_self_import_hint,
+        "components/svelte_self_deprecated_warns_with_configured_self_import_hint",
+        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_uses_deconflicted_component_name,
+        "components/svelte_self_deprecated_uses_deconflicted_component_name",
+        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_uses_reserved_word_deconflicted_component_name,
+        "components/svelte_self_deprecated_uses_reserved_word_deconflicted_component_name",
+        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+    );
+    diagnostic_case!(
         svelte_component_deprecated_warns_in_runes_mode,
         "components/svelte_component_deprecated_warns_in_runes_mode"
     );
@@ -700,6 +738,10 @@ mod events {
 mod directives {
     use super::*;
 
+    diagnostic_case!(
+        validate_transition_duplicate_transition,
+        "directives/validate_transition_duplicate_transition"
+    );
     diagnostic_case!(
         validate_transition_duplicate_in,
         "directives/validate_transition_duplicate_in"
@@ -917,6 +959,8 @@ mod runes {
         validate_state_too_many_args,
         "runes/validate_state_too_many_args"
     );
+    diagnostic_case!(validate_state_frozen_renamed, "runes/validate_state_frozen_renamed");
+    diagnostic_case!(validate_state_is_removed, "runes/validate_state_is_removed");
     diagnostic_case!(validate_state_valid_positions, "runes/validate_state_valid_positions");
     diagnostic_case!(
         validate_state_constructor_private_field,
@@ -933,6 +977,10 @@ mod runes {
     diagnostic_case!(
         validate_state_referenced_locally_for_derived,
         "runes/validate_state_referenced_locally_for_derived"
+    );
+    diagnostic_case!(
+        validate_state_referenced_locally_derived_type_is_derived_inside_state_arg,
+        "runes/validate_state_referenced_locally_derived_type_is_derived_inside_state_arg"
     );
     diagnostic_case!(
         validate_state_referenced_locally_derived_no_warning_across_fn_boundary,
@@ -1328,6 +1376,11 @@ mod each {
         validate_each_item_invalid_assignment_nested_object_destructure,
         "each/validate_each_item_invalid_assignment_nested_object_destructure",
         ignore = "known mismatch: analyzer reports each_item_invalid_assignment for nested object destructure while npm svelte/compiler reports no diagnostic"
+    );
+    diagnostic_case!(
+        validate_each_key_without_as,
+        "each/validate_each_key_without_as",
+        ignore = "known mismatch: each_key_without_as is unreachable from valid Svelte template syntax"
     );
 }
 

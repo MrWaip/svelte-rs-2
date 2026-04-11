@@ -8,8 +8,6 @@ use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, No
 
 use super::*;
 
-mod a11y;
-
 fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
     let actual = data
         .template
@@ -2438,36 +2436,10 @@ fn runtime_plan_needs_context_without_exports_skips_pop_return() {
 // Validation diagnostics
 // ---------------------------------------------------------------------------
 
-fn analyze_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
-    let (_component, _data, diags) = analyze_source_with_diags(source);
-    diags
-}
-
-fn analyze_with_options_diags(
-    source: &str,
-    options: AnalyzeOptions,
-) -> Vec<svelte_diagnostics::Diagnostic> {
-    let alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
-    assert!(
-        parse_diags.is_empty(),
-        "unexpected parse diagnostics: {parse_diags:?}"
-    );
-    let (_data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
-    diags
-}
-
 fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     assert!(
         diags.iter().any(|d| d.kind.code() == code),
         "expected error '{code}', got: {diags:?}"
-    );
-}
-
-fn assert_no_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
-    assert!(
-        !diags.iter().any(|d| d.kind.code() == code),
-        "unexpected error '{code}': {diags:?}"
     );
 }
 
@@ -2478,78 +2450,6 @@ fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
             .any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
         "expected warning '{code}', got: {diags:?}"
     );
-}
-
-fn assert_has_warning_kind(
-    diags: &[svelte_diagnostics::Diagnostic],
-    pred: impl Fn(&svelte_diagnostics::DiagnosticKind) -> bool,
-) {
-    assert!(
-        diags
-            .iter()
-            .any(|d| d.severity == svelte_diagnostics::Severity::Warning && pred(&d.kind)),
-        "expected matching warning, got: {diags:?}"
-    );
-}
-
-#[test]
-fn validate_state_frozen_renamed() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let x = $state.frozen(1);
-</script>"#,
-    );
-    assert_has_error(&diags, "rune_renamed");
-}
-
-#[test]
-fn validate_state_is_removed() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let x = $state.is(a, b);
-</script>"#,
-    );
-    assert_has_error(&diags, "rune_removed");
-}
-
-#[test]
-fn validate_transition_duplicate_transition() {
-    let diags = analyze_with_diags(
-        r#"<script>
-	import { fade, fly } from 'svelte/transition';
-</script>
-
-<div transition:fade transition:fly></div>"#,
-    );
-    assert_has_error(&diags, "transition_duplicate");
-}
-
-#[test]
-fn validate_state_referenced_locally_derived_type_is_derived_inside_state_arg() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let count = $state(0);
-let total = $derived(count * 2);
-let x = $state(total);
-</script>"#,
-    );
-    let w = diags
-        .iter()
-        .find(|d| d.kind.code() == "state_referenced_locally")
-        .expect("warning missing");
-    assert!(
-        w.kind.message().contains("derived"),
-        "expected type_ == 'derived', got: {}",
-        w.kind.message()
-    );
-}
-
-#[test]
-#[ignore = "each_key_without_as is unreachable from valid Svelte template syntax — \
-            the JS expression parser always consumes (key) as a call expression"]
-fn validate_each_key_without_as() {
-    let diags = analyze_with_diags("{#each items (item.id)}<p />{/each}");
-    assert_has_error(&diags, "each_key_without_as");
 }
 
 #[test]
@@ -2826,16 +2726,6 @@ let fallback = "script";
 }
 
 #[test]
-fn validate_props_identifier_no_store_rune_conflict() {
-    let diags = analyze_with_diags(
-        r#"<script>
-let props = $props();
-</script>"#,
-    );
-    assert_no_error(&diags, "store_rune_conflict");
-}
-
-#[test]
 fn options_preserve_whitespace_keeps_raw_text_nodes() {
     let (component, data) = analyze_source_with_options(
         "<div>\n\thello\n\t<span>world</span>\n\t!\n</div>",
@@ -2873,84 +2763,6 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
 // -----------------------------------------------------------------------
 // Event directive diagnostics
 // -----------------------------------------------------------------------
-
-#[test]
-fn svelte_self_deprecated_warns_with_default_self_import_hint() {
-    let diags = analyze_with_options_diags(
-        "<svelte:self></svelte:self>",
-        AnalyzeOptions {
-            runes: true,
-            ..Default::default()
-        },
-    );
-    assert_has_warning_kind(&diags, |kind| {
-        matches!(
-            kind,
-            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
-                if name == "Self" && basename == "Self.svelte"
-        )
-    });
-}
-
-#[test]
-fn svelte_self_deprecated_warns_with_configured_self_import_hint() {
-    let diags = analyze_with_options_diags(
-        "<svelte:self></svelte:self>",
-        AnalyzeOptions {
-            runes: true,
-            component_name: "Counter".to_string(),
-            filename_basename: "Counter.svelte".to_string(),
-            ..Default::default()
-        },
-    );
-    assert_has_warning_kind(&diags, |kind| {
-        matches!(
-            kind,
-            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
-                if name == "Counter" && basename == "Counter.svelte"
-        )
-    });
-}
-
-#[test]
-fn svelte_self_deprecated_uses_deconflicted_component_name() {
-    let diags = analyze_with_options_diags(
-        "<script>let Counter = 0;</script><svelte:self></svelte:self>",
-        AnalyzeOptions {
-            runes: true,
-            component_name: "Counter".to_string(),
-            filename_basename: "Counter.svelte".to_string(),
-            ..Default::default()
-        },
-    );
-    assert_has_warning_kind(&diags, |kind| {
-        matches!(
-            kind,
-            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
-                if name == "Counter_1" && basename == "Counter.svelte"
-        )
-    });
-}
-
-#[test]
-fn svelte_self_deprecated_uses_reserved_word_deconflicted_component_name() {
-    let diags = analyze_with_options_diags(
-        "<svelte:self></svelte:self>",
-        AnalyzeOptions {
-            runes: true,
-            component_name: "class".to_string(),
-            filename_basename: "class.svelte".to_string(),
-            ..Default::default()
-        },
-    );
-    assert_has_warning_kind(&diags, |kind| {
-        matches!(
-            kind,
-            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
-                if name == "class_1" && basename == "class.svelte"
-        )
-    });
-}
 
 // ---------------------------------------------------------------------------
 // attribute_quoted

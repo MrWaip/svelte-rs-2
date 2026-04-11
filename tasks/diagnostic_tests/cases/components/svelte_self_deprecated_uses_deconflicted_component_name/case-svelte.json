@@ -1,0 +1,8 @@
+[
+  {
+    "code": "svelte_self_invalid_placement",
+    "end": 60,
+    "severity": "error",
+    "start": 33
+  }
+]
