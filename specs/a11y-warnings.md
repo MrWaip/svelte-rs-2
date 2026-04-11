@@ -1,16 +1,17 @@
 # A11y warnings
 
 ## Current state
-- **Working**: 8/10 use cases
+- **Working**: 8/11 use cases
 - **Current slice**: A11y interaction/event checks (`A11yClickEventsHaveKeyEvents`, `A11yNoNoninteractiveElementInteractions`, `A11yNoStaticElementInteractions`, `A11yMouseEventsHaveKeyEvents`)
+- **New parity gap (2026-04-11)**: analyzer emits a false-positive `a11y_missing_attribute` warning for `<a {href}>` shorthand when `href` comes from typed `$props()` destructuring; npm `svelte/compiler` reports no diagnostics (`props/validate_props_typed_children_snippet_no_diagnostic`).
 - **Why this slice came next**: it was the next explicit analyzer-only cluster after ARIA value-type validation; it reused the existing handler/interactivity/role helpers and added only one local concept, the recommended interactive-handler subset plus static-element gating
 - **Done so far**: implemented the basic A11y cluster (`A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`); implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`; implemented `A11yNoRedundantRoles` and `A11yRoleHasRequiredAriaProps`; implemented `A11yRoleSupportsAriaProps` and `A11yRoleSupportsAriaPropsImplicit`; implemented `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, and `A11yNoNoninteractiveTabindex`; implemented ARIA value-type validation for known static `aria-*` attributes, matching the reference helper behavior for generic, boolean, idlist, integer, token, tokenlist, and tristate warnings; implemented the interaction/event warning cluster for click-keyboard pairing, noninteractive/static element handlers, and mouse/focus-blur pairing
 - **Audit revision (2026-04-07)**: reference parity review found two still-missing areas that the initial extracted spec had undercounted: role-transition warnings (`A11yNoInteractiveElementToNoninteractiveRole`, `A11yNoNoninteractiveElementToInteractiveRole`) and the broader element-content cluster
-- **Missing**: 2 use cases — role-transition warnings and the element-content A11y cluster
-- **Next**: implement role-transition warnings first, then the element-content A11y cluster
+- **Missing**: 3 use cases — role-transition warnings, the element-content A11y cluster, and false-positive `a11y_missing_attribute` on shorthand dynamic `href` for anchors
+- **Next**: fix `A11yMissingAttribute` anchor-`href` presence detection for shorthand/dynamic attributes, then continue role-transition warnings and the remaining element-content cluster
 - **Verification**: `just test-analyzer` passed on 2026-04-07 with the current A11y slice covered and the remaining gaps still represented by ignored analyzer tests
 - **Non-goals for this run**: no non-A11y diagnostics, no parser or codegen changes
-- Last updated: 2026-04-07
+- Last updated: 2026-04-11
 
 ## Source
 
@@ -43,6 +44,7 @@
 ## Use cases
 
 - [x] Basic A11y attribute checks: `A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`
+- [ ] `A11yMissingAttribute` parity: do not warn for `<a {href}>` when `href` is a dynamic shorthand attribute sourced from `$props()` (diagnostic parity case: `props/validate_props_typed_children_snippet_no_diagnostic`)
 - [x] A11y ARIA attribute-name checks: `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, `A11yHidden`
 - [x] A11y role name validation: `A11yMisplacedRole`, `A11yUnknownRole`, `A11yNoAbstractRole`
 - [x] A11y role semantics: `A11yNoRedundantRoles`, `A11yRoleHasRequiredAriaProps`
@@ -75,6 +77,7 @@
 ## Test cases
 
 - [x] unit: basic A11y attribute checks
+- [ ] ignored diagnostic parity: `props/validate_props_typed_children_snippet_no_diagnostic`
 - [x] unit: `A11yAriaAttributes` / `A11yUnknownAriaAttribute` / `A11yHidden`
 - [x] unit: `A11yMisplacedRole` / `A11yUnknownRole` / `A11yNoAbstractRole`
 - [x] unit: `A11yNoRedundantRoles` / `A11yRoleHasRequiredAriaProps`
