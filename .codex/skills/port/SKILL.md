@@ -150,6 +150,7 @@ Default mapping:
 
 - parser syntax and AST shape -> parser unit tests in `test.rs` modules
 - analysis metadata, symbol logic, ownership, diagnostics -> analyzer unit tests in `test.rs` modules
+- observable diagnostic parity against npm `svelte/compiler` -> `tasks/diagnostic_tests/`
 - codegen or end-user compiler output that must match the reference compiler -> `tasks/compiler_tests/` e2e coverage
 
 For parser-only or analyze-only slices, prefer layer-local tests and exact AST or analysis expectations unless end-to-end output parity is required.
@@ -181,6 +182,17 @@ Before implementation, only treat `case-svelte.js` as the reference artifact to 
 
 `case-svelte.js` and `case-rust.js` are generated artifacts. Never edit them manually. They may change only through generation or compiler output.
 
+For diagnostic parity tests:
+
+1. add minimal `tasks/diagnostic_tests/cases/<name>/case.svelte`
+2. add the matching entry in `tasks/diagnostic_tests/test_diagnostics.rs`
+3. run `just generate` to produce `case-svelte.json`
+4. verify generated reference diagnostics before implementing
+
+Before implementation, only treat `case-svelte.json` as the reference artifact to review. Do not treat pre-implementation `case-rust.json` output as meaningful.
+
+`case-svelte.json` and `case-rust.json` are generated artifacts. Never edit them manually. They may change only through generation or compiler output.
+
 Rules:
 
 - do not add tests for excluded use cases in this run
@@ -209,6 +221,12 @@ just test-case <test_name>
 ```
 
 Run this only for e2e tests created for the slice.
+
+For diagnostic parity cases, run:
+
+```bash
+just test-diagnostic-case <test_name>
+```
 
 Run the relevant unit test command for layer-local coverage, then run:
 

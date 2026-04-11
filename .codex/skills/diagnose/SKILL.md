@@ -36,6 +36,7 @@ Every run must end with:
 - Test-owned artifacts may change when required by the normal test workflow.
 - Do not leave the result only in `_diagnose_tmp`.
 - Do not hand-edit generated `case-svelte.js` or `case-rust.js`.
+- Do not use this skill for diagnostic parity against npm `svelte/compiler`; use `diagnose-diagnostics` instead.
 - Prefer the smallest focused persistent test over keeping one giant repro.
 - Do not choose a spec arbitrarily when ownership is ambiguous.
 
@@ -82,6 +83,7 @@ Default test mapping:
 
 - parser syntax or AST shape -> parser unit tests
 - analysis metadata or diagnostics -> analyzer unit tests
+- observable diagnostic parity against npm `svelte/compiler` -> `tasks/diagnostic_tests/` via `diagnose-diagnostics`
 - observable compiler output parity -> `tasks/compiler_tests/`
 
 Decision rule:

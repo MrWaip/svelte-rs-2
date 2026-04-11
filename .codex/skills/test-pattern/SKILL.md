@@ -96,6 +96,8 @@ Put shared helpers in `mod.rs` or `helpers.rs`. Keep leaf test files focused on 
 
 End-to-end compiler tests are different from unit tests. For compiler output comparisons, use the existing `rstest` plus `pretty_assertions` pattern in `tasks/compiler_tests/test_v3.rs` and compare generated JS against the expected snapshot through the project helpers.
 
+For diagnostic parity against npm `svelte/compiler`, use `tasks/diagnostic_tests/test_diagnostics.rs` and compare `case-rust.json` against `case-svelte.json`. Keep diagnostics-only behavior out of `tasks/compiler_tests/`.
+
 ## When to add a new helper
 
 Add a helper when the same navigation or assertion logic appears in two or more tests, or when a test body starts exposing internal implementation details instead of expected behavior.

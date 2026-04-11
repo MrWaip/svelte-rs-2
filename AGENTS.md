@@ -34,6 +34,8 @@
 - Do not hand-edit generated snapshots:
   - `tasks/compiler_tests/cases2/*/case-svelte.js`
   - `tasks/compiler_tests/cases2/*/case-rust.js`
+  - `tasks/diagnostic_tests/cases/*/case-svelte.json`
+  - `tasks/diagnostic_tests/cases/*/case-rust.json`
 - These generated files are intentionally committed so the author can compare reference and Rust output directly in the repo; regenerate them through project commands instead of editing them by hand.
 
 ## Additional alignment notes from `CLAUDE.md`
@@ -49,10 +51,12 @@
 ## Validation commands (verified in `justfile`)
 - `just test-case <name>`
 - `just test-case-verbose <name>`
+- `just test-diagnostic-case <name>`
 - `just generate`
 - `just compare-benchmark [name]`
 - `just test-parser`
 - `just test-analyzer`
+- `just test-diagnostics`
 - `just test-compiler`
 - `just test-all`
 
@@ -62,9 +66,11 @@ Use `.codex/skills/` workflows with original command naming:
 - `audit`
 - `port`
 - `add-test`
+- `add-diagnostic-test`
 - `explain-test`
 - `triage-test`
 - `diagnose`
+- `diagnose-diagnostics`
 - `improve`
 - `qa`
 - `rust-lsp-workflow`
