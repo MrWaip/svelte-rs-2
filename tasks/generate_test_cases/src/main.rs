@@ -6,6 +6,22 @@ use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 
+fn strip_unused_css_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut idx = 0;
+    while let Some(start) = css[idx..].find("/* (unused) ") {
+        let start = idx + start;
+        out.push_str(&css[idx..start]);
+        let Some(end) = css[start..].find("*/") else {
+            out.push_str(&css[start..]);
+            return out;
+        };
+        idx = start + end + 2;
+    }
+    out.push_str(&css[idx..]);
+    out
+}
+
 fn main() {
     let compiler_svelte_files = glob("./tasks/compiler_tests/cases2/**/*.svelte")
         .expect("Failed to read glob pattern for .svelte");
@@ -73,6 +89,7 @@ fn main() {
         // Write case-svelte.css when a reference file exists.
         if let Some(css) = case["css"].as_str() {
             let css_path = dir.join("case-svelte.css");
+            let css = strip_unused_css_comments(css);
             File::create(&css_path)
                 .unwrap()
                 .write_all(css.as_bytes())

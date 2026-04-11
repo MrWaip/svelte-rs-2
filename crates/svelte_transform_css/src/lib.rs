@@ -1,6 +1,7 @@
 use compact_str::CompactString;
+use rustc_hash::FxHashSet;
 use svelte_css::{
-    AtRule, Block, BlockChild, ComplexSelector, Declaration, RelativeSelector, Rule,
+    AtRule, Block, BlockChild, ComplexSelector, CssNodeId, Declaration, RelativeSelector, Rule,
     SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
 };
 use svelte_span::Span;
@@ -14,6 +15,17 @@ use svelte_span::Span;
 pub fn transform_css(
     hash_class: &str,
     keyframes: &[CompactString],
+    stylesheet: StyleSheet,
+    source: &str,
+) -> String {
+    transform_css_with_usage(hash_class, keyframes, None, false, stylesheet, source)
+}
+
+pub fn transform_css_with_usage(
+    hash_class: &str,
+    keyframes: &[CompactString],
+    used_selectors: Option<&FxHashSet<CssNodeId>>,
+    remove_unused: bool,
     mut stylesheet: StyleSheet,
     source: &str,
 ) -> String {
@@ -21,15 +33,21 @@ pub fn transform_css(
         hash_class: CompactString::new(hash_class),
         keyframes,
         source,
+        after_bare_global: false,
     };
     scoper.visit_stylesheet_mut(&mut stylesheet);
-    svelte_css::Printer::print(&stylesheet, source)
+    if let Some(used_selectors) = used_selectors {
+        svelte_css::Printer::print_with_usage(&stylesheet, source, used_selectors, remove_unused)
+    } else {
+        svelte_css::Printer::print(&stylesheet, source)
+    }
 }
 
 struct ScopeSelectors<'a> {
     hash_class: CompactString,
     keyframes: &'a [CompactString],
     source: &'a str,
+    after_bare_global: bool,
 }
 
 impl VisitMut for ScopeSelectors<'_> {
@@ -88,18 +106,31 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
+        let was_after_bare_global = self.after_bare_global;
+        self.after_bare_global = false;
+
         if is_entirely_global(node) {
             unwrap_global(node);
+            self.after_bare_global = was_after_bare_global;
             return;
         }
 
         svelte_css::visit::walk_complex_selector_mut(self, node);
+        let children = std::mem::take(&mut node.children);
+        node.children.extend(
+            children
+                .into_iter()
+                .enumerate()
+                .filter_map(|(idx, rel)| (!rel.selectors.is_empty() || idx == 0).then_some(rel)),
+        );
+        self.after_bare_global = was_after_bare_global;
     }
 
     fn visit_relative_selector_mut(&mut self, node: &mut RelativeSelector) {
         let mut new_selectors = Vec::with_capacity(node.selectors.len() + 1);
-        let mut has_non_global_scopable = false;
+        let mut has_local_scopable = false;
         let mut scope_inserted = false;
+        let mut unscoped_tail = self.after_bare_global;
 
         for sel in node.selectors.drain(..) {
             match sel {
@@ -108,7 +139,7 @@ impl VisitMut for ScopeSelectors<'_> {
                 } => {
                     // Insert scope class before global content if we have a scopable selector
                     // but haven't inserted the scope class yet.
-                    if has_non_global_scopable && !scope_inserted {
+                    if has_local_scopable && !scope_inserted {
                         new_selectors.push(self.scope_class());
                         scope_inserted = true;
                     }
@@ -120,11 +151,13 @@ impl VisitMut for ScopeSelectors<'_> {
                     }
                 }
                 SimpleSelector::Global { args: None, .. } => {
-                    // Bare `:global` without args — drop it (block form handled elsewhere)
+                    // Bare `:global` makes the remainder of the complex selector unscoped.
+                    unscoped_tail = true;
+                    self.after_bare_global = true;
                 }
                 _ => {
-                    if is_scopable(&sel) {
-                        has_non_global_scopable = true;
+                    if !unscoped_tail && is_scopable(&sel) {
+                        has_local_scopable = true;
                     }
                     new_selectors.push(sel);
                     // Recurse into pseudo-class args (e.g. :not(), :is(), :where(), :has())
@@ -136,7 +169,7 @@ impl VisitMut for ScopeSelectors<'_> {
             }
         }
 
-        if has_non_global_scopable && !scope_inserted {
+        if has_local_scopable && !scope_inserted {
             // Insert scope class before trailing pseudo-class/pseudo-element selectors,
             // matching the reference compiler which walks backwards to find insertion point.
             let mut insert_pos = new_selectors.len();
@@ -318,7 +351,7 @@ pub fn compact_css_for_injection(css: &str) -> String {
             while j < n && chars[j].is_ascii_whitespace() {
                 j += 1;
             }
-            if j < n && chars[j] == '}' {
+            if out.ends_with('}') || (j < n && chars[j] == '}') {
                 i = j;
             } else {
                 out.push(' ');
@@ -339,6 +372,18 @@ pub fn compact_css_for_injection(css: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustc_hash::FxHashSet;
+    use svelte_css::{CssNodeId, StyleSheetChild};
+
+    fn top_level_selector_ids(stylesheet: &StyleSheet) -> Vec<CssNodeId> {
+        let mut ids = Vec::new();
+        for child in &stylesheet.children {
+            if let StyleSheetChild::Rule(Rule::Style(rule)) = child {
+                ids.extend(rule.prelude.children.iter().map(|sel| sel.id));
+            }
+        }
+        ids
+    }
 
     #[test]
     fn scope_type_selector() {
@@ -540,6 +585,33 @@ mod tests {
     }
 
     #[test]
+    fn bare_global_unscopes_selector_tail() {
+        let source = ".a :global .b .c { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains(".a.svelte-abc123 .b .c"),
+            "local prefix should stay scoped while the tail stays global, got: {result}"
+        );
+        assert!(
+            !result.contains(".b.svelte-abc123") && !result.contains(".c.svelte-abc123"),
+            "selectors after bare :global must stay unscoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn bare_global_at_start_keeps_selector_unscoped() {
+        let source = ":global .page .title { margin: 0; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            !result.contains("svelte-abc123"),
+            "leading bare :global should keep the selector fully unscoped, got: {result}"
+        );
+        assert!(result.contains(".page .title"), "got: {result}");
+    }
+
+    #[test]
     fn scoped_inside_not() {
         let source = "p:not(.active) { color: red; }";
         let (ss, _) = svelte_css::parse(source);
@@ -562,6 +634,42 @@ mod tests {
         assert!(
             !result.contains("svelte-abc123-slide"),
             "should not be scoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn external_mode_drops_unused_rules_and_selectors() {
+        let source = ".used { color: red; }\n.unused { color: blue; }\n.used, .unused-mixed { border: 1px solid; }";
+        let (ss, _) = svelte_css::parse(source);
+        let selector_ids = top_level_selector_ids(&ss);
+        let used = FxHashSet::from_iter([selector_ids[0], selector_ids[2]]);
+
+        let result = transform_css_with_usage("svelte-abc123", &[], Some(&used), true, ss, source);
+
+        assert!(result.contains(".used.svelte-abc123"), "got: {result}");
+        assert!(
+            !result.contains(".unused"),
+            "fully unused rule should be removed, got: {result}"
+        );
+        assert!(
+            !result.contains("unused-mixed"),
+            "unused selector in a mixed list should be removed, got: {result}"
+        );
+    }
+
+    #[test]
+    fn injected_mode_removes_unused_rules_and_selectors_before_compaction() {
+        let source = ".used { color: red; }\n.unused { color: blue; }\n.used, .unused-mixed { border: 1px solid; }";
+        let (ss, _) = svelte_css::parse(source);
+        let selector_ids = top_level_selector_ids(&ss);
+        let used = FxHashSet::from_iter([selector_ids[0], selector_ids[2]]);
+
+        let result = transform_css_with_usage("svelte-abc123", &[], Some(&used), true, ss, source);
+
+        assert!(result.contains(".used.svelte-abc123"), "got: {result}");
+        assert!(
+            !result.contains(".unused") && !result.contains("unused-mixed"),
+            "unused CSS should be removed in injected mode, got: {result}"
         );
     }
 }

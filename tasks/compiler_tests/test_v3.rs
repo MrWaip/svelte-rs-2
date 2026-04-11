@@ -135,6 +135,16 @@ fn css_scope_spread_attribute() {
 }
 
 #[rstest]
+fn css_unused_external() {
+    assert_compiler("css_unused_external");
+}
+
+#[rstest]
+fn css_unused_injected() {
+    assert_compiler("css_unused_injected");
+}
+
+#[rstest]
 fn script_module_exports_ordering_with_snippets() {
     assert_compiler("script_module_exports_ordering_with_snippets");
 }
@@ -203,6 +213,11 @@ fn css_global_basic() {
 #[rstest]
 fn css_global_block() {
     assert_compiler("css_global_block");
+}
+
+#[rstest]
+fn css_global_compound() {
+    assert_compiler("css_global_compound");
 }
 
 #[rstest]

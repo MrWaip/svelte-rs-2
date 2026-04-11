@@ -1,13 +1,16 @@
 use crate::ast::*;
+use rustc_hash::FxHashSet;
 
 /// CSS printer — serializes a [`StyleSheet`] AST back to a CSS string.
 ///
 /// Requires access to the original source text because the AST stores
 /// [`Span`]s rather than owned strings.
-pub struct Printer {
+pub struct Printer<'a> {
     output: String,
     indent: usize,
     minify: bool,
+    used_selectors: Option<&'a FxHashSet<CssNodeId>>,
+    remove_unused: bool,
 }
 
 /// Pre-computed indentation strings to avoid per-indent allocation.
@@ -22,12 +25,14 @@ const INDENTS: [&str; 8] = [
     "              ",
 ];
 
-impl Printer {
+impl Printer<'_> {
     pub fn new() -> Self {
         Self {
             output: String::new(),
             indent: 0,
             minify: false,
+            used_selectors: None,
+            remove_unused: false,
         }
     }
 
@@ -36,6 +41,8 @@ impl Printer {
             output: String::new(),
             indent: 0,
             minify: true,
+            used_selectors: None,
+            remove_unused: false,
         }
     }
 
@@ -46,6 +53,25 @@ impl Printer {
             output: String::with_capacity(source.len()),
             indent: 0,
             minify: false,
+            used_selectors: None,
+            remove_unused: false,
+        };
+        p.print_stylesheet(stylesheet, source);
+        p.output
+    }
+
+    pub fn print_with_usage(
+        stylesheet: &StyleSheet,
+        source: &str,
+        used_selectors: &'_ FxHashSet<CssNodeId>,
+        remove_unused: bool,
+    ) -> String {
+        let mut p = Printer {
+            output: String::with_capacity(source.len()),
+            indent: 0,
+            minify: false,
+            used_selectors: Some(used_selectors),
+            remove_unused,
         };
         p.print_stylesheet(stylesheet, source);
         p.output
@@ -73,8 +99,9 @@ impl Printer {
                     if !first && !self.minify {
                         self.output.push('\n');
                     }
-                    first = false;
-                    self.print_rule(rule, source);
+                    if self.print_rule(rule, source) {
+                        first = false;
+                    }
                 }
                 StyleSheetChild::Error(_) => {}
             }
@@ -82,26 +109,42 @@ impl Printer {
         &self.output
     }
 
-    fn print_rule(&mut self, rule: &Rule, source: &str) {
+    fn print_rule(&mut self, rule: &Rule, source: &str) -> bool {
         match rule {
             Rule::Style(r) => self.print_style_rule(r.as_ref(), source),
-            Rule::AtRule(r) => self.print_at_rule(r, source),
+            Rule::AtRule(r) => {
+                self.print_at_rule(r, source);
+                true
+            }
         }
     }
 
-    fn print_style_rule(&mut self, rule: &StyleRule, source: &str) {
-        self.write_indent();
-        self.print_selector_list(&rule.prelude, source);
-        if self.minify {
-            self.output.push('{');
-        } else {
-            self.output.push_str(" {\n");
+    fn print_style_rule(&mut self, rule: &StyleRule, source: &str) -> bool {
+        let rule_used = self.rule_is_used(rule);
+        if self.remove_unused && !rule_used {
+            return false;
         }
-        self.indent += 1;
-        self.print_block_children(&rule.block, source);
-        self.indent -= 1;
+
         self.write_indent();
-        self.output.push_str("}\n");
+        if rule_used {
+            self.print_selector_list(&rule.prelude, source);
+            if self.minify {
+                self.output.push('{');
+            } else {
+                self.output.push_str(" {\n");
+            }
+            self.indent += 1;
+            self.print_block_children(&rule.block, source);
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("}\n");
+            true
+        } else {
+            self.output.push_str("/* (unused) ");
+            self.output.push_str(rule.span.source_text(source).trim());
+            self.output.push_str("*/\n");
+            true
+        }
     }
 
     fn print_at_rule(&mut self, rule: &AtRule, source: &str) {
@@ -153,7 +196,9 @@ impl Printer {
         for child in &block.children {
             match child {
                 BlockChild::Declaration(d) => self.print_declaration(d, source),
-                BlockChild::Rule(r) => self.print_rule(r, source),
+                BlockChild::Rule(r) => {
+                    self.print_rule(r, source);
+                }
                 BlockChild::Comment(c) => {
                     self.write_indent();
                     self.push_span(c.span, source);
@@ -182,99 +227,212 @@ impl Printer {
     }
 
     fn print_selector_list(&mut self, list: &SelectorList, source: &str) {
-        for (i, complex) in list.children.iter().enumerate() {
-            if i > 0 {
-                if self.minify {
-                    self.output.push(',');
-                } else {
-                    self.output.push_str(", ");
-                }
+        let mut groups: Vec<(bool, Vec<String>)> = Vec::new();
+
+        for complex in &list.children {
+            let used = self.selector_is_used(complex.id);
+            if self.remove_unused && !used {
+                continue;
             }
-            self.print_complex_selector(complex, source);
+            let text = if used {
+                self.render_complex_selector(complex, source)
+            } else {
+                complex.span.source_text(source).trim().to_string()
+            };
+            if let Some((group_used, entries)) = groups.last_mut()
+                && *group_used == used
+            {
+                entries.push(text);
+            } else {
+                groups.push((used, vec![text]));
+            }
+        }
+
+        for (group_idx, (used, entries)) in groups.iter().enumerate() {
+            if group_idx > 0 {
+                self.output.push(' ');
+            }
+            if !*used {
+                self.output.push_str("/* (unused) ");
+            }
+            for (entry_idx, entry) in entries.iter().enumerate() {
+                if entry_idx > 0 {
+                    if self.minify {
+                        self.output.push(',');
+                    } else {
+                        self.output.push_str(", ");
+                    }
+                }
+                self.output.push_str(entry);
+            }
+            if !*used {
+                self.output.push_str("*/");
+            }
         }
     }
 
-    fn print_complex_selector(&mut self, sel: &ComplexSelector, source: &str) {
+    fn render_complex_selector(&self, sel: &ComplexSelector, source: &str) -> String {
+        let mut output = String::new();
         for (i, rel) in sel.children.iter().enumerate() {
             if let Some(combinator) = &rel.combinator
                 && (i > 0 || combinator.kind != CombinatorKind::Descendant)
             {
                 match combinator.kind {
-                    CombinatorKind::Descendant => self.output.push(' '),
-                    CombinatorKind::Child => self.output.push_str(" > "),
-                    CombinatorKind::NextSibling => self.output.push_str(" + "),
-                    CombinatorKind::SubsequentSibling => self.output.push_str(" ~ "),
-                    CombinatorKind::Column => self.output.push_str(" || "),
+                    CombinatorKind::Descendant => output.push(' '),
+                    CombinatorKind::Child => output.push_str(" > "),
+                    CombinatorKind::NextSibling => output.push_str(" + "),
+                    CombinatorKind::SubsequentSibling => output.push_str(" ~ "),
+                    CombinatorKind::Column => output.push_str(" || "),
                 }
             }
             for simple in &rel.selectors {
-                self.print_simple_selector(simple, source);
+                Self::render_simple_selector(&mut output, simple, source);
             }
         }
+        output
     }
 
-    fn print_simple_selector(&mut self, sel: &SimpleSelector, source: &str) {
+    fn render_simple_selector(output: &mut String, sel: &SimpleSelector, source: &str) {
         match sel {
             SimpleSelector::Type { name, .. } => {
-                self.output.push_str(name);
+                output.push_str(name);
             }
             SimpleSelector::Id { name, .. } => {
-                self.output.push('#');
-                self.output.push_str(name);
+                output.push('#');
+                output.push_str(name);
             }
             SimpleSelector::Class { name, .. } => {
-                self.output.push('.');
-                self.output.push_str(name);
+                output.push('.');
+                output.push_str(name);
             }
             SimpleSelector::Global { args, .. } => {
-                self.output.push_str(":global");
+                output.push_str(":global");
                 if let Some(args) = args {
-                    self.output.push('(');
-                    self.print_selector_list(args.as_ref(), source);
-                    self.output.push(')');
+                    output.push('(');
+                    for (idx, complex) in args.children.iter().enumerate() {
+                        if idx > 0 {
+                            output.push_str(", ");
+                        }
+                        let mut nested = String::new();
+                        for (rel_idx, rel) in complex.children.iter().enumerate() {
+                            if let Some(combinator) = &rel.combinator
+                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
+                            {
+                                match combinator.kind {
+                                    CombinatorKind::Descendant => nested.push(' '),
+                                    CombinatorKind::Child => nested.push_str(" > "),
+                                    CombinatorKind::NextSibling => nested.push_str(" + "),
+                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
+                                    CombinatorKind::Column => nested.push_str(" || "),
+                                }
+                            }
+                            for simple in &rel.selectors {
+                                Self::render_simple_selector(&mut nested, simple, source);
+                            }
+                        }
+                        output.push_str(&nested);
+                    }
+                    output.push(')');
                 }
             }
             SimpleSelector::Nesting(span)
             | SimpleSelector::Nth(span)
             | SimpleSelector::Percentage(span) => {
-                self.push_span(*span, source);
+                output.push_str(span.source_text(source));
             }
             SimpleSelector::PseudoClass(pc) => {
-                self.output.push(':');
-                self.output.push_str(&pc.name);
+                output.push(':');
+                output.push_str(&pc.name);
                 if let Some(args) = &pc.args {
-                    self.output.push('(');
-                    self.print_selector_list(args.as_ref(), source);
-                    self.output.push(')');
+                    output.push('(');
+                    for (idx, complex) in args.children.iter().enumerate() {
+                        if idx > 0 {
+                            output.push_str(", ");
+                        }
+                        let mut nested = String::new();
+                        for (rel_idx, rel) in complex.children.iter().enumerate() {
+                            if let Some(combinator) = &rel.combinator
+                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
+                            {
+                                match combinator.kind {
+                                    CombinatorKind::Descendant => nested.push(' '),
+                                    CombinatorKind::Child => nested.push_str(" > "),
+                                    CombinatorKind::NextSibling => nested.push_str(" + "),
+                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
+                                    CombinatorKind::Column => nested.push_str(" || "),
+                                }
+                            }
+                            for simple in &rel.selectors {
+                                Self::render_simple_selector(&mut nested, simple, source);
+                            }
+                        }
+                        output.push_str(&nested);
+                    }
+                    output.push(')');
                 }
             }
             SimpleSelector::PseudoElement(pe) => {
-                self.output.push_str("::");
-                self.output.push_str(&pe.name);
+                output.push_str("::");
+                output.push_str(&pe.name);
                 if let Some(args) = &pe.args {
-                    self.output.push('(');
-                    self.print_selector_list(args.as_ref(), source);
-                    self.output.push(')');
+                    output.push('(');
+                    for (idx, complex) in args.children.iter().enumerate() {
+                        if idx > 0 {
+                            output.push_str(", ");
+                        }
+                        let mut nested = String::new();
+                        for (rel_idx, rel) in complex.children.iter().enumerate() {
+                            if let Some(combinator) = &rel.combinator
+                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
+                            {
+                                match combinator.kind {
+                                    CombinatorKind::Descendant => nested.push(' '),
+                                    CombinatorKind::Child => nested.push_str(" > "),
+                                    CombinatorKind::NextSibling => nested.push_str(" + "),
+                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
+                                    CombinatorKind::Column => nested.push_str(" || "),
+                                }
+                            }
+                            for simple in &rel.selectors {
+                                Self::render_simple_selector(&mut nested, simple, source);
+                            }
+                        }
+                        output.push_str(&nested);
+                    }
+                    output.push(')');
                 }
             }
             SimpleSelector::Attribute(attr) => {
-                self.output.push('[');
-                self.output.push_str(&attr.name);
+                output.push('[');
+                output.push_str(&attr.name);
                 if let Some(matcher) = attr.matcher {
-                    self.push_span(matcher, source);
+                    output.push_str(matcher.source_text(source));
                     if let Some(value) = attr.value {
-                        self.output.push('"');
-                        self.push_span(value, source);
-                        self.output.push('"');
+                        output.push('"');
+                        output.push_str(value.source_text(source));
+                        output.push('"');
                     }
                 }
                 if let Some(flags) = attr.flags {
-                    self.output.push(' ');
-                    self.push_span(flags, source);
+                    output.push(' ');
+                    output.push_str(flags.source_text(source));
                 }
-                self.output.push(']');
+                output.push(']');
             }
         }
+    }
+
+    fn selector_is_used(&self, id: CssNodeId) -> bool {
+        self.used_selectors.is_none_or(|used| used.contains(&id))
+    }
+
+    fn rule_is_used(&self, rule: &StyleRule) -> bool {
+        rule.is_lone_global_block()
+            || rule
+                .prelude
+                .children
+                .iter()
+                .any(|sel| self.selector_is_used(sel.id))
     }
 
     // -- output helpers -----------------------------------------------------
@@ -298,7 +456,7 @@ impl Printer {
     }
 }
 
-impl Default for Printer {
+impl Default for Printer<'_> {
     fn default() -> Self {
         Self::new()
     }
