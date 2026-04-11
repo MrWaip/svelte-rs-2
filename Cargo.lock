@@ -1295,6 +1295,7 @@ version = "0.0.0"
 dependencies = [
  "compact_str",
  "pretty_assertions",
+ "rustc-hash",
  "smallvec",
  "svelte_diagnostics",
  "svelte_span",
@@ -1356,6 +1357,7 @@ name = "svelte_transform_css"
 version = "0.1.0"
 dependencies = [
  "compact_str",
+ "rustc-hash",
  "svelte_css",
  "svelte_span",
 ]

@@ -1,8 +1,8 @@
-use crate::TemplateBindingReadKind;
 use crate::types::script::RuneKind;
+use crate::TemplateBindingReadKind;
 use oxc_ast::ast::{CallExpression, Program};
-use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
+use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 use svelte_span::Span;
@@ -1322,6 +1322,71 @@ fn template_element_index_tracks_css_candidates() {
 }
 
 #[test]
+fn bare_global_tail_only_scopes_local_prefix() {
+    let source = r#"
+<style>
+    .a :global .b .c { color: red; }
+    section :global strong { font-weight: bold; }
+    :global .page .title { margin: 0; }
+</style>
+
+<div class="a"><div class="b"><div class="c">compound</div></div></div>
+<section><strong>bare global</strong></section>
+<h1 class="title">title</h1>
+"#;
+
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (mut data, _parsed, diags) = analyze(&component, js_result);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
+        panic!("expected style block");
+    };
+    assert!(
+        css_diags.is_empty(),
+        "unexpected css diagnostics: {css_diags:?}"
+    );
+    let mut css_pass_diags = Vec::new();
+    analyze_css_pass(
+        &component,
+        &stylesheet,
+        false,
+        &mut data,
+        &mut css_pass_diags,
+    );
+    assert!(
+        css_pass_diags.is_empty(),
+        "unexpected css analyze diagnostics: {css_pass_diags:?}"
+    );
+
+    let div = find_nth_element(&component.fragment, &component, "div", 0).expect("root div");
+    let section = find_element(&component.fragment, &component, "section").expect("section");
+    let strong = find_element(&component.fragment, &component, "strong").expect("strong");
+    let h1 = find_element(&component.fragment, &component, "h1").expect("h1");
+
+    assert!(
+        data.is_css_scoped(div.id),
+        "local prefix element should be scoped"
+    );
+    assert!(
+        data.is_css_scoped(section.id),
+        "local selector before bare :global should stay scoped"
+    );
+    assert!(
+        !data.is_css_scoped(strong.id),
+        "selector tail after bare :global must stay unscoped"
+    );
+    assert!(
+        !data.is_css_scoped(h1.id),
+        "leading bare :global selector should not scope any component element"
+    );
+}
+
+#[test]
 fn template_element_index_preserves_parent_element_across_blocks() {
     let (component, data) = analyze_source(
         r#"<div>{#if ok}<section>{#each items as item}<span>{item}</span>{/each}</section>{/if}</div>"#,
@@ -2499,11 +2564,10 @@ fn fragment_facts_capture_single_expression_queries() {
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
     ));
-    assert!(
-        data.elements
-            .flags
-            .needs_textarea_value_lowering(textarea.id)
-    );
+    assert!(data
+        .elements
+        .flags
+        .needs_textarea_value_lowering(textarea.id));
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
     assert!(matches!(
@@ -2995,10 +3059,9 @@ fn figure_with_edge_figcaption_does_not_warn_for_figcaption_index() {
         .collect::<Vec<_>>();
 
     assert!(
-        actual_codes.iter().all(|code| !matches!(
-            *code,
-            "a11y_figcaption_parent" | "a11y_figcaption_index"
-        )),
+        actual_codes
+            .iter()
+            .all(|code| !matches!(*code, "a11y_figcaption_parent" | "a11y_figcaption_index")),
         "unexpected diagnostics: {diags:?}"
     );
 }

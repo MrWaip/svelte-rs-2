@@ -10,3 +10,4 @@ doctest = false
 svelte_css = { workspace = true }
 svelte_span = { workspace = true }
 compact_str = { workspace = true }
+rustc-hash = { workspace = true }

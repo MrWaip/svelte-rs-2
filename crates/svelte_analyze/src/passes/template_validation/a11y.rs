@@ -81,8 +81,7 @@ const A11Y_AUTOCOMPLETE_FIELD_NAME_TOKENS: &[&str] = &[
     "url",
     "photo",
 ];
-const A11Y_AUTOCOMPLETE_CONTACT_TYPE_TOKENS: &[&str] =
-    &["home", "work", "mobile", "fax", "pager"];
+const A11Y_AUTOCOMPLETE_CONTACT_TYPE_TOKENS: &[&str] = &["home", "work", "mobile", "fax", "pager"];
 const A11Y_AUTOCOMPLETE_CONTACT_FIELD_NAME_TOKENS: &[&str] = &[
     "tel",
     "tel-country-code",
@@ -109,7 +108,11 @@ pub(super) fn check_element_warnings(
 ) {
     if let Some(attr) = ctx.data.attribute(el.id, attrs, "scope") {
         if el.name != "th" {
-            ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yMisplacedScope, attr_value_span(attr));
+            ctx.push_warning_if_not_ignored(
+                el.id,
+                DiagnosticKind::A11yMisplacedScope,
+                attr_value_span(attr),
+            );
         }
     }
 
@@ -830,11 +833,12 @@ fn check_a11y_element_specific_content_warnings(
                 .attribute(el.id, attrs, "aria-hidden")
                 .and_then(|attr| static_attr_value(attr, ctx.source));
 
-            if !has_spread
-                && aria_hidden.is_none()
-                && alt_value.is_some_and(is_redundant_img_alt)
-            {
-                ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yImgRedundantAlt, el.span);
+            if !has_spread && aria_hidden.is_none() && alt_value.is_some_and(is_redundant_img_alt) {
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yImgRedundantAlt,
+                    el.span,
+                );
             }
         }
         "video" => {
@@ -852,7 +856,11 @@ fn check_a11y_element_specific_content_warnings(
             }
 
             if !video_has_caption_track(&el.fragment, ctx) {
-                ctx.push_warning_if_not_ignored(el.id, DiagnosticKind::A11yMediaHasCaption, el.span);
+                ctx.push_warning_if_not_ignored(
+                    el.id,
+                    DiagnosticKind::A11yMediaHasCaption,
+                    el.span,
+                );
             }
         }
         "figcaption" => {
@@ -1074,9 +1082,11 @@ fn static_attr_value_text(value: Option<StaticAttributeValue<'_>>) -> Option<&st
 }
 
 fn has_associated_control(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
-    fragment.nodes.iter().copied().any(|child_id| {
-        node_has_associated_control(ctx.store.get(child_id), ctx)
-    })
+    fragment
+        .nodes
+        .iter()
+        .copied()
+        .any(|child_id| node_has_associated_control(ctx.store.get(child_id), ctx))
 }
 
 fn is_valid_autocomplete(autocomplete: Option<StaticAttributeValue<'_>>) -> bool {
@@ -1100,7 +1110,10 @@ fn is_valid_autocomplete(autocomplete: Option<StaticAttributeValue<'_>>) -> bool
     let tokens = lower.split_whitespace().collect::<Vec<_>>();
     let mut index = 0;
 
-    if tokens.get(index).is_some_and(|token| token.starts_with("section-")) {
+    if tokens
+        .get(index)
+        .is_some_and(|token| token.starts_with("section-"))
+    {
         index += 1;
     }
     if tokens
@@ -1147,7 +1160,10 @@ fn is_redundant_img_alt(alt: &str) -> bool {
 
 fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
     let Some(track) = fragment.nodes.iter().find_map(|&child_id| {
-        ctx.store.get(child_id).as_element().filter(|child| child.name == "track")
+        ctx.store
+            .get(child_id)
+            .as_element()
+            .filter(|child| child.name == "track")
     }) else {
         return false;
     };

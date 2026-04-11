@@ -113,12 +113,22 @@ impl Visit for PruneVisitor<'_, '_> {
 
 /// Discard trailing `:global(...)` / global-like selectors — they don't affect scoping.
 fn truncate_trailing_globals(complex: &ComplexSelector) -> Vec<&RelativeSelector> {
+    if let Some(idx) = complex.children.iter().position(is_bare_global_relative) {
+        return complex.children[..idx].iter().collect();
+    }
+
     let i = complex
         .children
         .iter()
         .rposition(|rel| !is_global_relative(rel))
         .map_or(0, |pos| pos + 1);
     complex.children[..i].iter().collect()
+}
+
+fn is_bare_global_relative(rel: &RelativeSelector) -> bool {
+    rel.selectors
+        .first()
+        .is_some_and(|sel| matches!(sel, SimpleSelector::Global { args: None, .. }))
 }
 
 /// Check if every relative selector in a complex selector is global.

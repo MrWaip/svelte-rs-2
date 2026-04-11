@@ -9,6 +9,7 @@ svelte_span = { workspace = true }
 svelte_diagnostics = { workspace = true }
 smallvec = { workspace = true }
 compact_str = { workspace = true }
+rustc-hash = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

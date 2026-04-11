@@ -144,9 +144,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
-            let raw_css = svelte_transform_css::transform_css(
+            let raw_css = svelte_transform_css::transform_css_with_usage(
                 &analysis.output.css.hash,
                 &analysis.output.css.keyframes,
+                Some(&analysis.output.css.used_selectors),
+                true,
                 ss,
                 css_source,
             );
