@@ -85,7 +85,7 @@ pub(crate) fn gen_render_tag<'a>(
 
         let arg_info = &arg_plan.info;
 
-        if arg_info.has_await && !arg_info.ref_symbols.is_empty() {
+        if arg_info.has_await() && !arg_info.ref_symbols().is_empty() {
             if let Some(MemoValueRef::Async(index)) =
                 deps.add_memoized_expr(ctx, arg_info, ctx.b.clone_expr(&arg_expr))
             {
@@ -100,7 +100,7 @@ pub(crate) fn gen_render_tag<'a>(
         }
         deps.push_expr_info(ctx, arg_info);
 
-        if arg_info.has_call {
+        if arg_info.has_call() {
             let mut memo_name = String::with_capacity(4);
             memo_name.push('$');
             memo_name.push_str(&memo_counter.to_string());

@@ -27,7 +27,7 @@ use svelte_span::Span;
 
 use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
-use crate::types::data::{ExpressionKind, FragmentKey};
+use crate::types::data::FragmentKey;
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier};
 
@@ -754,10 +754,8 @@ impl TemplateValidationVisitor {
             return;
         }
 
-        ctx.warnings_mut().push(Diagnostic::error(
-            DiagnosticKind::SlotSnippetConflict,
-            span,
-        ));
+        ctx.warnings_mut()
+            .push(Diagnostic::error(DiagnosticKind::SlotSnippetConflict, span));
         self.emitted_slot_snippet_conflict = true;
     }
 
@@ -953,11 +951,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let _ = has_spread; // used only in pre-computation above
     }
 
-    fn visit_slot_element_legacy(
-        &mut self,
-        el: &SlotElementLegacy,
-        ctx: &mut VisitContext<'_>,
-    ) {
+    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
@@ -1039,8 +1033,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         el: &SvelteFragmentLegacy,
         ctx: &mut VisitContext<'_>,
     ) {
-        let is_direct_child_of_component =
-            ctx.parent().is_some_and(|parent| parent.kind == ParentKind::ComponentNode);
+        let is_direct_child_of_component = ctx
+            .parent()
+            .is_some_and(|parent| parent.kind == ParentKind::ComponentNode);
 
         if !is_direct_child_of_component {
             ctx.warnings_mut().push(Diagnostic::error(
@@ -1196,7 +1191,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         } else {
             ctx.data
                 .attr_expression(dir.id)
-                .is_some_and(|info| matches!(info.kind, ExpressionKind::Identifier(_)))
+                .is_some_and(|info| info.is_identifier())
         };
 
         let Some(expr_shape) = bind_expression_shape(dir, ctx) else {
@@ -1230,11 +1225,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_bind_group_binding(dir, ctx);
     }
 
-    fn visit_let_directive_legacy(
-        &mut self,
-        dir: &LetDirectiveLegacy,
-        ctx: &mut VisitContext<'_>,
-    ) {
+    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_>) {
         let is_valid_parent = ctx.parent().is_some_and(|parent| {
             matches!(
                 parent.kind,
@@ -1262,7 +1253,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .attr_expression(dir.id)
-            .is_some_and(|info| info.has_await)
+            .is_some_and(|info| info.has_await())
         {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::IllegalAwaitExpression,
@@ -1318,7 +1309,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             if ctx
                 .data
                 .attr_expression(dir.id)
-                .is_some_and(|info| info.has_await)
+                .is_some_and(|info| info.has_await())
             {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::IllegalAwaitExpression,
@@ -1528,7 +1519,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             if ctx
                 .data
                 .attr_expression(dir.id)
-                .is_some_and(|info| info.has_await)
+                .is_some_and(|info| info.has_await())
             {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::IllegalAwaitExpression,
@@ -1975,12 +1966,9 @@ fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate
     }
 
     let info = ctx.data.attr_expression(dir.id)?;
-    match info.kind {
-        ExpressionKind::Identifier(_) | ExpressionKind::MemberExpression => {
-            info.ref_symbols.first().copied()
-        }
-        _ => None,
-    }
+    info.is_identifier_or_member_expression()
+        .then(|| info.ref_symbols().first().copied())
+        .flatten()
 }
 
 fn bind_expression<'a>(
@@ -2499,7 +2487,10 @@ fn direct_child_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<
     })
 }
 
-fn direct_child_element_like_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
+fn direct_child_element_like_static_slot_name<'a>(
+    node: &'a Node,
+    source: &'a str,
+) -> Option<&'a str> {
     let attrs = match node {
         Node::Element(el) => &el.attributes,
         Node::SvelteFragmentLegacy(el) => &el.attributes,

@@ -1041,7 +1041,7 @@ fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_tex
         .expression(id)
         .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
     assert!(
-        info.has_call,
+        info.has_call(),
         "expected ExpressionTag '{expr_text}' to have a call"
     );
 }
@@ -1053,7 +1053,7 @@ fn assert_expr_tag_no_call(data: &AnalysisData, component: &Component, expr_text
         .expression(id)
         .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
     assert!(
-        !info.has_call,
+        !info.has_call(),
         "expected ExpressionTag '{expr_text}' to NOT have a call"
     );
 }
@@ -1065,7 +1065,7 @@ fn assert_expr_tag_has_store_ref(data: &AnalysisData, component: &Component, exp
         .expression(id)
         .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
     assert!(
-        info.has_store_ref,
+        info.has_store_ref(),
         "expected ExpressionTag '{expr_text}' to have a store reference"
     );
 }
@@ -1077,8 +1077,65 @@ fn assert_expr_tag_no_store_ref(data: &AnalysisData, component: &Component, expr
         .expression(id)
         .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
     assert!(
-        !info.has_store_ref,
+        !info.has_store_ref(),
         "expected ExpressionTag '{expr_text}' to NOT have a store reference"
+    );
+}
+
+fn assert_node_expr_role(data: &AnalysisData, node_id: NodeId, expected: ExprRole, label: &str) {
+    assert_eq!(
+        data.expr_role(node_id),
+        Some(expected),
+        "expected {label} to have expr role {expected:?}"
+    );
+}
+
+fn assert_expr_tag_role(
+    data: &AnalysisData,
+    component: &Component,
+    expr_text: &str,
+    expected: ExprRole,
+) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    assert_node_expr_role(data, id, expected, &format!("ExpressionTag '{expr_text}'"));
+}
+
+fn assert_render_tag_role(
+    data: &AnalysisData,
+    component: &Component,
+    expr_text: &str,
+    expected: ExprRole,
+) {
+    let id = find_render_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no RenderTag with source '{expr_text}'"));
+    assert_node_expr_role(data, id, expected, &format!("RenderTag '{expr_text}'"));
+}
+
+fn assert_attr_role(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    attr_name: &str,
+    expected: ExprRole,
+) {
+    let id = find_attribute_id(&component.fragment, component, tag_name, attr_name)
+        .unwrap_or_else(|| panic!("no attribute '{attr_name}' on <{tag_name}>"));
+    assert_node_expr_role(data, id, expected, &format!("<{tag_name}>[{attr_name}]"));
+}
+
+fn assert_expr_tag_async_query(
+    data: &AnalysisData,
+    component: &Component,
+    expr_text: &str,
+    expected: bool,
+) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    assert_eq!(
+        data.expr_is_async(id),
+        expected,
+        "expected AnalysisData::expr_is_async for ExpressionTag '{expr_text}' to be {expected}"
     );
 }
 
@@ -2134,7 +2191,7 @@ fn module_rune_kinds_and_cross_script_refs() {
         .expect("expected doubled binding");
     let expr = data.expression(expr_id).expect("expected expression info");
     assert!(
-        expr.ref_symbols.contains(&doubled_sym),
+        expr.ref_symbols().contains(&doubled_sym),
         "template expression should resolve to the module-scoped doubled binding"
     );
 }
@@ -2297,7 +2354,7 @@ fn module_imports_are_visible_from_instance_scope() {
         .expect("expected template expression for shared");
     let expr = data.expression(expr_id).expect("expected expression info");
     assert!(
-        expr.ref_symbols.contains(&shared_sym),
+        expr.ref_symbols().contains(&shared_sym),
         "template expression should resolve to the module import binding"
     );
 }
@@ -2414,6 +2471,76 @@ fn no_store_ref_for_regular_var() {
 }
 
 // ---------------------------------------------------------------------------
+// ExprRole tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn expr_role_static_literal_expression() {
+    let (c, data) = analyze_source("{1}");
+    assert_expr_tag_role(&data, &c, "1", ExprRole::Static);
+}
+
+#[test]
+fn expr_role_dynamic_pure_for_state_expression() {
+    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
+    assert_expr_tag_role(&data, &c, "count", ExprRole::DynamicPure);
+}
+
+#[test]
+fn expr_role_dynamic_with_context_for_import_call_expression() {
+    let (c, data) = analyze_source(r#"<script>import api from './api';</script>{api.run()}"#);
+    assert_expr_tag_role(&data, &c, "api.run()", ExprRole::DynamicWithContext);
+    assert!(
+        data.output.needs_context,
+        "dynamic-with-context expression should require component context"
+    );
+}
+
+#[test]
+fn expr_role_async_for_inline_await_expression() {
+    let (c, data) = analyze_source_with_options(
+        r#"<script>let promise = Promise.resolve(1);</script><p>{await promise}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_expr_tag_role(&data, &c, "await promise", ExprRole::Async);
+    assert_expr_tag_async_query(&data, &c, "await promise", true);
+}
+
+#[test]
+fn expr_role_render_tag_for_render_call_site() {
+    let (c, data) = analyze_source(
+        r#"{#snippet row(text)}
+    <span>{text}</span>
+{/snippet}
+
+{@render row('x')}"#,
+    );
+    assert_render_tag_role(&data, &c, "row('x')", ExprRole::RenderTag);
+}
+
+#[test]
+fn expr_role_accessor_works_for_attribute_expressions() {
+    let (c, data) = analyze_source(
+        r#"<script>let count = $state(0); count++;</script><div title={count}></div>"#,
+    );
+    assert_attr_role(&data, &c, "div", "title", ExprRole::DynamicPure);
+}
+
+#[test]
+fn expr_role_dynamic_pure_does_not_set_needs_context() {
+    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
+    assert_expr_tag_role(&data, &c, "count", ExprRole::DynamicPure);
+    assert!(
+        !data.output.needs_context,
+        "dynamic-pure expression should not require component context by role alone"
+    );
+    assert_expr_tag_async_query(&data, &c, "count", false);
+}
+
+// ---------------------------------------------------------------------------
 // extract_expression_info tests
 // ---------------------------------------------------------------------------
 
@@ -2444,37 +2571,47 @@ mod expression_info_tests {
     #[test]
     fn analyze_simple_identifier() {
         let info = parse_and_analyze("count", 0).unwrap();
-        assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
+        assert_eq!(info.kind(), &ExpressionKind::Identifier(compact("count")));
+        assert_eq!(info.identifier_name(), Some("count"));
+        assert!(info.is_identifier());
+        assert!(info.is_identifier_or_member_expression());
         // ref_symbols populated later by resolve_references (not during analyze_expression)
-        assert!(!info.has_store_ref);
+        assert!(!info.has_store_ref());
     }
 
     #[test]
     fn analyze_binary_expression() {
         let info = parse_and_analyze("count + 1", 0).unwrap();
-        assert!(!info.has_store_ref);
-        assert!(!info.has_call);
+        assert_eq!(info.identifier_name(), None);
+        assert!(!info.has_store_ref());
+        assert!(!info.has_call());
+        assert!(!info.needs_memoized_value());
+        assert!(!info.needs_legacy_coarse_wrap());
     }
 
     #[test]
     fn analyze_call_expression() {
         let info = parse_and_analyze("foo(a, b)", 0).unwrap();
-        assert!(matches!(info.kind, ExpressionKind::CallExpression { .. }));
-        assert!(info.has_call);
-        assert!(info.has_side_effects);
+        assert!(matches!(info.kind(), ExpressionKind::CallExpression { .. }));
+        assert!(info.has_call());
+        assert!(info.has_side_effects());
+        assert!(info.has_context_sensitive_shape());
+        assert!(info.needs_memoized_value());
+        assert!(info.needs_legacy_coarse_wrap());
     }
 
     #[test]
     fn analyze_assignment() {
         let info = parse_and_analyze("count = 10", 0).unwrap();
-        assert_eq!(info.kind, ExpressionKind::Assignment);
-        assert!(info.has_side_effects);
+        assert_eq!(info.kind(), &ExpressionKind::Assignment);
+        assert!(info.has_side_effects());
+        assert!(info.needs_legacy_coarse_wrap());
     }
 
     #[test]
     fn analyze_store_ref() {
         let info = parse_and_analyze("$count + 1", 0).unwrap();
-        assert!(info.has_store_ref);
+        assert!(info.has_store_ref());
     }
 }
 
@@ -2861,7 +2998,8 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing component node"));
-    let (wrapper_id, wrapped_child_id) = match component.store.get(component_node.fragment.nodes[0]) {
+    let (wrapper_id, wrapped_child_id) = match component.store.get(component_node.fragment.nodes[0])
+    {
         Node::SvelteFragmentLegacy(el) => {
             let child_id = match component.store.get(el.fragment.nodes[0]) {
                 Node::Element(child) => child.id,
@@ -2876,7 +3014,11 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
     assert_eq!(named_slots.len(), 1);
     let (slot_el_id, slot_key) = named_slots[0];
     assert_eq!(slot_el_id, wrapper_id);
-    assert!(data.elements.flags.svelte_fragment_slots.contains(&wrapper_id));
+    assert!(data
+        .elements
+        .flags
+        .svelte_fragment_slots
+        .contains(&wrapper_id));
     assert_eq!(slot_key, FragmentKey::NamedSlot(component_id, wrapper_id));
 
     let slot_fragment = data
@@ -2977,7 +3119,7 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
             .unwrap_or_else(|| panic!("missing expression info for default slot")),
         _ => panic!("expected default slot expression tag"),
     };
-    assert!(default_expr.ref_symbols.contains(&default_count));
+    assert!(default_expr.ref_symbols().contains(&default_count));
 
     let named_expr = match component.store.get(named_p.fragment.nodes[0]) {
         Node::ExpressionTag(tag) => data
@@ -2986,7 +3128,7 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         _ => panic!("expected named slot expression tag"),
     };
     assert!(
-        !named_expr.ref_symbols.contains(&default_count),
+        !named_expr.ref_symbols().contains(&default_count),
         "named-slot expression must not resolve default-slot binding"
     );
 }

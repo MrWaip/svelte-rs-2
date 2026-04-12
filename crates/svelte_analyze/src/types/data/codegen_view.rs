@@ -118,6 +118,9 @@ impl<'a> CodegenView<'a> {
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.data.needs_expr_memoization(id)
     }
+    pub fn expr_is_async(&self, id: NodeId) -> bool {
+        self.data.expr_is_async(id)
+    }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.data.attr_expression(id)
     }

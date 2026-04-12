@@ -6,7 +6,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ExpressionKind, FragmentKey, LoweredTextPart};
+use svelte_analyze::{FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
 use crate::builder::{Arg, AssignLeft, TemplatePart};
@@ -217,9 +217,6 @@ fn push_title_text<'a>(parts: &mut Vec<TitleValuePart<'a>>, text: &str) {
 
 fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
     let info = ctx.expression(nid)?;
-    if let ExpressionKind::Identifier(name) = &info.kind {
-        ctx.known_value(name.as_str()).map(|s| s.to_string())
-    } else {
-        None
-    }
+    info.identifier_name()
+        .and_then(|name| ctx.known_value(name).map(|s| s.to_string()))
 }

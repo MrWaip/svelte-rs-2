@@ -70,7 +70,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
         };
         if let Some(info) = info {
             if info
-                .ref_symbols
+                .ref_symbols()
                 .iter()
                 .any(|s| self.script_syms.contains(s))
             {

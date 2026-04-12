@@ -195,7 +195,7 @@ fn legacy_slot_attr_value<'a>(
     let Some(info) = ctx.attr_expression(attr_id) else {
         return expr;
     };
-    let memo_expr = if info.has_call && !info.has_await {
+    let memo_expr = if info.has_call() && !info.has_await() {
         ctx.b
             .call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(ctx.b.clone_expr(&expr)))])
     } else {
@@ -214,10 +214,10 @@ fn legacy_slot_prop_needs_getter(ctx: &Ctx<'_>, attr_id: NodeId) -> bool {
         return false;
     };
 
-    info.has_state
-        || info.has_call
-        || info.has_await
-        || info.ref_symbols.iter().any(|&sym| {
+    info.has_state()
+        || info.has_call()
+        || info.has_await()
+        || info.ref_symbols().iter().any(|&sym| {
             ctx.query.scoping().is_mutated(sym)
                 || ctx.query.scoping().is_prop_source(sym)
                 || ctx.query.scoping().is_rune(sym)

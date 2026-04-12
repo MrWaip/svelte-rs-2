@@ -49,7 +49,8 @@ pub use elements::{
     EventHandlerMode,
 };
 pub use expr::{
-    AwaitBindingInfo, DestructureKind, ExprDeps, ExprSite, ExpressionInfo, ExpressionKind,
+    AwaitBindingInfo, DestructureKind, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
+    ExpressionKind,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragments::{

@@ -15,7 +15,7 @@ pub(crate) fn gen_on_directive_legacy<'a>(
     after_update: &mut Vec<Statement<'a>>,
 ) {
     let expr_offset = od.expression_span.map(|span| span.start);
-    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call());
     let handler = if od.expression_span.is_none() {
         let bubble_call = ctx
             .b
@@ -83,7 +83,7 @@ pub(crate) fn gen_legacy_event_on<'a>(
     stmts: &mut Vec<Statement<'a>>,
 ) {
     let expr_offset = od.expression_span.map(|span| span.start);
-    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call());
     let handler = if od.expression_span.is_none() {
         let bubble_call = ctx
             .b
@@ -158,7 +158,7 @@ pub(crate) fn gen_event_attr_on<'a>(
             (raw_event_name.to_string(), false)
         };
 
-    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call());
     let handler_expr = super::super::expression::get_attr_expr(ctx, attr_id);
     let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts, expr_offset);
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);

@@ -12,7 +12,8 @@ Execute `ANALYZE_MATURITY_PLAN.md` as a sequence of stable checkpoints, not as o
 1. `README.md`
 2. `CLAUDE.md`
 3. `ANALYZE_MATURITY_PLAN.md`
-4. `CODEBASE_MAP.md` only if the current checkpoint touches shared APIs or types
+4. `ANALYZE_MATURITY_PLAN.PROGRESS.md` if it exists
+5. `CODEBASE_MAP.md` only if the current checkpoint touches shared APIs or types
 
 Use `phase-boundaries`, `test-pattern`, and `oxc-analyze-api` when the current checkpoint needs them.
 
@@ -80,8 +81,25 @@ Finish the checkpoint end to end:
 3. remove the touched duplicate logic
 4. add or update tests
 5. verify
+6. update `ANALYZE_MATURITY_PLAN.PROGRESS.md`
 
 Do not land scaffolding without a consumer.
+
+### 4. Update Progress File
+
+After each stable checkpoint, update `ANALYZE_MATURITY_PLAN.PROGRESS.md`.
+
+The progress file should capture:
+
+- current slice
+- current status
+- completed checkpoints
+- remaining work inside the current slice
+- last validation run
+
+Keep it factual. Record only work that actually landed in the current diff or was already verified earlier.
+
+Do not rewrite `ANALYZE_MATURITY_PLAN.md` to track checkpoint progress. Use the separate progress file for that.
 
 ## Verification Matrix
 
@@ -130,6 +148,8 @@ End each run with four things:
 4. remaining work inside the same slice
 
 Use `done / remaining` language. If the slice is still open, say so explicitly and do not claim the next slice has started.
+
+The assistant should also leave `ANALYZE_MATURITY_PLAN.PROGRESS.md` consistent with that final report.
 
 ## Guardrails
 

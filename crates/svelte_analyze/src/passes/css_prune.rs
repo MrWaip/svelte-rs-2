@@ -398,26 +398,24 @@ fn collect_component_attr_snippets(
     info: &ExpressionInfo,
     snippets: &mut Vec<NodeId>,
 ) -> bool {
-    match &info.kind {
-        ExpressionKind::Identifier(name) => {
-            let sym_id = info.ref_symbols.first().copied().or_else(|| {
-                data.scoping
-                    .find_binding(data.scoping.root_scope_id(), name.as_str())
-            });
-            let Some(sym_id) = sym_id else {
-                return true;
-            };
-            if let Some(snippet_id) = data.template.snippets.snippet_by_symbol(sym_id) {
-                if !snippets.contains(&snippet_id) {
-                    snippets.push(snippet_id);
-                }
-                true
-            } else {
-                is_resolved_snippet_symbol(data, sym_id)
+    if let Some(name) = info.identifier_name() {
+        let sym_id = info.ref_symbols().first().copied().or_else(|| {
+            data.scoping
+                .find_binding(data.scoping.root_scope_id(), name)
+        });
+        let Some(sym_id) = sym_id else {
+            return true;
+        };
+        if let Some(snippet_id) = data.template.snippets.snippet_by_symbol(sym_id) {
+            if !snippets.contains(&snippet_id) {
+                snippets.push(snippet_id);
             }
+            true
+        } else {
+            is_resolved_snippet_symbol(data, sym_id)
         }
-        ExpressionKind::Literal => true,
-        _ => false,
+    } else {
+        matches!(info.kind(), ExpressionKind::Literal)
     }
 }
 

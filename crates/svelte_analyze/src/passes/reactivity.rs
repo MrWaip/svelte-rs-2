@@ -21,7 +21,7 @@ impl TemplateVisitor for ReactivityVisitor {
             .data
             .expressions
             .get(tag.id)
-            .is_some_and(|info| info.is_dynamic)
+            .is_some_and(|info| info.is_dynamic())
         {
             ctx.data.output.dynamic_nodes.insert(tag.id);
         }
@@ -59,9 +59,9 @@ impl TemplateVisitor for ReactivityVisitor {
 
             let is_dynamic = ctx.data.attr_expressions.get(node_id).is_some_and(|info| {
                 if in_component {
-                    info.has_state
+                    info.has_state()
                 } else {
-                    info.is_dynamic
+                    info.is_dynamic()
                 }
             });
 
@@ -90,7 +90,7 @@ impl TemplateVisitor for ReactivityVisitor {
                 .data
                 .expressions
                 .get(node_id)
-                .is_some_and(|info| info.is_dynamic)
+                .is_some_and(|info| info.is_dynamic())
             {
                 ctx.data.output.dynamic_nodes.insert(node_id);
             }

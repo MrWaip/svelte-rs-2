@@ -208,6 +208,19 @@ impl AnalysisData {
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
     }
+    pub fn expr_role(&self, id: NodeId) -> Option<ExprRole> {
+        self.expressions
+            .get(id)
+            .and_then(|info| info.expr_role())
+            .or_else(|| {
+                self.attr_expressions
+                    .get(id)
+                    .and_then(|info| info.expr_role())
+            })
+    }
+    pub fn expr_is_async(&self, id: NodeId) -> bool {
+        self.expr_role(id) == Some(ExprRole::Async)
+    }
     pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.entry(key)
     }
@@ -454,7 +467,7 @@ impl AnalysisData {
             .filter(|parent| parent.kind == ParentKind::EachBlock)
             .filter_map(|parent| {
                 let body_scope = self.each_body_scope(parent.id, self.scoping.root_scope_id());
-                info.ref_symbols
+                info.ref_symbols()
                     .iter()
                     .any(|&sym| {
                         self.scoping.is_each_block_var(sym)
@@ -566,36 +579,37 @@ impl AnalysisData {
     pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.attr_expressions
             .get(id)
-            .and_then(|info| match info.kind {
-                ExpressionKind::Identifier(_) => info.ref_symbols.first().copied(),
-                _ => None,
+            .and_then(|info| {
+                info.is_identifier()
+                    .then(|| info.ref_symbols().first().copied())
             })
+            .flatten()
             .or_else(|| self.shorthand_symbol(id))
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.attr_expressions.get(attr_id).is_some_and(|info| {
-            info.ref_symbols
+            info.ref_symbols()
                 .first()
                 .copied()
-                .or_else(|| match &info.kind {
-                    ExpressionKind::Identifier(name) => self
-                        .scoping
-                        .find_binding(self.scoping.root_scope_id(), name.as_str()),
-                    _ => None,
+                .or_else(|| {
+                    info.identifier_name().and_then(|name| {
+                        self.scoping
+                            .find_binding(self.scoping.root_scope_id(), name)
+                    })
                 })
                 .is_some_and(|sym| self.scoping.is_import(sym))
         })
     }
     pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
         self.attr_expressions.get(attr_id).is_some_and(|info| {
-            info.ref_symbols
+            info.ref_symbols()
                 .first()
                 .copied()
-                .or_else(|| match &info.kind {
-                    ExpressionKind::Identifier(name) => self
-                        .scoping
-                        .find_binding(self.scoping.root_scope_id(), name.as_str()),
-                    _ => None,
+                .or_else(|| {
+                    info.identifier_name().and_then(|name| {
+                        self.scoping
+                            .find_binding(self.scoping.root_scope_id(), name)
+                    })
                 })
                 .is_some_and(|sym| {
                     self.scoping
@@ -617,28 +631,28 @@ impl AnalysisData {
         match site {
             ExprSite::Node(id) => {
                 let info = self.expressions.get(id)?;
-                let blockers = self.collect_blockers(&info.ref_symbols);
+                let blockers = self.collect_blockers(info.ref_symbols());
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: (info.has_call || info.has_await) && !info.ref_symbols.is_empty(),
+                    needs_memo: info.needs_memoized_value() && !info.ref_symbols().is_empty(),
                 })
             }
             ExprSite::Attr(id) => {
                 let info = self.attr_expressions.get(id)?;
-                let blockers = self.collect_blockers(&info.ref_symbols);
+                let blockers = self.collect_blockers(info.ref_symbols());
                 Some(ExprDeps {
                     info,
                     blockers,
                     needs_memo: self.elements.flags.is_dynamic_attr(id)
-                        && (info.has_call || info.has_await),
+                        && info.needs_memoized_value(),
                 })
             }
         }
     }
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
         self.attr_expressions.get(attr_id).is_some_and(|e| {
-            e.has_call || (!e.kind.is_simple() && self.elements.flags.is_dynamic_attr(attr_id))
+            e.has_call() || (!e.is_simple_shape() && self.elements.flags.is_dynamic_attr(attr_id))
         })
     }
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
@@ -780,7 +794,7 @@ impl AnalysisData {
                     for part in parts {
                         if let LoweredTextPart::Expr(id) = part {
                             if self.expressions.get(*id).is_some_and(|info| {
-                                info.ref_symbols.iter().any(|s| syms.contains(s))
+                                info.ref_symbols().iter().any(|s| syms.contains(s))
                             }) {
                                 return true;
                             }
@@ -859,6 +873,6 @@ impl AnalysisData {
     fn node_expr_references_syms(&self, id: NodeId, syms: &FxHashSet<SymbolId>) -> bool {
         self.expressions
             .get(id)
-            .is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s)))
+            .is_some_and(|info| info.ref_symbols().iter().any(|s| syms.contains(s)))
     }
 }

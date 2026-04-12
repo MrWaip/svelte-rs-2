@@ -212,7 +212,7 @@ pub(crate) fn execute_pass<'a>(
                     .expressions
                     .values()
                     .chain(data.attr_expressions.values())
-                    .any(|info| info.needs_context);
+                    .any(|info| info.is_dynamic_with_context_role());
             }
         }
         super::PassKey::PostResolve => {
@@ -223,14 +223,11 @@ pub(crate) fn execute_pass<'a>(
                     .values()
                     .chain(data.attr_expressions.values())
                     .any(|info| {
-                        matches!(
-                            info.kind,
-                            crate::types::data::ExpressionKind::MemberExpression
-                                | crate::types::data::ExpressionKind::CallExpression { .. }
-                        ) && info
-                            .ref_symbols
-                            .iter()
-                            .any(|&sym| data.scoping.is_rest_prop(sym))
+                        info.has_context_sensitive_shape()
+                            && info
+                                .ref_symbols()
+                                .iter()
+                                .any(|&sym| data.scoping.is_rest_prop(sym))
                     });
             }
         }
@@ -259,13 +256,13 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::MarkBlockedExpressionsDynamic => {
             if data.script.blocker_data.has_async {
                 for info in data.expressions.values_mut() {
-                    if !info.is_dynamic
+                    if !info.is_dynamic()
                         && info
-                            .ref_symbols
+                            .ref_symbols()
                             .iter()
                             .any(|sym| data.script.blocker_data.symbol_blockers.contains_key(sym))
                     {
-                        info.is_dynamic = true;
+                        info.mark_dynamic();
                     }
                 }
             }
@@ -345,7 +342,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
             let deps: Vec<_> = data
                 .expressions
                 .get(tag_id)
-                .map(|info| info.ref_symbols.to_vec())
+                .map(|info| info.ref_symbols().to_vec())
                 .unwrap_or_default();
             for name in &names {
                 if let Some(sym_id) = data.scoping.find_binding(scope, name) {

@@ -267,7 +267,7 @@ pub(crate) fn gen_component<'a>(
                 });
             let has_call = ctx
                 .attr_expression(attr_id)
-                .is_some_and(|info| info.has_call);
+                .is_some_and(|info| info.has_call());
             let handler_expr = get_attr_expr(ctx, attr_id);
             let handler =
                 build_event_handler_s5(ctx, attr_id, handler_expr, has_call, init, expr_offset);
