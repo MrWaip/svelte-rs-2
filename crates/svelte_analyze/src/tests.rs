@@ -74,6 +74,49 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
     None
 }
 
+fn find_render_tag(fragment: &Fragment, component: &Component, target: &str) -> Option<NodeId> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::RenderTag(tag) if component.source_text(tag.expression_span) == target => {
+                return Some(tag.id);
+            }
+            Node::Element(el) => {
+                if let Some(id) = find_render_tag(&el.fragment, component, target) {
+                    return Some(id);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(id) = find_render_tag(&b.consequent, component, target) {
+                    return Some(id);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(id) = find_render_tag(alt, component, target) {
+                        return Some(id);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(id) = find_render_tag(&b.body, component, target) {
+                    return Some(id);
+                }
+            }
+            Node::SvelteElement(el) => {
+                if let Some(id) = find_render_tag(&el.fragment, component, target) {
+                    return Some(id);
+                }
+            }
+            Node::SnippetBlock(block) => {
+                if let Some(id) = find_render_tag(&block.body, component, target) {
+                    return Some(id);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn find_element<'a>(
     fragment: &'a Fragment,
     component: &'a Component,
@@ -2247,6 +2290,49 @@ fn module_imports_are_visible_from_instance_scope() {
     assert!(
         expr.ref_symbols.contains(&shared_sym),
         "template expression should resolve to the module import binding"
+    );
+}
+
+#[test]
+fn module_exported_render_tag_callee_stays_direct_with_snippets() {
+    let source = r#"<script module>
+    export const KIND = "v1";
+    export function label(name) {
+        return `${KIND}:${name}`;
+    }
+</script>
+
+<script>
+    let { title } = $props();
+</script>
+
+{#snippet row(text)}
+    <span>{text}</span>
+{/snippet}
+
+{@render row(label(title))}"#;
+    let (component, data) = analyze_source(source);
+
+    let root = data.scoping.root_scope_id();
+    let label_sym = data
+        .scoping
+        .find_binding(root, "label")
+        .expect("expected module-exported function binding");
+    assert_eq!(
+        data.scoping.template_binding_read_kind(label_sym),
+        TemplateBindingReadKind::Identifier,
+        "module-exported plain functions must stay direct template bindings"
+    );
+
+    let render_id = find_render_tag(&component.fragment, &component, "row(label(title))")
+        .expect("expected render tag");
+    let plan = data
+        .render_tag_plan(render_id)
+        .expect("expected render tag plan");
+    assert_eq!(
+        plan.callee_mode,
+        RenderTagCalleeMode::Direct,
+        "snippet render call should stay direct when the callee is a normal snippet binding"
     );
 }
 

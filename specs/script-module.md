@@ -1,14 +1,11 @@
 # `<script module>` in Components
 
 ## Current state
-- **Status**: 10/11 use cases done — one open ordering/identifier bug surfaced on 2026-04-08 diagnose.
+- **Status**: 11/11 use cases done — feature complete.
 - **`ast_type = 'module'` tracking**: split to owning specs — `$props`/`$props.id` in module → `props-bindable.md`; `$host` in module → `host-rune.md`; TLA and `$:` in module → out of scope here
-- **Open bug (2026-04-08 diagnose)**: when `<script module>` declares exported `const` + `function` and the instance template uses a `{#snippet}` that references the module-exported function from its render call site, two problems show up:
-  1. Module exports are hoisted to the very top of the output instead of being emitted between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations (codegen ordering).
-  2. The module-exported function `label` is wrapped in `$.get(label)(...)` at the snippet render call site, even though it is a plain function declaration in module scope — `is_getter` (or rune classification) is misclassifying module-level function exports as reactive getters.
-  Isolated by `script_module_exports_ordering_with_snippets` (`#[ignore]`). Likely layer: codegen ordering + analyze (rune classification of module exports).
-- **Next**: no action needed for `ast_type = 'module'` — see `host-rune.md`. For the ordering/getter bug, start at codegen `generate()` module-script stitching and analyze rune classification for module symbols.
-- Last updated: 2026-04-08
+- **Verified on 2026-04-12**: `script_module_exports_ordering_with_snippets` passes end-to-end, and analyzer coverage now locks that a module-exported plain function used from `{@render ...}` stays a direct binding instead of a getter-style dynamic callee.
+- **Next**: complete
+- Last updated: 2026-04-12
 
 ## Source
 - ROADMAP: `## <script module> in Components`
@@ -35,7 +32,7 @@
 - [x] Empty module script produces no extra output (test: `script_module_empty`)
 - [x] `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
 - [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
-- [ ] Module exports ordering when instance template uses snippets — module exports must sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; also a module-exported plain function must NOT be wrapped in `$.get(...)` at call sites in template scope (test: `script_module_exports_ordering_with_snippets`, `#[ignore]`, M)
+- [x] Module exports ordering when instance template uses snippets — module exports sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; module-exported plain functions stay direct at render call sites instead of being wrapped in `$.get(...)` (tests: `script_module_exports_ordering_with_snippets`, `module_exported_render_tag_callee_stays_direct_with_snippets`)
 
 ## Out of scope
 
@@ -62,9 +59,11 @@
   - `crates/svelte_parser/src/lib.rs` — module/instance dispatch, duplicate detection
   - `crates/svelte_parser/src/walk_js.rs` — `module_program` parsing
   - `crates/svelte_parser/src/types.rs` — `ParserResult.module_program`, `module_script_content_span`
-  - `crates/svelte_codegen_client/src/lib.rs` — `generate()` (gap: doesn't process module script), `generate_module()` (works for .svelte.js)
+  - `crates/svelte_codegen_client/src/lib.rs` — `generate()` top-level program assembly for module imports, module body, hoistable snippets, and template allocations
   - `crates/svelte_codegen_client/src/script/pipeline.rs` — `transform_module_script()` (exists but not called from `generate()`)
-  - `crates/svelte_analyze/src/validate/mod.rs` — only snippet-export validation on module_program
+  - `crates/svelte_analyze/src/passes/executor.rs` — render-tag callee direct-vs-dynamic classification
+  - `crates/svelte_analyze/src/tests.rs` — module-script scope and render-tag regression coverage
+  - `crates/svelte_analyze/src/validate/mod.rs` — snippet-export validation on `module_program`
 
 ## Test cases
 
@@ -76,4 +75,5 @@
 - [x] `script_module_export_specifiers`
 - [x] `script_module_imports`
 - [x] `script_module_empty`
-- [ ] `script_module_exports_ordering_with_snippets` (`#[ignore]`)
+- [x] `script_module_exports_ordering_with_snippets`
+- [x] `module_exported_render_tag_callee_stays_direct_with_snippets`
