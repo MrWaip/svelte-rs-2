@@ -1,18 +1,20 @@
 # $state rune
 
 ## Current state
-- **Working**: 41/43 use cases
-- **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
+- **Working**: 42/42 use cases
+- **Complete (2026-04-12)**:
+  - Normalized the spec so `$state` tracks only client-side rune parity; the deferred legacy `$:` `$.deep_read_state()` follow-up now lives in `specs/legacy-reactive-assignments.md`
 - **Completed (2026-04-09)**:
   - #32 Dev-mode object-pattern destructuring now threads the top-level `$state` label into nested array carriers, matching `[$state object]`
-- **Missing**: #41 `$.deep_read_state()` (legacy, Tier 7)
-- **Non-goals**: legacy `$:` deep-read support, analyzer/parser changes, unrelated destructuring cleanup
 - **Completed (2026-04-02)**:
   - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads
   - #38 `state_invalid_export` error for exported reassigned state
   - #39 Dev-mode `$.assign_*` transforms for non-statement member assignments
   - #40 `$.safe_get` for `var`-declared state
-- Last updated: 2026-04-09
+- **Next**: complete
+- **Notes**:
+  - Existing coarse legacy immutable reads are already covered by `specs/svelte-options.md` and `svelte_options_immutable_legacy`; true legacy `$:` work is deferred and no longer blocks `$state`
+- Last updated: 2026-04-12
 
 ## Source
 Audit of existing implementation
@@ -64,7 +66,7 @@ Audit of existing implementation
 
 ## Out of scope
 
-- `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4, Tier 7)
+- Legacy `$:` reactive statements, including any remaining `$.deep_read_state()` work, which are now tracked in `specs/legacy-reactive-assignments.md`
 
 ## Reference
 - Svelte reference:
