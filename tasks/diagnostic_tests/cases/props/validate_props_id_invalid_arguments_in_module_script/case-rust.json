@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "props_id_invalid_placement",
+    "start": 27,
+    "end": 39
+  }
+]
