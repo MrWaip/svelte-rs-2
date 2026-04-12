@@ -102,6 +102,7 @@ impl Visit for PruneVisitor<'_, '_> {
                     self.element_facts,
                     elem_id,
                     self.scoped,
+                    self.used,
                 ) {
                     self.used.insert(complex.id);
                 }
@@ -176,6 +177,7 @@ fn apply_selector(
     element_facts: &ElementFacts,
     elem_id: NodeId,
     scoped: &mut NodeBitSet,
+    used: &mut FxHashSet<svelte_css::CssNodeId>,
 ) -> bool {
     if selectors.is_empty() {
         return false;
@@ -192,6 +194,8 @@ fn apply_selector(
         elements,
         element_facts,
         elem_id,
+        scoped,
+        used,
     ) {
         return false;
     }
@@ -213,6 +217,7 @@ fn apply_selector(
         element_facts,
         elem_id,
         scoped,
+        used,
     ) {
         scoped.insert(elem_id);
         return true;
@@ -231,6 +236,7 @@ fn apply_combinator(
     element_facts: &ElementFacts,
     elem_id: NodeId,
     scoped: &mut NodeBitSet,
+    used: &mut FxHashSet<svelte_css::CssNodeId>,
 ) -> bool {
     let combinator = match &current_sel.combinator {
         Some(c) => c.kind,
@@ -254,6 +260,7 @@ fn apply_combinator(
                     element_facts,
                     parent_id,
                     scoped,
+                    used,
                 ) {
                     return true;
                 }
@@ -273,6 +280,7 @@ fn apply_combinator(
                     element_facts,
                     parent_id,
                     scoped,
+                    used,
                 ) {
                     return true;
                 }
@@ -290,6 +298,7 @@ fn apply_combinator(
                     element_facts,
                     prev_id,
                     scoped,
+                    used,
                 ) {
                     return true;
                 }
@@ -306,6 +315,7 @@ fn apply_combinator(
                     element_facts,
                     prev_id,
                     scoped,
+                    used,
                 ) {
                     return true;
                 }
@@ -332,6 +342,8 @@ fn relative_selector_matches(
     elements: &TemplateElementIndex,
     element_facts: &ElementFacts,
     elem_id: NodeId,
+    scoped: &mut NodeBitSet,
+    used: &mut FxHashSet<svelte_css::CssNodeId>,
 ) -> bool {
     for simple in &selector.selectors {
         match simple {
@@ -369,6 +381,8 @@ fn relative_selector_matches(
                             elements,
                             element_facts,
                             elem_id,
+                            scoped,
+                            used,
                         ) {
                             return true;
                         }
@@ -383,6 +397,20 @@ fn relative_selector_matches(
             SimpleSelector::PseudoClass(pc) => {
                 // :host and :root never match component elements
                 if pc.name.as_str() == "host" || pc.name.as_str() == "root" {
+                    return false;
+                }
+                if matches!(pc.name.as_str(), "is" | "where")
+                    && !pseudo_is_or_where_matches(
+                        pc,
+                        component,
+                        css_source,
+                        elements,
+                        element_facts,
+                        elem_id,
+                        scoped,
+                        used,
+                    )
+                {
                     return false;
                 }
                 // Other pseudo-classes: conservative match (assume they could match)
@@ -408,6 +436,55 @@ fn relative_selector_matches(
     }
 
     true
+}
+
+fn pseudo_is_or_where_matches(
+    pseudo: &svelte_css::PseudoClassSelector,
+    component: &SvelteComponent,
+    css_source: &str,
+    elements: &TemplateElementIndex,
+    element_facts: &ElementFacts,
+    elem_id: NodeId,
+    scoped: &mut NodeBitSet,
+    used: &mut FxHashSet<svelte_css::CssNodeId>,
+) -> bool {
+    let Some(args) = &pseudo.args else {
+        return true;
+    };
+
+    // Keep the real matching path here: reference Svelte commits conservative
+    // scoped/used metadata for :is/:where branches before the outer compound selector fully succeeds.
+    let mut matched = false;
+    for complex in &args.children {
+        let selectors = truncate_trailing_globals(complex);
+        if selectors.is_empty() {
+            used.insert(complex.id);
+            matched = true;
+            continue;
+        }
+
+        if apply_selector(
+            &selectors,
+            component,
+            css_source,
+            elements,
+            element_facts,
+            elem_id,
+            scoped,
+            used,
+        ) {
+            used.insert(complex.id);
+            matched = true;
+            continue;
+        }
+
+        if complex.children.len() > 1 {
+            used.insert(complex.id);
+            matched = true;
+        }
+    }
+
+    matched
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +700,10 @@ fn candidate_elements(
     elements: &TemplateElementIndex,
     selector: &RelativeSelector,
 ) -> SmallVec<[NodeId; 8]> {
+    if requires_full_scan_for_is_or_where(selector) {
+        return SmallVec::from_slice(elements.all_elements());
+    }
+
     for simple in &selector.selectors {
         match simple {
             SimpleSelector::Id { name, .. } => {
@@ -648,6 +729,22 @@ fn candidate_elements(
     SmallVec::from_slice(elements.all_elements())
 }
 
+fn requires_full_scan_for_is_or_where(selector: &RelativeSelector) -> bool {
+    let mut saw_is_or_where = false;
+
+    for simple in &selector.selectors {
+        match simple {
+            SimpleSelector::PseudoClass(pc) if matches!(pc.name.as_str(), "is" | "where") => {
+                saw_is_or_where = true;
+            }
+            _ if saw_is_or_where => return true,
+            _ => {}
+        }
+    }
+
+    false
+}
+
 // ---------------------------------------------------------------------------
 // Unused selector warnings
 // ---------------------------------------------------------------------------
@@ -665,6 +762,8 @@ fn warn_unused(
         diagnostics,
         in_keyframes: false,
         in_global_block: false,
+        complex_used_stack: Vec::new(),
+        pseudo_parent_used_stack: Vec::new(),
     };
     warner.visit_stylesheet(stylesheet);
 }
@@ -675,6 +774,8 @@ struct UnusedWarner<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
     in_keyframes: bool,
     in_global_block: bool,
+    complex_used_stack: Vec<bool>,
+    pseudo_parent_used_stack: Vec<bool>,
 }
 
 impl Visit for UnusedWarner<'_> {
@@ -701,7 +802,16 @@ impl Visit for UnusedWarner<'_> {
         if self.in_keyframes || self.in_global_block {
             return;
         }
-        if !self.used.contains(&node.id) {
+        let is_used = self.used.contains(&node.id);
+        let should_warn = !is_used
+            && self
+                .pseudo_parent_used_stack
+                .last()
+                .copied()
+                .unwrap_or(true);
+
+        self.complex_used_stack.push(is_used);
+        if should_warn {
             let span = node.span();
             let selector_text = &self.css_source
                 [span.start as usize..(span.end as usize).min(self.css_source.len())];
@@ -712,5 +822,24 @@ impl Visit for UnusedWarner<'_> {
                 span,
             ));
         }
+        svelte_css::visit::walk_complex_selector(self, node);
+        self.complex_used_stack.pop();
+    }
+
+    fn visit_simple_selector(&mut self, node: &SimpleSelector) {
+        let SimpleSelector::PseudoClass(pc) = node else {
+            return;
+        };
+        if !matches!(pc.name.as_str(), "is" | "where") {
+            return;
+        }
+        let Some(args) = &pc.args else {
+            return;
+        };
+
+        self.pseudo_parent_used_stack
+            .push(self.complex_used_stack.last().copied().unwrap_or(false));
+        self.visit_selector_list(args);
+        self.pseudo_parent_used_stack.pop();
     }
 }

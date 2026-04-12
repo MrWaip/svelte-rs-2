@@ -175,6 +175,11 @@ fn css_scoped_attr_name_casefolding() {
 }
 
 #[rstest]
+fn css_pseudo_compound_unused_but_scoped() {
+    assert_compiler("css_pseudo_compound_unused_but_scoped");
+}
+
+#[rstest]
 fn script_module_exports_ordering_with_snippets() {
     assert_compiler("script_module_exports_ordering_with_snippets");
 }
