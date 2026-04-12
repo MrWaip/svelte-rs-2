@@ -1,6 +1,6 @@
 ---
 name: grill-it
-description: Challenge recent work against the quality bar. Use after implementation work to verify no shortcuts were taken, for the current session, the working tree diff, the last commit, the current branch, or a specific file.
+description: Manual adversarial review skill that challenges recent work against the quality bar. Use only when the user explicitly asks for `grill-it` or `/grill-it`. Do not auto-trigger for generic review, critique, cleanup, or post-implementation requests. Supports targets such as the current session, working tree diff, last commit, current branch, or a specific file.
 ---
 
 ## Review Scope

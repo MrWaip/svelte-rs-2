@@ -1,6 +1,6 @@
 ---
 name: review-simplify
-description: Behavior-preserving simplification review workflow across parser, analyze, transform, and codegen. Use when code became hard to read, branching is repetitive, or a module likely has simplification opportunities. Do not trigger for phase-ownership violations; use `review-boundaries` for those.
+description: Manual behavior-preserving simplification review workflow across parser, analyze, transform, and codegen. Use only when the user explicitly asks for `review-simplify` or `/review-simplify`. Do not auto-trigger for generic cleanup, refactor, simplification, readability, or maintainability requests. Do not trigger for phase-ownership violations; use `review-boundaries` for those.
 ---
 
 # Simplify Review
