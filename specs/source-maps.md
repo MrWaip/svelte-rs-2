@@ -2,9 +2,7 @@
 
 ## Current state
 - **Working**: 0/13 use cases
-- **Partial**: 2/13 (JS code emitted without map; CSS code emitted without map)
-- **Next**: extend `CompileResult`/`CompileOptions` with map fields and stop discarding `oxc_codegen::CodegenReturn.map` in `svelte_codegen_client`
-- **Blocker**: compiler test harness (`tasks/compiler_tests`) snapshots only `js`/`css` text — needs a `js.map`/`css.map` surface before any sourcemap test can be written
+- **Tests**: 0/11 green
 - Last updated: 2026-04-08
 
 ## Source

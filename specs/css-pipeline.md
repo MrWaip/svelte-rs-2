@@ -1,10 +1,8 @@
 # CSS
 
 ## Current state
-- **Working**: CSS pipeline parity is complete for the scope owned by this spec: top-level `<style>` extraction, scoped CSS transform, selector scoping, class injection, emitted CSS, unused-selector pruning, keyframes, `:global(...)`, global blocks, nested rules, pseudo selectors, snippet/component boundary traversal, CSS custom properties, and the remaining invalid-CSS diagnostic cases tracked here.
-- **Synced**: spec test inventory now reflects the registered `css_prune` diagnostic parity cases in `tasks/diagnostic_tests/test_diagnostics.rs`, including `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, and escaped-selector matching repros.
-- **Next**: complete
-- **Done this session**: reopened and closed a transform-parity drift around `:not(...)`. Added explicit compiler coverage for both standalone and descendant branches, verified the reference output, and fixed `svelte_transform_css` so simple `:not(...)` arguments stay unscoped while complex branches consume `:where(...)` after the outer specificity bump.
+- **Working**: 14/14 use cases
+- **Tests**: 95/95 green
 - Last updated: 2026-04-12
 
 ## Source

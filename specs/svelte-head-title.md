@@ -2,8 +2,7 @@
 
 ## Current state
 - **Working**: 5/10 use cases
-- **Missing**: 5 use cases
-- **Next**: implement parser root-only/duplicate validation for `<svelte:head>`, then add analyzer validation for illegal `<svelte:head>` attributes, illegal `<title>` attributes, and invalid `<title>` child content
+- **Tests**: 12/15 green
 - Last updated: 2026-04-07
 
 ## Source

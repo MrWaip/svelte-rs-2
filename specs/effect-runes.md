@@ -1,13 +1,9 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 10/10 use cases
-- **Missing**: none
-- **Done this session**: added script-side compiler coverage for top-level and nested-expression `$effect.pending()` usage (`effect_pending_script_init`, `effect_pending_script_derived`).
-- **Next**: no open implementation work in this spec
+- **Working**: 11/11 use cases
+- **Tests**: 14/14 green
 - Last updated: 2026-04-09
-
-**Next:** no remaining implementation slices
 
 ## Source
 

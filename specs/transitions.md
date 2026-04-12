@@ -2,11 +2,7 @@
 
 ## Current state
 - **Working**: 16/16 use cases
-- **Missing**: 0/16 use cases
-- **Current slice**: remaining analyzer validation completed
-- **Done this session**: `template_validation` now rejects duplicate and conflicting transition directives on a single element, matching the reference element validator for `transition:`, `in:`, and `out:` combinations.
-- **Done this session**: transition directive values now emit `illegal_await_expression` using the existing expression-analysis `has_await` metadata, keeping `await` validation in the analyzer instead of codegen.
-- **Next**: no additional transition slice is required within this spec's client-side scope; compiler negative-case snapshots remain limited by the current test harness.
+- **Tests**: 18/19 green
 - Last updated: 2026-04-09
 
 ## Source

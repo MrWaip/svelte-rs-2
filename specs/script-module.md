@@ -1,10 +1,8 @@
 # `<script module>` in Components
 
 ## Current state
-- **Status**: 11/11 use cases done — feature complete.
-- **`ast_type = 'module'` tracking**: split to owning specs — `$props`/`$props.id` in module → `props-bindable.md`; `$host` in module → `host-rune.md`; TLA and `$:` in module → out of scope here
-- **Verified on 2026-04-12**: `script_module_exports_ordering_with_snippets` passes end-to-end, and analyzer coverage now locks that a module-exported plain function used from `{@render ...}` stays a direct binding instead of a getter-style dynamic callee.
-- **Next**: complete
+- **Working**: 11/11 use cases
+- **Tests**: 13/13 green
 - Last updated: 2026-04-12
 
 ## Source

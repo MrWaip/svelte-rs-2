@@ -1,10 +1,8 @@
 # Await Block
 
 ## Current state
-
-- **Working**: 24/24 use cases.
-- `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace remains a parser-strictness difference, not an open client-side `{#await}` feature gap. The analyzer check exists, but our scanner rejects whitespace before `:` earlier than the reference parser.
-- **Next**: complete
+- **Working**: 24/24 use cases
+- **Tests**: 22/22 green
 - Last updated: 2026-04-03
 
 ## Source

@@ -2,10 +2,7 @@
 
 ## Current state
 - **Working**: 18/18 use cases
-- **Done this session**: inline `<svelte:options accessors={true} />`, `immutable={true}`, and `preserveWhitespace={true}` now resolve through the compiler/analyze/codegen pipeline instead of only affecting diagnostics. Analyze owns the resolved legacy flags and whitespace mode, runtime-plan/codegen use them for legacy `$.push`/`$.pop`, accessor exports, immutable prop flags/coarse-grained reads, and lowering skips whitespace cleanup when requested.
-- **Done previously**: inline `<svelte:options runes={false} />` overrides compile-time `CompileOptions.runes` before analysis starts, so the component follows legacy semantics even when the API forced runes mode.
-- **Missing**: 0 use cases
-- **Next**: no open implementation work in this spec
+- **Tests**: 20/20 green
 - Last updated: 2026-04-09
 
 ## Source

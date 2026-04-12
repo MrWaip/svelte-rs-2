@@ -19,8 +19,8 @@ Sections in fixed order. Most important first.
 # <Feature name>
 
 ## Current state
-- **Working**: N/M closure items
-- **Next**: [one specific actionable item, or "complete"]
+- **Working**: N/M use cases
+- **Tests**: X/Y green
 - Last updated: <date>
 
 ## Source
@@ -65,11 +65,15 @@ Sections in fixed order. Most important first.
 - **Client-side only.** No SSR use cases.
 - `[ ]` = in scope and still open; partial work stays `[ ]` with the completed part and remaining gap described inline
 - `[x]` = done with test
+- `Current state` is a terse resume header, not a changelog. Keep only `Working`, `Tests`, and `Last updated`.
+- Do not add dated `Completed (...)`, `Confirmed gap (...)`, or similar history bullets under `Current state`.
+- Durable findings belong in `Use cases`, `Reference`, and `Test cases`, not in `Current state`.
 - Use cases: do not add `###` subsections or numbered groups inside `Use cases`.
 - Nested sub-checkboxes are allowed to any depth when a broad use case needs explicit decomposition into smaller closure items.
 - Every non-leaf parent use case stays `[ ]` until every child sub-checkbox under it is `[x]`.
 - Prefer leaf closure items that `/port` can close completely in one run.
-- `Working: N/M` should count leaf closure items, not parent wrappers.
+- `Working: N/M use cases` should count leaf closure items, not parent wrappers.
+- `Tests: X/Y green` should count `[x]` entries over all checklist entries in `Test cases`.
 - Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
 - Omit `Out of scope` and `Syntax variants` sections if empty/not applicable
 
@@ -90,6 +94,7 @@ When a use case needs decomposition, put effort markers on the leaf sub-checkbox
 - `Discovered bugs` — OPEN bugs become `[ ]` use cases; FIXED bugs are deleted
 - `Implementation order` — order is implied by use case sequence
 - `Test cases` subsections — always flat checklist
+- session-log bullets in `Current state` — keep progress history out of the resume header
 
 ## Lifecycle
 1. Created by `/audit` when a feature needs a tracked spec; `/port` resumes from an existing spec

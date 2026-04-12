@@ -1,10 +1,8 @@
 # Destructuring & class fields
 
 ## Current state
-- **Complete**: All use cases implemented and covered by passing compiler tests.
-- `$state` / `$state.raw` destructuring, `$state` / `$derived` class fields, and all sync `$derived` destructuring cases pass.
-- `$derived.by` class fields with constructor assignment fixed: bare placeholder declaration is now skipped in `rewrite_class_body`, and constructor-assigned fields are pre-emitted at the top of the class body (matching reference output order).
-- **Next**: No remaining work — feature is complete.
+- **Working**: 13/13 use cases
+- **Tests**: 16/16 green
 - Last updated: 2026-04-03
 
 ## Source

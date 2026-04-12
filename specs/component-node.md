@@ -1,12 +1,8 @@
 # ComponentNode
 
 ## Current state
-- **Working**: 12/13 component-tag use cases
-- **Current slice:** diagnose follow-up for component `onclick` callback props that mutate `$state`
-- **Done this session:** added ignored parity repro `diagnose_component_onclick_state`; Rust currently memoizes inline `onclick={() => count++}` into a derived getter on component props, while reference output keeps the inline callback expression directly in props
-- **Repro:** `just test-case-verbose diagnose_component_onclick_state`
-- **Next:** decide whether callback-prop memoization ownership belongs to analyze classification (`has_call`) or component prop emission in client codegen, then port a fix and unignore the diagnosis case. Legacy child-content / named-slot ownership moved to `specs/legacy-slots.md`.
-- **Verification:** `just generate` passed; `just test-case-verbose diagnose_component_onclick_state` fails with JS mismatch on 2026-04-11 (expected for diagnosis tracking)
+- **Working**: 12/13 use cases
+- **Tests**: 19/20 green
 - Last updated: 2026-04-11
 
 ## Source

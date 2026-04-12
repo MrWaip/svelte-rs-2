@@ -11,6 +11,7 @@ description: Synchronize project documentation with verified code changes. Use a
 4. Update `ROADMAP.md` only where completion is evidenced by code and passing tests.
 5. Update `CODEBASE_MAP.md` for new or changed `pub` and `pub(crate)` APIs.
 6. Update `GOTCHAS.md` only for real, non-obvious pitfalls learned from implementation.
-7. Update relevant `specs/<feature>.md` sections, especially `Current state` and completed use cases.
+7. Update relevant `specs/<feature>.md` sections, especially `Use cases`, `Test cases`, and the terse `Current state` resume header.
 
 Do not rewrite large doc sections unnecessarily; keep edits precise and evidence-backed.
+Do not turn `Current state` into a changelog with dated `Completed (...)` or `Confirmed gap (...)` bullets.

@@ -2,8 +2,7 @@
 
 ## Current state
 - **Working**: 8/12 use cases
-- **Missing**: 4 use cases
-- **Next**: port dynamic `xmlns` forwarding and dev-only runtime validation in `crates/svelte_codegen_client/src/template/svelte_element.rs`
+- **Tests**: 15/18 green
 - Last updated: 2026-04-07
 
 ## Source

@@ -1,13 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Complete**: 22/22 use cases — all implemented and covered
-- `snippet_destructure_default_mutated_state_ref` landed: `svelte_transform::walk_node` now visits snippet parameter destructure defaults inside the snippet body scope, so identifiers that refer to mutated `$state` bindings are rewritten to `$.get(name)` inside the lazy-fallback thunk. Previously defaults were cloned verbatim by `build_fallback_expr`; the mutated-state variant was missed because the only existing default-state test used a never-mutated binding (demoted to `let` by the reference compiler).
-- `snippet_destructure_default_state_ref` landed: snippet param destructuring defaults whose initializer is non-simple (per `is_simple_expression`) are now emitted as `$.fallback(access, () => <default>, true)` matching the reference compiler `build_fallback`. `is_simple_expression` lifted to `svelte_analyze::utils` and consumed from `svelte_codegen_client::template::snippet::build_fallback_expr`.
-- `snippet_invalid_export` landed earlier: dual top-level script parsing (`instance_script` + `module_script`) added to AST/parser; validation fires when `<script module>` exports a template snippet name
+- **Working**: 23/23 use cases
+- **Tests**: 25/27 green
 - Last updated: 2026-04-08
-
-**Next:** feature complete; no further work planned unless new edge cases emerge
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring

@@ -2,12 +2,7 @@
 
 ## Current state
 - **Working**: 10/10 use cases
-- **Missing**: 0/10 use cases
-- **Current slice**: remaining analyzer diagnostics completed
-- **Done this session**: `template_validation` now rejects duplicate `animate:` directives on the same element via `animation_duplicate` and rejects await expressions in animate directive values via `illegal_await_expression`. The checks live alongside existing animate placement validation, so regular elements and `<svelte:element>` reuse the same per-element validation path.
-- **Done this session**: `animate_with_const_tag` now matches the reference output. The root cause was shared codegen thunk optimization in `Builder::thunk`: zero-arg method calls such as `item.name.toUpperCase()` were being collapsed into bare member references, which dropped the call when `{@const}` emitted `$.derived(...)`. The optimization is now limited to plain identifier calls, preserving method-call thunks across codegen.
-- **Done this session**: `animate_svelte_element` now matches the reference output. Analyze `fragment_facts` now treats `<svelte:element animate:...>` as a direct animate child, so keyed `{#each}` bodies get `EACH_IS_ANIMATED`; codegen reuses the shared `gen_animate_directive` helper inside `gen_svelte_element`, so `$.animation($$element, ...)` is emitted in the element callback just like the regular-element path.
-- **Next**: no additional animate slice is required within this spec's client-side scope; compiler negative-case snapshots remain limited by the current test harness.
+- **Tests**: 14/14 green
 - Last updated: 2026-04-09
 
 ## Source

@@ -1,13 +1,8 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 21/21 use cases
-- **Next**: complete; continue only if a future audit finds more regular non-spread attr gaps not already owned by neighboring specs
-- **Current slice completed**: `Dynamic Input/Property Attr Lowering`. Regular non-spread attrs now follow the same reference-like update matrix across expression, concatenation, and shorthand forms: HTML attr names normalize through the same alias table as Svelte, `<input>` `value` / `checked` paths trigger `needs_input_defaults`, and codegen routes `value`, `checked`, `selected`, and DOM-property attrs like `disabled` / `readonly` away from the generic `$.set_attribute(...)` fallback. That matrix remains reference-aligned for non-HTML namespaces too; only HTML name normalization is namespace-sensitive.
-- **Current slice completed**: `attribute_unquoted_sequence` parity outside components. The scanner already emitted unquoted concatenations as `ConcatenationAttribute`; analyze now rejects them consistently across all relevant attribute owners.
-- **Spec ownership status**: complete again; spread attrs, bind-coupled diagnostics, and customizable select handling remain owned by neighboring specs.
-- **Non-goals for this completed run**: spread attr parity, custom-element attr lowering, bind runtime mismatches like `props_bindable_checkbox_disabled_shorthand_ts`, parser/scanner changes, customizable `select` / `optgroup` / `selectedcontent` handling owned by `specs/element.md`, and a11y warnings.
-- **Constraint**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Working**: 22/22 use cases
+- **Tests**: 28/28 green
 - Last updated: 2026-04-11
 
 ## Source

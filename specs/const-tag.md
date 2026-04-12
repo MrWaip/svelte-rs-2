@@ -1,10 +1,8 @@
 # Const Tag
 
 ## Current state
-- **Working**: 10/10 in-scope use cases — feature complete
-- **Partial**: 0
-- **Missing**: 0
-- **Next**: No remaining work — all use cases complete; `const_tag_invalid_reference` moved to `specs/experimental-async.md` (use case 37)
+- **Working**: 10/10 use cases
+- **Tests**: 22/22 green
 - Last updated: 2026-04-04
 
 ## Source

@@ -153,7 +153,7 @@ Before adding a new unknown item, scan `specs/unknown.md` for an existing entry 
 When updating `Current state` in `specs/unknown.md`:
 
 - set `Working` to the current number of unchecked unknown items
-- set `Next` to the first unchecked unknown item in file order
+- set `Tests` to the current number of passing test entries over all `Test cases` entries
 - update `Last updated` to today's date
 
 #### When Exactly One Matching Spec Exists
@@ -163,9 +163,11 @@ When updating `Current state` in `specs/unknown.md`:
 - add or extend the narrowest correct persistent test
 - add one unchecked use case if the behavior is not already tracked
 - add or update the test entry in that spec
-- update `Current state` with a short dated note when that helps the next session resume
+- keep `Current state` terse; prefer updating only `Working`, `Tests`, and `Last updated`
 - update the `Current state` progress summary if the spec already tracks working coverage there
 - re-open the related `ROADMAP.md` checkbox only when that spec maps to one direct roadmap item and it was marked complete even though the spec is not actually complete
+
+Do not add dated `Completed (...)`, `Confirmed gap (...)`, or similar history bullets to `Current state`. Put durable findings in `Use cases` or `Test cases`.
 
 If the use case is already tracked, cite the exact spec item instead of duplicating it. Still add or extend the persistent test if coverage is missing.
 

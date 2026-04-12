@@ -2,17 +2,7 @@
 
 ## Current state
 - **Working**: 16/16 use cases
-- **Current slice completed**: `A11yAutocompleteValid` + `A11yImgRedundantAlt` + `A11yMisplacedScope`. Invalid static `autocomplete` values now warn, redundant image wording in static `alt` warns, and `scope` on non-`<th>` elements now matches the reference warning span.
-- **Previous slice completed**: `A11yMissingContent` + `A11yMediaHasCaption` + `A11yFigcaption*`. Empty headings now warn for missing content, `<video src>` without a caption track warns, `<figcaption>` outside `<figure>` warns, and middle-position figcaptions in `<figure>` now match the reference.
-- **Drift normalized (2026-04-11)**: `a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button` was a stale mismatch marker. Both npm `svelte/compiler` and Rust report no diagnostics for `<div role="button"></div>`, so the case is now only a no-warning regression guard and not evidence that `A11yNoNoninteractiveElementToInteractiveRole` is complete.
-- **Count normalized (2026-04-11)**: the old single “element-content cluster” checkbox hid multiple independent warning groups. It is now split into focused use cases so progress can resume cleanly.
-- **Why this slice came next**: it was the last remaining analyzer-only cluster, and all three warnings are driven by static attribute inspection in the same validation module rather than by new fragment traversal or cross-pass data flow.
-- **Done so far**: implemented the basic A11y cluster (`A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`); implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`; implemented `A11yNoRedundantRoles` and `A11yRoleHasRequiredAriaProps`; implemented `A11yNoInteractiveElementToNoninteractiveRole` and `A11yNoNoninteractiveElementToInteractiveRole`; implemented `A11yRoleSupportsAriaProps` and `A11yRoleSupportsAriaPropsImplicit`; implemented `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, and `A11yNoNoninteractiveTabindex`; implemented ARIA value-type validation for known static `aria-*` attributes, matching the reference helper behavior for generic, boolean, idlist, integer, token, tokenlist, and tristate warnings; implemented the interaction/event warning cluster for click-keyboard pairing, noninteractive/static element handlers, and mouse/focus-blur pairing
-- **Audit revision (2026-04-07)**: reference parity review found two still-missing areas that the initial extracted spec had undercounted: role-transition warnings (`A11yNoInteractiveElementToNoninteractiveRole`, `A11yNoNoninteractiveElementToInteractiveRole`) and the broader element-content cluster
-- **Missing**: none for this spec
-- **Next**: feature complete for the current spec scope
-- **Verification**: `cargo test -p svelte_analyze invalid_input_autocomplete_warns`, `cargo test -p svelte_analyze valid_input_autocomplete_does_not_warn`, `cargo test -p svelte_analyze redundant_img_alt_warns`, `cargo test -p svelte_analyze th_scope_does_not_warn_for_misplaced_scope`, `just test-diagnostic-case a11y_autocomplete_valid_warns_for_invalid_input_token`, `just test-diagnostic-case a11y_img_redundant_alt_warns_for_redundant_image_wording`, `just test-diagnostic-case a11y_misplaced_scope_warns_on_td`, `just test-analyzer`, and `just test-diagnostics`
-- **Non-goals for the completed slice**: non-A11y diagnostics and any parser/codegen changes
+- **Tests**: 28/28 green
 - Last updated: 2026-04-11
 
 ## Source

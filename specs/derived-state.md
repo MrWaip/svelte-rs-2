@@ -1,12 +1,9 @@
 # $derived / $derived.by
 
 ## Current state
-
-**Updated: 2026-04-03**
-
-Core `$derived` and `$derived.by` are now fully implemented for simple identifier bindings (sync and async), destructuring, class fields, nested functions, dev mode, nested async save-path lowering, and non-runes invalid-usage validation.
-
-**Next:** feature complete for the current `$derived` / `$derived.by` scope; no further work planned unless new edge cases are found
+- **Working**: 20/20 use cases
+- **Tests**: 35/37 green
+- Last updated: 2026-04-03
 
 ## Source
 

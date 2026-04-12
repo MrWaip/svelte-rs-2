@@ -1,12 +1,8 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 24/25 use cases — infrastructure + non-A11y warning emission slices
-- **Done this session**: added diagnostic parity harness under `tasks/diagnostic_tests/`; `just generate` now writes `case-svelte.json` reference diagnostics and tests write `case-rust.json` for visual comparison. Earlier completed items remain: early bail on parser errors; `ScriptContextDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
-- **Missing**: 1 use case — `NodeInvalidPlacementSsr`
-- **Next**: implement the standalone SSR placement warning
-- **Non-goals for this run**: no A11y warnings in this spec, no parser or codegen changes
-- Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Working**: 24/25 use cases
+- **Tests**: 34/42 green
 - Last updated: 2026-04-11
 
 ## Source

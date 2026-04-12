@@ -2,8 +2,7 @@
 
 ## Current state
 - **Working**: 7/9 use cases
-- **Missing**: 2 use cases
-- **Next**: Add hydration-ignore argument support (`svelte-ignore hydration_html_changed`) in `gen_html_tag` in `html_tag.rs`
+- **Tests**: 8/10 green
 - Last updated: 2026-04-04
 
 ## Source
