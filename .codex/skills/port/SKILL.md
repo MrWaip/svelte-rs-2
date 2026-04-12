@@ -27,11 +27,11 @@ If the argument is a spec path, or a matching spec was found:
 3. Find the next unchecked use case
 4. Close that use case completely, unless multiple unchecked use cases clearly belong to one closure unit
 
-If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a slice.
+If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a closure target.
 
-Derive the slice from the existing spec structure in this order:
+Derive the closure target from the existing spec structure in this order:
 
-1. explicit slice notes in `Current state`
+1. explicit closure notes in `Current state`
 2. unchecked or partial items in `Use cases`
 3. concrete file or layer groupings in `Tasks`
 4. `Implementation order`, if present
@@ -97,7 +97,7 @@ Spec updates are allowed during the run. Scope expansion is not.
 
 These steps are planning-only. Do not write files during this phase.
 
-### Step 1: Load Slice Context
+### Step 1: Load Closure Context
 
 Research four things:
 
@@ -143,13 +143,13 @@ If the selected use case is too broad, draft the decomposition instead of a norm
 
 This pre-implementation spec update is only for planning and resume context. Do not mark use cases as completed in this step.
 
-Do not apply the spec update yet. Present the slice plan and the proposed spec update, then wait for approval.
+Do not apply the spec update yet. Present the closure plan and the proposed spec update, then wait for approval.
 
 Do not reshape the spec template just to use this skill. Prefer updating `Current state`, `Use cases`, and `Tasks`.
 
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
-**Present the slice plan and wait for approval before proceeding. After approval, apply the planned update to the same spec file before writing code.**
+**Present the closure plan and wait for approval before proceeding. After approval, apply the planned update to the same spec file before writing code.**
 
 ## EXECUTE PHASE
 
@@ -159,7 +159,7 @@ Start here only after plan approval. Steps are sequential.
 
 Choose the smallest correct verification surface for the selected closure unit before writing code.
 
-Use e2e compiler tests only when the slice must be checked against reference compiler output.
+Use e2e compiler tests only when the closure unit must be checked against reference compiler output.
 
 Use unit tests when the behavior is owned by one layer and does not need end-to-end snapshot comparison.
 
@@ -170,11 +170,11 @@ Default mapping:
 - observable diagnostic parity against npm `svelte/compiler` -> `tasks/diagnostic_tests/`
 - codegen or end-user compiler output that must match the reference compiler -> `tasks/compiler_tests/` e2e coverage
 
-For parser-only or analyze-only slices, prefer layer-local tests and exact AST or analysis expectations unless end-to-end output parity is required.
+For parser-only or analyze-only closure units, prefer layer-local tests and exact AST or analysis expectations unless end-to-end output parity is required.
 
-Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless the point of the slice is an end-to-end compiler snapshot that must be compared with the reference compiler.
+Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless the point of the closure unit is an end-to-end compiler snapshot that must be compared with the reference compiler.
 
-If the slice needs both:
+If the closure unit needs both:
 
 - add unit tests for layer-local behavior
 - add the minimum e2e coverage needed to verify observable compiler output
@@ -213,21 +213,21 @@ Before implementation, only treat `case-svelte.json` as the reference artifact t
 Rules:
 
 - do not add tests for excluded use cases in this run
-- if an existing small test already covers the slice, extend it instead of adding a duplicate
+- if an existing small test already covers the closure unit, extend it instead of adding a duplicate
 
 ### Step 6: Implement Only The Owning Changes
 
 Implement the closure unit in the correct layer order:
 
-1. parser and AST only if the slice needs new syntax
-2. analyze only if the slice needs new derived data
+1. parser and AST only if the closure unit needs new syntax
+2. analyze only if the closure unit needs new derived data
 3. transform or codegen only after required parser or analysis support exists
 
 If the selected use case turns out to be too complex to close cleanly as written, stop, update the spec by decomposing that use case into smaller unchecked items, and report to the user that you split the use case. Do not keep pushing a half-finished implementation.
 
 Unit tests are mandatory for every new parser or analyze behavior.
 
-### Step 7: Verify The Slice
+### Step 7: Verify The Closure Unit
 
 If relevant tests already fail before this closure unit, record that baseline first. Verify that the closure unit fixes or implements its included use cases without introducing additional regressions. Do not widen scope to fix unrelated baseline failures.
 
@@ -237,7 +237,7 @@ Verify every included test case individually:
 just test-case <test_name>
 ```
 
-Run this only for e2e tests created for the slice.
+Run this only for e2e tests created for the closure unit.
 
 For diagnostic parity cases, run:
 
@@ -259,7 +259,7 @@ Cross-check that:
 
 If a test still fails after 3 attempts, stop and report what was tried. Do not silently expand scope.
 
-### Step 8: Finalize The Slice
+### Step 8: Finalize The Closure Unit
 
 Before updating the spec, inspect the diff and confirm that unrelated files were not changed and that generated files changed only through the documented generation or test flow.
 
