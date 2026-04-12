@@ -899,6 +899,18 @@ fn legacy_slots_if() {
 }
 
 #[rstest]
+#[ignore = "missing: legacy beforeUpdate/afterUpdate components do not emit $.init() before DOM creation (codegen, moderate)"]
+fn legacy_before_after_update_basic() {
+    assert_compiler("legacy_before_after_update_basic");
+}
+
+#[rstest]
+#[ignore = "missing: aliased legacy beforeUpdate/afterUpdate components do not emit $.init() before DOM creation (codegen, moderate)"]
+fn legacy_before_after_update_alias() {
+    assert_compiler("legacy_before_after_update_alias");
+}
+
+#[rstest]
 #[ignore = "missing: custom-element default CSS injection (compiler/codegen)"]
 fn custom_element_css_default_injected() {
     assert_compiler("custom_element_css_default_injected");

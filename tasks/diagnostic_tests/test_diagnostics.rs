@@ -1196,6 +1196,16 @@ mod runes {
         "runes/validate_effect_wrong_arg_count"
     );
     diagnostic_case!(
+        validate_before_after_update_invalid_import,
+        "runes/validate_before_after_update_invalid_import",
+        ignore = "missing: runes import validation rejects beforeUpdate/afterUpdate imports from `svelte` with reference span parity (analyze, quick fix)"
+    );
+    diagnostic_case!(
+        validate_before_after_update_invalid_import_split_statements,
+        "runes/validate_before_after_update_invalid_import_split_statements",
+        ignore = "missing: runes import validation rejects split beforeUpdate/afterUpdate imports from `svelte` with reference count/span parity (analyze, quick fix)"
+    );
+    diagnostic_case!(
         validate_derived_wrong_arg_count,
         "runes/validate_derived_wrong_arg_count"
     );

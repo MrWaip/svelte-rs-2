@@ -175,4 +175,4 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [ ] `<svelte:component>` — [spec](specs/svelte-component.md)
 - [ ] `export let` props / `$$props` / `$$restProps` — [spec](specs/legacy-export-let.md)
 - [ ] `$:` reactive assignments — [spec](specs/legacy-reactive-assignments.md)
-- [ ] `beforeUpdate` / `afterUpdate`
+- [ ] `beforeUpdate` / `afterUpdate` — [spec](specs/before-update-after-update.md)
