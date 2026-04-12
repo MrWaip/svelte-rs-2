@@ -2,6 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
+use svelte_analyze::{BindPropertyKind, ImageNaturalSizeKind, MediaBindKind};
 use svelte_ast::NodeId;
 
 use crate::builder::{Arg, AssignLeft};
@@ -141,6 +142,26 @@ pub(crate) fn emit_bind_group_value<'a>(
     init.push(effect_call);
 }
 
+pub(crate) fn gen_bind_property_stmt<'a>(
+    ctx: &mut Ctx<'a>,
+    property_name: &'static str,
+    event_name: &'static str,
+    target_ident: &str,
+    setter: Expression<'a>,
+    getter: Option<Expression<'a>>,
+) -> Statement<'a> {
+    let mut args = vec![
+        Arg::StrRef(property_name),
+        Arg::StrRef(event_name),
+        Arg::Ident(target_ident),
+        Arg::Expr(setter),
+    ];
+    if let Some(getter) = getter {
+        args.push(Arg::Expr(getter));
+    }
+    ctx.b.call_stmt("$.bind_property", args)
+}
+
 /// Where to place a bind directive statement.
 pub(crate) enum BindPlacement<'a> {
     /// Most bindings: placed after attribute updates.
@@ -158,12 +179,14 @@ pub(crate) fn gen_bind_directive<'a>(
     has_use_directive: bool,
 ) -> Option<BindPlacement<'a>> {
     // Pre-computed by analysis — no string-based symbol re-resolution needed.
+    let semantics = ctx.bind_target_semantics(bind.id)?;
+    let bind_property = semantics.property();
     let is_rune = ctx.is_mutable_rune_target(bind.id);
     let is_prop_source = ctx.is_prop_source_node(bind.id);
 
     // Function bindings: bind:prop={(get_fn), (set_fn)} via SequenceExpression.
     // bind:this has its own SequenceExpression handling below; bind:group disallows it.
-    if bind.name != "this" && bind.expression_span.is_some() {
+    if !semantics.is_this() && bind.expression_span.is_some() {
         let bind_handle = bind
             .expression_span
             .and_then(|span| ctx.state.parsed.expr_handle(span.start));
@@ -180,31 +203,62 @@ pub(crate) fn gen_bind_directive<'a>(
             let get_fn = exprs.next().expect("SequenceExpression must have getter");
             let set_fn = exprs.next().expect("SequenceExpression must have setter");
 
-            let stmt = match bind.name.as_str() {
-                "value" if tag_name == "select" => ctx.b.call_stmt(
+            let stmt = match bind_property {
+                BindPropertyKind::Value if tag_name == "select" => ctx.b.call_stmt(
                     "$.bind_select_value",
                     [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
                 ),
-                "value" => ctx.b.call_stmt(
+                BindPropertyKind::Value => ctx.b.call_stmt(
                     "$.bind_value",
                     [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
                 ),
-                "checked" => ctx.b.call_stmt(
+                BindPropertyKind::Checked => ctx.b.call_stmt(
                     "$.bind_checked",
                     [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
                 ),
-                "files" => ctx.b.call_stmt(
+                BindPropertyKind::Files => ctx.b.call_stmt(
                     "$.bind_files",
                     [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
                 ),
-                "innerHTML" | "innerText" | "textContent" => ctx.b.call_stmt(
+                BindPropertyKind::Indeterminate => gen_bind_property_stmt(
+                    ctx,
+                    "indeterminate",
+                    "change",
+                    el_name,
+                    set_fn,
+                    Some(get_fn),
+                ),
+                BindPropertyKind::Open => {
+                    gen_bind_property_stmt(ctx, "open", "toggle", el_name, set_fn, Some(get_fn))
+                }
+                BindPropertyKind::ContentEditable(kind) => ctx.b.call_stmt(
                     "$.bind_content_editable",
                     [
-                        Arg::StrRef(&bind.name),
+                        Arg::StrRef(kind.name()),
                         Arg::Ident(el_name),
                         Arg::Expr(get_fn),
                         Arg::Expr(set_fn),
                     ],
+                ),
+                BindPropertyKind::Media(MediaBindKind::CurrentTime) => ctx.b.call_stmt(
+                    "$.bind_current_time",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::PlaybackRate) => ctx.b.call_stmt(
+                    "$.bind_playback_rate",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Paused) => ctx.b.call_stmt(
+                    "$.bind_paused",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Volume) => ctx.b.call_stmt(
+                    "$.bind_volume",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Muted) => ctx.b.call_stmt(
+                    "$.bind_muted",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
                 ),
                 _ => ctx.b.call_stmt(
                     "$.bind_value",
@@ -226,9 +280,9 @@ pub(crate) fn gen_bind_directive<'a>(
     // Pre-computed blocker indices from analyze
     let bind_blockers = ctx.bind_blockers(bind.id).to_vec();
 
-    let stmt = match bind.name.as_str() {
+    let stmt = match bind_property {
         // --- Input/Form ---
-        "value" if tag_name == "select" => {
+        BindPropertyKind::Value if tag_name == "select" => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -236,7 +290,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "value" => {
+        BindPropertyKind::Value => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -244,7 +298,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "checked" => {
+        BindPropertyKind::Checked => {
             if is_prop_source {
                 // Bindable props already lower to a prop accessor callable, so bind:checked
                 // should pass it through directly instead of wrapping it in rune closures.
@@ -261,7 +315,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 )
             }
         }
-        "group" => {
+        BindPropertyKind::Group => {
             ctx.state.needs_binding_group = true;
 
             let parent_eaches = ctx.parent_each_blocks(bind.id);
@@ -341,7 +395,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 ],
             )
         }
-        "files" => {
+        BindPropertyKind::Files => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -351,43 +405,32 @@ pub(crate) fn gen_bind_directive<'a>(
         }
 
         // --- Generic event-based bindings (bidirectional) ---
-        "indeterminate" => {
+        BindPropertyKind::Indeterminate => {
             let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
             let getter = build_binding_getter(ctx, &var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("indeterminate"),
-                    Arg::StrRef("change"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                    Arg::Expr(getter),
-                ],
+            gen_bind_property_stmt(
+                ctx,
+                "indeterminate",
+                "change",
+                el_name,
+                setter,
+                Some(getter),
             )
         }
-        "open" => {
+        BindPropertyKind::Open => {
             let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
             let getter = build_binding_getter(ctx, &var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("open"),
-                    Arg::StrRef("toggle"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                    Arg::Expr(getter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "open", "toggle", el_name, setter, Some(getter))
         }
 
         // --- Contenteditable ---
-        "innerHTML" | "innerText" | "textContent" => {
+        BindPropertyKind::ContentEditable(kind) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_content_editable",
                 [
-                    Arg::StrRef(&bind.name),
+                    Arg::StrRef(kind.name()),
                     Arg::Ident(el_name),
                     Arg::Expr(getter),
                     Arg::Expr(setter),
@@ -396,33 +439,33 @@ pub(crate) fn gen_bind_directive<'a>(
         }
 
         // --- Dimension bindings (element size, readonly) ---
-        "clientWidth" | "clientHeight" | "offsetWidth" | "offsetHeight" => {
+        BindPropertyKind::ElementSize(kind) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_element_size",
                 [
                     Arg::Ident(el_name),
-                    Arg::StrRef(&bind.name),
+                    Arg::StrRef(kind.name()),
                     Arg::Expr(setter),
                 ],
             )
         }
 
         // --- Dimension bindings (resize observer, readonly) ---
-        "contentRect" | "contentBoxSize" | "borderBoxSize" | "devicePixelContentBoxSize" => {
+        BindPropertyKind::ResizeObserver(kind) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_resize_observer",
                 [
                     Arg::Ident(el_name),
-                    Arg::StrRef(&bind.name),
+                    Arg::StrRef(kind.name()),
                     Arg::Expr(setter),
                 ],
             )
         }
 
         // --- Media R/W bindings ---
-        "currentTime" => {
+        BindPropertyKind::Media(MediaBindKind::CurrentTime) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -430,7 +473,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "playbackRate" => {
+        BindPropertyKind::Media(MediaBindKind::PlaybackRate) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -438,7 +481,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "paused" => {
+        BindPropertyKind::Media(MediaBindKind::Paused) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -446,7 +489,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "volume" => {
+        BindPropertyKind::Media(MediaBindKind::Volume) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -454,7 +497,7 @@ pub(crate) fn gen_bind_directive<'a>(
                 [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "muted" => {
+        BindPropertyKind::Media(MediaBindKind::Muted) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
@@ -464,110 +507,70 @@ pub(crate) fn gen_bind_directive<'a>(
         }
 
         // --- Media RO bindings (setter only) ---
-        "buffered" => {
+        BindPropertyKind::Media(MediaBindKind::Buffered) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_buffered", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
-        "seekable" => {
+        BindPropertyKind::Media(MediaBindKind::Seekable) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_seekable", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
-        "seeking" => {
+        BindPropertyKind::Media(MediaBindKind::Seeking) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_seeking", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
-        "ended" => {
+        BindPropertyKind::Media(MediaBindKind::Ended) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
-        "readyState" => {
+        BindPropertyKind::Media(MediaBindKind::ReadyState) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_ready_state",
                 [Arg::Ident(el_name), Arg::Expr(setter)],
             )
         }
-        "played" => {
+        BindPropertyKind::Media(MediaBindKind::Played) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_played", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
 
         // --- Media/Image RO event-based bindings (bind_property, no bidirectional) ---
-        "duration" => {
+        BindPropertyKind::Media(MediaBindKind::Duration) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("duration"),
-                    Arg::StrRef("durationchange"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "duration", "durationchange", el_name, setter, None)
         }
-        "videoWidth" => {
+        BindPropertyKind::Media(MediaBindKind::VideoWidth) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("videoWidth"),
-                    Arg::StrRef("resize"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "videoWidth", "resize", el_name, setter, None)
         }
-        "videoHeight" => {
+        BindPropertyKind::Media(MediaBindKind::VideoHeight) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("videoHeight"),
-                    Arg::StrRef("resize"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "videoHeight", "resize", el_name, setter, None)
         }
-        "naturalWidth" => {
+        BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("naturalWidth"),
-                    Arg::StrRef("load"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "naturalWidth", "load", el_name, setter, None)
         }
-        "naturalHeight" => {
+        BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalHeight) => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("naturalHeight"),
-                    Arg::StrRef("load"),
-                    Arg::Ident(el_name),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "naturalHeight", "load", el_name, setter, None)
         }
 
         // --- Misc ---
-        "focused" => {
+        BindPropertyKind::Focused => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_focused", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
 
         // --- bind:this ---
-        "this" => {
+        BindPropertyKind::This => {
             // SequenceExpression: bind:this={(getter_expr), (setter_expr)}
             // Reference: build_bind_this in shared/utils.js
             if let Some(span) = bind.expression_span {
@@ -649,20 +652,14 @@ pub(crate) fn gen_bind_directive<'a>(
             return Some(BindPlacement::Init(stmt));
         }
 
-        // Fallback for unknown bindings
-        _ => {
-            let getter = build_binding_getter(ctx, &var_name, is_rune);
-            let setter = build_binding_setter(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_value",
-                [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-            )
-        }
+        BindPropertyKind::Window(_)
+        | BindPropertyKind::Document(_)
+        | BindPropertyKind::ComponentProp => unreachable!("unexpected bind property for element"),
     };
 
     // Wrap in $.effect() when element has use: directive (deferral)
     let mut stmt = stmt;
-    if has_use_directive && bind.name != "this" {
+    if has_use_directive && !semantics.is_this() {
         let effect_body = ctx.b.arrow_expr(ctx.b.no_params(), [stmt]);
         stmt = ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
 

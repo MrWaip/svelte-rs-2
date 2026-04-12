@@ -18,13 +18,13 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use svelte_ast::{
     is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element,
-    LetDirectiveLegacy, Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary,
-    SvelteDocument, SvelteElement, SvelteWindow,
+    LetDirectiveLegacy, Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument,
+    SvelteElement, SvelteWindow,
 };
 
 use crate::scope::ComponentScoping;
-use crate::types::script::RuneKind;
 use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
+use crate::types::script::RuneKind;
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::utils::legacy_slot::{
     collect_legacy_slot_bindings, legacy_slot_is_destructured, LegacySlotBindingKind,
@@ -827,11 +827,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_let_directive_legacy(
-        &mut self,
-        dir: &LetDirectiveLegacy,
-        ctx: &mut VisitContext<'_>,
-    ) {
+    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_>) {
         let Some(stmt_handle) = ctx.data.let_directive_stmt_handle(dir.id) else {
             return;
         };
@@ -850,8 +846,12 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                         .scoping
                         .add_unique_synthetic_binding(ctx.scope, dir.name.as_str());
                     ctx.data.scoping.mark_template_declaration(carrier_sym_id);
-                    ctx.data.scoping.mark_rune(carrier_sym_id, RuneKind::Derived);
-                    ctx.data.scoping.mark_slot_let_carrier(dir.id, carrier_sym_id);
+                    ctx.data
+                        .scoping
+                        .mark_rune(carrier_sym_id, RuneKind::Derived);
+                    ctx.data
+                        .scoping
+                        .mark_slot_let_carrier(dir.id, carrier_sym_id);
                     carrier_sym_id
                 });
             Some(carrier_sym_id)

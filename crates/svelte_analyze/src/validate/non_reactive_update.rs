@@ -216,7 +216,11 @@ impl<'a> TemplateValidator<'a, '_> {
                 },
                 Attribute::BindDirective(attr) => {
                     if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, attr.name == "this", in_dynamic_block);
+                        let bind_this = self
+                            .data
+                            .bind_target_semantics(attr.id)
+                            .is_some_and(|semantics| semantics.is_this());
+                        self.visit_expr_span(span, bind_this, in_dynamic_block);
                     }
                 }
                 Attribute::LetDirectiveLegacy(attr) => {

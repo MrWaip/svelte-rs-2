@@ -1,3 +1,5 @@
+use crate::types::data::{ExpressionInfo, ExpressionKind};
+use crate::types::script::RuneKind;
 use compact_str::CompactString;
 use oxc_ast::ast::{
     AssignmentTargetPropertyIdentifier, CallExpression, Expression, MemberExpression,
@@ -10,8 +12,6 @@ use oxc_ast_visit::walk::{
 };
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
-use crate::types::data::{ExpressionInfo, ExpressionKind};
-use crate::types::script::RuneKind;
 
 struct ExpressionAnalyzer {
     kind: ExpressionKind,

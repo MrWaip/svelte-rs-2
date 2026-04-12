@@ -10,18 +10,20 @@ pub(crate) mod walker;
 
 pub use scope::{ComponentScoping, TemplateBindingReadKind};
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockAnalysis,
-    BlockerData, ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo,
-    ComponentPropKind, ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
-    DirectiveModifierFlags, EachContextIndex, ElementAnalysis, ElementFacts, ElementFactsEntry,
-    ElementFlags, EventHandlerMode, EventModifier, ExprDeps, ExprHandle, ExprRole, ExprSite,
-    ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem,
-    FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart, NamespaceKind,
+    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BindHostKind,
+    BindPropertyKind, BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
+    ContentEditableKind, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
+    DirectiveModifierFlags, DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFacts,
+    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
+    ExprHandle, ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts,
+    FragmentFactsEntry, FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData,
+    ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind, NamespaceKind,
     OutputPlanData, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets, PropAnalysis,
-    PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan, RichContentFacts,
-    RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptAnalysis, ScriptRuneCalls,
-    SnippetData, StmtHandle, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
-    TemplateTopology,
+    PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptAnalysis,
+    ScriptRuneCalls, SnippetData, StmtHandle, TemplateAnalysis, TemplateElementEntry,
+    TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -121,7 +123,11 @@ pub fn analyze_with_options<'a>(
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
     }
 
-    if data.scoping.root_unresolved_references().contains_key("$$slots") {
+    if data
+        .scoping
+        .root_unresolved_references()
+        .contains_key("$$slots")
+    {
         data.output.needs_sanitized_legacy_slots = true;
     }
 

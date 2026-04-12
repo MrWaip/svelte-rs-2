@@ -1,5 +1,5 @@
 use crate::scope::SymbolId;
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, BindTargetSemantics};
 use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
 use svelte_ast::{
@@ -27,7 +27,11 @@ impl<'s> BindSemanticsVisitor<'s> {
 
     /// Pre-compute each-block variable names referenced in a bind:this expression.
     fn classify_bind_this(dir: &BindDirective, data: &mut AnalysisData) {
-        if dir.name != "this" || dir.shorthand {
+        if dir.shorthand
+            || !data
+                .bind_target_semantics(dir.id)
+                .is_some_and(|semantics| semantics.is_this())
+        {
             return;
         }
 
@@ -51,6 +55,15 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
+        if let Some(semantics) = data.parent(dir.id).and_then(|parent| {
+            BindTargetSemantics::from_parent_kind_and_name(parent.kind, dir.name.as_str())
+        }) {
+            data.template
+                .bind_semantics
+                .target_semantics
+                .insert(dir.id, semantics);
+        }
+
         if let Some(sym_id) = data.bind_target_symbol(dir.id) {
             if data.scoping.is_prop_source(sym_id) {
                 data.template
@@ -129,10 +142,15 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
-        let bind_group_id = ctx
-            .data
-            .bind_directive(el.id, &el.attributes, "group")
-            .map(|dir| dir.id);
+        let bind_group_id = el.attributes.iter().find_map(|attr| {
+            let Attribute::BindDirective(dir) = attr else {
+                return None;
+            };
+            ctx.data
+                .bind_target_semantics(dir.id)
+                .is_some_and(|semantics| semantics.is_group())
+                .then_some(dir.id)
+        });
         let bind_group_value_attr_id = ctx
             .data
             .expression_attribute(el.id, &el.attributes, "value")
@@ -143,13 +161,14 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             "contenteditable",
             self.source,
         );
-        let has_content_bind = ["innerHTML", "innerText", "textContent"]
-            .iter()
-            .any(|name| {
-                ctx.data
-                    .bind_directive(el.id, &el.attributes, name)
-                    .is_some()
-            });
+        let has_content_bind = el.attributes.iter().any(|attr| {
+            let Attribute::BindDirective(dir) = attr else {
+                return false;
+            };
+            ctx.data
+                .bind_target_semantics(dir.id)
+                .is_some_and(|semantics| semantics.is_contenteditable())
+        });
 
         // Detect bind:group → mark element and find value attribute
         if let Some(bind_group_id) = bind_group_id {

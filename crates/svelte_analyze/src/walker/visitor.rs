@@ -46,11 +46,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {}
-    fn visit_let_directive_legacy(
-        &mut self,
-        dir: &LetDirectiveLegacy,
-        ctx: &mut VisitContext<'_>,
-    ) {
+    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_>) {
     }
     fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {}

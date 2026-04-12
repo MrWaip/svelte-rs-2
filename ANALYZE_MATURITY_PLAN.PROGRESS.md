@@ -6,7 +6,7 @@ Last updated: 2026-04-12
 
 ## Current Status
 
-- Current slice: `Slice 1: ExprRole`
+- Current slice: `Slice 2: BindTargetSemantics`
 - Status: `in progress`
 - Blockers: none
 
@@ -64,24 +64,67 @@ Notes:
 - exact `ExprDeps` async logic was intentionally left unchanged
 - attr-level async/memo decisions still use lower-level facts where needed
 
-## Slice 1 Remaining
+### 4. `BindTargetSemantics` foundation across element, special, and component hosts
+
+Done:
+- Added analyzer-owned bind semantics types:
+  - `BindHostKind`
+  - `BindPropertyKind`
+  - `BindTargetSemantics`
+- Covered host families:
+  - `Element`
+  - `Component`
+  - `Window`
+  - `Document`
+  - `Body`
+- Covered initial property families:
+  - `Value`
+  - `Checked`
+  - `Group`
+  - `Files`
+  - `Media`
+  - `Dimension`
+  - `This`
+  - `ContentEditable`
+  - `ComponentProp`
+  - `Other`
+- Stored semantics in analyzer-owned bind data and exposed `AnalysisData::bind_target_semantics(NodeId)`
+- Computed semantics in `bind_semantics` from `ParentKind`, instead of caller-side host/property rediscovery
+- Migrated first real consumers:
+  - `template_validation` now reads bind:this/contenteditable/mutable-target semantics through the accessor
+  - `validate/non_reactive_update` now detects bind:this via analyzer semantics instead of `name == "this"`
+  - `element_flags` now classifies component `bind:this` via the same bind semantics type instead of a raw string branch
+- Added analyzer tests for:
+  - regular element `bind:value`
+  - input `bind:checked`
+  - element `bind:this`
+  - window/document binds
+  - component prop bind
+  - component `bind:this`
+
+Notes:
+- `BindHostKind::Component` covers all `ParentKind::ComponentNode` cases, including normal components, `<svelte:self>`, and `<svelte:component>`
+- `ComponentBindMode` still owns component emission policy; it was not collapsed into bind target semantics
+
+## Slice 2 Remaining
 
 Open questions:
-- Are there any other real coarse expression questions that should read `ExprRole` directly?
-- Or is `Slice 1` now sufficiently closed to move to `Slice 2: BindTargetSemantics`?
+- Which remaining analyze/validation bind decisions still rediscover host/property meaning from raw names and should move to `bind_target_semantics` next?
+- Does component bind validation need an explicit host-specific contract here, or is the current “component props stay open-ended” behavior the intended rule?
 
 Do not do next:
-- Do not replace exact `has_call` / `has_await` / `ref_symbols` consumers with `ExprRole` where the coarse role loses needed precision
-- Do not start `BindTargetSemantics` until `Slice 1` is explicitly considered complete for the current plan standard
+- Do not move client runtime helper names or bind runtime behavior into `BindTargetSemantics`
+- Do not collapse `ComponentBindMode` into bind target semantics just for uniformity
+- Do not rewrite codegen bind lowering unless the next checkpoint removes a real duplicated semantic decision
 
 Recommended next checkpoint:
-- Do one bounded audit of remaining coarse expression readers
-- If no natural `ExprRole` consumers remain, mark `Slice 1` complete and start `Slice 2`
+- Do one bounded audit of remaining bind string-rediscovery sites in analyze/validation
+- Migrate the next real bind consumer only if it can read host/property/mutability directly from `BindTargetSemantics`
 
 ## Validation Last Run
 
 - `just test-analyzer`
-  - result: `203 passed`
+  - result: `205 passed`
 - `cargo test -p svelte_codegen_client --no-run`
   - result: success
 - `git diff --check -- crates/svelte_analyze/src crates/svelte_codegen_client/src`
@@ -89,7 +132,6 @@ Recommended next checkpoint:
 
 ## Not Started
 
-- `Slice 2: BindTargetSemantics`
 - `Slice 3: concrete fragment accessors`
 - `Slice 4: validator cleanup`
 - `Slice 5: invariants and semantic tests`

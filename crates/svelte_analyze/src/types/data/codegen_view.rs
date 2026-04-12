@@ -334,6 +334,9 @@ impl<'a> CodegenView<'a> {
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.data.template.bind_semantics.bind_blockers(id)
     }
+    pub fn bind_target_semantics(&self, id: NodeId) -> Option<BindTargetSemantics> {
+        self.data.bind_target_semantics(id).copied()
+    }
     pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.is_mutable_rune_target(id)
     }

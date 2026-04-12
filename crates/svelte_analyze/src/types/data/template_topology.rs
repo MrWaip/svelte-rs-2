@@ -37,7 +37,10 @@ impl ParentKind {
     pub fn is_element(&self) -> bool {
         matches!(
             self,
-            Self::Element | Self::SlotElementLegacy | Self::SvelteFragmentLegacy | Self::SvelteElement
+            Self::Element
+                | Self::SlotElementLegacy
+                | Self::SvelteFragmentLegacy
+                | Self::SvelteElement
         )
     }
 

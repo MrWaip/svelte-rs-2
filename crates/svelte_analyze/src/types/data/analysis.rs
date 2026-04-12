@@ -459,6 +459,9 @@ impl AnalysisData {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.template.bind_semantics.bind_this_each_context(id)
     }
+    pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
+        self.template.bind_semantics.bind_target_semantics(id)
+    }
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         let Some(info) = self.attr_expressions.get(id) else {
             return SmallVec::new();

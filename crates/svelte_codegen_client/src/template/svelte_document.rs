@@ -2,12 +2,13 @@
 
 use oxc_ast::ast::Statement;
 
+use svelte_analyze::{BindPropertyKind, DocumentBindKind};
 use svelte_ast::{Attribute, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::bind::build_binding_setter_silent;
+use super::bind::{build_binding_setter_silent, gen_bind_property_stmt};
 use super::events::{gen_attach_tag, gen_event_attr_on, gen_legacy_event_on};
 
 /// Generate event listeners and bindings for `<svelte:document>`.
@@ -59,6 +60,9 @@ fn gen_document_binding<'a>(
     bind: &svelte_ast::BindDirective,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
+        return;
+    };
     let is_rune = ctx.is_mutable_rune_target(bind.id);
 
     let var_name = if bind.shorthand {
@@ -69,46 +73,43 @@ fn gen_document_binding<'a>(
         return;
     };
 
-    let stmt = match bind.name.as_str() {
-        "activeElement" => {
+    let stmt = match bind_semantics.property() {
+        BindPropertyKind::Document(DocumentBindKind::ActiveElement) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b
                 .call_stmt("$.bind_active_element", [Arg::Expr(setter)])
         }
-        "fullscreenElement" => {
+        BindPropertyKind::Document(DocumentBindKind::FullscreenElement) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("fullscreenElement"),
-                    Arg::StrRef("fullscreenchange"),
-                    Arg::Ident("$.document"),
-                    Arg::Expr(setter),
-                ],
+            gen_bind_property_stmt(
+                ctx,
+                "fullscreenElement",
+                "fullscreenchange",
+                "$.document",
+                setter,
+                None,
             )
         }
-        "pointerLockElement" => {
+        BindPropertyKind::Document(DocumentBindKind::PointerLockElement) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("pointerLockElement"),
-                    Arg::StrRef("pointerlockchange"),
-                    Arg::Ident("$.document"),
-                    Arg::Expr(setter),
-                ],
+            gen_bind_property_stmt(
+                ctx,
+                "pointerLockElement",
+                "pointerlockchange",
+                "$.document",
+                setter,
+                None,
             )
         }
-        "visibilityState" => {
+        BindPropertyKind::Document(DocumentBindKind::VisibilityState) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("visibilityState"),
-                    Arg::StrRef("visibilitychange"),
-                    Arg::Ident("$.document"),
-                    Arg::Expr(setter),
-                ],
+            gen_bind_property_stmt(
+                ctx,
+                "visibilityState",
+                "visibilitychange",
+                "$.document",
+                setter,
+                None,
             )
         }
         _ => return,
