@@ -4,12 +4,14 @@ use svelte_ast::Attribute;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ParentKind {
     Element,
+    SlotElementLegacy,
     IfBlock,
     EachBlock,
     SnippetBlock,
     ComponentNode,
     KeyBlock,
     SvelteHead,
+    SvelteFragmentLegacy,
     SvelteElement,
     SvelteWindow,
     SvelteDocument,
@@ -23,6 +25,7 @@ pub enum ParentKind {
     ClassDirective,
     StyleDirective,
     BindDirective,
+    LetDirectiveLegacy,
     UseDirective,
     OnDirectiveLegacy,
     TransitionDirective,
@@ -32,7 +35,10 @@ pub enum ParentKind {
 
 impl ParentKind {
     pub fn is_element(&self) -> bool {
-        matches!(self, Self::Element | Self::SvelteElement)
+        matches!(
+            self,
+            Self::Element | Self::SlotElementLegacy | Self::SvelteFragmentLegacy | Self::SvelteElement
+        )
     }
 
     pub fn is_attr(&self) -> bool {
@@ -45,6 +51,7 @@ impl ParentKind {
                 | Self::ClassDirective
                 | Self::StyleDirective
                 | Self::BindDirective
+                | Self::LetDirectiveLegacy
                 | Self::UseDirective
                 | Self::OnDirectiveLegacy
                 | Self::TransitionDirective
@@ -56,17 +63,20 @@ impl ParentKind {
     pub fn needs_element_ref(&self) -> bool {
         match self {
             Self::BindDirective
+            | Self::LetDirectiveLegacy
             | Self::UseDirective
             | Self::TransitionDirective
             | Self::AnimateDirective
             | Self::AttachTag => true,
             Self::Element
+            | Self::SlotElementLegacy
             | Self::IfBlock
             | Self::EachBlock
             | Self::SnippetBlock
             | Self::ComponentNode
             | Self::KeyBlock
             | Self::SvelteHead
+            | Self::SvelteFragmentLegacy
             | Self::SvelteElement
             | Self::SvelteWindow
             | Self::SvelteDocument
@@ -92,6 +102,7 @@ impl ParentKind {
             Attribute::ClassDirective(_) => Some(Self::ClassDirective),
             Attribute::StyleDirective(_) => Some(Self::StyleDirective),
             Attribute::BindDirective(_) => Some(Self::BindDirective),
+            Attribute::LetDirectiveLegacy(_) => Some(Self::LetDirectiveLegacy),
             Attribute::UseDirective(_) => Some(Self::UseDirective),
             Attribute::OnDirectiveLegacy(_) => Some(Self::OnDirectiveLegacy),
             Attribute::TransitionDirective(_) => Some(Self::TransitionDirective),

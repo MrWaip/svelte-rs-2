@@ -912,10 +912,33 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let _ = has_spread; // used only in pre-computation above
     }
 
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &svelte_ast::SlotElementLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        self.element_event_state.push(ElementEventState::default());
+
+        if ctx.runes && !ctx.data.output.custom_element {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::SlotElementDeprecated,
+                el.span,
+            ));
+        }
+    }
+
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
         if el.name == "dialog" {
             self.dialog_depth -= 1;
         }
+        self.emit_mixed_syntax_if_needed(ctx);
+    }
+
+    fn leave_slot_element_legacy(
+        &mut self,
+        _el: &svelte_ast::SlotElementLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
         self.emit_mixed_syntax_if_needed(ctx);
     }
 
@@ -1824,6 +1847,7 @@ fn attr_value_span(attr: &Attribute) -> Span {
         Attribute::StringAttribute(attr) => attr.value_span,
         Attribute::BooleanAttribute(_) => Span::new(0, 0),
         Attribute::BindDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::LetDirectiveLegacy(attr) => attr.expression_span.unwrap_or(attr.name_span),
         Attribute::Shorthand(attr) => attr.expression_span,
         Attribute::SpreadAttribute(attr) => attr.expression_span,
         Attribute::ClassDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
@@ -2239,6 +2263,7 @@ fn named_component_attr(attr: &Attribute, name: &str) -> bool {
         Attribute::Shorthand(_)
         | Attribute::SpreadAttribute(_)
         | Attribute::ClassDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
         | Attribute::StyleDirective(_)
         | Attribute::UseDirective(_)
         | Attribute::OnDirectiveLegacy(_)
@@ -2655,6 +2680,7 @@ fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
             | Attribute::Shorthand(_)
             | Attribute::SpreadAttribute(_)
             | Attribute::BindDirective(_)
+            | Attribute::LetDirectiveLegacy(_)
             | Attribute::AttachTag(_) => {}
             Attribute::OnDirectiveLegacy(dir) => {
                 let has_only_once = dir.modifiers.len() == 1

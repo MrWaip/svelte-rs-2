@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 
 use svelte_ast::{
     is_mathml, is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment,
-    Namespace, Node, NodeId, SVELTE_FRAGMENT,
+    Namespace, Node, NodeId,
 };
 use svelte_span::Span;
 
@@ -17,12 +17,15 @@ use crate::types::data::{
 /// reference compiler's `determine_slot`. The actual slot name is recovered
 /// from the AST at codegen time.
 fn determine_slot(node: &Node) -> Option<NodeId> {
-    let el = node.as_element()?;
-    let has_slot = el
-        .attributes
+    let (id, attrs) = match node {
+        Node::Element(el) => (el.id, &el.attributes),
+        Node::SvelteFragmentLegacy(el) => (el.id, &el.attributes),
+        _ => return None,
+    };
+    let has_slot = attrs
         .iter()
         .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"));
-    has_slot.then_some(el.id)
+    has_slot.then_some(id)
 }
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
@@ -275,6 +278,19 @@ fn lower_nodes(
                     preserve_whitespace,
                 );
             }
+            Node::SlotElementLegacy(el) => {
+                lower_nodes(
+                    &el.fragment.nodes,
+                    FragmentKey::Element(el.id),
+                    component,
+                    data,
+                    store,
+                    inside_head,
+                    in_svg_ns,
+                    in_mathml,
+                    preserve_whitespace,
+                );
+            }
             Node::ComponentNode(cn) => {
                 let snippets: Vec<_> = cn
                     .fragment
@@ -325,7 +341,7 @@ fn lower_nodes(
                     // <svelte:fragment slot="name"> wraps the real slot content — lower
                     // its children instead of the wrapper element itself.
                     let slot_nodes: SmallVec<[NodeId; 4]> = match store.get(child_id) {
-                        Node::Element(el) if el.name == SVELTE_FRAGMENT => {
+                        Node::SvelteFragmentLegacy(el) => {
                             data.elements.flags.svelte_fragment_slots.insert(slot_el_id);
                             el.fragment.nodes.iter().copied().collect()
                         }
@@ -354,6 +370,19 @@ fn lower_nodes(
                         .component_named_slots
                         .insert(cn.id, slot_mappings);
                 }
+            }
+            Node::SvelteFragmentLegacy(el) => {
+                lower_nodes(
+                    &el.fragment.nodes,
+                    FragmentKey::Element(el.id),
+                    component,
+                    data,
+                    store,
+                    inside_head,
+                    in_svg_ns,
+                    in_mathml,
+                    preserve_whitespace,
+                );
             }
             Node::IfBlock(block) => {
                 lower_nodes(
@@ -733,6 +762,8 @@ fn build_items_from_nodes(
                 flush(&mut concat, &mut concat_has_expr, &mut items);
                 match other {
                     Node::Element(el) => items.push(FragmentItem::Element(el.id)),
+                    Node::SlotElementLegacy(el) => items.push(FragmentItem::Element(el.id)),
+                    Node::SvelteFragmentLegacy(el) => items.push(FragmentItem::Element(el.id)),
                     Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
                     Node::IfBlock(block) => items.push(FragmentItem::IfBlock(block.id)),
                     Node::EachBlock(block) => items.push(FragmentItem::EachBlock(block.id)),

@@ -72,6 +72,10 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_attributes(&el.attributes, in_dynamic_block);
                     self.visit_fragment(&el.fragment, in_dynamic_block);
                 }
+                Node::SlotElementLegacy(el) => {
+                    self.visit_attributes(&el.attributes, in_dynamic_block);
+                    self.visit_fragment(&el.fragment, in_dynamic_block);
+                }
                 Node::ComponentNode(node) => {
                     self.visit_attributes(&node.attributes, in_dynamic_block);
                     self.visit_fragment(&node.fragment, in_dynamic_block);
@@ -126,6 +130,10 @@ impl<'a> TemplateValidator<'a, '_> {
                 }
                 Node::SvelteHead(head) => {
                     self.visit_fragment(&head.fragment, in_dynamic_block);
+                }
+                Node::SvelteFragmentLegacy(node) => {
+                    self.visit_attributes(&node.attributes, in_dynamic_block);
+                    self.visit_fragment(&node.fragment, in_dynamic_block);
                 }
                 Node::SvelteElement(SvelteElement {
                     tag_span,
@@ -209,6 +217,11 @@ impl<'a> TemplateValidator<'a, '_> {
                 Attribute::BindDirective(attr) => {
                     if let Some(span) = attr.expression_span {
                         self.visit_expr_span(span, attr.name == "this", in_dynamic_block);
+                    }
+                }
+                Attribute::LetDirectiveLegacy(attr) => {
+                    if let Some(span) = attr.expression_span {
+                        self.visit_expr_span(span, false, in_dynamic_block);
                     }
                 }
                 Attribute::UseDirective(attr) => {

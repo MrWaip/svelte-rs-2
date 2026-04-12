@@ -1252,6 +1252,51 @@ fn converted_special_nodes_still_recurse_for_nested_special_elements() {
     ));
 }
 
+#[test]
+fn legacy_slot_element_converts_to_dedicated_node() {
+    let c = parse(r#"<slot name="footer">fallback</slot>"#);
+    let Node::SlotElementLegacy(slot) = node_at(&c, 0) else {
+        panic!("expected SlotElementLegacy");
+    };
+
+    assert_eq!(slot.attributes.len(), 1);
+    assert!(matches!(frag_node_at(&c, &slot.fragment, 0), Node::Text(_)));
+}
+
+#[test]
+fn legacy_svelte_fragment_converts_to_dedicated_node() {
+    let c = parse(r#"<Comp><svelte:fragment slot="item">named slot</svelte:fragment></Comp>"#);
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+
+    assert!(matches!(
+        frag_node_at(&c, &component.fragment, 0),
+        Node::SvelteFragmentLegacy(_)
+    ));
+}
+
+#[test]
+fn let_directive_legacy_converts_to_dedicated_attribute() {
+    let c = parse(r#"<Comp let:item={processed}></Comp>"#);
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+
+    let Attribute::LetDirectiveLegacy(dir) = &component.attributes[0] else {
+        panic!("expected LetDirectiveLegacy");
+    };
+
+    assert_eq!(dir.name, "item");
+    assert_eq!(dir.name_span.source_text(&c.source), "item");
+    assert_eq!(
+        dir.expression_span
+            .expect("expected expression")
+            .source_text(&c.source),
+        "processed"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // JS parsing tests (moved from svelte_types)
 // ---------------------------------------------------------------------------

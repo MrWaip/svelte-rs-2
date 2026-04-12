@@ -366,6 +366,9 @@ pub(crate) fn process_attr<'a>(
                 }
             }
         }
+        Attribute::LetDirectiveLegacy(_) => {
+            // LEGACY(svelte4): parser-only AST slice; let: lowering remains a later consumer task.
+        }
         Attribute::SpreadAttribute(_)
         | Attribute::ClassDirective(_)
         | Attribute::StyleDirective(_) => {
@@ -748,6 +751,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 }
                 continue;
             }
+            Attribute::LetDirectiveLegacy(_) => continue,
             Attribute::ClassDirective(_) => continue,
             Attribute::StyleDirective(_) => continue,
             Attribute::UseDirective(_) => continue,

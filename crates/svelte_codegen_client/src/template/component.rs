@@ -878,8 +878,12 @@ fn build_dynamic_component_ref<'a>(
 
 /// Recover the slot name from an element's `slot="..."` attribute.
 fn slot_name_from_element(ctx: &Ctx<'_>, el_id: NodeId) -> String {
-    let el = ctx.element(el_id);
-    for attr in &el.attributes {
+    let attrs = match ctx.query.component.store.get(el_id) {
+        svelte_ast::Node::Element(el) => &el.attributes,
+        svelte_ast::Node::SvelteFragmentLegacy(el) => &el.attributes,
+        _ => unreachable!("named slot element must be element-like"),
+    };
+    for attr in attrs {
         if let Attribute::StringAttribute(sa) = attr {
             if sa.name == "slot" {
                 return ctx.query.component.source_text(sa.value_span).to_string();

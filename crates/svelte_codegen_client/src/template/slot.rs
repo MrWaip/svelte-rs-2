@@ -8,7 +8,11 @@ use crate::context::Ctx;
 use super::gen_fragment;
 
 pub(crate) fn is_legacy_slot_element(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
-    !ctx.query.view.custom_element() && ctx.element(el_id).name == "slot"
+    !ctx.query.view.custom_element()
+        && matches!(
+            ctx.query.component.store.get(el_id),
+            svelte_ast::Node::SlotElementLegacy(_)
+        )
 }
 
 pub(crate) fn emit_slot_template_anchor<'a>(
@@ -59,8 +63,11 @@ pub(crate) fn emit_slot_call<'a>(
 }
 
 fn legacy_slot_name<'a>(ctx: &Ctx<'a>, el_id: NodeId) -> &'a str {
-    let el = ctx.element(el_id);
-    for attr in &el.attributes {
+    let attrs = match ctx.query.component.store.get(el_id) {
+        svelte_ast::Node::SlotElementLegacy(el) => &el.attributes,
+        _ => unreachable!("legacy slot helper requires SlotElementLegacy"),
+    };
+    for attr in attrs {
         if let Attribute::StringAttribute(attr) = attr {
             if attr.name == "name" {
                 return ctx

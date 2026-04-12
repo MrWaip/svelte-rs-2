@@ -510,6 +510,12 @@ impl<'a> Parser<'a> {
         // Convert <svelte:body> elements to SvelteBody nodes
         Self::convert_svelte_body(&mut component);
 
+        // LEGACY(svelte4): convert legacy slot nodes before downstream passes inspect the tree.
+        Self::convert_slot_element_legacy(&mut component.store, &component.fragment.nodes);
+
+        // LEGACY(svelte4): convert transparent named-slot wrappers before lowering/codegen.
+        Self::convert_svelte_fragment_legacy(&mut component.store, &component.fragment.nodes);
+
         // Convert <svelte:element> elements to SvelteElement nodes
         Self::convert_svelte_element(&mut component.store, &component.fragment.nodes);
 

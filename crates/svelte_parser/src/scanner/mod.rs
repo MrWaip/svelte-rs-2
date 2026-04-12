@@ -7,8 +7,8 @@ pub use svelte_ast::is_void;
 use token::{
     AnimateDirective, AttachTagToken, Attribute, AttributeIdentifierType, AttributeValue,
     BindDirective, ClassDirective, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective,
-    Token, TokenType, TransitionDirective, UseDirective,
+    LetDirectiveLegacy, OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag,
+    StartTag, StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -289,6 +289,8 @@ impl<'a> Scanner<'a> {
                 AttributeIdentifierType::StyleDirective(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 AttributeIdentifierType::BindDirective(value_span, value).as_ok()
+            } else if AttributeIdentifierType::is_let_directive(name) {
+                AttributeIdentifierType::LetDirectiveLegacy(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_use_directive(name) {
                 AttributeIdentifierType::UseDirective(value_span, value).as_ok()
             // LEGACY(svelte4): on:directive
@@ -473,6 +475,9 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::BindDirective(span, name) => {
                         self.bind_directive(span, name)
                     }
+                    AttributeIdentifierType::LetDirectiveLegacy(span, name) => {
+                        self.let_directive_legacy(span, name)
+                    }
                     AttributeIdentifierType::UseDirective(span, _) => self.use_directive(span),
                     // LEGACY(svelte4): on:directive
                     AttributeIdentifierType::OnDirectiveLegacy(span, _) => {
@@ -595,6 +600,31 @@ impl<'a> Scanner<'a> {
             name_span,
             expression_span: name_span,
             shorthand: true,
+        }))
+    }
+
+    /// LEGACY(svelte4): Parse `let:name` or `let:name={expr}` for slot props.
+    fn let_directive_legacy(
+        &mut self,
+        name_span: Span,
+        _name: &str,
+    ) -> Result<Attribute, Diagnostic> {
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+
+            return Ok(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
+                span: SPAN,
+                name_span,
+                expression_span: res.expression_span,
+                has_expression: true,
+            }));
+        }
+
+        Ok(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
+            span: SPAN,
+            name_span,
+            expression_span: SPAN,
+            has_expression: false,
         }))
     }
 

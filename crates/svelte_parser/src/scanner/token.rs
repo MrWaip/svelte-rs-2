@@ -72,6 +72,8 @@ pub enum Attribute {
     ClassDirective(ClassDirective),
     StyleDirective(StyleDirective),
     BindDirective(BindDirective),
+    /// LEGACY(svelte4): let:directive syntax for slot props. Deprecated in Svelte 5, remove in Svelte 6.
+    LetDirectiveLegacy(LetDirectiveLegacy),
     UseDirective(UseDirective),
     /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
@@ -123,6 +125,15 @@ pub struct BindDirective {
     pub shorthand: bool,
     pub name_span: Span,
     pub expression_span: Span,
+}
+
+/// LEGACY(svelte4): `let:name` or `let:name={expr}` slot-prop directive. Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LetDirectiveLegacy {
+    pub span: Span,
+    pub name_span: Span,
+    pub expression_span: Span,
+    pub has_expression: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -209,6 +220,7 @@ impl Attribute {
             Attribute::ClassDirective(attr) => attr.span = span,
             Attribute::StyleDirective(attr) => attr.span = span,
             Attribute::BindDirective(attr) => attr.span = span,
+            Attribute::LetDirectiveLegacy(attr) => attr.span = span,
             Attribute::UseDirective(attr) => attr.span = span,
             Attribute::OnDirectiveLegacy(attr) => attr.span = span,
             Attribute::TransitionDirective(attr) => attr.span = span,
@@ -227,6 +239,7 @@ impl GetSpan for Attribute {
             Attribute::ClassDirective(attr) => attr.span,
             Attribute::StyleDirective(attr) => attr.span,
             Attribute::BindDirective(attr) => attr.span,
+            Attribute::LetDirectiveLegacy(attr) => attr.span,
             Attribute::UseDirective(attr) => attr.span,
             Attribute::OnDirectiveLegacy(attr) => attr.span,
             Attribute::TransitionDirective(attr) => attr.span,
@@ -322,6 +335,8 @@ pub enum AttributeIdentifierType<'a> {
     ClassDirective(Span, &'a str),
     StyleDirective(Span, &'a str),
     BindDirective(Span, &'a str),
+    /// LEGACY(svelte4): let:directive
+    LetDirectiveLegacy(Span, &'a str),
     UseDirective(Span, &'a str),
     /// LEGACY(svelte4): on:directive
     OnDirectiveLegacy(Span, &'a str),
@@ -343,6 +358,11 @@ impl<'a> AttributeIdentifierType<'a> {
 
     pub fn is_bind_directive(name: &str) -> bool {
         name == "bind"
+    }
+
+    /// LEGACY(svelte4): let:directive
+    pub fn is_let_directive(name: &str) -> bool {
+        name == "let"
     }
 
     pub fn is_use_directive(name: &str) -> bool {

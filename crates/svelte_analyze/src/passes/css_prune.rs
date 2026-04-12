@@ -240,6 +240,9 @@ fn collect_css_prune_edges_in_fragment(
             Node::Element(el) => {
                 collect_css_prune_edges_in_fragment(&el.fragment, component, data, edges);
             }
+            Node::SlotElementLegacy(el) => {
+                collect_css_prune_edges_in_fragment(&el.fragment, component, data, edges);
+            }
             Node::ComponentNode(node) => {
                 let snippets = component_possible_snippets(node, data);
                 record_possible_snippets(node.id, &snippets, edges, true);
@@ -265,6 +268,9 @@ fn collect_css_prune_edges_in_fragment(
             }
             Node::SvelteHead(head) => {
                 collect_css_prune_edges_in_fragment(&head.fragment, component, data, edges);
+            }
+            Node::SvelteFragmentLegacy(node) => {
+                collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
             }
             Node::SvelteElement(node) => {
                 collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
@@ -366,6 +372,7 @@ fn component_possible_snippets(
             | Attribute::ConcatenationAttribute(_) => {}
             Attribute::ClassDirective(_)
             | Attribute::StyleDirective(_)
+            | Attribute::LetDirectiveLegacy(_)
             | Attribute::OnDirectiveLegacy(_)
             | Attribute::UseDirective(_)
             | Attribute::TransitionDirective(_)
@@ -1902,6 +1909,7 @@ fn attribute_matches(
                 );
             }
             Attribute::BindDirective(_)
+            | Attribute::LetDirectiveLegacy(_)
             | Attribute::ClassDirective(_)
             | Attribute::StyleDirective(_)
             | Attribute::SpreadAttribute(_)

@@ -143,7 +143,8 @@ fn start_tag_attributes() {
 
 #[test]
 fn attribute_tokens_capture_full_source_spans() {
-    let source = "<div class='x' {...props} on:click|once={handler} style:color|important {@attach attach} />";
+    let source =
+        "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
     let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
@@ -161,11 +162,47 @@ fn attribute_tokens_capture_full_source_spans() {
         vec![
             "class='x'",
             "{...props}",
+            "let:item={slotProps}",
             "on:click|once={handler}",
             "style:color|important",
             "{@attach attach}",
         ]
     );
+}
+
+#[test]
+fn let_directive_legacy_without_expression() {
+    let source = "<Comp let:item></Comp>";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+
+    let Attribute::LetDirectiveLegacy(dir) = &start_tag.attributes[0] else {
+        panic!("expected LetDirectiveLegacy");
+    };
+
+    assert_eq!(dir.name_span.source_text(source), "item");
+    assert!(!dir.has_expression);
+}
+
+#[test]
+fn let_directive_legacy_with_expression() {
+    let source = "<Comp let:item={processed}></Comp>";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+
+    let Attribute::LetDirectiveLegacy(dir) = &start_tag.attributes[0] else {
+        panic!("expected LetDirectiveLegacy");
+    };
+
+    assert_eq!(dir.name_span.source_text(source), "item");
+    assert!(dir.has_expression);
+    assert_eq!(dir.expression_span.source_text(source), "processed");
 }
 
 #[test]
@@ -225,6 +262,7 @@ fn assert_attributes(
             Attribute::ClassDirective(_) => "$classDirective",
             Attribute::StyleDirective(sd) => sd.name_span.source_text(source),
             Attribute::BindDirective(_) => "$bindDirective",
+            Attribute::LetDirectiveLegacy(ld) => ld.name_span.source_text(source),
             Attribute::UseDirective(ud) => ud.name_span.source_text(source),
             Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
             Attribute::TransitionDirective(td) => td.name_span.source_text(source),
@@ -276,6 +314,13 @@ fn assert_attributes(
                     .collect(),
             },
             Attribute::BindDirective(bd) => bd.expression_span.source_text(source).to_string(),
+            Attribute::LetDirectiveLegacy(ld) => {
+                if ld.has_expression {
+                    ld.expression_span.source_text(source).to_string()
+                } else {
+                    String::new()
+                }
+            }
             Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
             Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
             Attribute::TransitionDirective(td) => {

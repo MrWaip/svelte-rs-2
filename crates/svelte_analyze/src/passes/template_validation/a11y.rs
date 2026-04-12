@@ -181,6 +181,7 @@ fn attr_named_name(attr: &Attribute) -> Option<&str> {
         Attribute::Shorthand(_)
         | Attribute::SpreadAttribute(_)
         | Attribute::ClassDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
         | Attribute::StyleDirective(_)
         | Attribute::UseDirective(_)
         | Attribute::OnDirectiveLegacy(_)
@@ -1199,6 +1200,7 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
 
             has_associated_control(&el.fragment, ctx)
         }
+        Node::SlotElementLegacy(_) => true,
         // Match the reference analyzer's conservative behavior for dynamic descendants:
         // if the label contains a component-like control target, don't warn.
         Node::ComponentNode(_) | Node::RenderTag(_) | Node::SvelteElement(_) => true,
@@ -1219,6 +1221,7 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
         Node::SnippetBlock(block) => has_associated_control(&block.body, ctx),
         Node::KeyBlock(block) => has_associated_control(&block.fragment, ctx),
         Node::SvelteHead(node) => has_associated_control(&node.fragment, ctx),
+        Node::SvelteFragmentLegacy(node) => has_associated_control(&node.fragment, ctx),
         Node::SvelteWindow(node) => has_associated_control(&node.fragment, ctx),
         Node::SvelteDocument(node) => has_associated_control(&node.fragment, ctx),
         Node::SvelteBody(node) => has_associated_control(&node.fragment, ctx),
