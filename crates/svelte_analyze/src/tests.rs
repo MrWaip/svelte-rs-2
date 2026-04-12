@@ -2786,6 +2786,32 @@ fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
 }
 
 #[test]
+fn legacy_slots_template_reads_require_sanitized_slots_binding() {
+    let (_component, data) = analyze_source_with_options(
+        r#"{#if $$slots.description}<slot name="description" />{/if}"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    assert!(data.output.needs_sanitized_legacy_slots);
+}
+
+#[test]
+fn legacy_slot_elements_do_not_require_sanitized_slots_binding() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<slot name="description" />"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    assert!(!data.output.needs_sanitized_legacy_slots);
+}
+
+#[test]
 fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
     let (component, data) = analyze_source_with_options(
         r#"<Comp><svelte:fragment slot="footer"><p>footer</p></svelte:fragment></Comp>"#,

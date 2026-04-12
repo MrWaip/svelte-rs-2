@@ -46,6 +46,9 @@ impl<'a> CodegenView<'a> {
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context
     }
+    pub fn needs_sanitized_legacy_slots(&self) -> bool {
+        self.data.output.needs_sanitized_legacy_slots
+    }
     pub fn props_id(&self) -> Option<&str> {
         self.data.script.props_id.as_deref()
     }

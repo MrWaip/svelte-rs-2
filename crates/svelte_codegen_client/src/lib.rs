@@ -137,6 +137,13 @@ pub fn generate<'a>(
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
+    if ctx.query.needs_sanitized_legacy_slots() {
+        fn_body.push(ctx.b.const_stmt(
+            "$$slots",
+            ctx.b.call_expr("$.sanitize_slots", [Arg::Ident("$$props")]),
+        ));
+    }
+
     if ctx.state.dev {
         fn_body.push(
             ctx.b.expr_stmt(

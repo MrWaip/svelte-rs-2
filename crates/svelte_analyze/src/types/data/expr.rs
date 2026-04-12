@@ -28,6 +28,7 @@ impl AwaitBindingInfo {
 pub struct ExpressionInfo {
     pub kind: ExpressionKind,
     pub ref_symbols: SmallVec<[SymbolId; 2]>,
+    pub uses_legacy_slots: bool,
     pub has_store_ref: bool,
     pub has_side_effects: bool,
     pub has_call: bool,

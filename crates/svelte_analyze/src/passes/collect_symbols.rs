@@ -62,6 +62,9 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         ctx: &mut VisitContext<'_>,
     ) {
         let info = build_expression_info(expr, &mut ctx.data.scoping);
+        if !ctx.data.script.runes && info.uses_legacy_slots {
+            ctx.data.output.needs_sanitized_legacy_slots = true;
+        }
         detect_each_index_usage(node_id, &info.ref_symbols, ctx.data);
         store_expression_info(node_id, info, ctx);
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
@@ -365,6 +368,7 @@ fn merge_concat_expression_info(
     let mut merged = ExpressionInfo {
         kind: ExpressionKind::Other,
         ref_symbols: SmallVec::new(),
+        uses_legacy_slots: false,
         has_store_ref: false,
         has_side_effects: false,
         has_call: false,
@@ -378,6 +382,7 @@ fn merge_concat_expression_info(
     for part in parts {
         if let svelte_ast::ConcatPart::Dynamic { id, .. } = part {
             if let Some(info) = ctx.data.attr_expressions.get(*id) {
+                merged.uses_legacy_slots |= info.uses_legacy_slots;
                 merged.has_call |= info.has_call;
                 merged.has_await |= info.has_await;
                 merged.has_store_ref |= info.has_store_ref;
