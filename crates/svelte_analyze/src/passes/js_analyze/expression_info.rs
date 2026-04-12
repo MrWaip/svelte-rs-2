@@ -17,6 +17,7 @@ use crate::types::script::RuneKind;
 
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
+    uses_legacy_slots: bool,
     has_call: bool,
     has_await: bool,
     has_state_rune: bool,
@@ -67,6 +68,9 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
 
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
         let name = ident.name.as_str();
+        if name == "$$slots" {
+            self.uses_legacy_slots = true;
+        }
         if name.starts_with('$') && name.len() > 1 {
             self.has_store_ref = true;
         }
@@ -152,6 +156,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
 pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
         kind: ExpressionKind::Other,
+        uses_legacy_slots: false,
         has_call: false,
         has_await: false,
         has_state_rune: false,
@@ -166,6 +171,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     ExpressionInfo {
         kind: analyzer.kind,
         ref_symbols: SmallVec::new(),
+        uses_legacy_slots: analyzer.uses_legacy_slots,
         has_store_ref: analyzer.has_store_ref,
         has_side_effects: analyzer.has_side_effects,
         has_call: analyzer.has_call,

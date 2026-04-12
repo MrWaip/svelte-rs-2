@@ -3,6 +3,7 @@ import * as $ from "svelte/internal/client";
 var root_1 = $.from_html(`<hr/> <!>`, 1);
 var root = $.from_html(`<div><!> <!></div>`);
 export default function App($$anchor, $$props) {
+	const $$slots = $.sanitize_slots($$props);
 	var div = root();
 	var node = $.child(div);
 	$.slot(node, $$props, "title", {}, null);
@@ -15,7 +16,7 @@ export default function App($$anchor, $$props) {
 			$.append($$anchor, fragment);
 		};
 		$.if(node_1, ($$render) => {
-			if ($$slots.description) $$render(consequent);
+			if ($.untrack(() => $$slots.description)) $$render(consequent);
 		});
 	}
 	$.reset(div);

@@ -33,6 +33,7 @@ pub(crate) fn take_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression
 pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.node_expr_handle(node_id));
     finalize_await_exprs(ctx, Some(node_id), &mut expr);
+    expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.expression(node_id));
     expr
 }
@@ -40,6 +41,7 @@ pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expressio
 pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.attr_expr_handle(attr_id));
     finalize_await_exprs(ctx, Some(attr_id), &mut expr);
+    expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.attr_expression(attr_id));
     expr
 }
@@ -48,6 +50,7 @@ pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expressio
 pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression<'a> {
     let mut expr = take_expr(ctx, handle);
     finalize_await_exprs(ctx, None, &mut expr);
+    expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr
 }
 
@@ -95,6 +98,26 @@ impl<'a> VisitMut<'a> for AwaitExprFinalizer<'_, 'a> {
 fn finalize_await_exprs<'a>(ctx: &Ctx<'a>, ignore_node: Option<NodeId>, expr: &mut Expression<'a>) {
     let mut finalizer = AwaitExprFinalizer { ctx, ignore_node };
     finalizer.visit_expression(expr);
+}
+
+fn maybe_wrap_legacy_slots_read<'a>(ctx: &Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
+    if ctx.query.runes()
+        || !ctx.query.needs_sanitized_legacy_slots()
+        || !expr_roots_in_legacy_slots(&expr)
+    {
+        return expr;
+    }
+
+    ctx.b.call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(expr))])
+}
+
+fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::Identifier(ident) => ident.name.as_str() == "$$slots",
+        Expression::StaticMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
+        Expression::ComputedMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
+        _ => false,
+    }
 }
 
 fn maybe_wrap_legacy_coarse_expr<'a>(
