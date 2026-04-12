@@ -593,6 +593,8 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
         FragmentItem::Element(id)
+        | FragmentItem::SlotElementLegacy(id)
+        | FragmentItem::SvelteFragmentLegacy(id)
         | FragmentItem::ComponentNode(id)
         | FragmentItem::IfBlock(id)
         | FragmentItem::EachBlock(id)

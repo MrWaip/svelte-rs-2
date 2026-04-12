@@ -24,7 +24,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -48,7 +48,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -67,7 +67,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -93,7 +93,7 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
         let has_dynamic = lf
             .items
             .iter()
-            .any(|item| item_is_dynamic(item, &data.output.dynamic_nodes));
+            .any(|item| item_is_dynamic(item, data, &data.output.dynamic_nodes));
         data.template.fragments.content_types.insert(key, cs);
         if has_dynamic {
             data.template.fragments.has_dynamic_children.insert(key);
@@ -158,10 +158,15 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
 fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
     match item {
         FragmentItem::TextConcat { has_expr, .. } => *has_expr,
-        FragmentItem::Element(id) => {
+        FragmentItem::Element(id) | FragmentItem::SlotElementLegacy(id) => {
             // Bottom-up: child elements' needs_var already computed via leave_element
             data.elements.flags.needs_var.contains(id)
         }
+        FragmentItem::SvelteFragmentLegacy(id) => data
+            .template
+            .fragments
+            .lowered(&FragmentKey::Element(*id))
+            .is_some_and(|fragment| fragment.items.iter().any(|item| item_needs_var(item, data))),
         FragmentItem::ComponentNode(_)
         | FragmentItem::IfBlock(_)
         | FragmentItem::EachBlock(_)
@@ -176,6 +181,7 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
 
 fn item_is_dynamic(
     item: &FragmentItem,
+    data: &AnalysisData,
     dynamic_nodes: &crate::types::node_table::NodeBitSet,
 ) -> bool {
     match item {
@@ -183,6 +189,7 @@ fn item_is_dynamic(
             .iter()
             .any(|p| matches!(p, LoweredTextPart::Expr(id) if dynamic_nodes.contains(id))),
         FragmentItem::Element(id)
+        | FragmentItem::SlotElementLegacy(id)
         | FragmentItem::ComponentNode(id)
         | FragmentItem::IfBlock(id)
         | FragmentItem::EachBlock(id)
@@ -192,6 +199,17 @@ fn item_is_dynamic(
         | FragmentItem::SvelteElement(id)
         | FragmentItem::SvelteBoundary(id)
         | FragmentItem::AwaitBlock(id) => dynamic_nodes.contains(id),
+        FragmentItem::SvelteFragmentLegacy(id) => dynamic_nodes.contains(id)
+            || data
+                .template
+                .fragments
+                .lowered(&FragmentKey::Element(*id))
+                .is_some_and(|fragment| {
+                    fragment
+                        .items
+                        .iter()
+                        .any(|item| item_is_dynamic(item, data, dynamic_nodes))
+                }),
     }
 }
 
@@ -202,7 +220,11 @@ fn classify_items(items: &[FragmentItem], source: &str) -> ContentStrategy {
 
     if items.len() == 1 {
         match &items[0] {
-            FragmentItem::Element(id) => return ContentStrategy::SingleElement(*id),
+            FragmentItem::Element(id)
+            | FragmentItem::SlotElementLegacy(id)
+            | FragmentItem::SvelteFragmentLegacy(id) => {
+                return ContentStrategy::SingleElement(*id);
+            }
             FragmentItem::TextConcat { .. } => {}
             item => return ContentStrategy::SingleBlock(item.clone()),
         }
@@ -215,7 +237,9 @@ fn classify_items(items: &[FragmentItem], source: &str) -> ContentStrategy {
 
     for item in items {
         match item {
-            FragmentItem::Element(_) => has_element = true,
+            FragmentItem::Element(_)
+            | FragmentItem::SlotElementLegacy(_)
+            | FragmentItem::SvelteFragmentLegacy(_) => has_element = true,
             FragmentItem::ComponentNode(_)
             | FragmentItem::IfBlock(_)
             | FragmentItem::EachBlock(_)
