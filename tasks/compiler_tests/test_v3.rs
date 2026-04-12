@@ -1611,6 +1611,36 @@ fn svelte_options_immutable_legacy() {
 }
 
 #[rstest]
+#[ignore = "missing: required legacy export let props lower through prop sources (codegen)"]
+fn legacy_export_let_required() {
+    assert_compiler("legacy_export_let_required");
+}
+
+#[rstest]
+#[ignore = "missing: legacy export var props become bindable props (analyze/codegen)"]
+fn legacy_export_var_basic() {
+    assert_compiler("legacy_export_var_basic");
+}
+
+#[rstest]
+#[ignore = "missing: legacy export specifier props become bindable props (analyze/codegen)"]
+fn legacy_export_specifier() {
+    assert_compiler("legacy_export_specifier");
+}
+
+#[rstest]
+#[ignore = "missing: legacy export specifier aliases become prop aliases (analyze/codegen)"]
+fn legacy_export_specifier_alias() {
+    assert_compiler("legacy_export_specifier_alias");
+}
+
+#[rstest]
+#[ignore = "missing: destructured legacy export props lower to prop sources (analyze/codegen)"]
+fn legacy_export_destructure() {
+    assert_compiler("legacy_export_destructure");
+}
+
+#[rstest]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
 }
