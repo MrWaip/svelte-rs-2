@@ -36,7 +36,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         };
 
         let each_vars: SmallVec<[SymbolId; 4]> = info
-            .ref_symbols
+            .ref_symbols()
             .iter()
             .copied()
             .filter(|&sym| data.scoping.is_each_block_var(sym))
@@ -115,7 +115,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     fn visit_each_block(&mut self, block: &svelte_ast::EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(info) = ctx.data.expressions.get(block.id) {
             if info
-                .ref_symbols
+                .ref_symbols()
                 .iter()
                 .any(|&s| ctx.data.scoping.is_prop_source(s))
             {

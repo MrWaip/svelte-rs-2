@@ -8,10 +8,11 @@ pub use data::{
     BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView, ComponentBindMode,
     ComponentPropInfo, ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData,
     DestructureKind, EachContextIndex, ElementAnalysis, ElementFlags, EventHandlerMode, ExprDeps,
-    ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry,
-    FragmentItem, FragmentKey, IgnoreData, LoweredFragment, LoweredTextPart, OutputPlanData,
-    PropAnalysis, PropsAnalysis, RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan, RuntimePlan,
-    ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData, TitleElementData,
+    ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts,
+    FragmentFactsEntry, FragmentItem, FragmentKey, IgnoreData, LoweredFragment, LoweredTextPart,
+    OutputPlanData, PropAnalysis, PropsAnalysis, RenderTagArgPlan, RenderTagCalleeMode,
+    RenderTagPlan, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
+    TemplateSemanticsData, TitleElementData,
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{

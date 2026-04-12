@@ -74,8 +74,8 @@ pub(crate) fn gen_each_block<'a>(
         .expr_deps(ExprSite::Node(block_id))
         .unwrap_or_else(|| panic!("missing expression deps for each block {:?}", block_id));
     let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
-    let expr_has_refs = !expr_deps.info.ref_symbols.is_empty();
-    let uses_store = expr_deps.info.has_store_ref;
+    let expr_has_refs = !expr_deps.info.ref_symbols().is_empty();
+    let uses_store = expr_deps.info.has_store_ref();
     let has_await = async_plan.has_await();
     let needs_async = async_plan.needs_async();
     if uses_store || (expr_has_refs && !key_is_item) {

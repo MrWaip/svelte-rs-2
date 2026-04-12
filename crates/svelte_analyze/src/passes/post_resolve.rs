@@ -129,11 +129,11 @@ fn aggregate_store_needs_context(data: &mut AnalysisData) {
     let has_deep = data
         .expressions
         .values()
-        .any(|i| i.has_store_member_mutation)
+        .any(|i| i.has_store_member_mutation())
         || data
             .attr_expressions
             .values()
-            .any(|i| i.has_store_member_mutation)
+            .any(|i| i.has_store_member_mutation())
         || data.script.has_store_member_mutations;
 
     if has_deep {

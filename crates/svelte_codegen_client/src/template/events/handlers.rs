@@ -84,7 +84,7 @@ pub(crate) fn build_event_handler_s5<'a>(
 
     let has_side_effects = ctx
         .attr_expression(attr_id)
-        .is_some_and(|info| info.has_side_effects);
+        .is_some_and(|info| info.has_side_effects());
     let remove_parens = remove_parens_hint(&handler);
     let mut handler = handler;
 

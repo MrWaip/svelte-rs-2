@@ -76,7 +76,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                         self.has_effects = true;
                     }
                 }
-                if analyze_expression(&es.expression).has_store_member_mutation {
+                if analyze_expression(&es.expression).has_store_member_mutation() {
                     self.has_store_member_mutations = true;
                 }
             }

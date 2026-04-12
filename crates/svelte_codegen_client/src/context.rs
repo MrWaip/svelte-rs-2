@@ -381,10 +381,9 @@ impl<'a> Ctx<'a> {
         self.query.known_value(name)
     }
 
-    /// Check if expression for node has `has_await`.
+    /// Check if expression for node is analyzer-classified as async.
     pub fn expr_has_await(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.has_await())
+        self.query.view.expr_is_async(id)
     }
 
     pub fn runtime_plan(&self) -> RuntimePlan {
@@ -406,7 +405,7 @@ impl<'a> Ctx<'a> {
         let Some(info) = self.expression(id) else {
             return Vec::new();
         };
-        let ref_symbols = info.ref_symbols.clone();
+        let ref_symbols = info.ref_symbols().to_vec();
         let mut result = Vec::new();
         for sym in &ref_symbols {
             if let Some(expr) = self.const_tag_symbol_blocker_expr(*sym) {

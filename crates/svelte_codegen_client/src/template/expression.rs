@@ -4,7 +4,6 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_ast_visit::VisitMut;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::ExpressionKind;
 use svelte_analyze::{
     ExprHandle, ExprSite, ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart,
 };
@@ -128,25 +127,20 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
     if ctx.query.runes() {
         return expr;
     }
-    let needs_wrap = info.has_call
-        || matches!(
-            info.kind,
-            ExpressionKind::MemberExpression | ExpressionKind::Assignment
-        );
-    if !needs_wrap {
+    if !info.needs_legacy_coarse_wrap() {
         return expr;
     }
 
     let mut seq_parts: Vec<Expression<'a>> = Vec::new();
-    for &sym in &info.ref_symbols {
+    for &sym in info.ref_symbols() {
         if let Some(carrier_sym) = ctx.query.scoping().slot_let_binding_carrier(sym) {
             let getter = ctx.b.call_expr(
                 "$.get",
-                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(carrier_sym)))],
+                [Arg::Expr(
+                    ctx.b.rid_expr(ctx.query.symbol_name(carrier_sym)),
+                )],
             );
-            let getter = ctx
-                .b
-                .static_member_expr(getter, ctx.query.symbol_name(sym));
+            let getter = ctx.b.static_member_expr(getter, ctx.query.symbol_name(sym));
             let getter = ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)]);
             seq_parts.push(getter);
             continue;
@@ -166,7 +160,10 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
                 std::iter::empty::<Arg<'a, '_>>(),
             )
         } else if is_template && is_rune {
-            ctx.b.call_expr("$.get", [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))])
+            ctx.b.call_expr(
+                "$.get",
+                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
+            )
         } else {
             ctx.b.rid_expr(ctx.query.symbol_name(sym))
         };
@@ -213,11 +210,8 @@ pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expres
 /// Try to resolve an expression tag to a compile-time known value.
 fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
     let info = ctx.expression(nid)?;
-    if let ExpressionKind::Identifier(name) = &info.kind {
-        ctx.known_value(name.as_str()).map(|s| s.to_string())
-    } else {
-        None
-    }
+    info.identifier_name()
+        .and_then(|name| ctx.known_value(name).map(|s| s.to_string()))
 }
 
 /// Whether the given post-transform expression is statically known to be
@@ -242,13 +236,13 @@ pub(crate) fn is_definitely_defined(ctx: &Ctx<'_>, nid: NodeId, expr: &Expressio
     let Some(info) = ctx.expression(nid) else {
         return false;
     };
-    if !matches!(info.kind, ExpressionKind::Identifier(_)) {
+    if !info.is_identifier() {
         return false;
     }
-    if info.ref_symbols.len() != 1 {
+    if info.ref_symbols().len() != 1 {
         return false;
     }
-    ctx.is_each_index_sym(info.ref_symbols[0])
+    ctx.is_each_index_sym(info.ref_symbols()[0])
 }
 
 pub(crate) fn build_concat_from_parts<'a>(
@@ -378,7 +372,7 @@ impl<'a> TemplateMemoState<'a> {
     }
 
     pub(crate) fn push_expr_info(&mut self, ctx: &Ctx<'a>, info: &ExpressionInfo) {
-        for sym in &info.ref_symbols {
+        for sym in info.ref_symbols() {
             if let Some(idx) = ctx.symbol_blocker(*sym) {
                 self.push_script_blocker(idx);
             }
@@ -407,11 +401,11 @@ impl<'a> TemplateMemoState<'a> {
     ) -> Option<MemoValueRef> {
         self.push_expr_info(ctx, info);
 
-        if !(info.has_call || info.has_await) {
+        if !info.needs_memoized_value() {
             return None;
         }
 
-        if info.has_await {
+        if info.has_await() {
             let index = self.async_values.len();
             self.async_values.push(expr);
             Some(MemoValueRef::Async(index))
@@ -468,7 +462,11 @@ impl<'a> TemplateMemoState<'a> {
     }
 
     pub(crate) fn derived_stmts(&self, ctx: &Ctx<'a>, runes: bool) -> Vec<Statement<'a>> {
-        let derived_fn = if runes { "$.derived" } else { "$.derived_safe_equal" };
+        let derived_fn = if runes {
+            "$.derived"
+        } else {
+            "$.derived_safe_equal"
+        };
         self.sync_values
             .iter()
             .enumerate()
@@ -677,7 +675,7 @@ pub(crate) fn item_has_local_blockers(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
             return false;
         };
         ctx.expression(*id).is_some_and(|info| {
-            info.ref_symbols
+            info.ref_symbols()
                 .iter()
                 .any(|sym| ctx.const_tag_symbol_blocker_expr(*sym).is_some())
         })
@@ -700,7 +698,7 @@ pub(crate) fn build_fragment_local_blockers<'a>(
                 continue;
             };
             if let Some(info) = ctx.expression(*id) {
-                for sym in &info.ref_symbols {
+                for sym in info.ref_symbols() {
                     if seen_syms.insert(*sym) {
                         if let Some(expr) = ctx.const_tag_symbol_blocker_expr(*sym) {
                             out.push(expr);

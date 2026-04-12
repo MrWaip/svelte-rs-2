@@ -61,15 +61,15 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_>,
     ) {
-        let info = build_expression_info(expr, &mut ctx.data.scoping);
-        if info.uses_legacy_slots {
+        let mut info = build_expression_info(expr, &mut ctx.data.scoping);
+        if info.uses_legacy_slots() {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
-        detect_each_index_usage(node_id, &info.ref_symbols, ctx.data);
-        store_expression_info(node_id, info, ctx);
+        detect_each_index_usage(node_id, info.ref_symbols(), ctx.data);
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
         classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
-        classify_render_tag(node_id, expr, &mut self.pending_render_tag, ctx.data);
+        classify_render_tag(node_id, expr, &mut info, &mut self.pending_render_tag, ctx.data);
+        store_expression_info(node_id, info, ctx);
     }
 
     fn visit_js_statement(
@@ -172,7 +172,7 @@ pub(crate) fn build_expression_info(
     scoping: &mut ComponentScoping,
 ) -> ExpressionInfo {
     let mut info = js_analyze::analyze_expression(expr);
-    info.ref_symbols = collect_ref_symbols_and_stores(expr, scoping);
+    info.set_ref_symbols(collect_ref_symbols_and_stores(expr, scoping));
     info
 }
 
@@ -208,7 +208,7 @@ fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s Forma
 
 fn detect_each_index_usage(
     node_id: NodeId,
-    symbols: &SmallVec<[SymbolId; 2]>,
+    symbols: &[SymbolId],
     data: &mut AnalysisData,
 ) {
     for &sym in symbols {
@@ -290,10 +290,12 @@ fn classify_clsx(
 fn classify_render_tag(
     node_id: NodeId,
     expr: &Expression<'_>,
+    info: &mut ExpressionInfo,
     pending: &mut Option<NodeId>,
     data: &mut AnalysisData,
 ) {
     if pending.take() == Some(node_id) {
+        info.mark_render_tag();
         js_analyze::classify_render_tag_args(expr, data, node_id);
     }
 }
@@ -365,36 +367,11 @@ fn merge_concat_expression_info(
     parent_id: NodeId,
     ctx: &mut VisitContext<'_>,
 ) {
-    let mut merged = ExpressionInfo {
-        kind: ExpressionKind::Other,
-        ref_symbols: SmallVec::new(),
-        uses_legacy_slots: false,
-        has_store_ref: false,
-        has_side_effects: false,
-        has_call: false,
-        has_await: false,
-        has_state_rune: false,
-        has_store_member_mutation: false,
-        needs_context: false,
-        is_dynamic: false,
-        has_state: false,
-    };
+    let mut merged = ExpressionInfo::new(ExpressionKind::Other);
     for part in parts {
         if let svelte_ast::ConcatPart::Dynamic { id, .. } = part {
             if let Some(info) = ctx.data.attr_expressions.get(*id) {
-                merged.uses_legacy_slots |= info.uses_legacy_slots;
-                merged.has_call |= info.has_call;
-                merged.has_await |= info.has_await;
-                merged.has_store_ref |= info.has_store_ref;
-                merged.has_side_effects |= info.has_side_effects;
-                merged.has_state_rune |= info.has_state_rune;
-                merged.has_store_member_mutation |= info.has_store_member_mutation;
-                merged.needs_context |= info.needs_context;
-                for sym in &info.ref_symbols {
-                    if !merged.ref_symbols.contains(sym) {
-                        merged.ref_symbols.push(*sym);
-                    }
-                }
+                merged.merge_in(info);
             }
         }
     }

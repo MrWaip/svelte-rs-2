@@ -10,8 +10,6 @@ use oxc_ast_visit::walk::{
 };
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
-use smallvec::SmallVec;
-
 use crate::types::data::{ExpressionInfo, ExpressionKind};
 use crate::types::script::RuneKind;
 
@@ -168,20 +166,17 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
         in_write_position: false,
     };
     analyzer.visit_expression(expr);
-    ExpressionInfo {
-        kind: analyzer.kind,
-        ref_symbols: SmallVec::new(),
-        uses_legacy_slots: analyzer.uses_legacy_slots,
-        has_store_ref: analyzer.has_store_ref,
-        has_side_effects: analyzer.has_side_effects,
-        has_call: analyzer.has_call,
-        has_await: analyzer.has_await,
-        has_state_rune: analyzer.has_state_rune,
-        has_store_member_mutation: analyzer.has_store_member_mutation,
-        needs_context: false,
-        is_dynamic: false,
-        has_state: false,
-    }
+    let mut info = ExpressionInfo::new(analyzer.kind);
+    info.set_initial_flags(
+        analyzer.uses_legacy_slots,
+        analyzer.has_store_ref,
+        analyzer.has_side_effects,
+        analyzer.has_call,
+        analyzer.has_await,
+        analyzer.has_state_rune,
+        analyzer.has_store_member_mutation,
+    );
+    info
 }
 
 fn member_root_is_store(expr: &Expression<'_>) -> bool {
