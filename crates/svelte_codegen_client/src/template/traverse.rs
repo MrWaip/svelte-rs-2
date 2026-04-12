@@ -89,30 +89,35 @@ pub(crate) fn traverse_items<'a>(
                 }
 
                 FragmentItem::Element(el_id) => {
-                    if is_legacy_slot_element(ctx, *el_id) {
-                        let node_name = ctx.gen_ident("node");
-                        init.push(ctx.b.var_stmt(&node_name, node_expr));
-                        sibling_offset = 1;
-                        let anchor = ctx.b.rid_expr(&node_name);
-                        emit_slot_call(ctx, *el_id, anchor, init);
-                        prev_ident = Some(node_name);
-                    } else {
-                        let el_name_str = ctx.element(*el_id).name.clone();
-                        let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_str));
-                        init.push(ctx.b.var_stmt(&el_name, node_expr));
-                        sibling_offset = 1;
-                        process_element(
-                            ctx,
-                            *el_id,
-                            &el_name,
-                            init,
-                            update,
-                            hoisted,
-                            after_update,
-                            memo_attrs,
-                        );
-                        prev_ident = Some(el_name);
-                    }
+                    let el_name_str = ctx.element(*el_id).name.clone();
+                    let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_str));
+                    init.push(ctx.b.var_stmt(&el_name, node_expr));
+                    sibling_offset = 1;
+                    process_element(
+                        ctx,
+                        *el_id,
+                        &el_name,
+                        init,
+                        update,
+                        hoisted,
+                        after_update,
+                        memo_attrs,
+                    );
+                    prev_ident = Some(el_name);
+                }
+
+                FragmentItem::SlotElementLegacy(el_id) => {
+                    debug_assert!(is_legacy_slot_element(ctx, *el_id));
+                    let node_name = ctx.gen_ident("node");
+                    init.push(ctx.b.var_stmt(&node_name, node_expr));
+                    sibling_offset = 1;
+                    let anchor = ctx.b.rid_expr(&node_name);
+                    emit_slot_call(ctx, *el_id, anchor, init);
+                    prev_ident = Some(node_name);
+                }
+
+                FragmentItem::SvelteFragmentLegacy(_) => {
+                    unreachable!("transparent legacy fragment items are flattened before traversal")
                 }
 
                 FragmentItem::ComponentNode(_)

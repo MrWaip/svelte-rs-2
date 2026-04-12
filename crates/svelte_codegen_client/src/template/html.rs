@@ -33,14 +33,20 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
                 }
             }
             FragmentItem::Element(id) => {
-                if is_legacy_slot_element(ctx, *id) {
-                    html.push_str("<!>");
-                } else {
-                    let el = ctx.element(*id);
-                    let (el_html, el_import) = element_html(ctx, el);
-                    html.push_str(&el_html);
-                    import_node |= el_import;
-                }
+                let el = ctx.element(*id);
+                let (el_html, el_import) = element_html(ctx, el);
+                html.push_str(&el_html);
+                import_node |= el_import;
+            }
+            FragmentItem::SlotElementLegacy(id) => {
+                debug_assert!(is_legacy_slot_element(ctx, *id));
+                html.push_str("<!>");
+            }
+            FragmentItem::SvelteFragmentLegacy(id) => {
+                let (fragment_html, fragment_import) =
+                    fragment_html(ctx, FragmentKey::Element(*id));
+                html.push_str(&fragment_html);
+                import_node |= fragment_import;
             }
             FragmentItem::ComponentNode(_)
             | FragmentItem::IfBlock(_)

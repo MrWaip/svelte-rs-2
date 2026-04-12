@@ -84,6 +84,10 @@ pub struct LoweredFragment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentItem {
     Element(NodeId),
+    /// LEGACY(svelte4): lowered `<slot>` item. Deprecated in Svelte 5, remove in Svelte 6.
+    SlotElementLegacy(NodeId),
+    /// LEGACY(svelte4): lowered `<svelte:fragment>` wrapper item. Deprecated in Svelte 5, remove in Svelte 6.
+    SvelteFragmentLegacy(NodeId),
     ComponentNode(NodeId),
     IfBlock(NodeId),
     EachBlock(NodeId),
@@ -105,9 +109,20 @@ impl FragmentItem {
             if parts.len() == 1 && matches!(parts[0], LoweredTextPart::Expr(_)))
     }
 
+    pub fn element_like_id(&self) -> Option<NodeId> {
+        match self {
+            FragmentItem::Element(id)
+            | FragmentItem::SlotElementLegacy(id)
+            | FragmentItem::SvelteFragmentLegacy(id) => Some(*id),
+            _ => None,
+        }
+    }
+
     pub fn node_id(&self) -> NodeId {
         match self {
             FragmentItem::Element(id)
+            | FragmentItem::SlotElementLegacy(id)
+            | FragmentItem::SvelteFragmentLegacy(id)
             | FragmentItem::ComponentNode(id)
             | FragmentItem::IfBlock(id)
             | FragmentItem::EachBlock(id)
@@ -124,10 +139,7 @@ impl FragmentItem {
 
 impl LoweredFragment {
     pub fn first_element_id(&self) -> Option<NodeId> {
-        match self.items.first()? {
-            FragmentItem::Element(id) => Some(*id),
-            _ => None,
-        }
+        self.items.first()?.element_like_id()
     }
 
     pub fn first_if_block_id(&self) -> Option<NodeId> {

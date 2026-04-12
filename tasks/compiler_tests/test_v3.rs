@@ -261,6 +261,11 @@ fn slot_named_fallback() {
 }
 
 #[rstest]
+fn legacy_slot_dev_mixed() {
+    assert_compiler("legacy_slot_dev_mixed");
+}
+
+#[rstest]
 #[ignore = "missing: legacy <slot> prop object emission (codegen)"]
 fn slot_props_default() {
     assert_compiler("slot_props_default");

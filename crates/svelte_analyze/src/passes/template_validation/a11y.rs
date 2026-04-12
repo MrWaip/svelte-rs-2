@@ -1194,7 +1194,7 @@ fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_>) -> Vec<N
 fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
     match node {
         Node::Element(el) => {
-            if A11Y_LABELABLE_ELEMENTS.contains(&el.name.as_str()) || el.name == "slot" {
+            if A11Y_LABELABLE_ELEMENTS.contains(&el.name.as_str()) {
                 return true;
             }
 

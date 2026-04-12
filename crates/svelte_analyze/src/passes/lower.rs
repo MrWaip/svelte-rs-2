@@ -762,8 +762,12 @@ fn build_items_from_nodes(
                 flush(&mut concat, &mut concat_has_expr, &mut items);
                 match other {
                     Node::Element(el) => items.push(FragmentItem::Element(el.id)),
-                    Node::SlotElementLegacy(el) => items.push(FragmentItem::Element(el.id)),
-                    Node::SvelteFragmentLegacy(el) => items.push(FragmentItem::Element(el.id)),
+                    Node::SlotElementLegacy(el) => {
+                        items.push(FragmentItem::SlotElementLegacy(el.id))
+                    }
+                    Node::SvelteFragmentLegacy(el) => {
+                        items.push(FragmentItem::SvelteFragmentLegacy(el.id))
+                    }
                     Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
                     Node::IfBlock(block) => items.push(FragmentItem::IfBlock(block.id)),
                     Node::EachBlock(block) => items.push(FragmentItem::EachBlock(block.id)),

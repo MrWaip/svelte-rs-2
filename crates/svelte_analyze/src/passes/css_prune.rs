@@ -1295,7 +1295,9 @@ fn collect_descendants_from_fragment(
 
     for item in &lowered.items {
         match item {
-            crate::types::data::FragmentItem::Element(id) => {
+            crate::types::data::FragmentItem::Element(id)
+            | crate::types::data::FragmentItem::SlotElementLegacy(id)
+            | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
                 out.push(*id);
                 if !adjacent_only {
                     collect_descendants_from_node(pruner, *id, false, seen_snippets, out);
@@ -1396,7 +1398,9 @@ fn collect_possible_siblings(
 
         while let Some(index) = indices.next() {
             match &lowered.items[index] {
-                crate::types::data::FragmentItem::Element(id) => {
+                crate::types::data::FragmentItem::Element(id)
+                | crate::types::data::FragmentItem::SlotElementLegacy(id)
+                | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
                     add_candidate(
                         out,
                         CandidateNode {
@@ -1621,7 +1625,9 @@ fn loop_child(
 
     while let Some(index) = indices.next() {
         match &lowered.items[index] {
-            crate::types::data::FragmentItem::Element(id) => {
+            crate::types::data::FragmentItem::Element(id)
+            | crate::types::data::FragmentItem::SlotElementLegacy(id)
+            | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
                 add_candidate(
                     &mut result,
                     CandidateNode {
@@ -1727,6 +1733,8 @@ fn sibling_candidates_to_map(
 fn fragment_item_matches_node_id(item: &crate::types::data::FragmentItem, node_id: NodeId) -> bool {
     match item {
         crate::types::data::FragmentItem::Element(id)
+        | crate::types::data::FragmentItem::SlotElementLegacy(id)
+        | crate::types::data::FragmentItem::SvelteFragmentLegacy(id)
         | crate::types::data::FragmentItem::ComponentNode(id)
         | crate::types::data::FragmentItem::IfBlock(id)
         | crate::types::data::FragmentItem::EachBlock(id)

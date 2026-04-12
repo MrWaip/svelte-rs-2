@@ -773,7 +773,9 @@ impl AnalysisData {
                         }
                     }
                 }
-                FragmentItem::Element(el_id) => {
+                FragmentItem::Element(el_id)
+                | FragmentItem::SlotElementLegacy(el_id)
+                | FragmentItem::SvelteFragmentLegacy(el_id) => {
                     if self.fragment_references_any_symbol(&FragmentKey::Element(*el_id), syms) {
                         return true;
                     }

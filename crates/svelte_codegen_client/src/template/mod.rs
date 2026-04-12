@@ -151,11 +151,11 @@ fn from_template_fn_for_items(ctx: &Ctx, key: FragmentKey, items: &[FragmentItem
     let mut namespace = None;
 
     for item in items {
-        if let FragmentItem::Element(el_id) = item {
+        if let Some(el_id) = item.element_like_id() {
             let el_ns = ctx
                 .query
                 .view
-                .namespace(*el_id)
+                .namespace(el_id)
                 .map(NamespaceKind::as_namespace)
                 .unwrap_or(inherited);
             namespace = Some(match namespace {
@@ -171,6 +171,30 @@ fn from_template_fn_for_items(ctx: &Ctx, key: FragmentKey, items: &[FragmentItem
 
     from_namespace(namespace.unwrap_or(inherited))
 }
+
+fn flatten_codegen_items(ctx: &Ctx<'_>, items: &[FragmentItem]) -> Vec<FragmentItem> {
+    let mut out = Vec::new();
+    push_flattened_codegen_items(ctx, items, &mut out);
+    out
+}
+
+fn push_flattened_codegen_items(
+    ctx: &Ctx<'_>,
+    items: &[FragmentItem],
+    out: &mut Vec<FragmentItem>,
+) {
+    for item in items {
+        match item {
+            FragmentItem::SvelteFragmentLegacy(id) => {
+                let child_key = FragmentKey::Element(*id);
+                if let Some(fragment) = ctx.query.maybe_lowered_fragment(&child_key) {
+                    push_flattened_codegen_items(ctx, &fragment.items, out);
+                }
+            }
+            _ => out.push(item.clone()),
+        }
+    }
+}
 use await_block::gen_await_block;
 use component::gen_component;
 use const_tag::gen_const_tags;
@@ -182,7 +206,7 @@ use html_tag::gen_html_tag;
 use if_block::gen_if_block;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
-use slot::{emit_slot_template_anchor, is_legacy_slot_element};
+use slot::emit_slot_template_anchor;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use title_element::emit_title_elements;
@@ -439,13 +463,25 @@ fn emit_single_element<'a>(
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
-    if is_legacy_slot_element(ctx, el_id) {
-        emit_slot_template_anchor(ctx, el_id, body);
-        return;
-    }
+    let (html, import_node, el_name_prefix) = match ctx.query.component.store.get(el_id) {
+        Node::SlotElementLegacy(_) => {
+            emit_slot_template_anchor(ctx, el_id, body);
+            return;
+        }
+        // LEGACY(svelte4): transparent wrapper around named-slot content.
+        Node::SvelteFragmentLegacy(_) => {
+            let child_key = FragmentKey::Element(el_id);
+            let child_ct = ctx.content_type(&child_key);
+            emit_content_strategy(ctx, child_key, &child_ct, tpl_name, is_root, hoisted, body);
+            return;
+        }
+        Node::Element(el) => {
+            let (html, import_node) = element_html(ctx, el);
+            (html, import_node, el.name.clone())
+        }
+        _ => unreachable!("SingleElement content strategy requires an element-like node"),
+    };
 
-    let el = ctx.element(el_id);
-    let (html, import_node) = element_html(ctx, el);
     let from_fn = from_template_fn_for_fragment_element(ctx, el_id);
     let mut from_html = if import_node {
         ctx.b.call_expr(
@@ -462,8 +498,7 @@ fn emit_single_element<'a>(
     }
     let tpl_stmt = ctx.b.var_stmt(tpl_name, from_html);
 
-    let el_name_str = ctx.element(el_id).name.clone();
-    let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_str));
+    let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_prefix));
 
     // Pre-computed blocker indices for this element's fragment
     let el_key = svelte_analyze::FragmentKey::Element(el_id);
@@ -582,8 +617,11 @@ fn emit_single_block<'a>(
                 return;
             }
         }
-        FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
-            unreachable!("SingleBlock should not contain Element or TextConcat")
+        FragmentItem::Element(_)
+        | FragmentItem::SlotElementLegacy(_)
+        | FragmentItem::SvelteFragmentLegacy(_)
+        | FragmentItem::TextConcat { .. } => {
+            unreachable!("SingleBlock should not contain element-like items or TextConcat")
         }
         _ => {}
     }
@@ -647,7 +685,7 @@ fn emit_mixed<'a>(
     body: &mut Vec<Statement<'a>>,
 ) {
     // Clone needed: traverse_items borrows ctx mutably
-    let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
+    let items = flatten_codegen_items(ctx, &ctx.lowered_fragment(&key).items);
 
     let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
     if key.needs_text_first_next() && starts_text {
@@ -657,13 +695,13 @@ fn emit_mixed<'a>(
     let (html, import_node) = fragment_html(ctx, key);
     let flags = if import_node { 3.0 } else { 1.0 };
     let from_fn = from_template_fn_for_items(ctx, key, &items);
-    let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
+    let make_tpl_stmt = |ctx: &mut Ctx<'a>| {
         let mut from_html = ctx.b.call_expr(
             from_fn,
             [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
         );
         if ctx.state.dev {
-            let locs = build_fragment_element_locations(ctx, key);
+            let locs = build_fragment_element_locations(ctx, &items);
             from_html = wrap_add_locations(ctx, from_html, locs);
         }
         ctx.b.var_stmt(tpl_name, from_html)
@@ -671,7 +709,7 @@ fn emit_mixed<'a>(
 
     if is_root {
         // Root: template BEFORE children (top-down)
-        hoisted.push(make_tpl_stmt(ctx, key));
+        hoisted.push(make_tpl_stmt(ctx));
     }
 
     let frag = ctx.gen_ident("fragment");
@@ -695,7 +733,7 @@ fn emit_mixed<'a>(
 
     if !is_root {
         // Non-root: template AFTER children (bottom-up)
-        hoisted.push(make_tpl_stmt(ctx, key));
+        hoisted.push(make_tpl_stmt(ctx));
     }
 
     emit_trailing_next(ctx, trailing, &mut init);
@@ -734,9 +772,10 @@ fn wrap_add_locations<'a>(
 
 /// Build element location arrays for a single element template.
 fn build_element_locations<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Expression<'a> {
-    let el = ctx.element(el_id);
-    let loc = build_single_element_loc(ctx, el.span.start, &el.fragment);
-    ctx.b.array_expr([loc])
+    let mut locs = Vec::new();
+    push_node_locations(ctx, el_id, &mut locs);
+    ctx.b
+        .array_from_args(locs.into_iter().map(Arg::Expr).collect::<Vec<_>>())
 }
 
 /// Build `[line, col]` or `[line, col, [children...]]` for one element.
@@ -766,24 +805,34 @@ fn build_child_element_locs<'a>(
 ) -> Vec<Expression<'a>> {
     let mut locs = Vec::new();
     for &id in &fragment.nodes {
-        let node = ctx.query.component.store.get(id);
-        if let Node::Element(el) = node {
-            locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
-        }
+        push_node_locations(ctx, id, &mut locs);
     }
     locs
 }
 
 /// Build element location arrays for a mixed fragment's elements.
-fn build_fragment_element_locations<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Expression<'a> {
-    let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
+fn build_fragment_element_locations<'a>(
+    ctx: &mut Ctx<'a>,
+    items: &[FragmentItem],
+) -> Expression<'a> {
     let mut locs: Vec<Expression<'a>> = Vec::new();
-    for item in &items {
-        if let FragmentItem::Element(el_id) = item {
-            let el = ctx.element(*el_id);
-            locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
+    for item in items {
+        if let Some(el_id) = item.element_like_id() {
+            push_node_locations(ctx, el_id, &mut locs);
         }
     }
     ctx.b
         .array_from_args(locs.into_iter().map(Arg::Expr).collect::<Vec<_>>())
+}
+
+fn push_node_locations<'a>(ctx: &mut Ctx<'a>, node_id: NodeId, locs: &mut Vec<Expression<'a>>) {
+    match ctx.query.component.store.get(node_id) {
+        Node::Element(el) => locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment)),
+        Node::SlotElementLegacy(_) => {}
+        // LEGACY(svelte4): transparent wrapper around named-slot content.
+        Node::SvelteFragmentLegacy(el) => {
+            locs.extend(build_child_element_locs(ctx, &el.fragment));
+        }
+        _ => {}
+    }
 }

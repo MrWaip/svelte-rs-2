@@ -2752,6 +2752,80 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
 }
 
 #[test]
+fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
+    let (component, data) = analyze_source_with_options(
+        r#"<slot><p>fallback</p></slot>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let slot_id = match component.store.get(component.fragment.nodes[0]) {
+        Node::SlotElementLegacy(el) => el.id,
+        _ => panic!("expected SlotElementLegacy at root"),
+    };
+
+    let root_fragment = data
+        .template
+        .fragments
+        .lowered(&FragmentKey::Root)
+        .unwrap_or_else(|| panic!("no lowered root fragment"));
+    assert!(matches!(
+        root_fragment.items.as_slice(),
+        [FragmentItem::SlotElementLegacy(id)] if *id == slot_id
+    ));
+}
+
+#[test]
+fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
+    let (component, data) = analyze_source_with_options(
+        r#"<Comp><svelte:fragment slot="footer"><p>footer</p></svelte:fragment></Comp>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let component_id = find_component_node_id(&component.fragment, &component, "Comp")
+        .unwrap_or_else(|| panic!("no <Comp>"));
+    let component_node = component
+        .fragment
+        .nodes
+        .iter()
+        .find_map(|id| match component.store.get(*id) {
+            Node::ComponentNode(cn) if cn.id == component_id => Some(cn),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing component node"));
+    let (wrapper_id, wrapped_child_id) = match component.store.get(component_node.fragment.nodes[0]) {
+        Node::SvelteFragmentLegacy(el) => {
+            let child_id = match component.store.get(el.fragment.nodes[0]) {
+                Node::Element(child) => child.id,
+                _ => panic!("expected wrapped child element inside SvelteFragmentLegacy"),
+            };
+            (el.id, child_id)
+        }
+        _ => panic!("expected SvelteFragmentLegacy as first component child"),
+    };
+
+    let named_slots = data.template.snippets.component_named_slots(component_id);
+    assert_eq!(named_slots.len(), 1);
+    let (slot_el_id, slot_key) = named_slots[0];
+    assert_eq!(slot_el_id, wrapper_id);
+    assert!(data.elements.flags.svelte_fragment_slots.contains(&wrapper_id));
+    assert_eq!(slot_key, FragmentKey::NamedSlot(component_id, wrapper_id));
+
+    let slot_fragment = data
+        .template
+        .fragments
+        .lowered(&slot_key)
+        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
+    assert!(matches!(
+        slot_fragment.items.as_slice(),
+        [FragmentItem::Element(id)] if *id == wrapped_child_id
+    ));
+}
+
+#[test]
 fn blocker_function_decl_no_blocker() {
     let (_c, data) = analyze_source(
         r#"<script>

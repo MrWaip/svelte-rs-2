@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 10/25 use cases
-- **Tests**: 20/27 green
+- **Working**: 12/24 use cases
+- **Tests**: 23/30 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -33,13 +33,12 @@
 
 ## Use cases
 
-- [ ] Dedicated AST/parser infrastructure exists for legacy slot shapes instead of generic `Element`/attribute payloads
+- [x] Dedicated AST/parser infrastructure exists for legacy slot shapes instead of generic `Element`/attribute payloads
   - [x] `<slot>` is represented as a dedicated AST node at parse time instead of a generic `Element` (tests: `legacy_slot_element_converts_to_dedicated_node`, `slot_named_fallback`, `warn_slot_deprecated`)
-  - [ ] Analyze/codegen consume the dedicated `<slot>` AST node instead of re-discovering slot semantics from `name == "slot"` checks (test: none yet, needs infrastructure)
+  - [x] Analyze/codegen consume the dedicated `<slot>` AST node instead of re-discovering slot semantics from generic lowered `Element` assumptions (tests: `slot_element_legacy_root_fragment_uses_dedicated_lowered_item`, `legacy_slot_dev_mixed`, `warn_slot_deprecated`, `slot_named_fallback`)
   - [x] `<svelte:fragment>` is represented as a dedicated AST node at parse time instead of a generic `Element` (tests: `legacy_svelte_fragment_converts_to_dedicated_node`, `svelte_fragment_named_slot`)
-  - [ ] Analyze/codegen consume the dedicated `<svelte:fragment>` AST node instead of relying on `name == "svelte:fragment"` checks (test: none yet, needs infrastructure)
+  - [x] Analyze/codegen consume the dedicated `<svelte:fragment>` AST node instead of relying on generic lowered `Element` assumptions (tests: `component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id`, `svelte_fragment_named_slot`)
   - [x] `let:` is represented as a dedicated AST directive at parse time instead of a generic attribute/directive payload (tests: `let_directive_legacy_without_expression`, `let_directive_legacy_with_expression`, `let_directive_legacy_converts_to_dedicated_attribute`)
-  - [ ] Analyze/codegen consume the dedicated `let:` AST directive instead of generic attribute payload inspection (test: none yet, needs infrastructure)
 - [x] Default component children lower to `children` plus `$$slots.default` for legacy child-content interop (tests: `component_children`, `component_element_children`)
 - [x] Default `<slot>` lowers to `$.slot(..., "default", {}, fallback)` and keeps optional fallback content intact (test: warn_slot_deprecated)
 - [x] Named `<slot name="...">` lowers correctly with fallback content (test: slot_named_fallback)
@@ -122,6 +121,9 @@
 - [x] let_directive_legacy_without_expression
 - [x] let_directive_legacy_with_expression
 - [x] let_directive_legacy_converts_to_dedicated_attribute
+- [x] slot_element_legacy_root_fragment_uses_dedicated_lowered_item
+- [x] component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id
+- [x] legacy_slot_dev_mixed
 - [ ] slot_props_default
 - [ ] component_default_slot_let
 - [ ] component_named_slot_let_element

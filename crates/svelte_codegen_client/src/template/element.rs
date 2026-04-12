@@ -373,9 +373,12 @@ pub(crate) fn process_element<'a>(
 pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
-        svelte_analyze::FragmentItem::Element(id) => {
-            is_legacy_slot_element(ctx, *id) || ctx.needs_var(*id)
+        svelte_analyze::FragmentItem::Element(id) => ctx.needs_var(*id),
+        svelte_analyze::FragmentItem::SlotElementLegacy(id) => {
+            debug_assert!(is_legacy_slot_element(ctx, *id));
+            true
         }
+        svelte_analyze::FragmentItem::SvelteFragmentLegacy(_) => false,
         svelte_analyze::FragmentItem::ComponentNode(_)
         | svelte_analyze::FragmentItem::IfBlock(_)
         | svelte_analyze::FragmentItem::EachBlock(_)

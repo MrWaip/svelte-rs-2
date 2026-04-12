@@ -891,14 +891,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ctx,
         );
 
-        // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
-        if el.name == "slot" && ctx.runes && !ctx.data.output.custom_element {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::SlotElementDeprecated,
-                el.span,
-            ));
-        }
-
         check_component_name_lowercase(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
@@ -2300,6 +2292,7 @@ fn has_prior_named_slot(
 fn direct_child_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
     let attrs = match node {
         Node::Element(el) => &el.attributes,
+        Node::SvelteFragmentLegacy(el) => &el.attributes,
         _ => return None,
     };
 
