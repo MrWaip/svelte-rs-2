@@ -25,9 +25,8 @@ use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
-use crate::types::data::FragmentKey;
+use crate::types::data::{BindHostKind, BindPropertyKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier};
 
@@ -1637,6 +1636,11 @@ fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_>) -> Option<BindPa
             name: el.name.clone(),
             attrs: el.attributes.clone(),
         }),
+        Node::ComponentNode(node) => Some(BindParentInfo {
+            id: node.id,
+            name: node.name.clone(),
+            attrs: node.attributes.clone(),
+        }),
         Node::SvelteElement(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_ELEMENT.to_string(),
@@ -1697,12 +1701,14 @@ fn validate_bind_name_and_target(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_>,
 ) {
-    let Some(property) = binding_property(dir.name.as_str()) else {
-        let explanation = fuzzymatch(dir.name.as_str(), BINDING_NAMES).and_then(|suggestion| {
-            binding_property(suggestion)
-                .is_some_and(|property| property.allows(&parent.name))
-                .then(|| format!("Did you mean '{suggestion}'?"))
-        });
+    let Some(bind_semantics) = ctx.data.bind_target_semantics(dir.id).copied() else {
+        let explanation =
+            fuzzymatch(dir.name.as_str(), BindPropertyKind::KNOWN_NAMES).and_then(|suggestion| {
+                BindPropertyKind::from_host_and_name(BindHostKind::Element, suggestion)
+                    .map(|property| property.validation_spec())
+                    .is_some_and(|spec| spec.allows(&parent.name))
+                    .then(|| format!("Did you mean '{suggestion}'?"))
+            });
 
         emit_bind_error(
             ctx,
@@ -1715,11 +1721,15 @@ fn validate_bind_name_and_target(
         return;
     };
 
-    if !property.valid_elements.is_empty()
-        && !property.valid_elements.contains(&parent.name.as_str())
-    {
-        let elements = property
-            .valid_elements
+    if bind_semantics.host() == BindHostKind::Component {
+        return;
+    }
+
+    let validation = bind_semantics.validation_spec();
+
+    if !validation.valid_elements().is_empty() && !validation.allows(&parent.name) {
+        let elements = validation
+            .valid_elements()
             .iter()
             .map(|name| format!("`<{name}>`"))
             .collect::<Vec<_>>()
@@ -1735,12 +1745,17 @@ fn validate_bind_name_and_target(
         return;
     }
 
-    if property.invalid_elements.contains(&parent.name.as_str()) {
-        let mut valid_bindings = BINDING_NAMES
+    if validation
+        .invalid_elements()
+        .contains(&parent.name.as_str())
+    {
+        let mut valid_bindings = BindPropertyKind::KNOWN_NAMES
             .iter()
             .copied()
             .filter(|candidate| {
-                binding_property(candidate).is_some_and(|property| property.allows(&parent.name))
+                BindPropertyKind::from_host_and_name(BindHostKind::Element, candidate)
+                    .map(|property| property.validation_spec())
+                    .is_some_and(|spec| spec.allows(&parent.name))
             })
             .collect::<Vec<_>>();
         valid_bindings.sort_unstable();
@@ -1765,11 +1780,14 @@ fn validate_bind_parent_specifics(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_>,
 ) {
-    if parent.name == "input" && dir.name != "this" {
+    let bind_semantics = ctx.data.bind_target_semantics(dir.id).copied();
+    let bind_property = bind_semantics.map(|semantics| semantics.property());
+
+    if parent.name == "input" && bind_semantics.is_none_or(|semantics| !semantics.is_this()) {
         validate_input_bindings(dir, parent, ctx);
     }
 
-    if parent.name == "select" && dir.name != "this" {
+    if parent.name == "select" && bind_semantics.is_none_or(|semantics| !semantics.is_this()) {
         let multiple = ctx.data.attribute(parent.id, &parent.attrs, "multiple");
         if let Some(a) = multiple {
             if !attr_is_text(a) && !matches!(a, Attribute::BooleanAttribute(_)) {
@@ -1782,7 +1800,13 @@ fn validate_bind_parent_specifics(
         }
     }
 
-    if dir.name == "offsetWidth" && is_svg(&parent.name) {
+    if matches!(
+        bind_property,
+        Some(BindPropertyKind::ElementSize(
+            crate::types::data::ElementSizeKind::OffsetWidth
+        ))
+    ) && is_svg(&parent.name)
+    {
         emit_bind_error(
             ctx,
             dir.expression_span,
@@ -1795,7 +1819,7 @@ fn validate_bind_parent_specifics(
         return;
     }
 
-    if matches!(dir.name.as_str(), "innerHTML" | "innerText" | "textContent") {
+    if bind_semantics.is_some_and(|semantics| semantics.is_contenteditable()) {
         let contenteditable = ctx
             .data
             .attribute(parent.id, &parent.attrs, "contenteditable");
@@ -1823,12 +1847,18 @@ fn validate_input_bindings(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_>,
 ) {
+    let bind_property = ctx
+        .data
+        .bind_target_semantics(dir.id)
+        .map(|semantics| semantics.property());
     let Some(type_attr) = ctx.data.attribute(parent.id, &parent.attrs, "type") else {
         return;
     };
 
     if !attr_is_text(type_attr) {
-        if dir.name != "value" || matches!(type_attr, Attribute::BooleanAttribute(_)) {
+        if bind_property != Some(BindPropertyKind::Value)
+            || matches!(type_attr, Attribute::BooleanAttribute(_))
+        {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::AttributeInvalidType,
                 attr_value_span(type_attr),
@@ -1841,7 +1871,7 @@ fn validate_input_bindings(
         .data
         .static_text_attribute_value(parent.id, &parent.attrs, "type", ctx.source)
         .unwrap_or_default();
-    if dir.name == "checked" && type_value != "checkbox" {
+    if bind_property == Some(BindPropertyKind::Checked) && type_value != "checkbox" {
         let elements = if type_value == "radio" {
             "`<input type=\"checkbox\">` — for `<input type=\"radio\">`, use `bind:group`"
                 .to_string()
@@ -1856,7 +1886,7 @@ fn validate_input_bindings(
                 elements,
             },
         );
-    } else if dir.name == "files" && type_value != "file" {
+    } else if bind_property == Some(BindPropertyKind::Files) && type_value != "file" {
         emit_bind_error(
             ctx,
             dir.expression_span,
@@ -1874,7 +1904,11 @@ fn validate_bind_sequence_expression(
     has_parens: bool,
     ctx: &mut VisitContext<'_>,
 ) {
-    if dir.name == "group" {
+    if ctx
+        .data
+        .bind_target_semantics(dir.id)
+        .is_some_and(|semantics| semantics.is_group())
+    {
         emit_bind_error(
             ctx,
             dir.expression_span,
@@ -1902,7 +1936,11 @@ fn validate_bind_sequence_expression(
 }
 
 fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
-    if dir.name == "this" {
+    if ctx
+        .data
+        .bind_target_semantics(dir.id)
+        .is_some_and(|semantics| !semantics.requires_mutable_target())
+    {
         return;
     }
 
@@ -1934,7 +1972,11 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
 }
 
 fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
-    if dir.name != "group" {
+    if !ctx
+        .data
+        .bind_target_semantics(dir.id)
+        .is_some_and(|semantics| semantics.is_group())
+    {
         return;
     }
 

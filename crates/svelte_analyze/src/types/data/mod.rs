@@ -49,8 +49,7 @@ pub use elements::{
     EventHandlerMode,
 };
 pub use expr::{
-    AwaitBindingInfo, DestructureKind, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
-    ExpressionKind,
+    AwaitBindingInfo, DestructureKind, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragments::{
@@ -66,8 +65,10 @@ pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichConten
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
-    AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, SnippetData,
-    TemplateSemanticsData, TitleElementData,
+    AwaitBindingData, BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics,
+    ConstTagData, ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind,
+    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
+    TitleElementData, WindowBindKind,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

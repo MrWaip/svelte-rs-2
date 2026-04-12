@@ -419,6 +419,21 @@ fn find_bind_directive_id(
                     return Some(found);
                 }
             }
+            Node::ComponentNode(node) if node.name == tag_name => {
+                if let Some(dir_id) = node.attributes.iter().find_map(|attr| match attr {
+                    svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                        Some(dir.id)
+                    }
+                    _ => None,
+                }) {
+                    return Some(dir_id);
+                }
+                if let Some(found) =
+                    find_bind_directive_id(&node.fragment, component, tag_name, bind_name)
+                {
+                    return Some(found);
+                }
+            }
             Node::IfBlock(b) => {
                 if let Some(found) =
                     find_bind_directive_id(&b.consequent, component, tag_name, bind_name)
@@ -436,6 +451,51 @@ fn find_bind_directive_id(
                 if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name)
                 {
                     return Some(found);
+                }
+            }
+            Node::SvelteElement(el) if tag_name == "svelte:element" => {
+                if let Some(dir_id) = el.attributes.iter().find_map(|attr| match attr {
+                    svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                        Some(dir.id)
+                    }
+                    _ => None,
+                }) {
+                    return Some(dir_id);
+                }
+                if let Some(found) =
+                    find_bind_directive_id(&el.fragment, component, tag_name, bind_name)
+                {
+                    return Some(found);
+                }
+            }
+            Node::SvelteWindow(node) if tag_name == "svelte:window" => {
+                if let Some(dir_id) = node.attributes.iter().find_map(|attr| match attr {
+                    svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                        Some(dir.id)
+                    }
+                    _ => None,
+                }) {
+                    return Some(dir_id);
+                }
+            }
+            Node::SvelteDocument(node) if tag_name == "svelte:document" => {
+                if let Some(dir_id) = node.attributes.iter().find_map(|attr| match attr {
+                    svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                        Some(dir.id)
+                    }
+                    _ => None,
+                }) {
+                    return Some(dir_id);
+                }
+            }
+            Node::SvelteBody(node) if tag_name == "svelte:body" => {
+                if let Some(dir_id) = node.attributes.iter().find_map(|attr| match attr {
+                    svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                        Some(dir.id)
+                    }
+                    _ => None,
+                }) {
+                    return Some(dir_id);
                 }
             }
             _ => {}
@@ -818,6 +878,37 @@ fn assert_bind_is_prop_source(
         data.template.bind_semantics.is_prop_source(dir_id),
         expected,
         "unexpected prop-source classification for bind:{bind_name} on <{tag_name}>",
+    );
+}
+
+fn assert_bind_target_semantics(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+    expected_host: BindHostKind,
+    expected_property: BindPropertyKind,
+    expected_requires_mutable_target: bool,
+) {
+    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+        .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
+    let semantics = data
+        .bind_target_semantics(dir_id)
+        .unwrap_or_else(|| panic!("no bind target semantics for bind:{bind_name} on <{tag_name}>"));
+    assert_eq!(
+        semantics.host(),
+        expected_host,
+        "unexpected bind host for bind:{bind_name} on <{tag_name}>",
+    );
+    assert_eq!(
+        semantics.property(),
+        expected_property,
+        "unexpected bind property for bind:{bind_name} on <{tag_name}>",
+    );
+    assert_eq!(
+        semantics.requires_mutable_target(),
+        expected_requires_mutable_target,
+        "unexpected mutable-target requirement for bind:{bind_name} on <{tag_name}>",
     );
 }
 
@@ -4141,6 +4232,190 @@ let checked = $state(false);
 
     assert_bind_target_symbol_name(&data, &component, "input", "value", "value");
     assert_bind_target_symbol_name(&data, &component, "input", "checked", "checked");
+}
+
+#[test]
+fn bind_target_semantics_classifies_common_bind_families() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let value = $state('');
+let checked = $state(false);
+let node;
+let width = $state(0);
+let active = $state(null);
+</script>
+
+<input bind:value />
+<input type="checkbox" bind:checked={checked} />
+<div bind:this={node}></div>
+<svelte:window bind:innerWidth={width} />
+<svelte:document bind:activeElement={active} />"#,
+    );
+
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "input",
+        "value",
+        BindHostKind::Element,
+        BindPropertyKind::Value,
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "input",
+        "checked",
+        BindHostKind::Element,
+        BindPropertyKind::Checked,
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "div",
+        "this",
+        BindHostKind::Element,
+        BindPropertyKind::This,
+        false,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "svelte:window",
+        "innerWidth",
+        BindHostKind::Window,
+        BindPropertyKind::Window(WindowBindKind::InnerWidth),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "svelte:document",
+        "activeElement",
+        BindHostKind::Document,
+        BindPropertyKind::Document(DocumentBindKind::ActiveElement),
+        true,
+    );
+}
+
+#[test]
+fn bind_target_semantics_classifies_extended_bind_families() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let html = $state('');
+let width = $state(0);
+let rect = $state(null);
+let played = $state(null);
+let natural = $state(0);
+let focused = $state(false);
+let online = $state(false);
+</script>
+
+<div contenteditable bind:innerHTML={html}></div>
+<div bind:clientWidth={width}></div>
+<div bind:contentRect={rect}></div>
+<audio bind:played={played}></audio>
+<img alt="" bind:naturalWidth={natural} />
+<input bind:focused={focused} />
+<svelte:window bind:online={online} />"#,
+    );
+
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "div",
+        "innerHTML",
+        BindHostKind::Element,
+        BindPropertyKind::ContentEditable(ContentEditableKind::InnerHtml),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "div",
+        "clientWidth",
+        BindHostKind::Element,
+        BindPropertyKind::ElementSize(ElementSizeKind::ClientWidth),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "div",
+        "contentRect",
+        BindHostKind::Element,
+        BindPropertyKind::ResizeObserver(ResizeObserverKind::ContentRect),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "audio",
+        "played",
+        BindHostKind::Element,
+        BindPropertyKind::Media(MediaBindKind::Played),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "img",
+        "naturalWidth",
+        BindHostKind::Element,
+        BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth),
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "input",
+        "focused",
+        BindHostKind::Element,
+        BindPropertyKind::Focused,
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "svelte:window",
+        "online",
+        BindHostKind::Window,
+        BindPropertyKind::Window(WindowBindKind::Online),
+        true,
+    );
+}
+
+#[test]
+fn bind_target_semantics_classifies_component_bind_families() {
+    let (component, data) = analyze_source(
+        r#"<script>
+import Widget from './Widget.svelte';
+let value = $state('');
+let instance;
+</script>
+
+<Widget bind:value={value} bind:this={instance} />"#,
+    );
+
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "Widget",
+        "value",
+        BindHostKind::Component,
+        BindPropertyKind::ComponentProp,
+        true,
+    );
+    assert_bind_target_semantics(
+        &data,
+        &component,
+        "Widget",
+        "this",
+        BindHostKind::Component,
+        BindPropertyKind::This,
+        false,
+    );
 }
 
 #[test]

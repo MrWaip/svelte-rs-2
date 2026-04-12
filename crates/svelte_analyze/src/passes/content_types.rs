@@ -200,17 +200,19 @@ fn item_is_dynamic(
         | FragmentItem::SvelteElement(id)
         | FragmentItem::SvelteBoundary(id)
         | FragmentItem::AwaitBlock(id) => dynamic_nodes.contains(id),
-        FragmentItem::SvelteFragmentLegacy(id) => dynamic_nodes.contains(id)
-            || data
-                .template
-                .fragments
-                .lowered(&FragmentKey::Element(*id))
-                .is_some_and(|fragment| {
-                    fragment
-                        .items
-                        .iter()
-                        .any(|item| item_is_dynamic(item, data, dynamic_nodes))
-                }),
+        FragmentItem::SvelteFragmentLegacy(id) => {
+            dynamic_nodes.contains(id)
+                || data
+                    .template
+                    .fragments
+                    .lowered(&FragmentKey::Element(*id))
+                    .is_some_and(|fragment| {
+                        fragment
+                            .items
+                            .iter()
+                            .any(|item| item_is_dynamic(item, data, dynamic_nodes))
+                    })
+        }
     }
 }
 

@@ -68,7 +68,13 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         detect_each_index_usage(node_id, info.ref_symbols(), ctx.data);
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
         classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
-        classify_render_tag(node_id, expr, &mut info, &mut self.pending_render_tag, ctx.data);
+        classify_render_tag(
+            node_id,
+            expr,
+            &mut info,
+            &mut self.pending_render_tag,
+            ctx.data,
+        );
         store_expression_info(node_id, info, ctx);
     }
 
@@ -206,11 +212,7 @@ fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s Forma
     Some(&arrow.params)
 }
 
-fn detect_each_index_usage(
-    node_id: NodeId,
-    symbols: &[SymbolId],
-    data: &mut AnalysisData,
-) {
+fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut AnalysisData) {
     for &sym in symbols {
         if let Some(block_id) = data.each_block_for_index_sym(sym) {
             let is_key = data

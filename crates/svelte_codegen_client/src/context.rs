@@ -5,9 +5,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
-    AnalysisData, ClassDirectiveInfo, CodegenView, ComponentPropInfo, ContentStrategy,
-    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, LoweredFragment,
-    ParserResult, RenderTagPlan, RuntimePlan,
+    AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
+    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
+    LoweredFragment, ParserResult, RenderTagPlan, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -555,6 +555,9 @@ impl<'a> Ctx<'a> {
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.query.view.bind_blockers(id)
+    }
+    pub fn bind_target_semantics(&self, id: NodeId) -> Option<BindTargetSemantics> {
+        self.query.view.bind_target_semantics(id)
     }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.query.view.attr_expression(id)

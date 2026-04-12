@@ -117,9 +117,9 @@ impl<'s> TemplateClassificationBundle<'s> {
 
     pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 4] {
         [
+            &mut self.bind_semantics,
             &mut self.element_flags,
             &mut self.hoistable,
-            &mut self.bind_semantics,
             &mut self.content_types,
         ]
     }

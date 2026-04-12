@@ -2,12 +2,13 @@
 
 use oxc_ast::ast::Statement;
 
+use svelte_analyze::{BindPropertyKind, WindowBindKind};
 use svelte_ast::{Attribute, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::bind::{build_binding_getter, build_binding_setter_silent};
+use super::bind::{build_binding_getter, build_binding_setter_silent, gen_bind_property_stmt};
 use super::events::{gen_event_attr_on, gen_legacy_event_on};
 
 /// Generate event listeners and bindings for `<svelte:window>`.
@@ -51,6 +52,9 @@ fn gen_window_binding<'a>(
     bind: &svelte_ast::BindDirective,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
+        return;
+    };
     let is_rune = ctx.is_mutable_rune_target(bind.id);
 
     let var_name = if bind.shorthand {
@@ -61,38 +65,42 @@ fn gen_window_binding<'a>(
         return;
     };
 
-    let stmt = match bind.name.as_str() {
-        "scrollX" | "scrollY" => {
-            let axis = if bind.name == "scrollX" { "x" } else { "y" };
+    let stmt = match bind_semantics.property() {
+        BindPropertyKind::Window(WindowBindKind::ScrollX) => {
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_window_scroll",
-                [Arg::StrRef(axis), Arg::Expr(getter), Arg::Expr(setter)],
+                [Arg::StrRef("x"), Arg::Expr(getter), Arg::Expr(setter)],
             )
         }
-        "innerWidth" | "innerHeight" | "outerWidth" | "outerHeight" => {
+        BindPropertyKind::Window(WindowBindKind::ScrollY) => {
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter_silent(ctx, var_name, is_rune);
+            ctx.b.call_stmt(
+                "$.bind_window_scroll",
+                [Arg::StrRef("y"), Arg::Expr(getter), Arg::Expr(setter)],
+            )
+        }
+        BindPropertyKind::Window(
+            kind @ (WindowBindKind::InnerWidth
+            | WindowBindKind::InnerHeight
+            | WindowBindKind::OuterWidth
+            | WindowBindKind::OuterHeight),
+        ) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt(
                 "$.bind_window_size",
-                [Arg::StrRef(&bind.name), Arg::Expr(setter)],
+                [Arg::StrRef(kind.name()), Arg::Expr(setter)],
             )
         }
-        "online" => {
+        BindPropertyKind::Window(WindowBindKind::Online) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_online", [Arg::Expr(setter)])
         }
-        "devicePixelRatio" => {
+        BindPropertyKind::Window(WindowBindKind::DevicePixelRatio) => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt(
-                "$.bind_property",
-                [
-                    Arg::StrRef("devicePixelRatio"),
-                    Arg::StrRef("resize"),
-                    Arg::Ident("$.window"),
-                    Arg::Expr(setter),
-                ],
-            )
+            gen_bind_property_stmt(ctx, "devicePixelRatio", "resize", "$.window", setter, None)
         }
         _ => return,
     };

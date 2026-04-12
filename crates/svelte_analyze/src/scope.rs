@@ -373,7 +373,11 @@ impl ComponentScoping {
         self.const_alias_tags.get(&sym_id).copied()
     }
 
-    pub fn add_unique_synthetic_binding(&mut self, scope: ScopeId, preferred_name: &str) -> SymbolId {
+    pub fn add_unique_synthetic_binding(
+        &mut self,
+        scope: ScopeId,
+        preferred_name: &str,
+    ) -> SymbolId {
         let mut name = preferred_name.to_string();
         let mut suffix = 0u32;
         while self.find_binding_in_any_scope(&name).is_some() {
@@ -395,7 +399,8 @@ impl ComponentScoping {
     }
 
     pub fn mark_slot_let_binding_carrier(&mut self, sym_id: SymbolId, carrier_sym_id: SymbolId) {
-        self.slot_let_binding_carriers.insert(sym_id, carrier_sym_id);
+        self.slot_let_binding_carriers
+            .insert(sym_id, carrier_sym_id);
     }
 
     pub fn slot_let_binding_carrier(&self, sym_id: SymbolId) -> Option<SymbolId> {
