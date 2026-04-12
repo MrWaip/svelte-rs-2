@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Review recent implementation work for material, defensible issues in correctness, architecture, regression risk, and missing test coverage. Use after port, triage-test, improve, or other code changes when Codex should act like a strict reviewer and avoid low-value style or comment nitpicks.
+description: Manual review skill for recent implementation work, focused on material and defensible issues in correctness, architecture, regression risk, and missing test coverage. Use only when the user explicitly asks for `qa` or `/qa`. Do not auto-trigger for generic review requests, routine code changes, or broad requests to inspect recent work.
 ---
 
 # Review Material Quality

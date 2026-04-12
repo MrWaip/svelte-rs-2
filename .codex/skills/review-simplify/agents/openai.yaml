@@ -2,3 +2,5 @@ interface:
   display_name: "Review Simplify"
   short_description: "Find safe simplifications worth making"
   default_prompt: "Use $review-simplify to find behavior-preserving simplifications worth making here."
+policy:
+  allow_implicit_invocation: false

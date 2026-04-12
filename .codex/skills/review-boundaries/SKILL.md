@@ -1,6 +1,6 @@
 ---
 name: review-boundaries
-description: Review workflow for compiler phase-boundary and data-flow violations across parser, analyze, transform, and codegen. Use when auditing architecture hygiene, after feature ports, or when code likely drifted into the wrong layer. Do not trigger for style-only cleanup or behavior-preserving simplification reviews.
+description: Manual review workflow for compiler phase-boundary and data-flow violations across parser, analyze, transform, and codegen. Use only when the user explicitly asks for `review-boundaries` or `/review-boundaries`. Do not auto-trigger for generic architecture reviews, audits, cleanup, or refactor requests. Do not trigger for style-only cleanup or behavior-preserving simplification reviews.
 ---
 
 # Boundary Review
