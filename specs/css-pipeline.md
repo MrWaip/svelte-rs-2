@@ -4,7 +4,7 @@
 - **Working**: CSS pipeline parity is complete for the scope owned by this spec: top-level `<style>` extraction, scoped CSS transform, selector scoping, class injection, emitted CSS, unused-selector pruning, keyframes, `:global(...)`, global blocks, nested rules, pseudo selectors, snippet/component boundary traversal, CSS custom properties, and the remaining invalid-CSS diagnostic cases tracked here.
 - **Synced**: spec test inventory now reflects the registered `css_prune` diagnostic parity cases in `tasks/diagnostic_tests/test_diagnostics.rs`, including `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, and escaped-selector matching repros.
 - **Next**: complete
-- **Done this session**: the remaining ignored CSS diagnostic cases were stale. The full `mod css` diagnostic block already matched `svelte/compiler`, so this slice removed the stale `ignore` markers and closed the last open item in this spec without changing analyze/transform behavior.
+- **Done this session**: reopened and closed a transform-parity drift around `:not(...)`. Added explicit compiler coverage for both standalone and descendant branches, verified the reference output, and fixed `svelte_transform_css` so simple `:not(...)` arguments stay unscoped while complex branches consume `:where(...)` after the outer specificity bump.
 - Last updated: 2026-04-12
 
 ## Source
@@ -21,6 +21,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] Unused selector warnings and emitted-CSS pruning work for descendant/child/sibling combinators, pseudo selectors, nesting selectors, escaped class/id selectors, and snippet/component boundaries (tests: `css_unused_external`, `css_unused_injected`, `css_pseudo_compound_unused_but_scoped`, `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`, `css_escaped_selector_scoped`, `css_snippet_descendant_scope_boundary`, `css_snippet_sibling_boundary`, `css_component_snippet_descendant_boundary`)
 - [x] Diagnostic parity for CSS pruning covers `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, escaped selectors, attribute concatenation, and conservative no-match cases where the reference compiler reports `css_unused_selector` (tests: `is_selector_match`, `is_selector_no_match`, `is_selector_compound_no_match`, `where_selector_match`, `where_selector_complex_branch_conservative`, `implicit_nesting_match`, `root_has_match`, `escaped_selector_match`, `concat_attribute_selector_no_match`, `type_selector_no_match`, `class_selector_no_match`, `id_selector_no_match`, `descendant_combinator_no_match`, `child_combinator_indirect_no_match`, `adjacent_sibling_combinator_no_match`, `general_sibling_combinator_no_match`, `multiple_selectors_mixed`, `media_query_unused_selector`, `no_elements_all_unused`)
 - [x] CSS serializer specificity matches the reference for nested selectors and pseudo selector lists, including implicit nesting and `:root:has(...)` handling (tests: `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`)
+- [x] CSS serializer specificity matches the reference for `:not(...)` branches: standalone arguments stay unscoped, while descendant branches consume the post-bump `:where(...)` form after the outer selector takes the first specificity bump (tests: `scoped_inside_not`, `complex_selector_inside_not_is_scoped`, `css_pseudo_not_scoped`)
 - [x] CSS comments are preserved in emitted output (test: `css_comments_preserved`)
 - [x] Nested `<style>` elements inside markup or blocks remain ordinary DOM `<style>` elements; only the root `<style>` is extracted into component CSS (test: `css_nested_style`)
 - [x] Component custom properties lower through the wrapper-based `$.css_props(...)` path in HTML and SVG namespaces (tests: `css_custom_prop_component`, `css_custom_prop_component_svg`)
@@ -84,6 +85,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_unused_injected`
 - [x] `css_pseudo_compound_unused_but_scoped`
 - [x] `css_pseudo_has`
+- [x] `css_pseudo_not_scoped`
 - [x] `css_nesting_selector_scoped`
 - [x] `css_root_has_scoped`
 - [x] `css_escaped_selector_scoped`
