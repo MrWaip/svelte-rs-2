@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 19/25 use cases
-- **Tests**: 38/40 green
+- **Working**: 20/26 use cases
+- **Tests**: 41/42 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -51,7 +51,9 @@
 - [x] Parent default-slot `let:` directives lower to derived reads from `$$slotProps` inside the generated slot function, including alias form `let:item={processed}` (tests: component_default_slot_let, component_default_slot_let_alias)
 - [x] Named-slot `let:` directives on direct child elements lower inside the generated named-slot function, including object destructuring and multiple `let:` directives on the same element (tests: component_named_slot_let_element, component_named_slot_let_element_destructure, component_named_slot_let_element_multiple)
 - [x] Named-slot `let:` directives on `<svelte:fragment>` lower inside the generated named-slot function, including object destructuring (tests: component_named_slot_let_fragment, component_named_slot_let_fragment_destructure)
-- [ ] Direct `$$slots` reads lower through `$.sanitize_slots($$props)` so conditional checks like `$$slots.description` work in component/template code; current Rust preserves the read but omits the sanitized binding and misses the reference compiler's untracked read wrapper (test: `legacy_slots_if`, `#[ignore]`, moderate)
+- [ ] Direct `$$slots` reads lower through sanitized legacy slot bindings instead of unresolved raw identifiers
+  - [x] Template direct `$$slots` reads lower through `$.sanitize_slots($$props)` so conditional checks like `$$slots.description` work in template code, including the reference compiler's untracked read wrapper (tests: `legacy_slots_if`, `legacy_slots_template_reads_require_sanitized_slots_binding`, `legacy_slot_elements_do_not_require_sanitized_slots_binding`)
+  - [ ] Instance-script direct `$$slots` reads lower through the sanitized binding and reserved identifier rewriting, sharing the legacy reserved-bag script path with direct `$$props`/`$$restProps` handling (test: none yet, moderate)
 - [ ] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots, #[ignore], needs infrastructure)
 - [x] Non-custom-element legacy `<slot>` keeps runes-mode deprecation warning ownership while still lowering through the legacy runtime path (test: warn_slot_deprecated)
 - [x] Element-child `slot="..."` diagnostics cover static-value, placement, duplicate-name, default-slot-conflict, and slotted-`{@const}` allowances (test: slots/slot_attribute_static_value_ok, slots/slot_attribute_invalid_expression_value, slots/slot_attribute_invalid_placement_root, slots/slot_attribute_invalid_placement_nested_inside_component, slots/slot_attribute_duplicate_reports_second_named_slot, slots/slot_default_duplicate_reports_implicit_default_content, slots/slot_default_duplicate_ignores_whitespace_and_other_named_slots, slots/const_tag_inside_slotted_element_is_allowed)
@@ -139,5 +141,7 @@
 - [x] component_named_slot_let_fragment_destructure
 - [x] component_child_slot_attribute
 - [x] svelte_self_slot
-- [ ] legacy_slots_if
+- [x] legacy_slots_if
 - [ ] custom_element_slots
+- [x] legacy_slots_template_reads_require_sanitized_slots_binding
+- [x] legacy_slot_elements_do_not_require_sanitized_slots_binding
