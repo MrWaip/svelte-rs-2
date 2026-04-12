@@ -125,9 +125,14 @@ ROADMAP.md — Bindings
 - [x] `validate_bind_invalid_expression`
 - [x] `validate_bind_invalid_parens`
 - [x] `validate_bind_invalid_value`
+- [ ] `validate_bind_plain_let_is_valid`
+- [x] `validate_bind_getter_setter_without_parens`
 - [x] `validate_bind_group_invalid_expression`
+- [ ] `validate_bind_sequence_reports_all_relevant_errors`
 - [x] `validate_bind_group_invalid_snippet_parameter`
 - [x] `validate_bind_invalid_each_rest`
+- [x] `validate_bind_checked_radio_target`
+- [x] `validate_bind_files_wrong_input_type`
 - [x] `validate_attribute_contenteditable_missing`
 - [x] `validate_attribute_contenteditable_dynamic`
 - [x] `validate_attribute_invalid_type`

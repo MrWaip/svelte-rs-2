@@ -46,4 +46,6 @@
 - [x] `debug_basic`
 - [x] `debug_in_blocks`
 - [x] `debug_non_dev`
+- [x] `debug_tag_valid_runes_no_unexpected_character`
+- [x] `debug_tag_non_runes_skips_opening_tag_check`
 - [x] `debug_non_runes_untrack`

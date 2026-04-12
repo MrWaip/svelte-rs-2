@@ -81,3 +81,5 @@
 - [x] `component_local_underscored_bind_this`
 - [ ] `diagnose_component_onclick_state`
 - [x] analyzer unit tests: component invalid directive, component `on:` modifier validation, component illegal colon warning, component unquoted attribute sequence
+- [x] `component_invalid_directive_use`
+- [x] `component_on_modifier_only_allows_once`

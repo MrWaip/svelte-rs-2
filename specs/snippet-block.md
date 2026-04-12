@@ -73,9 +73,19 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_nested_destructure`
 - [x] `snippet_computed_key_destructure`
 - [x] `snippet_parameter_assignment` (analyzer)
+- [x] `validate_snippet_parameter_assignment`
+- [ ] `validate_snippet_parameter_assignment_in_nested_target`
 - [x] `snippet_invalid_rest_parameter` (analyzer)
+- [x] `validate_snippet_invalid_rest_parameter`
 - [x] `snippet_shadowing_prop` (analyzer)
+- [x] `validate_snippet_shadowing_prop`
 - [x] `snippet_conflict` (analyzer)
+- [x] `validate_snippet_conflict`
 - [x] `snippet_invalid_export` (analyzer)
+- [ ] `validate_snippet_invalid_export`
+- [x] `validate_snippet_invalid_export_no_false_positive`
+- [x] `validate_snippet_invalid_export_module_bound_no_fire`
+- [x] `fragment_facts_track_non_trivial_child_counts`
+- [x] `validate_snippet_children_without_other_content_has_no_conflict`
 - [x] `snippet_destructure_default_state_ref`
 - [x] `snippet_destructure_default_mutated_state_ref`

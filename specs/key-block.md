@@ -61,3 +61,4 @@
 - [x] `key_block_basic` (parser)
 - [x] `key_block_complex_expr` (parser)
 - [x] `validate_key_block_empty_warns` (analyzer)
+- [x] `fragment_facts_single_child_supports_block_empty`

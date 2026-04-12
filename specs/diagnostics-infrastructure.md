@@ -79,3 +79,28 @@ ROADMAP Tier 5, item 5a
 - [x] compile: all ~165 semantic error enum variants
 - [x] compile: `AnalyzeOptions` struct
 - [x] unit: `SvelteComponentDeprecated` / `SvelteSelfDeprecated`
+- [ ] `attribute_global_event_reference_missing_binding`
+- [ ] `attribute_global_event_reference_local_binding`
+- [x] `attribute_quoted_on_component`
+- [x] `attribute_quoted_custom_element`
+- [x] `attribute_quoted_regular_element_no_warn`
+- [x] `component_attribute_illegal_colon_warns`
+- [x] `component_name_lowercase_unused_import`
+- [x] `component_name_lowercase_plain_html_element`
+- [ ] `options_deprecated_accessors_runes`
+- [x] `options_deprecated_accessors_legacy`
+- [ ] `options_deprecated_immutable_runes`
+- [x] `options_deprecated_immutable_legacy`
+- [ ] `validate_options_custom_element_warns_without_compiler_flag`
+- [x] `validate_options_custom_element_no_warn_with_compiler_flag`
+- [x] `validate_perf_avoid_nested_class_no_warning_at_instance_top_level`
+- [x] `validate_perf_avoid_nested_class_warns_in_instance_nested_function`
+- [x] `validate_perf_avoid_nested_class_no_warning_at_module_top_level`
+- [x] `validate_perf_avoid_nested_class_warns_in_module_nested_function`
+- [x] `validate_perf_avoid_inline_class_warns_at_instance_top_level`
+- [x] `validate_perf_avoid_inline_class_no_warning_at_module_top_level`
+- [x] `validate_perf_avoid_inline_class_warns_in_nested_function`
+- [ ] `validate_non_reactive_update_for_direct_template_read`
+- [ ] `validate_non_reactive_update_no_warning_across_function_boundary`
+- [x] `validate_non_reactive_update_bind_this_no_warning_without_dynamic_block`
+- [ ] `validate_non_reactive_update_bind_this_warns_inside_if_block`

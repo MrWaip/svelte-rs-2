@@ -94,5 +94,6 @@ Audit of existing implementation (2026-04-01)
 - [x] await_short_catch_no_binding
 - [x] await_short_then
 - [x] await_then_catch
+- [x] await_valid_then_catch_no_unexpected_character
 - [x] await_then_text_before_element
 - [x] await_thunk_optimization

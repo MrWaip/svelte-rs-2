@@ -76,3 +76,6 @@
 - [x] `head_position_with_body`
 - [x] Parser coverage for duplicate `<svelte:head>` and invalid `<svelte:head>` placement
 - [x] Analyzer coverage for illegal `<svelte:head>` attributes, illegal `<title>` attributes, and invalid `<title>` content
+- [ ] `svelte_head_illegal_attribute`
+- [ ] `title_illegal_attribute`
+- [ ] `title_invalid_content`

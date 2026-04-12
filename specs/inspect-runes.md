@@ -62,8 +62,21 @@
 - [x] `inspect_trace_prod_strip`
 - [x] `inspect_trace_reactive_contexts`
 - [x] analyzer unit tests for inspect validation
+- [x] `validate_inspect_requires_arguments`
+- [x] `validate_inspect_zero_args`
 - [x] `validate_inspect_one_or_more_args_ok`
+- [x] `validate_inspect_with_requires_callback`
 - [x] `validate_inspect_with_wrong_arg_count_zero`
 - [x] `validate_inspect_with_wrong_arg_count_two`
 - [x] `validate_inspect_with_one_arg_ok`
 - [x] `validate_inspect_derived_no_state_referenced_locally_warning`
+- [x] `validate_inspect_trace_wrong_arg_count`
+- [x] `validate_inspect_trace_too_many_args`
+- [x] `validate_inspect_trace_invalid_placement`
+- [x] `validate_inspect_trace_invalid_placement_top_level`
+- [x] `validate_inspect_trace_invalid_placement_not_first_stmt`
+- [x] `validate_inspect_trace_zero_args_ok`
+- [x] `validate_inspect_trace_one_arg_ok`
+- [x] `validate_inspect_trace_valid_in_arrow`
+- [x] `validate_inspect_trace_generator_invalid`
+- [x] `validate_inspect_trace_generator_rejected`

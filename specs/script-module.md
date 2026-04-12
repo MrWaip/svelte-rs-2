@@ -77,3 +77,6 @@
 - [x] `script_module_empty`
 - [x] `script_module_exports_ordering_with_snippets`
 - [x] `module_exported_render_tag_callee_stays_direct_with_snippets`
+- [x] `validate_module_illegal_default_export`
+- [x] `validate_module_illegal_default_export_function`
+- [x] `validate_module_illegal_default_export_specifier`

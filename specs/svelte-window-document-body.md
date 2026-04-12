@@ -140,3 +140,12 @@
 - [x] `attach_on_document`
 - [x] Parser coverage for duplicate and invalid-placement diagnostics for the root-only special-element family
 - [x] Analyzer coverage for illegal-attribute and invalid-content diagnostics for the special-element family
+- [x] `svelte_window_illegal_attribute_class`
+- [x] `svelte_window_illegal_attribute_spread`
+- [x] `svelte_document_illegal_attribute_class`
+- [x] `svelte_document_illegal_attribute_spread`
+- [x] `svelte_body_illegal_attribute_class`
+- [x] `svelte_body_illegal_attribute_spread`
+- [x] `svelte_window_invalid_content`
+- [x] `svelte_document_invalid_content`
+- [x] `svelte_body_invalid_content`

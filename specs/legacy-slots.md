@@ -108,6 +108,7 @@
 - [x] slots/slot_attribute_invalid_placement_nested_inside_component
 - [x] slots/slot_attribute_duplicate_reports_second_named_slot
 - [x] slots/slot_default_duplicate_reports_implicit_default_content
+- [x] slots/slot_distinct_named_slots_do_not_conflict
 - [x] slots/slot_default_duplicate_ignores_whitespace_and_other_named_slots
 - [x] slots/const_tag_inside_slotted_element_is_allowed
 - [ ] slot_props_default
