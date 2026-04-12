@@ -1,13 +1,18 @@
 # $: reactive assignments
 
 ## Current state
-- **Working**: 0/3 use cases
-- **Next**: audit the missing legacy-mode `$:` parser/analyze/codegen flow, then add focused compiler coverage before implementation
+- **Working**: 0/4 use cases
+- **Next**: implement top-level legacy `$:` lowering from instance-script labeled statements into analyzed reactive declarations and client `$.legacy_pre_effect(...)` emission
 - **Moved (2026-04-12)**:
   - Deferred legacy `$:` `$.deep_read_state()` ownership moved here from `specs/state-rune.md` so `$state` can stay scoped to client-side rune parity
+- **Audit (2026-04-12)**:
+  - Added focused compiler cases: `legacy_reactive_assignment_basic`, `legacy_reactive_assignment_block_destructure`, `legacy_reactive_assignment_coarse_deps`, and `legacy_reactive_assignment_import_topology`
+  - All four new cases fail against reference snapshots; the current compiler preserves raw `$:` labeled statements instead of lowering them through legacy reactive runtime helpers
+  - Adjacent legacy coarse-read coverage remains mixed: `svelte_options_immutable_legacy` passes, `legacy_props_basic` still fails for direct legacy prop lowering outside `$:`
 - **Notes**:
-  - The repo already rejects `$:` in runes mode via `legacy_reactive_statement_invalid`
-  - Existing `$.deep_read_state(...)` coverage in `svelte_options_immutable_legacy` only proves coarse legacy immutable template reads, not full legacy `$:` support
+  - The repo already owns the diagnostics strings for `legacy_reactive_statement_invalid`, `reactive_declaration_invalid_placement`, and `reactive_declaration_module_script_dependency`
+  - The current Rust compiler has no discovered analyzer or codegen ownership for JS `LabeledStatement` nodes with label `$`; only generic legacy coarse-read wrapping exists in template expressions
+  - Existing `$.deep_read_state(...)` coverage in `svelte_options_immutable_legacy` only proves coarse legacy template reads, not legacy `$:` discovery, ordering, or emission
 - Last updated: 2026-04-12
 
 ## Source
@@ -19,13 +24,18 @@
 
 - `$: doubled = count * 2;`
 - `$: console.log(items.length);`
+- `$: if (condition) { total = a + b; } else { total = 0; }`
+- `$: switch (condition) { case 'a': value = 1; break; default: value = 0; }`
+- `$: ((param) => { console.log(param); })(reactiveVariable);`
+- `$: { total = 0; for (const item of items) total += item.value; }`
 - `$: ({ value } = source);`
 
 ## Use cases
 
-- [ ] Legacy `$:` statements in non-runes components are discovered, ordered, and emitted through the legacy client runtime path.
-- [ ] Legacy `$:` dependency tracking uses coarse-grained reads where the reference compiler does, including `$.deep_read_state(...)` for bindable props, template bindings, imports, `$$props`, and `$$restProps`.
-- [ ] Legacy reactive assignments propagate updates through downstream `$:` declarations in topological order instead of running as isolated statements.
+- [ ] Top-level legacy `$:` statements and assignments in instance scripts are discovered and lowered to client-side `$.legacy_pre_effect(...)` calls, with backing `$.mutable_source(...)` declarations for implicitly introduced reactive targets (test: `legacy_reactive_assignment_basic`, `#[ignore]`, needs infrastructure)
+- [ ] Legacy `$:` block bodies and destructuring assignment targets participate in the same dependency and implicit-binding flow as simple assignments (test: `legacy_reactive_assignment_block_destructure`, `#[ignore]`, needs infrastructure)
+- [ ] Legacy `$:` dependency capture uses coarse-grained reads for legacy prop sources and reserved prop bags (`export let`, `$$props`, `$$restProps`) instead of plain identifier reads (test: `legacy_reactive_assignment_coarse_deps`, `#[ignore]`, needs infrastructure)
+- [ ] Downstream legacy `$:` assignments are emitted in topological order, and mutated instance imports use the legacy reactive-import wrapper when they participate in `$:` dependencies (test: `legacy_reactive_assignment_import_topology`, `#[ignore]`, needs infrastructure)
 
 ## Out of scope
 
@@ -36,16 +46,25 @@
 ## Reference
 
 - Reference compiler:
+  - `reference/docs/99-legacy/02-legacy-reactive-assignments.md`
+  - `reference/compiler/phases/1-parse/read/script.js`
+  - `reference/compiler/phases/1-parse/acorn.js`
+  - `reference/compiler/phases/scope.js`
+  - `reference/compiler/phases/2-analyze/index.js`
+  - `reference/compiler/phases/2-analyze/visitors/LabeledStatement.js`
   - `reference/compiler/phases/3-transform/client/visitors/LabeledStatement.js`
+  - `reference/compiler/phases/3-transform/client/visitors/Program.js`
   - `reference/compiler/phases/3-transform/client/visitors/shared/utils.js`
+  - `reference/compiler/phases/3-transform/client/visitors/shared/declarations.js`
+  - `reference/compiler/phases/3-transform/client/transform-client.js`
 - Existing Rust behavior:
   - `crates/svelte_codegen_client/src/template/expression.rs`
   - `crates/svelte_diagnostics/src/lib.rs`
-  - `specs/state-rune.md`
-  - `specs/svelte-options.md`
+  - `tasks/compiler_tests/test_v3.rs`
 
 ## Test cases
 
 - [ ] `legacy_reactive_assignment_basic`
-- [ ] `legacy_reactive_assignment_props_deep_read`
-- [ ] `legacy_reactive_assignment_topological_order`
+- [ ] `legacy_reactive_assignment_block_destructure`
+- [ ] `legacy_reactive_assignment_coarse_deps`
+- [ ] `legacy_reactive_assignment_import_topology`
