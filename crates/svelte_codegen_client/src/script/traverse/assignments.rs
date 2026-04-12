@@ -7,8 +7,102 @@ use crate::builder::Arg;
 use super::super::{PropKind, ScriptTransformer};
 
 impl<'a> ScriptTransformer<'_, 'a> {
-    pub(super) fn transform_assignment(
+    fn prop_mutation_info_from_member(
         &self,
+        target: &oxc_ast::ast::MemberExpression<'a>,
+    ) -> Option<(String, String, Vec<String>)> {
+        if !self.dev || self.is_in_ignored_stmt("ownership_invalid_mutation") {
+            return None;
+        }
+
+        let mut root = target.object();
+        let mut segments_rev: Vec<String> = vec![match target {
+            oxc_ast::ast::MemberExpression::StaticMemberExpression(member) => {
+                member.property.name.as_str().to_string()
+            }
+            oxc_ast::ast::MemberExpression::ComputedMemberExpression(member) => {
+                let Expression::StringLiteral(lit) = &member.expression else {
+                    return None;
+                };
+                lit.value.as_str().to_string()
+            }
+            oxc_ast::ast::MemberExpression::PrivateFieldExpression(_) => return None,
+        }];
+        loop {
+            match root {
+                Expression::StaticMemberExpression(member) => {
+                    segments_rev.push(member.property.name.as_str().to_string());
+                    root = &member.object;
+                }
+                Expression::ComputedMemberExpression(member) => {
+                    let Expression::StringLiteral(lit) = &member.expression else {
+                        return None;
+                    };
+                    segments_rev.push(lit.value.as_str().to_string());
+                    root = &member.object;
+                }
+                _ => break,
+            }
+        }
+        let Expression::Identifier(root_id) = root else {
+            return None;
+        };
+        segments_rev.reverse();
+
+        if root_id.name.as_str() == "$$props" {
+            let prop_alias = segments_rev.first()?.clone();
+            return Some((prop_alias, "$$props".to_string(), segments_rev));
+        }
+
+        let (prop_alias, root_name) = match self.prop_kind_for_ref(root_id) {
+            Some(PropKind::Source) => (
+                self.prop_source_alias_for_ref(root_id)?,
+                root_id.name.to_string(),
+            ),
+            Some(PropKind::NonSource(prop_name)) => (prop_name, root_id.name.to_string()),
+            None => (
+                self.prop_alias_for_local_name(root_id.name.as_str())?,
+                root_id.name.to_string(),
+            ),
+        };
+        Some((prop_alias, root_name, segments_rev))
+    }
+
+    fn wrap_prop_mutation_validation_from_info(
+        &mut self,
+        node: &mut Expression<'a>,
+        prop_alias: String,
+        root_name: String,
+        segments: Vec<String>,
+        span_start: u32,
+    ) {
+        self.needs_ownership_validator = true;
+
+        let offset = self.script_content_start + span_start;
+        let (line, col) = crate::script::location::compute_line_col(self.component_source, offset);
+
+        let mut path: Vec<Expression<'a>> = Vec::with_capacity(1 + segments.len());
+        path.push(self.b.str_expr(&root_name));
+        for seg in segments {
+            path.push(self.b.str_expr(&seg));
+        }
+
+        let expr = self.b.move_expr(node);
+        let wrapped = self.b.call_expr(
+            "$$ownership_validator.mutation",
+            [
+                Arg::Str(prop_alias),
+                Arg::Expr(self.b.array_expr(path)),
+                Arg::Expr(expr),
+                Arg::Num(line as f64),
+                Arg::Num(col as f64),
+            ],
+        );
+        *node = wrapped;
+    }
+
+    pub(super) fn transform_assignment(
+        &mut self,
         node: &mut Expression<'a>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
@@ -130,6 +224,12 @@ impl<'a> ScriptTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = &*node else {
             return;
         };
+        let mutation_info = assign
+            .left
+            .as_member_expression()
+            .and_then(|m| self.prop_mutation_info_from_member(m));
+        let left_span_start = assign.span.start;
+        let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
         let fn_name = match assign.operator {
             oxc_ast::ast::AssignmentOperator::Assign => "$.assign",
             oxc_ast::ast::AssignmentOperator::LogicalAnd => "$.assign_and",
@@ -137,10 +237,19 @@ impl<'a> ScriptTransformer<'_, 'a> {
             oxc_ast::ast::AssignmentOperator::LogicalNullish => "$.assign_nullish",
             _ => return,
         };
-        if !svelte_transform::rune_refs::should_proxy(&assign.right) {
+        if is_expr_stmt {
+            if let Some((prop_alias, root_name, segments)) = mutation_info.clone() {
+                self.wrap_prop_mutation_validation_from_info(
+                    node,
+                    prop_alias,
+                    root_name,
+                    segments,
+                    left_span_start,
+                );
+            }
             return;
         }
-        if matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_)) {
+        if !svelte_transform::rune_refs::should_proxy(&assign.right) {
             return;
         }
         let is_static = matches!(
@@ -155,8 +264,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             return;
         }
 
-        // Capture span before moving (spans are Copy)
-        let left_span_start = assign.span.start;
+        // Capture location before moving (spans are Copy)
         let offset = self.script_content_start + left_span_start;
         let (line, col) = crate::script::location::compute_line_col(self.component_source, offset);
         let loc = format!(
@@ -203,10 +311,19 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 ],
             );
         }
+        if let Some((prop_alias, root_name, segments)) = mutation_info {
+            self.wrap_prop_mutation_validation_from_info(
+                node,
+                prop_alias,
+                root_name,
+                segments,
+                left_span_start,
+            );
+        }
     }
 
     pub(super) fn transform_update(
-        &self,
+        &mut self,
         node: &mut Expression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
@@ -300,6 +417,27 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 alloc, &base_name, mutation, untracked,
             );
         }
+    }
+
+    pub(super) fn rewrite_prop_update_ownership_exit(&mut self, node: &mut Expression<'a>) {
+        let Expression::UpdateExpression(upd) = node else {
+            return;
+        };
+        let span_start = upd.span.start;
+        let Some(member) = upd.argument.as_member_expression() else {
+            return;
+        };
+        let Some((prop_alias, root_name, segments)) = self.prop_mutation_info_from_member(member)
+        else {
+            return;
+        };
+        self.wrap_prop_mutation_validation_from_info(
+            node,
+            prop_alias,
+            root_name,
+            segments,
+            span_start,
+        );
     }
 
     pub(super) fn rewrite_private_assignment_exit(&self, node: &mut Expression<'a>) -> bool {

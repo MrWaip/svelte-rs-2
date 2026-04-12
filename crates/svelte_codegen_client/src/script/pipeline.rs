@@ -17,6 +17,7 @@ pub struct ScriptOutput<'a> {
     pub imports: Vec<Statement<'a>>,
     pub body: Vec<Statement<'a>>,
     pub has_tracing: bool,
+    pub needs_ownership_validator: bool,
     pub comments: Vec<Comment>,
     pub source_text: &'a str,
     pub program_span_end: u32,
@@ -28,6 +29,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             imports: vec![],
             body: vec![],
             has_tracing: false,
+            needs_ownership_validator: false,
             comments: vec![],
             source_text: "",
             program_span_end: 0,
@@ -315,6 +317,7 @@ fn run_transform<'a>(
         is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
+        needs_ownership_validator: false,
         component_source,
         script_content_start,
         filename,
@@ -351,6 +354,7 @@ fn run_transform<'a>(
     }
 
     let has_tracing = transformer.has_tracing;
+    let needs_ownership_validator = transformer.needs_ownership_validator;
 
     if is_ts {
         reattach_orphaned_comments(&mut program);
@@ -373,6 +377,7 @@ fn run_transform<'a>(
         imports,
         body,
         has_tracing,
+        needs_ownership_validator,
         comments,
         source_text,
         program_span_end,

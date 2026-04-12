@@ -1111,6 +1111,14 @@ mod props {
         validate_props_invalid_placement_inside_function,
         "props/validate_props_invalid_placement_inside_function"
     );
+    diagnostic_case!(
+        validate_props_invalid_placement_in_module_script,
+        "props/validate_props_invalid_placement_in_module_script"
+    );
+    diagnostic_case!(
+        validate_props_invalid_arguments_in_module_script,
+        "props/validate_props_invalid_arguments_in_module_script"
+    );
     diagnostic_case!(validate_props_duplicate, "props/validate_props_duplicate");
     diagnostic_case!(
         validate_props_and_props_id_coexist,
@@ -1123,6 +1131,14 @@ mod props {
     diagnostic_case!(
         validate_props_id_invalid_placement_inside_function,
         "props/validate_props_id_invalid_placement_inside_function"
+    );
+    diagnostic_case!(
+        validate_props_id_invalid_placement_in_module_script,
+        "props/validate_props_id_invalid_placement_in_module_script"
+    );
+    diagnostic_case!(
+        validate_props_id_invalid_arguments_in_module_script,
+        "props/validate_props_id_invalid_arguments_in_module_script"
     );
     diagnostic_case!(
         validate_props_illegal_name_rest_member_access,

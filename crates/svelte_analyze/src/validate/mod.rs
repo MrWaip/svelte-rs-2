@@ -34,6 +34,7 @@ pub fn validate(
     validate_module_program(parsed, diags);
     if let Some(module_program) = &parsed.module_program {
         let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
+        runes::validate_module_props_runes(data, module_program, offset, runes, diags);
         stores::validate_module(data, module_program, offset, diags);
         validate_perf_class_warnings(module_program, offset, 0, diags);
     }

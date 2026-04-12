@@ -114,6 +114,7 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) is_ts: bool,
     pub(super) function_info_stack: Vec<FunctionInfo>,
     pub(super) has_tracing: bool,
+    pub(super) needs_ownership_validator: bool,
     pub(super) component_source: &'b str,
     pub(super) script_content_start: u32,
     pub(super) filename: &'b str,
@@ -188,6 +189,33 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             return false;
         };
         self.component_scoping.is_rest_prop(sym_id)
+    }
+
+    pub(super) fn prop_source_alias_for_ref(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<String> {
+        let ref_id = id.reference_id.get()?;
+        let sym_id = self.component_scoping.get_reference(ref_id).symbol_id()?;
+        if !self.component_scoping.is_prop_source(sym_id) {
+            return None;
+        }
+        let local_name = self.component_scoping.symbol_name(sym_id);
+        let props_gen = self.props_gen.as_ref()?;
+        props_gen
+            .props
+            .iter()
+            .find(|p| p.is_prop_source && p.local_name == local_name)
+            .map(|p| p.prop_name.clone())
+    }
+
+    pub(super) fn prop_alias_for_local_name(&self, local_name: &str) -> Option<String> {
+        let props_gen = self.props_gen.as_ref()?;
+        props_gen
+            .props
+            .iter()
+            .find(|p| p.local_name == local_name)
+            .map(|p| p.prop_name.clone())
     }
 
     pub(super) fn extract_assign_member_store_root<'t>(
