@@ -1,0 +1,8 @@
+[
+  {
+    "code": "svelte_component_missing_this",
+    "end": 0,
+    "severity": "error",
+    "start": 0
+  }
+]

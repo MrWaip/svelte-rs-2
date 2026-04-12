@@ -662,6 +662,11 @@ fn svelte_component_basic() {
 }
 
 #[rstest]
+fn svelte_component_children() {
+    assert_compiler("svelte_component_children");
+}
+
+#[rstest]
 fn component_non_self_closing() {
     assert_compiler("component_non_self_closing");
 }
