@@ -57,7 +57,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 ## Runes & Script
 
-- [ ] `$state` / `$state.raw` — [spec](specs/state-rune.md)
+- [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
 - [ ] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
@@ -173,6 +173,6 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [ ] `<slot>` + `let:`
 - [ ] `<svelte:component>` / `<svelte:self>` / `<svelte:fragment>` 
 - [ ] `export let` props
-- [ ] `$:` reactive assignments
+- [ ] `$:` reactive assignments — [spec](specs/legacy-reactive-assignments.md)
 - [ ] `$$props` / `$$restProps` / `$$slots`
 - [ ] `beforeUpdate` / `afterUpdate`
