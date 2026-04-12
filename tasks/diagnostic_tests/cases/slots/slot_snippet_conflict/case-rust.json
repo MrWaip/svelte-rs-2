@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "slot_snippet_conflict",
+    "start": 41,
+    "end": 49
+  }
+]

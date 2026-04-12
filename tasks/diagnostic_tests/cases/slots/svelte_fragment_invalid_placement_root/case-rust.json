@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_fragment_invalid_placement",
+    "start": 0,
+    "end": 35
+  }
+]

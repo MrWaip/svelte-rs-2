@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_fragment_invalid_attribute",
+    "start": 68,
+    "end": 91
+  }
+]

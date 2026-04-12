@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "slot_element_invalid_name",
+    "start": 48,
+    "end": 59
+  }
+]
