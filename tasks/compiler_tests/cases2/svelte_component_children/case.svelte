@@ -1,0 +1,9 @@
+<script>
+    import A from './A.svelte';
+
+    let current = A;
+</script>
+
+<svelte:component this={current} answer={42}>
+    <span>child</span>
+</svelte:component>

@@ -924,6 +924,16 @@ mod components {
         "components/svelte_component_deprecated_no_warn_in_legacy_mode"
     );
     diagnostic_case!(
+        svelte_component_missing_this,
+        "components/svelte_component_missing_this",
+        ignore = "missing: parser-owned <svelte:component> missing this diagnostic (parser)"
+    );
+    diagnostic_case!(
+        svelte_component_invalid_this_string,
+        "components/svelte_component_invalid_this_string",
+        ignore = "missing: parser-owned <svelte:component> invalid this diagnostic (parser)"
+    );
+    diagnostic_case!(
         svelte_self_deprecated_no_warn_in_legacy_mode,
         "components/svelte_self_deprecated_no_warn_in_legacy_mode",
         ignore = "known mismatch: npm svelte/compiler reports svelte_self_invalid_placement while analyzer emits no diagnostic"
