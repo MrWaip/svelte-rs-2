@@ -206,6 +206,22 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     result.program.body.into_iter().next()
 }
 
+/// Parse a legacy slot `let:` directive into `const PATTERN = $$slotProps.name;`.
+///
+/// `pattern_source` is either the explicit binding expression (`processed`, `{ y }`, `[a]`)
+/// or the shorthand slot name (`item` for `let:item`).
+pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
+    alloc: &'a Allocator,
+    pattern_source: &'a str,
+    slot_prop_name: &str,
+    offset: u32,
+    typescript: bool,
+) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
+    let source = format!("{pattern_source} = $$slotProps.{slot_prop_name}");
+    let source: &'a str = alloc.alloc_str(&source);
+    parse_const_declaration_with_alloc(alloc, source, offset, typescript)
+}
+
 /// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.
 /// Handles: TSAsExpression, TSSatisfiesExpression, TSNonNullExpression,
 ///          TSTypeAssertion, TSInstantiationExpression.

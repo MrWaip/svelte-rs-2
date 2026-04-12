@@ -6,11 +6,11 @@ export default function App($$anchor) {
 	List($$anchor, {
 		children: $.invalid_default_snippet,
 		$$slots: { default: ($$anchor, $$slotProps) => {
-			const item = $.derived_safe_equal(() => $$slotProps.item);
+			const processed = $.derived_safe_equal(() => $$slotProps.item);
 			var p = root_1();
 			var text = $.child(p, true);
 			$.reset(p);
-			$.template_effect(() => $.set_text(text, $.get(item)));
+			$.template_effect(() => $.set_text(text, ($.deep_read_state($.get(processed)), $.untrack(() => $.get(processed).text))));
 			$.append($$anchor, p);
 		} }
 	});

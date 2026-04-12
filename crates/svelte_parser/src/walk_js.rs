@@ -9,7 +9,8 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
     parse_const_declaration_with_alloc, parse_each_context_with_alloc, parse_each_index_with_alloc,
-    parse_expression_with_alloc, parse_script_with_alloc, parse_snippet_decl_with_alloc,
+    parse_expression_with_alloc, parse_script_with_alloc, parse_slot_let_decl_with_alloc,
+    parse_snippet_decl_with_alloc,
 };
 use crate::types::ParserResult;
 
@@ -518,8 +519,19 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::LetDirectiveLegacy(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
+                let pattern_span = a.expression_span.unwrap_or(a.name_span);
+                let pattern_source = component.source_text(pattern_span);
+                match parse_slot_let_decl_with_alloc(
+                    alloc,
+                    alloc.alloc_str(pattern_source),
+                    a.name.as_str(),
+                    a.name_span.start,
+                    typescript,
+                ) {
+                    Ok(stmt) => {
+                        result.alloc_stmt(a.name_span.start, stmt);
+                    }
+                    Err(diag) => diags.push(diag),
                 }
             }
             Attribute::SpreadAttribute(a) => {

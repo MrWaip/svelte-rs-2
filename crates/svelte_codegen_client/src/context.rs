@@ -642,6 +642,10 @@ impl<'a> Ctx<'a> {
         self.query.view.const_tag_stmt_handle(id)
     }
 
+    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
+        self.query.view.let_directive_stmt_handle(id)
+    }
+
     pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
         self.query.view.each_context_stmt_handle(id)
     }

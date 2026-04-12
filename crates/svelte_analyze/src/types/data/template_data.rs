@@ -3,6 +3,7 @@ use super::*;
 pub struct TemplateSemanticsData {
     pub(crate) node_expr_handles: NodeTable<ExprHandle>,
     pub(crate) attr_expr_handles: NodeTable<ExprHandle>,
+    pub(crate) let_directive_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) each_context_stmt_handles: NodeTable<StmtHandle>,
@@ -18,6 +19,7 @@ impl TemplateSemanticsData {
         Self {
             node_expr_handles: NodeTable::new(node_count),
             attr_expr_handles: NodeTable::new(node_count),
+            let_directive_stmt_handles: NodeTable::new(node_count),
             const_tag_stmt_handles: NodeTable::new(node_count),
             snippet_stmt_handles: NodeTable::new(node_count),
             each_context_stmt_handles: NodeTable::new(node_count),

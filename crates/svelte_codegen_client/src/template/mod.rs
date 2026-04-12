@@ -40,6 +40,13 @@ use element::process_element;
 
 use crate::script::compute_line_col;
 
+pub(crate) enum FragmentSetup<'a> {
+    None,
+    // Declarations that must run after the fragment creates its root DOM node
+    // or anchor, but before child init/update work.
+    PostCreate(Vec<Statement<'a>>),
+}
+
 /// Wrap a block expression with `$.add_svelte_meta` in dev mode.
 ///
 /// In production: returns `ctx.b.expr_stmt(expression)`.
@@ -287,7 +294,16 @@ pub fn gen_root_fragment<'a>(
 
     // Template init first (Svelte reference unshifts var decl to init[0])
     let pre_len = body.len();
-    emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
+    emit_content_strategy(
+        ctx,
+        key,
+        &ct,
+        &tpl_name,
+        true,
+        &mut hoisted,
+        &mut body,
+        FragmentSetup::None,
+    );
 
     // Svelte reference order in init[]: template var (unshifted to [0]) →
     // head → window/document/body events → child processing → append.
@@ -326,6 +342,14 @@ pub fn gen_root_fragment<'a>(
 
 /// Generate statements for a fragment, destined for `($$anchor) => { ... }`.
 pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
+    gen_fragment_with_setup(ctx, key, FragmentSetup::None)
+}
+
+pub(crate) fn gen_fragment_with_setup<'a>(
+    ctx: &mut Ctx<'a>,
+    key: FragmentKey,
+    setup: FragmentSetup<'a>,
+) -> Vec<Statement<'a>> {
     let ct = ctx.content_type(&key);
 
     // Consume "root" name for all content types to keep numbering consistent
@@ -340,7 +364,16 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     }
 
     let mut sub_hoisted = Vec::with_capacity(2);
-    emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
+    emit_content_strategy(
+        ctx,
+        key,
+        &ct,
+        &tpl_name,
+        false,
+        &mut sub_hoisted,
+        &mut body,
+        setup,
+    );
     ctx.state.module_hoisted.extend(sub_hoisted);
 
     // Title elements emit after DOM init but before $.append()
@@ -382,23 +415,43 @@ fn emit_content_strategy<'a>(
     is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
+    setup: FragmentSetup<'a>,
 ) {
     match ct {
-        ContentStrategy::Empty => {}
+        ContentStrategy::Empty => {
+            if let FragmentSetup::PostCreate(stmts) = setup {
+                assert!(
+                    stmts.is_empty(),
+                    "post-create setup requires a fragment strategy with a created root node"
+                );
+            }
+        }
         ContentStrategy::Static(ref text) => {
             emit_static_text(ctx, text, is_root, body);
+            if let FragmentSetup::PostCreate(stmts) = setup {
+                assert!(
+                    stmts.is_empty(),
+                    "post-create setup is unsupported for static-text fragments"
+                );
+            }
         }
         ContentStrategy::DynamicText => {
             emit_dynamic_text(ctx, key, is_root, body);
+            if let FragmentSetup::PostCreate(stmts) = setup {
+                assert!(
+                    stmts.is_empty(),
+                    "post-create setup is unsupported for dynamic-text fragments"
+                );
+            }
         }
         ContentStrategy::SingleElement(el_id) => {
-            emit_single_element(ctx, key, *el_id, tpl_name, is_root, hoisted, body);
+            emit_single_element(ctx, key, *el_id, tpl_name, is_root, hoisted, body, setup);
         }
         ContentStrategy::SingleBlock(ref item) => {
-            emit_single_block(ctx, key, item, tpl_name, is_root, hoisted, body);
+            emit_single_block(ctx, key, item, tpl_name, is_root, hoisted, body, setup);
         }
         ContentStrategy::Mixed { .. } => {
-            emit_mixed(ctx, key, tpl_name, is_root, hoisted, body);
+            emit_mixed(ctx, key, tpl_name, is_root, hoisted, body, setup);
         }
     }
 }
@@ -462,6 +515,7 @@ fn emit_single_element<'a>(
     is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
+    setup: FragmentSetup<'a>,
 ) {
     let (html, import_node, el_name_prefix) = match ctx.query.component.store.get(el_id) {
         Node::SlotElementLegacy(_) => {
@@ -472,7 +526,9 @@ fn emit_single_element<'a>(
         Node::SvelteFragmentLegacy(_) => {
             let child_key = FragmentKey::Element(el_id);
             let child_ct = ctx.content_type(&child_key);
-            emit_content_strategy(ctx, child_key, &child_ct, tpl_name, is_root, hoisted, body);
+            emit_content_strategy(
+                ctx, child_key, &child_ct, tpl_name, is_root, hoisted, body, setup,
+            );
             return;
         }
         Node::Element(el) => {
@@ -522,6 +578,9 @@ fn emit_single_element<'a>(
         // Root template after child templates (child templates may be hoisted during process_element)
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
+        if let FragmentSetup::PostCreate(stmts) = setup {
+            body.extend(stmts);
+        }
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
         expression::emit_template_effect_with_memo(
@@ -551,6 +610,9 @@ fn emit_single_element<'a>(
         );
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
+        if let FragmentSetup::PostCreate(stmts) = setup {
+            body.extend(stmts);
+        }
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
         expression::emit_template_effect_with_memo(
@@ -578,6 +640,7 @@ fn emit_single_block<'a>(
     is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
+    setup: FragmentSetup<'a>,
 ) {
     // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
@@ -633,6 +696,9 @@ fn emit_single_block<'a>(
         ctx.b
             .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
     );
+    if let FragmentSetup::PostCreate(stmts) = setup {
+        body.extend(stmts);
+    }
 
     match item {
         FragmentItem::IfBlock(id) => {
@@ -683,6 +749,7 @@ fn emit_mixed<'a>(
     is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
+    setup: FragmentSetup<'a>,
 ) {
     // Clone needed: traverse_items borrows ctx mutably
     let items = flatten_codegen_items(ctx, &ctx.lowered_fragment(&key).items);
@@ -714,6 +781,9 @@ fn emit_mixed<'a>(
 
     let frag = ctx.gen_ident("fragment");
     body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(tpl_name, [])));
+    if let FragmentSetup::PostCreate(stmts) = setup {
+        body.extend(stmts);
+    }
 
     let first_child = ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]);
     let mut init = Vec::new();

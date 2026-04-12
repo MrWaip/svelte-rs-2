@@ -139,8 +139,43 @@ pub(crate) fn walk_template(
                     id: cn.id,
                     kind: ParentKind::ComponentNode,
                 });
-                walk_attributes(&cn.attributes, ctx, visitors);
-                walk_template(&cn.fragment, ctx, visitors);
+                let saved = ctx.scope;
+                let component_has_slot_attr =
+                    attrs_static_slot_name(&cn.attributes, ctx.source).is_some();
+                let default_scope = if component_has_slot_attr {
+                    saved
+                } else {
+                    ctx.data
+                        .scoping
+                        .fragment_scope(&FragmentKey::ComponentNode(cn.id))
+                        .unwrap_or(saved)
+                };
+
+                for attr in &cn.attributes {
+                    match attr {
+                        Attribute::LetDirectiveLegacy(_) => {
+                            ctx.scope = default_scope;
+                            walk_attributes(std::slice::from_ref(attr), ctx, visitors);
+                            ctx.scope = saved;
+                        }
+                        _ => walk_attributes(std::slice::from_ref(attr), ctx, visitors),
+                    }
+                }
+
+                for &child_id in &cn.fragment.nodes {
+                    let child = ctx.store.get(child_id);
+                    let child_scope = if node_static_slot_name(child, ctx.source).is_some() {
+                        ctx.data
+                            .scoping
+                            .fragment_scope(&FragmentKey::NamedSlot(cn.id, child_id))
+                            .unwrap_or(saved)
+                    } else {
+                        default_scope
+                    };
+                    ctx.scope = child_scope;
+                    walk_template(&svelte_ast::Fragment::new(vec![child_id]), ctx, visitors);
+                }
+                ctx.scope = saved;
                 ctx.pop();
             }
             Node::RenderTag(tag) => {
@@ -309,6 +344,24 @@ pub(crate) fn walk_template(
         if has_ignores {
             ctx.pop_ignore();
         }
+    }
+}
+
+fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
+    attrs.iter().find_map(|attr| match attr {
+        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+            Some(attr.value_span.source_text(source))
+        }
+        _ => None,
+    })
+}
+
+fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
+    match node {
+        Node::Element(el) => attrs_static_slot_name(&el.attributes, source),
+        Node::SvelteFragmentLegacy(el) => attrs_static_slot_name(&el.attributes, source),
+        Node::ComponentNode(cn) => attrs_static_slot_name(&cn.attributes, source),
+        _ => None,
     }
 }
 

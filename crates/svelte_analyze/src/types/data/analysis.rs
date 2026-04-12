@@ -498,6 +498,13 @@ impl AnalysisData {
             .get(id)
             .copied()
     }
+    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
+        self.template
+            .template_semantics
+            .let_directive_stmt_handles
+            .get(id)
+            .copied()
+    }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.template
             .template_semantics

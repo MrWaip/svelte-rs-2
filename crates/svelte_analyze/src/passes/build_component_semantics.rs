@@ -1,8 +1,8 @@
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, Statement};
 use smallvec::smallvec;
 use svelte_ast::{
-    Attribute, AwaitBlock, BindDirective, ClassDirective, Component, Fragment, Node, NodeId,
-    StyleDirective, StyleDirectiveValue,
+    Attribute, AwaitBlock, BindDirective, ClassDirective, Component, Fragment, LetDirectiveLegacy,
+    Node, NodeId, StyleDirective, StyleDirectiveValue,
 };
 use svelte_component_semantics::{
     ComponentSemanticsBuilder, ReferenceFlags, TemplateBuildContext, TemplateWalker,
@@ -77,11 +77,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     self.walk_attributes(&el.attributes, ctx);
                     self.walk_fragment(&el.fragment, ctx);
                 }
-                Node::ComponentNode(node) => {
-                    ctx.register_fragment_scope(FragmentKey::ComponentNode(node.id));
-                    self.walk_attributes(&node.attributes, ctx);
-                    self.walk_fragment(&node.fragment, ctx);
-                }
+                Node::ComponentNode(node) => self.walk_component_node(node, ctx),
                 Node::ExpressionTag(tag) => {
                     self.record_expr_handle(tag.id, tag.expression_span.start, false);
                     if let Some(expr) = self
@@ -399,9 +395,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 Attribute::ClassDirective(dir) => self.walk_class_directive(dir, ctx),
                 Attribute::StyleDirective(dir) => self.walk_style_directive(dir, ctx),
                 Attribute::BindDirective(dir) => self.walk_bind_directive(dir, ctx),
-                Attribute::LetDirectiveLegacy(dir) => {
-                    self.walk_optional_expr_attr(dir.id, dir.expression_span, ctx)
-                }
+                Attribute::LetDirectiveLegacy(dir) => self.declare_let_directive_legacy(dir, ctx),
                 Attribute::UseDirective(dir) => {
                     self.walk_optional_expr_attr(dir.id, dir.expression_span, ctx)
                 }
@@ -432,6 +426,59 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 | Attribute::BooleanAttribute(_)
                 | Attribute::OnDirectiveLegacy(_) => {}
             }
+        }
+    }
+
+    fn walk_component_node(
+        &mut self,
+        node: &svelte_ast::ComponentNode,
+        ctx: &mut TemplateBuildContext<'_>,
+    ) {
+        let component_has_slot_attr =
+            attrs_static_slot_name(&node.attributes, &self.component.source).is_some();
+        let default_scope = if component_has_slot_attr {
+            ctx.register_fragment_scope(FragmentKey::ComponentNode(node.id));
+            ctx.current_scope()
+        } else {
+            let scope = ctx.enter_fragment_scope(FragmentKey::ComponentNode(node.id));
+            ctx.leave_scope();
+            scope
+        };
+
+        for attr in &node.attributes {
+            match attr {
+                Attribute::LetDirectiveLegacy(dir) => {
+                    ctx.enter_scope(default_scope);
+                    self.declare_let_directive_legacy(dir, ctx);
+                    ctx.leave_scope();
+                }
+                _ => self.walk_attributes(std::slice::from_ref(attr), ctx),
+            }
+        }
+
+        for &child_id in &node.fragment.nodes {
+            let child = self.component.store.get(child_id);
+            if node_static_slot_name(child, &self.component.source).is_some() {
+                let scope = ctx.enter_fragment_scope(FragmentKey::NamedSlot(node.id, child_id));
+                debug_assert_eq!(scope, ctx.current_scope());
+                self.walk_fragment(
+                    &Fragment {
+                        nodes: vec![child_id],
+                    },
+                    ctx,
+                );
+                ctx.leave_scope();
+                continue;
+            }
+
+            ctx.enter_scope(default_scope);
+            self.walk_fragment(
+                &Fragment {
+                    nodes: vec![child_id],
+                },
+                ctx,
+            );
+            ctx.leave_scope();
         }
     }
 
@@ -546,6 +593,24 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
+    fn declare_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut TemplateBuildContext<'_>,
+    ) {
+        let Some(handle) = self.parsed.stmt_handle(dir.name_span.start) else {
+            return;
+        };
+        self.data
+            .template
+            .template_semantics
+            .let_directive_stmt_handles
+            .insert(dir.id, handle);
+        if let Some(stmt) = self.parsed.stmt(handle) {
+            ctx.visit_js_statement(stmt);
+        }
+    }
+
     fn record_expr_handle(&mut self, node_id: NodeId, offset: u32, is_attr: bool) {
         let Some(handle) = self.parsed.expr_handle(offset) else {
             return;
@@ -563,6 +628,24 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 .node_expr_handles
                 .insert(node_id, handle);
         }
+    }
+}
+
+fn attrs_static_slot_name<'a>(attributes: &'a [Attribute], source: &'a str) -> Option<&'a str> {
+    attributes.iter().find_map(|attr| match attr {
+        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+            Some(attr.value_span.source_text(source))
+        }
+        _ => None,
+    })
+}
+
+fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
+    match node {
+        Node::Element(el) => attrs_static_slot_name(&el.attributes, source),
+        Node::SvelteFragmentLegacy(el) => attrs_static_slot_name(&el.attributes, source),
+        Node::ComponentNode(node) => attrs_static_slot_name(&node.attributes, source),
+        _ => None,
     }
 }
 

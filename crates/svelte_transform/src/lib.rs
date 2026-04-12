@@ -16,7 +16,7 @@ use oxc_ast_visit::VisitMut;
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::RuneKind;
 use svelte_analyze::{AnalysisData, ExprHandle, IdentGen, ParserResult};
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
+use svelte_ast::{Attribute, Component, ConcatPart, Fragment, FragmentKey, Node};
 
 /// Transform all parsed template expressions in-place.
 ///
@@ -95,8 +95,45 @@ fn walk_node<'a>(
             walk_fragment(ctx, &el.fragment, component, parsed, scope);
         }
         Node::ComponentNode(cn) => {
-            transform_attrs(ctx, &cn.attributes, parsed, scope);
-            walk_fragment(ctx, &cn.fragment, component, parsed, scope);
+            let component_has_slot_attr =
+                attrs_static_slot_name(&cn.attributes, component.source.as_str()).is_some();
+            let default_scope = if component_has_slot_attr {
+                scope
+            } else {
+                ctx.analysis
+                    .scoping
+                    .fragment_scope(&FragmentKey::ComponentNode(cn.id))
+                    .unwrap_or(scope)
+            };
+
+            for attr in &cn.attributes {
+                match attr {
+                    Attribute::LetDirectiveLegacy(_) => {
+                        transform_attrs(ctx, std::slice::from_ref(attr), parsed, default_scope);
+                    }
+                    _ => transform_attrs(ctx, std::slice::from_ref(attr), parsed, scope),
+                }
+            }
+
+            for &child_id in &cn.fragment.nodes {
+                let child = component.store.get(child_id);
+                let child_scope =
+                    if node_static_slot_name(child, component.source.as_str()).is_some() {
+                        ctx.analysis
+                            .scoping
+                            .fragment_scope(&FragmentKey::NamedSlot(cn.id, child_id))
+                            .unwrap_or(scope)
+                    } else {
+                        default_scope
+                    };
+                walk_fragment(
+                    ctx,
+                    &svelte_ast::Fragment::new(vec![child_id]),
+                    component,
+                    parsed,
+                    child_scope,
+                );
+            }
         }
         Node::IfBlock(block) => {
             if let Some(handle) = parsed.expr_handle(block.test_span.start) {
@@ -351,6 +388,24 @@ fn get_directive_name_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Opt
     parsed.expr_handle(offset)
 }
 
+fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
+    attrs.iter().find_map(|attr| match attr {
+        Attribute::StringAttribute(attr) if attr.name.as_str() == "slot" => {
+            Some(&source[attr.value_span.start as usize..attr.value_span.end as usize])
+        }
+        _ => None,
+    })
+}
+
+fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
+    match node {
+        Node::Element(node) => attrs_static_slot_name(&node.attributes, source),
+        Node::SvelteFragmentLegacy(node) => attrs_static_slot_name(&node.attributes, source),
+        Node::ComponentNode(node) => attrs_static_slot_name(&node.attributes, source),
+        _ => None,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Expression transformer (VisitMut-based)
 // ---------------------------------------------------------------------------
@@ -444,6 +499,18 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 }
                 svelte_analyze::TemplateBindingReadKind::RuneSafeGet => {
                     *it = rune_refs::make_rune_safe_get(self.ctx.alloc, name);
+                }
+                svelte_analyze::TemplateBindingReadKind::SlotLetCarrierMember => {
+                    let carrier_sym_id = self
+                        .ctx
+                        .analysis
+                        .scoping
+                        .slot_let_binding_carrier(sym_id)
+                        .unwrap_or_else(|| {
+                            panic!("slot let binding {:?} missing carrier symbol", sym_id)
+                        });
+                    let carrier_name = self.ctx.analysis.scoping.symbol_name(carrier_sym_id);
+                    *it = rune_refs::make_member_get(self.ctx.alloc, carrier_name, name);
                 }
                 svelte_analyze::TemplateBindingReadKind::PropsAccess => {
                     let prop_name = self
