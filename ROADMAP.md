@@ -127,9 +127,9 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 ## CSS
 
 - Shared spec for all CSS items: [specs/css-pipeline.md](specs/css-pipeline.md)
-- [ ] CSS scoping pipeline (parse → hash → analyze → prune → transform) — [spec](specs/css-pipeline.md)
-- [ ] CSS custom properties on elements & components — [spec](specs/css-pipeline.md)
-- [ ] Nested `<style>` elements (unscoped, global rules)
+- [x] CSS scoping pipeline (parse → hash → analyze → prune → transform) — [spec](specs/css-pipeline.md)
+- [x] CSS custom properties on elements & components — [spec](specs/css-pipeline.md)
+- [x] Nested `<style>` elements (unscoped, global rules)
 
 ## Source Maps
 

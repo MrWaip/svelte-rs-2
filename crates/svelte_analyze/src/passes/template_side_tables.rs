@@ -718,6 +718,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+        ctx.data.template.snippets.local_snippets.push(block.id);
         if let Some(handle) = ctx
             .parsed()
             .and_then(|p| p.stmt_handle(block.expression_span.start))
@@ -731,6 +732,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
+            ctx.data
+                .template
+                .snippets
+                .snippet_name_symbols
+                .insert(name_sym, block.id);
         }
         // Mark snippet params. Codegen reads the original parsed param patterns via stmt handle.
         if let Some(parsed) = ctx.parsed() {

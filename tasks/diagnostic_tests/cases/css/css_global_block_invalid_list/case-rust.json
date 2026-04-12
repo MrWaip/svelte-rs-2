@@ -2,19 +2,7 @@
   {
     "severity": "error",
     "code": "css_global_block_invalid_list",
-    "start": 1,
-    "end": 14
-  },
-  {
-    "severity": "error",
-    "code": "css_global_block_invalid_list",
-    "start": 1,
-    "end": 14
-  },
-  {
-    "severity": "warning",
-    "code": "css_unused_selector",
-    "start": 10,
-    "end": 14
+    "start": 8,
+    "end": 21
   }
 ]

@@ -390,6 +390,55 @@ fn css_injected_via_compile_options() {
 }
 
 #[test]
+fn inline_css_injected_overrides_external_compile_option() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        css: CssMode::External,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<svelte:options css="injected" />
+<style>p { color: red; }</style>
+<p>hello</p>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(result.css.is_none(), "inline injected mode should suppress CompileResult.css");
+    assert!(js.contains("$$css"), "expected $$css const in JS output");
+    assert!(
+        js.contains("$.append_styles"),
+        "expected $.append_styles call in JS output"
+    );
+}
+
+#[test]
+fn explicit_external_css_mode_returns_compile_result_css() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        css: CssMode::External,
+        ..Default::default()
+    };
+    let result = compile("<style>p { color: red; }</style><p>hello</p>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    let css = result
+        .css
+        .as_deref()
+        .unwrap_or_else(|| panic!("compile produced no CSS"));
+    assert!(
+        !js.contains("$.append_styles"),
+        "external mode must not inject styles into JS"
+    );
+    assert!(
+        !css.is_empty(),
+        "external mode must return scoped CSS in CompileResult.css"
+    );
+}
+
+#[test]
 fn attribute_invalid_event_handler_string_value() {
     let result = compile(
         r#"<button onclick="doSomething()"></button>"#,

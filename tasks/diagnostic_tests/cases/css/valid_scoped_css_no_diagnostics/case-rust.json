@@ -2,19 +2,19 @@
   {
     "severity": "warning",
     "code": "css_unused_selector",
-    "start": 1,
-    "end": 2
+    "start": 8,
+    "end": 9
   },
   {
     "severity": "warning",
     "code": "css_unused_selector",
-    "start": 19,
-    "end": 23
+    "start": 26,
+    "end": 30
   },
   {
     "severity": "warning",
     "code": "css_unused_selector",
-    "start": 70,
-    "end": 85
+    "start": 77,
+    "end": 92
   }
 ]

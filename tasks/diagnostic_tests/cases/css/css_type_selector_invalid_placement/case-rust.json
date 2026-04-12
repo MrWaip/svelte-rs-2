@@ -2,13 +2,7 @@
   {
     "severity": "error",
     "code": "css_type_selector_invalid_placement",
-    "start": 12,
-    "end": 15
-  },
-  {
-    "severity": "warning",
-    "code": "css_unused_selector",
-    "start": 1,
-    "end": 15
+    "start": 19,
+    "end": 22
   }
 ]

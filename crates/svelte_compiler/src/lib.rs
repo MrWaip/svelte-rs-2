@@ -83,6 +83,14 @@ fn resolved_preserve_whitespace_option(
         .unwrap_or(options.preserve_whitespace)
 }
 
+fn resolved_css_mode(component: &svelte_ast::Component, options: &CompileOptions) -> CssMode {
+    if component.options.as_ref().and_then(|opts| opts.css) == Some(svelte_ast::CssMode::Injected) {
+        CssMode::Injected
+    } else {
+        options.css
+    }
+}
+
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
@@ -128,13 +136,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut css_text: Option<String> = None;
         if let Some((ss, css_diags)) = css_parsed {
             analyze_diags.extend(css_diags);
-            // css:"injected" can come from compile options OR from <svelte:options css="injected">
-            let inject_styles = options.css == CssMode::Injected
-                || component.options.as_ref().and_then(|o| o.css)
-                    == Some(svelte_ast::CssMode::Injected);
+            let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected;
             svelte_analyze::analyze_css_pass(
                 &component,
                 &ss,
+                &parsed,
                 inject_styles,
                 &mut analysis,
                 &mut analyze_diags,

@@ -111,6 +111,7 @@ pub struct ParentRef {
 pub struct TemplateTopology {
     node_parents: NodeTable<ParentRef>,
     expr_parents: NodeTable<ParentRef>,
+    node_fragments: NodeTable<FragmentKey>,
 }
 
 impl TemplateTopology {
@@ -118,6 +119,7 @@ impl TemplateTopology {
         Self {
             node_parents: NodeTable::new(node_count),
             expr_parents: NodeTable::new(node_count),
+            node_fragments: NodeTable::new(node_count),
         }
     }
 
@@ -135,6 +137,14 @@ impl TemplateTopology {
 
     pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
         self.node_parents.get(id).copied()
+    }
+
+    pub fn record_node_fragment(&mut self, id: NodeId, key: FragmentKey) {
+        self.node_fragments.insert(id, key);
+    }
+
+    pub fn node_fragment(&self, id: NodeId) -> Option<FragmentKey> {
+        self.node_fragments.get(id).copied()
     }
 
     pub fn expr_parent(&self, id: NodeId) -> Option<ParentRef> {

@@ -1,8 +1,8 @@
-use crate::types::script::RuneKind;
 use crate::TemplateBindingReadKind;
+use crate::types::script::RuneKind;
 use oxc_ast::ast::{CallExpression, Program};
-use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::walk_call_expression;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 use svelte_diagnostics::Diagnostic;
@@ -88,6 +88,11 @@ fn find_element<'a>(
                     return Some(found);
                 }
             }
+            Node::SnippetBlock(block) => {
+                if let Some(found) = find_element(&block.body, component, tag_name) {
+                    return Some(found);
+                }
+            }
             Node::Element(el) => {
                 if let Some(found) = find_element(&el.fragment, component, tag_name) {
                     return Some(found);
@@ -154,6 +159,12 @@ fn find_nth_element<'a>(
                 Node::ComponentNode(node) => {
                     if let Some(found) =
                         visit(&node.fragment, component, tag_name, target_index, seen)
+                    {
+                        return Some(found);
+                    }
+                }
+                Node::SnippetBlock(block) => {
+                    if let Some(found) = visit(&block.body, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
@@ -563,7 +574,7 @@ fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let (mut data, _parsed, diags) = analyze(&component, js_result);
+    let (mut data, parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
         panic!("expected style block");
@@ -576,6 +587,7 @@ fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<
     analyze_css_pass(
         &component,
         &stylesheet,
+        &parsed,
         false,
         &mut data,
         &mut css_pass_diags,
@@ -1511,6 +1523,184 @@ fn pseudo_where_complex_branches_stay_conservative() {
 }
 
 #[test]
+fn pseudo_has_scopes_matching_ancestor_and_descendant() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+section:has(.hit) { color: red; }
+</style>
+<section><p class="hit">yes</p></section>
+<section><p>no</p></section>"#,
+    );
+
+    let section_hit =
+        find_nth_element(&component.fragment, &component, "section", 0).expect("hit section");
+    let section_miss =
+        find_nth_element(&component.fragment, &component, "section", 1).expect("miss section");
+    let p_hit = find_nth_element(&component.fragment, &component, "p", 0).expect("hit p");
+    let p_miss = find_nth_element(&component.fragment, &component, "p", 1).expect("miss p");
+
+    assert!(data.is_css_scoped(section_hit.id));
+    assert!(data.is_css_scoped(p_hit.id));
+    assert!(!data.is_css_scoped(section_miss.id));
+    assert!(!data.is_css_scoped(p_miss.id));
+}
+
+#[test]
+fn render_tag_sibling_matching_crosses_snippet_boundary() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+.before + .after { color: red; }
+</style>
+{#snippet before()}<span class="before">before</span>{/snippet}
+{@render before()}
+<div class="after">after</div>
+<div>other</div>"#,
+    );
+
+    let before = find_element(&component.fragment, &component, "span").expect("before span");
+    let after = find_nth_element(&component.fragment, &component, "div", 0).expect("after div");
+    let other = find_nth_element(&component.fragment, &component, "div", 1).expect("other div");
+
+    assert!(data.is_css_scoped(before.id));
+    assert!(data.is_css_scoped(after.id));
+    assert!(!data.is_css_scoped(other.id));
+}
+
+#[test]
+fn component_snippet_descendant_matching_crosses_component_boundary() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+.host .inside { color: red; }
+</style>
+<div class="host">
+    <Widget>
+        {#snippet children()}
+            <span class="inside">inside</span>
+        {/snippet}
+    </Widget>
+</div>
+<span class="inside">outside</span>"#,
+    );
+
+    let host = find_element(&component.fragment, &component, "div").expect("host");
+    let inside = find_nth_element(&component.fragment, &component, "span", 0).expect("inside span");
+    let outside =
+        find_nth_element(&component.fragment, &component, "span", 1).expect("outside span");
+
+    assert!(data.is_css_scoped(host.id));
+    assert!(data.is_css_scoped(inside.id));
+    assert!(!data.is_css_scoped(outside.id));
+}
+
+#[test]
+fn nesting_selector_scopes_parent_chain() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+.card {
+    & .title { color: red; }
+}
+</style>
+<div class="card"><h2 class="title">inside</h2></div>
+<h2 class="title">outside</h2>"#,
+    );
+
+    let card = find_element(&component.fragment, &component, "div").expect("card");
+    let inside = find_nth_element(&component.fragment, &component, "h2", 0).expect("inside title");
+    let outside =
+        find_nth_element(&component.fragment, &component, "h2", 1).expect("outside title");
+
+    assert!(data.is_css_scoped(card.id));
+    assert!(data.is_css_scoped(inside.id));
+    assert!(!data.is_css_scoped(outside.id));
+}
+
+#[test]
+fn implicit_nesting_selector_scopes_parent_chain() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+.card {
+    .title { color: red; }
+}
+</style>
+<div class="card"><h2 class="title">inside</h2></div>
+<h2 class="title">outside</h2>"#,
+    );
+
+    let card = find_element(&component.fragment, &component, "div").expect("card");
+    let inside = find_nth_element(&component.fragment, &component, "h2", 0).expect("inside title");
+    let outside =
+        find_nth_element(&component.fragment, &component, "h2", 1).expect("outside title");
+
+    assert!(data.is_css_scoped(card.id));
+    assert!(data.is_css_scoped(inside.id));
+    assert!(!data.is_css_scoped(outside.id));
+}
+
+#[test]
+fn root_has_scopes_local_selector_branch() {
+    let (component, data, css_diags) = analyze_source_with_css_diags(
+        r#"<style>
+:root:has(.hit) { color: red; }
+</style>
+<div class="hit">inside</div>
+<div>outside</div>"#,
+    );
+
+    let hit = find_nth_element(&component.fragment, &component, "div", 0).expect("hit div");
+    let outside = find_nth_element(&component.fragment, &component, "div", 1).expect("outside div");
+
+    assert!(
+        css_diags.is_empty(),
+        "unexpected css diagnostics: {css_diags:?}"
+    );
+    assert!(data.is_css_scoped(hit.id));
+    assert!(!data.is_css_scoped(outside.id));
+}
+
+#[test]
+fn escaped_selectors_match_static_template_names() {
+    let (component, data, css_diags) = analyze_source_with_css_diags(
+        r#"<style>
+.foo\:bar { color: red; }
+#hero\:id { color: blue; }
+</style>
+<div class="foo:bar"></div>
+<div id="hero:id"></div>
+<div class="miss"></div>"#,
+    );
+
+    let class_match =
+        find_nth_element(&component.fragment, &component, "div", 0).expect("class match");
+    let id_match = find_nth_element(&component.fragment, &component, "div", 1).expect("id match");
+    let miss = find_nth_element(&component.fragment, &component, "div", 2).expect("miss");
+
+    assert!(
+        css_diags.is_empty(),
+        "unexpected css diagnostics: {css_diags:?}"
+    );
+    assert!(data.is_css_scoped(class_match.id));
+    assert!(data.is_css_scoped(id_match.id));
+    assert!(!data.is_css_scoped(miss.id));
+}
+
+#[test]
+fn dynamic_attribute_values_expand_known_expression_branches() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+[data-state="on"] { color: red; }
+</style>
+<div data-state={flag ? "on" : "off"}></div>
+<span data-state={flag ? "idle" : "off"}></span>"#,
+    );
+
+    let div = find_element(&component.fragment, &component, "div").expect("div");
+    let span = find_element(&component.fragment, &component, "span").expect("span");
+
+    assert!(data.is_css_scoped(div.id));
+    assert!(!data.is_css_scoped(span.id));
+}
+
+#[test]
 fn bare_global_tail_only_scopes_local_prefix() {
     let source = r#"
 <style>
@@ -1530,7 +1720,7 @@ fn bare_global_tail_only_scopes_local_prefix() {
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let (mut data, _parsed, diags) = analyze(&component, js_result);
+    let (mut data, parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
         panic!("expected style block");
@@ -1543,6 +1733,7 @@ fn bare_global_tail_only_scopes_local_prefix() {
     analyze_css_pass(
         &component,
         &stylesheet,
+        &parsed,
         false,
         &mut data,
         &mut css_pass_diags,
@@ -2753,10 +2944,11 @@ fn fragment_facts_capture_single_expression_queries() {
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
     ));
-    assert!(data
-        .elements
-        .flags
-        .needs_textarea_value_lowering(textarea.id));
+    assert!(
+        data.elements
+            .flags
+            .needs_textarea_value_lowering(textarea.id)
+    );
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
     assert!(matches!(
