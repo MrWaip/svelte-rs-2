@@ -1,8 +1,8 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 25/26 use cases — infrastructure + non-A11y warning emission slices
-- **Done this session**: added diagnostic parity harness under `tasks/diagnostic_tests/`; `just generate` now writes `case-svelte.json` reference diagnostics and tests write `case-rust.json` for visual comparison. Earlier completed items remain: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
+- **Working**: 24/25 use cases — infrastructure + non-A11y warning emission slices
+- **Done this session**: added diagnostic parity harness under `tasks/diagnostic_tests/`; `just generate` now writes `case-svelte.json` reference diagnostics and tests write `case-rust.json` for visual comparison. Earlier completed items remain: early bail on parser errors; `ScriptContextDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
 - **Missing**: 1 use case — `NodeInvalidPlacementSsr`
 - **Next**: implement the standalone SSR placement warning
 - **Non-goals for this run**: no A11y warnings in this spec, no parser or codegen changes
@@ -33,7 +33,6 @@ ROADMAP Tier 5, item 5a
 - [x] `ctx.warn(node_id, kind, span)` API for visitors (test: integration)
 - [x] Early bail on parser errors — skip analyze/codegen when parser produces errors
 - [x] `ScriptContextDeprecated` — warn when `context="module"` used in runes mode
-- [x] `SlotElementDeprecated` — warn when `<slot>` used in runes mode (non-custom-element)
 - [x] `AttributeAvoidIs` — warn when element has `is` attribute
 - [x] `AttributeIllegalColon` — warn when attribute name contains `:` (excluding xml/xlink/xmlns)
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props

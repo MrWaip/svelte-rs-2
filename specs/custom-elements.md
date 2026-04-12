@@ -1,9 +1,9 @@
 # Custom Elements
 
 ## Current state
-- **Working**: 10/15 use cases
-- **Missing**: 5 use cases
-- **Next**: Fix CE slot lowering/runtime metadata first, then CE default CSS injection, then aliased-prop CE accessors, then `customElement.shadow` object support. Parser/analyzer object-form validation can follow after the runtime-visible gaps.
+- **Working**: 10/14 use cases
+- **Missing**: 4 use cases
+- **Next**: Fix CE default CSS injection first, then aliased-prop CE accessors, then `customElement.shadow` object support. CE `<slot>` ownership moved to `specs/legacy-slots.md`; parser/analyzer object-form validation can follow after the remaining runtime-visible gaps.
 - Last updated: 2026-04-07
 
 ## Source
@@ -24,8 +24,6 @@
 `<svelte:options customElement={{ tag: "my-element", props: { count: { reflect: true } } }} />`
 `<svelte:options customElement={{ tag: "my-element", props: { count: { attribute: "data-count" } } }} />`
 `<svelte:options customElement={{ tag: "my-element", props: { count: { type: "Number" } } }} />`
-`<slot />`
-`<slot name="actions" />`
 `let { active = false } = $props();`
 `let { count: total } = $props();`
 `let props = $props();`
@@ -43,7 +41,6 @@
 - [x] Boolean-valued prop fallbacks infer `type: "Boolean"` for uncovered CE props.
 - [ ] Prop aliases from `$props()` destructuring are exposed under the public prop name and still get CE accessor/export wrapping in the generated component.
 - [x] Exported functions are listed in the custom-element accessor/export array.
-- [ ] `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array.
 - [x] Omitting `tag` emits the constructor expression without `customElements.define(...)`.
 - [x] `customElement={{ extend }}` forwards the wrapper extension expression to `$.create_custom_element(...)`.
 - [ ] CE mode injects component CSS into JS/shadow-root output even without inline `css="injected"`.
@@ -91,7 +88,6 @@
 - [x] `host_basic`
 - [x] `host_props_rest`
 - [x] Parser tests for custom-element tag/null compatibility and analyzer tests for `$props()` custom-element warnings, missing compile-flag warnings, and `$host()` placement
-- [ ] `custom_element_slots` — ignored as `missing: custom-element slot lowering and slot metadata emission (analyze/codegen)` — effort: needs infrastructure
 - [ ] `custom_element_css_default_injected` — ignored as `missing: custom-element default CSS injection (compiler/codegen)` — effort: moderate
 - [ ] `custom_element_prop_alias` — ignored as `missing: aliased prop accessors in custom elements (analyze/codegen)` — effort: moderate
 - [ ] `custom_element_shadow_object` — ignored as `missing: ShadowRootInit object emission for customElement.shadow (analyze/codegen)` — effort: moderate

@@ -49,7 +49,7 @@
 ## Out of scope
 
 - SSR output parity
-- Legacy `<slot>` behavior via `<svelte:element this={'slot'} />`
+- Legacy `<svelte:element this={'slot'} />` ownership moved to `specs/legacy-slots.md`
 - Full CSS prune/scoping parity beyond `<svelte:element>`-specific behavior
 
 ## Reference

@@ -57,7 +57,7 @@ Audit of existing implementation (2026-03-28)
 
 ## Out of scope
 
-- `<slot>` async — not part of Svelte 5 runes model (legacy feature)
+- Legacy Svelte 4 slot async behavior is owned by `specs/legacy-slots.md`, not this runes-mode spec
 
 ## Reference
 
@@ -76,7 +76,6 @@ Audit of existing implementation (2026-03-28)
 - `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` — `$.run()` async const accumulation, blocker propagation
 - `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js` — `$.async_derived()` for async `$derived`
 - `reference/compiler/phases/3-transform/client/visitors/RenderTag.js` — `Memoizer` blockers/async for render tags
-- `reference/compiler/phases/3-transform/client/visitors/SlotElement.js` — `Memoizer` blockers/async for slots
 - `reference/compiler/phases/3-transform/client/visitors/TitleElement.js` — `Memoizer` blockers/async for title
 - `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js` — async-aware const tag + snippet handling
 - `reference/compiler/phases/3-transform/client/visitors/BindDirective.js`
