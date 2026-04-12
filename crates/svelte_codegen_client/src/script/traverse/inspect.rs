@@ -2,7 +2,7 @@ use oxc_ast::ast::{Argument, Expression, Statement};
 
 use crate::builder::Arg;
 
-use super::super::{compute_line_col, sanitize_location, ScriptTransformer};
+use super::super::{ScriptTransformer, compute_line_col, sanitize_location};
 
 pub(super) fn is_inspect_call(expr: &Expression) -> bool {
     match expr {

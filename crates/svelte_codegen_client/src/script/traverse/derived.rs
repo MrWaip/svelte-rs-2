@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use crate::builder::{Arg, Builder};
 use crate::script::AsyncDerivedMode;
-use crate::script::{compute_line_col, sanitize_location, IgnoreQuery};
+use crate::script::{IgnoreQuery, compute_line_col, sanitize_location};
 
 /// Dev-mode context for adding label/location args to `$.async_derived`.
 pub(crate) struct DevContext<'a> {

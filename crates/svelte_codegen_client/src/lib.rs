@@ -53,6 +53,7 @@ pub fn generate<'a>(
     let script_imports = script_output.imports;
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
+    let needs_ownership_validator = script_output.needs_ownership_validator;
     let mut script_comments = script_output.comments;
     let mut script_source_text = script_output.source_text;
     let mut script_span_end = script_output.program_span_end;
@@ -156,6 +157,16 @@ pub fn generate<'a>(
     }
     if ctx.state.needs_binding_group {
         fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
+    }
+
+    if ctx.state.dev && needs_ownership_validator {
+        fn_body.push(
+            ctx.b.var_stmt(
+                "$$ownership_validator",
+                ctx.b
+                    .call_expr("$.create_ownership_validator", [Arg::Ident("$$props")]),
+            ),
+        );
     }
 
     // Store subscription setup:

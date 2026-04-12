@@ -16,13 +16,13 @@ use svelte_span::GetSpan;
 use super::css_prune_index::{
     CandidateKind, CandidateNode, CssPruneIndex, NodeExistsValue, SiblingCandidate,
 };
-use crate::AnalysisData;
 use crate::scope::SymbolId;
 use crate::types::data::{
     ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind, TemplateAnalysis,
     TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
+use crate::AnalysisData;
 
 const HTML_CASE_INSENSITIVE_ATTRIBUTES: &[&str] = &[
     "accept-charset",

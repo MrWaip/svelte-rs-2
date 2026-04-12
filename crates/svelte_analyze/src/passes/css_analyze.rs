@@ -210,8 +210,7 @@ impl<'a> CssValidator<'a> {
     }
 
     fn emit(&mut self, kind: DiagnosticKind, span: svelte_span::Span) {
-        let span =
-            svelte_span::Span::new(self.css_offset + span.start, self.css_offset + span.end);
+        let span = svelte_span::Span::new(self.css_offset + span.start, self.css_offset + span.end);
         self.diagnostics.push(Diagnostic::error(kind, span));
     }
 

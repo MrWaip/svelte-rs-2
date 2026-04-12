@@ -188,7 +188,9 @@ fn lower_nodes(
     preserve_whitespace: bool,
 ) {
     for &id in nodes {
-        data.template.template_topology.record_node_fragment(id, key);
+        data.template
+            .template_topology
+            .record_node_fragment(id, key);
     }
 
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
