@@ -104,3 +104,4 @@
 - [x] `bind_use_deferral`
 - [x] `action_blockers`
 - [x] analyzer validation: `await` inside `use:` directive value
+- [ ] `validate_use_directive_illegal_await_expression`

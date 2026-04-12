@@ -81,6 +81,11 @@
 - [x] `on_directive`
 - [x] `on_directive_dev_apply`
 - [x] `on_directive_modifiers`
+- [ ] `on_directive_invalid_modifier`
+- [ ] `on_directive_passive_nonpassive_conflict`
+- [ ] `on_directive_mixed_syntax`
+- [ ] `on_directive_mixed_syntax_svelte_element`
+- [x] `on_directive_deprecated_in_runes_mode`
 - [x] `svelte_body_event_attr`
 - [x] `svelte_body_event_legacy`
 - [x] `svelte_document_bubble`
@@ -90,4 +95,3 @@
 - [x] `on_directive_nonpassive`
 - [x] `component_events` (covered in `specs/component-node.md`)
 - [ ] `on_directive_not_deprecated_in_non_runes_mode_svelte_window` (diagnose-diagnostics: pending fix)
-

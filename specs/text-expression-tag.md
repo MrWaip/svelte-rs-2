@@ -69,6 +69,7 @@
 - [x] `text_entity_decoding`
 - [x] `text_entity_decoding_root`
 - [x] `title_entity_decoding`
+- [x] `invalid_text_parent_uses_topology_ancestor_lookup`
 - [x] `validate_text_invalid_placement` (analyzer)
 - [x] `validate_expression_tag_invalid_placement` (analyzer)
 - [x] `validate_text_bidirectional_control_warning` (analyzer)

@@ -114,5 +114,27 @@ Audit of existing implementation
 - [x] `tag_state_destructured_object`
 - [x] `state_constructor_read_v`
 - [x] `state_constructor_read_derived`
+- [x] `validate_state_invalid_placement_bare_expr`
+- [x] `validate_state_invalid_placement_fn_arg`
+- [x] `validate_state_too_many_args`
+- [x] `validate_state_frozen_renamed`
+- [x] `validate_state_is_removed`
+- [x] `validate_state_valid_positions`
+- [x] `validate_state_constructor_private_field`
+- [x] `validate_state_nested_class_in_constructor`
+- [x] `validate_state_raw_too_many_args`
+- [x] `validate_state_referenced_locally_for_derived`
+- [x] `validate_state_referenced_locally_derived_type_is_derived_inside_state_arg`
+- [x] `validate_state_referenced_locally_derived_no_warning_across_fn_boundary`
+- [x] `validate_state_referenced_locally_for_reassigned_state`
+- [x] `validate_state_referenced_locally_for_primitive_state`
+- [x] `validate_state_referenced_locally_no_warning_for_proxy_state`
+- [x] `validate_state_referenced_locally_for_state_raw`
+- [x] `validate_state_referenced_locally_no_warning_across_fn_boundary_state`
+- [ ] `validate_state_invalid_export_for_reassigned_state_export_specifier`
+- [x] `validate_state_invalid_export_for_reassigned_state_default_export`
+- [x] `validate_state_invalid_export_no_error_for_default_export_without_reassignment`
+- [x] `validate_state_eager_no_args`
+- [x] `validate_state_eager_too_many_args`
 - [x] `validate_state_referenced_locally_basic`
 - [x] `validate_state_invalid_export_basic`

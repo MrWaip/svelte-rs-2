@@ -96,8 +96,14 @@
 - [x] `animate_blockers`
 - [x] `animate_with_spread`
 - [x] `each_inner_shadow`
+- [x] `each_block_shadowing_does_not_mutate_rune`
 - [x] `each_block_no_item_with_index`
 - [x] `validate_each_animation_missing_key`
 - [x] `validate_each_animation_invalid_placement`
 - [x] `validate_each_item_invalid_assignment`
+- [x] `validate_each_item_invalid_assignment_bind_identifier`
+- [x] `validate_each_item_bind_member_expression_no_invalid_assignment`
+- [ ] `validate_each_item_invalid_assignment_array_destructure`
+- [ ] `validate_each_item_invalid_assignment_nested_object_destructure`
+- [ ] `validate_each_key_without_as`
 - [ ] `clock_svg_derived_onmount`

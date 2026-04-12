@@ -98,10 +98,25 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] analyze unit: `custom_element_props_identifier` warning (4 tests)
 - [x] analyze unit: `validate_props_identifier_no_store_rune_conflict`
 - [x] `props_identifier_no_store_rune_conflict`
+- [x] `validate_props_invalid_placement_inside_function`
+- [x] `validate_props_duplicate`
+- [x] `validate_props_and_props_id_coexist`
+- [x] `validate_props_invalid_pattern_computed_key`
+- [x] `validate_props_id_invalid_placement_inside_function`
+- [x] `validate_props_illegal_name_rest_member_access`
+- [x] `validate_props_illegal_name_identifier_pattern_member_access`
+- [ ] `validate_props_normal_member_access_no_error`
 - [x] diagnostic parity: `validate_props_invalid_placement_in_module_script`
 - [x] diagnostic parity: `validate_props_id_invalid_placement_in_module_script`
 - [x] diagnostic parity: `validate_props_invalid_arguments_in_module_script`
 - [x] diagnostic parity: `validate_props_id_invalid_arguments_in_module_script`
+- [x] `validate_custom_element_props_identifier_warns`
+- [ ] `validate_custom_element_props_rest_warns`
+- [x] `validate_custom_element_props_destructured_no_warn`
+- [x] `validate_custom_element_with_explicit_props_config_no_warn`
+- [x] `validate_bindable_invalid_location`
+- [x] `validate_bindable_invalid_location_inside_arrow`
+- [x] `validate_bindable_too_many_args`
 - [x] compiler unit: `compile_dev_props_member_mutation_uses_ownership_validator`
 - [x] compiler unit: `compile_dev_bindable_prop_member_mutation_uses_prop_alias`
 - [x] compiler unit: `compile_dev_bindable_prop_member_update_uses_ownership_validator`

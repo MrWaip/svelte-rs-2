@@ -90,4 +90,9 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode`
 - [x] `validate_derived_rune_allowed_in_runes_mode`
 - [x] `derived_invalid_export`
+- [x] `validate_derived_wrong_arg_count`
+- [x] `validate_derived_by_wrong_arg_count`
+- [x] `validate_derived_invalid_export`
+- [ ] `validate_derived_invalid_export_specifier`
+- [ ] `validate_derived_invalid_default_export`
 - [x] `state_referenced_locally` (derived bindings)

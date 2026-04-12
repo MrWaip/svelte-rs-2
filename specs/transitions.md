@@ -92,3 +92,9 @@
 - [x] `transition_blockers`
 - [x] `transition_elseif_local`
 - [x] Analyzer coverage for duplicate `transition:`, duplicate `in:`, duplicate `out:`, conflicting `transition:` + `in:`, conflicting `transition:` + `out:`, and `await` inside transition directive values
+- [x] `validate_transition_duplicate_transition`
+- [x] `validate_transition_duplicate_in`
+- [x] `validate_transition_duplicate_out`
+- [x] `validate_transition_conflict_in`
+- [x] `validate_transition_conflict_out`
+- [ ] `validate_transition_illegal_await_expression`

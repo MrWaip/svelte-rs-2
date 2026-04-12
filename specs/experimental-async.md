@@ -123,6 +123,11 @@ Audit of existing implementation (2026-03-28)
 - [x] async_svelte_element
 - [x] async_title_basic
 - [x] attach_blockers
+- [ ] `validate_const_tag_invalid_reference_component_children_async`
+- [x] `validate_const_tag_invalid_reference_boundary_failed_async`
+- [x] `validate_const_tag_invalid_reference_boundary_pending_async`
+- [x] `validate_const_tag_invalid_reference_skipped_without_async`
+- [x] `validate_const_tag_reference_inside_snippet_scope_is_allowed_async`
 - [x] await_array_destructured
 - [x] await_basic
 - [x] await_destructured

@@ -101,7 +101,12 @@
 - [x] `const_tag_await`
 - [x] `const_tag_component`
 - [x] `validate_const_tag_invalid_placement_root`
+- [x] `validate_const_tag_invalid_placement_inside_element`
 - [x] `validate_const_tag_invalid_expression`
+- [x] `validate_const_tag_valid_placement_each`
+- [x] `validate_const_tag_valid_placement_if`
+- [x] `validate_const_tag_valid_placement_key`
+- [x] `validate_const_tag_parenthesized_sequence_ok`
 - [x] `async_const_tag` (covered by `experimental-async`)
 - [x] `async_const_derived_chain` (covered by `experimental-async`)
 - [x] `async_boundary_const` (covered by `experimental-async`)

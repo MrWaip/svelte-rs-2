@@ -96,6 +96,8 @@
 - [x] `smoke`
 - [x] `smoke_all`
 - [x] `textarea_child_value_dynamic`
+- [x] `textarea_invalid_content_fires`
+- [x] `textarea_no_conflict_without_value_attr`
 - [x] `option_expr_child_value`
 - [x] `customizable_select_option_el`
 - [x] `customizable_select_select_div`
