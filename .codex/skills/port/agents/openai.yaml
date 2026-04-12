@@ -1,4 +1,4 @@
 interface:
   display_name: "Port"
-  short_description: "Port one approved slice from a spec"
-  default_prompt: "Use $port to implement the next approved slice from this spec and verify only that slice."
+  short_description: "Close the next unchecked use case from a spec"
+  default_prompt: "Use $port to fully close the next unchecked use case from this spec. If several unchecked use cases clearly close together, close them together. If the next use case is too broad to close cleanly, decompose it in the spec and stop."
