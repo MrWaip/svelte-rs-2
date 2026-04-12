@@ -1,0 +1,8 @@
+[
+  {
+    "code": "slot_attribute_duplicate",
+    "end": 45,
+    "severity": "error",
+    "start": 32
+  }
+]

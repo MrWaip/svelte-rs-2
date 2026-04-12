@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 22/26 use cases
-- **Tests**: 44/44 green
+- **Working**: 29/29 use cases
+- **Tests**: 54/54 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -57,10 +57,18 @@
 - [x] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots)
 - [x] Non-custom-element legacy `<slot>` keeps runes-mode deprecation warning ownership while still lowering through the legacy runtime path (test: warn_slot_deprecated)
 - [x] Element-child `slot="..."` diagnostics cover static-value, placement, duplicate-name, default-slot-conflict, and slotted-`{@const}` allowances (test: slots/slot_attribute_static_value_ok, slots/slot_attribute_invalid_expression_value, slots/slot_attribute_invalid_placement_root, slots/slot_attribute_invalid_placement_nested_inside_component, slots/slot_attribute_duplicate_reports_second_named_slot, slots/slot_default_duplicate_reports_implicit_default_content, slots/slot_default_duplicate_ignores_whitespace_and_other_named_slots, slots/const_tag_inside_slotted_element_is_allowed)
-- [ ] Duplicate/default slot-conflict diagnostics include child components with `slot="..."` instead of only element-like wrappers (test: none yet, moderate)
-- [ ] `<slot>` validation matches reference behavior for invalid `name`, reserved `name="default"`, invalid non-attribute directives, and slot/render conflicts (test: none yet, moderate)
-- [ ] `<svelte:fragment>` validation matches reference behavior for invalid placement and invalid attributes other than `slot` plus optional `let:` (test: none yet, moderate)
-- [ ] `let:` invalid-placement diagnostics match the reference owner matrix for default slots, named slots, and slotted child components (test: none yet, needs infrastructure)
+- [x] Duplicate/default slot-conflict diagnostics include child components with `slot="..."` instead of only element-like wrappers (tests: `slots/slot_attribute_duplicate_component_child_reports_second_named_slot`, `slots/slot_default_duplicate_component_child_reports_slotted_component_conflict`)
+- [x] `<slot>` validation matches reference behavior for invalid `name`, reserved `name="default"`, invalid non-attribute directives, and slot/render conflicts
+  - [x] `<slot name={expr}>` and other non-text `name` forms report `slot_element_invalid_name` (test: `slots/slot_element_invalid_name_dynamic`)
+  - [x] `<slot name="default">` reports `slot_element_invalid_name_default` (test: `slots/slot_element_invalid_name_default`)
+  - [x] `<slot>` rejects non-attribute directives other than spread and `let:` (test: `slots/slot_element_invalid_attribute_class`)
+  - [x] `<slot>` and `{@render ...}` conflicts report `slot_snippet_conflict` (test: `slots/slot_snippet_conflict`)
+- [x] `<svelte:fragment>` validation matches reference behavior for invalid placement and invalid attributes other than `slot` plus optional `let:`
+  - [x] Root or otherwise non-component `<svelte:fragment>` reports `svelte_fragment_invalid_placement` (test: `slots/svelte_fragment_invalid_placement_root`)
+  - [x] `<svelte:fragment>` rejects attributes other than `slot` plus optional `let:` (test: `slots/svelte_fragment_invalid_attribute_class`)
+- [x] `let:` invalid-placement diagnostics match the reference owner matrix for default slots, named slots, and slotted child components
+  - [x] `let:` on `<svelte:window>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_window`)
+  - [x] `let:` on `<svelte:body>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_body`)
 
 ## Out of scope
 
@@ -148,3 +156,13 @@
 - [x] legacy_slots_template_reads_require_sanitized_slots_binding
 - [x] legacy_slot_elements_do_not_require_sanitized_slots_binding
 - [x] legacy_slots_script_reads_require_sanitized_slots_binding
+- [x] slots/slot_attribute_duplicate_component_child_reports_second_named_slot
+- [x] slots/slot_default_duplicate_component_child_reports_slotted_component_conflict
+- [x] slots/slot_element_invalid_name_dynamic
+- [x] slots/slot_element_invalid_name_default
+- [x] slots/slot_element_invalid_attribute_class
+- [x] slots/slot_snippet_conflict
+- [x] slots/svelte_fragment_invalid_placement_root
+- [x] slots/svelte_fragment_invalid_attribute_class
+- [x] slots/let_directive_invalid_placement_svelte_window
+- [x] slots/let_directive_invalid_placement_svelte_body

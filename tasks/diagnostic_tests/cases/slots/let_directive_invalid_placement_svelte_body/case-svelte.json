@@ -1,0 +1,8 @@
+[
+  {
+    "code": "let_directive_invalid_placement",
+    "end": 18,
+    "severity": "error",
+    "start": 13
+  }
+]

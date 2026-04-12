@@ -1565,8 +1565,16 @@ mod slots {
         "slots/slot_attribute_duplicate_reports_second_named_slot"
     );
     diagnostic_case!(
+        slot_attribute_duplicate_component_child_reports_second_named_slot,
+        "slots/slot_attribute_duplicate_component_child_reports_second_named_slot"
+    );
+    diagnostic_case!(
         slot_default_duplicate_reports_implicit_default_content,
         "slots/slot_default_duplicate_reports_implicit_default_content"
+    );
+    diagnostic_case!(
+        slot_default_duplicate_component_child_reports_slotted_component_conflict,
+        "slots/slot_default_duplicate_component_child_reports_slotted_component_conflict"
     );
     diagnostic_case!(
         slot_distinct_named_slots_do_not_conflict,
@@ -1587,6 +1595,35 @@ mod slots {
     diagnostic_case!(
         slot_attribute_invalid_placement_nested_inside_component,
         "slots/slot_attribute_invalid_placement_nested_inside_component"
+    );
+    diagnostic_case!(
+        slot_element_invalid_name_dynamic,
+        "slots/slot_element_invalid_name_dynamic"
+    );
+    diagnostic_case!(
+        slot_element_invalid_name_default,
+        "slots/slot_element_invalid_name_default"
+    );
+    diagnostic_case!(
+        slot_element_invalid_attribute_class,
+        "slots/slot_element_invalid_attribute_class"
+    );
+    diagnostic_case!(slot_snippet_conflict, "slots/slot_snippet_conflict");
+    diagnostic_case!(
+        svelte_fragment_invalid_placement_root,
+        "slots/svelte_fragment_invalid_placement_root"
+    );
+    diagnostic_case!(
+        svelte_fragment_invalid_attribute_class,
+        "slots/svelte_fragment_invalid_attribute_class"
+    );
+    diagnostic_case!(
+        let_directive_invalid_placement_svelte_window,
+        "slots/let_directive_invalid_placement_svelte_window"
+    );
+    diagnostic_case!(
+        let_directive_invalid_placement_svelte_body,
+        "slots/let_directive_invalid_placement_svelte_body"
     );
 }
 

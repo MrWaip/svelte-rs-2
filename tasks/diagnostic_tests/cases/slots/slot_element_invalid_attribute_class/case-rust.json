@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "slot_element_invalid_attribute",
+    "start": 47,
+    "end": 70
+  }
+]
