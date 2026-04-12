@@ -1,7 +1,9 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 7/18 closure items
+- **Working**: 7/19 closure items
+- **Completed (2026-04-12)**: absorbed direct `$$slots` runtime-surface ownership from the removed `legacy-special-vars.md` audit and kept the focused compiler parity case under this spec
+- **Confirmed gap (2026-04-12)**: Rust preserves direct `$$slots.description` reads but never injects the reference compiler's `const $$slots = $.sanitize_slots($$props)` helper, and it misses the untracked-read wrapper around conditional slot presence checks
 - **Next**: implement legacy slot-prop and `let:` codegen, then widen `slot="..."` ownership from element-only to component children, then close custom-element slot metadata/runtime parity
 - **Blocked verification**: `just test-case <name>` currently fails before executing assertions because `crates/svelte_codegen_client/src/script/traverse/assignments.rs:250` calls `.clone()` on a non-`Clone` `Option<(String, String, Vec<Expression<'_>>)>`
 - Last updated: 2026-04-12
@@ -20,6 +22,7 @@
 <slot {item} />
 <svelte:options customElement="my-element" /><slot />
 <svelte:options customElement="my-element" /><slot name="actions" />
+{#if $$slots.description}<slot name="description" />{/if}
 <Component>default slot content</Component>
 <Component let:item>default slot content</Component>
 <Component let:item={processed}>default slot content</Component>
@@ -50,17 +53,18 @@
 - [ ] `<svelte:fragment>` validation matches reference behavior for invalid placement and invalid attributes other than `slot` plus optional `let:` (test: none yet, moderate)
 - [ ] `let:` invalid-placement diagnostics match the reference owner matrix for default slots, named slots, and slotted child components (test: none yet, needs infrastructure)
 - [ ] Default-slot bindings remain scoped to the default slot and are not visible inside named-slot content, matching the Svelte 4 migration note (test: none yet, needs infrastructure)
+- [ ] Direct `$$slots` reads lower through `$.sanitize_slots($$props)` so conditional checks like `$$slots.description` work in component/template code; current Rust preserves the read but omits the sanitized binding and misses the reference compiler's untracked read wrapper (test: `legacy_slots_if`, `#[ignore]`, moderate)
 - [ ] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots, #[ignore], needs infrastructure)
 
 ## Out of scope
 
-- `$$slots` runtime surface as a separate feature item
 - Snippet interop beyond the legacy slot conflict diagnostics already referenced above
 - SSR slot generation
 
 ## Reference
 ### Svelte
 - `reference/docs/99-legacy/20-legacy-slots.md`
+- `reference/docs/99-legacy/21-legacy-$$slots.md`
 - `reference/docs/99-legacy/22-legacy-svelte-fragment.md`
 - `reference/docs/07-misc/06-v4-migration-guide.md`
 - `reference/docs/07-misc/07-v5-migration-guide.md`
@@ -70,7 +74,10 @@
 - `reference/compiler/phases/2-analyze/visitors/shared/attribute.js`
 - `reference/compiler/phases/2-analyze/visitors/shared/component.js`
 - `reference/compiler/phases/2-analyze/visitors/SlotElement.js`
+- `reference/compiler/phases/2-analyze/visitors/Identifier.js`
 - `reference/compiler/phases/2-analyze/visitors/SvelteFragment.js`
+- `reference/compiler/phases/3-transform/client/visitors/Program.js`
+- `reference/compiler/phases/3-transform/client/visitors/Identifier.js`
 - `reference/compiler/phases/3-transform/client/visitors/SlotElement.js`
 - `reference/compiler/phases/3-transform/client/visitors/LetDirective.js`
 - `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
@@ -82,6 +89,7 @@
 - `crates/svelte_analyze/src/tests.rs`
 - `crates/svelte_codegen_client/src/template/slot.rs`
 - `crates/svelte_codegen_client/src/template/component.rs`
+- `crates/svelte_codegen_client/src/lib.rs`
 - `crates/svelte_codegen_client/src/custom_element.rs`
 - `tasks/compiler_tests/test_v3.rs`
 - `tasks/diagnostic_tests/test_diagnostics.rs`
@@ -107,4 +115,5 @@
 - [ ] component_named_slot_let_element
 - [ ] component_named_slot_let_fragment
 - [ ] component_child_slot_attribute
+- [ ] legacy_slots_if
 - [ ] custom_element_slots
