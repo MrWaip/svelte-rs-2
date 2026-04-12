@@ -266,9 +266,23 @@ fn legacy_slot_dev_mixed() {
 }
 
 #[rstest]
-#[ignore = "missing: legacy <slot> prop object emission (codegen)"]
 fn slot_props_default() {
     assert_compiler("slot_props_default");
+}
+
+#[rstest]
+fn slot_props_spread() {
+    assert_compiler("slot_props_spread");
+}
+
+#[test]
+fn slot_props_dynamic_state() {
+    assert_compiler("slot_props_dynamic_state");
+}
+
+#[test]
+fn slot_props_dynamic_call() {
+    assert_compiler("slot_props_dynamic_call");
 }
 
 #[rstest]

@@ -387,7 +387,7 @@ impl<'a> TemplateMemoState<'a> {
     ) -> Option<MemoValueRef> {
         self.push_expr_info(ctx, info);
 
-        if !(info.has_call || info.has_await) || info.ref_symbols.is_empty() {
+        if !(info.has_call || info.has_await) {
             return None;
         }
 
@@ -426,6 +426,13 @@ impl<'a> TemplateMemoState<'a> {
         (0..total).map(|i| format!("${i}")).collect()
     }
 
+    pub(crate) fn async_param_names(&self) -> Vec<String> {
+        let offset = self.sync_values.len();
+        (0..self.async_values.len())
+            .map(|i| format!("${}", offset + i))
+            .collect()
+    }
+
     pub(crate) fn sync_param_expr(&self, ctx: &Ctx<'a>, index: usize) -> Expression<'a> {
         ctx.b.rid_expr(&format!("${index}"))
     }
@@ -433,6 +440,25 @@ impl<'a> TemplateMemoState<'a> {
     pub(crate) fn async_param_expr(&self, ctx: &Ctx<'a>, index: usize) -> Expression<'a> {
         ctx.b
             .rid_expr(&format!("${}", self.sync_values.len() + index))
+    }
+
+    pub(crate) fn sync_derived_expr(&self, ctx: &Ctx<'a>, index: usize) -> Expression<'a> {
+        let value = self.sync_param_expr(ctx, index);
+        ctx.b.call_expr("$.get", [Arg::Expr(value)])
+    }
+
+    pub(crate) fn derived_stmts(&self, ctx: &Ctx<'a>, runes: bool) -> Vec<Statement<'a>> {
+        let derived_fn = if runes { "$.derived" } else { "$.derived_safe_equal" };
+        self.sync_values
+            .iter()
+            .enumerate()
+            .map(|(index, expr)| {
+                let init = ctx
+                    .b
+                    .call_expr(derived_fn, [Arg::Expr(ctx.b.thunk(ctx.b.clone_expr(expr)))]);
+                ctx.b.let_init_stmt(&format!("${index}"), init)
+            })
+            .collect()
     }
 
     pub(crate) fn sync_values_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
