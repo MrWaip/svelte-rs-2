@@ -12,7 +12,7 @@ Gap analysis for an existing feature: compare our implementation against the ref
 Run `Glob("specs/*.md")` and scan the results for a file matching this feature. Names may differ from the argument — for example `$state` may map to `state-rune.md`. If a matching spec exists:
 
 1. Read the spec file
-2. Check the `Current state` section — what is done, what is next
+2. Check the `Current state` section — what is done and what the current test status is
 3. Skip to the appropriate step, likely Step 4 or Step 5
 4. Do not re-run Steps 1–3 unless the spec says the audit needs revision
 

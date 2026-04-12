@@ -1,8 +1,8 @@
 # `{@attach}`
 
 ## Current state
-- **Working**: 10/10 use cases — Complete
-- **Done**: added `Attribute::AttachTag` arm to `gen_svelte_document` calling `gen_attach_tag(ctx, attr_id, "$.document", stmts)`
+- **Working**: 10/10 use cases
+- **Tests**: 11/11 green
 - Last updated: 2026-04-08
 
 ## Source

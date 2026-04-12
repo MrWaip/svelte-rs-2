@@ -1,8 +1,8 @@
 # `beforeUpdate` / `afterUpdate`
 
 ## Current state
-- **Working**: 0/4 closure items
-- **Next**: emit `$.init()` for legacy lifecycle imports, then wire `runes_mode_invalid_import`
+- **Working**: 0/4 use cases
+- **Tests**: 0/4 green
 - Last updated: 2026-04-12
 
 ## Source

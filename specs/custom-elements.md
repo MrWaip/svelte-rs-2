@@ -2,8 +2,7 @@
 
 ## Current state
 - **Working**: 10/14 use cases
-- **Missing**: 4 use cases
-- **Next**: Fix CE default CSS injection first, then aliased-prop CE accessors, then `customElement.shadow` object support. CE `<slot>` ownership moved to `specs/legacy-slots.md`; parser/analyzer object-form validation can follow after the remaining runtime-visible gaps.
+- **Tests**: 12/15 green
 - Last updated: 2026-04-07
 
 ## Source

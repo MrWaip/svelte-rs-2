@@ -1,14 +1,8 @@
 # experimental.async
 
 ## Current state
-
-- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`), `const_tag_invalid_reference` in async mode for component children and boundary `failed`/`pending` snippets
-- **Current slice**: Use case 37 — async-only `const_tag_invalid_reference` validation in analyze plus analyze-option plumbing from the compiler entrypoint
-- **Why this slice came next**: It was the only remaining unchecked `experimental.async` use case, and it fits one cohesive analyze-owned flow: flag `{@const}` declarations as template-only symbols and validate out-of-scope snippet reads when `experimental.async` is enabled.
-- **Non-goals for this run**: no non-async snippet validation changes, no codegen changes, no expansion into unrelated boundary diagnostics, and no work on the still-blocked `async_derived_dev_ignored_destructured` test.
-- **Not working**: —
-- **Missing**: —
-- **Next**: No remaining implementation slices in this spec; only the separately blocked `async_derived_dev_ignored_destructured` test remains in Test cases.
+- **Working**: 36/36 use cases
+- **Tests**: 43/45 green
 - Last updated: 2026-04-07
 
 ## Source

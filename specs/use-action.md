@@ -2,14 +2,7 @@
 
 ## Current state
 - **Working**: 11/11 use cases
-- **Missing**: 0/11 use cases
-- **Done**: parser now handles hyphenated dotted segments via `parse_directive_name_span` in `walk_js.rs`; scanner extended to consume `-` in name segments
-- **Done this session**: `UseDirective` validation now emits `illegal_await_expression` when the analyze-owned `ExpressionInfo` for the directive argument contains `await`, and the focused analyzer regression test is enabled.
-- **Current slice**: complete
-- **Why this slice came next**: it was the last unchecked use case and stayed entirely inside `svelte_analyze`, reusing existing `ExpressionInfo.has_await` data rather than introducing new parser or codegen paths.
-- **Non-goals for this run**: no parser changes, no codegen changes, no transition-directive await validation, and no compiler-test harness work for diagnostics.
-- Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Next**: no open implementation work in this spec
+- **Tests**: 13/14 green
 - Last updated: 2026-04-09
 
 ## Source

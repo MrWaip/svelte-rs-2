@@ -1,10 +1,8 @@
 # Events
 
 ## Current state
-- **Working**: 11/12 use cases complete; one diagnostic-parity mismatch remains
-- **Done this session**: normalized the cross-spec count drift, implemented dev-mode `$.apply(...)` wrapping for non-inline event handlers, and matched reference dev handler naming for Svelte 5 event attributes plus legacy `on:` directives
-- **Scope note**: component `$$events` forwarding is tracked in `specs/component-node.md` and is already complete there; it is not remaining work for this spec
-- **Remaining**: analyzer incorrectly emits `event_directive_deprecated` for legacy `on:` on `<svelte:window>` in non-runes mode (diagnostic case: `on_directive_not_deprecated_in_non_runes_mode_svelte_window`)
+- **Working**: 11/12 use cases
+- **Tests**: 23/28 green
 - Last updated: 2026-04-11
 
 ## Source

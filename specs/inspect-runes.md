@@ -1,10 +1,8 @@
 # `$inspect` / `$inspect.trace`
 
 ## Current state
-- **Working**: 10/10 use cases — feature complete
-- **Done (2026-04-11)**: `StateRefLocallyValidator` now treats `$inspect(...)` arguments as one function-depth deeper, matching the reference compiler and clearing the remaining inspect diagnostic parity mismatches for inspected `$state`/`$derived` values
-- **Done**: added `InspectWith` and `InspectTrace` RuneKind variants; extended `detect_rune_from_call` to detect both; added placement + argument-count validation in `RuneValidator`; removed 5 pre-existing `#[ignore]` test attributes
-- **Next**: no action needed; monitor for regressions in future rune-detection or validation changes
+- **Working**: 10/10 use cases
+- **Tests**: 26/26 green
 - Last updated: 2026-04-11
 
 ## Source

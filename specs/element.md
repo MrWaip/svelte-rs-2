@@ -2,12 +2,7 @@
 
 ## Current state
 - **Working**: 14/15 use cases
-- **Partial**: template validation — `node_invalid_placement` and `component_name_lowercase` remain outside the completed regular-element slice (require HTML content model table and symbol ref-count access respectively). A11y ownership lives in `specs/a11y-warnings.md`.
-- **Missing**: 1 — remaining regular-element validation parity outside the completed lowering work
-- **Previous slice completed**: `Literal Concat Folding`. Shared concat codegen now folds literal dynamic parts into adjacent static text and emits a plain string literal when no runtime expressions remain, covering regular element attrs and component prop concatenations through the shared `build_attr_concat` path.
-- **Previous slice completed**: `SVG Ambiguous Child Namespace Factories`. Child fragment template creation now derives namespace from fragment ancestry instead of guessing from the first child tag, so ambiguous regular elements like `<a>` and `<title>` inside SVG `{#each}` / `{#if}` fragments emit `$.from_svg(...)`.
-- **Previous slice completed**: `MathML + Reset-Boundary Fragment Namespace Inference`. Fragment factory selection now falls back to `$.from_html(...)` for plain HTML descendants in MathML-root components and through reset boundaries like `annotation-xml`, while preserving the existing `foreignObject` reset behavior and import-node parity for hyphenated MathML wrappers.
-- **Next**: only reopen this spec if remaining regular-element validation ownership returns here; legacy slot ownership lives in `specs/legacy-slots.md`.
+- **Tests**: 32/32 green
 - Last updated: 2026-04-07
 
 ## Source

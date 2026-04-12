@@ -2,7 +2,7 @@
 
 ## Current state
 - **Working**: 4/5 use cases
-- **Next**: add `ast_type === 'module'` check in `$host()` validation — `crates/svelte_analyze/src/validate/runes.rs`, use the module-script context flag to emit `host_invalid_placement` when `$host()` appears inside `<script module>` in a custom element
+- **Tests**: 1/4 green
 - Last updated: 2026-04-04
 
 ## Source

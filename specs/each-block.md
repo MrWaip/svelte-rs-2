@@ -1,10 +1,8 @@
 # Each Block
 
 ## Current state
-- **Working**: 18/20 passing client-side `{#each}` use cases.
-- **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
-- **Open bug (2026-04-11 diagnose)**: keyed `{#each}` with key expression exactly equal to the index identifier (example: `{#each facts as fact, i (i)}`) does not match reference output. Rust currently emits a generic key callback `(fact, i) => i` and sets each flags to `23`, while the reference emits `$.index` and flags `21` (test: `each_key_is_index_literal_diagnose`, ignored pending fix).
-- **Next**: fix index-key specialization so `{#each ... , i (i)}` emits `$.index` plus matching each flags, then unignore `each_key_is_index_literal_diagnose`
+- **Working**: 18/20 use cases
+- **Tests**: 26/31 green
 - Last updated: 2026-04-11
 
 ## Source

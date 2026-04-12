@@ -1,8 +1,8 @@
 # TypeScript Script Stripping
 
 ## Current state
-- **Working**: 6/7 known use cases
-- **Next**: comment-only `<script lang="ts">` with no surviving JS statements must not leak comments into client output or perturb template cursor state
+- **Working**: 6/7 use cases
+- **Tests**: 6/7 green
 - Last updated: 2026-04-11
 
 ## Source

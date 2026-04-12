@@ -5,7 +5,7 @@ description: Project status and production-oriented next-step triage workflow. U
 
 # Project Status
 
-1. Read `specs/*.md` and extract `Current state` plus the next concrete action for each incomplete spec.
+1. Read `specs/*.md` and extract `Current state` plus the first open `Use case` for each incomplete spec.
 2. Scan skipped or ignored compiler tests in `tasks/compiler_tests/test_v3.rs`, group them into related feature or architecture clusters, and identify which cluster is the most meaningful next production milestone.
 3. Scan `tasks/diagnostic_tests/` for existing parity coverage and obvious next diagnostic mismatch clusters that block confidence in compiler diagnostics.
 4. Read `ROADMAP.md` and find the next incomplete item that best advances production readiness, not the smallest or easiest remaining item.

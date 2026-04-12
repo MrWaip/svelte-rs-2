@@ -1,8 +1,8 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 7/7 roadmap-owned use cases
-- **Next**: complete; any future dev-only equality rewrite work should be tracked in a separate dev-codegen parity spec instead of keeping this roadmap-closed text/expression spec open
+- **Working**: 7/7 use cases
+- **Tests**: 16/16 green
 - Last updated: 2026-04-07
 
 ## Source

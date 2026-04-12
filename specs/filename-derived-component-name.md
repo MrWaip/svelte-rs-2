@@ -2,9 +2,7 @@
 
 ## Current state
 - **Working**: 6/6 use cases
-- **Completed slices**: `filename-derived normalization`; `scoped component-name finalization`
-- **Next**: complete
-- **Notes**: final component export names now come from `CompileOptions::component_name()` candidate normalization plus analyze-time deconfliction against reserved keywords, semantic symbol names, and root unresolved references; analyze warnings and codegen share that finalized name
+- **Tests**: 12/12 green
 - Last updated: 2026-04-11
 
 ## Source

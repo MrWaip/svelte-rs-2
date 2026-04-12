@@ -1,13 +1,9 @@
 # Unknown problems
 
 ## Current state
-
-- **Working**: 0 recorded unknown items
-- **Next**: complete; add new items here only until they are mapped to an owning feature spec
-- **Moved (2026-04-11)**: Inspecting rune values in `$inspect(...)` incorrectly warning `state_referenced_locally` now belongs to `specs/inspect-runes.md`
-- **Moved (2026-04-11)**: Input shorthand `{value}` / `{disabled}` on `<input>` from `$props()` now belongs to `specs/attributes-spreads.md`
-- **Moved (2026-04-11)**: `props_bindable_checkbox_disabled_shorthand_ts` now belongs to `specs/bind-directives.md`; the live gap is bindable-prop `bind:checked` lowering, while `{disabled}` shorthand was already closed by `specs/attributes-spreads.md`
-- **Moved (2026-04-11)**: TS script comment leakage from `diagnose_svg_city_icon` now belongs to `specs/typescript-script-stripping.md`
+- **Working**: 0/0 use cases
+- **Tests**: 0/0 green
+- Last updated: 2026-04-11
 
 ## Source
 

@@ -1,9 +1,9 @@
 # `{@debug}`
 
 ## Current state
-- **Working**: 6/6 client use cases — feature complete
-- **Last updated**: 2026-04-04
-- **Next**: No remaining work — all use cases complete
+- **Working**: 6/6 use cases
+- **Tests**: 6/6 green
+- Last updated: 2026-04-04
 
 ## Source
 

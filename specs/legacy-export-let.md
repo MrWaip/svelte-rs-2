@@ -1,14 +1,8 @@
 # Legacy export let props
 
 ## Current state
-- **Working**: 3/14 use cases
-- **Completed (2026-04-12)**: added five focused compiler parity cases for required `export let`, `export var`, export specifier props, aliased export specifier props, and destructured legacy export props; all currently fail and are marked ignored in `tasks/compiler_tests/test_v3.rs`
-- **Completed (2026-04-12)**: absorbed direct `$$props` / `$$restProps` ownership from the removed `legacy-special-vars.md` audit and kept the focused compiler/diagnostic cases under this spec
-- **Completed (2026-04-12)**: absorbed the remaining `$$props` / `$$restProps` legacy compatibility closure item that had still been listed under `specs/props-bindable.md`; this spec is now the single owner for that behavior and its focused compiler/diagnostic cases
-- **Confirmed gap (2026-04-12)**: `collect_legacy_export_props` only seeds legacy props from `export let` binding identifiers, and `post_resolve` only marks legacy props as prop sources when they have defaults or mutations, so required legacy props still read raw `$$props` while `var` / export-specifier / destructured forms stay plain exports or locals
-- **Confirmed gap (2026-04-12)**: Rust does not materialize the reference compiler's legacy helper declarations for `$$sanitized_props` or `$$restProps`, and it emits no runes-mode diagnostics for direct `$$props` / `$$restProps` reads even though the diagnostic codes already exist
-- **Confirmed gap (2026-04-12)**: runes-mode `export let` diagnostics still mismatch reference parity; existing focused diagnostic cases expect `legacy_export_invalid`, but Rust currently reports `state_invalid_export` or nothing
-- **Next**: add analyze-owned tracking for direct `$$props` / `$$restProps` usage and inject the matching legacy helper declarations before returning to the remaining export-specifier/destructure gaps
+- **Working**: 3/16 use cases
+- **Tests**: 3/15 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -20,6 +14,8 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 - `<script>export let foo;</script>`
 - `<script>export let bar = 'default value';</script>`
 - `<script>export let foo = undefined;</script>`
+- `<script lang="ts">export let name: String | undefined;</script>`
+- `<script lang="ts">export let name: SomeType | null | (() => void) = null;</script>`
 - `<script>export var count = 1;</script>`
 - `<script>let foo = 1; export { foo };</script>`
 - `<script>let className; export { className as class };</script>`
@@ -30,14 +26,16 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 
 ## Use cases
 
+- [ ] Analyzer materializes dedicated legacy-prop entities for `export let` / `export var` / export-specifier / destructured legacy exports instead of rediscovering prop-ness from script/export metadata in multiple passes (test: none yet, needs infrastructure)
 - [x] Explicit legacy mode with a defaulted `export let` lowers through the prop pipeline instead of staying a plain export (test: `svelte_options_runes_false_override`)
-- [x] Legacy prop accessors expose getter/setter pairs for `export let` props when `accessors={true}` is enabled (test: `svelte_options_accessors_legacy`)
-- [x] Legacy immutable mode still treats `export let` as a prop input and keeps the runtime-plan push/init behavior aligned with reference output (test: `svelte_options_immutable_legacy`)
 - [ ] Required legacy props without defaults still lower through `$.prop(...)` and template getter calls rather than reading raw `$$props` (test: `legacy_export_let_required`, `#[ignore]`, moderate)
+- [ ] Typed legacy `export let` declarations preserve their TS annotation shape while still materializing the same dedicated legacy-prop entity and runtime prop lowering as untyped declarations, including unions such as `String | undefined` and `SomeType | null | (() => void)` with `= null` defaults; existing TS-strip cases do not currently exercise legacy `export let`, so this still needs dedicated compiler coverage (test: none yet, needs infrastructure)
 - [ ] `export var` declarations become legacy bindable props instead of plain mutable exports (test: `legacy_export_var_basic`, `#[ignore]`, moderate)
 - [ ] Separate instance-script export specifiers on `let` bindings promote those bindings to legacy props rather than component exports (test: `legacy_export_specifier`, `#[ignore]`, moderate)
 - [ ] Export-specifier aliases use the exported name as the prop key while keeping the local binding inside the component (`export { className as class }`) (test: `legacy_export_specifier_alias`, `#[ignore]`, moderate)
 - [ ] Destructured legacy prop exports treat leaf identifiers as prop names and lower path-based defaults through temporary/derived helpers like the reference compiler (test: `legacy_export_destructure`, `#[ignore]`, needs infrastructure)
+- [x] Legacy immutable mode still treats `export let` as a prop input and keeps the runtime-plan push/init behavior aligned with reference output (test: `svelte_options_immutable_legacy`)
+- [x] Legacy prop accessors expose getter/setter pairs for `export let` props when `accessors={true}` is enabled (test: `svelte_options_accessors_legacy`)
 - [ ] Legacy `$$props` identifier/member reads lower through a sanitized props object that excludes `children`, `$$slots`, `$$events`, and `$$legacy` before downstream reads/spreads; current Rust emits raw `$$props` reads, omits the helper declaration, and can even skip the `$$props` function parameter when that is the only legacy special variable used (test: `legacy_props_basic`, `#[ignore]`, moderate)
 - [ ] Legacy `$$restProps` lowers through `$.legacy_rest_props(...)` and excludes named legacy props declared with `export let`; current Rust never declares `$$sanitized_props` or `$$restProps` and instead leaves `...$$restProps` unresolved in output (test: `legacy_rest_props_basic`, `#[ignore]`, moderate)
 - [ ] Runes mode rejects direct `$$props` usage with `legacy_props_invalid`; the diagnostic code exists in `svelte_diagnostics`, but current Rust reports no diagnostic (test: `validate_legacy_props_invalid_in_runes_mode`, `#[ignore]`, quick fix)

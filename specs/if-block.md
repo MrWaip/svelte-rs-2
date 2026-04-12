@@ -1,7 +1,8 @@
 # If Block
 
 ## Current state
-- **Working**: 10/10 use cases — Complete
+- **Working**: 10/10 use cases
+- **Tests**: 10/10 green
 - Last updated: 2026-04-03
 
 ## Source

@@ -1,10 +1,8 @@
 # Key Block
 
 ## Current state
-- **Complete**: 6/6 use cases — feature fully implemented
-- `dynamic_nodes` parity: investigated and intentionally not ported. Reference compiler calls `mark_subtree_dynamic()` which sets `fragment.metadata.dynamic = true` on ancestor fragments; in our Rust architecture `has_dynamic_children` (the equivalent) is only consulted for `ContentStrategy::DynamicText` branching. A fragment containing `{#key}` always yields `SingleBlock` or `Mixed` strategy, never `DynamicText`, so the flag is never read in the `KeyBlock` path. Gap is architecturally irrelevant and not observable — verified by `key_block_nested` test output matching reference exactly.
-- `block_unexpected_character`: implemented in analyzer but dead code — our parser rejects `{ #key ...}` at parse time, stricter than reference JS parser. This is a known parser-strictness difference, not a bug.
-- **Next**: no action needed; monitor for regressions in future parser or content-strategy changes
+- **Working**: 6/6 use cases
+- **Tests**: 7/7 green
 - Last updated: 2026-04-04
 
 ## Source

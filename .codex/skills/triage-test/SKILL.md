@@ -157,7 +157,9 @@ If the test is tracked in a spec:
 
 - mark it fixed for `local-fix`
 - or add it as an unchecked use case if triage discovered a larger missing slice
-- update `Current state` with the triage outcome when useful
+- update `Current state` only as a terse resume header when useful; prefer `Working`, `Tests`, and `Last updated`
+
+Do not append dated outcome bullets to `Current state`; record durable triage outcomes in `Use cases` instead.
 
 ## Summary
 

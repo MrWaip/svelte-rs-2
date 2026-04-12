@@ -1,18 +1,8 @@
 # $: reactive assignments
 
 ## Current state
-- **Working**: 0/4 use cases
-- **Next**: implement top-level legacy `$:` lowering from instance-script labeled statements into analyzed reactive declarations and client `$.legacy_pre_effect(...)` emission
-- **Moved (2026-04-12)**:
-  - Deferred legacy `$:` `$.deep_read_state()` ownership moved here from `specs/state-rune.md` so `$state` can stay scoped to client-side rune parity
-- **Audit (2026-04-12)**:
-  - Added focused compiler cases: `legacy_reactive_assignment_basic`, `legacy_reactive_assignment_block_destructure`, `legacy_reactive_assignment_coarse_deps`, and `legacy_reactive_assignment_import_topology`
-  - All four new cases fail against reference snapshots; the current compiler preserves raw `$:` labeled statements instead of lowering them through legacy reactive runtime helpers
-  - Adjacent legacy coarse-read coverage remains mixed: `svelte_options_immutable_legacy` passes, `legacy_props_basic` still fails for direct legacy prop lowering outside `$:`
-- **Notes**:
-  - The repo already owns the diagnostics strings for `legacy_reactive_statement_invalid`, `reactive_declaration_invalid_placement`, and `reactive_declaration_module_script_dependency`
-  - The current Rust compiler has no discovered analyzer or codegen ownership for JS `LabeledStatement` nodes with label `$`; only generic legacy coarse-read wrapping exists in template expressions
-  - Existing `$.deep_read_state(...)` coverage in `svelte_options_immutable_legacy` only proves coarse legacy template reads, not legacy `$:` discovery, ordering, or emission
+- **Working**: 0/5 use cases
+- **Tests**: 0/4 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -32,6 +22,7 @@
 
 ## Use cases
 
+- [ ] Analyzer materializes dedicated legacy reactive declaration entities from top-level `$:` statements, capturing dependencies, assignments, statement kind, and implicit reactive targets instead of leaving them as raw JS `LabeledStatement`s for downstream rediscovery (test: none yet, needs infrastructure)
 - [ ] Top-level legacy `$:` statements and assignments in instance scripts are discovered and lowered to client-side `$.legacy_pre_effect(...)` calls, with backing `$.mutable_source(...)` declarations for implicitly introduced reactive targets (test: `legacy_reactive_assignment_basic`, `#[ignore]`, needs infrastructure)
 - [ ] Legacy `$:` block bodies and destructuring assignment targets participate in the same dependency and implicit-binding flow as simple assignments (test: `legacy_reactive_assignment_block_destructure`, `#[ignore]`, needs infrastructure)
 - [ ] Legacy `$:` dependency capture uses coarse-grained reads for legacy prop sources and reserved prop bags (`export let`, `$$props`, `$$restProps`) instead of plain identifier reads (test: `legacy_reactive_assignment_coarse_deps`, `#[ignore]`, needs infrastructure)

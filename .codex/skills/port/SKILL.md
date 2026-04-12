@@ -28,13 +28,13 @@ If the argument is a spec path, or a matching spec was found:
 4. Close that use case completely, unless multiple unchecked use cases clearly belong to one closure unit
 
 If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a closure target.
+If `Current state` has turned into a dated changelog, collapse it back to a terse resume header before proceeding.
 
 Derive the closure target from the existing spec structure in this order:
 
-1. explicit closure notes in `Current state`
-2. unchecked or partial items in `Use cases`
-3. concrete file or layer groupings in `Tasks`
-4. `Implementation order`, if present
+1. the first unchecked or partial item in `Use cases`
+2. concrete file or layer groupings in `Tasks`
+3. `Implementation order`, if present
 
 Treat optional headings such as `Execution slices`, `Next slice`, or `Non-goals` as hints when they exist, not as required structure.
 
@@ -133,11 +133,8 @@ If implementing the closure unit would require architecture changes that do not 
 
 Prepare a proposed update for the same spec file that was selected earlier so the next session can resume cleanly.
 
-Draft `Current state` updates with:
-
-- current closure target
-- why this use case or use case set comes next
-- non-goals for this run
+Do not use `Current state` as a planning scratchpad. Keep it as a terse resume header only.
+If the spec needs a planning update before implementation, prefer refining `Use cases` or decomposing a broad item instead of adding planning bullets to `Current state`.
 
 If the selected use case is too broad, draft the decomposition instead of a normal closure plan.
 
@@ -266,8 +263,7 @@ Before updating the spec, inspect the diff and confirm that unrelated files were
 Update the spec:
 
 - mark completed use cases
-- update `Current state`
-- name the next closure target
+- update `Current state` counts and date
 - record any newly discovered unchecked use cases
 
 Mark use cases as completed only here, after implementation and verification succeed.
@@ -275,7 +271,6 @@ Mark use cases as completed only here, after implementation and verification suc
 If you decomposed a use case instead of closing it:
 
 - replace the original broad use case with the smaller explicit unchecked use cases
-- update `Current state` to state that the use case was split
 - tell the user exactly which new use cases were created
 
 Move the ROADMAP item only when all spec use cases for the feature are complete.

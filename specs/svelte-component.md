@@ -1,11 +1,8 @@
 # Svelte Component
 
 ## Current state
-- **Working**: 3/5 closure items
-- **Next**: port parser-owned `this` validation (`svelte_component_missing_this`, `svelte_component_invalid_this`) and remove the ignored diagnostic parity cases
-- **Done this session**: added passing `svelte_component_children` snapshot coverage and durable diagnostic parity repros for missing/invalid `this`
-- **Verification**: `just generate`; `just test-case svelte_component_children`; `just test-diagnostic-case svelte_component_missing_this`; `just test-diagnostic-case svelte_component_invalid_this_string`
-- **Known gap**: both failing diagnostic cases currently panic in `crates/svelte_codegen_client/src/template/component.rs` with `"<svelte:component> missing \`this\` attribute"` and produce `internal_error` instead of the reference parser diagnostics
+- **Working**: 3/6 use cases
+- **Tests**: 4/6 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -27,11 +24,12 @@
 
 ## Use cases
 
-- [x] Legacy-mode `<svelte:component this={expr} .../>` lowers through the dynamic-component runtime path and excludes `this` from serialized props. (test: `svelte_component_basic`)
-- [x] Runes mode emits `svelte_component_deprecated`, while legacy mode does not warn for the same template form. (tests: `svelte_component_deprecated_warns_in_runes_mode`, `svelte_component_deprecated_no_warn_in_legacy_mode`)
+- [ ] `<svelte:component>` is represented as a dedicated AST node instead of a generic `ComponentNode`, so dynamic-component lowering and `this` validation stop branching on `name == "svelte:component"` plus ad hoc attribute extraction (test: none yet, needs infrastructure)
 - [ ] Missing `this` is rejected with `svelte_component_missing_this` before codegen fallback/panic paths. (test: `svelte_component_missing_this`, #[ignore], moderate)
 - [ ] Non-expression `this` is rejected with `svelte_component_invalid_this` instead of being treated as a normal prop and reaching the codegen panic path. (test: `svelte_component_invalid_this_string`, #[ignore], moderate)
+- [x] Legacy-mode `<svelte:component this={expr} .../>` lowers through the dynamic-component runtime path and excludes `this` from serialized props. (test: `svelte_component_basic`)
 - [x] Non-self-closing `<svelte:component>` preserves shared child-content lowering after the `this` attribute is stripped. (test: `svelte_component_children`)
+- [x] Runes mode emits `svelte_component_deprecated`, while legacy mode does not warn for the same template form. (tests: `svelte_component_deprecated_warns_in_runes_mode`, `svelte_component_deprecated_no_warn_in_legacy_mode`)
 
 ## Out of scope
 
@@ -51,6 +49,7 @@
 - `reference/compiler/warnings.js`
 
 ### Our code
+- `crates/svelte_ast/src/lib.rs`
 - `crates/svelte_parser/src/lib.rs`
 - `crates/svelte_parser/src/attr_convert.rs`
 - `crates/svelte_parser/src/svelte_elements.rs`

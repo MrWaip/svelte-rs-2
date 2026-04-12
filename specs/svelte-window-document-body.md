@@ -2,7 +2,7 @@
 
 ## Current state
 - **Working**: 13/13 use cases
-- **Next**: complete
+- **Tests**: 32/32 green
 - Last updated: 2026-04-11
 
 ## Source

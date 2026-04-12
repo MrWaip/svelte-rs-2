@@ -1,11 +1,8 @@
 # bind:*
 
 ## Current state
-- **Working**: all existing bind codegen and analyzer validation use cases are implemented and covered, except dev-mode ownership validation for component prop bindings
-- **Completed (2026-04-11)**: `Bindable Prop bind:checked Lowering`. `props_bindable_checkbox_disabled_shorthand_ts` now matches reference for the live gap: analyze marks bind directives that target prop sources, and regular-element `bind:checked` passes the bindable prop accessor directly to `$.bind_checked(...)`. The `{disabled}` shorthand in the same repro remains owned by `specs/attributes-spreads.md`.
-- `bind_select_static_option_value` landed: any `<option value="...">` (StringAttribute) now drops the literal `value=` from the template HTML and emits `option.value = option.__value = "<lit>"` in JS init, matching the reference compiler's `needs_special_value_handling` rule. Routed via `element_needs_var` in analyze + extended `value` attr arms in `template/html.rs` and `template/attributes.rs` (reuses the existing `bind:group` `__value` emission).
-- **Next:** return to dev-mode `$$ownership_validator.binding(...)` coverage for component bindings; `<option value={expr}>` (Expression / Concatenation) still emits the legacy path and should be ported separately.
-- **Non-goals for the completed bindable-prop slice:** `{disabled}` attr shorthand lowering, other prop-source binds such as `bind:value`, dev-mode ownership validation, and `<option value={expr}>`.
+- **Working**: 16/18 use cases
+- **Tests**: 60/62 green
 - Last updated: 2026-04-11
 
 ## Source
