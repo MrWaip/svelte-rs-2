@@ -214,6 +214,18 @@ fn walk_node<'a>(
                 diags,
             );
         }
+        Node::SlotElementLegacy(el) => {
+            walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
+            walk_fragment(
+                alloc,
+                &el.fragment,
+                store,
+                component,
+                typescript,
+                result,
+                diags,
+            );
+        }
         Node::ComponentNode(cn) => {
             walk_attrs(alloc, &cn.attributes, component, typescript, result, diags);
             walk_fragment(
@@ -394,6 +406,18 @@ fn walk_node<'a>(
                 diags,
             );
         }
+        Node::SvelteFragmentLegacy(el) => {
+            walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
+            walk_fragment(
+                alloc,
+                &el.fragment,
+                store,
+                component,
+                typescript,
+                result,
+                diags,
+            );
+        }
         Node::SvelteElement(el) => {
             if !el.static_tag {
                 parse_span(alloc, component, el.tag_span, typescript, result, diags);
@@ -489,6 +513,11 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::BindDirective(a) => {
+                if let Some(span) = a.expression_span {
+                    parse_span(alloc, component, span, typescript, result, diags);
+                }
+            }
+            Attribute::LetDirectiveLegacy(a) => {
                 if let Some(span) = a.expression_span {
                     parse_span(alloc, component, span, typescript, result, diags);
                 }

@@ -1,9 +1,9 @@
 use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatPart,
-    ConcatenationAttribute, ExpressionAttribute, OnDirectiveLegacy, Shorthand, SpreadAttribute,
-    StringAttribute, StyleDirective, StyleDirectiveValue, TransitionDirection, TransitionDirective,
-    UseDirective,
+    ConcatenationAttribute, ExpressionAttribute, LetDirectiveLegacy, OnDirectiveLegacy,
+    Shorthand, SpreadAttribute, StringAttribute, StyleDirective, StyleDirectiveValue,
+    TransitionDirection, TransitionDirective, UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::{GetSpan, Span};
@@ -241,6 +241,15 @@ impl<'a> Parser<'a> {
                         name: bd_name.to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
+                    }));
+                }
+                token::Attribute::LetDirectiveLegacy(ld) => {
+                    attributes.push(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
+                        id: attr_id,
+                        span: attr_span,
+                        name: ld.name_span.source_text(self.source).to_string(),
+                        name_span: ld.name_span,
+                        expression_span: ld.has_expression.then_some(ld.expression_span),
                     }));
                 }
                 token::Attribute::UseDirective(ud) => {

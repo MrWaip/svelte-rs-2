@@ -382,7 +382,7 @@ pub fn generate<'a>(
         let id = svelte_ast::NodeId(raw_id);
         matches!(
             component.store.get(id),
-            Node::Element(el) if el.name == "slot"
+            Node::SlotElementLegacy(_)
         )
     }) && !ctx.query.view.custom_element();
 

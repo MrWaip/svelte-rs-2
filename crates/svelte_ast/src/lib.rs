@@ -345,6 +345,7 @@ macro_rules! impl_node_enum {
 impl_node_enum! {
     Text(Text)                   => is_text / as_text,
     Element(Element)             => is_element / as_element,
+    SlotElementLegacy(SlotElementLegacy) => is_slot_element_legacy / as_slot_element_legacy,
     ComponentNode(ComponentNode) => is_component_node / as_component_node,
     Comment(Comment)             => is_comment / as_comment,
     ExpressionTag(ExpressionTag) => is_expression_tag / as_expression_tag,
@@ -357,6 +358,7 @@ impl_node_enum! {
     DebugTag(DebugTag)           => is_debug_tag / as_debug_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
+    SvelteFragmentLegacy(SvelteFragmentLegacy) => is_svelte_fragment_legacy / as_svelte_fragment_legacy,
     SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
     SvelteWindow(SvelteWindow)       => is_svelte_window / as_svelte_window,
     SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
@@ -421,6 +423,14 @@ impl Element {
             fragment: Fragment::empty(),
         }
     }
+}
+
+/// LEGACY(svelte4): legacy `<slot>` pseudo-element. Deprecated in Svelte 5, remove in Svelte 6.
+pub struct SlotElementLegacy {
+    pub id: NodeId,
+    pub span: Span,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +597,14 @@ pub struct SvelteHead {
     pub fragment: Fragment,
 }
 
+/// LEGACY(svelte4): transparent named-slot wrapper `<svelte:fragment>`. Remove in Svelte 6.
+pub struct SvelteFragmentLegacy {
+    pub id: NodeId,
+    pub span: Span,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
+}
+
 // ---------------------------------------------------------------------------
 // SvelteElement — <svelte:element this={tag}>...</svelte:element>
 // ---------------------------------------------------------------------------
@@ -714,6 +732,8 @@ impl_attr_enum! {
     StyleDirective(StyleDirective),
     /// bind:name or bind:name={expr}
     BindDirective(BindDirective),
+    /// LEGACY(svelte4): let:name or let:name={expr} for slot props. Deprecated in Svelte 5, remove in Svelte 6.
+    LetDirectiveLegacy(LetDirectiveLegacy),
     /// use:name or use:name={expr}
     UseDirective(UseDirective),
     /// LEGACY(svelte4): on:event or on:event={handler} or on:event|modifier={handler}
@@ -740,6 +760,7 @@ impl Attribute {
             Attribute::ClassDirective(a) => Some(&a.name),
             Attribute::StyleDirective(a) => Some(&a.name),
             Attribute::BindDirective(a) => Some(&a.name),
+            Attribute::LetDirectiveLegacy(a) => Some(&a.name),
             Attribute::OnDirectiveLegacy(a) => Some(&a.name),
             Attribute::UseDirective(_)
             | Attribute::TransitionDirective(_)
@@ -871,6 +892,19 @@ pub struct BindDirective {
     /// Span of the JS expression. None means shorthand (bind:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
+}
+
+/// LEGACY(svelte4): `let:` slot-prop binding syntax. Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Clone)]
+pub struct LetDirectiveLegacy {
+    pub id: NodeId,
+    pub span: Span,
+    /// Slot-prop key (e.g. `item` in `let:item` or `let:item={value}`).
+    pub name: String,
+    /// Span of the slot-prop key in source.
+    pub name_span: Span,
+    /// Optional binding expression span from `={...}`.
+    pub expression_span: Option<Span>,
 }
 
 /// use:name or use:name={expr}

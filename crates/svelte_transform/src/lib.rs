@@ -90,6 +90,10 @@ fn walk_node<'a>(
             transform_attrs(ctx, &el.attributes, parsed, scope);
             walk_fragment(ctx, &el.fragment, component, parsed, scope);
         }
+        Node::SlotElementLegacy(el) => {
+            transform_attrs(ctx, &el.attributes, parsed, scope);
+            walk_fragment(ctx, &el.fragment, component, parsed, scope);
+        }
         Node::ComponentNode(cn) => {
             transform_attrs(ctx, &cn.attributes, parsed, scope);
             walk_fragment(ctx, &cn.fragment, component, parsed, scope);
@@ -174,6 +178,10 @@ fn walk_node<'a>(
         Node::SvelteHead(head) => {
             let child_scope = ctx.analysis.svelte_head_body_scope(head.id, scope);
             walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
+        }
+        Node::SvelteFragmentLegacy(el) => {
+            transform_attrs(ctx, &el.attributes, parsed, scope);
+            walk_fragment(ctx, &el.fragment, component, parsed, scope);
         }
         Node::SvelteElement(el) => {
             if !el.static_tag {
@@ -317,6 +325,7 @@ fn get_attr_expr_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<E
             _ => None,
         },
         Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::LetDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
         Attribute::SpreadAttribute(a) => Some(a.expression_span.start),
         Attribute::Shorthand(a) => Some(a.expression_span.start),
         Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),

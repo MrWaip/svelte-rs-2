@@ -73,6 +73,10 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     self.walk_attributes(&el.attributes, ctx);
                     self.walk_fragment(&el.fragment, ctx);
                 }
+                Node::SlotElementLegacy(el) => {
+                    self.walk_attributes(&el.attributes, ctx);
+                    self.walk_fragment(&el.fragment, ctx);
+                }
                 Node::ComponentNode(node) => {
                     ctx.register_fragment_scope(FragmentKey::ComponentNode(node.id));
                     self.walk_attributes(&node.attributes, ctx);
@@ -206,6 +210,10 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     ctx.enter_fragment_scope(FragmentKey::SvelteHeadBody(head.id));
                     self.walk_fragment(&head.fragment, ctx);
                     ctx.leave_scope();
+                }
+                Node::SvelteFragmentLegacy(node) => {
+                    self.walk_attributes(&node.attributes, ctx);
+                    self.walk_fragment(&node.fragment, ctx);
                 }
                 Node::SvelteElement(el) => {
                     self.record_expr_handle(el.id, el.tag_span.start, false);
@@ -391,6 +399,9 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 Attribute::ClassDirective(dir) => self.walk_class_directive(dir, ctx),
                 Attribute::StyleDirective(dir) => self.walk_style_directive(dir, ctx),
                 Attribute::BindDirective(dir) => self.walk_bind_directive(dir, ctx),
+                Attribute::LetDirectiveLegacy(dir) => {
+                    self.walk_optional_expr_attr(dir.id, dir.expression_span, ctx)
+                }
                 Attribute::UseDirective(dir) => {
                     self.walk_optional_expr_attr(dir.id, dir.expression_span, ctx)
                 }

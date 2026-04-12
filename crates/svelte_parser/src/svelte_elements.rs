@@ -1,8 +1,8 @@
 use svelte_ast::{
     AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Namespace, Node, NodeId,
-    SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow,
-    SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_OPTIONS,
-    SVELTE_WINDOW,
+    SlotElementLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteFragmentLegacy,
+    SvelteHead, SvelteOptions, SvelteWindow, SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT,
+    SVELTE_ELEMENT, SVELTE_FRAGMENT, SVELTE_HEAD, SVELTE_OPTIONS, SVELTE_WINDOW,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -407,6 +407,78 @@ impl<'a> Parser<'a> {
     }
 
     // -----------------------------------------------------------------------
+    // LEGACY(svelte4): <slot> conversion
+    // -----------------------------------------------------------------------
+
+    /// Convert legacy `<slot>` Element nodes to SlotElementLegacy nodes.
+    /// Recursive because slot elements can appear anywhere in the template tree.
+    pub(crate) fn convert_slot_element_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
+        let mut next_level = Vec::new();
+        for &id in node_ids {
+            if store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "slot")
+            {
+                let Node::Element(el) = store.take(id) else {
+                    unreachable!()
+                };
+                Self::convert_slot_element_legacy(store, &el.fragment.nodes);
+                store.replace(
+                    id,
+                    Node::SlotElementLegacy(SlotElementLegacy {
+                        id: el.id,
+                        span: el.span,
+                        attributes: el.attributes,
+                        fragment: el.fragment,
+                    }),
+                );
+            } else {
+                extend_child_node_ids(store.get(id), &mut next_level);
+            }
+        }
+        if !next_level.is_empty() {
+            Self::convert_slot_element_legacy(store, &next_level);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // LEGACY(svelte4): <svelte:fragment> conversion
+    // -----------------------------------------------------------------------
+
+    /// Convert legacy `<svelte:fragment>` Element nodes to SvelteFragmentLegacy nodes.
+    /// Recursive because fragment wrappers can appear inside component children and blocks.
+    pub(crate) fn convert_svelte_fragment_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
+        let mut next_level = Vec::new();
+        for &id in node_ids {
+            if store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == SVELTE_FRAGMENT)
+            {
+                let Node::Element(el) = store.take(id) else {
+                    unreachable!()
+                };
+                Self::convert_svelte_fragment_legacy(store, &el.fragment.nodes);
+                store.replace(
+                    id,
+                    Node::SvelteFragmentLegacy(SvelteFragmentLegacy {
+                        id: el.id,
+                        span: el.span,
+                        attributes: el.attributes,
+                        fragment: el.fragment,
+                    }),
+                );
+            } else {
+                extend_child_node_ids(store.get(id), &mut next_level);
+            }
+        }
+        if !next_level.is_empty() {
+            Self::convert_svelte_fragment_legacy(store, &next_level);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // <svelte:element> conversion
     // -----------------------------------------------------------------------
 
@@ -483,6 +555,7 @@ impl<'a> Parser<'a> {
 fn extend_child_node_ids(node: &Node, buf: &mut Vec<NodeId>) {
     match node {
         Node::Element(el) => buf.extend_from_slice(&el.fragment.nodes),
+        Node::SlotElementLegacy(el) => buf.extend_from_slice(&el.fragment.nodes),
         Node::ComponentNode(cn) => buf.extend_from_slice(&cn.fragment.nodes),
         Node::IfBlock(block) => {
             buf.extend_from_slice(&block.consequent.nodes);
@@ -502,6 +575,7 @@ fn extend_child_node_ids(node: &Node, buf: &mut Vec<NodeId>) {
         Node::SvelteDocument(document) => buf.extend_from_slice(&document.fragment.nodes),
         Node::SvelteBody(body) => buf.extend_from_slice(&body.fragment.nodes),
         Node::SvelteHead(head) => buf.extend_from_slice(&head.fragment.nodes),
+        Node::SvelteFragmentLegacy(fragment) => buf.extend_from_slice(&fragment.fragment.nodes),
         Node::SvelteElement(el) => buf.extend_from_slice(&el.fragment.nodes),
         Node::SvelteBoundary(b) => buf.extend_from_slice(&b.fragment.nodes),
         Node::AwaitBlock(block) => {

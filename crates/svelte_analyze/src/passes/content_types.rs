@@ -1,4 +1,4 @@
-use svelte_ast::{Attribute, Element};
+use svelte_ast::{Attribute, Element, SlotElementLegacy, SvelteFragmentLegacy};
 
 use crate::types::data::{
     AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart,
@@ -34,6 +34,44 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
         // Compute needs_var (same logic as former NeedsVarVisitor)
         if element_needs_var(el, ctx.data) {
             ctx.data.elements.flags.needs_var.insert(el.id);
+        }
+    }
+
+    fn leave_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
+        let key = FragmentKey::Element(el.id);
+        if let Some(lf) = ctx.data.template.fragments.lowered.get(&key) {
+            let cs = classify_items(&lf.items, self.source);
+            let has_dynamic = lf
+                .items
+                .iter()
+                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+            ctx.data.template.fragments.content_types.insert(key, cs);
+            if has_dynamic {
+                ctx.data.template.fragments.has_dynamic_children.insert(key);
+            }
+        }
+    }
+
+    fn leave_svelte_fragment_legacy(
+        &mut self,
+        el: &SvelteFragmentLegacy,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
+        let key = FragmentKey::Element(el.id);
+        if let Some(lf) = ctx.data.template.fragments.lowered.get(&key) {
+            let cs = classify_items(&lf.items, self.source);
+            let has_dynamic = lf
+                .items
+                .iter()
+                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+            ctx.data.template.fragments.content_types.insert(key, cs);
+            if has_dynamic {
+                ctx.data.template.fragments.has_dynamic_children.insert(key);
+            }
         }
     }
 }

@@ -9,11 +9,18 @@ pub(crate) trait TemplateVisitor {
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {}
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_>) {}
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {}
+    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_>) {}
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_>) {}
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {}
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {}
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {}
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {}
+    fn visit_svelte_fragment_legacy(
+        &mut self,
+        el: &SvelteFragmentLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+    }
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {}
     fn visit_svelte_window(&mut self, w: &SvelteWindow, ctx: &mut VisitContext<'_>) {}
     fn visit_svelte_document(&mut self, doc: &SvelteDocument, ctx: &mut VisitContext<'_>) {}
@@ -39,6 +46,12 @@ pub(crate) trait TemplateVisitor {
     fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {}
+    fn visit_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+    }
     fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_>) {}
     fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {}
     fn visit_transition_directive(
@@ -71,6 +84,13 @@ pub(crate) trait TemplateVisitor {
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {}
+    fn leave_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_>) {}
+    fn leave_svelte_fragment_legacy(
+        &mut self,
+        el: &SvelteFragmentLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+    }
     fn leave_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {}
     fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {}
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {}

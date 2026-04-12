@@ -49,6 +49,21 @@ pub(crate) fn walk_template(
                     v.leave_element(el, ctx);
                 }
             }
+            Node::SlotElementLegacy(el) => {
+                for v in visitors.iter_mut() {
+                    v.visit_slot_element_legacy(el, ctx);
+                }
+                ctx.push(ParentRef {
+                    id: el.id,
+                    kind: ParentKind::SlotElementLegacy,
+                });
+                walk_attributes(&el.attributes, ctx, visitors);
+                walk_template(&el.fragment, ctx, visitors);
+                ctx.pop();
+                for v in visitors.iter_mut() {
+                    v.leave_slot_element_legacy(el, ctx);
+                }
+            }
             Node::IfBlock(block) => {
                 for v in visitors.iter_mut() {
                     v.visit_if_block(block, ctx);
@@ -177,6 +192,21 @@ pub(crate) fn walk_template(
                 ctx.scope = saved;
                 ctx.pop();
             }
+            Node::SvelteFragmentLegacy(el) => {
+                for v in visitors.iter_mut() {
+                    v.visit_svelte_fragment_legacy(el, ctx);
+                }
+                ctx.push(ParentRef {
+                    id: el.id,
+                    kind: ParentKind::SvelteFragmentLegacy,
+                });
+                walk_attributes(&el.attributes, ctx, visitors);
+                walk_template(&el.fragment, ctx, visitors);
+                ctx.pop();
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_fragment_legacy(el, ctx);
+                }
+            }
             Node::SvelteElement(el) => {
                 for v in visitors.iter_mut() {
                     v.visit_svelte_element(el, ctx);
@@ -286,6 +316,7 @@ fn node_id_of(node: &Node) -> NodeId {
     match node {
         Node::ExpressionTag(n) => n.id,
         Node::Element(n) => n.id,
+        Node::SlotElementLegacy(n) => n.id,
         Node::IfBlock(n) => n.id,
         Node::EachBlock(n) => n.id,
         Node::SnippetBlock(n) => n.id,
@@ -296,6 +327,7 @@ fn node_id_of(node: &Node) -> NodeId {
         Node::DebugTag(n) => n.id,
         Node::KeyBlock(n) => n.id,
         Node::SvelteHead(n) => n.id,
+        Node::SvelteFragmentLegacy(n) => n.id,
         Node::SvelteElement(n) => n.id,
         Node::SvelteWindow(n) => n.id,
         Node::SvelteDocument(n) => n.id,
@@ -446,6 +478,17 @@ fn walk_attributes(
                 ctx.push(ParentRef {
                     id: a.id,
                     kind: ParentKind::BindDirective,
+                });
+                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                ctx.pop();
+            }
+            Attribute::LetDirectiveLegacy(a) => {
+                for v in visitors.iter_mut() {
+                    v.visit_let_directive_legacy(a, ctx);
+                }
+                ctx.push(ParentRef {
+                    id: a.id,
+                    kind: ParentKind::LetDirectiveLegacy,
                 });
                 dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
                 ctx.pop();
