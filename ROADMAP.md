@@ -65,7 +65,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [ ] `$host` — [spec](specs/host-rune.md)
 - [ ] `$store` subscriptions — [spec](specs/store-subscriptions.md)
 - [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
-- [ ] `<script module>` — [spec](specs/script-module.md)
+- [x] `<script module>` — [spec](specs/script-module.md)
 
 ## Template
 
