@@ -1,0 +1,2 @@
+
+    .card.svelte-mv1sf:has(.inside:where(.svelte-mv1sf)) .inside:where(.svelte-mv1sf) { color: red; }

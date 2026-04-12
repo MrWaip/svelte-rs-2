@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{compile, CompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, Namespace, compile};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -595,18 +595,15 @@ mod css {
 
     diagnostic_case!(
         css_global_block_invalid_placement,
-        "css/css_global_block_invalid_placement",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_placement"
     );
     diagnostic_case!(
         css_global_invalid_placement,
-        "css/css_global_invalid_placement",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_invalid_placement"
     );
     diagnostic_case!(
         css_global_invalid_placement_multiple_non_global_after,
-        "css/css_global_invalid_placement_multiple_non_global_after",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_invalid_placement_multiple_non_global_after"
     );
     diagnostic_case!(
         css_global_invalid_placement_end_ok,
@@ -618,33 +615,27 @@ mod css {
     );
     diagnostic_case!(
         css_global_invalid_selector_list,
-        "css/css_global_invalid_selector_list",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_invalid_selector_list"
     );
     diagnostic_case!(
         css_type_selector_invalid_placement,
-        "css/css_type_selector_invalid_placement",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_type_selector_invalid_placement"
     );
     diagnostic_case!(
         css_global_invalid_selector,
-        "css/css_global_invalid_selector",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_invalid_selector"
     );
     diagnostic_case!(
         css_global_block_invalid_modifier_start,
-        "css/css_global_block_invalid_modifier_start",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_modifier_start"
     );
     diagnostic_case!(
         css_global_block_invalid_combinator,
-        "css/css_global_block_invalid_combinator",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_combinator"
     );
     diagnostic_case!(
         css_global_block_invalid_list,
-        "css/css_global_block_invalid_list",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_list"
     );
     diagnostic_case!(
         css_global_block_invalid_declaration,
@@ -652,13 +643,11 @@ mod css {
     );
     diagnostic_case!(
         css_global_block_invalid_modifier,
-        "css/css_global_block_invalid_modifier",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_modifier"
     );
     diagnostic_case!(
         css_nesting_selector_invalid_placement,
-        "css/css_nesting_selector_invalid_placement",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_nesting_selector_invalid_placement"
     );
     diagnostic_case!(
         css_nesting_selector_valid_in_global,
@@ -666,8 +655,7 @@ mod css {
     );
     diagnostic_case!(
         css_selector_invalid,
-        "css/css_selector_invalid",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_selector_invalid"
     );
     diagnostic_case!(
         css_global_block_with_nested_rules_ok,
@@ -675,28 +663,23 @@ mod css {
     );
     diagnostic_case!(
         css_global_block_descendant_ok,
-        "css/css_global_block_descendant_ok",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_descendant_ok"
     );
     diagnostic_case!(
         css_global_nesting_modifier_start_in_global_block,
-        "css/css_global_nesting_modifier_start_in_global_block",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_nesting_modifier_start_in_global_block"
     );
     diagnostic_case!(
         css_global_block_invalid_list_mixed,
-        "css/css_global_block_invalid_list_mixed",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_global_block_invalid_list_mixed"
     );
     diagnostic_case!(
         css_nesting_in_compound_global_block_ok,
-        "css/css_nesting_in_compound_global_block_ok",
-        ignore = "known mismatch: analyzer reports extra css_unused_selector diagnostics and different spans on this repro"
+        "css/css_nesting_in_compound_global_block_ok"
     );
     diagnostic_case!(
         valid_scoped_css_no_diagnostics,
-        "css/valid_scoped_css_no_diagnostics",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans that do not overlap npm svelte/compiler on this repro"
+        "css/valid_scoped_css_no_diagnostics"
     );
 }
 
@@ -707,11 +690,7 @@ mod css_prune {
         type_selector_matches_element,
         "css_prune/type_selector_matches_element"
     );
-    diagnostic_case!(
-        type_selector_no_match,
-        "css_prune/type_selector_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
-    );
+    diagnostic_case!(type_selector_no_match, "css_prune/type_selector_no_match");
     diagnostic_case!(
         type_selector_case_insensitive_css,
         "css_prune/type_selector_case_insensitive_css"
@@ -722,25 +701,16 @@ mod css_prune {
     );
     diagnostic_case!(
         multiple_selectors_mixed,
-        "css_prune/multiple_selectors_mixed",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/multiple_selectors_mixed"
     );
     diagnostic_case!(
         class_selector_static_match,
         "css_prune/class_selector_static_match"
     );
-    diagnostic_case!(
-        class_selector_no_match,
-        "css_prune/class_selector_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
-    );
+    diagnostic_case!(class_selector_no_match, "css_prune/class_selector_no_match");
     diagnostic_case!(class_directive_match, "css_prune/class_directive_match");
     diagnostic_case!(id_selector_match, "css_prune/id_selector_match");
-    diagnostic_case!(
-        id_selector_no_match,
-        "css_prune/id_selector_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
-    );
+    diagnostic_case!(id_selector_no_match, "css_prune/id_selector_no_match");
     diagnostic_case!(
         global_functional_always_used,
         "css_prune/global_functional_always_used"
@@ -759,8 +729,7 @@ mod css_prune {
     );
     diagnostic_case!(
         descendant_combinator_no_match,
-        "css_prune/descendant_combinator_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/descendant_combinator_no_match"
     );
     diagnostic_case!(
         child_combinator_direct_match,
@@ -768,8 +737,7 @@ mod css_prune {
     );
     diagnostic_case!(
         child_combinator_indirect_no_match,
-        "css_prune/child_combinator_indirect_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/child_combinator_indirect_no_match"
     );
     diagnostic_case!(
         adjacent_sibling_combinator_match,
@@ -777,8 +745,7 @@ mod css_prune {
     );
     diagnostic_case!(
         adjacent_sibling_combinator_no_match,
-        "css_prune/adjacent_sibling_combinator_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/adjacent_sibling_combinator_no_match"
     );
     diagnostic_case!(
         general_sibling_combinator_match,
@@ -786,19 +753,13 @@ mod css_prune {
     );
     diagnostic_case!(
         general_sibling_combinator_no_match,
-        "css_prune/general_sibling_combinator_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/general_sibling_combinator_no_match"
     );
-    diagnostic_case!(
-        no_elements_all_unused,
-        "css_prune/no_elements_all_unused",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
-    );
+    diagnostic_case!(no_elements_all_unused, "css_prune/no_elements_all_unused");
     diagnostic_case!(keyframes_not_warned, "css_prune/keyframes_not_warned");
     diagnostic_case!(
         media_query_unused_selector,
-        "css_prune/media_query_unused_selector",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/media_query_unused_selector"
     );
     diagnostic_case!(
         media_query_used_selector,
@@ -809,15 +770,10 @@ mod css_prune {
         "css_prune/spread_attribute_conservative_class_match"
     );
     diagnostic_case!(is_selector_match, "css_prune/is_selector_match");
-    diagnostic_case!(
-        is_selector_no_match,
-        "css_prune/is_selector_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
-    );
+    diagnostic_case!(is_selector_no_match, "css_prune/is_selector_no_match");
     diagnostic_case!(
         is_selector_compound_no_match,
-        "css_prune/is_selector_compound_no_match",
-        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+        "css_prune/is_selector_compound_no_match"
     );
     diagnostic_case!(where_selector_match, "css_prune/where_selector_match");
     diagnostic_case!(
@@ -833,6 +789,9 @@ mod css_prune {
         deeply_nested_descendant,
         "css_prune/deeply_nested_descendant"
     );
+    diagnostic_case!(implicit_nesting_match, "css_prune/implicit_nesting_match");
+    diagnostic_case!(root_has_match, "css_prune/root_has_match");
+    diagnostic_case!(escaped_selector_match, "css_prune/escaped_selector_match");
 }
 
 mod bind {

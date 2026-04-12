@@ -43,6 +43,8 @@ pub struct SnippetData {
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
     /// Named slots for component children: maps component NodeId → vec of (slot_element_id, fragment_key).
     pub(crate) component_named_slots: NodeTable<Vec<(NodeId, FragmentKey)>>,
+    pub(crate) local_snippets: Vec<NodeId>,
+    pub(crate) snippet_name_symbols: FxHashMap<SymbolId, NodeId>,
 }
 
 impl SnippetData {
@@ -51,6 +53,8 @@ impl SnippetData {
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
             component_named_slots: NodeTable::new(node_count),
+            local_snippets: Vec::new(),
+            snippet_name_symbols: FxHashMap::default(),
         }
     }
 
@@ -66,6 +70,12 @@ impl SnippetData {
         self.component_named_slots
             .get(id)
             .map_or(&[], |v| v.as_slice())
+    }
+    pub fn local_snippets(&self) -> &[NodeId] {
+        self.local_snippets.as_slice()
+    }
+    pub fn snippet_by_symbol(&self, sym_id: SymbolId) -> Option<NodeId> {
+        self.snippet_name_symbols.get(&sym_id).copied()
     }
 }
 

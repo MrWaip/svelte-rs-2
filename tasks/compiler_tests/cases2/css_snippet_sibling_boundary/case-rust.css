@@ -1,0 +1,3 @@
+.before.svelte-1hn6tgg + .after:where(.svelte-1hn6tgg) {
+  color: red;
+}

@@ -2,7 +2,7 @@ use compact_str::CompactString;
 use rustc_hash::FxHashSet;
 use svelte_css::{
     AtRule, Block, BlockChild, ComplexSelector, CssNodeId, Declaration, RelativeSelector, Rule,
-    SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
+    SelectorList, SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
 };
 use svelte_span::Span;
 
@@ -34,6 +34,9 @@ pub fn transform_css_with_usage(
         keyframes,
         source,
         after_bare_global: false,
+        specificity_bumped: false,
+        selector_list_depth: 0,
+        rule_depth: 0,
     };
     scoper.visit_stylesheet_mut(&mut stylesheet);
     if let Some(used_selectors) = used_selectors {
@@ -48,6 +51,9 @@ struct ScopeSelectors<'a> {
     keyframes: &'a [CompactString],
     source: &'a str,
     after_bare_global: bool,
+    specificity_bumped: bool,
+    selector_list_depth: usize,
+    rule_depth: usize,
 }
 
 impl VisitMut for ScopeSelectors<'_> {
@@ -105,13 +111,25 @@ impl VisitMut for ScopeSelectors<'_> {
         node.children = new_children;
     }
 
+    fn visit_style_rule_mut(&mut self, node: &mut svelte_css::StyleRule) {
+        self.rule_depth += 1;
+        svelte_css::visit::walk_style_rule_mut(self, node);
+        self.rule_depth -= 1;
+    }
+
     fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
         let was_after_bare_global = self.after_bare_global;
+        let was_specificity_bumped = self.specificity_bumped;
+        let has_implicit_nesting = self.rule_depth > 1 && !complex_has_explicit_nesting(node);
         self.after_bare_global = false;
+        if has_implicit_nesting {
+            self.specificity_bumped = true;
+        }
 
         if is_entirely_global(node) {
             unwrap_global(node);
             self.after_bare_global = was_after_bare_global;
+            self.specificity_bumped = was_specificity_bumped;
             return;
         }
 
@@ -124,6 +142,19 @@ impl VisitMut for ScopeSelectors<'_> {
                 .filter_map(|(idx, rel)| (!rel.selectors.is_empty() || idx == 0).then_some(rel)),
         );
         self.after_bare_global = was_after_bare_global;
+        self.specificity_bumped = was_specificity_bumped;
+    }
+
+    fn visit_selector_list_mut(&mut self, node: &mut SelectorList) {
+        let was_specificity_bumped = self.specificity_bumped;
+        let should_reset = self.selector_list_depth == 0;
+        self.selector_list_depth += 1;
+        if should_reset {
+            self.specificity_bumped = false;
+        }
+        svelte_css::visit::walk_selector_list_mut(self, node);
+        self.selector_list_depth -= 1;
+        self.specificity_bumped = was_specificity_bumped;
     }
 
     fn visit_relative_selector_mut(&mut self, node: &mut RelativeSelector) {
@@ -131,6 +162,8 @@ impl VisitMut for ScopeSelectors<'_> {
         let mut has_local_scopable = false;
         let mut scope_inserted = false;
         let mut unscoped_tail = self.after_bare_global;
+        let mut has_nesting_selector = false;
+        let mut has_prior_selectors = false;
 
         for sel in node.selectors.drain(..) {
             match sel {
@@ -140,7 +173,7 @@ impl VisitMut for ScopeSelectors<'_> {
                     // Insert scope class before global content if we have a scopable selector
                     // but haven't inserted the scope class yet.
                     if has_local_scopable && !scope_inserted {
-                        new_selectors.push(self.scope_class());
+                        new_selectors.push(self.scope_modifier());
                         scope_inserted = true;
                     }
                     // Expand :global(...) — inline the inner selectors unscoped
@@ -156,6 +189,9 @@ impl VisitMut for ScopeSelectors<'_> {
                     self.after_bare_global = true;
                 }
                 _ => {
+                    if matches!(sel, SimpleSelector::Nesting(_)) {
+                        has_nesting_selector = true;
+                    }
                     if !unscoped_tail && is_scopable(&sel) {
                         has_local_scopable = true;
                     }
@@ -163,8 +199,18 @@ impl VisitMut for ScopeSelectors<'_> {
                     // Recurse into pseudo-class args (e.g. :not(), :is(), :where(), :has())
                     // so that :global() inside them is unwrapped and inner selectors are scoped.
                     if let Some(last) = new_selectors.last_mut() {
+                        let was_specificity_bumped = self.specificity_bumped;
+                        if has_prior_selectors
+                            || has_local_scopable
+                            || scope_inserted
+                            || has_nesting_selector
+                        {
+                            self.specificity_bumped = true;
+                        }
                         self.visit_simple_selector_mut(last);
+                        self.specificity_bumped = was_specificity_bumped;
                     }
+                    has_prior_selectors = true;
                 }
             }
         }
@@ -181,7 +227,14 @@ impl VisitMut for ScopeSelectors<'_> {
                     _ => break,
                 }
             }
-            new_selectors.insert(insert_pos, self.scope_class());
+            if has_nesting_selector {
+                self.specificity_bumped = true;
+            }
+            new_selectors.insert(insert_pos, self.scope_modifier());
+        }
+
+        if has_nesting_selector {
+            self.specificity_bumped = true;
         }
 
         node.selectors = new_selectors.into();
@@ -282,12 +335,67 @@ fn rewrite_animation_value(
 }
 
 impl ScopeSelectors<'_> {
-    fn scope_class(&self) -> SimpleSelector {
-        SimpleSelector::Class {
-            span: Span::new(0, 0),
-            name: self.hash_class.clone(),
+    fn scope_modifier(&mut self) -> SimpleSelector {
+        let first_bump = !self.specificity_bumped;
+        self.specificity_bumped = true;
+
+        if first_bump {
+            return SimpleSelector::Class {
+                span: Span::new(0, 0),
+                name: self.hash_class.clone(),
+            };
         }
+
+        SimpleSelector::PseudoClass(svelte_css::PseudoClassSelector {
+            span: Span::new(0, 0),
+            name: CompactString::new("where"),
+            args: Some(Box::new(SelectorList {
+                span: Span::new(0, 0),
+                children: vec![ComplexSelector {
+                    id: CssNodeId(0),
+                    span: Span::new(0, 0),
+                    children: vec![RelativeSelector {
+                        id: CssNodeId(0),
+                        span: Span::new(0, 0),
+                        combinator: None,
+                        selectors: vec![SimpleSelector::Class {
+                            span: Span::new(0, 0),
+                            name: self.hash_class.clone(),
+                        }]
+                        .into(),
+                    }]
+                    .into(),
+                }]
+                .into(),
+            })),
+        })
     }
+}
+
+fn complex_has_explicit_nesting(complex: &ComplexSelector) -> bool {
+    complex.children.iter().any(relative_has_explicit_nesting)
+}
+
+fn relative_has_explicit_nesting(relative: &RelativeSelector) -> bool {
+    relative.selectors.iter().any(simple_has_explicit_nesting)
+}
+
+fn simple_has_explicit_nesting(selector: &SimpleSelector) -> bool {
+    match selector {
+        SimpleSelector::Nesting(_) => true,
+        SimpleSelector::PseudoClass(pc) => pc
+            .args
+            .as_ref()
+            .is_some_and(|args| selector_list_has_explicit_nesting(args)),
+        SimpleSelector::Global {
+            args: Some(args), ..
+        } => selector_list_has_explicit_nesting(args),
+        _ => false,
+    }
+}
+
+fn selector_list_has_explicit_nesting(list: &SelectorList) -> bool {
+    list.children.iter().any(complex_has_explicit_nesting)
 }
 
 /// Returns true if the entire complex selector is a single `:global(...)` call.
@@ -325,7 +433,6 @@ fn is_scopable(sel: &SimpleSelector) -> bool {
             | SimpleSelector::Id { .. }
             | SimpleSelector::Attribute(_)
             | SimpleSelector::PseudoElement(_)
-            | SimpleSelector::Nesting(_)
     )
 }
 

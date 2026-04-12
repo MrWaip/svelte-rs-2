@@ -8,6 +8,7 @@ use svelte_diagnostics::DiagnosticKind;
 use svelte_span::GetSpan;
 
 use svelte_ast::Component as SvelteComponent;
+use svelte_parser::ParserResult;
 
 use crate::css::css_component_hash;
 use crate::types::data::{AnalysisData, CssAnalysis};
@@ -20,6 +21,7 @@ use crate::types::node_table::NodeBitSet;
 pub fn analyze_css_pass(
     component: &SvelteComponent,
     stylesheet: &StyleSheet,
+    parsed: &ParserResult<'_>,
     inject_styles: bool,
     data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,
@@ -34,8 +36,12 @@ pub fn analyze_css_pass(
     let keyframes = collect_keyframe_names(stylesheet, css_text);
 
     // Phase 2: validate CSS (:global usage, nesting selectors, etc.)
-    let mut validator = CssValidator::new(diagnostics);
+    let css_diag_start = diagnostics.len();
+    let mut validator = CssValidator::new(css_block.content_span.start, diagnostics);
     validator.visit_stylesheet(stylesheet);
+    let has_css_errors = diagnostics[css_diag_start..]
+        .iter()
+        .any(|diag| diag.severity == svelte_diagnostics::Severity::Error);
 
     let node_count = component.node_count();
     data.output.css = CssAnalysis {
@@ -48,7 +54,16 @@ pub fn analyze_css_pass(
 
     // Phase 3: prune — backward-match every selector against the template, populate
     // `used_selectors` and mark every matched element in `scoped_elements`.
-    super::css_prune::prune_and_warn(component, stylesheet, css_text, data, diagnostics);
+    super::css_prune::prune_and_warn(
+        component,
+        stylesheet,
+        css_text,
+        css_block.content_span.start,
+        !has_css_errors,
+        parsed,
+        data,
+        diagnostics,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +187,7 @@ struct RuleContext {
 }
 
 struct CssValidator<'a> {
+    css_offset: u32,
     diagnostics: &'a mut Vec<Diagnostic>,
     /// Stack of parent style rules (innermost last).
     rule_stack: Vec<RuleContext>,
@@ -180,8 +196,9 @@ struct CssValidator<'a> {
 }
 
 impl<'a> CssValidator<'a> {
-    fn new(diagnostics: &'a mut Vec<Diagnostic>) -> Self {
+    fn new(css_offset: u32, diagnostics: &'a mut Vec<Diagnostic>) -> Self {
         Self {
+            css_offset,
             diagnostics,
             rule_stack: Vec::new(),
             in_pseudo_class: false,
@@ -193,6 +210,8 @@ impl<'a> CssValidator<'a> {
     }
 
     fn emit(&mut self, kind: DiagnosticKind, span: svelte_span::Span) {
+        let span =
+            svelte_span::Span::new(self.css_offset + span.start, self.css_offset + span.end);
         self.diagnostics.push(Diagnostic::error(kind, span));
     }
 
@@ -202,6 +221,7 @@ impl<'a> CssValidator<'a> {
         let has_parent = !self.rule_stack.is_empty();
         let mut rule_is_global_block = false;
         let mut first_complex = true;
+        let mut emitted_global_block_invalid_list = false;
 
         for complex_selector in &rule.prelude.children {
             let mut is_global_block = false;
@@ -240,6 +260,7 @@ impl<'a> CssValidator<'a> {
                                     DiagnosticKind::CssGlobalBlockInvalidList,
                                     rule.prelude.span,
                                 );
+                                emitted_global_block_invalid_list = true;
                             }
 
                             if is_lone_global
@@ -271,8 +292,9 @@ impl<'a> CssValidator<'a> {
                 }
             }
 
-            if rule_is_global_block && !is_global_block {
+            if rule_is_global_block && !is_global_block && !emitted_global_block_invalid_list {
                 self.emit(DiagnosticKind::CssGlobalBlockInvalidList, rule.prelude.span);
+                emitted_global_block_invalid_list = true;
             }
 
             if first_complex {
@@ -345,13 +367,13 @@ impl<'a> CssValidator<'a> {
                 ..
             } = &global_rel.selectors[0]
             {
-                if idx != 0 && idx != node.children.len() - 1 {
-                    // Emit once per non-global child after the global one
-                    for r in &node.children[idx + 1..] {
-                        if !is_global_relative_selector(r) {
-                            self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
-                        }
-                    }
+                if idx != 0
+                    && idx != node.children.len() - 1
+                    && node.children[idx + 1..]
+                        .iter()
+                        .any(|r| !is_global_relative_selector(r))
+                {
+                    self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
                 }
             }
         }

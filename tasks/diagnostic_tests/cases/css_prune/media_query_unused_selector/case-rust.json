@@ -2,7 +2,7 @@
   {
     "severity": "warning",
     "code": "css_unused_selector",
-    "start": 28,
-    "end": 30
+    "start": 48,
+    "end": 50
   }
 ]

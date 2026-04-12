@@ -6,6 +6,7 @@ pub(crate) mod collect_symbols;
 pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
+pub(crate) mod css_prune_index;
 pub(crate) mod element_flags;
 mod executor;
 pub(crate) mod finalize_component_name;

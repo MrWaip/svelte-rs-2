@@ -1,12 +1,12 @@
 use std::{
-    fs::{read_to_string, File},
+    fs::{File, read_to_string},
     io::Write,
     path::Path,
 };
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, compile, compile_module};
 
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
@@ -177,6 +177,51 @@ fn css_scoped_attr_name_casefolding() {
 #[rstest]
 fn css_pseudo_compound_unused_but_scoped() {
     assert_compiler("css_pseudo_compound_unused_but_scoped");
+}
+
+#[rstest]
+fn css_snippet_descendant_scope_boundary() {
+    assert_compiler("css_snippet_descendant_scope_boundary");
+}
+
+#[rstest]
+fn css_snippet_sibling_boundary() {
+    assert_compiler("css_snippet_sibling_boundary");
+}
+
+#[rstest]
+fn css_component_snippet_descendant_boundary() {
+    assert_compiler("css_component_snippet_descendant_boundary");
+}
+
+#[rstest]
+fn css_pseudo_has() {
+    assert_compiler("css_pseudo_has");
+}
+
+#[rstest]
+fn css_nesting_selector_scoped() {
+    assert_compiler("css_nesting_selector_scoped");
+}
+
+#[rstest]
+fn css_root_has_scoped() {
+    assert_compiler("css_root_has_scoped");
+}
+
+#[rstest]
+fn css_escaped_selector_scoped() {
+    assert_compiler("css_escaped_selector_scoped");
+}
+
+#[rstest]
+fn css_dynamic_attr_selector_match() {
+    assert_compiler("css_dynamic_attr_selector_match");
+}
+
+#[rstest]
+fn css_comments_preserved() {
+    assert_compiler("css_comments_preserved");
 }
 
 #[rstest]

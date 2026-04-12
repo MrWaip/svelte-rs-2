@@ -1,0 +1,11 @@
+.card.svelte-1u8u4ji {
+  & .title:where(.svelte-1u8u4ji) {
+    color: red;
+  }
+}
+
+.panel.svelte-1u8u4ji {
+  .label:where(.svelte-1u8u4ji) {
+    color: blue;
+  }
+}

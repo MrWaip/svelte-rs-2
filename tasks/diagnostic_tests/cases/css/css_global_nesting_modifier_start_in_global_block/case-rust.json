@@ -2,7 +2,7 @@
   {
     "severity": "error",
     "code": "css_global_block_invalid_modifier_start",
-    "start": 11,
-    "end": 12
+    "start": 18,
+    "end": 19
   }
 ]

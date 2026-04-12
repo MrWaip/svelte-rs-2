@@ -1,0 +1,8 @@
+/* before */
+
+.foo.svelte-70hmnn {
+  /* inner */
+  color: red;
+}
+
+/* after */
