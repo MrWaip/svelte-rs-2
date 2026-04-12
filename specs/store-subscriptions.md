@@ -1,13 +1,14 @@
 # $store subscriptions
 
 ## Current state
-- **Complete** for client-side runes-mode scope (ROADMAP item marked `[x]`)
-- **Working**: 14/16 use cases (all client/runes-mode cases done)
-- **Remaining (out of current scope)**:
-  - Use cases for `$.store_unsub` and `$.invalidate_store` — confirmed legacy-only; test outputs match reference in runes mode. Will be closed under Legacy Svelte 4 tier.
-  - Module compilation rejects `$store` — blocked on `.svelte.js` compilation entry point; tracked under ROADMAP "Module compilation" item.
-- **Next**: Implement analyzer diagnostics for store misuse (scoped subscriptions, module-context reads, rune conflicts) — the validation entrypoint currently only runs rune validation, so store-specific diagnostics are absent.
-- Last updated: 2026-04-04
+- **Working**: 0 active runes-mode parity gaps; 2 legacy-only deferred use cases remain.
+- **Verified**: component-side diagnostics still pass parity coverage, and standalone `.svelte.js` / `.svelte.ts` module compilation now emits `StoreInvalidSubscriptionModule`.
+- **Synced**: spec test inventory now matches the existing store diagnostic parity cases under `tasks/diagnostic_tests`.
+- **Completed (2026-04-12)**: rune self-declarations like `let state = $state("")` no longer emit a false-positive `store_rune_conflict`; the focused parity case `state_rune_no_store_rune_conflict` now matches npm `svelte/compiler`.
+- **Remaining**:
+  - Legacy-only `$.store_unsub` and `$.invalidate_store`, to be closed under Legacy Svelte 4 work.
+- **Next**: no active runes-mode closure target here unless legacy scope is explicitly brought into this spec.
+- Last updated: 2026-04-12
 
 ## Source
 
@@ -45,9 +46,10 @@
 - [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding` (test: `store_mark_binding`)
 - [x] Analyzer rejects subscriptions to stores not declared at component top level (test: `validate_store_invalid_scoped_subscription`)
 - [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`) (test: `validate_store_rune_conflict`)
-- [x] Analyzer rejects `$store` reads inside `<script module>`
-- [ ] Module compilation rejects `$store` reads outside `.svelte` components
-- [ ] Analyzer emits store-specific diagnostics (`StoreInvalidScopedSubscription`, `StoreInvalidSubscription`, `StoreInvalidSubscriptionModule`, `StoreRuneConflict`)
+- [x] Rune self-declarations like `let state = $state("")` must not emit a false-positive `store_rune_conflict` warning (diagnostic test: `state_rune_no_store_rune_conflict`)
+- [x] Analyzer rejects `$store` reads inside `<script module>` (test: `validate_store_invalid_subscription_in_module`)
+- [x] Module compilation rejects `$store` reads outside `.svelte` components
+- [x] Analyzer emits store-specific diagnostics (`StoreInvalidScopedSubscription`, `StoreInvalidSubscription`, `StoreInvalidSubscriptionModule`, `StoreRuneConflict`)
 
 ## Reference
 
@@ -96,5 +98,10 @@
 - [x] `store_reassign_unsub`
 - [x] `store_each_invalidate`
 - [x] `store_mark_binding`
+- [x] `state_rune_no_store_rune_conflict`
 - [x] `validate_store_invalid_scoped_subscription` (analyzer unit test)
+- [x] `validate_store_invalid_subscription_in_module` (diagnostic parity test)
 - [x] `validate_store_rune_conflict` (analyzer unit test)
+- [x] `analyze_module_reports_store_invalid_subscription_module` (analyzer unit test)
+- [x] `module_store_subscription_reports_module_diagnostic_for_js` (`compile_module()` unit test)
+- [x] `module_store_subscription_reports_module_diagnostic_for_ts` (`compile_module()` unit test)

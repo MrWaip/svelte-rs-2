@@ -149,7 +149,7 @@ pub fn analyze_module(
             data.script.info = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
             passes::mark_runes::mark_nested_runes(&program, &mut data.scoping);
-            validate::validate_program(&data, &program, 0, true, &mut diags);
+            validate::validate_standalone_module(&data, &program, 0, true, &mut diags);
         }
         Err(errs) => diags.extend(errs),
     }

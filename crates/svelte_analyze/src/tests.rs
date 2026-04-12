@@ -1,8 +1,8 @@
-use crate::TemplateBindingReadKind;
 use crate::types::script::RuneKind;
+use crate::TemplateBindingReadKind;
 use oxc_ast::ast::{CallExpression, Program};
-use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
+use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 use svelte_diagnostics::Diagnostic;
@@ -3030,11 +3030,10 @@ fn fragment_facts_capture_single_expression_queries() {
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
     ));
-    assert!(
-        data.elements
-            .flags
-            .needs_textarea_value_lowering(textarea.id)
-    );
+    assert!(data
+        .elements
+        .flags
+        .needs_textarea_value_lowering(textarea.id));
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
     assert!(matches!(
@@ -3781,6 +3780,43 @@ fn special_element_illegal_attribute_uses_full_attr_span() {
     assert_eq!(diags[0].span, Span::new(17, 26));
 }
 
+#[test]
+fn rune_self_declaration_does_not_warn_store_rune_conflict() {
+    let source = r#"<script>
+let state = $state("");
+</script>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+
+    assert!(
+        diags
+            .iter()
+            .all(|diag| diag.kind.code() != "store_rune_conflict"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
+fn local_store_binding_still_warns_store_rune_conflict() {
+    let source = r#"<script>
+import { writable } from 'svelte/store';
+let state = writable(0);
+let x = $state(0);
+</script>"#;
+
+    let (_, _, diags) = analyze_source_with_diags(source);
+    let actual_codes = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual_codes,
+        vec!["store_rune_conflict"],
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
 // -----------------------------------------------------------------------
 // Event directive diagnostics
 // -----------------------------------------------------------------------
@@ -3796,3 +3832,41 @@ fn special_element_illegal_attribute_uses_full_attr_span() {
 // ---------------------------------------------------------------------------
 // component_name_lowercase
 // ---------------------------------------------------------------------------
+
+#[test]
+fn analyze_module_reports_store_invalid_subscription_module() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        import { writable } from 'svelte/store';
+        const count = writable(0);
+        console.log($count);
+    "#;
+
+    let (_data, diags) = analyze_module(&alloc, source, false, false);
+    let store_diags = diags
+        .iter()
+        .filter(|diag| diag.kind.code() == "store_invalid_subscription_module")
+        .count();
+
+    assert_eq!(store_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_ignores_nested_only_store_like_bindings() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        function demo() {
+            const count = 0;
+            console.log($count);
+        }
+    "#;
+
+    let (_data, diags) = analyze_module(&alloc, source, false, false);
+
+    assert!(
+        !diags
+            .iter()
+            .any(|diag| diag.kind.code() == "store_invalid_subscription_module"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}

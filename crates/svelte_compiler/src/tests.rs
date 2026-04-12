@@ -286,6 +286,54 @@ fn module_default_options_still_work() {
 }
 
 #[test]
+fn module_store_subscription_reports_module_diagnostic_for_js() {
+    let opts = ModuleCompileOptions {
+        filename: "lib.svelte.js".to_string(),
+        ..Default::default()
+    };
+    let result = compile_module(
+        "import { writable } from 'svelte/store'; const count = writable(0); console.log($count);",
+        &opts,
+    );
+
+    assert!(result.js.is_none(), "unexpected JS output: {:?}", result.js);
+    let store_diags = result
+        .diagnostics
+        .iter()
+        .filter(|diag| diag.kind.code() == "store_invalid_subscription_module")
+        .count();
+    assert_eq!(
+        store_diags, 1,
+        "unexpected diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn module_store_subscription_reports_module_diagnostic_for_ts() {
+    let opts = ModuleCompileOptions {
+        filename: "lib.svelte.ts".to_string(),
+        ..Default::default()
+    };
+    let result = compile_module(
+        "import { writable } from 'svelte/store'; const count = writable<number>(0); console.log($count);",
+        &opts,
+    );
+
+    assert!(result.js.is_none(), "unexpected JS output: {:?}", result.js);
+    let store_diags = result
+        .diagnostics
+        .iter()
+        .filter(|diag| diag.kind.code() == "store_invalid_subscription_module")
+        .count();
+    assert_eq!(
+        store_diags, 1,
+        "unexpected diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 #[ignore = "missing: const_tag_invalid_expression validation"]
 fn compile_const_tag_invalid_expression() {
     let result = compile(
@@ -405,7 +453,10 @@ fn inline_css_injected_overrides_external_compile_option() {
     let js = result
         .js
         .unwrap_or_else(|| panic!("compile produced no JS"));
-    assert!(result.css.is_none(), "inline injected mode should suppress CompileResult.css");
+    assert!(
+        result.css.is_none(),
+        "inline injected mode should suppress CompileResult.css"
+    );
     assert!(js.contains("$$css"), "expected $$css const in JS output");
     assert!(
         js.contains("$.append_styles"),
