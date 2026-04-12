@@ -1,9 +1,9 @@
 ---
 name: port
-description: Port one session-sized slice of a Svelte compiler feature from spec to the Rust implementation. Use when a feature already has a spec and Codex should implement the next bounded slice, not the whole feature, while keeping strict parser/analyze/codegen boundaries.
+description: Port the next explicit unchecked use case from a Svelte compiler spec to the Rust implementation. Use when a feature already has a spec and Codex should fully close one use case, or a small group of use cases that naturally close together, while keeping strict parser/analyze/codegen boundaries. If the selected use case is too large to close cleanly, decompose it in the spec and stop.
 ---
 
-# Port One Slice
+# Port Use Cases To Closure
 
 **Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
 
@@ -24,8 +24,8 @@ If the argument is a spec path, or a matching spec was found:
 
 1. Read the spec file
 2. Read `Current state` first
-3. Find the next incomplete slice
-4. Do not widen scope beyond that slice in the current run
+3. Find the next unchecked use case
+4. Close that use case completely, unless multiple unchecked use cases clearly belong to one closure unit
 
 If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a slice.
 
@@ -40,18 +40,28 @@ Treat optional headings such as `Execution slices`, `Next slice`, or `Non-goals`
 
 ## Scope Contract
 
-This skill ports one bounded session-sized slice.
+This skill closes explicit use cases.
 
-A slice must satisfy all of these rules:
+The default unit of work is one unchecked use case. Include multiple unchecked use cases in one run only when they naturally close together.
 
+The selected unit must satisfy all of these rules:
+
+- closes at least one use case completely
 - covers one cohesive behavior cluster
 - has explicit owning layer or justified multi-layer flow
-- is as large as is still reasonable to implement and verify within the current session without quality dropping
-- may include multiple related use cases when together they produce a more useful milestone than a tiny partial port
-- must not encourage shortcuts, speculative optimizations, or rushed architecture decisions just to close more scope
+- may include multiple related use cases when they share the same missing data flow, tests, or ownership path and can all be closed together
+- must not encourage shortcuts, speculative optimizations, or rushed architecture decisions
 - has clear non-goals for the current run
 
-If the spec does not already define slices explicitly, derive one from the existing `Use cases` and `Tasks` before coding.
+Never do a "partial pass" on a selected use case and leave the same checkbox semantically open without changing the spec structure.
+
+If the selected use case is too broad or too entangled to close cleanly:
+
+- stop implementation
+- update the spec by decomposing that use case into smaller unchecked use cases
+- explain to the user that the use case was split and why
+
+If the spec does not already define usable closure units, derive them from the existing `Use cases` and `Tasks` before coding.
 
 ## Approach
 
@@ -66,8 +76,10 @@ Do not port:
 
 Do:
 
-- match reference observable behavior exactly for the selected slice
+- match reference observable behavior exactly for the selected use case set
 - keep implementation aligned with crate boundaries
+
+Do not respond to repeated `/port` runs by explaining that open checkboxes are expected. Either close a use case or split one that is too large.
 
 ## When New Use Cases Are Discovered
 
@@ -75,9 +87,9 @@ Discovery during implementation is expected.
 
 If new behavior is discovered:
 
-- if it is outside the selected slice, add it to the spec as an unchecked use case and leave it for a later slice
-- if it is required to complete the selected slice, include it only if it fits within the existing slice limits
-- if it would widen the slice so much that implementation quality or verification confidence would likely drop, stop, update the spec, and report the blocker instead of expanding scope silently
+- if it is outside the selected use case set, add it to the spec as an unchecked use case and leave it for later
+- if it is required to complete the selected use case set, include it only when doing so still cleanly closes the selected unit
+- if it reveals that the selected use case is actually broader than the spec implied, stop, decompose that use case in the spec, and report the split instead of silently widening scope
 
 Spec updates are allowed during the run. Scope expansion is not.
 
@@ -89,30 +101,33 @@ These steps are planning-only. Do not write files during this phase.
 
 Research four things:
 
-1. Which incomplete use cases in the spec naturally belong to the next slice
-2. Which layers own the missing behavior for this slice
-3. Which tests already cover part of the slice
-4. Which neighboring use cases are explicitly out of scope for this run
+1. Which unchecked use case should be closed next
+2. Which other unchecked use cases, if any, naturally close together with it
+3. Which layers own the missing behavior for this closure unit
+4. Which tests already cover part of this closure unit
 
-When auto-selecting a slice, group use cases by shared owning layer, shared missing data flow, or shared parser/analyze/codegen dependency.
+When grouping use cases, use shared owning layer, shared missing data flow, or shared parser/analyze/codegen dependency as the reason to close them together.
 
-Prefer the largest useful slice that still has a clean ownership story, a clear verification strategy, and a high-confidence path to systematic implementation in one session.
+Do not choose work by guessing what might fit in the session. Choose the next explicit use case, or a small set of use cases that obviously belong together, and aim to close them fully.
 
-If the next slice is ambiguous, narrow it before proceeding. Do not start coding with a fuzzy slice.
+If the next unit is ambiguous, narrow it before proceeding. Do not start coding with a fuzzy closure target.
 
-### Step 2: Slice Definition
+### Step 2: Closure Definition
 
-Produce a slice definition with these sections:
+Produce a closure definition with these sections:
 
 1. Included use cases
 2. Excluded use cases
 3. Owning layer
 4. Expected files to change
 5. Verification strategy
+6. Closure condition
 
-Choose the slice size for usefulness, not minimalism. Prefer a meaningful milestone over a tiny fragment when both fit safely within one session.
+The `Closure condition` must state what has to be true for each included use case to be marked `[x]`.
 
-If implementing the slice would require architecture changes that do not fit existing boundaries, stop and ask for approval. Do not improvise structural changes.
+If the chosen use case cannot be closed without first decomposing it, do not proceed to implementation. Prepare the spec split instead.
+
+If implementing the closure unit would require architecture changes that do not fit existing boundaries, stop and ask for approval. Do not improvise structural changes.
 
 ### Step 3: Draft Spec Update
 
@@ -120,9 +135,11 @@ Prepare a proposed update for the same spec file that was selected earlier so th
 
 Draft `Current state` updates with:
 
-- current slice name
-- why this slice comes next
+- current closure target
+- why this use case or use case set comes next
 - non-goals for this run
+
+If the selected use case is too broad, draft the decomposition instead of a normal closure plan.
 
 This pre-implementation spec update is only for planning and resume context. Do not mark use cases as completed in this step.
 
@@ -140,7 +157,7 @@ Start here only after plan approval. Steps are sequential.
 
 ### Step 4: Choose Verification Strategy
 
-Choose the smallest correct verification surface for the selected slice before writing code.
+Choose the smallest correct verification surface for the selected closure unit before writing code.
 
 Use e2e compiler tests only when the slice must be checked against reference compiler output.
 
@@ -162,7 +179,7 @@ If the slice needs both:
 - add unit tests for layer-local behavior
 - add the minimum e2e coverage needed to verify observable compiler output
 
-### Step 5: Add Tests For This Slice
+### Step 5: Add Tests For This Closure Unit
 
 Create or extend only the tests selected in Step 4.
 
@@ -200,19 +217,19 @@ Rules:
 
 ### Step 6: Implement Only The Owning Changes
 
-Implement the slice in the correct layer order:
+Implement the closure unit in the correct layer order:
 
 1. parser and AST only if the slice needs new syntax
 2. analyze only if the slice needs new derived data
 3. transform or codegen only after required parser or analysis support exists
 
-If the work stops being session-sized or starts pressuring the implementation toward shortcuts, stop, update the spec, and report the blocker instead of widening the slice.
+If the selected use case turns out to be too complex to close cleanly as written, stop, update the spec by decomposing that use case into smaller unchecked items, and report to the user that you split the use case. Do not keep pushing a half-finished implementation.
 
 Unit tests are mandatory for every new parser or analyze behavior.
 
 ### Step 7: Verify The Slice
 
-If relevant tests already fail before this slice, record that baseline first. Verify that the slice fixes or implements its included use cases without introducing additional regressions. Do not widen scope to fix unrelated baseline failures.
+If relevant tests already fail before this closure unit, record that baseline first. Verify that the closure unit fixes or implements its included use cases without introducing additional regressions. Do not widen scope to fix unrelated baseline failures.
 
 Verify every included test case individually:
 
@@ -250,9 +267,15 @@ Update the spec:
 
 - mark completed use cases
 - update `Current state`
-- name the next slice
+- name the next closure target
 - record any newly discovered unchecked use cases
 
 Mark use cases as completed only here, after implementation and verification succeed.
+
+If you decomposed a use case instead of closing it:
+
+- replace the original broad use case with the smaller explicit unchecked use cases
+- update `Current state` to state that the use case was split
+- tell the user exactly which new use cases were created
 
 Move the ROADMAP item only when all spec use cases for the feature are complete.
