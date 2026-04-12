@@ -1,7 +1,7 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 0 active runes-mode parity gaps; 2 legacy-only deferred use cases remain.
+- **Complete**: client-side roadmap scope is done; only 2 legacy-only deferred use cases remain outside this bucket.
 - **Verified**: component-side diagnostics still pass parity coverage, and standalone `.svelte.js` / `.svelte.ts` module compilation now emits `StoreInvalidSubscriptionModule`.
 - **Synced**: spec test inventory now matches the existing store diagnostic parity cases under `tasks/diagnostic_tests`.
 - **Completed (2026-04-12)**: rune self-declarations like `let state = $state("")` no longer emit a false-positive `store_rune_conflict`; the focused parity case `state_rune_no_store_rune_conflict` now matches npm `svelte/compiler`.
