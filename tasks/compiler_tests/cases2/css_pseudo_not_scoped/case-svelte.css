@@ -1,0 +1,7 @@
+
+	p.svelte-11581yn:not(.active) {
+		color: red;
+	}
+	section.svelte-11581yn:not(.active:where(.svelte-11581yn) .inner:where(.svelte-11581yn)) {
+		color: blue;
+	}

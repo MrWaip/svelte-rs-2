@@ -200,6 +200,11 @@ fn css_pseudo_has() {
 }
 
 #[rstest]
+fn css_pseudo_not_scoped() {
+    assert_compiler("css_pseudo_not_scoped");
+}
+
+#[rstest]
 fn css_nesting_selector_scoped() {
     assert_compiler("css_nesting_selector_scoped");
 }

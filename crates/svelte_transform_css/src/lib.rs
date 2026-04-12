@@ -34,6 +34,7 @@ pub fn transform_css_with_usage(
         keyframes,
         source,
         after_bare_global: false,
+        suppress_scoping_depth: 0,
         specificity_bumped: false,
         selector_list_depth: 0,
         rule_depth: 0,
@@ -51,6 +52,7 @@ struct ScopeSelectors<'a> {
     keyframes: &'a [CompactString],
     source: &'a str,
     after_bare_global: bool,
+    suppress_scoping_depth: usize,
     specificity_bumped: bool,
     selector_list_depth: usize,
     rule_depth: usize,
@@ -158,6 +160,7 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_relative_selector_mut(&mut self, node: &mut RelativeSelector) {
+        let suppress_scoping = self.suppress_scoping_depth > 0;
         let mut new_selectors = Vec::with_capacity(node.selectors.len() + 1);
         let mut has_local_scopable = false;
         let mut scope_inserted = false;
@@ -192,7 +195,7 @@ impl VisitMut for ScopeSelectors<'_> {
                     if matches!(sel, SimpleSelector::Nesting(_)) {
                         has_nesting_selector = true;
                     }
-                    if !unscoped_tail && is_scopable(&sel) {
+                    if !suppress_scoping && !unscoped_tail && is_scopable(&sel) {
                         has_local_scopable = true;
                     }
                     new_selectors.push(sel);
@@ -227,13 +230,13 @@ impl VisitMut for ScopeSelectors<'_> {
                     _ => break,
                 }
             }
-            if has_nesting_selector {
+            if !suppress_scoping && has_nesting_selector {
                 self.specificity_bumped = true;
             }
             new_selectors.insert(insert_pos, self.scope_modifier());
         }
 
-        if has_nesting_selector {
+        if !suppress_scoping && has_nesting_selector {
             self.specificity_bumped = true;
         }
 
@@ -267,6 +270,15 @@ impl VisitMut for ScopeSelectors<'_> {
         if let SimpleSelector::PseudoClass(pc) = node {
             match pc.name.as_str() {
                 "is" | "where" | "has" | "not" => {
+                    if pc.name == "not" && pc.args.as_ref().is_some_and(|args| not_args_stay_unscoped(args))
+                    {
+                        // Reference transform leaves simple :not(...) branches unscoped even
+                        // though we still need to recurse to unwrap nested :global(...).
+                        self.suppress_scoping_depth += 1;
+                        svelte_css::visit::walk_simple_selector_args_mut(self, node);
+                        self.suppress_scoping_depth -= 1;
+                        return;
+                    }
                     svelte_css::visit::walk_simple_selector_args_mut(self, node);
                 }
                 _ => {}
@@ -396,6 +408,10 @@ fn simple_has_explicit_nesting(selector: &SimpleSelector) -> bool {
 
 fn selector_list_has_explicit_nesting(list: &SelectorList) -> bool {
     list.children.iter().any(complex_has_explicit_nesting)
+}
+
+fn not_args_stay_unscoped(args: &SelectorList) -> bool {
+    args.children.iter().all(|complex| complex.children.len() == 1)
 }
 
 /// Returns true if the entire complex selector is a single `:global(...)` call.
@@ -724,8 +740,21 @@ mod tests {
         let (ss, _) = svelte_css::parse(source);
         let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(
-            result.contains("p.svelte-abc123:not(.active.svelte-abc123)"),
-            "selectors inside :not() should be scoped, got: {result}"
+            result.contains("p.svelte-abc123:not(.active)"),
+            "simple selectors inside :not() should stay unscoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn complex_selector_inside_not_is_scoped() {
+        let source = "section:not(.active .inner) { color: blue; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains(
+                "section.svelte-abc123:not(.active:where(.svelte-abc123) .inner:where(.svelte-abc123))"
+            ),
+            "complex selectors inside :not() should be scoped after the outer bump, got: {result}"
         );
     }
 
