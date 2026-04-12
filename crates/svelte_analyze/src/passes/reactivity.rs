@@ -1,5 +1,5 @@
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
-use svelte_ast::{Attribute, AwaitBlock, ConstTag, NodeId};
+use svelte_ast::{Attribute, AwaitBlock, ConstTag, NodeId, SlotElementLegacy};
 use svelte_span::Span;
 
 pub(crate) struct ReactivityVisitor;
@@ -25,6 +25,10 @@ impl TemplateVisitor for ReactivityVisitor {
         {
             ctx.data.output.dynamic_nodes.insert(tag.id);
         }
+    }
+
+    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_>) {
+        ctx.data.output.dynamic_nodes.insert(el.id);
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {

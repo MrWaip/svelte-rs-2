@@ -158,10 +158,11 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
 fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
     match item {
         FragmentItem::TextConcat { has_expr, .. } => *has_expr,
-        FragmentItem::Element(id) | FragmentItem::SlotElementLegacy(id) => {
+        FragmentItem::Element(id) => {
             // Bottom-up: child elements' needs_var already computed via leave_element
             data.elements.flags.needs_var.contains(id)
         }
+        FragmentItem::SlotElementLegacy(_) => true,
         FragmentItem::SvelteFragmentLegacy(id) => data
             .template
             .fragments

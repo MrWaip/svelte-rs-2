@@ -26,6 +26,11 @@ Sections in fixed order. Most important first.
 ## Source
 <ROADMAP item reference or user request>
 
+## How It Works
+<!-- Optional: operational model for the feature -->
+<!-- Describe when the feature activates, what gets classified or transformed, -->
+<!-- and which conditions change the emitted/runtime behavior -->
+
 ## Syntax variants
 <!-- All syntactic forms of this feature, one per line -->
 <!-- Extracted from reference/docs/ and reference compiler parser -->
@@ -68,6 +73,7 @@ Sections in fixed order. Most important first.
 - `Current state` is a terse resume header, not a changelog. Keep only `Working`, `Tests`, and `Last updated`.
 - Do not add dated `Completed (...)`, `Confirmed gap (...)`, or similar history bullets under `Current state`.
 - Durable findings belong in `Use cases`, `Reference`, and `Test cases`, not in `Current state`.
+- `How It Works` is optional. Use it when the feature has non-obvious activation rules, classification rules, lowering conditions, or runtime behavior that future `/port` work must preserve.
 - Use cases: do not add `###` subsections or numbered groups inside `Use cases`.
 - Nested sub-checkboxes are allowed to any depth when a broad use case needs explicit decomposition into smaller closure items.
 - Every non-leaf parent use case stays `[ ]` until every child sub-checkbox under it is `[x]`.

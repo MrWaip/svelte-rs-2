@@ -9,11 +9,10 @@ use super::gen_fragment;
 use super::expression::{build_attr_concat, get_attr_expr, MemoValueRef, TemplateMemoState};
 
 pub(crate) fn is_legacy_slot_element(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
-    !ctx.query.view.custom_element()
-        && matches!(
-            ctx.query.component.store.get(el_id),
-            svelte_ast::Node::SlotElementLegacy(_)
-        )
+    matches!(
+        ctx.query.component.store.get(el_id),
+        svelte_ast::Node::SlotElementLegacy(_)
+    )
 }
 
 pub(crate) fn emit_slot_template_anchor<'a>(

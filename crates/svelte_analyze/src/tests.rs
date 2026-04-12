@@ -2812,6 +2812,36 @@ fn legacy_slot_elements_do_not_require_sanitized_slots_binding() {
 }
 
 #[test]
+fn legacy_slots_script_reads_require_sanitized_slots_binding() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<script>const has_description = !!$$slots.description;</script>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    assert!(data.output.needs_sanitized_legacy_slots);
+}
+
+#[test]
+fn custom_element_slots_collect_ordered_slot_names() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<svelte:options customElement="my-layout" />
+<header><slot name="actions" /></header>
+<main><slot /></main>"#,
+        AnalyzeOptions::default(),
+    );
+
+    let slot_names: Vec<_> = data
+        .custom_element_slot_names()
+        .iter()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(slot_names, vec!["actions", "default"]);
+}
+
+#[test]
 fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
     let (component, data) = analyze_source_with_options(
         r#"<Comp><svelte:fragment slot="footer"><p>footer</p></svelte:fragment></Comp>"#,
