@@ -111,8 +111,7 @@ pub(crate) fn traverse_items<'a>(
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
                     sibling_offset = 1;
-                    let anchor = ctx.b.rid_expr(&node_name);
-                    emit_slot_call(ctx, *el_id, anchor, init);
+                    emit_slot_call(ctx, *el_id, &node_name, init);
                     prev_ident = Some(node_name);
                 }
 

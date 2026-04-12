@@ -14,6 +14,7 @@ use crate::context::Ctx;
 
 use super::events::{build_event_handler_s5, dev_event_handler};
 use super::expression::{build_attr_concat, get_attr_expr};
+use super::prop_object::{build_props_expr, PropOrSpread};
 use super::{gen_fragment, FragmentSetup};
 use super::snippet;
 use super::{add_svelte_meta_with_extra, from_namespace, inherited_fragment_namespace};
@@ -827,51 +828,6 @@ fn build_bind_this_call<'a>(
             )
         }
     }
-}
-
-/// Prop or spread item — preserves attribute order for correct $.spread_props grouping.
-enum PropOrSpread<'a> {
-    Prop(ObjProp<'a>),
-    Spread(Expression<'a>),
-}
-
-/// Build the props expression: plain object when no spreads, `$.spread_props(...)` otherwise.
-fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expression<'a> {
-    let has_spread = items.iter().any(|i| matches!(i, PropOrSpread::Spread(_)));
-
-    if !has_spread {
-        let props: Vec<ObjProp<'a>> = items
-            .into_iter()
-            .filter_map(|i| match i {
-                PropOrSpread::Prop(p) => Some(p),
-                _ => None,
-            })
-            .collect();
-        return ctx.b.object_expr(props);
-    }
-
-    // Group consecutive props into objects, intersperse with spread expressions
-    let mut args: Vec<Arg<'a, 'a>> = Vec::new();
-    let mut current_props: Vec<ObjProp<'a>> = Vec::new();
-
-    for item in items {
-        match item {
-            PropOrSpread::Prop(p) => current_props.push(p),
-            PropOrSpread::Spread(expr) => {
-                if !current_props.is_empty() {
-                    args.push(Arg::Expr(
-                        ctx.b.object_expr(std::mem::take(&mut current_props)),
-                    ));
-                }
-                args.push(Arg::Expr(expr));
-            }
-        }
-    }
-    if !current_props.is_empty() {
-        args.push(Arg::Expr(ctx.b.object_expr(current_props)));
-    }
-
-    ctx.b.call_expr("$.spread_props", args)
 }
 
 fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Expression<'a> {

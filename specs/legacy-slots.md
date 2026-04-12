@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 18/25 use cases
-- **Tests**: 34/37 green
+- **Working**: 19/25 use cases
+- **Tests**: 38/40 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -17,6 +17,7 @@
 <slot name="footer">fallback</slot>
 <slot item={entry} />
 <slot {item} />
+<slot {...props} />
 <svelte:options customElement="my-element" /><slot />
 <svelte:options customElement="my-element" /><slot name="actions" />
 {#if $$slots.description}<slot name="description" />{/if}
@@ -46,7 +47,7 @@
 - [x] Direct child `<svelte:fragment slot="...">` lowers into parent `$$slots` entries without wrapper DOM (test: svelte_fragment_named_slot)
 - [x] Child components with `slot="..."` participate in named-slot grouping instead of receiving a plain `slot` prop (tests: component_child_slot_attribute, svelte_self_slot)
 - [x] Default-slot bindings remain scoped to the default slot and are not visible inside named-slot content, matching the Svelte 4 migration note (test: component_default_slot_bindings_do_not_leak_into_named_slot_scope)
-- [ ] `<slot>` emits slot props from attributes/spreads instead of always passing `{}` (test: slot_props_default, #[ignore], moderate)
+- [x] `<slot>` emits slot props from attributes/spreads instead of always passing `{}` while excluding `name` from the props object, lowering spreads through `$.spread_props(...)`, and memoizing dynamic call-valued props through the legacy slot prelude when needed (tests: slot_props_default, slot_props_spread, slot_props_dynamic_state, slot_props_dynamic_call)
 - [x] Parent default-slot `let:` directives lower to derived reads from `$$slotProps` inside the generated slot function, including alias form `let:item={processed}` (tests: component_default_slot_let, component_default_slot_let_alias)
 - [x] Named-slot `let:` directives on direct child elements lower inside the generated named-slot function, including object destructuring and multiple `let:` directives on the same element (tests: component_named_slot_let_element, component_named_slot_let_element_destructure, component_named_slot_let_element_multiple)
 - [x] Named-slot `let:` directives on `<svelte:fragment>` lower inside the generated named-slot function, including object destructuring (tests: component_named_slot_let_fragment, component_named_slot_let_fragment_destructure)
@@ -125,7 +126,10 @@
 - [x] component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id
 - [x] legacy_slot_dev_mixed
 - [x] component_default_slot_bindings_do_not_leak_into_named_slot_scope
-- [ ] slot_props_default
+- [x] slot_props_default
+- [x] slot_props_spread
+- [x] slot_props_dynamic_state
+- [x] slot_props_dynamic_call
 - [x] component_default_slot_let
 - [x] component_default_slot_let_alias
 - [x] component_named_slot_let_element
