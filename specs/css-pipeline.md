@@ -2,6 +2,7 @@
 
 ## Current state
 - **Working**: CSS pipeline parity is complete for the scope owned by this spec: top-level `<style>` extraction, scoped CSS transform, selector scoping, class injection, emitted CSS, unused-selector pruning, keyframes, `:global(...)`, global blocks, nested rules, pseudo selectors, snippet/component boundary traversal, CSS custom properties, and the remaining invalid-CSS diagnostic cases tracked here.
+- **Synced**: spec test inventory now reflects the registered `css_prune` diagnostic parity cases in `tasks/diagnostic_tests/test_diagnostics.rs`, including `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, and escaped-selector matching repros.
 - **Next**: complete
 - **Done this session**: the remaining ignored CSS diagnostic cases were stale. The full `mod css` diagnostic block already matched `svelte/compiler`, so this slice removed the stale `ignore` markers and closed the last open item in this spec without changing analyze/transform behavior.
 - Last updated: 2026-04-12
@@ -18,6 +19,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `:global(...)`, bare `:global`, `:global { ... }`, and `:global(...)` inside `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)` match the reference transform/analyze behavior for valid CSS (tests: `css_global_basic`, `css_global_compound`, `css_global_block`, `css_global_in_pseudo`)
 - [x] Scoped keyframes and `-global-` escapes are rewritten correctly (test: `css_keyframes_scoped`)
 - [x] Unused selector warnings and emitted-CSS pruning work for descendant/child/sibling combinators, pseudo selectors, nesting selectors, escaped class/id selectors, and snippet/component boundaries (tests: `css_unused_external`, `css_unused_injected`, `css_pseudo_compound_unused_but_scoped`, `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`, `css_escaped_selector_scoped`, `css_snippet_descendant_scope_boundary`, `css_snippet_sibling_boundary`, `css_component_snippet_descendant_boundary`)
+- [x] Diagnostic parity for CSS pruning covers `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, escaped selectors, attribute concatenation, and conservative no-match cases where the reference compiler reports `css_unused_selector` (tests: `is_selector_match`, `is_selector_no_match`, `is_selector_compound_no_match`, `where_selector_match`, `where_selector_complex_branch_conservative`, `implicit_nesting_match`, `root_has_match`, `escaped_selector_match`, `concat_attribute_selector_no_match`, `type_selector_no_match`, `class_selector_no_match`, `id_selector_no_match`, `descendant_combinator_no_match`, `child_combinator_indirect_no_match`, `adjacent_sibling_combinator_no_match`, `general_sibling_combinator_no_match`, `multiple_selectors_mixed`, `media_query_unused_selector`, `no_elements_all_unused`)
 - [x] CSS serializer specificity matches the reference for nested selectors and pseudo selector lists, including implicit nesting and `:root:has(...)` handling (tests: `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`)
 - [x] CSS comments are preserved in emitted output (test: `css_comments_preserved`)
 - [x] Nested `<style>` elements inside markup or blocks remain ordinary DOM `<style>` elements; only the root `<style>` is extracted into component CSS (test: `css_nested_style`)
@@ -52,6 +54,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - `crates/svelte_compiler/src/options.rs`
 - `crates/svelte_codegen_client/src/template/attributes.rs`
 - `crates/svelte_codegen_client/src/template/component.rs`
+- `tasks/diagnostic_tests/test_diagnostics.rs` — authoritative CSS diagnostic parity inventory for `mod css` and `mod css_prune`
 
 ## Test cases
 
@@ -107,3 +110,21 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_global_nesting_modifier_start_in_global_block`
 - [x] `css_global_block_invalid_list_mixed`
 - [x] `css_nesting_in_compound_global_block_ok`
+- [x] `type_selector_no_match`
+- [x] `class_selector_no_match`
+- [x] `id_selector_no_match`
+- [x] `descendant_combinator_no_match`
+- [x] `child_combinator_indirect_no_match`
+- [x] `adjacent_sibling_combinator_no_match`
+- [x] `general_sibling_combinator_no_match`
+- [x] `multiple_selectors_mixed`
+- [x] `media_query_unused_selector`
+- [x] `no_elements_all_unused`
+- [x] `is_selector_match`
+- [x] `is_selector_no_match`
+- [x] `is_selector_compound_no_match`
+- [x] `where_selector_match`
+- [x] `where_selector_complex_branch_conservative`
+- [x] `implicit_nesting_match`
+- [x] `root_has_match`
+- [x] `escaped_selector_match`

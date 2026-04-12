@@ -63,7 +63,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
 - [ ] `$host` — [spec](specs/host-rune.md)
-- [ ] `$store` subscriptions — [spec](specs/store-subscriptions.md)
+- [x] `$store` subscriptions — [spec](specs/store-subscriptions.md)
 - [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
 - [x] `<script module>` — [spec](specs/script-module.md)
 
