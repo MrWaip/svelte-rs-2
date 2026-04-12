@@ -43,6 +43,19 @@ For each use case from the reference compiler, classify it as:
 
 Write the spec following the `spec-template` skill.
 
+Order `Use cases` by implementation sequence, not by docs order or by the order you discovered them in the reference compiler. The checklist order is the intended closure order for follow-up `/port` work.
+
+Use this phase order:
+
+1. `ast`
+2. `scanner`
+3. `parse`
+4. `analyze + data structure`
+5. `transform + codegen`
+6. `validate / warnings`
+
+For each use case, place it under the earliest phase that must own the first real implementation work. If a use case spans multiple phases, sort it by the first owning phase and describe downstream follow-up inline.
+
 If this step creates a new spec for an item that already exists in `ROADMAP.md`, immediately update that roadmap entry to include a link to `specs/<name>.md`. Do not mark the feature complete during audit; only sync the spec reference.
 
 ## Step 4: Add Missing Test Cases
@@ -75,7 +88,7 @@ Report:
 - coverage count and percentage
 - passing tests
 - failing tests
-- recommended fix order
+- recommended fix order, matching the `Use cases` sequence from the spec
 - test results by effort
 - spec file path
 
