@@ -1,10 +1,12 @@
 use crate::types::script::RuneKind;
 use crate::TemplateBindingReadKind;
-use oxc_ast::ast::{CallExpression, Program};
+use oxc_ast::ast::{BindingPattern, CallExpression, Program, Statement};
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use svelte_ast::{
+    Attribute, Component, EachBlock, Element, Fragment, IfBlock, LetDirectiveLegacy, Node, NodeId,
+};
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
@@ -293,6 +295,13 @@ fn find_component_node_id(
         }
     }
     None
+}
+
+fn find_let_directive(attrs: &[Attribute]) -> Option<&LetDirectiveLegacy> {
+    attrs.iter().find_map(|attr| match attr {
+        Attribute::LetDirectiveLegacy(dir) => Some(dir),
+        _ => None,
+    })
 }
 
 fn find_html_tag_id(fragment: &Fragment, component: &Component, expr_text: &str) -> Option<NodeId> {
@@ -2823,6 +2832,214 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
         slot_fragment.items.as_slice(),
         [FragmentItem::Element(id)] if *id == wrapped_child_id
     ));
+}
+
+#[test]
+fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
+    let (component, data) = analyze_source_with_options(
+        r#"<Outer><Inner slot="footer" /></Outer>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let outer_id = find_component_node_id(&component.fragment, &component, "Outer")
+        .unwrap_or_else(|| panic!("no <Outer>"));
+    let outer_node = match component.store.get(outer_id) {
+        Node::ComponentNode(node) => node,
+        _ => panic!("<Outer> did not lower to ComponentNode"),
+    };
+    let inner_id = match outer_node.fragment.nodes.as_slice() {
+        [child_id] => match component.store.get(*child_id) {
+            Node::ComponentNode(node) => node.id,
+            _ => panic!("expected direct child <Inner> component"),
+        },
+        _ => panic!("expected exactly one direct child for <Outer>"),
+    };
+
+    let default_fragment = data
+        .template
+        .fragments
+        .lowered(&FragmentKey::ComponentNode(outer_id))
+        .unwrap_or_else(|| panic!("no lowered default fragment"));
+    assert!(default_fragment.items.is_empty());
+
+    let named_slots = data.template.snippets.component_named_slots(outer_id);
+    assert_eq!(named_slots.len(), 1);
+    let (slot_el_id, slot_key) = named_slots[0];
+    assert_eq!(slot_el_id, inner_id);
+    assert_eq!(slot_key, FragmentKey::NamedSlot(outer_id, inner_id));
+
+    let slot_fragment = data
+        .template
+        .fragments
+        .lowered(&slot_key)
+        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
+    assert!(matches!(
+        slot_fragment.items.as_slice(),
+        [FragmentItem::ComponentNode(id)] if *id == inner_id
+    ));
+}
+
+#[test]
+fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
+    let (component, data) = analyze_source_with_options(
+        r#"<Nested let:count><p>{count}</p><p slot="bar">{count}</p></Nested>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let nested_id = find_component_node_id(&component.fragment, &component, "Nested")
+        .unwrap_or_else(|| panic!("no <Nested>"));
+    let default_scope = data
+        .scoping
+        .fragment_scope(&FragmentKey::ComponentNode(nested_id))
+        .unwrap_or_else(|| panic!("no default slot scope"));
+    let default_count = data
+        .scoping
+        .get_binding(default_scope, "count")
+        .unwrap_or_else(|| panic!("no default-slot binding for count"));
+
+    let default_p = find_nth_element(&component.fragment, &component, "p", 0)
+        .unwrap_or_else(|| panic!("missing default-slot <p>"));
+    let named_p = find_nth_element(&component.fragment, &component, "p", 1)
+        .unwrap_or_else(|| panic!("missing named-slot <p>"));
+    let named_scope = data
+        .scoping
+        .fragment_scope(&FragmentKey::NamedSlot(nested_id, named_p.id))
+        .unwrap_or_else(|| panic!("no named slot scope"));
+
+    assert!(
+        data.scoping.get_binding(named_scope, "count").is_none(),
+        "default-slot binding must not resolve in named slot scope"
+    );
+
+    let default_expr = match component.store.get(default_p.fragment.nodes[0]) {
+        Node::ExpressionTag(tag) => data
+            .expression(tag.id)
+            .unwrap_or_else(|| panic!("missing expression info for default slot")),
+        _ => panic!("expected default slot expression tag"),
+    };
+    assert!(default_expr.ref_symbols.contains(&default_count));
+
+    let named_expr = match component.store.get(named_p.fragment.nodes[0]) {
+        Node::ExpressionTag(tag) => data
+            .expression(tag.id)
+            .unwrap_or_else(|| panic!("missing expression info for named slot")),
+        _ => panic!("expected named slot expression tag"),
+    };
+    assert!(
+        !named_expr.ref_symbols.contains(&default_count),
+        "named-slot expression must not resolve default-slot binding"
+    );
+}
+
+#[test]
+fn legacy_slot_let_alias_uses_statement_backed_binding() {
+    let (component, data, parsed) =
+        analyze_source_with_parsed(r#"<List let:item={processed}><p>{processed}</p></List>"#);
+    let list_id = find_component_node_id(&component.fragment, &component, "List")
+        .unwrap_or_else(|| panic!("no <List>"));
+    let list_node = match component.store.get(list_id) {
+        Node::ComponentNode(node) => node,
+        _ => panic!("<List> did not lower to ComponentNode"),
+    };
+    let let_dir = find_let_directive(&list_node.attributes)
+        .unwrap_or_else(|| panic!("missing default-slot let directive"));
+
+    let stmt_handle = data
+        .let_directive_stmt_handle(let_dir.id)
+        .unwrap_or_else(|| panic!("missing statement handle for let directive"));
+    let stmt = parsed
+        .stmt(stmt_handle)
+        .unwrap_or_else(|| panic!("missing parsed statement for let directive"));
+    match stmt {
+        Statement::VariableDeclaration(decl) => match &decl.declarations[0].id {
+            BindingPattern::BindingIdentifier(id) => assert_eq!(id.name.as_str(), "processed"),
+            _ => panic!("alias let directive must parse as identifier binding"),
+        },
+        _ => panic!("let directive statement must be a variable declaration"),
+    }
+
+    let default_scope = data
+        .scoping
+        .fragment_scope(&FragmentKey::ComponentNode(list_id))
+        .unwrap_or_else(|| panic!("missing default slot scope"));
+    assert!(
+        data.scoping.get_binding(default_scope, "item").is_none(),
+        "alias let directive must not declare the slot prop name"
+    );
+    let processed_sym = data
+        .scoping
+        .get_binding(default_scope, "processed")
+        .unwrap_or_else(|| panic!("alias let directive must declare processed"));
+    assert_eq!(
+        data.scoping.template_binding_read_kind(processed_sym),
+        TemplateBindingReadKind::RuneGet
+    );
+}
+
+#[test]
+fn legacy_slot_let_destructure_registers_carrier_binding() {
+    let (component, data, parsed) = analyze_source_with_parsed(
+        r#"<List><svelte:fragment slot="item" let:item={{ text }}><p>{text}</p></svelte:fragment></List>"#,
+    );
+    let list_id = find_component_node_id(&component.fragment, &component, "List")
+        .unwrap_or_else(|| panic!("no <List>"));
+    let list_node = match component.store.get(list_id) {
+        Node::ComponentNode(node) => node,
+        _ => panic!("<List> did not lower to ComponentNode"),
+    };
+    let wrapper_id = match list_node.fragment.nodes.as_slice() {
+        [child_id] => match component.store.get(*child_id) {
+            Node::SvelteFragmentLegacy(node) => node.id,
+            _ => panic!("expected slotted <svelte:fragment> child"),
+        },
+        _ => panic!("expected exactly one slotted child"),
+    };
+    let wrapper = match component.store.get(wrapper_id) {
+        Node::SvelteFragmentLegacy(node) => node,
+        _ => panic!("wrapper id did not resolve to <svelte:fragment>"),
+    };
+    let let_dir = find_let_directive(&wrapper.attributes)
+        .unwrap_or_else(|| panic!("missing named-slot let directive"));
+
+    let stmt_handle = data
+        .let_directive_stmt_handle(let_dir.id)
+        .unwrap_or_else(|| panic!("missing statement handle for destructured let directive"));
+    let stmt = parsed
+        .stmt(stmt_handle)
+        .unwrap_or_else(|| panic!("missing parsed statement for destructured let directive"));
+    match stmt {
+        Statement::VariableDeclaration(decl) => {
+            assert!(
+                matches!(decl.declarations[0].id, BindingPattern::ObjectPattern(_)),
+                "destructured let directive must parse as object binding pattern"
+            );
+        }
+        _ => panic!("let directive statement must be a variable declaration"),
+    }
+
+    let named_scope = data
+        .scoping
+        .fragment_scope(&FragmentKey::NamedSlot(list_id, wrapper_id))
+        .unwrap_or_else(|| panic!("missing named slot scope"));
+    let text_sym = data
+        .scoping
+        .get_binding(named_scope, "text")
+        .unwrap_or_else(|| panic!("missing destructured slot binding"));
+    assert_eq!(
+        data.scoping.template_binding_read_kind(text_sym),
+        TemplateBindingReadKind::SlotLetCarrierMember
+    );
+
+    let carrier_sym = data
+        .scoping
+        .slot_let_binding_carrier(text_sym)
+        .unwrap_or_else(|| panic!("destructured slot binding missing carrier"));
+    assert_eq!(data.scoping.slot_let_carrier(let_dir.id), Some(carrier_sym));
+    assert_eq!(data.scoping.symbol_name(carrier_sym), "item");
 }
 
 #[test]

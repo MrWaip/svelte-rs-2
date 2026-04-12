@@ -12,14 +12,14 @@ use crate::types::data::{
     AnalysisData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
 };
 
-/// Check if a node is an element with a static `slot="name"` attribute.
-/// Returns the element's NodeId if a slot attribute is found, matching the
-/// reference compiler's `determine_slot`. The actual slot name is recovered
-/// from the AST at codegen time.
+/// Check if a direct component child carries a static `slot="name"` attribute.
+/// Returns the child NodeId when present so lower/codegen can keep named-slot
+/// grouping aligned across elements, fragments, and child components.
 fn determine_slot(node: &Node) -> Option<NodeId> {
     let (id, attrs) = match node {
         Node::Element(el) => (el.id, &el.attributes),
         Node::SvelteFragmentLegacy(el) => (el.id, &el.attributes),
+        Node::ComponentNode(cn) => (cn.id, &cn.attributes),
         _ => return None,
     };
     let has_slot = attrs

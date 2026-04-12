@@ -22,6 +22,7 @@ pub enum TemplateBindingReadKind {
     ThunkCall,
     RuneGet,
     RuneSafeGet,
+    SlotLetCarrierMember,
     PropsAccess,
 }
 
@@ -51,6 +52,8 @@ pub struct ComponentScoping {
     prop_non_source_names: FxHashMap<SymbolId, String>,
     known_values: FxHashMap<SymbolId, String>,
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
+    slot_let_attr_carriers: FxHashMap<NodeId, SymbolId>,
+    slot_let_binding_carriers: FxHashMap<SymbolId, SymbolId>,
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
     rest_prop_sym: Option<SymbolId>,
     rest_prop_excluded: FxHashSet<String>,
@@ -81,6 +84,8 @@ impl ComponentScoping {
             prop_non_source_names: FxHashMap::default(),
             known_values: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
+            slot_let_attr_carriers: FxHashMap::default(),
+            slot_let_binding_carriers: FxHashMap::default(),
             dynamic_sym_cache: None,
             rest_prop_sym: None,
             rest_prop_excluded: FxHashSet::default(),
@@ -331,6 +336,10 @@ impl ComponentScoping {
                 return TemplateBindingReadKind::ThunkCall;
             }
 
+            if self.slot_let_binding_carrier(sym_id).is_some() {
+                return TemplateBindingReadKind::SlotLetCarrierMember;
+            }
+
             return TemplateBindingReadKind::RuneGet;
         }
 
@@ -362,6 +371,35 @@ impl ComponentScoping {
 
     pub fn const_alias_tag(&self, sym_id: SymbolId) -> Option<NodeId> {
         self.const_alias_tags.get(&sym_id).copied()
+    }
+
+    pub fn add_unique_synthetic_binding(&mut self, scope: ScopeId, preferred_name: &str) -> SymbolId {
+        let mut name = preferred_name.to_string();
+        let mut suffix = 0u32;
+        while self.find_binding_in_any_scope(&name).is_some() {
+            suffix += 1;
+            name.clear();
+            name.push_str(preferred_name);
+            name.push('_');
+            name.push_str(&suffix.to_string());
+        }
+        self.add_synthetic_binding(scope, &name)
+    }
+
+    pub fn mark_slot_let_carrier(&mut self, attr_id: NodeId, carrier_sym_id: SymbolId) {
+        self.slot_let_attr_carriers.insert(attr_id, carrier_sym_id);
+    }
+
+    pub fn slot_let_carrier(&self, attr_id: NodeId) -> Option<SymbolId> {
+        self.slot_let_attr_carriers.get(&attr_id).copied()
+    }
+
+    pub fn mark_slot_let_binding_carrier(&mut self, sym_id: SymbolId, carrier_sym_id: SymbolId) {
+        self.slot_let_binding_carriers.insert(sym_id, carrier_sym_id);
+    }
+
+    pub fn slot_let_binding_carrier(&self, sym_id: SymbolId) -> Option<SymbolId> {
+        self.slot_let_binding_carriers.get(&sym_id).copied()
     }
 
     // -- Convenience --

@@ -130,6 +130,9 @@ impl<'a> CodegenView<'a> {
     pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.const_tag_stmt_handle(id)
     }
+    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
+        self.data.let_directive_stmt_handle(id)
+    }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.snippet_stmt_handle(id)
     }

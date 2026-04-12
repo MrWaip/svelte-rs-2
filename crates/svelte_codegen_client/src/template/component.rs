@@ -1,19 +1,20 @@
 //! Component instantiation codegen.
 
-use oxc_ast::ast::{Expression, Statement};
+use oxc_allocator::CloneIn;
+use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKind};
 
 use svelte_analyze::{
     scope::SymbolId, ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey,
     TemplateBindingReadKind,
 };
-use svelte_ast::{Attribute, Namespace, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
+use svelte_ast::{Attribute, Namespace, Node, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::events::{build_event_handler_s5, dev_event_handler};
 use super::expression::{build_attr_concat, get_attr_expr};
-use super::gen_fragment;
+use super::{gen_fragment, FragmentSetup};
 use super::snippet;
 use super::{add_svelte_meta_with_extra, from_namespace, inherited_fragment_namespace};
 
@@ -27,6 +28,16 @@ pub(crate) fn gen_component<'a>(
 ) {
     let cn = ctx.component_node(id);
     let cn_name: String = cn.name.clone();
+    let component_has_slot_attr = attrs_have_static_slot(&cn.attributes);
+    let default_slot_let_attrs: Vec<Attribute> = if component_has_slot_attr {
+        Vec::new()
+    } else {
+        cn.attributes
+            .iter()
+            .filter(|attr| matches!(attr, Attribute::LetDirectiveLegacy(_)))
+            .cloned()
+            .collect()
+    };
     let event_expr_offsets: Vec<(NodeId, u32)> = cn
         .attributes
         .iter()
@@ -339,7 +350,7 @@ pub(crate) fn gen_component<'a>(
             ContentStrategy::Static(_) | ContentStrategy::DynamicText
         );
 
-        let mut body_stmts = Vec::new();
+        let mut body_stmts = slot_let_directive_stmts(ctx, &default_slot_let_attrs);
         if needs_next {
             body_stmts.push(ctx.b.call_stmt("$.next", []));
         }
@@ -347,8 +358,16 @@ pub(crate) fn gen_component<'a>(
 
         let params = ctx.b.params(["$$anchor", "$$slotProps"]);
         let arrow = ctx.b.arrow_expr(params, body_stmts);
-        items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
-        slot_entries.push(ObjProp::KeyValue("default", ctx.b.bool_expr(true)));
+        if default_slot_let_attrs.is_empty() {
+            items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
+            slot_entries.push(ObjProp::KeyValue("default", ctx.b.bool_expr(true)));
+        } else {
+            items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                "children",
+                ctx.b.static_member_expr(ctx.b.rid_expr("$"), "invalid_default_snippet"),
+            )));
+            slot_entries.push(ObjProp::KeyValue("default", arrow));
+        }
     }
 
     // Named slots: children with slot="name" attribute
@@ -375,14 +394,20 @@ pub(crate) fn gen_component<'a>(
             slot_ct,
             ContentStrategy::Static(_) | ContentStrategy::DynamicText
         );
+        let slot_let_attrs: Vec<Attribute> = slot_child_attrs(ctx, slot_el_id)
+            .iter()
+            .filter(|attr| matches!(attr, Attribute::LetDirectiveLegacy(_)))
+            .cloned()
+            .collect();
         let mut slot_body = Vec::new();
         if needs_next {
             slot_body.push(ctx.b.call_stmt("$.next", []));
         }
-        slot_body.extend(gen_fragment(ctx, frag_key));
+        let fragment_stmts = named_slot_fragment_stmts(ctx, slot_el_id, frag_key, &slot_let_attrs);
+        slot_body.extend(fragment_stmts);
 
         let params = ctx.b.params(["$$anchor", "$$slotProps"]);
-        let arrow = ctx.b.arrow_expr(params, slot_body);
+        let arrow = ctx.b.arrow_block_expr(params, slot_body);
         let key = ctx.b.alloc_str(&slot_name);
         slot_entries.push(ObjProp::KeyValue(key, arrow));
     }
@@ -550,6 +575,26 @@ pub(crate) fn gen_component<'a>(
             init.push(ctx.b.block_stmt(memo_stmts));
         }
     }
+}
+
+fn named_slot_fragment_stmts<'a>(
+    ctx: &mut Ctx<'a>,
+    slot_el_id: NodeId,
+    frag_key: FragmentKey,
+    slot_let_attrs: &[Attribute],
+) -> Vec<Statement<'a>> {
+    let slot_let_stmts = slot_let_directive_stmts(ctx, slot_let_attrs);
+    if matches!(ctx.query.component.store.get(slot_el_id), Node::Element(_)) {
+        return super::gen_fragment_with_setup(
+            ctx,
+            frag_key,
+            FragmentSetup::PostCreate(slot_let_stmts),
+        );
+    }
+
+    let mut fragment_stmts = slot_let_stmts;
+    fragment_stmts.extend(gen_fragment(ctx, frag_key));
+    fragment_stmts
 }
 
 /// Lower a component with `--*` props through the `<svelte-css-wrapper>` (HTML)
@@ -838,6 +883,17 @@ fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Exp
         TemplateBindingReadKind::RuneSafeGet => {
             ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
         }
+        TemplateBindingReadKind::SlotLetCarrierMember => {
+            let carrier_sym_id = ctx
+                .query
+                .view
+                .scoping()
+                .slot_let_binding_carrier(sym_id)
+                .unwrap_or_else(|| panic!("slot let binding {:?} missing carrier", sym_id));
+            let carrier_name = ctx.symbol_name(carrier_sym_id);
+            let carrier = ctx.b.call_expr("$.get", [Arg::Ident(carrier_name)]);
+            ctx.b.static_member_expr(carrier, symbol_name)
+        }
         TemplateBindingReadKind::PropsAccess => {
             let prop_name = ctx
                 .query
@@ -878,11 +934,7 @@ fn build_dynamic_component_ref<'a>(
 
 /// Recover the slot name from an element's `slot="..."` attribute.
 fn slot_name_from_element(ctx: &Ctx<'_>, el_id: NodeId) -> String {
-    let attrs = match ctx.query.component.store.get(el_id) {
-        svelte_ast::Node::Element(el) => &el.attributes,
-        svelte_ast::Node::SvelteFragmentLegacy(el) => &el.attributes,
-        _ => unreachable!("named slot element must be element-like"),
-    };
+    let attrs = slot_child_attrs(ctx, el_id);
     for attr in attrs {
         if let Attribute::StringAttribute(sa) = attr {
             if sa.name == "slot" {
@@ -891,4 +943,141 @@ fn slot_name_from_element(ctx: &Ctx<'_>, el_id: NodeId) -> String {
         }
     }
     unreachable!("named slot element must have slot attribute")
+}
+
+pub(crate) fn slot_let_directive_stmts<'a>(
+    ctx: &mut Ctx<'a>,
+    attrs: &[Attribute],
+) -> Vec<Statement<'a>> {
+    attrs.iter()
+        .filter_map(|attr| match attr {
+            Attribute::LetDirectiveLegacy(dir) => Some(slot_let_directive_stmt(ctx, dir)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn slot_let_directive_stmt<'a>(
+    ctx: &mut Ctx<'a>,
+    dir: &svelte_ast::LetDirectiveLegacy,
+) -> Statement<'a> {
+    let stmt_handle = ctx
+        .let_directive_stmt_handle(dir.id)
+        .unwrap_or_else(|| panic!("missing let directive stmt handle for attr {:?}", dir.id));
+    let stmt = ctx
+        .state
+        .parsed
+        .stmt(stmt_handle)
+        .unwrap_or_else(|| panic!("missing parsed let directive stmt for attr {:?}", dir.id))
+        .clone_in(ctx.b.ast.allocator);
+
+    if slot_let_stmt_is_destructured(&stmt) {
+        return destructured_slot_let_stmt(ctx, dir.id, &stmt);
+    }
+
+    direct_slot_let_stmt(ctx, &stmt)
+}
+
+fn direct_slot_let_stmt<'a>(ctx: &mut Ctx<'a>, stmt: &Statement<'a>) -> Statement<'a> {
+    let declarator = slot_let_declarator(stmt)
+        .unwrap_or_else(|| panic!("slot let stmt must be a const declarator"));
+    let id = match &declarator.id {
+        BindingPattern::BindingIdentifier(id) => id,
+        _ => panic!("direct slot let stmt must bind an identifier"),
+    };
+    let init = declarator
+        .init
+        .as_ref()
+        .unwrap_or_else(|| panic!("slot let stmt missing init"))
+        .clone_in(ctx.b.ast.allocator);
+    let derived = ctx
+        .b
+        .call_expr("$.derived_safe_equal", [Arg::Expr(ctx.b.thunk(init))]);
+    ctx.b.const_stmt(id.name.as_str(), derived)
+}
+
+fn destructured_slot_let_stmt<'a>(
+    ctx: &mut Ctx<'a>,
+    attr_id: NodeId,
+    stmt: &Statement<'a>,
+) -> Statement<'a> {
+    let carrier_sym_id = ctx
+        .query
+        .scoping()
+        .slot_let_carrier(attr_id)
+        .unwrap_or_else(|| panic!("missing slot let carrier for attr {:?}", attr_id));
+    let carrier_name = ctx.symbol_name(carrier_sym_id).to_string();
+    let binding_names = slot_let_binding_names(stmt);
+
+    let mut destructure_stmt = stmt.clone_in(ctx.b.ast.allocator);
+    if let Statement::VariableDeclaration(decl) = &mut destructure_stmt {
+        decl.kind = VariableDeclarationKind::Let;
+    }
+
+    let mut body = vec![destructure_stmt];
+    body.push(ctx.b.return_stmt(ctx.b.shorthand_object_expr(&binding_names)));
+    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(ctx.b.thunk_block(body))]);
+    ctx.b.const_stmt(&carrier_name, derived)
+}
+
+fn slot_let_declarator<'a>(
+    stmt: &'a Statement<'a>,
+) -> Option<&'a oxc_ast::ast::VariableDeclarator<'a>> {
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return None;
+    };
+    decl.declarations.first()
+}
+
+fn slot_let_stmt_is_destructured(stmt: &Statement<'_>) -> bool {
+    matches!(
+        slot_let_declarator(stmt).map(|decl| &decl.id),
+        Some(BindingPattern::ObjectPattern(_)) | Some(BindingPattern::ArrayPattern(_))
+    )
+}
+
+fn slot_let_binding_names(stmt: &Statement<'_>) -> Vec<String> {
+    fn walk_binding_pattern(pattern: &BindingPattern<'_>, out: &mut Vec<String>) {
+        match pattern {
+            BindingPattern::BindingIdentifier(id) => out.push(id.name.as_str().to_string()),
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    walk_binding_pattern(&prop.value, out);
+                }
+                if let Some(rest) = &obj.rest {
+                    walk_binding_pattern(&rest.argument, out);
+                }
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                for elem in arr.elements.iter().flatten() {
+                    walk_binding_pattern(elem, out);
+                }
+                if let Some(rest) = &arr.rest {
+                    walk_binding_pattern(&rest.argument, out);
+                }
+            }
+            BindingPattern::AssignmentPattern(assign) => walk_binding_pattern(&assign.left, out),
+        }
+    }
+
+    let Some(declarator) = slot_let_declarator(stmt) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    walk_binding_pattern(&declarator.id, &mut names);
+    names
+}
+
+pub(crate) fn slot_child_attrs<'a>(ctx: &'a Ctx<'_>, el_id: NodeId) -> &'a [Attribute] {
+    match ctx.query.component.store.get(el_id) {
+        Node::Element(el) => &el.attributes,
+        Node::SvelteFragmentLegacy(el) => &el.attributes,
+        Node::ComponentNode(cn) => &cn.attributes,
+        _ => unreachable!("named slot child must carry attributes"),
+    }
+}
+
+fn attrs_have_static_slot(attrs: &[Attribute]) -> bool {
+    attrs.iter()
+        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"))
 }

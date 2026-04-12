@@ -17,13 +17,18 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::Visit;
 use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element, Namespace,
-    Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element,
+    LetDirectiveLegacy, Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary,
+    SvelteDocument, SvelteElement, SvelteWindow,
 };
 
 use crate::scope::ComponentScoping;
+use crate::types::script::RuneKind;
 use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
 use crate::utils::binding_pattern::collect_binding_names;
+use crate::utils::legacy_slot::{
+    collect_legacy_slot_bindings, legacy_slot_is_destructured, LegacySlotBindingKind,
+};
 use crate::walker::{TemplateVisitor, VisitContext};
 use crate::ElementFactsEntry;
 
@@ -820,6 +825,59 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 false,
             ),
         );
+    }
+
+    fn visit_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        let Some(stmt_handle) = ctx.data.let_directive_stmt_handle(dir.id) else {
+            return;
+        };
+        let Some(stmt) = ctx.parsed().and_then(|parsed| parsed.stmt(stmt_handle)) else {
+            return;
+        };
+
+        let carrier_sym_id = if legacy_slot_is_destructured(stmt) {
+            let carrier_sym_id = ctx
+                .data
+                .scoping
+                .slot_let_carrier(dir.id)
+                .unwrap_or_else(|| {
+                    let carrier_sym_id = ctx
+                        .data
+                        .scoping
+                        .add_unique_synthetic_binding(ctx.scope, dir.name.as_str());
+                    ctx.data.scoping.mark_template_declaration(carrier_sym_id);
+                    ctx.data.scoping.mark_rune(carrier_sym_id, RuneKind::Derived);
+                    ctx.data.scoping.mark_slot_let_carrier(dir.id, carrier_sym_id);
+                    carrier_sym_id
+                });
+            Some(carrier_sym_id)
+        } else {
+            None
+        };
+
+        for binding in collect_legacy_slot_bindings(stmt) {
+            let Some(sym_id) = ctx.data.scoping.get_binding(ctx.scope, &binding.name) else {
+                continue;
+            };
+            ctx.data.scoping.mark_template_declaration(sym_id);
+            match binding.kind {
+                LegacySlotBindingKind::Direct => {
+                    ctx.data.scoping.mark_rune(sym_id, RuneKind::Derived);
+                }
+                LegacySlotBindingKind::DestructuredLeaf => {
+                    ctx.data.scoping.mark_slot_let_binding_carrier(
+                        sym_id,
+                        carrier_sym_id.unwrap_or_else(|| {
+                            panic!("destructured slot let binding missing carrier")
+                        }),
+                    );
+                }
+            }
+        }
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {

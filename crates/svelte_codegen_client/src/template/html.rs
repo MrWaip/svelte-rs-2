@@ -131,6 +131,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                         write!(html, " {}=\"\"", a.name).unwrap();
                     }
                 }
+                Attribute::LetDirectiveLegacy(_) => {}
                 _ => {}
             }
         }

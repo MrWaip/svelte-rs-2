@@ -722,19 +722,31 @@ fn component_named_slot() {
 }
 
 #[rstest]
-#[ignore = "missing: default slot let: lowering from $$slotProps (codegen)"]
 fn component_default_slot_let() {
     assert_compiler("component_default_slot_let");
 }
 
 #[rstest]
-#[ignore = "missing: named-slot let: lowering on slotted elements (codegen)"]
+fn component_default_slot_let_alias() {
+    assert_compiler("component_default_slot_let_alias");
+}
+
+#[rstest]
 fn component_named_slot_let_element() {
     assert_compiler("component_named_slot_let_element");
 }
 
 #[rstest]
-#[ignore = "missing: slot attribute handling on child components (analyze/codegen)"]
+fn component_named_slot_let_element_destructure() {
+    assert_compiler("component_named_slot_let_element_destructure");
+}
+
+#[rstest]
+fn component_named_slot_let_element_multiple() {
+    assert_compiler("component_named_slot_let_element_multiple");
+}
+
+#[rstest]
 fn component_child_slot_attribute() {
     assert_compiler("component_child_slot_attribute");
 }
@@ -1253,7 +1265,6 @@ fn svelte_self_snippet() {
 }
 
 #[rstest]
-#[ignore = "missing: slotted <svelte:self> lowers into $$slots instead of default children (codegen, moderate)"]
 fn svelte_self_slot() {
     assert_compiler("svelte_self_slot");
 }
@@ -1811,9 +1822,13 @@ fn svelte_fragment_named_slot() {
 }
 
 #[rstest]
-#[ignore = "missing: named-slot let: lowering on <svelte:fragment> (codegen)"]
 fn component_named_slot_let_fragment() {
     assert_compiler("component_named_slot_let_fragment");
+}
+
+#[rstest]
+fn component_named_slot_let_fragment_destructure() {
+    assert_compiler("component_named_slot_let_fragment_destructure");
 }
 
 #[rstest]

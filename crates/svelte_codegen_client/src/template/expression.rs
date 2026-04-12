@@ -119,8 +119,21 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
 
     let mut seq_parts: Vec<Expression<'a>> = Vec::new();
     for &sym in &info.ref_symbols {
+        if let Some(carrier_sym) = ctx.query.scoping().slot_let_binding_carrier(sym) {
+            let getter = ctx.b.call_expr(
+                "$.get",
+                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(carrier_sym)))],
+            );
+            let getter = ctx
+                .b
+                .static_member_expr(getter, ctx.query.symbol_name(sym));
+            let getter = ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)]);
+            seq_parts.push(getter);
+            continue;
+        }
         let is_prop_source = ctx.query.scoping().is_prop_source(sym);
         let is_template = ctx.query.scoping().is_template_declaration(sym);
+        let is_rune = ctx.query.scoping().is_rune(sym);
         let is_import = ctx.query.scoping().is_import(sym);
         let is_rest_prop = ctx.query.scoping().is_rest_prop(sym);
         if !(is_prop_source || is_template || is_import || is_rest_prop) {
@@ -132,6 +145,8 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
                 ctx.query.symbol_name(sym),
                 std::iter::empty::<Arg<'a, '_>>(),
             )
+        } else if is_template && is_rune {
+            ctx.b.call_expr("$.get", [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))])
         } else {
             ctx.b.rid_expr(ctx.query.symbol_name(sym))
         };

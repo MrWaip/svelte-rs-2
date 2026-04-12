@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 12/24 use cases
-- **Tests**: 23/30 green
+- **Working**: 18/25 use cases
+- **Tests**: 34/37 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -44,12 +44,12 @@
 - [x] Named `<slot name="...">` lowers correctly with fallback content (test: slot_named_fallback)
 - [x] Direct child elements with `slot="..."` lower into parent `$$slots` entries (test: component_named_slot)
 - [x] Direct child `<svelte:fragment slot="...">` lowers into parent `$$slots` entries without wrapper DOM (test: svelte_fragment_named_slot)
-- [ ] Child components with `slot="..."` participate in named-slot grouping instead of receiving a plain `slot` prop (test: component_child_slot_attribute, #[ignore], moderate)
-- [ ] Default-slot bindings remain scoped to the default slot and are not visible inside named-slot content, matching the Svelte 4 migration note (test: none yet, needs infrastructure)
+- [x] Child components with `slot="..."` participate in named-slot grouping instead of receiving a plain `slot` prop (tests: component_child_slot_attribute, svelte_self_slot)
+- [x] Default-slot bindings remain scoped to the default slot and are not visible inside named-slot content, matching the Svelte 4 migration note (test: component_default_slot_bindings_do_not_leak_into_named_slot_scope)
 - [ ] `<slot>` emits slot props from attributes/spreads instead of always passing `{}` (test: slot_props_default, #[ignore], moderate)
-- [ ] Parent default-slot `let:` directives lower to derived reads from `$$slotProps` inside the generated slot function (test: component_default_slot_let, #[ignore], moderate)
-- [ ] Named-slot `let:` directives on direct child elements lower inside the generated named-slot function (test: component_named_slot_let_element, #[ignore], moderate)
-- [ ] Named-slot `let:` directives on `<svelte:fragment>` lower inside the generated named-slot function (test: component_named_slot_let_fragment, #[ignore], moderate)
+- [x] Parent default-slot `let:` directives lower to derived reads from `$$slotProps` inside the generated slot function, including alias form `let:item={processed}` (tests: component_default_slot_let, component_default_slot_let_alias)
+- [x] Named-slot `let:` directives on direct child elements lower inside the generated named-slot function, including object destructuring and multiple `let:` directives on the same element (tests: component_named_slot_let_element, component_named_slot_let_element_destructure, component_named_slot_let_element_multiple)
+- [x] Named-slot `let:` directives on `<svelte:fragment>` lower inside the generated named-slot function, including object destructuring (tests: component_named_slot_let_fragment, component_named_slot_let_fragment_destructure)
 - [ ] Direct `$$slots` reads lower through `$.sanitize_slots($$props)` so conditional checks like `$$slots.description` work in component/template code; current Rust preserves the read but omits the sanitized binding and misses the reference compiler's untracked read wrapper (test: `legacy_slots_if`, `#[ignore]`, moderate)
 - [ ] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots, #[ignore], needs infrastructure)
 - [x] Non-custom-element legacy `<slot>` keeps runes-mode deprecation warning ownership while still lowering through the legacy runtime path (test: warn_slot_deprecated)
@@ -124,10 +124,16 @@
 - [x] slot_element_legacy_root_fragment_uses_dedicated_lowered_item
 - [x] component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id
 - [x] legacy_slot_dev_mixed
+- [x] component_default_slot_bindings_do_not_leak_into_named_slot_scope
 - [ ] slot_props_default
-- [ ] component_default_slot_let
-- [ ] component_named_slot_let_element
-- [ ] component_named_slot_let_fragment
-- [ ] component_child_slot_attribute
+- [x] component_default_slot_let
+- [x] component_default_slot_let_alias
+- [x] component_named_slot_let_element
+- [x] component_named_slot_let_element_destructure
+- [x] component_named_slot_let_element_multiple
+- [x] component_named_slot_let_fragment
+- [x] component_named_slot_let_fragment_destructure
+- [x] component_child_slot_attribute
+- [x] svelte_self_slot
 - [ ] legacy_slots_if
 - [ ] custom_element_slots
