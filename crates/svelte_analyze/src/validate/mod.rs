@@ -72,6 +72,18 @@ pub fn validate_program(
     validate_perf_class_warnings(program, offset, 1, diags);
 }
 
+pub fn validate_standalone_module(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    offset: u32,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    runes::validate(data, program, offset, runes, diags);
+    stores::validate_standalone_module(data, program, offset, diags);
+    validate_perf_class_warnings(program, offset, 0, diags);
+}
+
 fn validate_perf_class_warnings(
     program: &Program<'_>,
     offset: u32,

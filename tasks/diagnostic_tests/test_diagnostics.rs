@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{CompileOptions, Namespace, compile};
+use svelte_compiler::{compile, CompileOptions, Namespace};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -653,10 +653,7 @@ mod css {
         css_nesting_selector_valid_in_global,
         "css/css_nesting_selector_valid_in_global"
     );
-    diagnostic_case!(
-        css_selector_invalid,
-        "css/css_selector_invalid"
-    );
+    diagnostic_case!(css_selector_invalid, "css/css_selector_invalid");
     diagnostic_case!(
         css_global_block_with_nested_rules_ok,
         "css/css_global_block_with_nested_rules_ok"
@@ -1399,6 +1396,10 @@ mod runes {
 mod stores {
     use super::*;
 
+    diagnostic_case!(
+        state_rune_no_store_rune_conflict,
+        "stores/state_rune_no_store_rune_conflict"
+    );
     diagnostic_case!(
         validate_store_rune_conflict,
         "stores/validate_store_rune_conflict"
