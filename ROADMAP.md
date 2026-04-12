@@ -170,8 +170,9 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 ## Legacy Svelte 4
 
-- [ ] `<slot>` + `let:`
-- [ ] `<svelte:component>` / `<svelte:self>` / `<svelte:fragment>` 
+- [ ] `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute` — [spec](specs/legacy-slots.md)
+- [ ] `<svelte:self>`
+- [ ] `<svelte:component>` 
 - [ ] `export let` props
 - [ ] `$:` reactive assignments — [spec](specs/legacy-reactive-assignments.md)
 - [ ] `$$props` / `$$restProps` / `$$slots`

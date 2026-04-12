@@ -1,7 +1,7 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 22/22 use cases
+- **Working**: 21/21 use cases
 - **Next**: complete; continue only if a future audit finds more regular non-spread attr gaps not already owned by neighboring specs
 - **Current slice completed**: `Dynamic Input/Property Attr Lowering`. Regular non-spread attrs now follow the same reference-like update matrix across expression, concatenation, and shorthand forms: HTML attr names normalize through the same alias table as Svelte, `<input>` `value` / `checked` paths trigger `needs_input_defaults`, and codegen routes `value`, `checked`, `selected`, and DOM-property attrs like `disabled` / `readonly` away from the generic `$.set_attribute(...)` fallback. That matrix remains reference-aligned for non-HTML namespaces too; only HTML name normalization is namespace-sensitive.
 - **Current slice completed**: `attribute_unquoted_sequence` parity outside components. The scanner already emitted unquoted concatenations as `ConcatenationAttribute`; analyze now rejects them consistently across all relevant attribute owners.
@@ -16,6 +16,7 @@
 - Related specs with overlapping ownership:
   - `specs/element.md`
   - `specs/component-node.md`
+  - `specs/legacy-slots.md`
   - `specs/events.md`
   - `specs/bind-directives.md`
   - `specs/css-pipeline.md`
@@ -50,11 +51,11 @@
 - [x] `attribute_duplicate` — parser layer (`attr_convert.rs`); HTMLAttribute + BindDirective share key space; `this` excluded
 - [x] `attribute_unquoted_sequence` — analyzer rejects unquoted concatenation values like `foo=a{value}` consistently across components, regular elements, custom elements, and `<svelte:element>` (tests: `component_attribute_unquoted_sequence_errors`, `regular_element_attribute_unquoted_sequence_errors`, `custom_element_attribute_unquoted_sequence_errors`, `svelte_element_attribute_unquoted_sequence_errors`)
 - [x] `attribute_quoted` — warning for quoted single-expr on component or custom element (runes mode); `visit_component_node` added
-- [x] `slot_attribute_invalid` — placement done; value check (non-StringAttribute when parent is ComponentNode) done
 - [x] Form-element validation ownership is split across neighboring specs — `textarea_invalid_content` is done here; customizable `select` / `optgroup` / `selectedcontent` paths are tracked in `specs/element.md`; remaining bind-sensitive attribute validations are tracked in `specs/bind-directives.md`
 - [x] Event attribute validation specifics are owned and completed in `specs/events.md`
 - [x] Binding-driven attribute diagnostics (`attribute_invalid_type`, `attribute_invalid_multiple`, contenteditable) are tracked and completed in `specs/bind-directives.md`
 - [x] A11y attribute warnings are owned by `specs/a11y-warnings.md`
+- [x] Legacy slot-attribute validation ownership moved to `specs/legacy-slots.md`
 
 ## Reference
 

@@ -44,7 +44,7 @@
 ## Out of scope
 
 - `const_tag_invalid_reference` — only fires in `experimental.async` mode (gated at `Identifier.js:162` on `binding.metadata.is_template_declaration && experimental.async`); tracked as use case 37 in `specs/experimental-async.md`.
-- Slotted fragments (`<element slot="name">`, `<svelte:fragment slot="name">`, `<slot />`) — Svelte 4 legacy; not in scope for runes-mode work.
+- Legacy Svelte 4 parent-placement variants are owned by `specs/legacy-slots.md`, not this runes-mode spec.
 
 ## Reference
 
