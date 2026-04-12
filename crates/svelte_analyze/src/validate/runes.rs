@@ -37,29 +37,23 @@ pub(super) fn validate(
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = RuneValidator {
-        diags,
-        offset,
-        runes,
-        custom_element: data.output.custom_element,
-        in_var_declarator_init: false,
-        in_class_property_init: false,
-        in_constructor_body: false,
-        in_this_assign_rhs: false,
-        in_expression_statement_expr: false,
-        current_expr_stmt_span: None,
-        fn_body_first_stmt_span: None,
-        in_generator: false,
-        function_depth: 0,
-        has_props_rune: false,
-        has_props_id: false,
-        in_props_destructure: false,
-    };
+    let mut v = RuneValidator::new(data, diags, offset, runes, true);
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
     validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
     validate_rest_prop_illegal_access(data, program, offset, diags);
+}
+
+pub(super) fn validate_module_props_runes(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut v = RuneValidator::new(data, diags, offset, runes, false);
+    v.visit_program(program);
 }
 
 struct RuneValidator<'a> {
@@ -90,10 +84,40 @@ struct RuneValidator<'a> {
     /// True when visiting the binding pattern of a `$props()` destructure.
     /// Used for `$bindable()` placement validation.
     in_props_destructure: bool,
+    /// True for `<script>`, false for `<script module>`.
+    is_instance_script: bool,
     custom_element: bool,
 }
 
 impl RuneValidator<'_> {
+    fn new<'a>(
+        data: &AnalysisData,
+        diags: &'a mut Vec<Diagnostic>,
+        offset: u32,
+        runes: bool,
+        is_instance_script: bool,
+    ) -> RuneValidator<'a> {
+        RuneValidator {
+            diags,
+            offset,
+            runes,
+            in_var_declarator_init: false,
+            in_class_property_init: false,
+            in_constructor_body: false,
+            in_this_assign_rhs: false,
+            in_expression_statement_expr: false,
+            current_expr_stmt_span: None,
+            fn_body_first_stmt_span: None,
+            in_generator: false,
+            function_depth: 0,
+            has_props_rune: false,
+            has_props_id: false,
+            in_props_destructure: false,
+            is_instance_script,
+            custom_element: data.output.custom_element,
+        }
+    }
+
     fn span(&self, oxc: oxc_span::Span) -> Span {
         Span::new(oxc.start + self.offset, oxc.end + self.offset)
     }
@@ -502,6 +526,22 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             walk_call_expression(self, call);
             return;
         };
+
+        if !self.is_instance_script {
+            match rune {
+                RuneKind::Props => self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsInvalidPlacement,
+                    self.span(call.span),
+                )),
+                RuneKind::PropsId => self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsIdInvalidPlacement,
+                    self.span(call.span),
+                )),
+                _ => {}
+            }
+            walk_call_expression(self, call);
+            return;
+        }
 
         if matches!(
             rune,

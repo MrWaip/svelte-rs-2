@@ -13,7 +13,7 @@ use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::{FunctionInfo, ScriptTransformer};
 
-pub(super) use derived::{wrap_derived_thunks, wrap_lazy, DevContext};
+pub(super) use derived::{DevContext, wrap_derived_thunks, wrap_lazy};
 
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn enter_class_body(
@@ -242,6 +242,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     }
 
     fn exit_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
+        self.rewrite_prop_update_ownership_exit(node);
         if self.rewrite_private_assignment_exit(node) {
             return;
         }

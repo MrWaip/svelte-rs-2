@@ -50,6 +50,12 @@ pub(super) struct PropGenItem {
     pub(super) is_lazy_default: bool,
 }
 
+pub(super) struct PendingPropMutationValidation<'a> {
+    pub(super) prop_alias: String,
+    pub(super) root_name: String,
+    pub(super) segments: Vec<Expression<'a>>,
+}
+
 pub(super) struct FunctionInfo {
     pub(super) is_async: bool,
     pub(super) name: Option<String>,
@@ -114,6 +120,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) is_ts: bool,
     pub(super) function_info_stack: Vec<FunctionInfo>,
     pub(super) has_tracing: bool,
+    pub(super) needs_ownership_validator: bool,
+    pub(super) pending_prop_update_validations: FxHashMap<u32, PendingPropMutationValidation<'a>>,
     pub(super) component_source: &'b str,
     pub(super) script_content_start: u32,
     pub(super) filename: &'b str,
@@ -188,6 +196,51 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             return false;
         };
         self.component_scoping.is_rest_prop(sym_id)
+    }
+
+    pub(super) fn prop_source_info_for_ref(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<(String, bool)> {
+        let ref_id = id.reference_id.get()?;
+        let sym_id = self.component_scoping.get_reference(ref_id).symbol_id()?;
+        if !self.component_scoping.is_prop_source(sym_id) {
+            return None;
+        }
+        let local_name = self.component_scoping.symbol_name(sym_id);
+        let props_gen = self.props_gen.as_ref()?;
+        props_gen
+            .props
+            .iter()
+            .find(|p| p.is_prop_source && p.local_name == local_name)
+            .map(|p| (p.prop_name.clone(), p.is_bindable))
+    }
+
+    pub(super) fn mark_prop_source_mutated_for_ref(
+        &mut self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) {
+        let Some(ref_id) = id.reference_id.get() else {
+            return;
+        };
+        let Some(sym_id) = self.component_scoping.get_reference(ref_id).symbol_id() else {
+            return;
+        };
+        if !self.component_scoping.is_prop_source(sym_id) {
+            return;
+        }
+        let local_name = self.component_scoping.symbol_name(sym_id);
+        let Some(props_gen) = self.props_gen.as_mut() else {
+            return;
+        };
+        let Some(prop) = props_gen
+            .props
+            .iter_mut()
+            .find(|p| p.is_prop_source && p.local_name == local_name)
+        else {
+            return;
+        };
+        prop.is_mutated = true;
     }
 
     pub(super) fn extract_assign_member_store_root<'t>(

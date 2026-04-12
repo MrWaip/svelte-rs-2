@@ -391,6 +391,150 @@ const id = $props.id();
 }
 
 #[test]
+fn compile_dev_props_member_mutation_uses_ownership_validator() {
+    let opts = CompileOptions {
+        dev: true,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<script>
+let { user } = $props();
+function rename() {
+    user.name = 'next';
+}
+</script>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("$.create_ownership_validator($$props)"),
+        "expected ownership validator setup, got:\n{js}"
+    );
+    assert!(
+        js.contains("$$ownership_validator.mutation(\"user\""),
+        "expected ownership mutation wrapper for prop member write, got:\n{js}"
+    );
+}
+
+#[test]
+fn compile_dev_bindable_prop_member_mutation_uses_prop_alias() {
+    let opts = CompileOptions {
+        dev: true,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<script>
+let { value: local = $bindable() } = $props();
+function bump() {
+    local.count = 1;
+}
+</script>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("$$ownership_validator.mutation(\"value\""),
+        "expected ownership mutation wrapper to use prop alias, got:\n{js}"
+    );
+    assert!(
+        js.contains("\"count\""),
+        "expected ownership mutation path to include mutated member, got:\n{js}"
+    );
+}
+
+#[test]
+fn compile_dev_bindable_prop_member_update_uses_ownership_validator() {
+    let opts = CompileOptions {
+        dev: true,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<script>
+let { value: local = $bindable() } = $props();
+function bump() {
+    local.count++;
+}
+</script>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("$.create_ownership_validator($$props)"),
+        "expected ownership validator setup, got:\n{js}"
+    );
+    assert!(
+        js.contains("$$ownership_validator.mutation(\"value\""),
+        "expected ownership mutation wrapper for update expression, got:\n{js}"
+    );
+    assert!(
+        js.contains("\"count\""),
+        "expected ownership mutation path to include updated member, got:\n{js}"
+    );
+}
+
+#[test]
+fn compile_dev_props_member_mutation_in_return_uses_ownership_validator() {
+    let opts = CompileOptions {
+        dev: true,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<script>
+let { user } = $props();
+function rename() {
+    return user.name = 'next';
+}
+</script>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        js.contains("$.create_ownership_validator($$props)"),
+        "expected ownership validator setup for non-statement mutation, got:\n{js}"
+    );
+    assert!(
+        js.contains("$$ownership_validator.mutation(\"user\""),
+        "expected ownership mutation wrapper for non-statement prop member write, got:\n{js}"
+    );
+}
+
+#[test]
+fn compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator() {
+    let opts = CompileOptions {
+        dev: true,
+        ..Default::default()
+    };
+    let result = compile(
+        r#"<script>
+let { value: local = $bindable() } = $props();
+function bump(local) {
+    local.count++;
+}
+</script>"#,
+        &opts,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+    assert!(
+        !js.contains("$.create_ownership_validator($$props)"),
+        "unexpected ownership validator setup for shadowed local, got:\n{js}"
+    );
+    assert!(
+        !js.contains("$$ownership_validator.mutation(\"value\""),
+        "unexpected ownership mutation wrapper for shadowed local, got:\n{js}"
+    );
+}
+
+#[test]
 fn attribute_invalid_name_digit_start() {
     let result = compile(r#"<div 1foo="x"></div>"#, &CompileOptions::default());
     assert!(

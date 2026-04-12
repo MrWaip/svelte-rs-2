@@ -273,6 +273,50 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
+    pub(super) fn identifier_read_expr(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<oxc_ast::ast::Expression<'a>> {
+        if let Some(prop_kind) = self.prop_kind_for_ref(id) {
+            return Some(match prop_kind {
+                PropKind::Source => {
+                    let name = id.name.as_str().to_string();
+                    self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>())
+                }
+                PropKind::NonSource(prop_name) => self
+                    .b
+                    .static_member_expr(self.b.rid_expr("$$props"), &prop_name),
+            });
+        }
+        let id_name = id.name.as_str();
+        if id.reference_id.get().is_some() && self.component_scoping.is_store_ref(id_name) {
+            let name = id_name.to_string();
+            return Some(self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>()));
+        }
+        let Some(ref_id) = id.reference_id.get() else {
+            return None;
+        };
+        let Some(sym_id) = self.component_scoping.get_reference(ref_id).symbol_id() else {
+            return None;
+        };
+        let Some(kind) = self.component_scoping.rune_kind(sym_id) else {
+            return None;
+        };
+        let mutated = self.component_scoping.is_mutated(sym_id);
+        let needs_get = mutated || kind.is_derived();
+        if !needs_get {
+            return None;
+        }
+
+        let name = id.name.as_str().to_string();
+        let alloc = self.b.ast.allocator;
+        Some(if self.component_scoping.is_var_declared_state(sym_id) {
+            svelte_transform::rune_refs::make_rune_safe_get(alloc, &name)
+        } else {
+            svelte_transform::rune_refs::make_rune_get(alloc, &name)
+        })
+    }
+
     pub(super) fn rewrite_identifier_expression(
         &mut self,
         node: &mut oxc_ast::ast::Expression<'a>,
@@ -280,45 +324,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
         let oxc_ast::ast::Expression::Identifier(id) = node else {
             return;
         };
-        if let Some(prop_kind) = self.prop_kind_for_ref(id) {
-            match prop_kind {
-                PropKind::Source => {
-                    let name = id.name.as_str().to_string();
-                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
-                }
-                PropKind::NonSource(prop_name) => {
-                    *node = self
-                        .b
-                        .static_member_expr(self.b.rid_expr("$$props"), &prop_name);
-                }
-            }
-            return;
-        }
-        let id_name = id.name.as_str();
-        if id.reference_id.get().is_some() && self.component_scoping.is_store_ref(id_name) {
-            let name = id_name.to_string();
-            *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
-            return;
-        }
-        let Some(ref_id) = id.reference_id.get() else {
+        let Some(replacement) = self.identifier_read_expr(id) else {
             return;
         };
-        let Some(sym_id) = self.component_scoping.get_reference(ref_id).symbol_id() else {
-            return;
-        };
-        let Some(kind) = self.component_scoping.rune_kind(sym_id) else {
-            return;
-        };
-        let mutated = self.component_scoping.is_mutated(sym_id);
-        let needs_get = mutated || kind.is_derived();
-        if needs_get {
-            let name = id.name.as_str().to_string();
-            let alloc = self.b.ast.allocator;
-            *node = if self.component_scoping.is_var_declared_state(sym_id) {
-                svelte_transform::rune_refs::make_rune_safe_get(alloc, &name)
-            } else {
-                svelte_transform::rune_refs::make_rune_get(alloc, &name)
-            };
-        }
+        *node = replacement;
     }
 }
