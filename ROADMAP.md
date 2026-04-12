@@ -32,6 +32,8 @@ Goal: align warnings, errors, spans, and severity once the owning runtime/compil
 
 - Benchmark-driven hot-path work in `svelte_component_semantics`, `svelte_analyze`, `svelte_transform`, and `svelte_codegen_client`
 - Allocation cleanup, redundant traversal removal, and data-flow tightening in already-stable client paths
+  - Per-pass cost discipline
+  - Hot data compaction
 - Large-scale compile throughput and memory work after the main client parity slices stop churning
 
 Goal: optimize the stabilized client compiler before expanding the tooling surface or starting SSR work.
