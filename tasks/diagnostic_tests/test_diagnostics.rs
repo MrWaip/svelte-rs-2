@@ -1159,6 +1159,17 @@ mod props {
         "props/validate_props_illegal_name_identifier_pattern_member_access"
     );
     diagnostic_case!(
+        validate_legacy_props_invalid_in_runes_mode,
+        "props/validate_legacy_props_invalid_in_runes_mode",
+        ignore = "missing: runes validation for direct legacy $$props reads (analyze, quick fix)"
+    );
+    diagnostic_case!(
+        validate_legacy_rest_props_invalid_in_runes_mode,
+        "props/validate_legacy_rest_props_invalid_in_runes_mode",
+        ignore =
+            "missing: runes validation for direct legacy $$restProps reads (analyze, quick fix)"
+    );
+    diagnostic_case!(
         validate_props_normal_member_access_no_error,
         "props/validate_props_normal_member_access_no_error",
         ignore = "known mismatch: npm svelte/compiler reports state_referenced_locally while analyzer reports no diagnostics"

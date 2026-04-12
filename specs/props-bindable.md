@@ -1,14 +1,15 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 21/22 use cases
+- **Working**: 21/21 use cases
 - **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
 - **Completed (2026-04-11)**: identifier-pattern `$props()` bindings no longer trigger a false-positive `store_rune_conflict`; analyzer store validation now excludes props-owned bindings and the focused parity case `props_identifier_no_store_rune_conflict` passes alongside the existing positive `store_rune_conflict` analyzer test.
 - **Completed (2026-04-12)**: `$props()` / `$props.id()` in `<script module>` now emit `props_invalid_placement` / `props_id_invalid_placement` via analyzer validation, with focused diagnostic parity coverage (`validate_props_invalid_placement_in_module_script`, `validate_props_id_invalid_placement_in_module_script`).
 - **Completed (2026-04-12)**: module-script `$props()` / `$props.id()` validation now flows through `validate/runes.rs` instead of a parallel module-only validator, preserving reference parity for module invalid-placement behavior while avoiding duplicated call-walker logic.
 - **Completed (2026-04-12)**: follow-up review cleanup deduplicated `RuneValidator` initialization for instance/module entrypoints while keeping module placement diagnostics and test coverage unchanged.
 - **Completed (2026-04-12)**: dev-mode ownership mutation validation now matches reference parity for computed identifier member paths on prop-source assignment and aliased prop-source update expressions, preserving `$$ownership_validator.mutation(...)`, prop-alias selection, and `$.create_ownership_validator($$props)` setup in the new compiler cases `props_member_mutation_computed` and `props_renamed_member_update_computed`.
-- **Next**: `$$props` / `$$restProps` legacy compatibility (Tier 7).
+- **Completed (2026-04-12)**: follow-up hardening fixed two codegen regressions in prop member mutation validation: non-statement writes like `return user.name = ...` now still emit `$$ownership_validator.mutation(...)`, and shadowed locals no longer get false-positive ownership wrappers or prop-mutation bookkeeping. Update-expression ownership wrapping remains exit-ordered to avoid recursive rewrapping after AST rewrites.
+- **Next**: complete
 - Last updated: 2026-04-12
 
 ## Source
@@ -48,8 +49,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
 - [x] `props_illegal_name` for MemberExpression access on rest props
 - [x] Custom-element warning: `custom_element_props_identifier` for identifier/rest `$props()` in custom elements
-- [x] Dev-mode ownership mutation validation for prop / bindable-prop member writes via `$$ownership_validator.mutation(...)` (tests: `compile_dev_props_member_mutation_uses_ownership_validator`, `compile_dev_bindable_prop_member_mutation_uses_prop_alias`, `compile_dev_bindable_prop_member_update_uses_ownership_validator`, `props_member_mutation_computed`, `props_renamed_member_update_computed`)
-- [ ] `$$props` / `$$restProps` legacy compatibility (Tier 7)
+- [x] Dev-mode ownership mutation validation for prop / bindable-prop member writes via `$$ownership_validator.mutation(...)` (tests: `compile_dev_props_member_mutation_uses_ownership_validator`, `compile_dev_bindable_prop_member_mutation_uses_prop_alias`, `compile_dev_bindable_prop_member_update_uses_ownership_validator`, `compile_dev_props_member_mutation_in_return_uses_ownership_validator`, `compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator`, `props_member_mutation_computed`, `props_renamed_member_update_computed`)
 
 ## Reference
 
@@ -105,5 +105,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] compiler unit: `compile_dev_props_member_mutation_uses_ownership_validator`
 - [x] compiler unit: `compile_dev_bindable_prop_member_mutation_uses_prop_alias`
 - [x] compiler unit: `compile_dev_bindable_prop_member_update_uses_ownership_validator`
+- [x] compiler unit: `compile_dev_props_member_mutation_in_return_uses_ownership_validator`
+- [x] compiler unit: `compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator`
 - [x] `props_member_mutation_computed`
 - [x] `props_renamed_member_update_computed`

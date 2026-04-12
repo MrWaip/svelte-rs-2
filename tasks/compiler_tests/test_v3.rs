@@ -1,12 +1,12 @@
 use std::{
-    fs::{File, read_to_string},
+    fs::{read_to_string, File},
     io::Write,
     path::Path,
 };
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, compile, compile_module};
+use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions, Namespace};
 
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
@@ -854,6 +854,48 @@ fn custom_element_prop_alias() {
 #[ignore = "missing: custom-element slot lowering and slot metadata emission (analyze/codegen)"]
 fn custom_element_slots() {
     assert_compiler("custom_element_slots");
+}
+
+#[rstest]
+#[ignore = "missing: direct legacy $$props sanitization and identifier lowering (codegen, moderate)"]
+fn legacy_props_basic() {
+    assert_compiler("legacy_props_basic");
+}
+
+#[rstest]
+#[ignore = "missing: legacy $: statement discovery and client lowering (analyze/codegen, needs infrastructure)"]
+fn legacy_reactive_assignment_basic() {
+    assert_compiler("legacy_reactive_assignment_basic");
+}
+
+#[rstest]
+#[ignore = "missing: legacy $: block bodies and destructuring targets (analyze/codegen, moderate)"]
+fn legacy_reactive_assignment_block_destructure() {
+    assert_compiler("legacy_reactive_assignment_block_destructure");
+}
+
+#[rstest]
+#[ignore = "missing: legacy $: coarse dependency reads for props and reserved prop bags (analyze/codegen, moderate)"]
+fn legacy_reactive_assignment_coarse_deps() {
+    assert_compiler("legacy_reactive_assignment_coarse_deps");
+}
+
+#[rstest]
+#[ignore = "missing: legacy $: import dependency wrapping and topological ordering (analyze/codegen, moderate)"]
+fn legacy_reactive_assignment_import_topology() {
+    assert_compiler("legacy_reactive_assignment_import_topology");
+}
+
+#[rstest]
+#[ignore = "missing: direct legacy $$restProps lowering (codegen, moderate)"]
+fn legacy_rest_props_basic() {
+    assert_compiler("legacy_rest_props_basic");
+}
+
+#[rstest]
+#[ignore = "missing: direct legacy $$slots sanitization for conditional slot checks (codegen, moderate)"]
+fn legacy_slots_if() {
+    assert_compiler("legacy_slots_if");
 }
 
 #[rstest]
