@@ -87,7 +87,12 @@ pub fn analyze_with_options<'a>(
     data.script.accessors = options.accessors;
     data.script.immutable = options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
-    data.output.custom_element = options.custom_element;
+    data.output.custom_element = options.custom_element
+        || component
+            .options
+            .as_ref()
+            .and_then(|opts| opts.custom_element.as_ref())
+            .is_some();
     data.output.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
     let execution_order = passes::resolve_default_execution_order()
@@ -113,6 +118,10 @@ pub fn analyze_with_options<'a>(
     // Apply warning filter if provided
     if let Some(ref filter) = options.warning_filter {
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
+    }
+
+    if data.scoping.root_unresolved_references().contains_key("$$slots") {
+        data.output.needs_sanitized_legacy_slots = true;
     }
 
     data.output.runtime_plan = build_runtime_plan(&data, options.dev);

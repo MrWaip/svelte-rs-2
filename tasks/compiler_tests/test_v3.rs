@@ -887,7 +887,6 @@ fn custom_element_prop_alias() {
 }
 
 #[rstest]
-#[ignore = "missing: custom-element slot lowering and slot metadata emission (analyze/codegen)"]
 fn custom_element_slots() {
     assert_compiler("custom_element_slots");
 }
@@ -967,6 +966,11 @@ fn legacy_rest_props_basic() {
 #[rstest]
 fn legacy_slots_if() {
     assert_compiler("legacy_slots_if");
+}
+
+#[rstest]
+fn legacy_slots_script_basic() {
+    assert_compiler("legacy_slots_script_basic");
 }
 
 #[rstest]

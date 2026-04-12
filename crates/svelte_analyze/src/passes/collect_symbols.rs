@@ -62,7 +62,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         ctx: &mut VisitContext<'_>,
     ) {
         let info = build_expression_info(expr, &mut ctx.data.scoping);
-        if !ctx.data.script.runes && info.uses_legacy_slots {
+        if info.uses_legacy_slots {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
         detect_each_index_usage(node_id, &info.ref_symbols, ctx.data);

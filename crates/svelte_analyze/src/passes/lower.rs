@@ -28,6 +28,38 @@ fn determine_slot(node: &Node) -> Option<NodeId> {
     has_slot.then_some(id)
 }
 
+fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {
+    for attr in attrs {
+        if let Attribute::StringAttribute(attr) = attr {
+            if attr.name == "name" {
+                return attr.value_span.source_text(source);
+            }
+        }
+    }
+
+    "default"
+}
+
+fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute], source: &str) {
+    if !data.output.custom_element {
+        return;
+    }
+
+    let slot_name = legacy_slot_name(attrs, source);
+    if data
+        .output
+        .custom_element_slot_names
+        .iter()
+        .any(|existing| existing == slot_name)
+    {
+        return;
+    }
+
+    data.output
+        .custom_element_slot_names
+        .push(slot_name.to_string());
+}
+
 pub fn lower(component: &Component, data: &mut AnalysisData) {
     let initial_in_svg = component
         .options
@@ -279,6 +311,7 @@ fn lower_nodes(
                 );
             }
             Node::SlotElementLegacy(el) => {
+                record_custom_element_slot_name(data, &el.attributes, &component.source);
                 lower_nodes(
                     &el.fragment.nodes,
                     FragmentKey::Element(el.id),

@@ -101,10 +101,7 @@ fn finalize_await_exprs<'a>(ctx: &Ctx<'a>, ignore_node: Option<NodeId>, expr: &m
 }
 
 fn maybe_wrap_legacy_slots_read<'a>(ctx: &Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
-    if ctx.query.runes()
-        || !ctx.query.needs_sanitized_legacy_slots()
-        || !expr_roots_in_legacy_slots(&expr)
-    {
+    if !ctx.query.needs_sanitized_legacy_slots() || !expr_roots_in_legacy_slots(&expr) {
         return expr;
     }
 

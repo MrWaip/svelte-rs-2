@@ -32,8 +32,13 @@ pub fn gen_custom_element<'a>(
     // -- Arg 2: Props metadata object --
     let props_obj = build_props_metadata(ctx, parsed);
 
-    // -- Arg 3: Slots array (always empty in Svelte 5 runes mode) --
-    let slots = ctx.b.array_from_args(std::iter::empty::<Arg<'_, '_>>());
+    // Slot names are analyzed once so CE wrapping stays aligned with the shared
+    // legacy <slot> lowering path instead of rediscovering template structure here.
+    let slots = ctx
+        .b
+        .array_from_args(ctx.query.custom_element_slot_names().iter().map(|name| {
+            Arg::StrRef(name.as_str())
+        }));
 
     // -- Arg 4: Accessors array (from exports) --
     let accessors = ctx.b.array_from_args(ctx.query.exports().iter().map(|e| {

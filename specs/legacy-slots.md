@@ -1,8 +1,8 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 20/26 use cases
-- **Tests**: 41/42 green
+- **Working**: 22/26 use cases
+- **Tests**: 44/44 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -51,10 +51,10 @@
 - [x] Parent default-slot `let:` directives lower to derived reads from `$$slotProps` inside the generated slot function, including alias form `let:item={processed}` (tests: component_default_slot_let, component_default_slot_let_alias)
 - [x] Named-slot `let:` directives on direct child elements lower inside the generated named-slot function, including object destructuring and multiple `let:` directives on the same element (tests: component_named_slot_let_element, component_named_slot_let_element_destructure, component_named_slot_let_element_multiple)
 - [x] Named-slot `let:` directives on `<svelte:fragment>` lower inside the generated named-slot function, including object destructuring (tests: component_named_slot_let_fragment, component_named_slot_let_fragment_destructure)
-- [ ] Direct `$$slots` reads lower through sanitized legacy slot bindings instead of unresolved raw identifiers
+- [x] Direct `$$slots` reads lower through sanitized legacy slot bindings instead of unresolved raw identifiers
   - [x] Template direct `$$slots` reads lower through `$.sanitize_slots($$props)` so conditional checks like `$$slots.description` work in template code, including the reference compiler's untracked read wrapper (tests: `legacy_slots_if`, `legacy_slots_template_reads_require_sanitized_slots_binding`, `legacy_slot_elements_do_not_require_sanitized_slots_binding`)
-  - [ ] Instance-script direct `$$slots` reads lower through the sanitized binding and reserved identifier rewriting, sharing the legacy reserved-bag script path with direct `$$props`/`$$restProps` handling (test: none yet, moderate)
-- [ ] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots, #[ignore], needs infrastructure)
+  - [x] Instance-script direct `$$slots` reads inject `$.sanitize_slots($$props)` and keep the `$$props` function parameter when script reads are the only legacy special-variable consumer (tests: `legacy_slots_script_basic`, `legacy_slots_script_reads_require_sanitized_slots_binding`)
+- [x] Custom-element `<slot>` and named `<slot name="...">` are lowered to CE slot calls and emitted in the wrapper slot-name array (test: custom_element_slots)
 - [x] Non-custom-element legacy `<slot>` keeps runes-mode deprecation warning ownership while still lowering through the legacy runtime path (test: warn_slot_deprecated)
 - [x] Element-child `slot="..."` diagnostics cover static-value, placement, duplicate-name, default-slot-conflict, and slotted-`{@const}` allowances (test: slots/slot_attribute_static_value_ok, slots/slot_attribute_invalid_expression_value, slots/slot_attribute_invalid_placement_root, slots/slot_attribute_invalid_placement_nested_inside_component, slots/slot_attribute_duplicate_reports_second_named_slot, slots/slot_default_duplicate_reports_implicit_default_content, slots/slot_default_duplicate_ignores_whitespace_and_other_named_slots, slots/const_tag_inside_slotted_element_is_allowed)
 - [ ] Duplicate/default slot-conflict diagnostics include child components with `slot="..."` instead of only element-like wrappers (test: none yet, moderate)
@@ -66,6 +66,7 @@
 
 - Snippet interop beyond the legacy slot conflict diagnostics already referenced above
 - SSR slot generation
+- Shared legacy special-variable deconfliction tracked by `specs/legacy-export-let.md`
 
 ## Reference
 ### Svelte
@@ -142,6 +143,8 @@
 - [x] component_child_slot_attribute
 - [x] svelte_self_slot
 - [x] legacy_slots_if
-- [ ] custom_element_slots
+- [x] legacy_slots_script_basic
+- [x] custom_element_slots
 - [x] legacy_slots_template_reads_require_sanitized_slots_binding
 - [x] legacy_slot_elements_do_not_require_sanitized_slots_binding
+- [x] legacy_slots_script_reads_require_sanitized_slots_binding

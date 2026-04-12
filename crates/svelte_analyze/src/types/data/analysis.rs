@@ -125,6 +125,7 @@ pub struct OutputPlanData {
     pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
+    pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
     pub custom_element: bool,
     pub runtime_plan: RuntimePlan,
@@ -140,6 +141,7 @@ impl OutputPlanData {
             alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
             needs_sanitized_legacy_slots: false,
+            custom_element_slot_names: Vec::new(),
             component_name: String::new(),
             custom_element: false,
             runtime_plan: RuntimePlan::default(),
@@ -217,6 +219,9 @@ impl AnalysisData {
     }
     pub fn fragment_single_child(&self, key: &FragmentKey) -> Option<NodeId> {
         self.template.fragment_facts.single_child(key)
+    }
+    pub fn custom_element_slot_names(&self) -> &[String] {
+        &self.output.custom_element_slot_names
     }
     pub fn fragment_non_trivial_child_count(&self, key: &FragmentKey) -> u32 {
         self.template.fragment_facts.non_trivial_child_count(key)

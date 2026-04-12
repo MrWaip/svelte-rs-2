@@ -49,6 +49,9 @@ impl<'a> CodegenView<'a> {
     pub fn needs_sanitized_legacy_slots(&self) -> bool {
         self.data.output.needs_sanitized_legacy_slots
     }
+    pub fn custom_element_slot_names(&self) -> &[String] {
+        self.data.custom_element_slot_names()
+    }
     pub fn props_id(&self) -> Option<&str> {
         self.data.script.props_id.as_deref()
     }

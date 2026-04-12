@@ -387,13 +387,14 @@ pub fn generate<'a>(
 
     let has_legacy_slots = (0..component.node_count()).any(|raw_id| {
         let id = svelte_ast::NodeId(raw_id);
-        matches!(
-            component.store.get(id),
-            Node::SlotElementLegacy(_)
-        )
-    }) && !ctx.query.view.custom_element();
+        matches!(component.store.get(id), Node::SlotElementLegacy(_))
+    });
 
-    let fn_params = if runtime.needs_props_param || has_bubble_events || has_legacy_slots {
+    let fn_params = if runtime.needs_props_param
+        || has_bubble_events
+        || has_legacy_slots
+        || ctx.query.needs_sanitized_legacy_slots()
+    {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
