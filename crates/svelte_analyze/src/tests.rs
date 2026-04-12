@@ -5,6 +5,7 @@ use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
 use super::*;
@@ -547,6 +548,15 @@ fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Compon
 }
 
 fn analyze_source_with_css(source: &str) -> (Component, AnalysisData) {
+    let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
+    assert!(
+        css_pass_diags.is_empty(),
+        "unexpected css analyze diagnostics: {css_pass_diags:?}"
+    );
+    (component, data)
+}
+
+fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<Diagnostic>) {
     let alloc = oxc_allocator::Allocator::default();
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
     assert!(
@@ -570,11 +580,7 @@ fn analyze_source_with_css(source: &str) -> (Component, AnalysisData) {
         &mut data,
         &mut css_pass_diags,
     );
-    assert!(
-        css_pass_diags.is_empty(),
-        "unexpected css analyze diagnostics: {css_pass_diags:?}"
-    );
-    (component, data)
+    (component, data, css_pass_diags)
 }
 
 fn analyze_source_with_diags(
@@ -1449,6 +1455,59 @@ fn attribute_selector_names_are_casefolded_for_static_matching() {
     assert!(data.is_css_scoped(div.id));
     assert!(data.is_css_scoped(button.id));
     assert!(data.is_css_scoped(svg.id));
+}
+
+#[test]
+fn pseudo_is_and_where_standalone_branches_scope_matching_elements() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+:is(.foo) { color: red; }
+:where(.bar) { color: blue; }
+</style>
+<p class="foo"></p>
+<span class="bar"></span>
+<h1 class="baz">title</h1>"#,
+    );
+
+    let p = find_element(&component.fragment, &component, "p").expect("p");
+    let span = find_element(&component.fragment, &component, "span").expect("span");
+    let h1 = find_element(&component.fragment, &component, "h1").expect("h1");
+
+    assert!(data.is_css_scoped(p.id));
+    assert!(data.is_css_scoped(span.id));
+    assert!(!data.is_css_scoped(h1.id));
+}
+
+#[test]
+fn pseudo_compound_is_and_where_branches_stay_conservative() {
+    let (component, data, css_diags) = analyze_source_with_css_diags(
+        r#"<style>
+:is(.foo).bar { color: red; }
+:where(.baz)[data-nope] { color: blue; }
+</style>
+<p class="foo">foo</p>
+<span class="baz">baz</span>"#,
+    );
+
+    let p = find_element(&component.fragment, &component, "p").expect("p");
+    let span = find_element(&component.fragment, &component, "span").expect("span");
+
+    assert_eq!(css_diags.len(), 2);
+    assert!(data.is_css_scoped(p.id));
+    assert!(data.is_css_scoped(span.id));
+}
+
+#[test]
+fn pseudo_where_complex_branches_stay_conservative() {
+    let (component, data) = analyze_source_with_css(
+        r#"<style>
+:where(section p) { color: red; }
+</style>
+<p>hello</p>"#,
+    );
+
+    let p = find_element(&component.fragment, &component, "p").expect("p");
+    assert!(data.is_css_scoped(p.id));
 }
 
 #[test]

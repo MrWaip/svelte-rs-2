@@ -808,6 +808,22 @@ mod css_prune {
         spread_attribute_conservative_class_match,
         "css_prune/spread_attribute_conservative_class_match"
     );
+    diagnostic_case!(is_selector_match, "css_prune/is_selector_match");
+    diagnostic_case!(
+        is_selector_no_match,
+        "css_prune/is_selector_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(
+        is_selector_compound_no_match,
+        "css_prune/is_selector_compound_no_match",
+        ignore = "known mismatch: analyzer reports css_unused_selector spans in CSS-local coordinates while npm svelte/compiler uses full-source offsets"
+    );
+    diagnostic_case!(where_selector_match, "css_prune/where_selector_match");
+    diagnostic_case!(
+        where_selector_complex_branch_conservative,
+        "css_prune/where_selector_complex_branch_conservative"
+    );
     diagnostic_case!(
         concat_attribute_selector_no_match,
         "css_prune/concat_attribute_selector_no_match"
