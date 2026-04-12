@@ -1,4 +1,4 @@
 interface:
   display_name: "Spec Template"
-  short_description: "Structure and update feature specs"
-  default_prompt: "Use $spec-template to structure or update this feature spec correctly."
+  short_description: "Structure feature specs with nested checklists"
+  default_prompt: "Use $spec-template to structure or update this feature spec correctly, including nested sub-checkbox decomposition when a use case is too broad."
