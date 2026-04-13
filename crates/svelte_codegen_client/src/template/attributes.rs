@@ -3,7 +3,8 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{
-    is_regular_dom_property, normalize_regular_attribute_name, ExprSite, NamespaceKind,
+    is_regular_dom_property, normalize_regular_attribute_name, BindPropertyKind, ExprSite,
+    NamespaceKind,
 };
 use svelte_ast::{Attribute, Element, NodeId};
 
@@ -348,7 +349,10 @@ pub(crate) fn process_attr<'a>(
             push_regular_attr_update(ctx, target, el_name, attr_update, val);
         }
         Attribute::BindDirective(bind) => {
-            if bind.name == "value"
+            let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
+                return;
+            };
+            if bind_semantics.property() == BindPropertyKind::Value
                 && tag_name == "textarea"
                 && !ctx.needs_textarea_value_lowering(el_id)
             {
@@ -358,7 +362,7 @@ pub(crate) fn process_attr<'a>(
                 );
             }
             if let Some(placement) =
-                gen_bind_directive(ctx, bind, el_name, tag_name, has_use_directive)
+                gen_bind_directive(ctx, bind, bind_semantics, el_name, tag_name, has_use_directive)
             {
                 match placement {
                     BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
@@ -734,7 +738,10 @@ pub(crate) fn process_attrs_spread<'a>(
             }
             Attribute::BindDirective(bind) => {
                 let has_use = ctx.has_use_directive(el_id);
-                if bind.name == "value"
+                let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
+                    continue;
+                };
+                if bind_semantics.property() == BindPropertyKind::Value
                     && el_tag == "textarea"
                     && !ctx.needs_textarea_value_lowering(el_id)
                 {
@@ -743,7 +750,9 @@ pub(crate) fn process_attrs_spread<'a>(
                             .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
                     );
                 }
-                if let Some(placement) = gen_bind_directive(ctx, bind, el_name, el_tag, has_use) {
+                if let Some(placement) =
+                    gen_bind_directive(ctx, bind, bind_semantics, el_name, el_tag, has_use)
+                {
                     match placement {
                         BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                         BindPlacement::Init(stmt) => init.push(stmt),

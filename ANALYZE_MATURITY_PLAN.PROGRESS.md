@@ -106,27 +106,44 @@ Notes:
 - `BindHostKind::Component` covers all `ParentKind::ComponentNode` cases, including normal components, `<svelte:self>`, and `<svelte:component>`
 - `ComponentBindMode` still owns component emission policy; it was not collapsed into bind target semantics
 
+### 5. `BindTargetSemantics` tail cleanup in codegen
+
+Done:
+- Removed the last semantic `bind.name == "value"` branches from codegen bind handling
+- Switched both `textarea bind:value` paths in `template/attributes.rs` to read `BindTargetSemantics` instead of rediscovering bind meaning from raw names
+- Changed `gen_bind_directive(...)` to accept precomputed `BindTargetSemantics` from the caller instead of looking it up internally
+- Kept raw `bind.name.clone()` uses only for source-text/shorthand extraction, not semantic branching
+
+Notes:
+- Plain attribute checks like `<option value>` and `bind:group` value caching remain codegen-owned attribute logic and are not part of bind semantic rediscovery
+- The remaining `binding_property(...)` grep hits are OXC builder calls, not Svelte `bind:` semantics
+
 ## Slice 2 Remaining
 
-Open questions:
-- Which remaining analyze/validation bind decisions still rediscover host/property meaning from raw names and should move to `bind_target_semantics` next?
-- Does component bind validation need an explicit host-specific contract here, or is the current “component props stay open-ended” behavior the intended rule?
+Remaining work:
+- none for the bind semantic tail itself
 
 Do not do next:
-- Do not move client runtime helper names or bind runtime behavior into `BindTargetSemantics`
+- Do not expand `BindTargetSemantics` with client runtime policy or helper-choice APIs
 - Do not collapse `ComponentBindMode` into bind target semantics just for uniformity
-- Do not rewrite codegen bind lowering unless the next checkpoint removes a real duplicated semantic decision
 
 Recommended next checkpoint:
-- Do one bounded audit of remaining bind string-rediscovery sites in analyze/validation
-- Migrate the next real bind consumer only if it can read host/property/mutability directly from `BindTargetSemantics`
+- move on to `Slice 3: concrete fragment accessors`
 
 ## Validation Last Run
 
 - `just test-analyzer`
-  - result: `205 passed`
+  - result: `206 passed`
 - `cargo test -p svelte_codegen_client --no-run`
   - result: success
+- `just test-case-verbose bind_textarea_value`
+  - result: success
+- `just test-case-verbose bind_directives`
+  - result: success
+- `just test-case-verbose async_bind_basic`
+  - result: success
+- `rg -n "bind\\.name ==|bind\\.name !=|match bind\\.name\\.as_str\\(|binding_property\\(" crates/svelte_analyze/src crates/svelte_codegen_client/src`
+  - result: no remaining semantic `bind.name` dispatch; only OXC builder `binding_property(...)` calls remain
 - `git diff --check -- crates/svelte_analyze/src crates/svelte_codegen_client/src`
   - result: clean
 

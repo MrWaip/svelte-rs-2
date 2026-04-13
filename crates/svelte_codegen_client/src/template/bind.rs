@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{BindPropertyKind, ImageNaturalSizeKind, MediaBindKind};
+use svelte_analyze::{BindPropertyKind, BindTargetSemantics, ImageNaturalSizeKind, MediaBindKind};
 use svelte_ast::NodeId;
 
 use crate::builder::{Arg, AssignLeft};
@@ -174,12 +174,11 @@ pub(crate) enum BindPlacement<'a> {
 pub(crate) fn gen_bind_directive<'a>(
     ctx: &mut Ctx<'a>,
     bind: &svelte_ast::BindDirective,
+    semantics: BindTargetSemantics,
     el_name: &str,
     tag_name: &str,
     has_use_directive: bool,
 ) -> Option<BindPlacement<'a>> {
-    // Pre-computed by analysis — no string-based symbol re-resolution needed.
-    let semantics = ctx.bind_target_semantics(bind.id)?;
     let bind_property = semantics.property();
     let is_rune = ctx.is_mutable_rune_target(bind.id);
     let is_prop_source = ctx.is_prop_source_node(bind.id);
