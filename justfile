@@ -27,6 +27,22 @@ test-case-verbose name:
 test-all:
     cargo test --workspace
 
+# Remove Cargo build artifacts, including incremental caches, not used for 2 days
+sweep-2d:
+    cargo sweep -t 2
+
+# Run Clippy across the workspace
+clippy:
+    cargo clippy --workspace --all-targets
+
+# Run Clippy and fail on any warning
+clippy-strict:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Apply Clippy's machine-applicable fixes across the workspace
+clippy-fix:
+    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+
 # Run parser tests
 test-parser:
     cargo test -p svelte_parser

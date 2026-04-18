@@ -5,13 +5,16 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 
 use crate::types::data::{AnalysisData, ParserResult};
 
-pub(crate) fn collect_script_rune_call_kinds(parsed: &ParserResult<'_>, data: &mut AnalysisData) {
-    struct Collector<'d> {
-        data: &'d mut AnalysisData,
+pub(crate) fn collect_script_rune_call_kinds(
+    parsed: &ParserResult<'_>,
+    data: &mut AnalysisData<'_>,
+) {
+    struct Collector<'d, 'a> {
+        data: &'d mut AnalysisData<'a>,
         node_id_offset: u32,
     }
 
-    impl<'a> Visit<'a> for Collector<'_> {
+    impl<'a> Visit<'a> for Collector<'_, '_> {
         fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
             if let Some(kind) = crate::utils::script_info::detect_rune_from_call(call) {
                 let node =

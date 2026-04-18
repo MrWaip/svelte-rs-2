@@ -1,10 +1,10 @@
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, Statement, VariableDeclarator};
 use oxc_span::GetSpan;
 
-use super::super::ScriptTransformer;
+use super::model::ComponentTransformer;
 
-impl<'a> ScriptTransformer<'_, 'a> {
-    pub(super) fn strip_ts_class_members(&self, node: &mut oxc_ast::ast::ClassBody<'a>) {
+impl<'a> ComponentTransformer<'_, 'a> {
+    pub(crate) fn strip_ts_class_members(&self, node: &mut oxc_ast::ast::ClassBody<'a>) {
         if self.is_ts {
             node.body.retain(|member| match member {
                 oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
@@ -21,7 +21,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_function_bits(&self, node: &mut oxc_ast::ast::Function<'a>) {
+    pub(crate) fn strip_ts_function_bits(&self, node: &mut oxc_ast::ast::Function<'a>) {
         if self.is_ts {
             node.type_parameters = None;
             node.return_type = None;
@@ -29,14 +29,14 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_arrow_bits(&self, node: &mut ArrowFunctionExpression<'a>) {
+    pub(crate) fn strip_ts_arrow_bits(&self, node: &mut ArrowFunctionExpression<'a>) {
         if self.is_ts {
             node.type_parameters = None;
             node.return_type = None;
         }
     }
 
-    pub(super) fn strip_ts_formal_parameter(&self, node: &mut oxc_ast::ast::FormalParameter<'a>) {
+    pub(crate) fn strip_ts_formal_parameter(&self, node: &mut oxc_ast::ast::FormalParameter<'a>) {
         if self.is_ts {
             node.type_annotation = None;
             node.accessibility = None;
@@ -45,19 +45,19 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_catch_parameter(&self, node: &mut oxc_ast::ast::CatchParameter<'a>) {
+    pub(crate) fn strip_ts_catch_parameter(&self, node: &mut oxc_ast::ast::CatchParameter<'a>) {
         if self.is_ts {
             node.type_annotation = None;
         }
     }
 
-    pub(super) fn strip_ts_call_bits(&self, node: &mut oxc_ast::ast::CallExpression<'a>) {
+    pub(crate) fn strip_ts_call_bits(&self, node: &mut oxc_ast::ast::CallExpression<'a>) {
         if self.is_ts {
             node.type_arguments = None;
         }
     }
 
-    pub(super) fn capture_call_label_name(&mut self, node: &oxc_ast::ast::CallExpression<'a>) {
+    pub(crate) fn capture_call_label_name(&mut self, node: &oxc_ast::ast::CallExpression<'a>) {
         let has_fn_arg = node.arguments.iter().any(|arg| {
             matches!(
                 arg,
@@ -75,13 +75,13 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_new_bits(&self, node: &mut oxc_ast::ast::NewExpression<'a>) {
+    pub(crate) fn strip_ts_new_bits(&self, node: &mut oxc_ast::ast::NewExpression<'a>) {
         if self.is_ts {
             node.type_arguments = None;
         }
     }
 
-    pub(super) fn strip_ts_tagged_template_bits(
+    pub(crate) fn strip_ts_tagged_template_bits(
         &self,
         node: &mut oxc_ast::ast::TaggedTemplateExpression<'a>,
     ) {
@@ -90,7 +90,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_class_bits(&self, node: &mut oxc_ast::ast::Class<'a>) {
+    pub(crate) fn strip_ts_class_bits(&self, node: &mut oxc_ast::ast::Class<'a>) {
         if self.is_ts {
             node.type_parameters = None;
             node.super_type_arguments = None;
@@ -99,7 +99,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_property_definition_bits(
+    pub(crate) fn strip_ts_property_definition_bits(
         &self,
         node: &mut oxc_ast::ast::PropertyDefinition<'a>,
     ) {
@@ -113,7 +113,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_accessor_property_bits(
+    pub(crate) fn strip_ts_accessor_property_bits(
         &self,
         node: &mut oxc_ast::ast::AccessorProperty<'a>,
     ) {
@@ -125,7 +125,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn capture_object_property_label_name(
+    pub(crate) fn capture_object_property_label_name(
         &mut self,
         node: &oxc_ast::ast::ObjectProperty<'a>,
     ) {
@@ -142,7 +142,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_method_definition_bits(
+    pub(crate) fn strip_ts_method_definition_bits(
         &self,
         node: &mut oxc_ast::ast::MethodDefinition<'a>,
     ) {
@@ -153,14 +153,14 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_variable_declarator_bits(&self, node: &mut VariableDeclarator<'a>) {
+    pub(crate) fn strip_ts_variable_declarator_bits(&self, node: &mut VariableDeclarator<'a>) {
         if self.is_ts {
             node.type_annotation = None;
             node.definite = false;
         }
     }
 
-    pub(super) fn capture_variable_arrow_name(&mut self, node: &VariableDeclarator<'a>) {
+    pub(crate) fn capture_variable_arrow_name(&mut self, node: &VariableDeclarator<'a>) {
         if let Some(Expression::ArrowFunctionExpression(_)) = &node.init {
             if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id {
                 self.next_arrow_name = Some(id.name.to_string());
@@ -168,7 +168,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_expression_wrappers(&self, node: &mut Expression<'a>) {
+    pub(crate) fn strip_ts_expression_wrappers(&self, node: &mut Expression<'a>) {
         if self.is_ts {
             loop {
                 match node {
@@ -193,7 +193,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    pub(super) fn strip_ts_specifiers_and_statements(
+    pub(crate) fn strip_ts_specifiers_and_statements(
         &self,
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
     ) {

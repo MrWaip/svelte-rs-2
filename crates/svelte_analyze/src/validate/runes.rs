@@ -16,7 +16,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::{detect_rune, detect_rune_from_call};
-use crate::{types::script::RuneKind, AnalysisData};
+use crate::{types::script::RuneKind, AnalysisData, DeclarationSemantics, StateKind};
 
 /// Constructor assignments to `this` are valid rune placement targets,
 /// same as variable declarations and class property initializers.
@@ -219,9 +219,11 @@ fn validate_derived_invalid_export(
         diags,
         || DiagnosticKind::DerivedInvalidExport,
         |data, sym_id| {
-            data.scoping
-                .rune_kind(sym_id)
-                .is_some_and(|kind| kind.is_derived())
+            let node_id = data.scoping.symbol_declaration(sym_id);
+            matches!(
+                data.declaration_semantics(node_id),
+                DeclarationSemantics::Derived(_)
+            )
         },
     );
 }
@@ -356,15 +358,19 @@ fn resolve_root_identifier_symbol(
         })
 }
 
-fn is_reassigned_state_export(data: &AnalysisData, sym_id: oxc_semantic::SymbolId) -> bool {
-    data.scoping
-        .rune_kind(sym_id)
-        .is_some_and(|k| matches!(k, RuneKind::State | RuneKind::StateRaw))
-        && data.scoping.is_mutated(sym_id)
+fn is_reassigned_state_export(data: &AnalysisData<'_>, sym_id: oxc_semantic::SymbolId) -> bool {
+    let node_id = data.scoping.symbol_declaration(sym_id);
+    matches!(
+        data.declaration_semantics(node_id),
+        DeclarationSemantics::State(crate::StateDeclarationSemantics {
+            kind: StateKind::State | StateKind::StateRaw,
+            ..
+        })
+    ) && data.scoping.is_mutated(sym_id)
 }
 
 fn validate_state_referenced_locally_derived(
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
@@ -381,7 +387,7 @@ fn validate_state_referenced_locally_derived(
 }
 
 struct StateRefLocallyValidator<'a, 'b> {
-    data: &'b AnalysisData,
+    data: &'b AnalysisData<'a>,
     offset: u32,
     diags: &'b mut Vec<Diagnostic>,
     /// True when currently inside arguments of a `$state`/`$state.raw` call,
@@ -412,13 +418,24 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         let Some(sym_id) = reference.symbol_id() else {
             return;
         };
-        let should_warn = match self.data.scoping.rune_kind(sym_id) {
-            Some(k) if k.is_derived() => true,
-            Some(RuneKind::StateRaw) => true,
-            Some(RuneKind::State) => {
-                self.data.scoping.is_mutated(sym_id)
-                    || !self.data.scoping.is_proxy_init_state(sym_id)
+        let declaration_semantics = self
+            .data
+            .declaration_semantics(self.data.scoping.symbol_declaration(sym_id));
+        let should_warn = match declaration_semantics {
+            DeclarationSemantics::Derived(_) => true,
+            DeclarationSemantics::State(state) if state.kind == StateKind::StateRaw => true,
+            DeclarationSemantics::State(state) if state.kind == StateKind::State => {
+                self.data.scoping.is_mutated(sym_id) || !state.proxied
             }
+            // Declarator was a rune call but optimized to a plain `let`.
+            // Warn for raw/primitive state (reference compiler does); skip
+            // for proxy-init state (object/array) — those are still reactive
+            // reads even without observed mutation.
+            DeclarationSemantics::OptimizedRune(opt) => match opt.kind {
+                StateKind::StateRaw => true,
+                StateKind::State => !opt.proxy_init,
+                StateKind::StateEager => false,
+            },
             _ => false,
         };
         if !should_warn {
@@ -885,15 +902,11 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 // ---------------------------------------------------------------------------
 
 fn validate_rest_prop_illegal_access(
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
-    // Skip if no rest_prop binding exists.
-    if !data.scoping.has_rest_prop() {
-        return;
-    }
     let mut v = RestPropAccessValidator {
         data,
         offset,
@@ -904,7 +917,7 @@ fn validate_rest_prop_illegal_access(
 }
 
 struct RestPropAccessValidator<'a, 'b> {
-    data: &'b AnalysisData,
+    data: &'b AnalysisData<'a>,
     offset: u32,
     diags: &'b mut Vec<Diagnostic>,
     _phantom: std::marker::PhantomData<&'a ()>,
@@ -921,7 +934,17 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
                         .and_then(|r| self.data.scoping.try_get_reference(r))
                         .and_then(|reference| reference.symbol_id())
                     {
-                        if self.data.scoping.is_rest_prop(sym_id) {
+                        if matches!(
+                            self.data.declaration_semantics(
+                                self.data.scoping.symbol_declaration(sym_id),
+                            ),
+                            crate::types::data::DeclarationSemantics::Prop(
+                                crate::types::data::PropDeclarationSemantics {
+                                    kind: crate::types::data::PropDeclarationKind::Rest,
+                                    ..
+                                },
+                            ),
+                        ) {
                             self.diags.push(Diagnostic::error(
                                 DiagnosticKind::PropsIllegalName,
                                 Span::new(

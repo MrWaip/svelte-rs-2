@@ -121,7 +121,6 @@ impl BlockAnalysis {
 }
 
 pub struct OutputPlanData {
-    pub dynamic_nodes: NodeBitSet,
     pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
@@ -137,7 +136,6 @@ pub struct OutputPlanData {
 impl OutputPlanData {
     fn new(node_count: u32) -> Self {
         Self {
-            dynamic_nodes: NodeBitSet::new(node_count),
             alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
             needs_sanitized_legacy_slots: false,
@@ -151,18 +149,20 @@ impl OutputPlanData {
     }
 }
 
-pub struct AnalysisData {
+pub struct AnalysisData<'a> {
     pub expressions: NodeTable<ExpressionInfo>,
     pub attr_expressions: NodeTable<ExpressionInfo>,
-    pub scoping: ComponentScoping,
+    pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
     pub template: TemplateAnalysis,
     pub blocks: BlockAnalysis,
     pub output: OutputPlanData,
+    pub reactivity: ReactivitySemantics,
+    pub dynamism: crate::passes::dynamism::DynamismData,
 }
 
-impl AnalysisData {
+impl<'a> AnalysisData<'a> {
     pub(crate) fn new_empty(node_count: u32) -> Self {
         Self {
             expressions: NodeTable::new(node_count),
@@ -173,11 +173,13 @@ impl AnalysisData {
             template: TemplateAnalysis::new(node_count),
             blocks: BlockAnalysis::new(node_count),
             output: OutputPlanData::new(node_count),
+            reactivity: ReactivitySemantics::new(node_count),
+            dynamism: crate::passes::dynamism::DynamismData::new(node_count),
         }
     }
 }
 
-impl AnalysisData {
+impl<'a> AnalysisData<'a> {
     pub(crate) fn record_element_facts(&mut self, id: NodeId, entry: ElementFactsEntry) {
         self.elements.facts.record_entry(id, entry);
     }
@@ -197,7 +199,19 @@ impl AnalysisData {
         self.script.pickled_await_offsets.contains_offset(offset)
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.output.dynamic_nodes.contains(&id)
+        self.dynamism.is_dynamic_node(id)
+    }
+    pub fn class_needs_state(&self, element_id: NodeId) -> bool {
+        let class_attr_dynamic = self
+            .elements
+            .flags
+            .class_attr_id(element_id)
+            .is_some_and(|attr_id| self.dynamism.is_dynamic_attr(attr_id));
+        class_attr_dynamic
+            || self
+                .elements
+                .flags
+                .has_dynamic_class_directives(element_id)
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
@@ -220,6 +234,60 @@ impl AnalysisData {
     }
     pub fn expr_is_async(&self, id: NodeId) -> bool {
         self.expr_role(id) == Some(ExprRole::Async)
+    }
+    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
+        self.scoping.binding_origin_key(sym)
+    }
+    pub fn symbol_for_reference(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> Option<SymbolId> {
+        self.scoping.symbol_for_reference(ref_id)
+    }
+    pub fn symbol_for_identifier_reference(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<SymbolId> {
+        self.scoping.symbol_for_identifier_reference(id)
+    }
+    pub fn binding_origin_key_for_reference(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> Option<&str> {
+        self.scoping.binding_origin_key_for_reference(ref_id)
+    }
+    pub fn binding_origin_key_for_identifier_reference(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<&str> {
+        self.scoping.binding_origin_key_for_identifier_reference(id)
+    }
+    pub fn iter_store_declarations(
+        &self,
+    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
+    {
+        self.reactivity.iter_store_declarations()
+    }
+    pub fn declaration_semantics(
+        &self,
+        node_id: svelte_component_semantics::OxcNodeId,
+    ) -> DeclarationSemantics {
+        self.reactivity.declaration_semantics(node_id)
+    }
+    pub(crate) fn declaration_root_for_symbol(
+        &self,
+        sym: SymbolId,
+    ) -> Option<svelte_component_semantics::OxcNodeId> {
+        self.reactivity.declaration_root_for_symbol(sym)
+    }
+    pub fn reference_semantics(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> ReferenceSemantics {
+        self.reactivity.reference_semantics(ref_id)
+    }
+    pub fn uses_runes(&self) -> bool {
+        self.reactivity.uses_runes()
     }
     pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.entry(key)
@@ -272,56 +340,56 @@ impl AnalysisData {
     pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
         self.attr_index(id).is_some_and(|index| index.has(name))
     }
-    pub fn attribute<'a>(
+    pub fn attribute<'n>(
         &self,
         id: NodeId,
-        attrs: &'a [Attribute],
+        attrs: &'n [Attribute],
         name: &str,
-    ) -> Option<&'a Attribute> {
+    ) -> Option<&'n Attribute> {
         self.attr_index(id)?.first(attrs, name)
     }
-    pub fn string_attribute<'a>(
+    pub fn string_attribute<'n>(
         &self,
         id: NodeId,
-        attrs: &'a [Attribute],
+        attrs: &'n [Attribute],
         name: &str,
-    ) -> Option<&'a svelte_ast::StringAttribute> {
+    ) -> Option<&'n svelte_ast::StringAttribute> {
         self.attribute(id, attrs, name).and_then(|attr| match attr {
             Attribute::StringAttribute(attr) => Some(attr),
             _ => None,
         })
     }
-    pub fn expression_attribute<'a>(
+    pub fn expression_attribute<'n>(
         &self,
         id: NodeId,
-        attrs: &'a [Attribute],
+        attrs: &'n [Attribute],
         name: &str,
-    ) -> Option<&'a ExpressionAttribute> {
+    ) -> Option<&'n ExpressionAttribute> {
         self.attribute(id, attrs, name).and_then(|attr| match attr {
             Attribute::ExpressionAttribute(attr) => Some(attr),
             _ => None,
         })
     }
-    pub fn bind_directive<'a>(
+    pub fn bind_directive<'n>(
         &self,
         id: NodeId,
-        attrs: &'a [Attribute],
+        attrs: &'n [Attribute],
         name: &str,
-    ) -> Option<&'a BindDirective> {
+    ) -> Option<&'n BindDirective> {
         self.attribute(id, attrs, name).and_then(|attr| match attr {
             Attribute::BindDirective(attr) => Some(attr),
             _ => None,
         })
     }
-    pub fn static_text_attribute_value<'a>(
+    pub fn static_text_attribute_value<'n>(
         &self,
         id: NodeId,
-        attrs: &'a [Attribute],
+        attrs: &'n [Attribute],
         name: &str,
-        source: &'a str,
-    ) -> Option<&'a str> {
+        source: &'n str,
+    ) -> Option<&'n str> {
         self.string_attribute(id, attrs, name)
-            .map(|attr: &'a StringAttribute| attr.value_span.source_text(source))
+            .map(|attr: &'n StringAttribute| attr.value_span.source_text(source))
     }
     pub fn has_true_boolean_attribute(
         &self,
@@ -462,20 +530,21 @@ impl AnalysisData {
     pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
         self.template.bind_semantics.bind_target_semantics(id)
     }
+    /// Ancestry-based analysis helper: returns the each-block ancestors of
+    /// `id` that own at least one of the symbols referenced in the expression
+    /// at `id`. Used by bind-semantics passes and bind:group codegen to scope
+    /// collections to the correct each frames.
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         let Some(info) = self.attr_expressions.get(id) else {
             return SmallVec::new();
         };
+        let ref_symbols = info.ref_symbols();
         self.ancestors(id)
             .filter(|parent| parent.kind == ParentKind::EachBlock)
             .filter_map(|parent| {
-                let body_scope = self.each_body_scope(parent.id, self.scoping.root_scope_id());
-                info.ref_symbols()
+                ref_symbols
                     .iter()
-                    .any(|&sym| {
-                        self.scoping.is_each_block_var(sym)
-                            && self.scoping.symbol_scope_id(sym) == body_scope
-                    })
+                    .any(|&sym| self.reactivity.contextual_owner_v2(sym) == Some(parent.id))
                     .then_some(parent.id)
             })
             .collect()
@@ -647,7 +716,7 @@ impl AnalysisData {
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: self.elements.flags.is_dynamic_attr(id)
+                    needs_memo: self.dynamism.is_dynamic_attr(id)
                         && info.needs_memoized_value(),
                 })
             }
@@ -655,7 +724,7 @@ impl AnalysisData {
     }
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
         self.attr_expressions.get(attr_id).is_some_and(|e| {
-            e.has_call() || (!e.is_simple_shape() && self.elements.flags.is_dynamic_attr(attr_id))
+            e.has_call() || (!e.is_simple_shape() && self.dynamism.is_dynamic_attr(attr_id))
         })
     }
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {

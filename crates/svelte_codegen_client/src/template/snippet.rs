@@ -5,14 +5,12 @@ use oxc_ast::ast::{
     AssignmentPattern, BindingPattern, ChainElement, Expression, FormalParameters, PropertyKey,
     Statement,
 };
-use oxc_ast_visit::VisitMut;
 use oxc_span::SPAN;
 use rustc_hash::FxHashSet;
-
 use svelte_analyze::{is_simple_expression, FragmentKey};
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 use super::gen_fragment;
@@ -606,38 +604,76 @@ fn clone_chain_element_expr<'a>(ctx: &Ctx<'a>, element: &ChainElement<'a>) -> Ex
     }
 }
 
+/// Post-process a codegen-built path expression, wrapping any identifier
+/// whose name is in `array_insert_names` with `$.get(name)`. Runs over AST
+/// this module just built (member/call/chain shapes from the collectors
+/// above); `$.fallback`-hoisted user defaults are handled by descending
+/// into call arguments.
+///
+/// We do not descend into function bodies, classes, JSX, or TS nodes —
+/// those don't appear in our built path expressions, and the synthetic
+/// array names (`$$arrayN`) cannot occur inside user code.
 fn rewrite_array_reads<'a>(
     ctx: &Ctx<'a>,
     expr: &mut Expression<'a>,
     array_insert_names: &FxHashSet<String>,
 ) {
-    let mut rewriter = ArrayReadRewriter {
-        ctx,
-        array_insert_names,
-    };
-    rewriter.visit_expression(expr);
-}
-
-struct ArrayReadRewriter<'c, 'a> {
-    ctx: &'c Ctx<'a>,
-    array_insert_names: &'c FxHashSet<String>,
-}
-
-impl<'a> VisitMut<'a> for ArrayReadRewriter<'_, 'a> {
-    fn visit_expression(&mut self, expr: &mut Expression<'a>) {
-        oxc_ast_visit::walk_mut::walk_expression(self, expr);
-
-        let Expression::Identifier(ident) = expr else {
-            return;
-        };
-
-        if !self.array_insert_names.contains(ident.name.as_str()) {
-            return;
+    // Post-order so inner replacements happen first; order doesn't actually
+    // matter because the rewrite only fires on bare Identifier nodes, but
+    // matching the original VisitMut ordering keeps behavior identical.
+    match expr {
+        Expression::StaticMemberExpression(member) => {
+            rewrite_array_reads(ctx, &mut member.object, array_insert_names);
         }
-
-        *expr = self
-            .ctx
-            .b
-            .call_expr("$.get", [Arg::Ident(ident.name.as_str())]);
+        Expression::ComputedMemberExpression(member) => {
+            rewrite_array_reads(ctx, &mut member.object, array_insert_names);
+            rewrite_array_reads(ctx, &mut member.expression, array_insert_names);
+        }
+        Expression::ChainExpression(chain) => match &mut chain.expression {
+            ChainElement::StaticMemberExpression(member) => {
+                rewrite_array_reads(ctx, &mut member.object, array_insert_names);
+            }
+            ChainElement::ComputedMemberExpression(member) => {
+                rewrite_array_reads(ctx, &mut member.object, array_insert_names);
+                rewrite_array_reads(ctx, &mut member.expression, array_insert_names);
+            }
+            ChainElement::CallExpression(call) => {
+                rewrite_array_reads(ctx, &mut call.callee, array_insert_names);
+                for arg in call.arguments.iter_mut() {
+                    if let Some(arg_expr) = arg.as_expression_mut() {
+                        rewrite_array_reads(ctx, arg_expr, array_insert_names);
+                    }
+                }
+            }
+            _ => {}
+        },
+        Expression::CallExpression(call) => {
+            rewrite_array_reads(ctx, &mut call.callee, array_insert_names);
+            for arg in call.arguments.iter_mut() {
+                if let Some(arg_expr) = arg.as_expression_mut() {
+                    rewrite_array_reads(ctx, arg_expr, array_insert_names);
+                }
+            }
+        }
+        Expression::ArrayExpression(arr) => {
+            for element in arr.elements.iter_mut() {
+                if let Some(el_expr) = element.as_expression_mut() {
+                    rewrite_array_reads(ctx, el_expr, array_insert_names);
+                }
+            }
+        }
+        _ => {}
     }
+
+    // Replace the identifier itself after descending (matches the post-order
+    // behavior of the previous `walk_expression(...)` then `*expr = ...`).
+    let Expression::Identifier(ident) = expr else {
+        return;
+    };
+    if !array_insert_names.contains(ident.name.as_str()) {
+        return;
+    }
+    *expr = ctx
+        .b
+        .call_expr("$.get", [Arg::Ident(ident.name.as_str())]);
 }

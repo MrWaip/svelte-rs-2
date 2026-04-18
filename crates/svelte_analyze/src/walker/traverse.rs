@@ -6,7 +6,7 @@ use super::dispatch::{
 
 pub(crate) fn walk_template(
     fragment: &Fragment,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
     for (idx, &id) in fragment.nodes.iter().enumerate() {
@@ -396,7 +396,7 @@ fn node_id_of(node: &Node) -> NodeId {
 fn scan_preceding_ignores(
     idx: usize,
     fragment: &Fragment,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) -> Vec<String> {
     let mut codes = Vec::new();
     if idx == 0 {
@@ -436,7 +436,7 @@ fn scan_preceding_ignores(
 
 fn walk_attributes(
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
     for attr in attrs {
@@ -480,17 +480,6 @@ fn walk_attributes(
                 dispatch_expr(visitors, a.id, a.expression_span, ctx);
                 ctx.pop();
             }
-            Attribute::Shorthand(a) => {
-                for v in visitors.iter_mut() {
-                    v.visit_shorthand(a, ctx);
-                }
-                ctx.push(ParentRef {
-                    id: a.id,
-                    kind: ParentKind::Shorthand,
-                });
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
-                ctx.pop();
-            }
             Attribute::ClassDirective(a) => {
                 for v in visitors.iter_mut() {
                     v.visit_class_directive(a, ctx);
@@ -499,7 +488,10 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::ClassDirective,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                // `expression_span` is non-optional after the shorthand parser
+                // rework — shorthand directives now carry a span of `name`
+                // that parses into a synthesized Identifier.
+                dispatch_expr(visitors, a.id, a.expression_span, ctx);
                 ctx.pop();
             }
             Attribute::StyleDirective(a) => {
@@ -511,13 +503,13 @@ fn walk_attributes(
                     kind: ParentKind::StyleDirective,
                 });
                 match &a.value {
-                    StyleDirectiveValue::Expression(span) => {
-                        dispatch_expr(visitors, a.id, *span, ctx);
+                    StyleDirectiveValue::Expression => {
+                        dispatch_expr(visitors, a.id, a.expression_span, ctx);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         dispatch_concat_exprs(visitors, parts, ctx);
                     }
-                    StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
+                    StyleDirectiveValue::String(_) => {}
                 }
                 for v in visitors.iter_mut() {
                     v.leave_style_directive(a, ctx);
@@ -532,7 +524,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::BindDirective,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, a.expression_span, ctx);
                 ctx.pop();
             }
             Attribute::LetDirectiveLegacy(a) => {

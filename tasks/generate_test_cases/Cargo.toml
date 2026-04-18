@@ -3,6 +3,9 @@ name = "generate_test_cases"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 
 [dependencies]
 oxc_allocator = { workspace = true }

@@ -4,20 +4,20 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKind};
 
 use svelte_analyze::{
-    scope::SymbolId, ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey,
-    TemplateBindingReadKind,
+    scope::SymbolId, ComponentBindMode, ComponentPropKind, ConstDeclarationSemantics,
+    ContentStrategy, DeclarationSemantics, FragmentKey, PropDeclarationKind, PropDeclarationSemantics,
 };
 use svelte_ast::{Attribute, Namespace, Node, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
-use crate::builder::{Arg, AssignLeft, ObjProp};
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::events::{build_event_handler_s5, dev_event_handler};
 use super::expression::{build_attr_concat, get_attr_expr};
 use super::prop_object::{build_props_expr, PropOrSpread};
-use super::{gen_fragment, FragmentSetup};
 use super::snippet;
 use super::{add_svelte_meta_with_extra, from_namespace, inherited_fragment_namespace};
+use super::{gen_fragment, FragmentSetup};
 
 /// Generate `ComponentName($$anchor, { props })` call.
 pub(crate) fn gen_component<'a>(
@@ -130,15 +130,6 @@ pub(crate) fn gen_component<'a>(
                     items.push(PropOrSpread::Prop(ObjProp::Getter(key, val)));
                 } else {
                     items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, val)));
-                }
-            }
-            ComponentPropKind::Shorthand { attr_id, name } => {
-                let key = ctx.b.alloc_str(&name);
-                let expr = get_attr_expr(ctx, attr_id);
-                if is_dynamic {
-                    items.push(PropOrSpread::Prop(ObjProp::Getter(key, expr)));
-                } else {
-                    items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
                 }
             }
             ComponentPropKind::Bind {
@@ -365,7 +356,8 @@ pub(crate) fn gen_component<'a>(
         } else {
             items.push(PropOrSpread::Prop(ObjProp::KeyValue(
                 "children",
-                ctx.b.static_member_expr(ctx.b.rid_expr("$"), "invalid_default_snippet"),
+                ctx.b
+                    .static_member_expr(ctx.b.rid_expr("$"), "invalid_default_snippet"),
             )));
             slot_entries.push(ObjProp::KeyValue("default", arrow));
         }
@@ -687,28 +679,7 @@ fn build_bind_this_call<'a>(
     bind_id: NodeId,
     value: Expression<'a>,
 ) -> Expression<'a> {
-    // Consume the transformed attr expr to keep the side table clean
-    let cn_tmp = ctx.component_node(component_id);
-    let bind_tmp = cn_tmp.attributes.iter().find_map(|a| {
-        if let Attribute::BindDirective(b) = a {
-            if b.id == bind_id {
-                Some(b)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    });
-    if let Some(b) = bind_tmp {
-        if let Some(span) = b.expression_span {
-            if let Some(handle) = ctx.state.parsed.expr_handle(span.start) {
-                let _ = ctx.state.parsed.take_expr(handle);
-            }
-        }
-    }
-
-    // Look up the bind directive from the component AST to get expression text
+    // Look up the bind directive from the component AST to get expression text.
     let cn = ctx.component_node(component_id);
     let bind = cn
         .attributes
@@ -728,15 +699,32 @@ fn build_bind_this_call<'a>(
 
     let var_name = if bind.shorthand {
         bind.name.clone()
-    } else if let Some(span) = bind.expression_span {
-        ctx.query.component.source_text(span).to_string()
     } else {
-        // No expression — emit bare component call
-        return value;
+        ctx.query
+            .component
+            .source_text(bind.expression_span)
+            .to_string()
     };
 
+    // Resolve reactive semantics BEFORE draining the parsed expression: the
+    // directive_root_ref_id lookup walks the expression via `parsed.expr`,
+    // and taking the expression first would leave the lookup with `None` and
+    // force every target to `NonReactive`.
+    let is_rune = matches!(
+        ctx.directive_root_reference_semantics(bind_id),
+        svelte_analyze::ReferenceSemantics::SignalWrite { .. }
+            | svelte_analyze::ReferenceSemantics::SignalUpdate { .. }
+            | svelte_analyze::ReferenceSemantics::SignalRead { .. }
+    );
+
+    // Now drop the transformed attr expression — codegen re-parses the
+    // source for setter/getter construction below; leaving it in
+    // ParserResult would keep a stale copy around for no consumer.
+    if let Some(handle) = ctx.state.parsed.expr_handle(bind.expression_span.start) {
+        let _ = ctx.state.parsed.take_expr(handle);
+    }
+
     if svelte_analyze::is_simple_identifier(&var_name) {
-        let is_rune = ctx.is_mutable_rune_target(bind_id);
         let expr_text = ctx.b.alloc_str(&var_name);
 
         let setter = if is_rune {
@@ -832,34 +820,50 @@ fn build_bind_this_call<'a>(
 
 fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Expression<'a> {
     let symbol_name = ctx.symbol_name(sym_id);
-    match ctx.query.view.scoping().template_binding_read_kind(sym_id) {
-        TemplateBindingReadKind::Identifier => ctx.b.rid_expr(symbol_name),
-        TemplateBindingReadKind::ThunkCall => ctx.b.call_expr(symbol_name, []),
-        TemplateBindingReadKind::RuneGet => ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)]),
-        TemplateBindingReadKind::RuneSafeGet => {
-            ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
-        }
-        TemplateBindingReadKind::SlotLetCarrierMember => {
-            let carrier_sym_id = ctx
-                .query
-                .view
-                .scoping()
-                .slot_let_binding_carrier(sym_id)
-                .unwrap_or_else(|| panic!("slot let binding {:?} missing carrier", sym_id));
-            let carrier_name = ctx.symbol_name(carrier_sym_id);
-            let carrier = ctx.b.call_expr("$.get", [Arg::Ident(carrier_name)]);
-            ctx.b.static_member_expr(carrier, symbol_name)
-        }
-        TemplateBindingReadKind::PropsAccess => {
+    let decl_node = ctx.query.scoping().symbol_declaration(sym_id);
+    match ctx.query.view.declaration_semantics(decl_node) {
+        DeclarationSemantics::Store(_) => ctx.b.call_expr(symbol_name, []),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::NonSource,
+            ..
+        }) => {
             let prop_name = ctx
                 .query
                 .view
-                .scoping()
-                .prop_non_source_name(sym_id)
-                .unwrap_or_else(|| panic!("PropsAccess read kind missing prop name"));
+                .binding_origin_key(sym_id)
+                .expect("NonSource prop binding missing origin key");
             ctx.b
                 .static_member_expr(ctx.b.rid_expr("$$props"), prop_name)
         }
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::Source { .. },
+            ..
+        }) => ctx.b.call_expr(symbol_name, []),
+        DeclarationSemantics::State(state) if state.var_declared => {
+            ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
+        }
+        DeclarationSemantics::State(_) | DeclarationSemantics::Derived(_) => {
+            ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
+        }
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+            if destructured {
+                ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
+            } else {
+                ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
+            }
+        }
+        DeclarationSemantics::Contextual(_) => {
+            // Legacy slot `let:` binding — treated as signal-get. Destructured
+            // leaves come through the same variant because the public API
+            // normalizes `CarrierAlias` to `Contextual(LetDirective)`.
+            ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
+        }
+        DeclarationSemantics::NonReactive
+        | DeclarationSemantics::Unresolved
+        | DeclarationSemantics::OptimizedRune(_)
+        | DeclarationSemantics::RuntimeRune { .. }
+        | DeclarationSemantics::LetCarrier { .. } => ctx.b.rid_expr(symbol_name),
+        DeclarationSemantics::Prop(_) => ctx.b.rid_expr(symbol_name),
     }
 }
 
@@ -905,7 +909,8 @@ pub(crate) fn slot_let_directive_stmts<'a>(
     ctx: &mut Ctx<'a>,
     attrs: &[Attribute],
 ) -> Vec<Statement<'a>> {
-    attrs.iter()
+    attrs
+        .iter()
         .filter_map(|attr| match attr {
             Attribute::LetDirectiveLegacy(dir) => Some(slot_let_directive_stmt(ctx, dir)),
             _ => None,
@@ -920,15 +925,19 @@ fn slot_let_directive_stmt<'a>(
     let stmt_handle = ctx
         .let_directive_stmt_handle(dir.id)
         .unwrap_or_else(|| panic!("missing let directive stmt handle for attr {:?}", dir.id));
-    let stmt = ctx
+    let original_stmt = ctx
         .state
         .parsed
         .stmt(stmt_handle)
-        .unwrap_or_else(|| panic!("missing parsed let directive stmt for attr {:?}", dir.id))
-        .clone_in(ctx.b.ast.allocator);
+        .unwrap_or_else(|| panic!("missing parsed let directive stmt for attr {:?}", dir.id));
+    let stmt_oxc_node_id = match original_stmt {
+        Statement::VariableDeclaration(decl) => decl.node_id(),
+        _ => panic!("slot let directive must be a VariableDeclaration"),
+    };
+    let stmt = original_stmt.clone_in(ctx.b.ast.allocator);
 
     if slot_let_stmt_is_destructured(&stmt) {
-        return destructured_slot_let_stmt(ctx, dir.id, &stmt);
+        return destructured_slot_let_stmt(ctx, stmt_oxc_node_id, &stmt);
     }
 
     direct_slot_let_stmt(ctx, &stmt)
@@ -954,14 +963,16 @@ fn direct_slot_let_stmt<'a>(ctx: &mut Ctx<'a>, stmt: &Statement<'a>) -> Statemen
 
 fn destructured_slot_let_stmt<'a>(
     ctx: &mut Ctx<'a>,
-    attr_id: NodeId,
+    stmt_oxc_node_id: oxc_syntax::node::NodeId,
     stmt: &Statement<'a>,
 ) -> Statement<'a> {
-    let carrier_sym_id = ctx
-        .query
-        .scoping()
-        .slot_let_carrier(attr_id)
-        .unwrap_or_else(|| panic!("missing slot let carrier for attr {:?}", attr_id));
+    let carrier_sym_id = match ctx.query.view.declaration_semantics(stmt_oxc_node_id) {
+        svelte_analyze::DeclarationSemantics::LetCarrier { carrier_symbol } => carrier_symbol,
+        other => panic!(
+            "destructured let directive stmt {:?} must have LetCarrier declaration, got {:?}",
+            stmt_oxc_node_id, other
+        ),
+    };
     let carrier_name = ctx.symbol_name(carrier_sym_id).to_string();
     let binding_names = slot_let_binding_names(stmt);
 
@@ -971,8 +982,13 @@ fn destructured_slot_let_stmt<'a>(
     }
 
     let mut body = vec![destructure_stmt];
-    body.push(ctx.b.return_stmt(ctx.b.shorthand_object_expr(&binding_names)));
-    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(ctx.b.thunk_block(body))]);
+    body.push(
+        ctx.b
+            .return_stmt(ctx.b.shorthand_object_expr(&binding_names)),
+    );
+    let derived = ctx
+        .b
+        .call_expr("$.derived", [Arg::Expr(ctx.b.thunk_block(body))]);
     ctx.b.const_stmt(&carrier_name, derived)
 }
 
@@ -1034,6 +1050,7 @@ pub(crate) fn slot_child_attrs<'a>(ctx: &'a Ctx<'_>, el_id: NodeId) -> &'a [Attr
 }
 
 fn attrs_have_static_slot(attrs: &[Attribute]) -> bool {
-    attrs.iter()
+    attrs
+        .iter()
         .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"))
 }

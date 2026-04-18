@@ -9,7 +9,7 @@ use rustc_hash::FxHashSet;
 use svelte_analyze::FragmentKey;
 use svelte_ast::{Attribute, NodeId};
 
-use crate::builder::{Arg, ObjProp};
+use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::get_attr_expr;
@@ -73,11 +73,6 @@ pub(crate) fn gen_svelte_boundary<'a>(
             Attribute::ExpressionAttribute(a) => {
                 let is_dynamic = ctx.is_dynamic_attr(a.id);
                 Some((a.name.as_str(), a.id, is_dynamic))
-            }
-            Attribute::Shorthand(a) => {
-                let name = ctx.query.component.source_text(a.expression_span);
-                let is_dynamic = ctx.is_dynamic_attr(a.id);
-                Some((name, a.id, is_dynamic))
             }
             _ => None,
         })

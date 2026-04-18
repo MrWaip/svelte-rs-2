@@ -2,8 +2,8 @@ use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatPart,
     ConcatenationAttribute, ExpressionAttribute, LetDirectiveLegacy, OnDirectiveLegacy,
-    Shorthand, SpreadAttribute, StringAttribute, StyleDirective, StyleDirectiveValue,
-    TransitionDirection, TransitionDirective, UseDirective,
+    SpreadAttribute, StringAttribute, StyleDirective, StyleDirectiveValue, TransitionDirection,
+    TransitionDirective, UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::{GetSpan, Span};
@@ -150,10 +150,21 @@ impl<'a> Parser<'a> {
                             ),
                         }));
                     } else {
-                        attributes.push(Attribute::Shorthand(Shorthand {
+                        // `{foo}` shorthand becomes a regular ExpressionAttribute
+                        // with `shorthand: true`. The parser handles the "name
+                        // equals expression text" invariant so downstream code
+                        // has a single code path for all expression attributes.
+                        let name = expr_tag
+                            .expression_span
+                            .source_text(self.source)
+                            .to_string();
+                        attributes.push(Attribute::ExpressionAttribute(ExpressionAttribute {
                             id: attr_id,
                             span: attr_span,
+                            name,
                             expression_span: expr_tag.expression_span,
+                            shorthand: true,
+                            event_name: None,
                         }));
                     }
                 }
@@ -166,16 +177,14 @@ impl<'a> Parser<'a> {
                         &mut self.diagnostics,
                         false,
                     );
-                    let expression_span = if cd.shorthand {
-                        None
-                    } else {
-                        Some(cd.expression_span)
-                    };
+                    // Shorthand `class:name` scanner already sets expression_span
+                    // to name_span so a synthesized identifier expression can
+                    // be parsed from it later (walk_js.rs::parse_span).
                     attributes.push(Attribute::ClassDirective(ClassDirective {
                         id: attr_id,
                         span: attr_span,
                         name: cd_name.to_string(),
-                        expression_span,
+                        expression_span: cd.expression_span,
                         shorthand: cd.shorthand,
                     }));
                 }
@@ -188,27 +197,42 @@ impl<'a> Parser<'a> {
                         &mut self.diagnostics,
                         false,
                     );
-                    let value = if sd.shorthand {
-                        StyleDirectiveValue::Shorthand
+                    // `expression_span` is always populated:
+                    // - shorthand `style:name`           → span of `name`
+                    // - `style:name={expr}`              → span of `expr`
+                    // - `style:name="str"` / concat      → span of the value
+                    //   region (unused by expression consumers; `value` drives
+                    //   emission instead).
+                    let (value, expression_span) = if sd.shorthand {
+                        (StyleDirectiveValue::Expression, sd.name_span)
                     } else {
                         match &sd.value {
                             token::AttributeValue::ExpressionTag(et) => {
-                                StyleDirectiveValue::Expression(et.expression_span)
+                                (StyleDirectiveValue::Expression, et.expression_span)
                             }
-                            token::AttributeValue::String(span) => StyleDirectiveValue::String(
-                                span.source_text(self.source).to_string(),
+                            token::AttributeValue::String(span) => (
+                                StyleDirectiveValue::String(
+                                    span.source_text(self.source).to_string(),
+                                ),
+                                *span,
                             ),
                             token::AttributeValue::Concatenation(c) => {
-                                StyleDirectiveValue::Concatenation(
-                                    self.convert_concat_parts(&c.parts),
+                                let span = c.span;
+                                (
+                                    StyleDirectiveValue::Concatenation(
+                                        self.convert_concat_parts(&c.parts),
+                                    ),
+                                    span,
                                 )
                             }
                             token::AttributeValue::Empty => {
+                                // Only expected on shorthand; hit the same
+                                // fallback (synthesize identifier on `name_span`).
                                 debug_assert!(
                                     sd.shorthand,
                                     "Empty value on non-shorthand style directive"
                                 );
-                                StyleDirectiveValue::Shorthand
+                                (StyleDirectiveValue::Expression, sd.name_span)
                             }
                         }
                     };
@@ -216,6 +240,8 @@ impl<'a> Parser<'a> {
                         id: attr_id,
                         span: attr_span,
                         name: sd_name.to_string(),
+                        expression_span,
+                        shorthand: sd.shorthand,
                         value,
                         important: sd.important,
                     }));
@@ -230,16 +256,15 @@ impl<'a> Parser<'a> {
                         &mut self.diagnostics,
                         true,
                     );
-                    let expression_span = if bd.shorthand {
-                        None
-                    } else {
-                        Some(bd.expression_span)
-                    };
+                    // Shorthand `bind:name` scanner already sets expression_span
+                    // to name_span so walk_js.rs::parse_span synthesizes an
+                    // `Expression::Identifier` for that range, giving bind a
+                    // single expression path regardless of shorthand form.
                     attributes.push(Attribute::BindDirective(BindDirective {
                         id: attr_id,
                         span: attr_span,
                         name: bd_name.to_string(),
-                        expression_span,
+                        expression_span: bd.expression_span,
                         shorthand: bd.shorthand,
                     }));
                 }

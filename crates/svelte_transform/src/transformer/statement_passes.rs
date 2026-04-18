@@ -1,10 +1,10 @@
 use oxc_span::{GetSpan, GetSpanMut};
 
-use super::super::ScriptTransformer;
+use super::model::ComponentTransformer;
 use super::inspect::{is_inspect_call, is_inspect_trace_call};
 
-impl<'a> ScriptTransformer<'_, 'a> {
-    pub(super) fn process_statement_block(
+impl<'a> ComponentTransformer<'_, 'a> {
+    pub(crate) fn process_statement_block(
         &mut self,
         stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
     ) {
@@ -12,10 +12,11 @@ impl<'a> ScriptTransformer<'_, 'a> {
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);
-        self.process_sync_derived_destructuring(stmts);
-        self.process_async_derived_destructuring(stmts);
-        self.expand_state_destructuring(stmts);
+        // Props declarations have a dedicated lowering path and should be removed
+        // before generic rune destructuring can reinterpret the same statement.
         self.replace_props_declaration(stmts);
+        self.process_derived_destructuring(stmts);
+        self.expand_state_destructuring(stmts);
     }
 
     fn strip_export_keywords(
@@ -88,52 +89,33 @@ impl<'a> ScriptTransformer<'_, 'a> {
         &mut self,
         stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
     ) {
-        if self.props_gen.is_none() {
-            return;
-        }
-
-        let mut idx = None;
-        let mut remove = Vec::new();
-        let mut original_span = None;
-
-        for (j, stmt) in stmts.iter().enumerate() {
-            let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else {
+        for j in 0..stmts.len() {
+            let is_candidate = matches!(
+                &stmts[j],
+                oxc_ast::ast::Statement::VariableDeclaration(decl)
+                    if Self::is_props_declaration(decl)
+            );
+            if !is_candidate {
                 continue;
             };
-            if !Self::is_props_declaration(decl) && !self.is_explicit_props_declaration(stmt) {
-                continue;
+
+            let stmt_span = stmts[j].span();
+            let replacement = {
+                let oxc_ast::ast::Statement::VariableDeclaration(decl) = &mut stmts[j] else {
+                    unreachable!()
+                };
+                self.try_gen_props_declaration_semantic(decl)
+            };
+            if let Some(mut replacement) = replacement {
+                if let Some(first) = replacement.first_mut() {
+                    *first.span_mut() = stmt_span;
+                }
+                stmts.remove(j);
+                for (k, stmt) in replacement.into_iter().enumerate() {
+                    stmts.insert(j + k, stmt);
+                }
+                return;
             }
-            if idx.is_none() {
-                idx = Some(j);
-                original_span = Some(stmt.span());
-            }
-            remove.push(j);
         }
-
-        let Some(j) = idx else { return };
-
-        let mut replacement = self.gen_props_statements();
-        if let Some(first) = replacement.first_mut() {
-            *first.span_mut() = original_span.unwrap_or_else(|| stmts[j].span());
-        }
-        for remove_idx in remove.into_iter().rev() {
-            stmts.remove(remove_idx);
-        }
-        for (k, stmt) in replacement.into_iter().enumerate() {
-            stmts.insert(j + k, stmt);
-        }
-    }
-
-    fn is_explicit_props_declaration(&self, stmt: &oxc_ast::ast::Statement<'a>) -> bool {
-        let Some(props_gen) = &self.props_gen else {
-            return false;
-        };
-        let span = stmt.span();
-        let span_start = span.start + self.script_content_start;
-        let span_end = span.end + self.script_content_start;
-        props_gen
-            .declaration_spans
-            .iter()
-            .any(|decl_span| decl_span.start == span_start && decl_span.end == span_end)
     }
 }

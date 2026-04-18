@@ -5,12 +5,12 @@ pub(crate) fn dispatch_expr(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
     span: Span,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
-    let parsed = ctx.parsed();
     for v in visitors.iter_mut() {
         v.visit_expression(id, span, ctx);
     }
+    let parsed = ctx.parsed;
     if let Some(expr) = parsed
         .and_then(|p| p.expr_handle(span.start))
         .and_then(|h| parsed.and_then(|p| p.expr(h)))
@@ -29,7 +29,7 @@ pub(crate) fn dispatch_opt_expr(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
     span: Option<Span>,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if let Some(span) = span {
         dispatch_expr(visitors, id, span, ctx);
@@ -41,12 +41,12 @@ pub(crate) fn dispatch_stmt(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
     span: Span,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
-    let parsed = ctx.parsed();
     for v in visitors.iter_mut() {
         v.visit_statement(id, span, ctx);
     }
+    let parsed = ctx.parsed;
     if let Some(stmt) = parsed
         .and_then(|p| p.stmt_handle(span.start))
         .and_then(|h| parsed.and_then(|p| p.stmt(h)))
@@ -65,7 +65,7 @@ pub(crate) fn dispatch_opt_stmt(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
     span: Option<Span>,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if let Some(span) = span {
         dispatch_stmt(visitors, id, span, ctx);
@@ -75,7 +75,7 @@ pub(crate) fn dispatch_opt_stmt(
 pub(crate) fn dispatch_concat_exprs(
     visitors: &mut [&mut dyn TemplateVisitor],
     parts: &[ConcatPart],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     for part in parts {
         if let ConcatPart::Dynamic { id, span } = part {

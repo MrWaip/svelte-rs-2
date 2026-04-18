@@ -3,6 +3,9 @@ name = "svelte_component_semantics"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 compact_str = { workspace = true }
 oxc_ast = { workspace = true }

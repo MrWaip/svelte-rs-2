@@ -1,12 +1,12 @@
 use super::*;
 
 #[derive(Clone, Copy)]
-pub struct CodegenView<'a> {
-    data: &'a AnalysisData,
+pub struct CodegenView<'d, 'a> {
+    data: &'d AnalysisData<'a>,
 }
 
-impl<'a> CodegenView<'a> {
-    pub fn new(data: &'a AnalysisData) -> Self {
+impl<'d, 'a> CodegenView<'d, 'a> {
+    pub fn new(data: &'d AnalysisData<'a>) -> Self {
         Self { data }
     }
 
@@ -14,7 +14,7 @@ impl<'a> CodegenView<'a> {
         self.data.output.custom_element
     }
     pub fn runes(&self) -> bool {
-        self.data.script.runes
+        self.data.uses_runes()
     }
     pub fn accessors(&self) -> bool {
         self.data.script.accessors
@@ -32,7 +32,7 @@ impl<'a> CodegenView<'a> {
         self.data.component_name()
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.data.is_dynamic(id)
+        self.data.dynamism.is_dynamic_node(id)
     }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool {
         self.data.is_elseif_alt(id)
@@ -55,8 +55,14 @@ impl<'a> CodegenView<'a> {
     pub fn props_id(&self) -> Option<&str> {
         self.data.script.props_id.as_deref()
     }
-    pub fn scoping(&self) -> &ComponentScoping {
+    pub fn scoping(&self) -> &ComponentScoping<'a> {
         &self.data.scoping
+    }
+    pub fn iter_store_declarations(
+        &self,
+    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
+    {
+        self.data.iter_store_declarations()
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.data.script.ce_config.as_ref()
@@ -136,6 +142,16 @@ impl<'a> CodegenView<'a> {
     pub fn attr_expr_handle(&self, id: NodeId) -> ExprHandle {
         self.data.attr_expr_handle(id)
     }
+    /// Non-panicking attribute expression handle lookup. Useful for directives
+    /// that may lack an expression in rare cases (e.g. function bindings).
+    pub fn attr_expr_handle_opt(&self, id: NodeId) -> Option<ExprHandle> {
+        self.data
+            .template
+            .template_semantics
+            .attr_expr_handles
+            .get(id)
+            .copied()
+    }
     pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.const_tag_stmt_handle(id)
     }
@@ -171,6 +187,51 @@ impl<'a> CodegenView<'a> {
     }
     pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.data.bind_target_symbol(id)
+    }
+    pub fn symbol_for_reference(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> Option<SymbolId> {
+        self.data.symbol_for_reference(ref_id)
+    }
+    pub fn symbol_for_identifier_reference(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<SymbolId> {
+        self.data.symbol_for_identifier_reference(id)
+    }
+    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
+        self.data.binding_origin_key(sym)
+    }
+    pub fn binding_origin_key_for_reference(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> Option<&str> {
+        self.data.binding_origin_key_for_reference(ref_id)
+    }
+    pub fn binding_origin_key_for_identifier_reference(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<&str> {
+        self.data.binding_origin_key_for_identifier_reference(id)
+    }
+    pub fn declaration_root(
+        &self,
+        sym: SymbolId,
+    ) -> Option<svelte_component_semantics::OxcNodeId> {
+        self.data.declaration_root_for_symbol(sym)
+    }
+    pub fn declaration_semantics(
+        &self,
+        node_id: svelte_component_semantics::OxcNodeId,
+    ) -> DeclarationSemantics {
+        self.data.declaration_semantics(node_id)
+    }
+    pub fn reference_semantics(
+        &self,
+        ref_id: svelte_component_semantics::ReferenceId,
+    ) -> ReferenceSemantics {
+        self.data.reference_semantics(ref_id)
     }
     pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
         self.data.template.fragments.lowered(key)
@@ -242,7 +303,7 @@ impl<'a> CodegenView<'a> {
         self.data.elements.flags.needs_var(id)
     }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.data.elements.flags.is_dynamic_attr(id)
+        self.data.dynamism.is_dynamic_attr(id)
     }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.data.elements.flags.static_class(id)
@@ -260,7 +321,7 @@ impl<'a> CodegenView<'a> {
         self.data.elements.flags.has_dynamic_class_directives(id)
     }
     pub fn class_needs_state(&self, id: NodeId) -> bool {
-        self.data.elements.flags.class_needs_state(id)
+        self.data.class_needs_state(id)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
         self.data.elements.flags.class_attr_id(id)
@@ -290,7 +351,7 @@ impl<'a> CodegenView<'a> {
         self.data.template.snippets.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.data.elements.flags.is_dynamic_component(id)
+        self.data.dynamism.is_dynamic_component(id)
     }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
         self.data.template.snippets.is_hoistable(id)
@@ -336,12 +397,6 @@ impl<'a> CodegenView<'a> {
     }
     pub fn bind_target_semantics(&self, id: NodeId) -> Option<BindTargetSemantics> {
         self.data.bind_target_semantics(id).copied()
-    }
-    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
-        self.data.template.bind_semantics.is_mutable_rune_target(id)
-    }
-    pub fn is_prop_source_node(&self, id: NodeId) -> bool {
-        self.data.template.bind_semantics.is_prop_source(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)

@@ -2,7 +2,7 @@ use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
 use svelte_parser::{CePropConfig, CeShadowMode, ParsedCeConfig};
 
-use crate::builder::{Arg, ObjProp};
+use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
@@ -34,11 +34,12 @@ pub fn gen_custom_element<'a>(
 
     // Slot names are analyzed once so CE wrapping stays aligned with the shared
     // legacy <slot> lowering path instead of rediscovering template structure here.
-    let slots = ctx
-        .b
-        .array_from_args(ctx.query.custom_element_slot_names().iter().map(|name| {
-            Arg::StrRef(name.as_str())
-        }));
+    let slots = ctx.b.array_from_args(
+        ctx.query
+            .custom_element_slot_names()
+            .iter()
+            .map(|name| Arg::StrRef(name.as_str())),
+    );
 
     // -- Arg 4: Accessors array (from exports) --
     let accessors = ctx.b.array_from_args(ctx.query.exports().iter().map(|e| {
@@ -174,7 +175,7 @@ fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
 }
 
 /// Build the value expression for a single prop definition: `{ attribute?, reflect?, type? }`.
-fn build_prop_def_expr<'a>(b: &crate::builder::Builder<'a>, def: &CePropConfig) -> Expression<'a> {
+fn build_prop_def_expr<'a>(b: &svelte_ast_builder::Builder<'a>, def: &CePropConfig) -> Expression<'a> {
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
     if let Some(ref attr) = def.attribute {

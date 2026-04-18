@@ -1,4 +1,6 @@
 interface:
   display_name: "Phase Boundaries"
-  short_description: "Apply strict compiler layer boundaries"
-  default_prompt: "Use $phase-boundaries to decide which compiler phase should own this logic."
+  short_description: "Manual-only compiler boundary reference"
+  default_prompt: "Use $phase-boundaries only when explicitly requested."
+policy:
+  allow_implicit_invocation: false

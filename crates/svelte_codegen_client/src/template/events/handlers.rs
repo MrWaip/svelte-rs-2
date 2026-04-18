@@ -2,7 +2,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 fn should_return_event_handler_directly<'a>(

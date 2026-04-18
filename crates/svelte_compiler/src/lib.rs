@@ -191,6 +191,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             &analysis,
             &mut parsed,
             &mut ident_gen,
+            options.dev,
         );
         let js = svelte_codegen_client::generate(
             &js_alloc,
@@ -245,7 +246,8 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let js_alloc = oxc_allocator::Allocator::default();
 
     // Analysis always runs so all diagnostics are surfaced.
-    let (analysis, mut diagnostics) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+    let (analysis, mut parsed, mut diagnostics) =
+        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
 
     // Codegen is skipped when generate=false or any error diagnostic is present.
     if options.generate == GenerateMode::False
@@ -260,8 +262,9 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         };
     }
 
+    let program = parsed.program.take().expect("analyze_module produced no program");
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        svelte_codegen_client::generate_module(&js_alloc, source, is_ts, &analysis, dev)
+        svelte_codegen_client::generate_module(&js_alloc, program, &analysis, dev)
     }));
 
     match codegen_result {

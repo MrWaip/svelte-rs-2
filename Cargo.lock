@@ -1237,21 +1237,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "svelte_ast_builder"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_parser",
+ "oxc_span",
+ "oxc_syntax",
+]
+
+[[package]]
 name = "svelte_codegen_client"
 version = "0.1.0"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
- "oxc_ast_visit",
  "oxc_codegen",
  "oxc_parser",
  "oxc_semantic",
  "oxc_span",
  "oxc_syntax",
- "oxc_traverse",
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_ast_builder",
  "svelte_parser",
  "svelte_span",
  "svelte_transform",
@@ -1343,11 +1353,15 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
+ "oxc_parser",
+ "oxc_semantic",
  "oxc_span",
  "oxc_syntax",
+ "oxc_traverse",
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_ast_builder",
  "svelte_parser",
  "svelte_span",
 ]

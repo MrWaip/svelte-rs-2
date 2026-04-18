@@ -493,15 +493,16 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::ClassDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
-                }
+                // Shorthand `class:name` has expression_span = span of `name`,
+                // so parse_span synthesizes the `Expression::Identifier` just
+                // like for the explicit `class:name={expr}` form.
+                parse_span(alloc, component, a.expression_span, typescript, result, diags);
             }
             Attribute::StyleDirective(a) => {
                 use svelte_ast::StyleDirectiveValue;
                 match &a.value {
-                    StyleDirectiveValue::Expression(span) => {
-                        parse_span(alloc, component, *span, typescript, result, diags);
+                    StyleDirectiveValue::Expression => {
+                        parse_span(alloc, component, a.expression_span, typescript, result, diags);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
@@ -510,13 +511,12 @@ fn walk_attrs<'a>(
                             }
                         }
                     }
-                    StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
+                    StyleDirectiveValue::String(_) => {}
                 }
             }
             Attribute::BindDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
-                }
+                // Shorthand `bind:name` has expression_span = span of `name`.
+                parse_span(alloc, component, a.expression_span, typescript, result, diags);
             }
             Attribute::LetDirectiveLegacy(a) => {
                 let pattern_span = a.expression_span.unwrap_or(a.name_span);
@@ -535,16 +535,6 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::SpreadAttribute(a) => {
-                parse_span(
-                    alloc,
-                    component,
-                    a.expression_span,
-                    typescript,
-                    result,
-                    diags,
-                );
-            }
-            Attribute::Shorthand(a) => {
                 parse_span(
                     alloc,
                     component,

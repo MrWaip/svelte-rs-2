@@ -6,7 +6,7 @@ use svelte_analyze::FragmentKey;
 use svelte_analyze::{AwaitBindingInfo, DestructureKind};
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 use super::expression::build_node_thunk;

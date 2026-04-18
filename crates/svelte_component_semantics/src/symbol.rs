@@ -10,7 +10,16 @@ use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 /// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
 /// Bits 8+ are available for consumers (svelte_analyze classifications).
 pub mod state {
+    /// Symbol has at least one write-reference in OXC (reassignment or update).
+    /// Set during OXC reference visit. Matches the reference compiler's
+    /// `binding.reassigned` bit.
     pub const MUTATED: u32 = 1 << 0;
+    /// Symbol is mutated via a member chain outside regular JS writes —
+    /// currently populated for `bind:value={foo.bar}` bind targets. Matches
+    /// the reference compiler's `binding.mutated` bit. Kept separate from
+    /// `MUTATED` because some lowerings (e.g. `$state` vs `proxy`) look at
+    /// reassigned-only, not at member-mutation.
+    pub const MEMBER_MUTATED: u32 = 1 << 1;
 }
 
 /// Which source region of a `.svelte` component owns a symbol.

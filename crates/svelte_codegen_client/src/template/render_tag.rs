@@ -6,7 +6,7 @@ use oxc_span::GetSpan;
 use svelte_analyze::RenderTagCalleeMode;
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 use crate::template::async_plan::AsyncEmissionPlan;
 use crate::template::expression::{MemoValueRef, TemplateMemoState};
@@ -75,15 +75,16 @@ pub(crate) fn gen_render_tag<'a>(
 
     for (arg, arg_plan) in unboxed.arguments.into_iter().zip(plan.arg_plans.iter()) {
         let arg_expr = arg.into_expression();
+        let arg_info = &arg_plan.info;
 
         // Prop-source args: pass the getter identifier directly without a thunk
+        // (analyzer pre-computes prop_source SymbolId in the arg plan — single
+        // semantic answer per argument).
         if let Some(sym_id) = arg_plan.prop_source {
             let name = ctx.symbol_name(sym_id);
             arg_thunks.push(Arg::Expr(ctx.b.rid_expr(name)));
             continue;
         }
-
-        let arg_info = &arg_plan.info;
 
         if arg_info.has_await() && !arg_info.ref_symbols().is_empty() {
             if let Some(MemoValueRef::Async(index)) =

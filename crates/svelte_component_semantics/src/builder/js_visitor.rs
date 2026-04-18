@@ -1,6 +1,8 @@
 use compact_str::CompactString;
 use oxc_ast::ast::*;
+use oxc_ast::AstKind;
 use oxc_ast_visit::{walk, Visit};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceFlags;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolFlags;
@@ -16,8 +18,8 @@ use crate::symbol::SymbolOwner;
 /// - Scope/binding/reference logic: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/builder.rs
 /// - Binding rules per declaration kind: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/binder.rs
 /// - Storage types: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/scoping.rs
-pub struct JsSemanticVisitor<'s> {
-    semantics: &'s mut ComponentSemantics,
+pub struct JsSemanticVisitor<'s, 'a> {
+    semantics: &'s mut ComponentSemantics<'a>,
     scope: ScopeId,
     /// Flag propagation for assignment targets / update expressions.
     current_ref_flags: ReferenceFlags,
@@ -30,36 +32,19 @@ pub struct JsSemanticVisitor<'s> {
     owner: SymbolOwner,
     /// Per-scope-depth stack of unresolved references.
     unresolved_stack: Vec<Vec<(CompactString, oxc_syntax::reference::ReferenceId)>>,
-    /// Offset added to every OxcNodeId read from AST nodes.
-    /// Used to make module script NodeIds unique relative to instance script.
-    node_id_offset: u32,
-    /// Max OxcNodeId seen during this traversal (before offset).
-    /// Used to compute offset for subsequent programs.
-    max_node_id_seen: u32,
+    /// Current canonical JS node for this traversal, matching OXC's builder.
+    current_node_id: OxcNodeId,
+    /// Next component-wide NodeId allocated by this visitor.
+    next_node_id: u32,
+    /// Starting component-wide NodeId for this traversal.
+    start_node_id: u32,
 }
 
-impl<'s> JsSemanticVisitor<'s> {
-    pub fn new(semantics: &'s mut ComponentSemantics, scope: ScopeId, owner: SymbolOwner) -> Self {
-        Self {
-            semantics,
-            scope,
-            current_ref_flags: ReferenceFlags::empty(),
-            binding_flags: None,
-            template_mode: false,
-            owner,
-            unresolved_stack: vec![Vec::new()],
-            node_id_offset: 0,
-            max_node_id_seen: 0,
-        }
-    }
-
-    /// Create a visitor with a NodeId offset. Used for module script so its
-    /// NodeIds don't collide with instance script.
-    pub fn new_with_offset(
-        semantics: &'s mut ComponentSemantics,
+impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
+    pub fn new(
+        semantics: &'s mut ComponentSemantics<'a>,
         scope: ScopeId,
         owner: SymbolOwner,
-        node_id_offset: u32,
     ) -> Self {
         Self {
             semantics,
@@ -69,14 +54,38 @@ impl<'s> JsSemanticVisitor<'s> {
             template_mode: false,
             owner,
             unresolved_stack: vec![Vec::new()],
-            node_id_offset,
-            max_node_id_seen: 0,
+            current_node_id: OxcNodeId::DUMMY,
+            next_node_id: 0,
+            start_node_id: 0,
+        }
+    }
+
+    /// Create a visitor that allocates component-wide NodeIds starting from
+    /// `next_node_id`. Used for module script so its NodeIds don't collide
+    /// with instance script.
+    pub fn new_with_offset(
+        semantics: &'s mut ComponentSemantics<'a>,
+        scope: ScopeId,
+        owner: SymbolOwner,
+        next_node_id: u32,
+    ) -> Self {
+        Self {
+            semantics,
+            scope,
+            current_ref_flags: ReferenceFlags::empty(),
+            binding_flags: None,
+            template_mode: false,
+            owner,
+            unresolved_stack: vec![Vec::new()],
+            current_node_id: OxcNodeId::DUMMY,
+            next_node_id,
+            start_node_id: next_node_id,
         }
     }
 
     /// Create a visitor in template mode — all created references will be
     /// tagged as template references. Symbols get `Template` owner.
-    pub fn new_template(semantics: &'s mut ComponentSemantics, scope: ScopeId) -> Self {
+    pub fn new_template(semantics: &'s mut ComponentSemantics<'a>, scope: ScopeId) -> Self {
         Self {
             semantics,
             scope,
@@ -85,28 +94,27 @@ impl<'s> JsSemanticVisitor<'s> {
             template_mode: true,
             owner: SymbolOwner::Template,
             unresolved_stack: vec![Vec::new()],
-            node_id_offset: 0,
-            max_node_id_seen: 0,
+            current_node_id: OxcNodeId::DUMMY,
+            next_node_id: 0,
+            start_node_id: 0,
         }
     }
 
-    /// Remap an OxcNodeId from the AST by applying the offset, and track max seen.
-    fn remap_node_id(&mut self, raw: oxc_syntax::node::NodeId) -> oxc_syntax::node::NodeId {
-        let raw_val = raw.index() as u32;
-        if raw_val > self.max_node_id_seen {
-            self.max_node_id_seen = raw_val;
-        }
-        if self.node_id_offset == 0 {
-            raw
-        } else {
-            oxc_syntax::node::NodeId::from_usize((raw_val + self.node_id_offset) as usize)
-        }
+    /// Allocate the next canonical component-wide NodeId.
+    fn alloc_node_id(&mut self) -> OxcNodeId {
+        let node_id = OxcNodeId::from_usize(self.next_node_id as usize);
+        self.next_node_id += 1;
+        node_id
     }
 
-    /// The max OxcNodeId seen during traversal (after offset).
-    /// Used by the builder to compute the next offset.
+    /// The max allocated OxcNodeId during traversal.
+    /// Used by the builder to compute the next component-wide starting id.
     pub(crate) fn max_node_id(&self) -> u32 {
-        self.max_node_id_seen + self.node_id_offset
+        if self.next_node_id > self.start_node_id {
+            self.next_node_id - 1
+        } else {
+            self.start_node_id
+        }
     }
 
     /// Enable template mode — references will be tagged as template references.
@@ -182,20 +190,17 @@ impl<'s> JsSemanticVisitor<'s> {
         }
     }
 
-    fn resolve_reference_flags(&mut self) -> ReferenceFlags {
-        let flags = self.current_ref_flags;
-        self.current_ref_flags = ReferenceFlags::empty();
-        if flags.is_empty() {
-            ReferenceFlags::Read
-        } else {
-            flags
-        }
-    }
-
-    fn reference_identifier(&mut self, ident: &IdentifierReference<'_>) {
-        let flags = self.resolve_reference_flags();
-        let node_id = self.remap_node_id(ident.node_id.get());
-        let reference = Reference::new(node_id, self.scope, flags);
+    fn reference_identifier(&mut self, ident: &IdentifierReference<'a>) {
+        let flags = {
+            let flags = self.current_ref_flags;
+            self.current_ref_flags = ReferenceFlags::empty();
+            if flags.is_empty() {
+                ReferenceFlags::Read
+            } else {
+                flags
+            }
+        };
+        let reference = Reference::new(self.current_node_id, self.scope, flags);
         let ref_id = if self.template_mode {
             self.semantics.create_template_reference(reference)
         } else {
@@ -222,7 +227,23 @@ impl<'s> JsSemanticVisitor<'s> {
     }
 }
 
-impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
+impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
+    fn enter_node(&mut self, kind: AstKind<'a>) {
+        let node_id = self.alloc_node_id();
+        kind.set_node_id(node_id);
+        let parent_id = (self.current_node_id != OxcNodeId::DUMMY).then_some(self.current_node_id);
+        self.semantics
+            .record_js_node(node_id, kind, self.scope, parent_id);
+        self.current_node_id = node_id;
+    }
+
+    fn leave_node(&mut self, _kind: AstKind<'a>) {
+        self.current_node_id = self
+            .semantics
+            .js_parent_id(self.current_node_id)
+            .unwrap_or(OxcNodeId::DUMMY);
+    }
+
     // =========================================================
     // Program — flush unresolved after traversal
     // =========================================================
@@ -519,14 +540,15 @@ impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
 
     /// The leaf binding visitor — all binding patterns eventually reach here.
     fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
+        let kind = AstKind::BindingIdentifier(self.alloc(ident));
+        self.enter_node(kind);
         if let Some((scope, flags)) = self.binding_flags {
-            let node_id = self.remap_node_id(ident.node_id.get());
             let sym_id = self.semantics.symbols.create_symbol(
                 CompactString::from(ident.name.as_str()),
                 ident.span,
                 flags,
                 scope,
-                node_id,
+                self.current_node_id,
                 self.owner,
             );
             self.semantics.scopes.add_binding(
@@ -536,6 +558,8 @@ impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
             );
             ident.symbol_id.set(Some(sym_id));
         }
+        self.visit_span(&ident.span);
+        self.leave_node(kind);
     }
 
     // =========================================================
@@ -543,7 +567,11 @@ impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
     // =========================================================
 
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        let kind = AstKind::IdentifierReference(self.alloc(ident));
+        self.enter_node(kind);
         self.reference_identifier(ident);
+        self.visit_span(&ident.span);
+        self.leave_node(kind);
     }
 
     // =========================================================

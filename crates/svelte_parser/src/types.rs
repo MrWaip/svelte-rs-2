@@ -70,14 +70,28 @@ impl<'a> ParserResult<'a> {
         self.exprs.get(&handle)
     }
 
-    pub fn expr_mut(&mut self, handle: ExprHandle) -> Option<&mut Expression<'a>> {
-        self.exprs.get_mut(&handle)
+    /// Iterate all parsed template/attribute expressions, in insertion order is not guaranteed.
+    /// Used by semantic builders that need a second pass over template JS.
+    pub fn iter_exprs(&self) -> impl Iterator<Item = &Expression<'a>> {
+        self.exprs.values()
     }
 
+    /// Iterate all parsed template statements (e.g. `{@const}` bodies).
+    pub fn iter_stmts(&self) -> impl Iterator<Item = &Statement<'a>> {
+        self.stmts.values()
+    }
+
+    /// Consume the stored expression for this handle. Used by codegen to
+    /// splice the pre-transformed expression into its output and by the
+    /// template transformer when cycling each handle through its
+    /// reusable synthetic `Program` body.
     pub fn take_expr(&mut self, handle: ExprHandle) -> Option<Expression<'a>> {
         self.exprs.remove(&handle)
     }
 
+    /// Put a (possibly rewritten) expression back under its handle.
+    /// Only `svelte_transform` and `svelte_analyze` call this — codegen
+    /// treats expressions as readonly and must use `expr()` / `take_expr()`.
     pub fn replace_expr(
         &mut self,
         handle: ExprHandle,
@@ -90,12 +104,18 @@ impl<'a> ParserResult<'a> {
         self.stmts.get(&handle)
     }
 
-    pub fn stmt_mut(&mut self, handle: StmtHandle) -> Option<&mut Statement<'a>> {
-        self.stmts.get_mut(&handle)
-    }
-
+    /// Consume the stored statement for this handle. Same contract as
+    /// `take_expr`.
     pub fn take_stmt(&mut self, handle: StmtHandle) -> Option<Statement<'a>> {
         self.stmts.remove(&handle)
+    }
+
+    pub fn replace_stmt(
+        &mut self,
+        handle: StmtHandle,
+        stmt: Statement<'a>,
+    ) -> Option<Statement<'a>> {
+        self.stmts.insert(handle, stmt)
     }
 }
 

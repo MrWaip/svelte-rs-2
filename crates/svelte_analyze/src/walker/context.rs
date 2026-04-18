@@ -1,31 +1,31 @@
 use super::*;
 use svelte_diagnostics::DiagnosticKind;
 
-pub(crate) struct VisitContext<'a> {
+pub(crate) struct VisitContext<'d, 'a> {
     pub scope: ScopeId,
-    pub data: &'a mut AnalysisData,
-    parsed: Option<&'a ParserResult<'a>>,
-    pub store: &'a svelte_ast::AstStore,
+    pub data: &'d mut AnalysisData<'a>,
+    pub(crate) parsed: Option<&'d ParserResult<'a>>,
+    pub store: &'d svelte_ast::AstStore,
     parents: Vec<ParentRef>,
     element_name: Option<String>,
-    pub source: &'a str,
+    pub source: &'d str,
     pub runes: bool,
-    component_name: &'a str,
-    filename_basename: &'a str,
+    component_name: &'d str,
+    filename_basename: &'d str,
     ignore_current: FxHashSet<String>,
     ignore_stack: Vec<FxHashSet<String>>,
     warnings: Vec<Diagnostic>,
 }
 
-impl<'a> VisitContext<'a> {
+impl<'d, 'a> VisitContext<'d, 'a> {
     pub fn new(
         scope: ScopeId,
-        data: &'a mut AnalysisData,
-        store: &'a svelte_ast::AstStore,
-        source: &'a str,
+        data: &'d mut AnalysisData<'a>,
+        store: &'d svelte_ast::AstStore,
+        source: &'d str,
         runes: bool,
-        component_name: &'a str,
-        filename_basename: &'a str,
+        component_name: &'d str,
+        filename_basename: &'d str,
     ) -> Self {
         Self {
             scope,
@@ -46,13 +46,13 @@ impl<'a> VisitContext<'a> {
 
     pub fn with_parsed(
         scope: ScopeId,
-        data: &'a mut AnalysisData,
-        store: &'a svelte_ast::AstStore,
-        parsed: &'a ParserResult<'a>,
-        source: &'a str,
+        data: &'d mut AnalysisData<'a>,
+        store: &'d svelte_ast::AstStore,
+        parsed: &'d ParserResult<'a>,
+        source: &'d str,
         runes: bool,
-        component_name: &'a str,
-        filename_basename: &'a str,
+        component_name: &'d str,
+        filename_basename: &'d str,
     ) -> Self {
         Self {
             scope,
@@ -71,7 +71,7 @@ impl<'a> VisitContext<'a> {
         }
     }
 
-    pub fn parsed(&self) -> Option<&'a ParserResult<'a>> {
+    pub fn parsed(&self) -> Option<&ParserResult<'a>> {
         self.parsed
     }
 

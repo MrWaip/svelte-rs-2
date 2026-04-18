@@ -90,7 +90,7 @@ pub use builder::{
     ComponentSemanticsBuilder, JsSemanticVisitor, TemplateBuildContext, TemplateWalker,
 };
 pub use reference::Reference;
-pub use storage::ComponentSemantics;
+pub use storage::{ComponentSemantics, JsNode, JsStorage};
 pub use svelte_ast::FragmentKey;
 pub use symbol::state as sym_state;
 pub use symbol::SymbolOwner;

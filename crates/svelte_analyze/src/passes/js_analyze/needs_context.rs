@@ -2,14 +2,16 @@ use oxc_ast::ast::{Expression, MemberExpression};
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 use oxc_ast_visit::Visit;
 
-use crate::types::data::AnalysisData;
+use crate::types::data::{
+    AnalysisData, DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics,
+};
 use crate::types::script::{RuneKind, ScriptInfo};
 
 /// OXC Visit that walks the entire script AST to detect expressions requiring
 /// component context. Matches reference MemberExpression.js, CallExpression.js,
 /// NewExpression.js + is_safe_identifier.
 pub(crate) struct NeedsContextVisitor<'a> {
-    scoping: &'a crate::scope::ComponentScoping,
+    scoping: &'a crate::scope::ComponentScoping<'a>,
     unsafe_prop_syms: rustc_hash::FxHashSet<crate::scope::SymbolId>,
     needs_context: bool,
 }
@@ -113,6 +115,8 @@ impl<'a> Visit<'a> for NeedsContextVisitor<'a> {
 }
 
 pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
+    let scoping = &data.scoping;
+    let reactivity = &data.reactivity;
     for info in data
         .expressions
         .values_mut()
@@ -120,9 +124,16 @@ pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
     {
         let needs_context = info.has_context_sensitive_shape()
             && info.ref_symbols().iter().any(|&sym| {
-                data.scoping.is_import(sym)
-                    || data.scoping.is_prop_source(sym)
-                    || data.scoping.prop_non_source_name(sym).is_some()
+                if scoping.is_import(sym) {
+                    return true;
+                }
+                matches!(
+                    reactivity.declaration_semantics(scoping.symbol_declaration(sym)),
+                    DeclarationSemantics::Prop(PropDeclarationSemantics {
+                        kind: PropDeclarationKind::Source { .. } | PropDeclarationKind::NonSource,
+                        ..
+                    })
+                )
             });
         info.set_needs_context(needs_context);
     }

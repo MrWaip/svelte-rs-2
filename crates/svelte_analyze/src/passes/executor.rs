@@ -4,14 +4,14 @@ use svelte_diagnostics::Diagnostic;
 use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
 
 use super::{
-    bundles, collect_symbols, content_types, finalize_component_name, js_analyze, lower,
-    mark_runes, post_resolve,
+    bundles, content_types, finalize_component_name, js_analyze, lower, populate_const_tag_syms,
+    post_resolve, resolve_render_tag_meta,
 };
 
-fn run_template_bundle<'a, const N: usize>(
-    component: &Component,
-    data: &'a mut AnalysisData,
-    source: &'a str,
+fn run_template_bundle<'d, 'a, const N: usize>(
+    component: &'d Component,
+    data: &'d mut AnalysisData<'a>,
+    source: &'d str,
     runes: bool,
     options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
@@ -32,11 +32,11 @@ fn run_template_bundle<'a, const N: usize>(
     diags.extend(ctx.take_warnings());
 }
 
-fn run_parsed_template_bundle<'a, const N: usize>(
-    component: &Component,
-    data: &'a mut AnalysisData,
-    parsed: &'a ParserResult<'a>,
-    source: &'a str,
+fn run_parsed_template_bundle<'d, 'a, const N: usize>(
+    component: &'d Component,
+    data: &'d mut AnalysisData<'a>,
+    parsed: &'d ParserResult<'a>,
+    source: &'d str,
     runes: bool,
     options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
@@ -62,7 +62,7 @@ pub(crate) fn execute_pass<'a>(
     key: super::PassKey,
     component: &Component,
     parsed: &mut ParserResult<'a>,
-    data: &mut AnalysisData,
+    data: &mut AnalysisData<'a>,
     options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -94,37 +94,7 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::FinalizeComponentName => {
             finalize_component_name::run(data);
         }
-        super::PassKey::MarkRunes => {
-            if runes {
-                mark_runes::mark_script_runes(data);
-                if let Some(module_program) = &parsed.module_program {
-                    if let Some(span) = parsed.module_script_content_span {
-                        let module_source = component.source_text(span);
-                        let module_info = crate::utils::script_info::extract_script_info(
-                            module_program,
-                            span.start,
-                            module_source,
-                            true,
-                        );
-                        let module_scope = data
-                            .scoping
-                            .module_scope_id()
-                            .unwrap_or_else(|| data.scoping.root_scope_id());
-                        mark_runes::mark_root_script_runes_in_scope(
-                            &mut data.scoping,
-                            module_scope,
-                            &module_info.declarations,
-                            &crate::types::data::ProxyStateInits::new(),
-                        );
-                    }
-                }
-                if let Some(program) = &parsed.program {
-                    mark_runes::mark_nested_runes(program, &mut data.scoping);
-                }
-                if let Some(module_program) = &parsed.module_program {
-                    mark_runes::mark_nested_runes(module_program, &mut data.scoping);
-                }
-            }
+        super::PassKey::ScanIgnoreComments => {
             if let Some(program) = &parsed.program {
                 if options.dev {
                     data.output
@@ -195,9 +165,6 @@ pub(crate) fn execute_pass<'a>(
                 &mut visitors,
             );
         }
-        super::PassKey::ResolveScriptStores => {
-            collect_symbols::resolve_script_stores(data);
-        }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);
             if runes {
@@ -227,28 +194,26 @@ pub(crate) fn execute_pass<'a>(
                             && info
                                 .ref_symbols()
                                 .iter()
+                                // NOTE: runs inside the `PostResolve` pass, BEFORE
+                                // `BuildReactivitySemantics` populates v2 prop facts.
+                                // Uses `ComponentScoping.is_rest_prop` because
+                                // `post_resolve::handle_props_declaration` (same pass)
+                                // already marked the rest-prop symbol.
                                 .any(|&sym| data.scoping.is_rest_prop(sym))
                     });
             }
         }
         super::PassKey::ResolveRenderTagMeta => {
-            resolve_render_tag_prop_sources(data, parsed);
-            resolve_render_tag_dynamic(data);
+            resolve_render_tag_meta::run(data, parsed);
         }
         super::PassKey::CollectConstTagFragments => {
             lower::collect_const_tag_fragments(component, data);
         }
-        super::PassKey::MarkConstTagBindings => {
-            mark_const_tag_bindings(data);
+        super::PassKey::PopulateConstTagSyms => {
+            populate_const_tag_syms::run(data);
         }
-        super::PassKey::PrecomputeDynamicCache => {
-            data.scoping.precompute_dynamic_cache();
-        }
-        super::PassKey::MarkBlockedSymbolsDynamic => {
-            if data.script.blocker_data.has_async {
-                data.scoping
-                    .mark_blocked_symbols_dynamic(&data.script.blocker_data.symbol_blockers);
-            }
+        super::PassKey::BuildReactivitySemantics => {
+            crate::reactivity_semantics::build_v2(component, parsed, data);
         }
         super::PassKey::ClassifyExpressionDynamicity => {
             js_analyze::classify_expression_dynamicity(data);
@@ -320,108 +285,3 @@ pub(crate) fn execute_pass<'a>(
     }
 }
 
-fn mark_const_tag_bindings(data: &mut AnalysisData) {
-    use crate::types::script::RuneKind;
-    let pairs: Vec<_> = data
-        .template
-        .const_tags
-        .by_fragment
-        .iter()
-        .filter_map(|(frag_key, tag_ids)| {
-            let scope = data.scoping.fragment_scope(frag_key)?;
-            Some((scope, tag_ids.clone()))
-        })
-        .collect();
-    for (scope, tag_ids) in pairs {
-        for tag_id in tag_ids {
-            let Some(names) = data.template.const_tags.names(tag_id).cloned() else {
-                continue;
-            };
-            let is_destructured = names.len() > 1;
-            let mut syms = Vec::new();
-            let deps: Vec<_> = data
-                .expressions
-                .get(tag_id)
-                .map(|info| info.ref_symbols().to_vec())
-                .unwrap_or_default();
-            for name in &names {
-                if let Some(sym_id) = data.scoping.find_binding(scope, name) {
-                    syms.push(sym_id);
-                    data.scoping.mark_template_declaration(sym_id);
-                    data.scoping.mark_rune(sym_id, RuneKind::Derived);
-                    data.scoping.set_derived_deps(sym_id, deps.clone());
-                    if is_destructured {
-                        data.scoping.mark_const_alias(sym_id, tag_id);
-                    }
-                }
-            }
-            if !syms.is_empty() {
-                data.template.const_tags.syms.insert(tag_id, syms);
-            }
-        }
-    }
-}
-
-fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
-    use oxc_ast::ast::Expression;
-    let tag_ids: Vec<svelte_ast::NodeId> = data.blocks.render_tag_plans.keys().collect();
-    for tag_id in tag_ids {
-        let handle = match data
-            .template
-            .template_semantics
-            .node_expr_handles
-            .get(tag_id)
-        {
-            Some(&handle) => handle,
-            None => continue,
-        };
-        let resolved: Vec<Option<crate::scope::SymbolId>> = match parsed.expr(handle) {
-            Some(Expression::CallExpression(call)) => call
-                .arguments
-                .iter()
-                .map(|arg| {
-                    if let Expression::Identifier(ident) = arg.to_expression() {
-                        ident
-                            .reference_id
-                            .get()
-                            .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
-                            .filter(|&sym| data.scoping.is_prop_source(sym))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            _ => continue,
-        };
-        let Some(plan) = data.blocks.render_tag_plans.get_mut(tag_id) else {
-            continue;
-        };
-        for (arg_plan, prop_source) in plan.arg_plans.iter_mut().zip(resolved) {
-            arg_plan.prop_source = prop_source;
-        }
-    }
-}
-
-fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
-    use crate::types::data::RenderTagCalleeMode;
-
-    let all_ids: Vec<svelte_ast::NodeId> = data.blocks.render_tag_plans.keys().collect();
-
-    for node_id in all_ids {
-        let is_dynamic = match data.blocks.render_tag_callee_sym.get(node_id) {
-            Some(&sym_id) => !data.scoping.is_normal_binding(sym_id),
-            None => true,
-        };
-        let is_chain = data.blocks.render_tag_is_chain.contains(&node_id);
-
-        let mode = match (is_dynamic, is_chain) {
-            (true, true) => RenderTagCalleeMode::DynamicChain,
-            (true, false) => RenderTagCalleeMode::DynamicRegular,
-            (false, true) => RenderTagCalleeMode::Chain,
-            (false, false) => RenderTagCalleeMode::Direct,
-        };
-        if let Some(plan) = data.blocks.render_tag_plans.get_mut(node_id) {
-            plan.callee_mode = mode;
-        }
-    }
-}

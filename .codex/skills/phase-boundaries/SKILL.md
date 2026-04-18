@@ -1,6 +1,6 @@
 ---
 name: phase-boundaries
-description: Strict compiler phase-boundary rules for parser, analyze, transform, and client codegen. Use when deciding where new logic belongs, when adding or changing `AnalysisData` accessors, when reviewing boundary hygiene, or when writing OXC traversal in `svelte_analyze`, `svelte_transform`, or `svelte_codegen_client`.
+description: Manual-only reference for compiler phase-boundary rules in parser, analyze, transform, and client codegen. Trigger only on explicit `$phase-boundaries` invocation; do not auto-trigger from task similarity.
 ---
 
 # Phase Boundaries

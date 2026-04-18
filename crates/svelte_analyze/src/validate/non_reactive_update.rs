@@ -14,7 +14,7 @@ use crate::{AnalysisData, ParserResult};
 
 pub(super) fn validate(
     component: &Component,
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     parsed: &ParserResult<'_>,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
@@ -39,7 +39,7 @@ pub(super) fn validate(
 
 struct TemplateValidator<'a, 'b> {
     component: &'a Component,
-    data: &'a AnalysisData,
+    data: &'a AnalysisData<'a>,
     parsed: &'a ParserResult<'a>,
     diags: &'b mut Vec<Diagnostic>,
     warned: FxHashSet<SymbolId>,
@@ -193,17 +193,13 @@ impl<'a> TemplateValidator<'a, '_> {
                 Attribute::SpreadAttribute(attr) => {
                     self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
                 }
-                Attribute::Shorthand(attr) => {
+                Attribute::ClassDirective(attr) => {
+                    // Shorthand & explicit share one expression_span now.
                     self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
                 }
-                Attribute::ClassDirective(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
-                    }
-                }
                 Attribute::StyleDirective(attr) => match &attr.value {
-                    StyleDirectiveValue::Expression(span) => {
-                        self.visit_expr_span(*span, false, in_dynamic_block);
+                    StyleDirectiveValue::Expression => {
+                        self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
@@ -212,16 +208,18 @@ impl<'a> TemplateValidator<'a, '_> {
                             }
                         }
                     }
-                    StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
+                    StyleDirectiveValue::String(_) => {}
                 },
                 Attribute::BindDirective(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        let bind_this = self
-                            .data
-                            .bind_target_semantics(attr.id)
-                            .is_some_and(|semantics| semantics.is_this());
-                        self.visit_expr_span(span, bind_this, in_dynamic_block);
-                    }
+                    let bind_this = self
+                        .data
+                        .bind_target_semantics(attr.id)
+                        .is_some_and(|semantics| semantics.is_this());
+                    self.visit_expr_span(
+                        attr.expression_span,
+                        bind_this,
+                        in_dynamic_block,
+                    );
                 }
                 Attribute::LetDirectiveLegacy(attr) => {
                     if let Some(span) = attr.expression_span {
@@ -298,7 +296,7 @@ impl<'a> TemplateValidator<'a, '_> {
 }
 
 struct ReferenceVisitor<'a, 'b> {
-    data: &'a AnalysisData,
+    data: &'a AnalysisData<'a>,
     diags: &'b mut Vec<Diagnostic>,
     warned: &'b mut FxHashSet<SymbolId>,
     bind_this: bool,
@@ -320,9 +318,13 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
         if self.warned.contains(&sym_id) {
             return;
         }
+        // `is_mutated_any` catches both JS-side writes (`x = ...`) and
+        // template-side member mutations (`bind:value={x.y}` → `x` is
+        // member_mutated). Both are legitimate triggers for the
+        // non-reactive-update warning when the declaration is plain.
         if !self.data.scoping.is_component_top_level_symbol(sym_id)
-            || !self.data.scoping.is_normal_binding(sym_id)
-            || !self.data.scoping.is_mutated(sym_id)
+            || is_reactive_binding(self.data, sym_id)
+            || !self.data.scoping.is_mutated_any(sym_id)
         {
             return;
         }
@@ -354,4 +356,15 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
         walk_function(self, func, flags);
         self.function_depth -= 1;
     }
+}
+
+/// True when `sym` refers to any reactive source (including runes that
+/// have been optimized to a plain `let` — they're still reassignable from
+/// the outside, so mutating them isn't a non-reactive-update mistake).
+fn is_reactive_binding(data: &AnalysisData<'_>, sym: crate::scope::SymbolId) -> bool {
+    use crate::types::data::DeclarationSemantics;
+    !matches!(
+        data.declaration_semantics(data.scoping.symbol_declaration(sym)),
+        DeclarationSemantics::NonReactive | DeclarationSemantics::Unresolved,
+    )
 }

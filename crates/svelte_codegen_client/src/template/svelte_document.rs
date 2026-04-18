@@ -5,7 +5,7 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::{BindPropertyKind, DocumentBindKind};
 use svelte_ast::{Attribute, NodeId};
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 use super::bind::{build_binding_setter_silent, gen_bind_property_stmt};
@@ -63,14 +63,20 @@ fn gen_document_binding<'a>(
     let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
         return;
     };
-    let is_rune = ctx.is_mutable_rune_target(bind.id);
+    let is_rune = matches!(
+        ctx.directive_root_reference_semantics(bind.id),
+        svelte_analyze::ReferenceSemantics::SignalWrite { .. }
+            | svelte_analyze::ReferenceSemantics::SignalUpdate { .. }
+            | svelte_analyze::ReferenceSemantics::SignalRead { .. }
+    );
 
     let var_name = if bind.shorthand {
         bind.name.clone()
-    } else if let Some(span) = bind.expression_span {
-        ctx.query.component.source_text(span).to_string()
     } else {
-        return;
+        ctx.query
+            .component
+            .source_text(bind.expression_span)
+            .to_string()
     };
 
     let stmt = match bind_semantics.property() {

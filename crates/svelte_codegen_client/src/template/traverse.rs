@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{FragmentItem, LoweredTextPart};
 
-use crate::builder::{Arg, AssignLeft};
+use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
 
 use super::await_block::gen_await_block;

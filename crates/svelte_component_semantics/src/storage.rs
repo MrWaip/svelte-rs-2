@@ -1,10 +1,12 @@
 use compact_str::CompactString;
-use oxc_span::Span;
+use oxc_ast::{AstKind, ast::IdentifierReference};
+use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::marker::PhantomData;
 use svelte_ast::FragmentKey;
 
 use crate::symbol::SymbolOwner;
@@ -13,12 +15,110 @@ use crate::reference::{Reference, ReferenceTable};
 use crate::scope::ScopeTable;
 use crate::symbol::SymbolTable;
 
+/// Generic JS AST storage keyed by the component-wide remapped `OxcNodeId`.
+///
+/// This stays generic on purpose: it mirrors JS node identity and parentage
+/// without carrying any Svelte-specific meaning.
+pub struct JsStorage<'a> {
+    nodes: Vec<Option<JsNode<'a>>>,
+    parent_ids: Vec<Option<OxcNodeId>>,
+}
+
+/// JS node metadata stored alongside `ComponentSemantics`.
+///
+/// The canonical node identity is the remapped component `OxcNodeId` used as
+/// the lookup key in `JsStorage`; the embedded `AstKind` still points at the
+/// original OXC AST node.
+#[derive(Clone, Copy)]
+pub struct JsNode<'a> {
+    kind: AstKind<'a>,
+    scope_id: ScopeId,
+}
+
+impl<'a> JsStorage<'a> {
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::new(),
+            parent_ids: Vec::new(),
+        }
+    }
+
+    pub fn node(&self, id: OxcNodeId) -> Option<&JsNode<'a>> {
+        self.nodes.get(id.index()).and_then(Option::as_ref)
+    }
+
+    pub fn parent_id(&self, id: OxcNodeId) -> Option<OxcNodeId> {
+        self.parent_ids.get(id.index()).copied().flatten()
+    }
+
+    pub fn kind(&self, id: OxcNodeId) -> Option<AstKind<'a>> {
+        self.node(id).map(JsNode::kind)
+    }
+
+    pub(crate) fn record_node(
+        &mut self,
+        id: OxcNodeId,
+        kind: AstKind<'a>,
+        scope_id: ScopeId,
+        parent_id: Option<OxcNodeId>,
+    ) {
+        let index = id.index();
+        if self.nodes.len() <= index {
+            self.nodes.resize_with(index + 1, || None);
+            self.parent_ids.resize(index + 1, None);
+        }
+
+        if let Some(existing) = self.nodes[index] {
+            // The component semantic builder can legitimately re-enter the same
+            // OXC node through custom visitor paths, but it must resolve to the
+            // exact same canonical component node slot every time.
+            debug_assert!(
+                std::mem::discriminant(&existing.kind()) == std::mem::discriminant(&kind)
+                    && existing.kind().span() == kind.span()
+                    && existing.scope_id() == scope_id
+                    && self.parent_ids[index] == parent_id,
+                "component node ids should map to a single canonical JS node: id={:?}, existing_kind={:?}, new_kind={:?}, existing_span={:?}, new_span={:?}, existing_scope={:?}, new_scope={:?}, existing_parent={:?}, new_parent={:?}",
+                id,
+                existing.kind(),
+                kind,
+                existing.kind().span(),
+                kind.span(),
+                existing.scope_id(),
+                scope_id,
+                self.parent_ids[index],
+                parent_id
+            );
+            return;
+        }
+
+        self.nodes[index] = Some(JsNode { kind, scope_id });
+        self.parent_ids[index] = parent_id;
+    }
+}
+
+impl Default for JsStorage<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> JsNode<'a> {
+    pub fn kind(&self) -> AstKind<'a> {
+        self.kind
+    }
+
+    pub fn scope_id(&self) -> ScopeId {
+        self.scope_id
+    }
+}
+
 /// Component-wide semantic graph — the single source of truth for scopes,
 /// symbols, and references across module script, instance script, and template.
-pub struct ComponentSemantics {
+pub struct ComponentSemantics<'a> {
     pub(crate) scopes: ScopeTable,
     pub(crate) symbols: SymbolTable,
     pub(crate) references: ReferenceTable,
+    pub(crate) js: JsStorage<'a>,
     /// References created from template expressions (not from script AST).
     template_reference_ids: FxHashSet<ReferenceId>,
     /// Unresolved references at root scope, keyed by name.
@@ -32,9 +132,10 @@ pub struct ComponentSemantics {
     module_scope_id: Option<ScopeId>,
     /// The instance script root scope, if present.
     instance_scope_id: Option<ScopeId>,
+    ast_lifetime: PhantomData<&'a ()>,
 }
 
-impl ComponentSemantics {
+impl<'a> ComponentSemantics<'a> {
     /// Create an empty semantic graph with a single root scope.
     pub fn new() -> Self {
         let mut scopes = ScopeTable::new();
@@ -43,12 +144,14 @@ impl ComponentSemantics {
             scopes,
             symbols: SymbolTable::new(),
             references: ReferenceTable::new(),
+            js: JsStorage::new(),
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
             fragment_scopes: FxHashMap::default(),
             template_scope_set: FxHashSet::default(),
             module_scope_id: None,
             instance_scope_id: None,
+            ast_lifetime: PhantomData,
         }
     }
 
@@ -194,6 +297,19 @@ impl ComponentSemantics {
         self.references.get_mut(id)
     }
 
+    pub fn symbol_for_reference(&self, id: ReferenceId) -> Option<SymbolId> {
+        self.get_reference(id).symbol_id()
+    }
+
+    pub fn symbol_for_identifier_reference(
+        &self,
+        id: &IdentifierReference<'a>,
+    ) -> Option<SymbolId> {
+        id.reference_id
+            .get()
+            .and_then(|ref_id| self.symbol_for_reference(ref_id))
+    }
+
     pub fn is_template_reference(&self, id: ReferenceId) -> bool {
         self.template_reference_ids.contains(&id)
     }
@@ -205,8 +321,122 @@ impl ComponentSemantics {
             .add_resolved_reference(symbol_id, reference_id, is_write);
     }
 
+    /// Force-mark a symbol as member-mutated.
+    ///
+    /// Template sites (e.g. `bind:value={foo.bar}`) express mutation of a
+    /// symbol through a member chain — OXC reads `foo` as an object-side
+    /// identifier but the template still writes via the member. Mirrors the
+    /// reference compiler behaviour (`phases/scope.js::BindDirective` updates
+    /// → `binding.mutated = true` for the root identifier of a member-
+    /// expression bind target, kept separate from `reassigned`).
+    ///
+    /// Does NOT set the plain `MUTATED` flag — consumers that care about
+    /// reassignment specifically (`$state`-wrapping, for example) stay
+    /// unaffected; the generic "any mutation" query is `is_mutated_any`.
+    pub fn mark_symbol_member_mutated(&mut self, symbol_id: SymbolId) {
+        self.symbols
+            .set_state(symbol_id, crate::symbol::state::MEMBER_MUTATED);
+    }
+
+    pub fn is_member_mutated(&self, id: SymbolId) -> bool {
+        self.symbols.has_state(id, crate::symbol::state::MEMBER_MUTATED)
+    }
+
+    /// True when `symbol` has either been reassigned (a write reference) or
+    /// member-mutated via a template site. Equivalent to
+    /// reference-compiler's `binding.updated`.
+    pub fn is_mutated_any(&self, id: SymbolId) -> bool {
+        self.is_mutated(id) || self.is_member_mutated(id)
+    }
+
     pub fn get_resolved_reference_ids(&self, id: SymbolId) -> &[ReferenceId] {
         self.symbols.get_resolved_reference_ids(id)
+    }
+
+    // -- JS node queries --
+
+    pub fn js_storage(&self) -> &JsStorage<'a> {
+        &self.js
+    }
+
+    pub fn js_node(&self, id: OxcNodeId) -> Option<&JsNode<'a>> {
+        self.js.node(id)
+    }
+
+    pub fn js_parent_id(&self, id: OxcNodeId) -> Option<OxcNodeId> {
+        self.js.parent_id(id)
+    }
+
+    pub fn js_kind(&self, id: OxcNodeId) -> Option<AstKind<'a>> {
+        self.js.kind(id)
+    }
+
+    /// Static object-pattern key that introduced this binding, if any.
+    ///
+    /// Examples:
+    /// - `localFoo` in `let { foo: localFoo } = obj` -> `Some("foo")`
+    /// - `bar` in `let { bar } = obj` -> `Some("bar")`
+    /// - `rest` in `let { ...rest } = obj` -> `None`
+    /// - `x` in `let x = 1` -> `None`
+    pub fn binding_origin_key(&self, sym_id: SymbolId) -> Option<&str> {
+        let mut node_id = self.symbol_declaration(sym_id);
+        loop {
+            let parent_id = match self.js_parent_id(node_id) {
+                Some(parent_id) => parent_id,
+                None => {
+                    debug_assert!(
+                        false,
+                        "binding_origin_key missing js parent: sym={:?}, name={}, decl_node={:?}, decl_kind={:?}",
+                        sym_id,
+                        self.symbol_name(sym_id),
+                        node_id,
+                        self.js_kind(node_id)
+                    );
+                    return None;
+                }
+            };
+            match self.js_kind(parent_id)? {
+                AstKind::AssignmentPattern(_) => {
+                    node_id = parent_id;
+                }
+                AstKind::BindingProperty(prop) => {
+                    if prop.computed {
+                        return None;
+                    }
+                    return match prop.key.static_name()? {
+                        std::borrow::Cow::Borrowed(name) => Some(name),
+                        std::borrow::Cow::Owned(_) => None,
+                    };
+                }
+                AstKind::BindingRestElement(_) => return None,
+                other => {
+                    debug_assert!(
+                        false,
+                        "binding_origin_key stopped on unexpected parent: sym={:?}, name={}, decl_node={:?}, parent_id={:?}, parent_kind={:?}",
+                        sym_id,
+                        self.symbol_name(sym_id),
+                        node_id,
+                        parent_id,
+                        other
+                    );
+                    return None;
+                }
+            }
+        }
+    }
+
+    /// Static object-pattern key for the symbol referenced by `ref_id`, if any.
+    pub fn binding_origin_key_for_reference(&self, ref_id: ReferenceId) -> Option<&str> {
+        let sym_id = self.symbol_for_reference(ref_id)?;
+        self.binding_origin_key(sym_id)
+    }
+
+    pub fn binding_origin_key_for_identifier_reference(
+        &self,
+        id: &IdentifierReference<'a>,
+    ) -> Option<&str> {
+        let sym_id = self.symbol_for_identifier_reference(id)?;
+        self.binding_origin_key(sym_id)
     }
 
     // -- Scope hierarchy helpers --
@@ -345,9 +575,18 @@ impl ComponentSemantics {
     pub(crate) fn set_scope_parent_id(&mut self, scope: ScopeId, parent: Option<ScopeId>) {
         self.scopes.set_scope_parent_id(scope, parent);
     }
+    pub(crate) fn record_js_node(
+        &mut self,
+        id: OxcNodeId,
+        kind: AstKind<'a>,
+        scope_id: ScopeId,
+        parent_id: Option<OxcNodeId>,
+    ) {
+        self.js.record_node(id, kind, scope_id, parent_id);
+    }
 }
 
-impl Default for ComponentSemantics {
+impl Default for ComponentSemantics<'_> {
     fn default() -> Self {
         Self::new()
     }

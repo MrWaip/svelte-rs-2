@@ -2,9 +2,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 
-use crate::builder::{Arg, Builder};
-use crate::script::AsyncDerivedMode;
-use crate::script::{IgnoreQuery, compute_line_col, sanitize_location};
+use svelte_ast_builder::{Arg, Builder};
+use super::model::AsyncDerivedMode;
+use super::location::{compute_line_col, sanitize_location};
+use super::model::IgnoreQuery;
 
 /// Dev-mode context for adding label/location args to `$.async_derived`.
 pub(crate) struct DevContext<'a> {
@@ -12,7 +13,7 @@ pub(crate) struct DevContext<'a> {
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'a str,
     /// Svelte-ignore queries for span-based JS comment lookups.
-    pub(crate) ignore_query: IgnoreQuery<'a>,
+    pub(crate) ignore_query: IgnoreQuery<'a, 'a>,
 }
 
 impl DevContext<'_> {

@@ -11,10 +11,10 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::is_rune_name;
-use crate::AnalysisData;
+use crate::{AnalysisData, DeclarationSemantics};
 
 pub(super) fn validate(
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
@@ -31,7 +31,7 @@ pub(super) fn validate(
 struct StoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     offset: u32,
-    data: &'a AnalysisData,
+    data: &'a AnalysisData<'a>,
     suppressed_rune_conflicts: FxHashSet<(u32, u32)>,
 }
 
@@ -96,7 +96,7 @@ impl StoreValidator<'_> {
 }
 
 pub(super) fn validate_module(
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
@@ -110,7 +110,7 @@ pub(super) fn validate_module(
 }
 
 pub(super) fn validate_standalone_module(
-    data: &AnalysisData,
+    data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
@@ -127,13 +127,13 @@ pub(super) fn validate_standalone_module(
 struct ModuleStoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     offset: u32,
-    data: &'a AnalysisData,
+    data: &'a AnalysisData<'a>,
 }
 
 struct StandaloneModuleStoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     offset: u32,
-    data: &'a AnalysisData,
+    data: &'a AnalysisData<'a>,
     reported_bindings: FxHashSet<oxc_syntax::symbol::SymbolId>,
 }
 
@@ -164,7 +164,19 @@ impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
         if is_rune_name(name) {
             return;
         }
-        if self.data.scoping.store_base_name(name).is_some() {
+        let base = &name[1..];
+        let root = self.data.scoping.root_scope_id();
+        if self
+            .data
+            .scoping
+            .find_binding(root, base)
+            .is_some_and(|sym| {
+                matches!(
+                    self.data.declaration_semantics(self.data.scoping.symbol_declaration(sym)),
+                    DeclarationSemantics::Store(_),
+                )
+            })
+        {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::StoreInvalidSubscription,
                 self.span(ident.span()),
@@ -249,7 +261,8 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
 fn is_props_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
     // `$props()` identifier/rest bindings are special compiler-owned bindings, not
     // user-authored locals that can be mistaken for store subscriptions.
-    data.scoping.is_prop_source(sym_id)
-        || data.scoping.prop_non_source_name(sym_id).is_some()
-        || data.scoping.is_rest_prop(sym_id)
+    matches!(
+        data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym_id)),
+        DeclarationSemantics::Prop(_),
+    )
 }

@@ -25,7 +25,6 @@ use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::scope::ComponentScoping;
 use crate::types::data::{BindHostKind, BindPropertyKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier};
@@ -685,7 +684,7 @@ impl TemplateValidationVisitor {
         )
     }
 
-    fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_>) {
+    fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_, '_>) {
         if let Some(state) = self.element_event_state.pop() {
             if state.has_s5_events {
                 if let Some((span, name)) = state.first_on_directive {
@@ -702,7 +701,7 @@ impl TemplateValidationVisitor {
         &mut self,
         name: &str,
         span: Span,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         if !ctx.runes {
             return;
@@ -723,7 +722,7 @@ impl TemplateValidationVisitor {
         }
     }
 
-    fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_>) {
+    fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
         if ctx.data.output.custom_element {
             return;
         }
@@ -736,7 +735,7 @@ impl TemplateValidationVisitor {
         self.first_legacy_slot_span.get_or_insert(span);
     }
 
-    fn note_render_tag(&mut self, ctx: &mut VisitContext<'_>) {
+    fn note_render_tag(&mut self, ctx: &mut VisitContext<'_, '_>) {
         self.saw_render_tag = true;
 
         if ctx.data.output.custom_element {
@@ -748,7 +747,7 @@ impl TemplateValidationVisitor {
         }
     }
 
-    fn emit_slot_snippet_conflict(&mut self, span: Span, ctx: &mut VisitContext<'_>) {
+    fn emit_slot_snippet_conflict(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
         if self.emitted_slot_snippet_conflict {
             return;
         }
@@ -763,7 +762,7 @@ impl TemplateValidationVisitor {
         kind: SpecialElementKind,
         attributes: &[Attribute],
         fragment: &Fragment,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         if let Some(span) = fragment_content_span(fragment, ctx) {
             ctx.warnings_mut().push(Diagnostic::error(
@@ -790,22 +789,22 @@ impl TemplateVisitor for TemplateValidationVisitor {
         &mut self,
         node_id: NodeId,
         stmt: &Statement<'_>,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         validate_const_tag_invalid_reference_stmt(node_id, stmt, self.current_expr_offset, ctx);
     }
 
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         validate_snippet_rest_params(block, ctx);
         validate_snippet_shadowing_prop(block, ctx);
         validate_snippet_children_conflict(block, ctx);
     }
 
-    fn visit_render_tag(&mut self, _tag: &RenderTag, ctx: &mut VisitContext<'_>) {
+    fn visit_render_tag(&mut self, _tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         self.note_render_tag(ctx);
     }
 
-    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
+    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
         // const_tag_invalid_expression: an unparenthesized sequence expression in the init
         // (e.g. `{@const a = b, c = d}`) produces two declarators when OXC parses the
         // wrapped `const a = b, c = d;` form. Parenthesised sequences are fine.
@@ -847,7 +846,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);
 
@@ -950,7 +949,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let _ = has_spread; // used only in pre-computation above
     }
 
-    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_>) {
+    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
@@ -993,7 +992,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 | Attribute::ExpressionAttribute(_)
                 | Attribute::ConcatenationAttribute(_)
                 | Attribute::BooleanAttribute(_)
-                | Attribute::Shorthand(_)
                 | Attribute::SpreadAttribute(_)
                 | Attribute::LetDirectiveLegacy(_) => {}
                 _ => ctx.warnings_mut().push(Diagnostic::error(
@@ -1004,7 +1002,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         if el.name == "dialog" {
             self.dialog_depth -= 1;
         }
@@ -1014,12 +1012,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn leave_slot_element_legacy(
         &mut self,
         _el: &svelte_ast::SlotElementLegacy,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         self.emit_mixed_syntax_if_needed(ctx);
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         self.maybe_warn_legacy_special_element(&cn.name, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
@@ -1030,7 +1028,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_svelte_fragment_legacy(
         &mut self,
         el: &SvelteFragmentLegacy,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         let is_direct_child_of_component = ctx
             .parent()
@@ -1105,13 +1103,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
     }
 
-    fn visit_svelte_window(&mut self, window: &SvelteWindow, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_window(&mut self, window: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {
         self.visit_special_element(
             SpecialElementKind::Window,
             &window.attributes,
@@ -1120,7 +1118,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         );
     }
 
-    fn visit_svelte_document(&mut self, document: &SvelteDocument, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_document(&mut self, document: &SvelteDocument, ctx: &mut VisitContext<'_, '_>) {
         self.visit_special_element(
             SpecialElementKind::Document,
             &document.attributes,
@@ -1129,7 +1127,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         );
     }
 
-    fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_, '_>) {
         self.visit_special_element(
             SpecialElementKind::Body,
             &body.attributes,
@@ -1138,14 +1136,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
         );
     }
 
-    fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+    fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         self.emit_mixed_syntax_if_needed(ctx);
     }
 
     fn visit_expression_attribute(
         &mut self,
         attr: &ExpressionAttribute,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         if attr.event_name.is_some() {
             if let Some(expr) = ctx
@@ -1179,7 +1177,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
         if let Some(parent) = current_bind_parent(dir.id, ctx) {
             validate_bind_name_and_target(dir, &parent, ctx);
             validate_bind_parent_specifics(dir, &parent, ctx);
@@ -1224,7 +1222,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_bind_group_binding(dir, ctx);
     }
 
-    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_>) {
+    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
         let is_valid_parent = ctx.parent().is_some_and(|parent| {
             matches!(
                 parent.kind,
@@ -1244,7 +1242,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_>) {
+    fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_, '_>) {
         let Some(expression_span) = dir.expression_span else {
             return;
         };
@@ -1264,7 +1262,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_transition_directive(
         &mut self,
         dir: &TransitionDirective,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         let kind = TransitionDirectiveKind::from_direction(&dir.direction);
 
@@ -1320,7 +1318,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
     // event_directive_deprecated, mixed_event_handler_syntaxes
-    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
         let is_component = ctx
             .data
             .parent(dir.id)
@@ -1373,7 +1371,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_text(&mut self, text: &Text, ctx: &mut VisitContext<'_>) {
+    fn visit_text(&mut self, text: &Text, ctx: &mut VisitContext<'_, '_>) {
         let value = text.value(ctx.source);
 
         if contains_non_whitespace_text(value) {
@@ -1405,7 +1403,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_>) {
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_, '_>) {
         if let Some(message) = invalid_text_parent_message(tag.id, ctx) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::NodeInvalidPlacement { message },
@@ -1415,7 +1413,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use case: block_unexpected_character — runes mode only, char after `{` must be `@`
-    fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_>) {
+    fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
         if ctx.runes {
             let start = tag.span.start as usize;
             if ctx.source.as_bytes().get(start + 1) != Some(&b'@') {
@@ -1430,7 +1428,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use cases: block_empty, block_unexpected_character
-    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
         check_empty_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), ctx);
 
         // block_unexpected_character: runes mode only — char after `{` must be `#`
@@ -1448,7 +1446,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use cases: block_empty (consequent + alternate), block_unexpected_character
-    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_, '_>) {
         check_empty_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), ctx);
         if let Some(alt) = &block.alternate {
             check_empty_fragment(alt, FragmentKey::IfAlternate(block.id), ctx);
@@ -1470,7 +1468,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use case: block_unexpected_character for {:then val} / {:catch err} with whitespace before `:`
-    fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
         if !ctx.runes {
             return;
         }
@@ -1492,7 +1490,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use case 2: each_key_without_as
-    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         if block.key_span.is_some() && block.context_span.is_none() {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::EachKeyWithoutAs,
@@ -1502,7 +1500,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use cases 3 & 4: animation_missing_key, animation_invalid_placement
-    fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_>) {
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_, '_>) {
         if let Some(state) = self.element_event_state.last_mut() {
             if state.has_animate_directive {
                 ctx.warnings_mut().push(Diagnostic::error(
@@ -1566,11 +1564,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Track current expression offset for sub-span conversion
-    fn visit_expression(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_>) {
+    fn visit_expression(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_, '_>) {
         self.current_expr_offset = span.start;
     }
 
-    fn visit_statement(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_>) {
+    fn visit_statement(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_, '_>) {
         self.current_expr_offset = span.start;
     }
 
@@ -1579,7 +1577,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         &mut self,
         id: NodeId,
         expr: &Expression<'_>,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         validate_const_tag_invalid_reference_expr(id, expr, self.current_expr_offset, ctx);
 
@@ -1591,32 +1589,28 @@ impl TemplateVisitor for TemplateValidationVisitor {
             .is_some_and(|p| p.kind == ParentKind::BindDirective);
 
         match expr {
-            Expression::Identifier(ident)
-                if is_bind && is_snippet_param_ref(ident, &ctx.data.scoping) =>
-            {
+            Expression::Identifier(ident) if is_bind && is_snippet_param_ref(ident, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::SnippetParameterAssignment,
                     span,
                 ));
             }
-            Expression::Identifier(ident)
-                if is_bind && is_each_block_var_ref(ident, &ctx.data.scoping) =>
-            {
+            Expression::Identifier(ident) if is_bind && is_each_block_var_ref(ident, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
                     span,
                 ));
             }
-            _ if !is_bind && contains_invalid_each_assignment(expr, &ctx.data.scoping) => {
+            _ if !is_bind && contains_invalid_each_assignment(expr, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
                     span,
                 ));
             }
-            _ if !is_bind && contains_invalid_snippet_param_assignment(expr, &ctx.data.scoping) => {
+            _ if !is_bind && contains_invalid_snippet_param_assignment(expr, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::SnippetParameterAssignment,
@@ -1628,7 +1622,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 }
 
-fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
+fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<BindParentInfo> {
     let parent = ctx.data.parent(bind_id)?;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
@@ -1667,9 +1661,13 @@ fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_>) -> Option<BindPa
 
 fn bind_expression_shape(
     dir: &BindDirective,
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> Option<BindExpressionShape> {
-    bind_expression(dir, ctx).map(classify_bind_expression)
+    let parsed = ctx.parsed()?;
+    let expr = parsed
+        .expr_handle(dir.expression_span.start)
+        .and_then(|handle| parsed.expr(handle))?;
+    Some(classify_bind_expression(expr))
 }
 
 fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionShape {
@@ -1691,15 +1689,14 @@ fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionShape {
     }
 }
 
-fn emit_bind_error(ctx: &mut VisitContext<'_>, span: Option<Span>, kind: DiagnosticKind) {
-    ctx.warnings_mut()
-        .push(Diagnostic::error(kind, span.unwrap_or(Span::new(0, 0))));
+fn emit_bind_error(ctx: &mut VisitContext<'_, '_>, span: Span, kind: DiagnosticKind) {
+    ctx.warnings_mut().push(Diagnostic::error(kind, span));
 }
 
 fn validate_bind_name_and_target(
     dir: &BindDirective,
     parent: &BindParentInfo,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let Some(bind_semantics) = ctx.data.bind_target_semantics(dir.id).copied() else {
         let explanation =
@@ -1778,7 +1775,7 @@ fn validate_bind_name_and_target(
 fn validate_bind_parent_specifics(
     dir: &BindDirective,
     parent: &BindParentInfo,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let bind_semantics = ctx.data.bind_target_semantics(dir.id).copied();
     let bind_property = bind_semantics.map(|semantics| semantics.property());
@@ -1845,7 +1842,7 @@ fn validate_bind_parent_specifics(
 fn validate_input_bindings(
     dir: &BindDirective,
     parent: &BindParentInfo,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let bind_property = ctx
         .data
@@ -1902,7 +1899,7 @@ fn validate_bind_sequence_expression(
     dir: &BindDirective,
     len: usize,
     has_parens: bool,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if ctx
         .data
@@ -1935,7 +1932,7 @@ fn validate_bind_sequence_expression(
     }
 }
 
-fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
     if ctx
         .data
         .bind_target_semantics(dir.id)
@@ -1948,30 +1945,40 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
         return;
     };
 
-    let rune_kind = ctx.data.scoping.rune_kind(sym_id);
+    let decl = ctx
+        .data
+        .reactivity
+        .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id));
     let valid = matches!(
-        rune_kind,
-        Some(crate::types::script::RuneKind::State | crate::types::script::RuneKind::StateRaw)
-    ) || ctx.data.scoping.is_prop_source(sym_id)
-        || ctx.data.scoping.prop_non_source_name(sym_id).is_some()
-        || ctx.data.scoping.is_each_block_var(sym_id)
-        || bind_targets_each_context(sym_id, dir.id, ctx)
-        || ctx.data.scoping.is_store(sym_id)
+        decl,
+        crate::DeclarationSemantics::State(_)
+            | crate::DeclarationSemantics::Store(_)
+            | crate::DeclarationSemantics::Prop(crate::PropDeclarationSemantics {
+                kind: crate::PropDeclarationKind::Source { .. }
+                    | crate::PropDeclarationKind::NonSource,
+                ..
+            })
+    ) || matches!(
+        decl,
+        crate::DeclarationSemantics::Contextual(
+            crate::ContextualDeclarationSemantics::EachItem(_),
+        ),
+    ) && bind_targets_each_context(sym_id, dir.id, ctx)
         // Plain mutable let/var (no rune) is bindable — the bind directive's setter writes to it.
         // This matches the reference compiler: any bind target is marked as `binding.updated`
         // by scope analysis, so the "not updated" guard never fires for plain let/var.
-        || (rune_kind.is_none() && {
+        || {
             let flags = ctx.data.scoping.symbol_flags(sym_id);
             flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
                 && !flags.contains(SymbolFlags::ConstVariable)
-        });
+        };
 
     if !valid {
         emit_bind_error(ctx, dir.expression_span, DiagnosticKind::BindInvalidValue);
     }
 }
 
-fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
     if !ctx
         .data
         .bind_target_semantics(dir.id)
@@ -1984,7 +1991,14 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_>) 
         return;
     };
 
-    if ctx.data.scoping.is_snippet_param(sym_id) {
+    if matches!(
+        ctx.data
+            .reactivity
+            .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id)),
+        crate::DeclarationSemantics::Contextual(
+            crate::ContextualDeclarationSemantics::SnippetParam(_),
+        ),
+    ) {
         emit_bind_error(
             ctx,
             dir.expression_span,
@@ -1993,16 +2007,19 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_>) 
         return;
     }
 
-    if ctx.data.scoping.is_each_rest(sym_id) {
+    if ctx.data.reactivity.is_each_rest(sym_id) {
         let name = ctx.data.scoping.symbol_name(sym_id).to_string();
         ctx.warnings_mut().push(Diagnostic::warning(
             DiagnosticKind::BindInvalidEachRest { name },
-            dir.expression_span.unwrap_or(Span::new(0, 0)),
+            dir.expression_span,
         ));
     }
 }
 
-fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate::scope::SymbolId> {
+fn bind_base_symbol(
+    dir: &BindDirective,
+    ctx: &VisitContext<'_, '_>,
+) -> Option<crate::scope::SymbolId> {
     if dir.shorthand {
         return ctx.data.shorthand_symbol(dir.id);
     }
@@ -2013,21 +2030,10 @@ fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate
         .flatten()
 }
 
-fn bind_expression<'a>(
-    dir: &BindDirective,
-    ctx: &'a VisitContext<'a>,
-) -> Option<&'a Expression<'a>> {
-    let span = dir.expression_span?;
-    let parsed = ctx.parsed()?;
-    parsed
-        .expr_handle(span.start)
-        .and_then(|handle| parsed.expr(handle))
-}
-
 fn bind_targets_each_context(
     sym_id: crate::scope::SymbolId,
     bind_id: NodeId,
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> bool {
     let sym_scope = ctx.data.scoping.symbol_scope_id(sym_id);
     ctx.data
@@ -2061,13 +2067,12 @@ fn attr_value_span(attr: &Attribute) -> Span {
             .unwrap_or(Span::new(0, 0)),
         Attribute::StringAttribute(attr) => attr.value_span,
         Attribute::BooleanAttribute(_) => Span::new(0, 0),
-        Attribute::BindDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::BindDirective(attr) => attr.expression_span,
         Attribute::LetDirectiveLegacy(attr) => attr.expression_span.unwrap_or(attr.name_span),
-        Attribute::Shorthand(attr) => attr.expression_span,
         Attribute::SpreadAttribute(attr) => attr.expression_span,
-        Attribute::ClassDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::ClassDirective(attr) => attr.expression_span,
         Attribute::StyleDirective(attr) => match &attr.value {
-            svelte_ast::StyleDirectiveValue::Expression(span) => *span,
+            svelte_ast::StyleDirectiveValue::Expression => attr.expression_span,
             svelte_ast::StyleDirectiveValue::Concatenation(parts) => parts
                 .iter()
                 .filter_map(|part| match part {
@@ -2076,8 +2081,7 @@ fn attr_value_span(attr: &Attribute) -> Span {
                 })
                 .reduce(|left, right| left.merge(&right))
                 .unwrap_or(Span::new(0, 0)),
-            svelte_ast::StyleDirectiveValue::String(_)
-            | svelte_ast::StyleDirectiveValue::Shorthand => Span::new(0, 0),
+            svelte_ast::StyleDirectiveValue::String(_) => Span::new(0, 0),
         },
         Attribute::UseDirective(attr) => attr.expression_span.unwrap_or(attr.name),
         Attribute::OnDirectiveLegacy(attr) => attr.expression_span.unwrap_or(attr.name_span),
@@ -2125,7 +2129,7 @@ impl SpecialElementKind {
     }
 }
 
-fn fragment_content_span(fragment: &Fragment, ctx: &VisitContext<'_>) -> Option<Span> {
+fn fragment_content_span(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> Option<Span> {
     let first = fragment.nodes.first()?;
     let last = fragment.nodes.last()?;
     Some(
@@ -2136,7 +2140,7 @@ fn fragment_content_span(fragment: &Fragment, ctx: &VisitContext<'_>) -> Option<
     )
 }
 
-fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
     let Some(parsed) = ctx.parsed() else {
         return;
     };
@@ -2150,16 +2154,15 @@ fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_>
         return;
     };
 
-    if let Some(rest) = &params.rest {
+    if params.rest.is_some() {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SnippetInvalidRestParameter,
             block.expression_span,
         ));
-        let _ = rest;
     }
 }
 
-fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
     let Some(parent) = ctx.data.parent(block.id) else {
         return;
     };
@@ -2185,7 +2188,7 @@ fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<
     }
 }
 
-fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
     if block.name(ctx.source) != "children" {
         return;
     }
@@ -2211,7 +2214,7 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
 fn validate_component_slot_conflicts(
     el: &Element,
     slot_attr: &Attribute,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let Some(parent) = ctx.data.parent(el.id) else {
         return;
@@ -2252,7 +2255,11 @@ fn validate_component_slot_conflicts(
 
 /// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
 /// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
-fn check_empty_fragment(_fragment: &Fragment, key: FragmentKey, ctx: &mut VisitContext<'_>) {
+fn check_empty_fragment(
+    _fragment: &Fragment,
+    key: FragmentKey,
+    ctx: &mut VisitContext<'_, '_>,
+) {
     if let Some(node_id) = ctx.data.fragment_single_child(&key) {
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {
@@ -2267,7 +2274,7 @@ fn check_empty_fragment(_fragment: &Fragment, key: FragmentKey, ctx: &mut VisitC
 ///
 /// Used by const_tag_invalid_placement to allow `{@const}` inside slotted elements,
 /// matching the reference compiler's allowed-parent matrix.
-fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_>) -> bool {
+fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_, '_>) -> bool {
     if !matches!(parent.kind, ParentKind::Element | ParentKind::SvelteElement) {
         return false;
     }
@@ -2301,7 +2308,7 @@ fn is_bidi_control(ch: char) -> bool {
     )
 }
 
-fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_>) -> Option<String> {
+fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<String> {
     let parent = ctx
         .data
         .ancestors(id)
@@ -2321,66 +2328,97 @@ fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_>) -> Option<Str
 
 fn is_each_block_var_ref(
     ident: &oxc_ast::ast::IdentifierReference<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData,
 ) -> bool {
     ident
         .reference_id
         .get()
-        .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| scoping.is_each_block_var(sym))
+        .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
+        .is_some_and(|sym| {
+            matches!(
+                data.reactivity
+                    .declaration_semantics(data.scoping.symbol_declaration(sym)),
+                crate::DeclarationSemantics::Contextual(
+                    crate::ContextualDeclarationSemantics::EachItem(_)
+                        | crate::ContextualDeclarationSemantics::EachIndex(_),
+                ),
+            )
+        })
 }
 
 fn is_snippet_param_ref(
     ident: &oxc_ast::ast::IdentifierReference<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData,
 ) -> bool {
     ident
         .reference_id
         .get()
-        .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| scoping.is_snippet_param(sym))
+        .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
+        .is_some_and(|sym| {
+            matches!(
+                data.reactivity
+                    .declaration_semantics(data.scoping.symbol_declaration(sym)),
+                crate::DeclarationSemantics::Contextual(
+                    crate::ContextualDeclarationSemantics::SnippetParam(_),
+                ),
+            )
+        })
 }
 
 fn validate_const_tag_invalid_reference_expr(
     node_id: NodeId,
     expr: &Expression<'_>,
     source_offset: u32,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if !ctx.data.script.experimental_async {
         return;
     }
 
-    let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, ctx);
-    visitor.visit_expression(expr);
+    let diagnostics = {
+        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, &*ctx);
+        visitor.visit_expression(expr);
+        visitor.diagnostics
+    };
+    ctx.warnings_mut().extend(diagnostics);
 }
 
 fn validate_const_tag_invalid_reference_stmt(
     node_id: NodeId,
     stmt: &Statement<'_>,
     source_offset: u32,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if !ctx.data.script.experimental_async {
         return;
     }
 
-    let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, ctx);
-    visitor.visit_statement(stmt);
+    let diagnostics = {
+        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, &*ctx);
+        visitor.visit_statement(stmt);
+        visitor.diagnostics
+    };
+    ctx.warnings_mut().extend(diagnostics);
 }
 
 fn maybe_const_tag_invalid_reference(
     node_id: NodeId,
     source_offset: u32,
     ident: &IdentifierReference<'_>,
-    ctx: &mut VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> Option<Diagnostic> {
     let sym_id = ident
         .reference_id
         .get()
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
 
-    if !ctx.data.scoping.is_template_declaration(sym_id) {
+    if !matches!(
+        ctx.data
+            .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id)),
+        crate::types::data::DeclarationSemantics::Const(
+            crate::types::data::ConstDeclarationSemantics::ConstTag { .. }
+        )
+    ) {
         return None;
     }
 
@@ -2446,15 +2484,17 @@ fn maybe_const_tag_invalid_reference(
 struct ConstTagInvalidReferenceVisitor<'c, 'a> {
     node_id: NodeId,
     source_offset: u32,
-    ctx: &'c mut VisitContext<'a>,
+    ctx: &'c VisitContext<'c, 'a>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'c, 'a> ConstTagInvalidReferenceVisitor<'c, 'a> {
-    fn new(node_id: NodeId, source_offset: u32, ctx: &'c mut VisitContext<'a>) -> Self {
+    fn new(node_id: NodeId, source_offset: u32, ctx: &'c VisitContext<'c, 'a>) -> Self {
         Self {
             node_id,
             source_offset,
             ctx,
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -2464,7 +2504,7 @@ impl<'a> Visit<'a> for ConstTagInvalidReferenceVisitor<'_, '_> {
         if let Some(diag) =
             maybe_const_tag_invalid_reference(self.node_id, self.source_offset, ident, self.ctx)
         {
-            self.ctx.warnings_mut().push(diag);
+            self.diagnostics.push(diag);
         }
     }
 }
@@ -2476,8 +2516,7 @@ fn named_component_attr(attr: &Attribute, name: &str) -> bool {
         Attribute::BooleanAttribute(attr) => attr.name == name,
         Attribute::ConcatenationAttribute(attr) => attr.name == name,
         Attribute::BindDirective(attr) => attr.name == name,
-        Attribute::Shorthand(_)
-        | Attribute::SpreadAttribute(_)
+        Attribute::SpreadAttribute(_)
         | Attribute::ClassDirective(_)
         | Attribute::LetDirectiveLegacy(_)
         | Attribute::StyleDirective(_)
@@ -2493,7 +2532,7 @@ fn has_prior_named_slot(
     component: &ComponentNode,
     current_child_id: NodeId,
     slot_name: &str,
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> bool {
     for &child_id in &component.fragment.nodes {
         if child_id == current_child_id {
@@ -2550,7 +2589,7 @@ fn direct_child_element_like_static_slot_name<'a>(
 fn component_has_implicit_default_children(
     component: &ComponentNode,
     excluded_child_id: Option<NodeId>,
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> Option<Span> {
     for &child_id in &component.fragment.nodes {
         if Some(child_id) == excluded_child_id {
@@ -2590,13 +2629,13 @@ fn extract_arrow_params<'s, 'a: 's>(
 }
 
 struct EachBlockVarRefVisitor<'s> {
-    scoping: &'s ComponentScoping,
+    data: &'s AnalysisData<'s>,
     found: bool,
 }
 
 impl<'a> Visit<'a> for EachBlockVarRefVisitor<'_> {
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        if is_each_block_var_ref(ident, self.scoping) {
+        if is_each_block_var_ref(ident, self.data) {
             self.found = true;
         }
     }
@@ -2605,7 +2644,7 @@ impl<'a> Visit<'a> for EachBlockVarRefVisitor<'_> {
         &mut self,
         it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
     ) {
-        if is_each_block_var_ref(&it.binding, self.scoping) {
+        if is_each_block_var_ref(&it.binding, self.data) {
             self.found = true;
         }
         if let Some(init) = &it.init {
@@ -2637,36 +2676,30 @@ impl<'a> Visit<'a> for EachBlockVarRefVisitor<'_> {
 
 fn contains_each_block_var_in_assignment_target(
     target: &AssignmentTarget<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> bool {
-    let mut visitor = EachBlockVarRefVisitor {
-        scoping,
-        found: false,
-    };
+    let mut visitor = EachBlockVarRefVisitor { data, found: false };
     visitor.visit_assignment_target(target);
     visitor.found
 }
 
 fn contains_each_block_var_in_simple_target(
     target: &SimpleAssignmentTarget<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> bool {
-    let mut visitor = EachBlockVarRefVisitor {
-        scoping,
-        found: false,
-    };
+    let mut visitor = EachBlockVarRefVisitor { data, found: false };
     visitor.visit_simple_assignment_target(target);
     visitor.found
 }
 
 struct InvalidEachAssignmentVisitor<'s> {
-    scoping: &'s ComponentScoping,
+    data: &'s AnalysisData<'s>,
     found: bool,
 }
 
 impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
     fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
-        if contains_each_block_var_in_assignment_target(&expr.left, self.scoping) {
+        if contains_each_block_var_in_assignment_target(&expr.left, self.data) {
             self.found = true;
             return;
         }
@@ -2674,7 +2707,7 @@ impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
     }
 
     fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
-        if contains_each_block_var_in_simple_target(&expr.argument, self.scoping) {
+        if contains_each_block_var_in_simple_target(&expr.argument, self.data) {
             self.found = true;
             return;
         }
@@ -2689,23 +2722,20 @@ impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
     }
 }
 
-fn contains_invalid_each_assignment(expr: &Expression<'_>, scoping: &ComponentScoping) -> bool {
-    let mut visitor = InvalidEachAssignmentVisitor {
-        scoping,
-        found: false,
-    };
+fn contains_invalid_each_assignment(expr: &Expression<'_>, data: &AnalysisData<'_>) -> bool {
+    let mut visitor = InvalidEachAssignmentVisitor { data, found: false };
     visitor.visit_expression(expr);
     visitor.found
 }
 
 struct SnippetParamRefVisitor<'s> {
-    scoping: &'s ComponentScoping,
+    data: &'s AnalysisData<'s>,
     found: bool,
 }
 
 impl<'a> Visit<'a> for SnippetParamRefVisitor<'_> {
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        if is_snippet_param_ref(ident, self.scoping) {
+        if is_snippet_param_ref(ident, self.data) {
             self.found = true;
         }
     }
@@ -2714,7 +2744,7 @@ impl<'a> Visit<'a> for SnippetParamRefVisitor<'_> {
         &mut self,
         it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
     ) {
-        if is_snippet_param_ref(&it.binding, self.scoping) {
+        if is_snippet_param_ref(&it.binding, self.data) {
             self.found = true;
         }
         if let Some(init) = &it.init {
@@ -2746,36 +2776,30 @@ impl<'a> Visit<'a> for SnippetParamRefVisitor<'_> {
 
 fn contains_snippet_param_in_assignment_target(
     target: &AssignmentTarget<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> bool {
-    let mut visitor = SnippetParamRefVisitor {
-        scoping,
-        found: false,
-    };
+    let mut visitor = SnippetParamRefVisitor { data, found: false };
     visitor.visit_assignment_target(target);
     visitor.found
 }
 
 fn contains_snippet_param_in_simple_target(
     target: &SimpleAssignmentTarget<'_>,
-    scoping: &ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> bool {
-    let mut visitor = SnippetParamRefVisitor {
-        scoping,
-        found: false,
-    };
+    let mut visitor = SnippetParamRefVisitor { data, found: false };
     visitor.visit_simple_assignment_target(target);
     visitor.found
 }
 
 struct InvalidSnippetParamAssignmentVisitor<'s> {
-    scoping: &'s ComponentScoping,
+    data: &'s AnalysisData<'s>,
     found: bool,
 }
 
 impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
     fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
-        if contains_snippet_param_in_assignment_target(&expr.left, self.scoping) {
+        if contains_snippet_param_in_assignment_target(&expr.left, self.data) {
             self.found = true;
             return;
         }
@@ -2783,7 +2807,7 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
     }
 
     fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
-        if contains_snippet_param_in_simple_target(&expr.argument, self.scoping) {
+        if contains_snippet_param_in_simple_target(&expr.argument, self.data) {
             self.found = true;
             return;
         }
@@ -2843,14 +2867,8 @@ mod tests {
     }
 }
 
-fn contains_invalid_snippet_param_assignment(
-    expr: &Expression<'_>,
-    scoping: &ComponentScoping,
-) -> bool {
-    let mut visitor = InvalidSnippetParamAssignmentVisitor {
-        scoping,
-        found: false,
-    };
+fn contains_invalid_snippet_param_assignment(expr: &Expression<'_>, data: &AnalysisData) -> bool {
+    let mut visitor = InvalidSnippetParamAssignmentVisitor { data, found: false };
     visitor.visit_expression(expr);
     visitor.found
 }
@@ -2867,7 +2885,7 @@ fn check_plain_attr_warnings(
     id: NodeId,
     span: Span,
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let (has_is, has_colon, invalid_prop) = {
         let has_colon = attrs.iter().any(|a| {
@@ -2908,14 +2926,13 @@ fn check_plain_attr_warnings(
     }
 }
 
-fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     for attr in attrs {
         match attr {
             Attribute::StringAttribute(_)
             | Attribute::ExpressionAttribute(_)
             | Attribute::BooleanAttribute(_)
             | Attribute::ConcatenationAttribute(_)
-            | Attribute::Shorthand(_)
             | Attribute::SpreadAttribute(_)
             | Attribute::BindDirective(_)
             | Attribute::LetDirectiveLegacy(_)
@@ -2947,7 +2964,7 @@ fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
     }
 }
 
-fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     let has_illegal_colon = attrs.iter().any(|attr| {
         let name = attr.html_name();
         name.contains(':')
@@ -2975,7 +2992,7 @@ fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContex
     }
 }
 
-fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     for attr in attrs {
         let Attribute::ConcatenationAttribute(concat) = attr else {
             continue;
@@ -2990,7 +3007,7 @@ fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext
     }
 }
 
-fn check_component_name_lowercase(el: &Element, ctx: &mut VisitContext<'_>) {
+fn check_component_name_lowercase(el: &Element, ctx: &mut VisitContext<'_, '_>) {
     let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, &el.name) else {
         return;
     };
@@ -3014,7 +3031,7 @@ fn check_component_name_lowercase(el: &Element, ctx: &mut VisitContext<'_>) {
 /// `attribute_quoted` warning: fires in runes mode when a component or custom element
 /// receives an attribute whose value is a quoted single expression (e.g. `foo="{expr}"`).
 /// In the AST this appears as a `ConcatenationAttribute` with exactly one `Dynamic` part.
-fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     if !ctx.runes {
         return;
     }

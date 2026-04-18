@@ -12,7 +12,11 @@ use crate::scope::ComponentScoping;
 use crate::types::data::{AnalysisData, FragmentKey, ParserResult};
 use crate::utils::script_info;
 
-pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut AnalysisData) {
+pub(crate) fn build<'d, 'a>(
+    component: &'d Component,
+    parsed: &'d ParserResult<'a>,
+    data: &mut AnalysisData<'a>,
+) {
     let mut builder = ComponentSemanticsBuilder::new();
 
     if let Some(module_program) = parsed.module_program.as_ref() {
@@ -59,14 +63,14 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
     data.scoping = scoping;
 }
 
-struct AnalyzeTemplateWalker<'a, 'b> {
-    component: &'a Component,
-    parsed: &'a ParserResult<'a>,
-    data: &'b mut AnalysisData,
+struct AnalyzeTemplateWalker<'d, 'a, 'b> {
+    component: &'d Component,
+    parsed: &'d ParserResult<'a>,
+    data: &'b mut AnalysisData<'a>,
 }
 
-impl AnalyzeTemplateWalker<'_, '_> {
-    fn walk_fragment(&mut self, fragment: &Fragment, ctx: &mut TemplateBuildContext<'_>) {
+impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
+    fn walk_fragment(&mut self, fragment: &Fragment, ctx: &mut TemplateBuildContext<'_, 'a>) {
         for &id in &fragment.nodes {
             match self.component.store.get(id) {
                 Node::Element(el) => {
@@ -254,7 +258,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
     fn walk_each_block(
         &mut self,
         block: &svelte_ast::EachBlock,
-        ctx: &mut TemplateBuildContext<'_>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
         self.record_expr_handle(block.id, block.expression_span.start, false);
         if let Some(expr) = self
@@ -308,7 +312,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
-    fn walk_await_block(&mut self, block: &AwaitBlock, ctx: &mut TemplateBuildContext<'_>) {
+    fn walk_await_block(&mut self, block: &AwaitBlock, ctx: &mut TemplateBuildContext<'_, 'a>) {
         self.record_expr_handle(block.id, block.expression_span.start, false);
         if let Some(expr) = self
             .parsed
@@ -359,7 +363,11 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
-    fn walk_attributes(&mut self, attributes: &[Attribute], ctx: &mut TemplateBuildContext<'_>) {
+    fn walk_attributes(
+        &mut self,
+        attributes: &[Attribute],
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
         for attr in attributes {
             match attr {
                 Attribute::ExpressionAttribute(attr) => {
@@ -373,16 +381,6 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     }
                 }
                 Attribute::SpreadAttribute(attr) => {
-                    self.record_expr_handle(attr.id, attr.expression_span.start, true);
-                    if let Some(expr) = self
-                        .parsed
-                        .expr_handle(attr.expression_span.start)
-                        .and_then(|handle| self.parsed.expr(handle))
-                    {
-                        ctx.visit_js_expression(expr);
-                    }
-                }
-                Attribute::Shorthand(attr) => {
                     self.record_expr_handle(attr.id, attr.expression_span.start, true);
                     if let Some(expr) = self
                         .parsed
@@ -432,7 +430,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
     fn walk_component_node(
         &mut self,
         node: &svelte_ast::ComponentNode,
-        ctx: &mut TemplateBuildContext<'_>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
         let component_has_slot_attr =
             attrs_static_slot_name(&node.attributes, &self.component.source).is_some();
@@ -482,33 +480,47 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
-    fn walk_bind_directive(&mut self, dir: &BindDirective, ctx: &mut TemplateBuildContext<'_>) {
-        if dir.shorthand {
-            if let Some(sym_id) =
-                ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Write)
-            {
-                self.data
-                    .template
-                    .template_semantics
-                    .node_ref_symbols
-                    .insert(dir.id, smallvec![sym_id]);
-            }
+    fn walk_bind_directive(
+        &mut self,
+        dir: &BindDirective,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        // `expression_span` is non-optional; shorthand `bind:name` carries the
+        // span of `name` which the parser already parsed as
+        // `Expression::Identifier(name)`. Reference-compiler parity
+        // (phases/scope.js::BindDirective):
+        //   Identifier expression      → root identifier is the write-site
+        //   (`binding.reassigned = true`) — mark as Write so OXC records a
+        //   write reference.
+        //   MemberExpression expression → root identifier reads the object
+        //   (`binding.mutated = true` only) — we mark the symbol mutated
+        //   outside the reference-flag channel via mark_symbol_mutated.
+        self.record_expr_handle(dir.id, dir.expression_span.start, true);
+        let Some(expr) = self
+            .parsed
+            .expr_handle(dir.expression_span.start)
+            .and_then(|handle| self.parsed.expr(handle))
+        else {
             return;
+        };
+        match expr {
+            Expression::Identifier(_) => {
+                ctx.visit_js_expression_with_flags(expr, ReferenceFlags::Write);
+            }
+            Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
+                ctx.visit_js_expression(expr);
+                if let Some(sym_id) = bind_member_root_symbol(expr, ctx) {
+                    ctx.mark_symbol_member_mutated(sym_id);
+                }
+            }
+            _ => {
+                // Reference compiler accepts arbitrary expressions only for
+                // sequence `bind:value={(get, set)}`. Other shapes are
+                // rejected later in validation; we still visit as read.
+                ctx.visit_js_expression(expr);
+            }
         }
-        self.walk_optional_expr_attr_with_flags(
-            dir.id,
-            dir.expression_span,
-            ReferenceFlags::Write,
-            ctx,
-        );
-    }
-
-    fn walk_class_directive(&mut self, dir: &ClassDirective, ctx: &mut TemplateBuildContext<'_>) {
-        if let Some(span) = dir.expression_span {
-            self.walk_optional_expr_attr(dir.id, Some(span), ctx);
-        } else if let Some(sym_id) =
-            ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Read)
-        {
+        if let Some(sym_id) = attr_root_symbol(expr, ctx) {
             self.data
                 .template
                 .template_semantics
@@ -517,21 +529,22 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
-    fn walk_style_directive(&mut self, dir: &StyleDirective, ctx: &mut TemplateBuildContext<'_>) {
+    fn walk_class_directive(
+        &mut self,
+        dir: &ClassDirective,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        self.walk_expr_attr(dir.id, dir.expression_span, ctx);
+    }
+
+    fn walk_style_directive(
+        &mut self,
+        dir: &StyleDirective,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
         match &dir.value {
-            StyleDirectiveValue::Expression(span) => {
-                self.walk_optional_expr_attr(dir.id, Some(*span), ctx);
-            }
-            StyleDirectiveValue::Shorthand => {
-                if let Some(sym_id) =
-                    ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Read)
-                {
-                    self.data
-                        .template
-                        .template_semantics
-                        .node_ref_symbols
-                        .insert(dir.id, smallvec![sym_id]);
-                }
+            StyleDirectiveValue::Expression => {
+                self.walk_expr_attr(dir.id, dir.expression_span, ctx);
             }
             StyleDirectiveValue::Concatenation(parts) => {
                 for part in parts {
@@ -544,25 +557,22 @@ impl AnalyzeTemplateWalker<'_, '_> {
         }
     }
 
-    fn walk_optional_expr_attr(
+    fn walk_expr_attr(
         &mut self,
         node_id: NodeId,
-        span: Option<svelte_span::Span>,
-        ctx: &mut TemplateBuildContext<'_>,
+        span: svelte_span::Span,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
-        self.walk_optional_expr_attr_with_flags(node_id, span, ReferenceFlags::Read, ctx);
+        self.walk_expr_attr_with_flags(node_id, span, ReferenceFlags::Read, ctx);
     }
 
-    fn walk_optional_expr_attr_with_flags(
+    fn walk_expr_attr_with_flags(
         &mut self,
         node_id: NodeId,
-        span: Option<svelte_span::Span>,
+        span: svelte_span::Span,
         flags: ReferenceFlags,
-        ctx: &mut TemplateBuildContext<'_>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
-        let Some(span) = span else {
-            return;
-        };
         self.record_expr_handle(node_id, span.start, true);
         if let Some(expr) = self
             .parsed
@@ -574,6 +584,31 @@ impl AnalyzeTemplateWalker<'_, '_> {
             } else {
                 ctx.visit_js_expression_with_flags(expr, flags);
             }
+            // Mirror the root-identifier `SymbolId` into `node_ref_symbols`
+            // so lookups by `dir.id` (shorthand/class/style/bind) keep working
+            // after the synthesized-expression rework. Consumers that need the
+            // operation-level answer should prefer `reference_semantics(ref_id)`.
+            if let Some(sym_id) = attr_root_symbol(expr, ctx) {
+                self.data
+                    .template
+                    .template_semantics
+                    .node_ref_symbols
+                    .insert(node_id, smallvec![sym_id]);
+            }
+        }
+    }
+
+    /// Thin wrapper for directives that still carry `Option<Span>`
+    /// (use/transition/animate). Kept until those directives migrate to the
+    /// non-optional shape.
+    fn walk_optional_expr_attr(
+        &mut self,
+        node_id: NodeId,
+        span: Option<svelte_span::Span>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        if let Some(span) = span {
+            self.walk_expr_attr(node_id, span, ctx);
         }
     }
 
@@ -581,7 +616,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
         &mut self,
         node_id: NodeId,
         offset: u32,
-        ctx: &mut TemplateBuildContext<'_>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
         self.record_expr_handle(node_id, offset, true);
         if let Some(expr) = self
@@ -596,7 +631,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
     fn declare_let_directive_legacy(
         &mut self,
         dir: &LetDirectiveLegacy,
-        ctx: &mut TemplateBuildContext<'_>,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
         let Some(handle) = self.parsed.stmt_handle(dir.name_span.start) else {
             return;
@@ -631,6 +666,44 @@ impl AnalyzeTemplateWalker<'_, '_> {
     }
 }
 
+/// Drill down `member.object` chain to the root `IdentifierReference` and
+/// resolve its `SymbolId` via the current template scope. Mirrors the
+/// reference compiler's `utils/ast.js::object()` helper used by the
+/// `BindDirective` updates pass in `phases/scope.js`.
+fn bind_member_root_symbol<'a>(
+    expr: &Expression<'a>,
+    ctx: &TemplateBuildContext<'_, 'a>,
+) -> Option<svelte_component_semantics::SymbolId> {
+    attr_root_symbol(expr, ctx)
+}
+
+/// Resolve the root-identifier `SymbolId` of an attribute expression. Works
+/// for any expression that eventually bottoms out in an `Identifier` after
+/// drilling through member chains — the same shape reference compiler's
+/// `utils/ast.js::object()` walks. Returns `None` for call expressions,
+/// literals, or unresolved bindings.
+fn attr_root_symbol<'a>(
+    expr: &Expression<'a>,
+    ctx: &TemplateBuildContext<'_, 'a>,
+) -> Option<svelte_component_semantics::SymbolId> {
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::StaticMemberExpression(m) => current = &m.object,
+            Expression::ComputedMemberExpression(m) => current = &m.object,
+            Expression::Identifier(ident) => {
+                if let Some(ref_id) = ident.reference_id.get() {
+                    return ctx.semantics().get_reference(ref_id).symbol_id();
+                }
+                return ctx
+                    .semantics()
+                    .find_binding(ctx.current_scope(), ident.name.as_str());
+            }
+            _ => return None,
+        }
+    }
+}
+
 fn attrs_static_slot_name<'a>(attributes: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attributes.iter().find_map(|attr| match attr {
         Attribute::StringAttribute(attr) if attr.name == "slot" => {
@@ -649,8 +722,8 @@ fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str>
     }
 }
 
-impl TemplateWalker for AnalyzeTemplateWalker<'_, '_> {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'d, 'a, 'b> TemplateWalker<'a> for AnalyzeTemplateWalker<'d, 'a, 'b> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         self.walk_fragment(&self.component.fragment, ctx);
     }
 }

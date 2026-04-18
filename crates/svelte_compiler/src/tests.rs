@@ -648,3 +648,4 @@ fn attribute_invalid_event_handler_string_value() {
         result.diagnostics
     );
 }
+

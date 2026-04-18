@@ -77,7 +77,8 @@ Layers:
 - `svelte_parser` — produces immutable AST. Owns shared domain types and JS expression pre-parsing (`parse_js` -> `JsParseResult`).
 - `svelte_component_semantics` — **single source of truth** for scopes, symbols, references, and per-symbol state across module script + instance script + template. Owns its own builder (`ComponentSemanticsBuilder`) that traverses JS AST via OXC `Visit` and template via `TemplateWalker` trait. Replaces `oxc_semantic::Scoping` / `SemanticBuilder` entirely — OXC provides AST + Visit trait only. Does **not** depend on Svelte AST for template traversal.
 - `svelte_analyze` — multi-pass pipeline. Owns ALL derived data, classifications, flags, precomputation -> `AnalysisData` side tables (keyed by `NodeId`). Also owns expression analysis types (`ExpressionInfo`, `Reference`, `ReferenceFlags`, `ExpressionKind`). Svelte-specific symbol classifications (runes, props, stores, etc.) live in `ComponentScoping` which wraps `ComponentSemantics` via `Deref`.
-- `svelte_codegen_client` — consumes AST + AnalysisData + ParsedExprs to produce JS output. Owns only JS output construction logic.
+- `svelte_transform` — **owns all AST mutation.** Single `ComponentTransformer` with `impl Traverse<'a, ()>` handles both template expressions/statements (via synthetic-Program driver) and the instance/module script `Program` itself. Rune rewriting (`$.get`/`$.set`/`$.update`), store access, prop access, rest-prop member rewrites, deep store mutation, `$state.eager`/`$state.snapshot`/`$effect.pending` lowering, AwaitExpression wrapping, class-state lowering, private-field rewrites, `$inspect`, TS cleanup — all live here. Shared rewrite helpers (used identically from Template and Script modes) live in `transformer/rewrites.rs`.
+- `svelte_codegen_client` — consumes already-transformed AST + `AnalysisData` + `ParsedExprs` to produce JS output. **Never mutates input AST.** Uses `ParserResult::expr()` / `take_expr()` (readonly or ownership-transfer only). Any AST construction inside codegen operates on codegen-synthesized nodes, not parser-owned ones.
 
 Boundary rules:
 1. **Immutable AST** — derived data goes into `AnalysisData`, never into AST nodes.
@@ -85,8 +86,9 @@ Boundary rules:
 3. **JS parsing in parser** — JS expression parsing belongs in `svelte_parser`, not in analyze or codegen.
 4. **SymbolId over strings** — all identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. Only exception: string literals in JS output generation.
 5. **No codegen data caching** — codegen-internal enums/structs that cache or duplicate AST data are a smell. The classification belongs in `AnalysisData`.
-6. **Correct over minimal** — never propose a "simple" fix in the wrong layer when a correct approach exists.
-7. **Existing violations are not precedent** — never use "the existing code already does this" as justification. Either fix the violation or flag it.
+6. **Transform vs codegen split** — rewriting an input AST node (rune ref, store access, member target, etc.) belongs in `svelte_transform`, not in `svelte_codegen_client`. Codegen *builds* output AST; transform *rewrites* input AST. If you're reaching for `ParserResult::expr_mut` / `stmt_mut` from codegen — stop, the rewrite goes in transform. If a rewrite is needed by both template and script, add a shared helper in `svelte_transform/src/transformer/rewrites.rs` and call it from both `template_rewrites.rs` (Template mode) and the script-side methods; never duplicate the logic.
+7. **Correct over minimal** — never propose a "simple" fix in the wrong layer when a correct approach exists.
+8. **Existing violations are not precedent** — never use "the existing code already does this" as justification. Either fix the violation or flag it.
 
 For detailed red/green flags, OXC visitor rules, and additional rules, see the `phase-boundaries` skill.
 
@@ -128,13 +130,14 @@ For legacy Svelte 4 features, see the `legacy-conventions` skill.
 - `.remove()` for ownership transfer from side tables (not `.get().cloned()`).
 - `unwrap_or_else(|| panic!(...))` only for internal invariants, never for user errors. User errors -> `Diagnostic`.
 - Repeating `match` patterns on an enum -> extract into a method on that enum.
+- Destructure `self` (`let Self { field_a, field_b, .. } = self;`) when a method accesses 3+ fields repeatedly, or when disjoint borrows are needed. Preferred over long `self.field_a.x() / self.field_b.y()` chains.
 - Comments answer "why", never describe what the line does.
 
 ## Pre-commit self-check
 
 Before every commit, verify:
-1. **Correct layer** — is this code in the right crate? (parser/analyze/codegen)
-2. **No new boundary violations** — no re-parsing in codegen, no string lookups, no repeated traversal
+1. **Correct layer** — is this code in the right crate? (parser / analyze / transform / codegen). AST rewrites → `svelte_transform`. Output JS construction → `svelte_codegen_client`. Codegen never calls `expr_mut` / `stmt_mut`.
+2. **No new boundary violations** — no re-parsing in codegen, no string lookups, no repeated traversal, no AST mutation in codegen
 3. **Visitor usage** — any new JS AST traversal uses OXC Visit/Traverse, not manual match. Consult the OXC API skill references for the correct visitor method. Exceptions: shallow destructure, `builder.rs`.
 4. **SymbolId** — no new string-based identifier comparisons
 5. **Edge cases** — does the change handle all JS syntax variants, not just the tested one?

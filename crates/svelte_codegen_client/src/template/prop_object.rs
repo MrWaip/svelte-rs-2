@@ -1,6 +1,6 @@
 use oxc_ast::ast::Expression;
 
-use crate::builder::{Arg, ObjProp};
+use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
 pub(crate) enum PropOrSpread<'a> {

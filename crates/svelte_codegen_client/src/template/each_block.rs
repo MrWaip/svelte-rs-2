@@ -6,7 +6,7 @@ use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{ExprSite, FragmentKey};
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 use super::async_plan::AsyncEmissionPlan;
@@ -129,8 +129,15 @@ pub(crate) fn gen_each_block<'a>(
         None
     };
 
-    // Pre-computed by analysis — no string-based symbol re-resolution.
-    let is_prop_source = ctx.is_prop_source_node(block_id);
+    // One reference-level semantic query: prop-source reads lower the
+    // collection without a thunk because the prop accessor is already a
+    // callable. All other variants (signal, non-source prop, store, plain)
+    // stay on the thunked path.
+    use svelte_analyze::{PropReferenceSemantics, ReferenceSemantics};
+    let is_prop_source = matches!(
+        ctx.directive_root_reference_semantics(block_id),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+    );
     let collection_fn = if needs_async {
         // Inside $.async callback: () => $.get($$collection)
         ctx.b

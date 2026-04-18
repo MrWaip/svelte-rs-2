@@ -5,7 +5,7 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{FragmentKey, NamespaceKind};
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 use crate::script::compute_line_col;
 

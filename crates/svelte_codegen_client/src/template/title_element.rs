@@ -9,7 +9,7 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
-use crate::builder::{Arg, AssignLeft, TemplatePart};
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
 use super::expression::{emit_effect_call, parts_are_dynamic, MemoValueRef, TemplateMemoState};

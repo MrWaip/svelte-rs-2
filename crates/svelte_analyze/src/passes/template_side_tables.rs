@@ -11,26 +11,18 @@
 //! Marks that depend on bindings (find_binding) go in leave_* hooks —
 //! by that time the component semantics pass has already created the bindings.
 
-use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingIdentifier, BindingPattern, Expression, Statement,
-    VariableDeclarator,
-};
-use oxc_ast_visit::Visit;
+use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
     is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element,
-    LetDirectiveLegacy, Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument,
+    Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument,
     SvelteElement, SvelteWindow,
 };
 
-use crate::scope::ComponentScoping;
 use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
-use crate::types::script::RuneKind;
 use crate::utils::binding_pattern::collect_binding_names;
-use crate::utils::legacy_slot::{
-    collect_legacy_slot_bindings, legacy_slot_is_destructured, LegacySlotBindingKind,
-};
 use crate::walker::{TemplateVisitor, VisitContext};
 use crate::ElementFactsEntry;
+use svelte_parser::ParserResult;
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
@@ -51,7 +43,7 @@ fn root_namespace(component: &svelte_ast::Component) -> NamespaceKind {
 
 fn inherited_namespace(
     component: &svelte_ast::Component,
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
     parent_element: Option<svelte_ast::NodeId>,
 ) -> NamespaceKind {
     parent_element
@@ -496,17 +488,17 @@ fn fragment_has_rich_content(
 
 /// Extract the first VariableDeclarator from a parsed statement handle.
 fn get_declarator<'a>(
-    ctx: &VisitContext<'a>,
+    parsed: &'a ParserResult<'a>,
     handle: StmtHandle,
 ) -> Option<&'a VariableDeclarator<'a>> {
-    ctx.parsed()?.stmt(handle).and_then(|stmt| match stmt {
+    parsed.stmt(handle).and_then(|stmt| match stmt {
         Statement::VariableDeclaration(decl) => decl.declarations.first(),
         _ => None,
     })
 }
 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
-    fn visit_text(&mut self, text: &svelte_ast::Text, ctx: &mut VisitContext<'_>) {
+    fn visit_text(&mut self, text: &svelte_ast::Text, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -516,7 +508,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_expression_tag(
         &mut self,
         tag: &svelte_ast::ExpressionTag,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         ctx.data
             .template
@@ -524,28 +516,29 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record_node_parent(tag.id, ctx.parent());
     }
 
-    fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, ctx: &mut VisitContext<'_>) {
+    fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
     }
 
-    fn visit_html_tag(&mut self, tag: &svelte_ast::HtmlTag, ctx: &mut VisitContext<'_>) {
+    fn visit_html_tag(&mut self, tag: &svelte_ast::HtmlTag, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
     }
 
-    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
+        let parsed = ctx.parsed;
         ctx.data
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
         if let Some(handle) = block
             .context_span
-            .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
+            .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
         {
             ctx.data
                 .template
@@ -555,7 +548,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
         if let Some(handle) = block
             .index_span
-            .and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start)))
+            .and_then(|span| parsed.and_then(|p| p.stmt_handle(span.start)))
         {
             ctx.data
                 .template
@@ -565,8 +558,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
         let is_destructured = block
             .context_span
-            .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
-            .and_then(|handle| get_declarator(ctx, handle))
+            .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
+            .and_then(|handle| parsed.and_then(|p| get_declarator(p, handle)))
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         if is_destructured {
@@ -576,11 +569,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .fragment_scope(&FragmentKey::EachBody(block.id))
                 .expect("EachBody scope must exist");
             // $$item is synthetic — no OXC AST node for it
-            let ctx_sym = ctx
+            let _ctx_sym = ctx
                 .data
                 .scoping
                 .add_synthetic_binding(child_scope, "$$item");
-            ctx.data.scoping.mark_each_block_var(ctx_sym);
             ctx.data.blocks.each_context.mark_destructured(block.id);
         }
 
@@ -594,14 +586,15 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
     }
 
-    fn visit_if_block(&mut self, block: &svelte_ast::IfBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_if_block(&mut self, block: &svelte_ast::IfBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
-    fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+    fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
+        let parsed = ctx.parsed;
         let child_scope = ctx
             .data
             .scoping
@@ -610,39 +603,15 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
         let is_destructured = ctx.data.each_is_destructured(block.id);
 
-        if is_destructured {
-            if let Some(parsed) = ctx.parsed() {
-                if let Some(stmt) = block
-                    .context_span
-                    .and_then(|cs| parsed.stmt_handle(cs.start))
-                    .and_then(|handle| parsed.stmt(handle))
-                {
-                    let mut rest_marker = EachRestMarker {
-                        scoping: &mut ctx.data.scoping,
-                    };
-                    rest_marker.visit_statement(stmt);
-                }
-            }
+        // Reactivity marking (each_rest / getter / each_non_reactive for context
+        // and index) is owned by `reactivity_semantics/builder_v2/contextual.rs`.
+        // This pass only records non-reactivity structural indices.
 
-            // Default bindings use $.derived_safe_equal (signals), non-default use getters.
-            if let Some(parsed) = ctx.parsed() {
-                if let Some(stmt) = block
-                    .context_span
-                    .and_then(|cs| parsed.stmt_handle(cs.start))
-                    .and_then(|handle| parsed.stmt(handle))
-                {
-                    let mut marker = DestructuredGetterMarker {
-                        scoping: &mut ctx.data.scoping,
-                        in_default: false,
-                    };
-                    marker.visit_statement(stmt);
-                }
-            }
-        } else {
+        if !is_destructured {
             let ctx_name = block
                 .context_span
-                .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
-                .and_then(|handle| get_declarator(ctx, handle))
+                .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
+                .and_then(|handle| parsed.and_then(|p| get_declarator(p, handle)))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
 
@@ -653,14 +622,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                     .record_context_name(block.id, ctx_name.to_string());
 
                 if let Some(ctx_sym) = ctx.data.scoping.find_binding(child_scope, ctx_name) {
-                    ctx.data.scoping.mark_each_block_var(ctx_sym);
-
-                    // key_is_item: key expression resolves to the same symbol as context
                     if let Some(key_span) = block.key_span {
                         let is_key_item = ctx
                             .parsed()
-                            .and_then(|p| p.expr_handle(key_span.start))
-                            .and_then(|handle| ctx.parsed().and_then(|p| p.expr(handle)))
+                            .and_then(|p| p.expr_handle(key_span.start).and_then(|handle| p.expr(handle)))
                             .and_then(|expr| match expr {
                                 Expression::Identifier(ident) => ident.reference_id.get(),
                                 _ => None,
@@ -668,7 +633,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                             .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())
                             .is_some_and(|sym| sym == ctx_sym);
                         if is_key_item {
-                            ctx.data.scoping.mark_each_non_reactive(ctx_sym);
                             ctx.data.blocks.each_context.mark_key_is_item(block.id);
                         }
                     }
@@ -679,23 +643,18 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         if let Some(idx_span) = block.index_span {
             let idx_name = ctx
                 .parsed()
-                .and_then(|p| p.stmt_handle(idx_span.start))
-                .and_then(|handle| get_declarator(ctx, handle))
+                .and_then(|p| p.stmt_handle(idx_span.start).and_then(|handle| get_declarator(p, handle)))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name {
                 if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
-                    ctx.data.scoping.mark_each_block_var(idx_sym);
                     ctx.data
                         .blocks
                         .each_context
                         .record_index_sym(block.id, idx_sym);
-                    // EACH_INDEX_REACTIVE is only set for keyed blocks. For unkeyed blocks the
-                    // index is a plain iteration counter — not a reactive signal — so reads
-                    // must not be wrapped in $.get().
+                    // `EACH_INDEX_NON_DYNAMIC` bit stays on `ComponentScoping`
+                    // until the dynamism classifier moves out of the scoping layer.
                     if block.key_span.is_none() {
-                        ctx.data.scoping.mark_each_non_reactive(idx_sym);
-                        // Unkeyed index is also non-dynamic: no $.template_effect needed.
                         ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
                     }
                 }
@@ -722,7 +681,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
     }
 
-    fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data.template.snippets.local_snippets.push(block.id);
         if let Some(handle) = ctx
             .parsed()
@@ -736,34 +695,23 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
-            ctx.data.scoping.mark_snippet_name(name_sym);
+            // `mark_snippet_name` + snippet-param classification are owned by
+            // `reactivity_semantics/builder_v2/contextual.rs`. Keep only the
+            // template-side name → block id index here.
             ctx.data
                 .template
                 .snippets
                 .snippet_name_symbols
                 .insert(name_sym, block.id);
         }
-        // Mark snippet params. Codegen reads the original parsed param patterns via stmt handle.
-        if let Some(parsed) = ctx.parsed() {
-            if let Some(stmt) = parsed
-                .stmt_handle(block.expression_span.start)
-                .and_then(|handle| parsed.stmt(handle))
-            {
-                let mut marker = SnippetParamMarker {
-                    scoping: &mut ctx.data.scoping,
-                    in_default: false,
-                };
-                marker.visit_statement(stmt);
-            }
-        }
     }
 
-    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
+    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-        if let Some(parsed) = ctx.parsed() {
+            if let Some(parsed) = ctx.parsed {
             if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
                 .stmt_handle(tag.expression_span.start)
                 .and_then(|handle| parsed.stmt(handle))
@@ -781,7 +729,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
     }
 
-    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -809,7 +757,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record(el.id, &el.name, facts, parent_element);
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -827,60 +775,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_>) {
-        let Some(stmt_handle) = ctx.data.let_directive_stmt_handle(dir.id) else {
-            return;
-        };
-        let Some(stmt) = ctx.parsed().and_then(|parsed| parsed.stmt(stmt_handle)) else {
-            return;
-        };
 
-        let carrier_sym_id = if legacy_slot_is_destructured(stmt) {
-            let carrier_sym_id = ctx
-                .data
-                .scoping
-                .slot_let_carrier(dir.id)
-                .unwrap_or_else(|| {
-                    let carrier_sym_id = ctx
-                        .data
-                        .scoping
-                        .add_unique_synthetic_binding(ctx.scope, dir.name.as_str());
-                    ctx.data.scoping.mark_template_declaration(carrier_sym_id);
-                    ctx.data
-                        .scoping
-                        .mark_rune(carrier_sym_id, RuneKind::Derived);
-                    ctx.data
-                        .scoping
-                        .mark_slot_let_carrier(dir.id, carrier_sym_id);
-                    carrier_sym_id
-                });
-            Some(carrier_sym_id)
-        } else {
-            None
-        };
-
-        for binding in collect_legacy_slot_bindings(stmt) {
-            let Some(sym_id) = ctx.data.scoping.get_binding(ctx.scope, &binding.name) else {
-                continue;
-            };
-            ctx.data.scoping.mark_template_declaration(sym_id);
-            match binding.kind {
-                LegacySlotBindingKind::Direct => {
-                    ctx.data.scoping.mark_rune(sym_id, RuneKind::Derived);
-                }
-                LegacySlotBindingKind::DestructuredLeaf => {
-                    ctx.data.scoping.mark_slot_let_binding_carrier(
-                        sym_id,
-                        carrier_sym_id.unwrap_or_else(|| {
-                            panic!("destructured slot let binding missing carrier")
-                        }),
-                    );
-                }
-            }
-        }
-    }
-
-    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -913,7 +809,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record(el.id, "*", facts, parent_element);
     }
 
-    fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -931,7 +827,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_svelte_document(&mut self, el: &SvelteDocument, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_document(&mut self, el: &SvelteDocument, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -949,7 +845,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_svelte_body(&mut self, el: &SvelteBody, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_body(&mut self, el: &SvelteBody, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -967,7 +863,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_svelte_boundary(&mut self, el: &SvelteBoundary, ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_boundary(&mut self, el: &SvelteBoundary, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -985,28 +881,28 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         );
     }
 
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
-    fn visit_key_block(&mut self, block: &svelte_ast::KeyBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_key_block(&mut self, block: &svelte_ast::KeyBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
-    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
+    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
@@ -1017,7 +913,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         &mut self,
         node_id: svelte_ast::NodeId,
         _span: svelte_span::Span,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         ctx.data
             .template
@@ -1026,86 +922,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 }
 
-/// OXC Visit that marks arrow function param bindings as snippet params.
-/// Non-default bindings → getter (thunk call). Default bindings (AssignmentPattern) → signal ($.get).
-/// Descends through VariableDeclaration → ArrowFunctionExpression → params only.
-struct SnippetParamMarker<'s> {
-    scoping: &'s mut ComponentScoping,
-    in_default: bool,
-}
+// Reactivity marker visitors (`SnippetParamMarker`, `DestructuredGetterMarker`,
+// `EachRestMarker`) are owned by
+// `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs`.
 
-impl<'a> Visit<'a> for SnippetParamMarker<'_> {
-    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        if let Some(sym_id) = ident.symbol_id.get() {
-            self.scoping.mark_snippet_param(sym_id);
-            if !self.in_default {
-                self.scoping.mark_getter(sym_id);
-            }
-        }
-    }
-
-    fn visit_assignment_pattern(&mut self, pat: &oxc_ast::ast::AssignmentPattern<'a>) {
-        // Default value pattern — bindings become $.derived_safe_equal signals, not getter thunks
-        self.in_default = true;
-        self.visit_binding_pattern(&pat.left);
-        self.in_default = false;
-        // Don't visit pat.right — it's the default expression, not a binding
-    }
-
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
-        // Skip decl.id — snippet name is not a param
-        if let Some(init) = &decl.init {
-            self.visit_expression(init);
-        }
-    }
-
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        // Only visit params — skip body to avoid marking inner bindings
-        self.visit_formal_parameters(&arrow.params);
-    }
-}
-
-/// OXC Visit that marks non-default destructured each bindings as getters.
-/// Default bindings (`{ value = "N/A" }`) become $.derived_safe_equal (signals, not getters).
-struct DestructuredGetterMarker<'s> {
-    scoping: &'s mut ComponentScoping,
-    in_default: bool,
-}
-
-impl<'a> Visit<'a> for DestructuredGetterMarker<'_> {
-    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        if !self.in_default {
-            if let Some(sym_id) = ident.symbol_id.get() {
-                self.scoping.mark_getter(sym_id);
-            }
-        }
-    }
-
-    fn visit_assignment_pattern(&mut self, pat: &oxc_ast::ast::AssignmentPattern<'a>) {
-        // Default value pattern — bindings inside are signals, not getters
-        self.in_default = true;
-        self.visit_binding_pattern(&pat.left);
-        self.in_default = false;
-    }
-
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
-        // Skip declarator init (the `= x` part) — only visit the pattern
-        self.visit_binding_pattern(&decl.id);
-    }
-}
-
-struct EachRestMarker<'s> {
-    scoping: &'s mut ComponentScoping,
-}
-
-impl<'a> Visit<'a> for EachRestMarker<'_> {
-    fn visit_binding_rest_element(&mut self, it: &oxc_ast::ast::BindingRestElement<'a>) {
-        if let Some(sym_id) = it
-            .argument
-            .get_binding_identifier()
-            .and_then(|ident| ident.symbol_id.get())
-        {
-            self.scoping.mark_each_rest(sym_id);
-        }
-    }
-}

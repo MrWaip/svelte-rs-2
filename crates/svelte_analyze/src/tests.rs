@@ -1,5 +1,5 @@
 use crate::types::script::RuneKind;
-use crate::TemplateBindingReadKind;
+use crate::reactivity_semantics::data::PropDefaultLowering;
 use oxc_ast::ast::{BindingPattern, CallExpression, Program, Statement};
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
@@ -630,13 +630,57 @@ fn find_snippet_block<'a>(
     None
 }
 
+fn find_await_block<'a>(
+    fragment: &'a Fragment,
+    component: &'a Component,
+    expr_text: &str,
+) -> Option<&'a svelte_ast::AwaitBlock> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::AwaitBlock(block)
+                if component.source_text(block.expression_span) == expr_text =>
+            {
+                return Some(block);
+            }
+            Node::ComponentNode(node) => {
+                if let Some(block) = find_await_block(&node.fragment, component, expr_text) {
+                    return Some(block);
+                }
+            }
+            Node::Element(el) => {
+                if let Some(block) = find_await_block(&el.fragment, component, expr_text) {
+                    return Some(block);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(block) = find_await_block(&b.consequent, component, expr_text) {
+                    return Some(block);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(block) = find_await_block(alt, component, expr_text) {
+                        return Some(block);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(block) = find_await_block(&b.body, component, expr_text) {
+                    return Some(block);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 // -----------------------------------------------------------------------
 // Assertion helpers
 // -----------------------------------------------------------------------
 
-fn analyze_source(source: &str) -> (Component, AnalysisData) {
-    let alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
@@ -658,9 +702,12 @@ fn analyze_source_with_parsed(source: &str) -> (Component, AnalysisData, ParserR
     (component, data, parsed)
 }
 
-fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Component, AnalysisData) {
-    let alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+fn analyze_source_with_options(
+    source: &str,
+    options: AnalyzeOptions,
+) -> (Component, AnalysisData<'static>) {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
@@ -670,7 +717,7 @@ fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Compon
     (component, data)
 }
 
-fn analyze_source_with_css(source: &str) -> (Component, AnalysisData) {
+fn analyze_source_with_css(source: &str) -> (Component, AnalysisData<'static>) {
     let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
     assert!(
         css_pass_diags.is_empty(),
@@ -679,9 +726,11 @@ fn analyze_source_with_css(source: &str) -> (Component, AnalysisData) {
     (component, data)
 }
 
-fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<Diagnostic>) {
-    let alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+fn analyze_source_with_css_diags(
+    source: &str,
+) -> (Component, AnalysisData<'static>, Vec<Diagnostic>) {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
@@ -689,7 +738,7 @@ fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<
     let (mut data, parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
-        panic!("expected style block");
+        panic!("expected style block")
     };
     assert!(
         css_diags.is_empty(),
@@ -709,9 +758,13 @@ fn analyze_source_with_css_diags(source: &str) -> (Component, AnalysisData, Vec<
 
 fn analyze_source_with_diags(
     source: &str,
-) -> (Component, AnalysisData, Vec<svelte_diagnostics::Diagnostic>) {
-    let alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+) -> (
+    Component,
+    AnalysisData<'static>,
+    Vec<svelte_diagnostics::Diagnostic>,
+) {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
@@ -738,23 +791,11 @@ fn assert_symbol(data: &AnalysisData, name: &str) {
     );
 }
 
-fn assert_is_rune(data: &AnalysisData, name: &str) {
-    let root = data.scoping.root_scope_id();
-    let sym_id = data
-        .scoping
-        .find_binding(root, name)
-        .unwrap_or_else(|| panic!("no symbol '{name}'"));
-    assert!(
-        data.scoping.is_rune(sym_id),
-        "expected '{name}' to be a rune"
-    );
-}
-
 fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
     let id = find_expr_tag(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        data.output.dynamic_nodes.contains(&id),
+        data.dynamism.is_dynamic_node(id),
         "expected ExpressionTag '{expr_text}' to be dynamic"
     );
 }
@@ -763,7 +804,7 @@ fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text:
     let id = find_expr_tag(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        !data.output.dynamic_nodes.contains(&id),
+        !data.dynamism.is_dynamic_node(id),
         "expected ExpressionTag '{expr_text}' to NOT be dynamic"
     );
 }
@@ -772,16 +813,16 @@ fn assert_dynamic_component(data: &AnalysisData, component: &Component, name: &s
     let id = find_component_node_id(&component.fragment, component, name)
         .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
     assert!(
-        data.elements.flags.is_dynamic_component(id),
+        data.dynamism.is_dynamic_component(id),
         "expected ComponentNode '{name}' to be dynamic"
     );
 }
 
-fn assert_component_ref_kind(
+fn assert_component_ref_non_source_prop(
     data: &AnalysisData,
     component: &Component,
     name: &str,
-    expected: TemplateBindingReadKind,
+    expected_prop_name: &str,
 ) {
     let id = find_component_node_id(&component.fragment, component, name)
         .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
@@ -790,15 +831,103 @@ fn assert_component_ref_kind(
         .flags
         .component_binding_sym(id)
         .unwrap_or_else(|| panic!("expected component binding symbol for '{name}'"));
-    let actual = data.scoping.template_binding_read_kind(sym_id);
-    assert_eq!(actual, expected);
+    use crate::types::data::{DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics};
+    let decl = data.declaration_semantics(data.scoping.symbol_declaration(sym_id));
+    assert!(matches!(
+        decl,
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::NonSource,
+            ..
+        })
+    ));
+    assert_eq!(data.binding_origin_key(sym_id), Some(expected_prop_name));
+}
+
+fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
+    let sym_id = data
+        .scoping
+        .find_binding_in_any_scope(name)
+        .unwrap_or_else(|| panic!("no binding '{name}'"));
+    let node_id = data.scoping.symbol_declaration(sym_id);
+    assert!(
+        matches!(
+            data.declaration_semantics(node_id),
+            crate::types::data::DeclarationSemantics::Const(
+                crate::types::data::ConstDeclarationSemantics::ConstTag { .. }
+            )
+        ),
+        "expected '{name}' to have a Const declaration semantic",
+    );
+}
+
+fn symbol_declaration_semantics(
+    data: &AnalysisData,
+    name: &str,
+) -> DeclarationSemantics {
+    let sym_id = data
+        .scoping
+        .find_binding_in_any_scope(name)
+        .unwrap_or_else(|| panic!("missing binding '{name}'"));
+    data.declaration_root_for_symbol(sym_id)
+        .map(|node_id| data.declaration_semantics(node_id))
+        .filter(|semantics| !matches!(semantics, DeclarationSemantics::NonReactive))
+        .unwrap_or_else(|| data.declaration_semantics(data.scoping.symbol_declaration(sym_id)))
+}
+
+fn script_reference_semantics(
+    data: &AnalysisData,
+    parsed: &ParserResult<'_>,
+    name: &str,
+    expected_read: bool,
+    expected_write: bool,
+    occurrence: usize,
+) -> ReferenceSemantics {
+    struct RefFinder<'n> {
+        target: &'n str,
+        ref_ids: Vec<oxc_semantic::ReferenceId>,
+    }
+
+    impl<'a> Visit<'a> for RefFinder<'_> {
+        fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+            if ident.name != self.target {
+                return;
+            }
+            let Some(ref_id) = ident.reference_id.get() else {
+                return;
+            };
+            self.ref_ids.push(ref_id);
+        }
+    }
+
+    let instance_program = parsed.program.as_ref().expect("expected instance program");
+    let mut finder = RefFinder {
+        target: name,
+        ref_ids: Vec::new(),
+    };
+    finder.visit_program(instance_program);
+
+    let matching: Vec<_> = finder
+        .ref_ids
+        .into_iter()
+        .filter(|&ref_id| {
+            let reference = data.scoping.get_reference(ref_id);
+            reference.is_read() == expected_read && reference.is_write() == expected_write
+        })
+        .collect();
+
+    let ref_id = *matching.get(occurrence).unwrap_or_else(|| {
+        panic!(
+            "missing reference '{name}' with flags read={expected_read} write={expected_write} occurrence={occurrence}"
+        )
+    });
+    data.reference_semantics(ref_id)
 }
 
 fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text: &str) {
     let block = find_if_block(&component.fragment, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
     assert!(
-        data.output.dynamic_nodes.contains(&block.id),
+        data.dynamism.is_dynamic_node(block.id),
         "expected IfBlock '{test_text}' to be dynamic"
     );
 }
@@ -807,7 +936,7 @@ fn assert_dynamic_each(data: &AnalysisData, component: &Component, expr_text: &s
     let block = find_each_block(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no EachBlock with expr '{expr_text}'"));
     assert!(
-        data.output.dynamic_nodes.contains(&block.id),
+        data.dynamism.is_dynamic_node(block.id),
         "expected EachBlock '{expr_text}' to be dynamic"
     );
 }
@@ -865,20 +994,12 @@ fn assert_bind_target_symbol_name(
     );
 }
 
-fn assert_bind_is_prop_source(
-    data: &AnalysisData,
-    component: &Component,
-    tag_name: &str,
-    bind_name: &str,
-    expected: bool,
-) {
-    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
-        .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
-    assert_eq!(
-        data.template.bind_semantics.is_prop_source(dir_id),
-        expected,
-        "unexpected prop-source classification for bind:{bind_name} on <{tag_name}>",
-    );
+fn assert_diag_codes(diags: &[Diagnostic], expected: &[&str]) {
+    let actual = diags
+        .iter()
+        .map(|diag| diag.kind.code())
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected, "unexpected diagnostics: {diags:?}");
 }
 
 fn assert_bind_target_semantics(
@@ -1063,15 +1184,43 @@ fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usiz
 }
 
 fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
+    use crate::types::data::{
+        DeclarationSemantics, DerivedDeclarationSemantics, DerivedKind,
+        OptimizedRuneSemantics, StateDeclarationSemantics, StateKind,
+    };
     let root = data.scoping.root_scope_id();
     let sym_id = data
         .scoping
         .find_binding(root, name)
         .unwrap_or_else(|| panic!("no symbol '{name}'"));
-    let actual = data
-        .scoping
-        .rune_kind(sym_id)
-        .unwrap_or_else(|| panic!("'{name}' is not a rune"));
+    let decl = data.declaration_semantics(data.scoping.symbol_declaration(sym_id));
+    let actual = match decl {
+        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::State, .. }) => {
+            RuneKind::State
+        }
+        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::StateRaw, .. }) => {
+            RuneKind::StateRaw
+        }
+        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::StateEager, .. }) => {
+            RuneKind::StateEager
+        }
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics { kind: DerivedKind::Derived, .. }) => {
+            RuneKind::Derived
+        }
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics { kind: DerivedKind::DerivedBy, .. }) => {
+            RuneKind::DerivedBy
+        }
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::State, .. }) => {
+            RuneKind::State
+        }
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::StateRaw, .. }) => {
+            RuneKind::StateRaw
+        }
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::StateEager, .. }) => {
+            RuneKind::StateEager
+        }
+        other => panic!("'{name}' is not a rune: {other:?}"),
+    };
     assert_eq!(actual, expected, "expected '{name}' to be {expected:?}");
 }
 
@@ -1266,15 +1415,6 @@ fn mixed_content() {
 }
 
 #[test]
-fn rune_detection() {
-    let (c, data) =
-        analyze_source(r#"<script>let count = $state(0); count = 1;</script><p>{count}</p>"#);
-    assert_symbol(&data, "count");
-    assert_is_rune(&data, "count");
-    assert_dynamic_tag(&data, &c, "count");
-}
-
-#[test]
 fn dynamic_text_content() {
     let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
     assert_root_content_type(&data, ContentStrategy::DynamicText);
@@ -1308,7 +1448,6 @@ fn if_block_test_is_dynamic() {
         r#"<script>let show = $state(true); show = false;</script>{#if show}<p>hi</p>{/if}"#,
     );
     assert_symbol(&data, "show");
-    assert_is_rune(&data, "show");
     assert_dynamic_if_block(&data, &c, "show");
 }
 
@@ -1331,18 +1470,6 @@ fn component_rune_bindings_are_dynamic() {
 
     assert_dynamic_component(&data, &component, "Derived_1");
     assert_dynamic_component(&data, &component, "Const_0");
-    assert_component_ref_kind(
-        &data,
-        &component,
-        "Derived_1",
-        TemplateBindingReadKind::RuneGet,
-    );
-    assert_component_ref_kind(
-        &data,
-        &component,
-        "Const_0",
-        TemplateBindingReadKind::RuneGet,
-    );
 }
 
 #[test]
@@ -1357,12 +1484,7 @@ fn component_prop_binding_uses_props_access_ref() {
     );
 
     assert_dynamic_component(&data, &component, "Widget");
-    assert_component_ref_kind(
-        &data,
-        &component,
-        "Widget",
-        TemplateBindingReadKind::PropsAccess,
-    );
+    assert_component_ref_non_source_prop(&data, &component, "Widget", "Widget");
 }
 
 // — new tests —
@@ -1406,7 +1528,6 @@ fn each_block_dynamic() {
         r#"<script>let items = $state([]); items = [1];</script>{#each items as item}<p>{item}</p>{/each}"#,
     );
     assert_symbol(&data, "items");
-    assert_is_rune(&data, "items");
     assert_dynamic_each(&data, &c, "items");
 }
 
@@ -1430,31 +1551,29 @@ fn each_block_context_is_dynamic() {
 #[test]
 fn each_block_shadowing() {
     // `item` in script is a rune; `item` inside {#each} should shadow it
-    // (resolved as each-block variable, not as script rune)
+    // (resolved as each-block variable, not as script rune).
     let (c, data) = analyze_source(
-        r#"<script>let item = $state(0); let items = $state([]);</script>{#each items as item}<p>{item}</p>{/each}"#,
+        r#"<script>let item = $state(0); item = 1; let items = $state([]);</script>{#each items as item}<p>{item}</p>{/each}"#,
     );
-    assert_is_rune(&data, "item");
-    // The {item} inside each is still dynamic (each-block var), but it
-    // resolves to the each-block binding, not the script rune.
     assert_dynamic_tag(&data, &c, "item");
 
-    // Verify the scope tree correctly models the shadowing:
-    // root scope has `item` as a rune, each-block scope has `item` as a block var
     let root = data.scoping.root_scope_id();
     let root_sym = data.scoping.find_binding(root, "item").unwrap();
-    assert!(data.scoping.is_rune(root_sym));
+    assert!(matches!(
+        data.declaration_semantics(data.scoping.symbol_declaration(root_sym)),
+        crate::types::data::DeclarationSemantics::State(_)
+    ));
 
-    // Find the each block's scope
     let each_block = find_each_block(&c.fragment, &c, "items").unwrap();
     let each_scope = data
         .scoping
         .fragment_scope(&FragmentKey::EachBody(each_block.id))
         .unwrap();
     let each_sym = data.scoping.find_binding(each_scope, "item").unwrap();
-    // The each-block's `item` is NOT a rune (it's a block variable)
-    assert!(!data.scoping.is_rune(each_sym));
-    // And it's a different symbol than the root one
+    assert!(matches!(
+        data.declaration_semantics(data.scoping.symbol_declaration(each_sym)),
+        crate::types::data::DeclarationSemantics::Contextual(_)
+    ));
     assert_ne!(root_sym, each_sym);
 }
 
@@ -1468,7 +1587,6 @@ fn each_block_shadowing_does_not_mutate_rune() {
     assert!(parse_diags.is_empty());
     let (data, _parsed, _diags) = analyze(&component, js_result);
     // The ROOT-scoped rune `count` must NOT be mutated — shadowing works correctly.
-    assert_is_rune(&data, "count");
     let root = data.scoping.root_scope_id();
     let count_sym = data
         .scoping
@@ -1923,7 +2041,7 @@ fn bare_global_tail_only_scopes_local_prefix() {
     let (mut data, parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     let Some((stylesheet, css_diags)) = svelte_parser::parse_css_block(&component) else {
-        panic!("expected style block");
+        panic!("expected style block")
     };
     assert!(
         css_diags.is_empty(),
@@ -2013,10 +2131,13 @@ fn template_element_index_tracks_element_siblings() {
 
 #[test]
 fn bind_group_tracks_matching_ancestor_each_blocks_via_query_layer() {
+    // `groups` is `$state({})` because `bind:group={groups[...][...]}` mutates
+    // it through the member chain — keeping it plain would now (correctly)
+    // trigger the non-reactive-update warning.
     let (component, data) = analyze_source(
         r#"<script>
     let items = $state([{ options: [{ id: 1 }] }]);
-    let groups = {};
+    let groups = $state({});
 </script>
 {#each items as item}
     {#each item.options as option}
@@ -2130,15 +2251,18 @@ fn bind_checked_marks_bindable_props_source_nodes() {
     );
 
     assert_bind_target_symbol_name(&data, &component, "input", "checked", "checked");
-    assert_bind_is_prop_source(&data, &component, "input", "checked", true);
 }
 
 #[test]
 fn each_context_index_tracks_index_symbol_and_bind_this_context() {
+    // `node` is `$state([])` so bind:this={node[index]} member mutation
+    // doesn't trigger the non-reactive-update warning. Before the shorthand
+    // rework `node` was never flagged mutated so a plain `let node` used to
+    // slip past this validator silently — that was a bug in analyze.
     let (component, data) = analyze_source(
         r#"<script>
     let items = [{ id: 1 }];
-    let node;
+    let node = $state([]);
 </script>
 {#each items as item, index (item.id)}
     <div bind:this={node[index]}>{item.id}</div>
@@ -2470,17 +2594,6 @@ fn module_exported_render_tag_callee_stays_direct_with_snippets() {
 {@render row(label(title))}"#;
     let (component, data) = analyze_source(source);
 
-    let root = data.scoping.root_scope_id();
-    let label_sym = data
-        .scoping
-        .find_binding(root, "label")
-        .expect("expected module-exported function binding");
-    assert_eq!(
-        data.scoping.template_binding_read_kind(label_sym),
-        TemplateBindingReadKind::Identifier,
-        "module-exported plain functions must stay direct template bindings"
-    );
-
     let render_id = find_render_tag(&component.fragment, &component, "row(label(title))")
         .expect("expected render tag");
     let plan = data
@@ -2629,6 +2742,64 @@ fn expr_role_dynamic_pure_does_not_set_needs_context() {
         "dynamic-pure expression should not require component context by role alone"
     );
     assert_expr_tag_async_query(&data, &c, "count", false);
+}
+
+#[test]
+fn prop_source_expression_stays_dynamic() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    let { value = 1 } = $props();
+</script>
+
+{value.toString()}"#,
+    );
+
+    assert_dynamic_tag(&data, &component, "value.toString()");
+}
+
+#[test]
+fn bindable_prop_source_expression_stays_dynamic() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    let { value = $bindable(1) } = $props();
+</script>
+
+{value.toString()}"#,
+    );
+
+    assert_dynamic_tag(&data, &component, "value.toString()");
+}
+
+#[test]
+fn non_source_props_expression_still_stays_dynamic() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    let { value } = $props();
+</script>
+
+{value.toString()}"#,
+    );
+
+    assert_dynamic_tag(&data, &component, "value.toString()");
+}
+
+#[test]
+fn const_tag_bindings_record_const_tag_owner() {
+    let (_component, data) = analyze_source(
+        r#"<script>
+    let shared = 1;
+</script>
+
+{#if true}
+    {@const alias = shared}
+    <div>{alias}</div>
+{/if}"#,
+    );
+
+    assert_const_tag_owner(&data, "alias");
 }
 
 // ---------------------------------------------------------------------------
@@ -3259,14 +3430,9 @@ fn legacy_slot_let_alias_uses_statement_backed_binding() {
         data.scoping.get_binding(default_scope, "item").is_none(),
         "alias let directive must not declare the slot prop name"
     );
-    let processed_sym = data
-        .scoping
+    data.scoping
         .get_binding(default_scope, "processed")
         .unwrap_or_else(|| panic!("alias let directive must declare processed"));
-    assert_eq!(
-        data.scoping.template_binding_read_kind(processed_sym),
-        TemplateBindingReadKind::RuneGet
-    );
 }
 
 #[test]
@@ -3314,21 +3480,523 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
         .scoping
         .fragment_scope(&FragmentKey::NamedSlot(list_id, wrapper_id))
         .unwrap_or_else(|| panic!("missing named slot scope"));
-    let text_sym = data
-        .scoping
+    data.scoping
         .get_binding(named_scope, "text")
         .unwrap_or_else(|| panic!("missing destructured slot binding"));
-    assert_eq!(
-        data.scoping.template_binding_read_kind(text_sym),
-        TemplateBindingReadKind::SlotLetCarrierMember
+}
+
+#[test]
+fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
+    let (_component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    import { writable } from 'svelte/store';
+    var count = $state({});
+    count = {};
+    let total = $derived(count.value);
+    let { foo = 1, bar = $bindable(2), baz, ...rest } = $props();
+    const store = writable(0);
+    $store;
+</script>"#,
     );
 
-    let carrier_sym = data
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "count"),
+        DeclarationSemantics::State(StateDeclarationSemantics {
+            kind: StateKind::State,
+            proxied: true,
+            var_declared: true,
+            ..
+        })
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "total"),
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            lowering: DerivedLowering::Sync,
+            ..
+        })
+    ));
+    assert_eq!(
+        symbol_declaration_semantics(&data, "foo"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::Source {
+                bindable: false,
+                updated: false,
+                default_lowering: PropDefaultLowering::Eager,
+                default_needs_proxy: false,
+            },
+        })
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "bar"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::Source {
+                bindable: true,
+                updated: false,
+                default_lowering: PropDefaultLowering::Eager,
+                default_needs_proxy: false,
+            },
+        })
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "baz"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::NonSource,
+        })
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "rest"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::Rest,
+        })
+    );
+    let store_sym = data
         .scoping
-        .slot_let_binding_carrier(text_sym)
-        .unwrap_or_else(|| panic!("destructured slot binding missing carrier"));
-    assert_eq!(data.scoping.slot_let_carrier(let_dir.id), Some(carrier_sym));
-    assert_eq!(data.scoping.symbol_name(carrier_sym), "item");
+        .find_binding_in_any_scope("store")
+        .expect("missing binding 'store'");
+    assert_eq!(
+        symbol_declaration_semantics(&data, "store"),
+        DeclarationSemantics::Store(StoreDeclarationSemantics {
+            base_symbol: store_sym,
+        })
+    );
+}
+
+#[test]
+fn reactivity_semantics_prop_declaration_semantics_include_updated() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<svelte:options runes={true} />
+<script>
+    let { count } = $props();
+    count = 1;
+</script>"#,
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        symbol_declaration_semantics(&data, "count"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::Source {
+                bindable: false,
+                updated: true,
+                default_lowering: PropDefaultLowering::None,
+                default_needs_proxy: false,
+            },
+        })
+    );
+}
+
+#[test]
+fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<svelte:options runes={true} />
+<script>
+    let { value = $bindable({ answer: 42 }) } = $props();
+</script>"#,
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        symbol_declaration_semantics(&data, "value"),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            lowering_mode: PropLoweringMode::Standard,
+            kind: PropDeclarationKind::Source {
+                bindable: true,
+                updated: false,
+                default_lowering: PropDefaultLowering::Lazy,
+                default_needs_proxy: true,
+            },
+        })
+    );
+}
+
+#[test]
+fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
+    let (_component, data) = analyze_source_with_options(
+        r#"<svelte:options runes={true} />
+<script>
+    let sync_total = $derived(1 + 1);
+    let async_total = $derived(await load());
+    let mapped = $derived.by(() => 1 + 1);
+</script>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "sync_total"),
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            lowering: DerivedLowering::Sync,
+            ..
+        })
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "async_total"),
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            lowering: DerivedLowering::Async,
+            ..
+        })
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "mapped"),
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::DerivedBy,
+            lowering: DerivedLowering::Sync,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn reactivity_semantics_v2_marks_destructured_state_bindings_as_proxied() {
+    let (_component, data) = analyze_source(
+        r#"<svelte:options runes={true} />
+<script>
+    let { left, nested: { right }, ...rest } = $state({ left: 1, nested: { right: 2 } });
+    let [first, second = 2, ...tail] = $state([1, 2, 3]);
+    left = 1;
+    tail = [];
+</script>"#,
+    );
+
+    let state_decl = |name: &str| -> StateDeclarationSemantics {
+        match symbol_declaration_semantics(&data, name) {
+            DeclarationSemantics::State(s) => s,
+            other => panic!("expected State(...) for '{name}', got {other:?}"),
+        }
+    };
+
+    let object_decl = state_decl("left");
+    assert_eq!(object_decl.kind, StateKind::State);
+    assert!(object_decl.proxied);
+    assert!(!object_decl.var_declared);
+    assert_eq!(
+        object_decl.binding_semantics.as_slice(),
+        &[
+            StateBindingSemantics::StateSignal { proxied: true },
+            StateBindingSemantics::NonReactive { proxied: true },
+            StateBindingSemantics::NonReactive { proxied: true },
+        ],
+        "object-destructure binding_semantics mismatch"
+    );
+
+    for name in ["right", "rest"] {
+        assert_eq!(
+            state_decl(name).binding_semantics,
+            object_decl.binding_semantics,
+            "expected '{name}' to share the object-destructure declaration root"
+        );
+    }
+
+    let array_decl = state_decl("tail");
+    assert_eq!(array_decl.kind, StateKind::State);
+    assert!(array_decl.proxied);
+    assert_eq!(
+        array_decl.binding_semantics.as_slice(),
+        &[
+            StateBindingSemantics::NonReactive { proxied: true },
+            StateBindingSemantics::NonReactive { proxied: true },
+            StateBindingSemantics::StateSignal { proxied: true },
+        ],
+        "array-destructure binding_semantics mismatch"
+    );
+
+    for name in ["first", "second"] {
+        assert_eq!(
+            state_decl(name).binding_semantics,
+            array_decl.binding_semantics,
+            "expected '{name}' to share the array-destructure declaration root"
+        );
+    }
+}
+
+#[test]
+fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
+    let source = r#"<svelte:options runes={true} />
+<script>
+    import { writable } from 'svelte/store';
+
+    var count = $state(0);
+    let total = $derived(count * 2);
+    const store = writable(0);
+    let { foo = 1, bar = $bindable(2), baz = $bindable(), ...rest } = $props();
+    let local = 1;
+
+    count;
+    count = 1;
+    count += 1;
+    total;
+    total = 1;
+    $store;
+    $store = 1;
+    foo;
+    baz;
+    bar = 1;
+    rest;
+    local = 2;
+</script>"#;
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let mut options = AnalyzeOptions::default();
+    options.warning_filter = Some(Box::new(|_| false));
+    let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "count", true, false, 0),
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::State(StateKind::State),
+            safe: true,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "count", false, true, 0),
+        ReferenceSemantics::SignalWrite {
+            kind: StateKind::State,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "count", true, true, 0),
+        ReferenceSemantics::SignalUpdate {
+            kind: StateKind::State,
+            safe: true,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "total", true, false, 0),
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::Derived(DerivedKind::Derived),
+            safe: false,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "total", false, true, 0),
+        ReferenceSemantics::IllegalWrite
+    );
+    assert!(matches!(
+        script_reference_semantics(&data, &parsed, "foo", true, false, 0),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::Source {
+            bindable: false,
+            lowering_mode: PropLoweringMode::Standard,
+            ..
+        })
+    ));
+    assert!(matches!(
+        script_reference_semantics(&data, &parsed, "baz", true, false, 0),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { .. })
+    ));
+    assert!(matches!(
+        script_reference_semantics(&data, &parsed, "bar", false, true, 0),
+        ReferenceSemantics::PropMutation {
+            bindable: true,
+            ..
+        }
+    ));
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "rest", true, false, 0),
+        ReferenceSemantics::NonReactive
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "local", false, true, 0),
+        ReferenceSemantics::NonReactive
+    );
+}
+
+#[test]
+fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads() {
+    let source = r#"<svelte:options runes={true} />
+<script>
+    let plain = $state(0);
+    let { left, nested: { right } } = $state({ left: 1, nested: { right: 2 } });
+    var safe = $state(0);
+
+    plain;
+    left = 1;
+    left;
+    right += 1;
+    safe = 1;
+    safe;
+</script>"#;
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let mut options = AnalyzeOptions::default();
+    options.warning_filter = Some(Box::new(|_| false));
+    let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "plain", true, false, 0),
+        ReferenceSemantics::NonReactive
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "left", false, true, 0),
+        ReferenceSemantics::SignalWrite {
+            kind: StateKind::State,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "left", true, false, 0),
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::State(StateKind::State),
+            safe: false,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "right", true, true, 0),
+        ReferenceSemantics::SignalUpdate {
+            kind: StateKind::State,
+            safe: false,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "safe", true, false, 0),
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::State(StateKind::State),
+            safe: true,
+        }
+    );
+}
+
+#[test]
+fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() {
+    let source = r#"<svelte:options runes={true} />
+<script>
+    let plain = $state.raw(0);
+    var safe = $state.raw(0);
+
+    safe = 1;
+    plain;
+    safe;
+    safe += 1;
+</script>"#;
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let mut options = AnalyzeOptions::default();
+    options.warning_filter = Some(Box::new(|_| false));
+    let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "plain"),
+        DeclarationSemantics::OptimizedRune(crate::OptimizedRuneSemantics {
+            kind: StateKind::StateRaw,
+            ..
+        })
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "safe"),
+        DeclarationSemantics::State(StateDeclarationSemantics {
+            kind: StateKind::StateRaw,
+            proxied: false,
+            var_declared: true,
+            ..
+        })
+    ));
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "plain", true, false, 0),
+        ReferenceSemantics::NonReactive
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "safe", true, false, 0),
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::State(StateKind::StateRaw),
+            safe: true,
+        }
+    );
+    assert_eq!(
+        script_reference_semantics(&data, &parsed, "safe", true, true, 0),
+        ReferenceSemantics::SignalUpdate {
+            kind: StateKind::StateRaw,
+            safe: true,
+        }
+    );
+}
+
+#[test]
+fn reactivity_semantics_collects_contextual_binding_owners() {
+    let (_component, data) = analyze_source(
+        r#"<script>
+    let items = [{ text: 'a' }];
+    let promise = Promise.resolve({ value: 1 });
+</script>
+
+{#snippet row(entry, { fallback = 1 })}
+    <p>{entry} {fallback}</p>
+{/snippet}
+
+<List let:item={{ text }} let:item2={processed}>
+    <p>{text} {processed}</p>
+</List>
+
+{#each items as item, index}
+    <span>{item.text} {index}</span>
+{/each}
+
+{#await promise then result}
+    <p>{result.value}</p>
+{:catch error}
+    <p>{error.message}</p>
+{/await}"#,
+    );
+
+    assert_eq!(
+        symbol_declaration_semantics(&data, "text"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::LetDirective)
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "item"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::EachItem(
+            crate::EachItemStrategy::Signal
+        ))
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "index"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::EachIndex(
+            crate::EachIndexStrategy::Direct
+        ))
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "entry"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::SnippetParam(
+            crate::SnippetParamStrategy::Accessor
+        ))
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "result"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::AwaitValue)
+    );
+    assert_eq!(
+        symbol_declaration_semantics(&data, "error"),
+        DeclarationSemantics::Contextual(ContextualDeclarationSemantics::AwaitError)
+    );
 }
 
 #[test]
@@ -3524,7 +4192,7 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
         .unwrap_or_else(|| panic!("expected props analysis in legacy mode"));
     assert_eq!(props.props.len(), 1);
     assert_eq!(props.props[0].local_name.as_str(), "count");
-    assert!(props.props[0].is_prop_source);
+    assert_eq!(props.props[0].default_text.as_deref(), Some("1"));
     assert!(
         data.script.exports.is_empty(),
         "legacy export let should not remain a component export"
@@ -3832,9 +4500,10 @@ fn shorthand_anchor_href_is_indexed_for_a11y_presence_checks() {
         data.has_attribute(anchor.id, "href"),
         "expected shorthand href to be indexed as a named attribute"
     );
+    // `{href}` parses as ExpressionAttribute with shorthand: true.
     assert!(matches!(
         data.attribute(anchor.id, &anchor.attributes, "href"),
-        Some(Attribute::Shorthand(_))
+        Some(Attribute::ExpressionAttribute(a)) if a.shorthand
     ));
     assert!(
         diags
@@ -4235,6 +4904,33 @@ let checked = $state(false);
 }
 
 #[test]
+fn bind_validator_keeps_plain_let_targets_valid() {
+    let (_component, _data, diags) = analyze_source_with_diags(
+        r#"<script>let value = '';</script>
+<input bind:value={value}>"#,
+    );
+
+    assert_diag_codes(&diags, &["non_reactive_update"]);
+}
+
+#[test]
+fn bind_group_validator_uses_unified_snippet_param_source_kind() {
+    let (_component, _data, diags) = analyze_source_with_diags(
+        r#"{#snippet group(selected)}
+    <input type="checkbox" bind:group={selected} />
+{/snippet}"#,
+    );
+
+    assert_diag_codes(
+        &diags,
+        &[
+            "bind_group_invalid_snippet_parameter",
+            "snippet_parameter_assignment",
+        ],
+    );
+}
+
+#[test]
 fn bind_target_semantics_classifies_common_bind_families() {
     let (component, data) = analyze_source(
         r#"<script>
@@ -4606,7 +5302,7 @@ fn analyze_module_reports_store_invalid_subscription_module() {
         console.log($count);
     "#;
 
-    let (_data, diags) = analyze_module(&alloc, source, false, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
     let store_diags = diags
         .iter()
         .filter(|diag| diag.kind.code() == "store_invalid_subscription_module")
@@ -4625,7 +5321,7 @@ fn analyze_module_ignores_nested_only_store_like_bindings() {
         }
     "#;
 
-    let (_data, diags) = analyze_module(&alloc, source, false, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
 
     assert!(
         !diags
@@ -4633,4 +5329,188 @@ fn analyze_module_ignores_nested_only_store_like_bindings() {
             .any(|diag| diag.kind.code() == "store_invalid_subscription_module"),
         "unexpected diagnostics: {diags:?}"
     );
+}
+
+// -----------------------------------------------------------------------
+// Target-site ReferenceSemantics queries cover what `target_site_semantics`
+// used to answer — see `reference_semantics` via `directive_root_ref_id`
+// (codegen) or via `attr_root_symbol` + `symbol_facts`. Tests for the
+// individual variants live next to their consumers.
+// -----------------------------------------------------------------------
+
+// -----------------------------------------------------------------------
+// PropSourceMemberMutationRoot — operation-level answer for `foo.x = val`
+// where `foo` is a `$props()` source binding.
+// -----------------------------------------------------------------------
+
+#[test]
+fn prop_source_member_mutation_root_in_script_assignment() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<script>
+    let { obj = $bindable({ x: 0 }) } = $props();
+    function inc() { obj.x = 1; }
+</script>"#,
+    );
+
+    let semantics = script_reference_semantics(&data, &parsed, "obj", true, false, 0);
+    match semantics {
+        ReferenceSemantics::PropSourceMemberMutationRoot { bindable, .. } => {
+            assert!(bindable, "bindable flag");
+        }
+        other => panic!("expected PropSourceMemberMutationRoot, got {other:?}"),
+    }
+}
+
+#[test]
+fn prop_source_member_mutation_root_in_update_expression() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<script>
+    let { obj = $bindable({ n: 0 }) } = $props();
+    function bump() { obj.n++; }
+</script>"#,
+    );
+
+    let semantics = script_reference_semantics(&data, &parsed, "obj", true, false, 0);
+    match semantics {
+        ReferenceSemantics::PropSourceMemberMutationRoot { .. } => {}
+        other => panic!("expected PropSourceMemberMutationRoot on ++, got {other:?}"),
+    }
+}
+
+/// Look up the `ReferenceSemantics` for the first resolved read-reference of a
+/// named binding. Used by contextual-read tests where the binding only lives
+/// in template scope (no instance script).
+fn first_read_reference_semantics(data: &AnalysisData, name: &str) -> ReferenceSemantics {
+    let sym = data
+        .scoping
+        .find_binding_in_any_scope(name)
+        .unwrap_or_else(|| panic!("binding {name} not found in any scope"));
+    let ref_id = data
+        .scoping
+        .get_resolved_reference_ids(sym)
+        .iter()
+        .copied()
+        .find(|&ref_id| data.scoping.get_reference(ref_id).is_read())
+        .unwrap_or_else(|| panic!("no read reference for {name}"));
+    data.reference_semantics(ref_id)
+}
+
+#[test]
+fn each_item_read_is_classified_as_contextual_signal_read() {
+    let (_c, data) = analyze_source(
+        r#"<script>let items = $state([1, 2, 3]);</script>
+{#each items as item}<p>{item}</p>{/each}"#,
+    );
+
+    match first_read_reference_semantics(&data, "item") {
+        ReferenceSemantics::ContextualRead(ContextualReadSemantics {
+            kind: ContextualReadKind::EachItem { accessor: false, signal: true },
+            ..
+        }) => {}
+        other => panic!("expected EachItem signal read, got {other:?}"),
+    }
+}
+
+#[test]
+fn snippet_param_read_is_classified_as_contextual_accessor_call() {
+    // Non-default snippet params are marked as getters → emitted as `item()`.
+    let (_c, data) = analyze_source(
+        r#"{#snippet row(item)}<p>{item}</p>{/snippet}"#,
+    );
+
+    match first_read_reference_semantics(&data, "item") {
+        ReferenceSemantics::ContextualRead(ContextualReadSemantics {
+            kind: ContextualReadKind::SnippetParam { accessor: true, signal: false },
+            ..
+        }) => {}
+        other => panic!("expected SnippetParam accessor read, got {other:?}"),
+    }
+}
+
+#[test]
+fn snippet_default_leaf_is_classified_as_contextual_signal_read() {
+    // Destructure leaves under `= default` are NOT getters → `$.get(label)`.
+    let (_c, data) = analyze_source(
+        r#"{#snippet withDefault({ label = "x" })}<p>{label}</p>{/snippet}"#,
+    );
+
+    match first_read_reference_semantics(&data, "label") {
+        ReferenceSemantics::ContextualRead(ContextualReadSemantics {
+            kind: ContextualReadKind::SnippetParam { accessor: false, signal: true },
+            ..
+        }) => {}
+        other => panic!("expected SnippetParam signal read, got {other:?}"),
+    }
+}
+
+#[test]
+fn slot_let_destructure_leaf_is_classified_as_carrier_member_read() {
+    let (_c, data) = analyze_source(
+        r#"<Widget let:item={{ text }}>{text}</Widget>"#,
+    );
+
+    let carrier_expected = data
+        .scoping
+        .find_binding_in_any_scope("item")
+        .expect("carrier symbol");
+    match first_read_reference_semantics(&data, "text") {
+        ReferenceSemantics::CarrierMemberRead(CarrierMemberReadSemantics {
+            carrier_symbol,
+            ..
+        }) if carrier_symbol == carrier_expected => {}
+        other => panic!("expected CarrierMemberRead with carrier=item, got {other:?}"),
+    }
+}
+
+#[test]
+fn derived_reactivity_flag_false_when_deps_are_inert() {
+    // `count` is declared as `$state(0)` but never mutated — so it lowers as
+    // an `OptimizedRune` and is not reactive at runtime. A `$derived` whose
+    // only dep is `count` therefore also never changes, and its reads in the
+    // template must not trigger a `$.template_effect` wrap.
+    let (_c, data) = analyze_source(
+        r#"<script>
+  let count = $state(0);
+  let doubled = $derived(count * 2);
+</script>
+<p>{doubled}</p>"#,
+    );
+
+    let doubled_sym = data
+        .scoping
+        .find_binding_in_any_scope("doubled")
+        .expect("doubled binding");
+    let decl = data.declaration_semantics(data.scoping.symbol_declaration(doubled_sym));
+    match decl {
+        DeclarationSemantics::Derived(d) => assert!(
+            !d.reactive,
+            "expected doubled.reactive=false when deps are inert"
+        ),
+        other => panic!("expected Derived decl for doubled, got {other:?}"),
+    }
+}
+
+#[test]
+fn derived_reactivity_flag_true_when_dep_is_mutated_state() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+  let count = $state(0);
+  let doubled = $derived(count * 2);
+  count = 5;
+</script>
+<p>{doubled}</p>"#,
+    );
+
+    let doubled_sym = data
+        .scoping
+        .find_binding_in_any_scope("doubled")
+        .expect("doubled binding");
+    let decl = data.declaration_semantics(data.scoping.symbol_declaration(doubled_sym));
+    match decl {
+        DeclarationSemantics::Derived(d) => assert!(
+            d.reactive,
+            "expected doubled.reactive=true when dep is mutated $state"
+        ),
+        other => panic!("expected Derived decl for doubled, got {other:?}"),
+    }
 }
