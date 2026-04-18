@@ -215,23 +215,6 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);
         }
-        super::PassKey::ClassifyExpressionDynamicity => {
-            js_analyze::classify_expression_dynamicity(data);
-        }
-        super::PassKey::MarkBlockedExpressionsDynamic => {
-            if data.script.blocker_data.has_async {
-                for info in data.expressions.values_mut() {
-                    if !info.is_dynamic()
-                        && info
-                            .ref_symbols()
-                            .iter()
-                            .any(|sym| data.script.blocker_data.symbol_blockers.contains_key(sym))
-                    {
-                        info.mark_dynamic();
-                    }
-                }
-            }
-        }
         super::PassKey::LowerTemplate => {
             lower::lower(component, data);
         }
@@ -247,6 +230,7 @@ pub(crate) fn execute_pass<'a>(
                 diags,
                 &mut visitors,
             );
+            super::dynamism::populate_expr_roles(data);
         }
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);
