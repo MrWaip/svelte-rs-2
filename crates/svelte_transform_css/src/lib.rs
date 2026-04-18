@@ -270,7 +270,11 @@ impl VisitMut for ScopeSelectors<'_> {
         if let SimpleSelector::PseudoClass(pc) = node {
             match pc.name.as_str() {
                 "is" | "where" | "has" | "not" => {
-                    if pc.name == "not" && pc.args.as_ref().is_some_and(|args| not_args_stay_unscoped(args))
+                    if pc.name == "not"
+                        && pc
+                            .args
+                            .as_ref()
+                            .is_some_and(|args| not_args_stay_unscoped(args))
                     {
                         // Reference transform leaves simple :not(...) branches unscoped even
                         // though we still need to recurse to unwrap nested :global(...).
@@ -411,7 +415,9 @@ fn selector_list_has_explicit_nesting(list: &SelectorList) -> bool {
 }
 
 fn not_args_stay_unscoped(args: &SelectorList) -> bool {
-    args.children.iter().all(|complex| complex.children.len() == 1)
+    args.children
+        .iter()
+        .all(|complex| complex.children.len() == 1)
 }
 
 /// Returns true if the entire complex selector is a single `:global(...)` call.

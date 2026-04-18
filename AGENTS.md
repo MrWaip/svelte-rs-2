@@ -2,11 +2,9 @@
 
 **Goal: production-ready Svelte compiler in Rust, targeting large enterprise codebases.** Performance at scale matters.
 
-`AGENTS.md` is the concise Codex entrypoint. `CLAUDE.md` remains the detailed source of truth for architecture, workflow, spec lifecycle, blocking rules, and quality checks. If they ever diverge, follow `CLAUDE.md`.
 
 ## Mandatory pre-edit reads
 1. `README.md` (workflow context)
-2. `CLAUDE.md` (architecture and boundary rules)
 3. `CODEBASE_MAP.md` when touching APIs/types
 4. Relevant `specs/*.md` `Current state` for multi-session feature work
 
@@ -38,17 +36,12 @@
   - `tasks/diagnostic_tests/cases/*/case-rust.json`
 - These generated files are intentionally committed so the author can compare reference and Rust output directly in the repo; regenerate them through project commands instead of editing them by hand.
 
-## Additional alignment notes from `CLAUDE.md`
-- Use `spec-template` when creating or reshaping files under `specs/`.
-- Use `phase-boundaries`, `test-pattern`, `svelte-reference-map`, `oxc-analyze-api`, `oxc-codegen-api`, and `legacy-conventions` as supporting knowledge skills when relevant.
-- Before commits, verify correct layer ownership, no new boundary violations, correct visitor usage, `SymbolId` usage over strings, and explicit data flow.
-- When blocked after repeated failed attempts, document the blocker in the relevant spec and report it instead of looping.
-
 ## Change policy
 - Keep diffs minimal and task-scoped.
 - Do not perform unrelated refactors or formatting churn.
 
 ## Validation commands (verified in `justfile`)
+
 - `just test-case <name>`
 - `just test-case-verbose <name>`
 - `just test-diagnostic-case <name>`
@@ -59,6 +52,9 @@
 - `just test-diagnostics`
 - `just test-compiler`
 - `just test-all`
+
+## After any completed task
+- `just generate && just test-compiler && just test-diagnostics`
 
 ## Codex skills
 Use `.codex/skills/` workflows with original command naming:

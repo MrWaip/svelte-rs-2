@@ -29,7 +29,7 @@ fn analyze_declarations(data: &mut AnalysisData) {
         };
 
         let sym_id = data.scoping.find_binding(root, &decl.name);
-        let rune_kind = sym_id.and_then(|id| data.scoping.rune_kind(id));
+        let rune_kind = decl.is_rune;
         let is_mutated = sym_id.map_or(false, |id| data.scoping.is_mutated(id));
 
         let is_foldable_rune = rune_kind == Some(RuneKind::State) && !is_mutated;
@@ -68,43 +68,21 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
         .iter()
         .map(|p| {
             let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
-            let is_mutated =
-                data.output.custom_element || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
-            let is_prop_source =
-                data.output.custom_element || p.default_span.is_some() || is_mutated;
 
-            if !p.is_rest {
+            if p.is_rest {
                 if let Some(sym_id) = sym_id {
-                    if is_prop_source {
-                        data.scoping.mark_prop_source(sym_id);
-                    } else {
-                        data.scoping
-                            .mark_prop_non_source(sym_id, p.prop_name.to_string());
-                    }
+                    data.scoping.mark_rest_prop_sym(sym_id);
                 }
-            } else if let Some(sym_id) = sym_id {
-                // Collect all previously seen (non-rest) prop names as excluded set
-                let excluded = decl
-                    .props
-                    .iter()
-                    .take_while(|prev| !prev.is_rest)
-                    .map(|prev| prev.prop_name.to_string())
-                    .collect();
-                data.scoping.mark_rest_prop(sym_id, excluded);
             }
-
-            let is_lazy_default = p.default_span.is_some() && !p.is_simple_default;
 
             PropAnalysis {
                 local_name: p.local_name.to_string(),
                 prop_name: p.prop_name.to_string(),
                 default_span: p.default_span,
                 default_text: p.default_text.clone(),
+                default_is_simple: p.is_simple_default,
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
-                is_lazy_default,
-                is_prop_source,
-                is_mutated,
                 is_reserved: p.prop_name.starts_with("$$"),
             }
         })

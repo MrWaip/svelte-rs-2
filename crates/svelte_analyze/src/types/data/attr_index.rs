@@ -66,14 +66,8 @@ impl AttrIndex {
     }
 }
 
-fn attr_index_name(attr: &Attribute, source: &str) -> Option<CompactString> {
-    match attr {
-        Attribute::Shorthand(attr) => {
-            // Shorthand presence checks already use raw source text elsewhere, so the
-            // normalized attribute index must expose the same name to keep lookups coherent.
-            let name = attr.expression_span.source_text(source).trim();
-            (!name.is_empty()).then(|| CompactString::from(name))
-        }
-        _ => attr.name().map(CompactString::from),
-    }
+fn attr_index_name(attr: &Attribute, _source: &str) -> Option<CompactString> {
+    // `{name}` shorthand is now `ExpressionAttribute { shorthand: true, name }`
+    // so its `name` field is already the identifier text — no special branch.
+    attr.name().map(CompactString::from)
 }

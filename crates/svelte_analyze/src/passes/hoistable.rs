@@ -36,7 +36,7 @@ impl HoistableSnippetsVisitor {
 }
 
 impl TemplateVisitor for HoistableSnippetsVisitor {
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         if !self.top_level_ids.contains(&block.id) {
             return;
         }
@@ -51,7 +51,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
         }
     }
 
-    fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_>) {
+    fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_, '_>) {
         let root = ctx
             .data
             .expr_ancestors(node_id)

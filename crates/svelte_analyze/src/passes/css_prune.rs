@@ -18,8 +18,8 @@ use super::css_prune_index::{
 };
 use crate::scope::SymbolId;
 use crate::types::data::{
-    ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind, TemplateAnalysis,
-    TemplateElementIndex,
+    DeclarationSemantics, ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind,
+    TemplateAnalysis, TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
 use crate::AnalysisData;
@@ -77,29 +77,39 @@ struct SelectorPlan {
 }
 
 struct RuleContext<'a> {
-    rule: *const StyleRule,
-    parent_rules: &'a [*const StyleRule],
-    _marker: std::marker::PhantomData<&'a StyleRule>,
+    rule_id: CssNodeId,
+    parent_rules: &'a [CssNodeId],
+    rule_lookup: &'a FxHashMap<CssNodeId, &'a StyleRule>,
 }
 
 impl<'a> RuleContext<'a> {
-    fn new(rule: &'a StyleRule, parent_rules: &'a [*const StyleRule]) -> Self {
+    fn new(
+        rule_id: CssNodeId,
+        parent_rules: &'a [CssNodeId],
+        rule_lookup: &'a FxHashMap<CssNodeId, &'a StyleRule>,
+    ) -> Self {
         Self {
-            rule: rule as *const StyleRule,
+            rule_id,
             parent_rules,
-            _marker: std::marker::PhantomData,
+            rule_lookup,
         }
     }
 
     fn rule(&self) -> &'a StyleRule {
-        unsafe { &*self.rule }
+        self.rule_lookup
+            .get(&self.rule_id)
+            .copied()
+            .expect("style rule id should resolve during prune")
     }
 
     fn parent_rule(&self) -> Option<&'a StyleRule> {
-        self.parent_rules.last().map(|ptr| unsafe { &**ptr })
+        self.parent_rules
+            .last()
+            .and_then(|id| self.rule_lookup.get(id))
+            .copied()
     }
 
-    fn parent_rules_without_last(&self) -> &'a [*const StyleRule] {
+    fn parent_rules_without_last(&self) -> &'a [CssNodeId] {
         self.parent_rules
             .split_last()
             .map_or(&[], |(_, parents)| parents)
@@ -127,6 +137,8 @@ pub(crate) fn prune_and_warn(
     let template = &data.template;
     let mut used = FxHashSet::default();
     let scoped = &mut data.output.css.scoped_elements;
+    let mut rule_lookup = FxHashMap::default();
+    collect_style_rules(stylesheet, &mut rule_lookup);
     let mut pruner = PruneVisitor {
         component,
         css_source,
@@ -138,6 +150,7 @@ pub(crate) fn prune_and_warn(
         used: &mut used,
         scoped,
         in_global_block: false,
+        rule_lookup,
         rule_stack: Vec::new(),
     };
     pruner.visit_stylesheet(stylesheet);
@@ -154,7 +167,40 @@ pub(crate) fn prune_and_warn(
     }
 }
 
-struct PruneVisitor<'a, 'b, 'p> {
+fn collect_style_rules<'a>(
+    stylesheet: &'a StyleSheet,
+    rules: &mut FxHashMap<CssNodeId, &'a StyleRule>,
+) {
+    for child in &stylesheet.children {
+        if let svelte_css::StyleSheetChild::Rule(rule) = child {
+            collect_rule(rule, rules);
+        }
+    }
+}
+
+fn collect_rule<'a>(rule: &'a svelte_css::Rule, rules: &mut FxHashMap<CssNodeId, &'a StyleRule>) {
+    match rule {
+        svelte_css::Rule::Style(style) => {
+            rules.insert(style.id, style);
+            for child in &style.block.children {
+                if let svelte_css::BlockChild::Rule(rule) = child {
+                    collect_rule(rule, rules);
+                }
+            }
+        }
+        svelte_css::Rule::AtRule(at_rule) => {
+            if let Some(block) = &at_rule.block {
+                for child in &block.children {
+                    if let svelte_css::BlockChild::Rule(rule) = child {
+                        collect_rule(rule, rules);
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct PruneVisitor<'a, 'b, 'p, 's> {
     component: &'a SvelteComponent,
     css_source: &'a str,
     parsed: &'p ParserResult<'p>,
@@ -165,10 +211,11 @@ struct PruneVisitor<'a, 'b, 'p> {
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
     scoped: &'b mut NodeBitSet,
     in_global_block: bool,
-    rule_stack: Vec<*const StyleRule>,
+    rule_lookup: FxHashMap<CssNodeId, &'s StyleRule>,
+    rule_stack: Vec<CssNodeId>,
 }
 
-impl Visit for PruneVisitor<'_, '_, '_> {
+impl Visit for PruneVisitor<'_, '_, '_, '_> {
     fn visit_at_rule(&mut self, node: &AtRule) {
         if node.name == "keyframes" {
             return;
@@ -181,9 +228,10 @@ impl Visit for PruneVisitor<'_, '_, '_> {
         self.in_global_block = was_global || node.is_lone_global_block();
 
         let parent_len = self.rule_stack.len();
-        self.rule_stack.push(node as *const StyleRule);
+        self.rule_stack.push(node.id);
         let parent_rules = self.rule_stack[..parent_len].to_vec();
-        let rule_ctx = RuleContext::new(node, &parent_rules);
+        let rule_lookup = self.rule_lookup.clone();
+        let rule_ctx = RuleContext::new(node.id, &parent_rules, &rule_lookup);
 
         for complex in &node.prelude.children {
             let plan = build_rule_selector_plan(complex, &rule_ctx);
@@ -360,13 +408,6 @@ fn component_possible_snippets(
                     resolved = false;
                 }
             }
-            Attribute::Shorthand(attr) => {
-                if let Some(info) = data.attr_expression(attr.id) {
-                    resolved &= collect_component_attr_snippets(data, info, &mut snippets);
-                } else {
-                    resolved = false;
-                }
-            }
             Attribute::StringAttribute(_)
             | Attribute::BooleanAttribute(_)
             | Attribute::ConcatenationAttribute(_) => {}
@@ -421,8 +462,10 @@ fn collect_component_attr_snippets(
 
 fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
     data.scoping.is_import(sym_id)
-        || data.scoping.is_prop_source(sym_id)
-        || data.scoping.is_rest_prop(sym_id)
+        || matches!(
+            data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym_id)),
+            DeclarationSemantics::Prop(_),
+        )
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
 }
 
@@ -552,8 +595,9 @@ fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
                 };
                 selector_list = Some(&parent_rule.prelude);
                 nested_rule_ctx = Some(RuleContext::new(
-                    parent_rule,
+                    parent_rule.id,
                     rule_ctx.parent_rules_without_last(),
+                    rule_ctx.rule_lookup,
                 ));
             }
             _ => {}
@@ -705,7 +749,7 @@ fn synthetic_nesting_relative() -> RelativeSelector {
 }
 
 fn apply_selector(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     selectors: &[RelativeSelector],
     rule_ctx: &RuleContext<'_>,
     elem_id: NodeId,
@@ -750,7 +794,7 @@ fn apply_selector(
 }
 
 fn apply_combinator(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     relative_selector: &RelativeSelector,
     selectors: &[RelativeSelector],
     from: usize,
@@ -851,7 +895,7 @@ fn every_is_global(
 }
 
 fn relative_selector_matches(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     relative_selector: &RelativeSelector,
     rule_ctx: &RuleContext<'_>,
     elem_id: NodeId,
@@ -1042,8 +1086,11 @@ fn relative_selector_matches(
                 let Some(parent_rule) = rule_ctx.parent_rule() else {
                     return false;
                 };
-                let parent_rule_ctx =
-                    RuleContext::new(parent_rule, rule_ctx.parent_rules_without_last());
+                let parent_rule_ctx = RuleContext::new(
+                    parent_rule.id,
+                    rule_ctx.parent_rules_without_last(),
+                    rule_ctx.rule_lookup,
+                );
                 let mut matched = false;
                 for complex in &parent_rule.prelude.children {
                     let parent_plan = build_rule_selector_plan(complex, &parent_rule_ctx);
@@ -1075,7 +1122,7 @@ fn relative_selector_matches(
 }
 
 fn pseudo_is_or_where_matches(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     pseudo: &PseudoClassSelector,
     rule_ctx: &RuleContext<'_>,
     elem_id: NodeId,
@@ -1126,10 +1173,10 @@ fn has_global_or_root_selector(rule_ctx: &RuleContext<'_>) -> bool {
         .parent_rules
         .iter()
         .copied()
-        .chain(std::iter::once(rule_ctx.rule))
-        .any(|rule_ptr| {
-            let rule = unsafe { &*rule_ptr };
-            let nested_ctx = RuleContext::new(rule, &[]);
+        .chain(std::iter::once(rule_ctx.rule_id))
+        .any(|rule_id| {
+            let nested_ctx = RuleContext::new(rule_id, &[], rule_ctx.rule_lookup);
+            let rule = nested_ctx.rule();
             rule.prelude.children.iter().any(|complex| {
                 let selectors = build_truncated_relatives(complex);
                 selectors
@@ -1154,7 +1201,7 @@ fn has_global_or_root_selector(rule_ctx: &RuleContext<'_>) -> bool {
 }
 
 fn get_ancestor_elements(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     adjacent_only: bool,
 ) -> Vec<NodeId> {
@@ -1172,7 +1219,7 @@ fn get_ancestor_elements(
 }
 
 fn collect_ancestor_elements(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
@@ -1203,7 +1250,7 @@ fn collect_ancestor_elements(
 }
 
 fn get_descendant_elements(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     adjacent_only: bool,
 ) -> Vec<NodeId> {
@@ -1227,7 +1274,7 @@ fn get_descendant_elements(
 }
 
 fn collect_descendants_from_node(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
@@ -1281,7 +1328,7 @@ fn collect_descendants_from_node(
 }
 
 fn collect_descendants_from_fragment(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     key: FragmentKey,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
@@ -1324,7 +1371,7 @@ fn collect_descendants_from_fragment(
     }
 }
 
-fn get_element_parent(pruner: &PruneVisitor<'_, '_, '_>, node_id: NodeId) -> Option<NodeId> {
+fn get_element_parent(pruner: &PruneVisitor<'_, '_, '_, '_>, node_id: NodeId) -> Option<NodeId> {
     pruner
         .template
         .template_topology
@@ -1334,7 +1381,7 @@ fn get_element_parent(pruner: &PruneVisitor<'_, '_, '_>, node_id: NodeId) -> Opt
 }
 
 fn get_possible_element_siblings(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     direction: Direction,
     adjacent_only: bool,
@@ -1367,7 +1414,7 @@ fn get_possible_element_siblings(
 }
 
 fn collect_possible_siblings(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     direction: Direction,
     adjacent_only: bool,
@@ -1532,7 +1579,7 @@ fn collect_possible_siblings(
 }
 
 fn get_possible_nested_siblings(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     node_id: NodeId,
     direction: Direction,
     adjacent_only: bool,
@@ -1605,7 +1652,7 @@ fn get_possible_nested_siblings(
 }
 
 fn loop_child(
-    pruner: &mut PruneVisitor<'_, '_, '_>,
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
     fragment_key: FragmentKey,
     direction: Direction,
     adjacent_only: bool,
@@ -1805,7 +1852,7 @@ fn requires_full_scan(selector: &RelativeSelector) -> bool {
 }
 
 fn attribute_matches(
-    pruner: &PruneVisitor<'_, '_, '_>,
+    pruner: &PruneVisitor<'_, '_, '_, '_>,
     elem_id: NodeId,
     name: &str,
     expected_value: Option<&str>,
@@ -1900,20 +1947,6 @@ fn attribute_matches(
                 }
                 return false;
             }
-            Attribute::Shorthand(attr) => {
-                if expected_value.is_none() {
-                    return true;
-                }
-                let Some(chunks) = attribute_chunks_for_expression_attr(pruner, attr.id) else {
-                    return true;
-                };
-                return match_attribute_chunks(
-                    operator,
-                    expected_value.unwrap(),
-                    case_insensitive,
-                    &chunks,
-                );
-            }
             Attribute::BindDirective(_)
             | Attribute::LetDirectiveLegacy(_)
             | Attribute::ClassDirective(_)
@@ -1931,24 +1964,18 @@ fn attribute_matches(
 }
 
 fn attribute_name_matches_selector(
-    component: &SvelteComponent,
+    _component: &SvelteComponent,
     attr: &Attribute,
     selector_name: &str,
 ) -> bool {
-    match attr {
-        Attribute::Shorthand(attr) => attr
-            .expression_span
-            .source_text(&component.source)
-            .trim()
-            .eq_ignore_ascii_case(selector_name),
-        _ => attr
-            .name()
-            .is_some_and(|attr_name| attr_name.eq_ignore_ascii_case(selector_name)),
-    }
+    // Shorthand `{name}` is now `ExpressionAttribute { shorthand: true, name }`
+    // — the `name()` branch covers both explicit and shorthand forms uniformly.
+    attr.name()
+        .is_some_and(|attr_name| attr_name.eq_ignore_ascii_case(selector_name))
 }
 
 fn attribute_chunks_for_expression_attr<'a>(
-    pruner: &'a PruneVisitor<'_, '_, 'a>,
+    pruner: &'a PruneVisitor<'_, '_, 'a, '_>,
     attr_id: NodeId,
 ) -> Option<Vec<AttributeChunk<'a>>> {
     let handle = pruner
@@ -1962,7 +1989,7 @@ fn attribute_chunks_for_expression_attr<'a>(
 }
 
 fn attribute_chunks_for_concat<'a>(
-    pruner: &'a PruneVisitor<'_, '_, 'a>,
+    pruner: &'a PruneVisitor<'_, '_, 'a, '_>,
     parts: &'a [ConcatPart],
 ) -> Vec<AttributeChunk<'a>> {
     let mut chunks = Vec::with_capacity(parts.len());

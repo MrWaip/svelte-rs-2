@@ -1,7 +1,7 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
 use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_COMPONENT, SVELTE_SELF,
+    is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -53,7 +53,7 @@ impl<'src> ElementFlagsVisitor<'src> {
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
-    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
         if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
             ctx.warnings_mut().push(Diagnostic::warning(
@@ -111,7 +111,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
+    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
         let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
@@ -131,6 +131,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::ClassDirective(cd) => {
+                // Shorthand `class:name` now carries a synthesized `Identifier`
+                // expression through `ParserResult`, so the codegen can always
+                // reach a transformed value via `get_attr_expr`. `has_expression`
+                // stays true uniformly — the shorthand-vs-explicit distinction
+                // no longer affects expression availability.
                 ctx.data
                     .elements
                     .flags
@@ -139,7 +144,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .push(ClassDirectiveInfo {
                         id: cd.id,
                         name: cd.name.clone(),
-                        has_expression: cd.expression_span.is_some(),
+                        has_expression: true,
                     });
             }
             Attribute::StyleDirective(sd) => {
@@ -195,12 +200,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
             }
-            Attribute::Shorthand(attr) => {
-                let name = self.source_text(attr.expression_span).trim();
-                if ctx.element_name() == Some("input") && Self::marks_input_defaults(name) {
-                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
-                }
-            }
             Attribute::OnDirectiveLegacy(dir) => {
                 ctx.data
                     .elements
@@ -220,7 +219,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         let data = &mut *ctx.data;
         let base_name = cn
             .name
@@ -232,16 +231,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .flags
                 .component_binding_sym
                 .insert(cn.id, sym_id);
-            let is_dynamic = ctx.runes && !data.scoping.is_normal_binding(sym_id);
-            if is_dynamic {
-                data.elements.flags.is_dynamic_component.insert(cn.id);
-            }
-        }
-        if ctx.runes && cn.name.contains('.') {
-            data.elements.flags.is_dynamic_component.insert(cn.id);
-        }
-        if cn.name == SVELTE_COMPONENT {
-            data.elements.flags.is_dynamic_component.insert(cn.id);
         }
         if cn.name == SVELTE_SELF {
             data.elements.flags.is_svelte_self.insert(cn.id);
@@ -286,13 +275,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     attr_id: a.id,
                     parts: a.parts.clone(),
                 },
-                Attribute::Shorthand(a) => {
-                    let name = self.source_text(a.expression_span).trim().to_string();
-                    ComponentPropKind::Shorthand {
-                        attr_id: a.id,
-                        name,
-                    }
-                }
                 Attribute::SpreadAttribute(a) => ComponentPropKind::Spread { attr_id: a.id },
                 Attribute::BindDirective(b) => {
                     let Some(bind_semantics) = BindTargetSemantics::from_parent_kind_and_name(
@@ -311,13 +293,35 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         let expr_text = if b.shorthand {
                             None
                         } else {
-                            b.expression_span
-                                .map(|span| self.source_text(span).to_string())
+                            Some(self.source_text(b.expression_span).to_string())
                         };
 
-                        let is_store = expr_text
-                            .as_deref()
-                            .is_some_and(|t| data.scoping.is_store_ref(t));
+                        // Store-sub detection on `bind:value={$count}`: resolve
+                        // the textual expression's `$foo` root identifier to a
+                        // root-scope binding whose declaration semantics is
+                        // `Store(_)`. Uses the expression text because the bind
+                        // attribute's `attr_expression` may resolve to a synthesized
+                        // reference whose symbol isn't classified as a store in v2.
+                        let is_store = expr_text.as_deref().is_some_and(|t| {
+                            let trimmed = t.trim();
+                            trimmed.starts_with('$')
+                                && trimmed.len() > 1
+                                && !trimmed.starts_with("$$")
+                                && {
+                                    let base = &trimmed[1..];
+                                    let root = data.scoping.root_scope_id();
+                                    data.scoping
+                                        .find_binding(root, base)
+                                        .is_some_and(|sym| {
+                                            matches!(
+                                                data.declaration_semantics(
+                                                    data.scoping.symbol_declaration(sym),
+                                                ),
+                                                crate::types::data::DeclarationSemantics::Store(_),
+                                            )
+                                        })
+                                }
+                        });
 
                         if is_store {
                             ComponentPropKind::Bind {
@@ -332,14 +336,22 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                 .scoping
                                 .find_binding(root, &b.name)
                                 .map(|sym| {
-                                    if data.scoping.is_prop_source(sym) {
-                                        ComponentBindMode::PropSource
-                                    } else if data.scoping.is_rune(sym)
-                                        && data.scoping.is_mutated(sym)
-                                    {
-                                        ComponentBindMode::Rune
-                                    } else {
-                                        ComponentBindMode::Plain
+                                    let decl = data
+                                        .reactivity
+                                        .declaration_semantics(data.scoping.symbol_declaration(sym));
+                                    match decl {
+                                        crate::types::data::DeclarationSemantics::Prop(
+                                            crate::types::data::PropDeclarationSemantics {
+                                                kind: crate::types::data::PropDeclarationKind::Source { .. },
+                                                ..
+                                            },
+                                        ) => ComponentBindMode::PropSource,
+                                        crate::types::data::DeclarationSemantics::State(_)
+                                        | crate::types::data::DeclarationSemantics::Derived(_)
+                                        | crate::types::data::DeclarationSemantics::OptimizedRune(_) => {
+                                            ComponentBindMode::Rune
+                                        }
+                                        _ => ComponentBindMode::Plain,
                                     }
                                 })
                                 .unwrap_or(ComponentBindMode::Plain);
@@ -365,7 +377,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 }
                 _ => continue,
             };
-            let is_dynamic = data.elements.flags.is_dynamic_attr(attr.id());
+            let is_dynamic = data.dynamism.is_dynamic_attr(attr.id());
             data.elements
                 .flags
                 .component_props
@@ -374,3 +386,4 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 }
+

@@ -3,7 +3,8 @@
 ## Current state
 - **Working**: 3/16 use cases
 - **Tests**: 3/15 green
-- Last updated: 2026-04-12
+- Last updated: 2026-04-13
+- Unified reactivity dependency status: satisfied. Remaining analyzer/materialization work should now build on the landed `ReactivitySemantics` model instead of adding a parallel legacy-prop semantic model.
 
 ## Source
 
@@ -47,6 +48,10 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 
 - SSR output for legacy props
 - Component API exports from `export const`, `export function`, and `export class`
+
+## Implementation note
+
+- Legacy prop hooks may stay explicit and legacy-named for containment, but the semantic classification they use should come from the unified `ReactivitySemantics` system rather than a second dedicated legacy-prop semantic layer.
 
 ## Reference
 

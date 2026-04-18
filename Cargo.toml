@@ -2,6 +2,18 @@
 members = ["crates/*", "tasks/*"]
 resolver = "2"
 
+[workspace.lints.rust]
+# unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "deny"
+expect_used = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+module_name_repetitions = "allow"
+
 
 [workspace.dependencies]
 svelte_span = { path = "crates/svelte_span" }
@@ -11,6 +23,7 @@ svelte_diagnostics = { path = "crates/svelte_diagnostics" }
 svelte_analyze = { path = "crates/svelte_analyze" }
 svelte_codegen_client = { path = "crates/svelte_codegen_client" }
 svelte_transform = { path = "crates/svelte_transform" }
+svelte_ast_builder = { path = "crates/svelte_ast_builder" }
 svelte_compiler = { path = "crates/svelte_compiler" }
 svelte_component_semantics = { path = "crates/svelte_component_semantics" }
 svelte_transform_css = { path = "crates/svelte_transform_css" }
@@ -44,3 +57,9 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+[profile.test]
+# Local development in this workspace repeatedly rebuilds large compiler crates.
+# Favor incremental test rebuilds and cheaper debug info so `test-compiler` is fast.
+incremental = true
+debug = 0

@@ -85,8 +85,8 @@ pub fn lower(component: &Component, data: &mut AnalysisData) {
     );
 }
 
-/// Collect const_tags.by_fragment before lower runs. Needed so that
-/// mark_const_tag_bindings can run before precompute_dynamic_cache.
+/// Collect `const_tags.by_fragment` before lower runs so subsequent passes
+/// (const-tag sym population, reactivity compute, dynamism) can key off it.
 pub(crate) fn collect_const_tag_fragments(component: &Component, data: &mut AnalysisData) {
     collect_const_tags_in(
         &component.fragment,

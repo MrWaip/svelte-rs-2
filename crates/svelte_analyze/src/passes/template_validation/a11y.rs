@@ -104,7 +104,7 @@ pub(super) fn check_element_warnings(
     has_autofocus: bool,
     dialog_depth: u32,
     missing_attr_diag: Option<Diagnostic>,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     if let Some(attr) = ctx.data.attribute(el.id, attrs, "scope") {
         if el.name != "th" {
@@ -178,8 +178,7 @@ fn attr_named_name(attr: &Attribute) -> Option<&str> {
         Attribute::BooleanAttribute(attr) => Some(&attr.name),
         Attribute::ConcatenationAttribute(attr) => Some(&attr.name),
         Attribute::BindDirective(attr) => Some(&attr.name),
-        Attribute::Shorthand(_)
-        | Attribute::SpreadAttribute(_)
+        Attribute::SpreadAttribute(_)
         | Attribute::ClassDirective(_)
         | Attribute::LetDirectiveLegacy(_)
         | Attribute::StyleDirective(_)
@@ -262,7 +261,7 @@ fn validate_aria_attribute_value(
     attr: &Attribute,
     name: &str,
     kind: AriaValueKind,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let span = attr_value_span(attr);
     let Some(value) = static_attr_value(attr, ctx.source) else {
@@ -342,7 +341,7 @@ fn validate_aria_attribute_value(
 fn check_a11y_aria_attribute_warnings(
     el: &Element,
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     for attr in attrs {
         let Some(name) = attr_named_name(attr) else {
@@ -390,7 +389,7 @@ fn check_a11y_aria_attribute_warnings(
     }
 }
 
-fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     let has_spread = ctx.data.has_spread(el.id);
     let semantic_role = semantic_role_for_element(el, attrs, ctx);
     let interactivity = element_interactivity(el, attrs, ctx);
@@ -506,7 +505,7 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
 fn check_a11y_role_supported_aria_props_warnings(
     el: &Element,
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let explicit_role_attr = ctx.data.attribute(el.id, attrs, "role");
     let role_value = explicit_role_attr
@@ -565,7 +564,7 @@ fn check_a11y_role_supported_aria_props_warnings(
 fn check_a11y_role_attribute_interaction_warnings(
     el: &Element,
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let interactivity = element_interactivity(el, attrs, ctx);
     let is_interactive = interactivity == ElementInteractivity::Interactive;
@@ -734,7 +733,7 @@ fn check_a11y_role_attribute_interaction_warnings(
 fn check_a11y_element_specific_content_warnings(
     el: &Element,
     attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let has_spread = ctx.data.has_spread(el.id);
     let is_labelled = ["aria-label", "aria-labelledby", "title"]
@@ -919,10 +918,10 @@ fn check_a11y_element_specific_content_warnings(
     }
 }
 
-fn implicit_role_for_element<'a>(
+fn implicit_role_for_element(
     el: &Element,
-    attrs: &'a [Attribute],
-    ctx: &VisitContext<'a>,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_, '_>,
 ) -> Option<&'static str> {
     match el.name.as_str() {
         "menuitem" => {
@@ -945,10 +944,10 @@ fn implicit_role_for_element<'a>(
     }
 }
 
-fn semantic_role_for_element<'a>(
+fn semantic_role_for_element(
     el: &Element,
-    attrs: &'a [Attribute],
-    ctx: &VisitContext<'a>,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_, '_>,
 ) -> Option<&'static str> {
     implicit_role_for_element(el, attrs, ctx).or_else(|| {
         (!has_sectioning_ancestor(el.id, ctx))
@@ -967,16 +966,16 @@ fn required_role_props(role: &str) -> Option<&'static [&'static str]> {
         .find_map(|(name, props)| (*name == role).then_some(*props))
 }
 
-fn is_semantic_role_element<'a>(
+fn is_semantic_role_element(
     el: &Element,
-    attrs: &'a [Attribute],
-    ctx: &VisitContext<'a>,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_, '_>,
     role: &str,
 ) -> bool {
     semantic_role_for_element(el, attrs, ctx).is_some_and(|semantic| semantic == role)
 }
 
-fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_>) -> bool {
+fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_, '_>) -> bool {
     ctx.data.ancestors(id).any(|parent| {
         if parent.kind != ParentKind::Element {
             return false;
@@ -1037,7 +1036,7 @@ fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
         .collect()
 }
 
-fn has_content(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+fn has_content(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
     for &child_id in &fragment.nodes {
         let child = ctx.store.get(child_id);
         match child {
@@ -1082,7 +1081,7 @@ fn static_attr_value_text(value: Option<StaticAttributeValue<'_>>) -> Option<&st
     }
 }
 
-fn has_associated_control(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+fn has_associated_control(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
     fragment
         .nodes
         .iter()
@@ -1159,7 +1158,7 @@ fn is_redundant_img_alt(alt: &str) -> bool {
         })
 }
 
-fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool {
+fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
     let Some(track) = fragment.nodes.iter().find_map(|&child_id| {
         ctx.store
             .get(child_id)
@@ -1178,7 +1177,7 @@ fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_>) -> bool 
     })
 }
 
-fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_>) -> Vec<NodeId> {
+fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> Vec<NodeId> {
     fragment
         .nodes
         .iter()
@@ -1191,7 +1190,7 @@ fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_>) -> Vec<N
         .collect()
 }
 
-fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
+fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_, '_>) -> bool {
     match node {
         Node::Element(el) => {
             if A11Y_LABELABLE_ELEMENTS.contains(&el.name.as_str()) {
@@ -1250,7 +1249,11 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_>) -> bool {
     }
 }
 
-fn is_hidden_from_screen_reader(el: &Element, attrs: &[Attribute], ctx: &VisitContext<'_>) -> bool {
+fn is_hidden_from_screen_reader(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_, '_>,
+) -> bool {
     if el.name == "input" {
         if let Some(input_type) = ctx
             .data
@@ -1271,7 +1274,7 @@ fn is_hidden_from_screen_reader(el: &Element, attrs: &[Attribute], ctx: &VisitCo
         })
 }
 
-fn has_disabled_attribute(id: NodeId, attrs: &[Attribute], ctx: &VisitContext<'_>) -> bool {
+fn has_disabled_attribute(id: NodeId, attrs: &[Attribute], ctx: &VisitContext<'_, '_>) -> bool {
     if ctx
         .data
         .attribute(id, attrs, "disabled")
@@ -1299,7 +1302,7 @@ fn has_javascript_prefix(value: &str) -> bool {
 fn element_interactivity(
     el: &Element,
     attrs: &[Attribute],
-    ctx: &VisitContext<'_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> ElementInteractivity {
     if let Some(role) = semantic_role_for_element(el, attrs, ctx) {
         return if is_interactive_role(Some(role)) {

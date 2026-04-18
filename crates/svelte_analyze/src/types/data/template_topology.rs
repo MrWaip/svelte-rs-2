@@ -21,7 +21,6 @@ pub enum ParentKind {
     ExpressionAttribute,
     ConcatenationAttribute,
     SpreadAttribute,
-    Shorthand,
     ClassDirective,
     StyleDirective,
     BindDirective,
@@ -50,7 +49,6 @@ impl ParentKind {
             Self::ExpressionAttribute
                 | Self::ConcatenationAttribute
                 | Self::SpreadAttribute
-                | Self::Shorthand
                 | Self::ClassDirective
                 | Self::StyleDirective
                 | Self::BindDirective
@@ -89,7 +87,6 @@ impl ParentKind {
             | Self::ExpressionAttribute
             | Self::ConcatenationAttribute
             | Self::SpreadAttribute
-            | Self::Shorthand
             | Self::ClassDirective
             | Self::StyleDirective
             | Self::OnDirectiveLegacy => false,
@@ -101,7 +98,6 @@ impl ParentKind {
             Attribute::ExpressionAttribute(_) => Some(Self::ExpressionAttribute),
             Attribute::ConcatenationAttribute(_) => Some(Self::ConcatenationAttribute),
             Attribute::SpreadAttribute(_) => Some(Self::SpreadAttribute),
-            Attribute::Shorthand(_) => Some(Self::Shorthand),
             Attribute::ClassDirective(_) => Some(Self::ClassDirective),
             Attribute::StyleDirective(_) => Some(Self::StyleDirective),
             Attribute::BindDirective(_) => Some(Self::BindDirective),

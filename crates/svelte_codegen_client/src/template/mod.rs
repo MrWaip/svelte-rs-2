@@ -34,7 +34,7 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt, NamespaceKind};
 use svelte_ast::{Namespace, Node, NodeId};
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
 use element::process_element;

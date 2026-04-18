@@ -716,14 +716,14 @@ macro_rules! impl_attr_enum {
 impl_attr_enum! {
     /// name="string"
     StringAttribute(StringAttribute),
-    /// name={expr}
+    /// name={expr} or shorthand `{name}` (ExpressionAttribute with `shorthand: true`
+    /// and `name == expression text`). Shorthand is represented by this variant
+    /// rather than a separate one so downstream passes have one expression path.
     ExpressionAttribute(ExpressionAttribute),
     /// name (boolean, no value)
     BooleanAttribute(BooleanAttribute),
     /// name="text{expr}text"
     ConcatenationAttribute(ConcatenationAttribute),
-    /// {name} — shorthand attribute
-    Shorthand(Shorthand),
     /// {...expr} — spread attribute
     SpreadAttribute(SpreadAttribute),
     /// class:name or class:name={expr}
@@ -765,7 +765,6 @@ impl Attribute {
             Attribute::UseDirective(_)
             | Attribute::TransitionDirective(_)
             | Attribute::AnimateDirective(_)
-            | Attribute::Shorthand(_)
             | Attribute::SpreadAttribute(_)
             | Attribute::AttachTag(_) => None,
         }
@@ -837,14 +836,6 @@ pub enum ConcatPart {
     Dynamic { id: NodeId, span: Span },
 }
 
-/// {name} — shorthand attribute.
-#[derive(Clone)]
-pub struct Shorthand {
-    pub id: NodeId,
-    pub span: Span,
-    pub expression_span: Span,
-}
-
 /// {...expr} — spread attribute.
 #[derive(Clone)]
 pub struct SpreadAttribute {
@@ -858,8 +849,11 @@ pub struct ClassDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of the JS expression. None means shorthand (class:name).
-    pub expression_span: Option<Span>,
+    /// Span of the JS expression. For shorthand (`class:name`) this equals
+    /// the span of `name` — the parser synthesizes `Expression::Identifier`
+    /// for that range so downstream passes have exactly one path regardless
+    /// of shorthand/explicit form.
+    pub expression_span: Span,
     pub shorthand: bool,
 }
 
@@ -868,16 +862,25 @@ pub struct StyleDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
+    /// Span of the JS expression for `Expression`-valued directives and
+    /// shorthand (`style:name`) where it equals the span of `name`. For
+    /// `String` / `Concatenation` values (e.g. `style:color="red"`) this
+    /// field is still populated but points at the value region — consumers
+    /// should branch on `value` first and ignore `expression_span` for
+    /// non-expression values.
+    pub expression_span: Span,
+    /// `true` iff the directive has no explicit value (`style:name`).
+    pub shorthand: bool,
     pub value: StyleDirectiveValue,
     pub important: bool,
 }
 
 #[derive(Clone)]
 pub enum StyleDirectiveValue {
-    /// style:name — shorthand, no explicit value
-    Shorthand,
-    /// style:name={expr} — expression in braces
-    Expression(Span),
+    /// style:name={expr} — expression in braces, or shorthand `style:name`
+    /// (where the span of `name` acts as the expression). Use the
+    /// `shorthand: bool` on `StyleDirective` to distinguish emission.
+    Expression,
     /// style:name="string" — static string value
     String(String),
     /// style:name="text{expr}text" — concatenation of static and dynamic parts
@@ -889,8 +892,11 @@ pub struct BindDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of the JS expression. None means shorthand (bind:name).
-    pub expression_span: Option<Span>,
+    /// Span of the JS expression. For shorthand (`bind:name`) this equals
+    /// the span of `name` — the parser synthesizes `Expression::Identifier`
+    /// for that range so downstream passes have exactly one path regardless
+    /// of shorthand/explicit form.
+    pub expression_span: Span,
     pub shorthand: bool,
 }
 

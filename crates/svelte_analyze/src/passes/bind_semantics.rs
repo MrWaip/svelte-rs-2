@@ -3,7 +3,7 @@ use crate::types::data::{AnalysisData, BindTargetSemantics};
 use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
 use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue,
+    Attribute, BindDirective, ClassDirective, Element, StyleDirective,
 };
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
@@ -15,10 +15,6 @@ pub(crate) struct BindSemanticsVisitor<'s> {
 impl<'s> BindSemanticsVisitor<'s> {
     pub(crate) fn new(source: &'s str) -> Self {
         Self { source }
-    }
-
-    fn is_mutable_rune(sym_id: SymbolId, data: &AnalysisData) -> bool {
-        data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id)
     }
 
     fn shorthand_symbol(node_id: svelte_ast::NodeId, data: &AnalysisData) -> Option<SymbolId> {
@@ -43,7 +39,15 @@ impl<'s> BindSemanticsVisitor<'s> {
             .ref_symbols()
             .iter()
             .copied()
-            .filter(|&sym| data.scoping.is_each_block_var(sym))
+            .filter(|&sym| {
+                matches!(
+                    data.declaration_semantics(data.scoping.symbol_declaration(sym)),
+                    crate::DeclarationSemantics::Contextual(
+                        crate::ContextualDeclarationSemantics::EachItem(_)
+                            | crate::ContextualDeclarationSemantics::EachIndex(_),
+                    )
+                )
+            })
             .collect();
 
         if !each_vars.is_empty() {
@@ -65,18 +69,6 @@ impl<'s> BindSemanticsVisitor<'s> {
         }
 
         if let Some(sym_id) = data.bind_target_symbol(dir.id) {
-            if data.scoping.is_prop_source(sym_id) {
-                data.template
-                    .bind_semantics
-                    .prop_source_nodes
-                    .insert(dir.id);
-            }
-            if Self::is_mutable_rune(sym_id, data) {
-                data.template
-                    .bind_semantics
-                    .mutable_rune_targets
-                    .insert(dir.id);
-            }
             if data.script.blocker_data.has_async {
                 if let Some(idx) = data.script.blocker_data.symbol_blocker(sym_id) {
                     data.template
@@ -89,31 +81,19 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_class(dir: &ClassDirective, data: &mut AnalysisData) {
-        if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
-        {
-            data.template
-                .bind_semantics
-                .mutable_rune_targets
-                .insert(dir.id);
-        }
+        let _ = Self::shorthand_symbol(dir.id, data);
     }
 
     fn classify_style(dir: &StyleDirective, data: &mut AnalysisData) {
-        if !matches!(dir.value, StyleDirectiveValue::Shorthand) {
+        if !dir.shorthand {
             return;
         }
-        if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
-        {
-            data.template
-                .bind_semantics
-                .mutable_rune_targets
-                .insert(dir.id);
-        }
+        let _ = Self::shorthand_symbol(dir.id, data);
     }
 }
 
 impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
-    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
+    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
         match attr {
             Attribute::BindDirective(dir) => {
                 Self::classify_bind(dir, ctx.data);
@@ -124,24 +104,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             _ => {}
         }
     }
-
-    fn visit_each_block(&mut self, block: &svelte_ast::EachBlock, ctx: &mut VisitContext<'_>) {
-        if let Some(info) = ctx.data.expressions.get(block.id) {
-            if info
-                .ref_symbols()
-                .iter()
-                .any(|&s| ctx.data.scoping.is_prop_source(s))
-            {
-                ctx.data
-                    .template
-                    .bind_semantics
-                    .prop_source_nodes
-                    .insert(block.id);
-            }
-        }
-    }
-
-    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         let bind_group_id = el.attributes.iter().find_map(|attr| {
             let Attribute::BindDirective(dir) = attr else {
                 return None;

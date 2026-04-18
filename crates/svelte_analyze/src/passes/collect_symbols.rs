@@ -25,24 +25,12 @@ pub(crate) struct CollectSymbolsVisitor {
     pending_clsx: bool,
 }
 
-/// Resolve script-level store subscriptions from OXC unresolved references.
-/// Called after the template walk, when ComponentScoping is fully built.
-pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
-    let candidates: Vec<String> = match &data.script.info {
-        Some(s) => s.store_candidates.iter().map(|n| format!("${n}")).collect(),
-        None => return,
-    };
-    for name in &candidates {
-        try_mark_store(name, &mut data.scoping);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // TemplateVisitor impl
 // ---------------------------------------------------------------------------
 
 impl TemplateVisitor for CollectSymbolsVisitor {
-    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         if let Some(key_id) = block.key_id {
             ctx.data
                 .blocks
@@ -51,7 +39,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
     }
 
-    fn visit_expression(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
+    fn visit_expression(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_, '_>) {
         store_expr_offset(node_id, span, ctx);
     }
 
@@ -59,7 +47,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         &mut self,
         node_id: NodeId,
         expr: &Expression<'_>,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         let mut info = build_expression_info(expr, &mut ctx.data.scoping);
         if info.uses_legacy_slots() {
@@ -82,7 +70,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         &mut self,
         node_id: NodeId,
         stmt: &Statement<'_>,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         if ctx.data.snippet_stmt_handle(node_id).is_none() {
             return;
@@ -100,12 +88,12 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_>) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         self.pending_render_tag = Some(tag.id);
         resolve_render_tag_callee(tag, ctx);
     }
 
-    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_>) {
+    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
         if let Some(handle) = ctx
             .parsed()
             .and_then(|p| p.expr_handle(tag.expression_span.start))
@@ -128,16 +116,15 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
         // Build ExpressionInfo for the @const init expression so that
         // mark_const_tag_bindings can read ref_symbols for derived_deps.
-        if let Some(init_expr) = ctx
-            .parsed()
+        let parsed = ctx.parsed;
+        if let Some(init_expr) = parsed
             .and_then(|p| p.stmt_handle(tag.expression_span.start))
-            .and_then(|handle| ctx.parsed().and_then(|p| p.stmt(handle)))
-            .and_then(|stmt| {
-                if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
+            .and_then(|handle| parsed.and_then(|p| p.stmt(handle)))
+            .and_then(|stmt| match stmt {
+                oxc_ast::ast::Statement::VariableDeclaration(decl) => {
                     decl.declarations.first().and_then(|d| d.init.as_ref())
-                } else {
-                    None
                 }
+                _ => None,
             })
         {
             let info = build_expression_info(init_expr, &mut ctx.data.scoping);
@@ -145,14 +132,14 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_>) {
+    fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_, '_>) {
         set_pending_flags(attr, &mut self.pending_shorthand, &mut self.pending_clsx);
     }
 
     fn leave_concatenation_attribute(
         &mut self,
         attr: &svelte_ast::ConcatenationAttribute,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         merge_concat_expression_info(&attr.parts, attr.id, ctx);
     }
@@ -160,7 +147,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
     fn leave_style_directive(
         &mut self,
         dir: &svelte_ast::StyleDirective,
-        ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_, '_>,
     ) {
         if let StyleDirectiveValue::Concatenation(parts) = &dir.value {
             merge_concat_expression_info(parts, dir.id, ctx);
@@ -178,16 +165,16 @@ pub(crate) fn build_expression_info(
     scoping: &mut ComponentScoping,
 ) -> ExpressionInfo {
     let mut info = js_analyze::analyze_expression(expr);
-    info.set_ref_symbols(collect_ref_symbols_and_stores(expr, scoping));
+    info.set_ref_symbols(collect_ref_symbols(expr, scoping));
     info
 }
 
-/// Single OXC walk: collect resolved SymbolIds + detect $store subscriptions.
-fn collect_ref_symbols_and_stores(
+/// Single OXC walk: collect resolved SymbolIds.
+fn collect_ref_symbols(
     expr: &Expression<'_>,
     scoping: &mut ComponentScoping,
 ) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols_with_options(scoping, true, |collector| {
+    collect_resolved_ref_symbols(scoping, |collector| {
         collector.visit_expression(expr);
     })
 }
@@ -227,7 +214,11 @@ fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut Ana
     }
 }
 
-fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_>) {
+fn store_expression_info(
+    node_id: NodeId,
+    info: ExpressionInfo,
+    ctx: &mut VisitContext<'_, '_>,
+) {
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
         ctx.data.attr_expressions.insert(node_id, info);
     } else {
@@ -235,7 +226,7 @@ fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitC
     }
 }
 
-fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
+fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_, '_>) {
     let Some(handle) = ctx.parsed().and_then(|p| p.expr_handle(span.start)) else {
         return;
     };
@@ -315,12 +306,14 @@ fn set_pending_flags(
             }
         }
         Attribute::ClassDirective(cd) => {
-            if cd.expression_span.is_some() {
-                *pending_shorthand = Some((cd.id, cd.name.clone()));
-            }
+            // After the shorthand rework `expression_span` is non-optional.
+            // The bitset still tracks "expression text matches attribute name"
+            // which is resolved by `classify_shorthand` further down the
+            // pass against the already-parsed Expression.
+            *pending_shorthand = Some((cd.id, cd.name.clone()));
         }
         Attribute::StyleDirective(sd) => {
-            if matches!(sd.value, StyleDirectiveValue::Expression(_)) {
+            if matches!(sd.value, StyleDirectiveValue::Expression) {
                 *pending_shorthand = Some((sd.id, sd.name.clone()));
             }
         }
@@ -328,8 +321,8 @@ fn set_pending_flags(
     }
 }
 
-fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_>) {
-    if let Some(parsed) = ctx.parsed() {
+fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+    if let Some(parsed) = ctx.parsed {
         if let Some(Expression::CallExpression(call)) = parsed
             .expr_handle(tag.expression_span.start)
             .and_then(|handle| parsed.expr(handle))
@@ -347,27 +340,12 @@ fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_>) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// If `name` is `$X`, mark `X` as a store subscription.
-fn try_mark_store(name: &str, scoping: &mut ComponentScoping) {
-    if !name.starts_with('$') || name.len() <= 1 {
-        return;
-    }
-    let base = &name[1..];
-    let root = scoping.root_scope_id();
-    let Some(sym_id) = scoping.find_binding(root, base) else {
-        return;
-    };
-    if !scoping.is_rune(sym_id) && !scoping.is_store(sym_id) {
-        scoping.mark_store(sym_id);
-    }
-}
-
 /// Merge ExpressionInfo from individual concat part entries into a single entry
 /// for the parent attribute/directive.
 fn merge_concat_expression_info(
     parts: &[svelte_ast::ConcatPart],
     parent_id: NodeId,
-    ctx: &mut VisitContext<'_>,
+    ctx: &mut VisitContext<'_, '_>,
 ) {
     let mut merged = ExpressionInfo::new(ExpressionKind::Other);
     for part in parts {
@@ -385,19 +363,18 @@ fn merge_concat_expression_info(
 
 fn resolve_identifier_symbol(
     ident: &IdentifierReference,
-    scoping: &ComponentScoping,
+    scoping: &ComponentScoping<'_>,
 ) -> Option<SymbolId> {
     let ref_id = ident.reference_id.get()?;
     scoping.get_reference(ref_id).symbol_id()
 }
 
-struct ResolvedRefCollector<'s> {
-    scoping: &'s mut ComponentScoping,
+struct ResolvedRefCollector<'s, 'a> {
+    scoping: &'s mut ComponentScoping<'a>,
     symbols: SmallVec<[SymbolId; 2]>,
-    mark_stores: bool,
 }
 
-impl<'a> Visit<'a> for ResolvedRefCollector<'_> {
+impl<'a> Visit<'a> for ResolvedRefCollector<'_, '_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         if let Some(ref_id) = ident.reference_id.get() {
             if let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() {
@@ -406,28 +383,16 @@ impl<'a> Visit<'a> for ResolvedRefCollector<'_> {
                 }
             }
         }
-        if self.mark_stores {
-            try_mark_store(ident.name.as_str(), self.scoping);
-        }
     }
 }
 
 fn collect_resolved_ref_symbols(
-    scoping: &mut ComponentScoping,
-    visit: impl FnOnce(&mut ResolvedRefCollector<'_>),
-) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols_with_options(scoping, false, visit)
-}
-
-fn collect_resolved_ref_symbols_with_options(
-    scoping: &mut ComponentScoping,
-    mark_stores: bool,
-    visit: impl FnOnce(&mut ResolvedRefCollector<'_>),
+    scoping: &mut ComponentScoping<'_>,
+    visit: impl FnOnce(&mut ResolvedRefCollector<'_, '_>),
 ) -> SmallVec<[SymbolId; 2]> {
     let mut collector = ResolvedRefCollector {
         scoping,
         symbols: SmallVec::new(),
-        mark_stores,
     };
     visit(&mut collector);
     collector.symbols

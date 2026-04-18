@@ -1,16 +1,16 @@
 //! Expression parsing, concatenation building, and emit helpers.
 
 use oxc_ast::ast::{Expression, Statement};
-use oxc_ast_visit::VisitMut;
 use rustc_hash::FxHashSet;
 
 use svelte_analyze::{
-    ExprHandle, ExprSite, ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart,
+    ConstDeclarationSemantics, DeclarationSemantics, ExprHandle, ExprSite, ExpressionInfo,
+    FragmentItem, FragmentKey, LoweredTextPart, PropDeclarationKind, PropDeclarationSemantics,
 };
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 
-use crate::builder::{Arg, AssignLeft, TemplatePart};
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
@@ -29,9 +29,10 @@ pub(crate) fn take_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression
 }
 
 /// Get a pre-transformed expression from ParsedExprs by NodeId.
+/// Await rewrites (pickled-await, track-reactivity-loss) are handled in
+/// `svelte_transform`; this function only applies codegen-side wrapping.
 pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.node_expr_handle(node_id));
-    finalize_await_exprs(ctx, Some(node_id), &mut expr);
     expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.expression(node_id));
     expr
@@ -39,7 +40,6 @@ pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expressio
 
 pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
     let mut expr = take_expr(ctx, ctx.attr_expr_handle(attr_id));
-    finalize_await_exprs(ctx, Some(attr_id), &mut expr);
     expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr = maybe_wrap_legacy_coarse_expr(ctx, expr, ctx.attr_expression(attr_id));
     expr
@@ -48,55 +48,8 @@ pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expressio
 /// Get a pre-transformed concat part expression by parser-owned handle.
 pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression<'a> {
     let mut expr = take_expr(ctx, handle);
-    finalize_await_exprs(ctx, None, &mut expr);
     expr = maybe_wrap_legacy_slots_read(ctx, expr);
     expr
-}
-
-struct AwaitExprFinalizer<'c, 'a> {
-    ctx: &'c Ctx<'a>,
-    ignore_node: Option<NodeId>,
-}
-
-impl<'a> VisitMut<'a> for AwaitExprFinalizer<'_, 'a> {
-    fn visit_expression(&mut self, expr: &mut Expression<'a>) {
-        oxc_ast_visit::walk_mut::walk_expression(self, expr);
-
-        let Expression::AwaitExpression(await_expr) = expr else {
-            return;
-        };
-
-        let ignored = self
-            .ignore_node
-            .is_some_and(|id| self.ctx.is_ignored(id, "await_reactivity_loss"));
-
-        let arg = self.ctx.b.move_expr(&mut await_expr.argument);
-        if self.ctx.is_pickled_await(await_expr.span.start) {
-            let save_call = self.ctx.b.call_expr("$.save", [Arg::Expr(arg)]);
-            let awaited = self.ctx.b.await_expr(save_call);
-            *expr = self
-                .ctx
-                .b
-                .call_expr_callee(awaited, std::iter::empty::<Arg<'a, '_>>());
-        } else if self.ctx.state.dev && !ignored {
-            let track_call = self
-                .ctx
-                .b
-                .call_expr("$.track_reactivity_loss", [Arg::Expr(arg)]);
-            let awaited = self.ctx.b.await_expr(track_call);
-            *expr = self
-                .ctx
-                .b
-                .call_expr_callee(awaited, std::iter::empty::<Arg<'a, '_>>());
-        } else {
-            await_expr.argument = arg;
-        }
-    }
-}
-
-fn finalize_await_exprs<'a>(ctx: &Ctx<'a>, ignore_node: Option<NodeId>, expr: &mut Expression<'a>) {
-    let mut finalizer = AwaitExprFinalizer { ctx, ignore_node };
-    finalizer.visit_expression(expr);
 }
 
 fn maybe_wrap_legacy_slots_read<'a>(ctx: &Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
@@ -113,6 +66,94 @@ fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {
         Expression::StaticMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
         Expression::ComputedMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
         _ => false,
+    }
+}
+
+/// Build per-symbol dep getter for legacy coarse-expression tracking.
+///
+/// Root point: one `match declaration_semantics(symbol_declaration(sym))` with
+/// migrated arms (Prop, Const); all remaining kinds fall through to the legacy
+/// `source_kind`/`read_semantics` helper.
+///
+/// Returns `None` when the symbol is not a tracked reactive dep (skip-emit).
+fn legacy_coarse_dep_getter<'a>(
+    ctx: &Ctx<'a>,
+    sym: svelte_analyze::scope::SymbolId,
+) -> Option<Expression<'a>> {
+    let node_id = ctx.query.scoping().symbol_declaration(sym);
+    match ctx.query.view.declaration_semantics(node_id) {
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::NonSource,
+            ..
+        }) => {
+            let prop_name = ctx.query.view.binding_origin_key(sym)?;
+            Some(
+                ctx.b
+                    .static_member_expr(ctx.b.rid_expr("$$props"), prop_name),
+            )
+        }
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::Source { .. },
+            ..
+        }) => Some(ctx.b.call_expr(
+            ctx.query.symbol_name(sym),
+            std::iter::empty::<Arg<'a, '_>>(),
+        )),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::Rest,
+            ..
+        }) => Some(ctx.b.rid_expr(ctx.query.symbol_name(sym))),
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+            let helper = if destructured { "$.safe_get" } else { "$.get" };
+            Some(ctx.b.call_expr(
+                helper,
+                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
+            ))
+        }
+        DeclarationSemantics::Contextual(kind) => {
+            contextual_dep_getter(ctx, sym, kind)
+        }
+        // Import-resolved reference — plain identifier in emission.
+        DeclarationSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
+            Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))
+        }
+        _ => None,
+    }
+}
+
+/// Emission for a contextual binding read (each/snippet/await/let:).
+/// Strategy payload on the declaration semantic answer picks between
+/// accessor-call / signal-get / plain emission.
+fn contextual_dep_getter<'a>(
+    ctx: &Ctx<'a>,
+    sym: svelte_analyze::scope::SymbolId,
+    kind: svelte_analyze::ContextualDeclarationSemantics,
+) -> Option<Expression<'a>> {
+    use svelte_analyze::{
+        ContextualDeclarationSemantics as Ck, EachIndexStrategy, EachItemStrategy,
+        SnippetParamStrategy,
+    };
+    let name = ctx.query.symbol_name(sym);
+
+    match kind {
+        Ck::EachItem(EachItemStrategy::Accessor)
+        | Ck::SnippetParam(SnippetParamStrategy::Accessor) => {
+            Some(ctx.b.call_expr(name, std::iter::empty::<Arg<'a, '_>>()))
+        }
+        Ck::EachItem(EachItemStrategy::Direct) | Ck::EachIndex(EachIndexStrategy::Direct) => {
+            Some(ctx.b.rid_expr(name))
+        }
+        Ck::EachItem(EachItemStrategy::Signal)
+        | Ck::EachIndex(EachIndexStrategy::Signal)
+        | Ck::SnippetParam(SnippetParamStrategy::Signal)
+        | Ck::AwaitValue
+        | Ck::AwaitError
+        | Ck::LetDirective => {
+            // Destructured let-leaves come in as `CarrierAlias` (mapped to
+            // `Contextual(LetDirective)` by the public API). Handled here as
+            // a plain signal read for the legacy coarse-dep-getter path.
+            Some(ctx.b.call_expr("$.get", [Arg::Expr(ctx.b.rid_expr(name))]))
+        }
     }
 }
 
@@ -133,39 +174,8 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
 
     let mut seq_parts: Vec<Expression<'a>> = Vec::new();
     for &sym in info.ref_symbols() {
-        if let Some(carrier_sym) = ctx.query.scoping().slot_let_binding_carrier(sym) {
-            let getter = ctx.b.call_expr(
-                "$.get",
-                [Arg::Expr(
-                    ctx.b.rid_expr(ctx.query.symbol_name(carrier_sym)),
-                )],
-            );
-            let getter = ctx.b.static_member_expr(getter, ctx.query.symbol_name(sym));
-            let getter = ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)]);
-            seq_parts.push(getter);
+        let Some(getter) = legacy_coarse_dep_getter(ctx, sym) else {
             continue;
-        }
-        let is_prop_source = ctx.query.scoping().is_prop_source(sym);
-        let is_template = ctx.query.scoping().is_template_declaration(sym);
-        let is_rune = ctx.query.scoping().is_rune(sym);
-        let is_import = ctx.query.scoping().is_import(sym);
-        let is_rest_prop = ctx.query.scoping().is_rest_prop(sym);
-        if !(is_prop_source || is_template || is_import || is_rest_prop) {
-            continue;
-        }
-
-        let getter = if is_prop_source {
-            ctx.b.call_expr(
-                ctx.query.symbol_name(sym),
-                std::iter::empty::<Arg<'a, '_>>(),
-            )
-        } else if is_template && is_rune {
-            ctx.b.call_expr(
-                "$.get",
-                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
-            )
-        } else {
-            ctx.b.rid_expr(ctx.query.symbol_name(sym))
         };
         let getter = ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)]);
         seq_parts.push(getter);

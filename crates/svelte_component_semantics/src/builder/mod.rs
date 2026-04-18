@@ -24,14 +24,14 @@ use crate::symbol::SymbolOwner;
 /// builder.add_template(&my_walker);  // third
 /// let semantics = builder.finish();
 /// ```
-pub struct ComponentSemanticsBuilder {
-    pub(crate) semantics: ComponentSemantics,
+pub struct ComponentSemanticsBuilder<'a> {
+    pub(crate) semantics: ComponentSemantics<'a>,
     /// Tracks the next available OxcNodeId across all programs.
     /// After each program traversal, bumped to max_seen + 1.
     next_node_id: u32,
 }
 
-impl ComponentSemanticsBuilder {
+impl<'a> ComponentSemanticsBuilder<'a> {
     pub fn new() -> Self {
         Self {
             semantics: ComponentSemantics::new(),
@@ -41,7 +41,7 @@ impl ComponentSemanticsBuilder {
 
     /// Process instance script (`<script>`). Traverses the program AST and
     /// registers all scopes, bindings, and references.
-    pub fn add_instance_program(&mut self, program: &Program<'_>) {
+    pub fn add_instance_program(&mut self, program: &Program<'a>) {
         let root = self.semantics.root_scope_id();
         program.scope_id.set(Some(root));
         let mut visitor = js_visitor::JsSemanticVisitor::new_with_offset(
@@ -58,7 +58,7 @@ impl ComponentSemanticsBuilder {
     /// Process module script (`<script module>`). Creates a module scope above
     /// the instance root, traverses the program, and registers semantics.
     /// NodeIds are offset to avoid collision with instance script.
-    pub fn add_module_program(&mut self, program: &Program<'_>) {
+    pub fn add_module_program(&mut self, program: &Program<'a>) {
         let root = self.semantics.root_scope_id();
 
         let module_scope = self
@@ -82,7 +82,7 @@ impl ComponentSemanticsBuilder {
     /// Process template. The walker knows Svelte AST types and calls back
     /// into `TemplateBuildContext` to create scopes and analyze JS expressions.
     /// Template NodeIds are offset past script NodeIds.
-    pub fn add_template(&mut self, walker: &mut impl TemplateWalker) {
+    pub fn add_template(&mut self, walker: &mut impl TemplateWalker<'a>) {
         let root = self.semantics.root_scope_id();
         let mut ctx = TemplateBuildContext::new(&mut self.semantics, root, self.next_node_id);
         walker.walk_template(&mut ctx);
@@ -96,12 +96,12 @@ impl ComponentSemanticsBuilder {
     }
 
     /// Consume the builder and return the built semantics.
-    pub fn finish(self) -> ComponentSemantics {
+    pub fn finish(self) -> ComponentSemantics<'a> {
         self.semantics
     }
 }
 
-impl Default for ComponentSemanticsBuilder {
+impl<'a> Default for ComponentSemanticsBuilder<'a> {
     fn default() -> Self {
         Self::new()
     }

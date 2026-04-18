@@ -1,12 +1,13 @@
 use oxc_ast::ast::{Expression, Statement};
 
+use svelte_analyze::DeclarationSemantics;
 use svelte_ast::{Attribute, NodeId};
 
-use crate::builder::{Arg, ObjProp};
+use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
-use super::gen_fragment;
 use super::expression::{build_attr_concat, get_attr_expr, MemoValueRef, TemplateMemoState};
+use super::gen_fragment;
 
 pub(crate) fn is_legacy_slot_element(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
     matches!(
@@ -66,7 +67,8 @@ pub(crate) fn emit_slot_call<'a>(
         let mut callback_params = vec![anchor_name.to_string()];
         callback_params.extend(props.memo.async_param_names());
         let callback = ctx.b.arrow_block_expr(
-            ctx.b.params(callback_params.iter().map(|name| name.as_str())),
+            ctx.b
+                .params(callback_params.iter().map(|name| name.as_str())),
             prelude,
         );
         body.push(ctx.b.call_stmt(
@@ -111,7 +113,9 @@ fn legacy_slot_props<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> LegacySlotProps<'a
                     continue;
                 }
                 let name = ctx.b.alloc_str(&a.name);
-                let value = ctx.b.str_expr(ctx.query.component.source_text(a.value_span));
+                let value = ctx
+                    .b
+                    .str_expr(ctx.query.component.source_text(a.value_span));
                 props.push(ObjProp::KeyValue(name, value));
             }
             Attribute::BooleanAttribute(a) => {
@@ -140,25 +144,8 @@ fn legacy_slot_props<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> LegacySlotProps<'a
                     continue;
                 }
                 let value = build_attr_concat(ctx, attr_id, &a.parts);
-                let expr = legacy_slot_attr_value(
-                    ctx,
-                    attr_id,
-                    value,
-                    &mut memo,
-                );
-                let name = ctx.b.alloc_str(&a.name);
-                let prop = if legacy_slot_prop_needs_getter(ctx, attr_id) {
-                    ObjProp::Getter(name, expr)
-                } else {
-                    ObjProp::KeyValue(name, expr)
-                };
-                props.push(prop);
-            }
-            Attribute::Shorthand(a) => {
-                let name_text = ctx.query.component.source_text(a.expression_span).trim();
-                let name = ctx.b.alloc_str(name_text);
-                let value = get_attr_expr(ctx, attr_id);
                 let expr = legacy_slot_attr_value(ctx, attr_id, value, &mut memo);
+                let name = ctx.b.alloc_str(&a.name);
                 let prop = if legacy_slot_prop_needs_getter(ctx, attr_id) {
                     ObjProp::Getter(name, expr)
                 } else {
@@ -196,8 +183,10 @@ fn legacy_slot_attr_value<'a>(
         return expr;
     };
     let memo_expr = if info.has_call() && !info.has_await() {
-        ctx.b
-            .call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(ctx.b.clone_expr(&expr)))])
+        ctx.b.call_expr(
+            "$.untrack",
+            [Arg::Expr(ctx.b.thunk(ctx.b.clone_expr(&expr)))],
+        )
     } else {
         ctx.b.clone_expr(&expr)
     };
@@ -219,10 +208,27 @@ fn legacy_slot_prop_needs_getter(ctx: &Ctx<'_>, attr_id: NodeId) -> bool {
         || info.has_await()
         || info.ref_symbols().iter().any(|&sym| {
             ctx.query.scoping().is_mutated(sym)
-                || ctx.query.scoping().is_prop_source(sym)
-                || ctx.query.scoping().is_rune(sym)
-                || ctx.query.scoping().is_template_declaration(sym)
+                || symbol_needs_slot_getter(ctx, sym)
         })
+}
+
+/// Does reading `sym` require a getter wrapper in a legacy `<slot>` prop?
+/// True for any reactive declaration kind (state/derived/prop/store/const)
+/// and for any contextual binding (each/snippet/await/let:).
+fn symbol_needs_slot_getter(ctx: &Ctx<'_>, sym: svelte_analyze::scope::SymbolId) -> bool {
+    let decl = ctx
+        .query
+        .view
+        .declaration_semantics(ctx.query.scoping().symbol_declaration(sym));
+    matches!(
+        decl,
+        DeclarationSemantics::State(_)
+            | DeclarationSemantics::Derived(_)
+            | DeclarationSemantics::Prop(_)
+            | DeclarationSemantics::Store(_)
+            | DeclarationSemantics::Const(_)
+            | DeclarationSemantics::Contextual(_),
+    )
 }
 
 fn legacy_slot_name<'a>(ctx: &Ctx<'a>, el_id: NodeId) -> &'a str {

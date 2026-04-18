@@ -1,10 +1,11 @@
 use oxc_ast::ast::{Argument, Expression, Statement};
 
-use crate::builder::Arg;
+use svelte_ast_builder::Arg;
 
-use super::super::{ScriptTransformer, compute_line_col, sanitize_location};
+use super::location::{compute_line_col, sanitize_location};
+use super::model::ComponentTransformer;
 
-pub(super) fn is_inspect_call(expr: &Expression) -> bool {
+pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
     match expr {
         Expression::CallExpression(call) => {
             if let Expression::Identifier(id) = &call.callee {
@@ -32,7 +33,7 @@ pub(super) fn is_inspect_call(expr: &Expression) -> bool {
     }
 }
 
-pub(super) fn is_inspect_trace_call(expr: &Expression) -> bool {
+pub(crate) fn is_inspect_trace_call(expr: &Expression) -> bool {
     if let Expression::CallExpression(call) = expr {
         if let Expression::StaticMemberExpression(member) = &call.callee {
             if member.property.name.as_str() == "trace" {
@@ -45,8 +46,8 @@ pub(super) fn is_inspect_trace_call(expr: &Expression) -> bool {
     false
 }
 
-impl<'a> ScriptTransformer<'_, 'a> {
-    pub(super) fn rewrite_trace_function_body(
+impl<'a> ComponentTransformer<'_, 'a> {
+    pub(crate) fn rewrite_trace_function_body(
         &mut self,
         body: &mut oxc_ast::ast::FunctionBody<'a>,
     ) {
@@ -107,7 +108,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         self.has_tracing = true;
     }
 
-    pub(super) fn transform_inspect(&self, node: &mut Expression<'a>) -> Option<Expression<'a>> {
+    pub(crate) fn transform_inspect(&self, node: &mut Expression<'a>) -> Option<Expression<'a>> {
         let Expression::CallExpression(outer_call) = node else {
             return None;
         };
@@ -204,7 +205,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             .arrow_expr(self.b.rest_params("$$args"), [self.b.expr_stmt(call)])
     }
 
-    pub(super) fn transform_console_log(
+    pub(crate) fn transform_console_log(
         &mut self,
         node: &mut Expression<'a>,
     ) -> Option<Expression<'a>> {

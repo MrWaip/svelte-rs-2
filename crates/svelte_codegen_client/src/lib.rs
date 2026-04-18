@@ -1,4 +1,3 @@
-mod builder;
 mod context;
 mod custom_element;
 mod script;
@@ -11,9 +10,9 @@ use oxc_span::{GetSpanMut, Span};
 
 use svelte_analyze::{AnalysisData, IdentGen, ParserResult};
 use svelte_ast::{Attribute, Component, Node};
+use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_transform::TransformData;
 
-use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -66,6 +65,7 @@ pub fn generate<'a>(
             script::transform_component_module_program(
                 alloc,
                 program,
+                Some(analysis),
                 &analysis.scoping,
                 Some(analysis.script_rune_calls()),
             )
@@ -180,12 +180,12 @@ pub fn generate<'a>(
     //   const $count = () => $.store_get(count, "$count", $$stores);
     //   const [$$stores, $$cleanup] = $.setup_stores();
     if runtime.has_stores {
-        // Sort store base names for deterministic output
+        let scoping = ctx.query.scoping();
         let mut store_names: Vec<&str> = ctx
             .query
-            .scoping()
-            .store_symbol_ids()
-            .map(|sym| ctx.query.scoping().symbol_name(sym))
+            .view
+            .iter_store_declarations()
+            .map(|(_, store)| scoping.symbol_name(store.base_symbol))
             .collect();
         store_names.sort();
 
@@ -628,17 +628,24 @@ fn try_binding_to_assignment<'a>(
 
 /// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
 /// Applies rune transforms but produces a plain ES module (no component wrapping).
-pub fn generate_module(
-    alloc: &Allocator,
-    source: &str,
-    is_ts: bool,
-    analysis: &AnalysisData,
+///
+/// The caller supplies the already-parsed `Program` (from `analyze_module`)
+/// so that `ReferenceId`s match what `AnalysisData` recorded. Re-parsing the
+/// source here would produce a disjoint id namespace and break v2 reference
+/// lookups.
+pub fn generate_module<'a>(
+    alloc: &'a Allocator,
+    program: oxc_ast::ast::Program<'a>,
+    analysis: &AnalysisData<'a>,
     dev: bool,
 ) -> String {
     let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
-    let arena_source: &str = alloc.alloc_str(source);
-    let script_output =
-        script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
+    let script_output = script::transform_module_program(
+        alloc,
+        program,
+        Some(analysis),
+        &analysis.scoping,
+    );
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");

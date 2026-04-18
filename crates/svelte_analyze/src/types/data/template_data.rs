@@ -669,8 +669,6 @@ impl DocumentBindKind {
 
 pub struct BindSemanticsData {
     pub(crate) target_semantics: NodeTable<BindTargetSemantics>,
-    pub(crate) mutable_rune_targets: NodeBitSet,
-    pub(crate) prop_source_nodes: NodeBitSet,
     pub(crate) has_bind_group: NodeBitSet,
     pub(crate) bind_group_value_attr: NodeTable<NodeId>,
     pub(crate) bind_blockers: NodeTable<SmallVec<[u32; 2]>>,
@@ -681,8 +679,6 @@ impl BindSemanticsData {
     pub fn new(node_count: u32) -> Self {
         Self {
             target_semantics: NodeTable::new(node_count),
-            mutable_rune_targets: NodeBitSet::new(node_count),
-            prop_source_nodes: NodeBitSet::new(node_count),
             has_bind_group: NodeBitSet::new(node_count),
             bind_group_value_attr: NodeTable::new(node_count),
             bind_blockers: NodeTable::new(node_count),
@@ -692,12 +688,6 @@ impl BindSemanticsData {
 
     pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
         self.target_semantics.get(id)
-    }
-    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
-        self.mutable_rune_targets.contains(&id)
-    }
-    pub fn is_prop_source(&self, id: NodeId) -> bool {
-        self.prop_source_nodes.contains(&id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.has_bind_group.contains(&id)

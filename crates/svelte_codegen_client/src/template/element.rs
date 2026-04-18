@@ -5,7 +5,7 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
-use crate::builder::{Arg, AssignLeft};
+use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
 
 use super::attributes::{
@@ -208,7 +208,7 @@ pub(crate) fn process_element<'a>(
                     // textContent shortcut
                     let expr = build_concat(ctx, &items[0]);
                     init.push(ctx.b.assign_stmt(
-                        crate::builder::AssignLeft::StaticMember(
+                        svelte_ast_builder::AssignLeft::StaticMember(
                             ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
                         ),
                         expr,
@@ -219,7 +219,7 @@ pub(crate) fn process_element<'a>(
                     if let Some(expr_id) = ctx.option_synthetic_value_expr(el_id) {
                         let raw_expr = get_node_expr(ctx, expr_id);
                         init.push(ctx.b.assign_stmt(
-                            crate::builder::AssignLeft::StaticMember(
+                            svelte_ast_builder::AssignLeft::StaticMember(
                                 ctx.b.static_member(ctx.b.rid_expr(el_name), "__value"),
                             ),
                             raw_expr,
@@ -257,7 +257,7 @@ pub(crate) fn process_element<'a>(
                     let expr = build_concat(ctx, &items[0]);
                     // bound_contenteditable: nodeValue= in init instead of $.set_text() in update
                     init.push(ctx.b.assign_stmt(
-                        crate::builder::AssignLeft::StaticMember(
+                        svelte_ast_builder::AssignLeft::StaticMember(
                             ctx.b.static_member(ctx.b.rid_expr(&text_name), "nodeValue"),
                         ),
                         expr,

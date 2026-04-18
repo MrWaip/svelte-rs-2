@@ -1,5 +1,6 @@
 pub(crate) mod css;
 pub(crate) mod passes;
+pub(crate) mod reactivity_semantics;
 
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
@@ -8,27 +9,40 @@ pub(crate) mod utils;
 mod validate;
 pub(crate) mod walker;
 
-pub use scope::{ComponentScoping, TemplateBindingReadKind};
+pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BindHostKind,
-    BindPropertyKind, BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
-    ContentEditableKind, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
-    DirectiveModifierFlags, DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFacts,
-    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
-    ExprHandle, ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts,
+    BindPropertyKind, BindTargetSemantics, BlockAnalysis, BlockerData,
+    CarrierMemberReadSemantics, ClassDirectiveInfo,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    ConstDeclarationSemantics, ConstTagData, ContentEditableKind, ContentStrategy,
+    ContextualDeclarationSemantics, ContextualReadKind, ContextualReadSemantics,
+    EachIndexStrategy, EachItemStrategy, SnippetParamStrategy,
+    CssAnalysis, DebugTagData, DeclarationSemantics,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DestructureKind, OptimizedRuneSemantics,
+    DirectiveModifierFlags,
+    DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFacts, ElementFactsEntry,
+    ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps, ExprHandle, ExprRole,
+    ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts,
     FragmentFactsEntry, FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData,
     ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind, NamespaceKind,
     OutputPlanData, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets, PropAnalysis,
-    PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptAnalysis,
-    ScriptRuneCalls, SnippetData, StmtHandle, TemplateAnalysis, TemplateElementEntry,
-    TemplateElementIndex, TemplateTopology, WindowBindKind,
+    PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering, PropLoweringMode,
+    PropReferenceSemantics, PropsObjectPropertySemantics,
+    PropsAnalysis, ProxyStateInits,
+    ReactivitySemantics, ReferenceSemantics, RenderTagCalleeMode, RenderTagPlan,
+    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
+    RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls, SignalReferenceKind, SnippetData,
+    StateBindingSemantics, StateDeclarationSemantics, StateKind, StmtHandle,
+    StoreDeclarationSemantics,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology,
+    WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 pub use utils::IdentGen;
+pub use utils::script_info::BINDABLE_RUNE_NAME;
 pub use utils::{
     is_capture_event, is_delegatable_event, is_passive_event, is_regular_dom_property,
     is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
@@ -73,7 +87,7 @@ impl Default for AnalyzeOptions {
 pub fn analyze<'a>(
     component: &Component,
     parsed: ParserResult<'a>,
-) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
+) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
     analyze_with_options(component, parsed, &AnalyzeOptions::default())
 }
 
@@ -82,7 +96,7 @@ pub fn analyze_with_options<'a>(
     component: &Component,
     mut parsed: ParserResult<'a>,
     options: &AnalyzeOptions,
-) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
+) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty(component.node_count());
@@ -140,16 +154,17 @@ pub fn analyze_with_options<'a>(
 ///
 /// Only parses JS, builds scopes, and detects runes. No template, no props,
 /// no fragment classification — modules are pure JS with rune transforms.
-pub fn analyze_module(
-    alloc: &oxc_allocator::Allocator,
-    source: &str,
+pub fn analyze_module<'a>(
+    alloc: &'a oxc_allocator::Allocator,
+    source: &'a str,
     is_ts: bool,
     dev: bool,
-) -> (AnalysisData, Vec<Diagnostic>) {
+) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
     let _ = dev;
     let mut diags = Vec::new();
-
     let mut data = AnalysisData::new_empty(0);
+    let mut parsed = ParserResult::new();
+
     match svelte_parser::parse_module(alloc, source, is_ts) {
         Ok((program, _scoping)) => {
             let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
@@ -160,22 +175,34 @@ pub fn analyze_module(
             let mut script_info =
                 utils::script_info::extract_script_info(&program, 0, source, true);
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
-
             data.scoping = scoping;
             data.script.info = Some(script_info);
-            passes::mark_runes::mark_script_runes(&mut data);
-            passes::mark_runes::mark_nested_runes(&program, &mut data.scoping);
+            data.script.runes = true;
+
             validate::validate_standalone_module(&data, &program, 0, true, &mut diags);
+
+            // Stash program in ParserResult so `build_v2`'s script collector
+            // walks the same parse that downstream transforms use.
+            parsed.program = Some(program);
+            let stub_component = svelte_ast::Component::new(
+                source.to_string(),
+                svelte_ast::Fragment::empty(),
+                svelte_ast::AstStore::default(),
+                None,
+                None,
+                None,
+            );
+            reactivity_semantics::build_v2(&stub_component, &parsed, &mut data);
         }
         Err(errs) => diags.extend(errs),
     }
 
-    (data, diags)
+    (data, parsed, diags)
 }
-fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
+fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
     let has_exports = !data.script.exports.is_empty();
     let has_bindable = data.script.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = data.scoping.has_stores();
+    let has_stores = data.reactivity.has_store_declarations();
     let has_ce_props = data.output.custom_element
         && data
             .script
@@ -187,7 +214,7 @@ fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
         || has_ce_props
         || data.output.needs_context
         || data.script.accessors
-        || (!data.script.runes && data.script.immutable)
+        || (!data.uses_runes() && data.script.immutable)
         || dev;
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
     let needs_props_param = data.script.props.is_some() || needs_push;

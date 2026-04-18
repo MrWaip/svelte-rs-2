@@ -17,6 +17,14 @@ use crate::types::script::{
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::utils::is_simple_expression;
 
+pub const STATE_RUNE_NAME: &str = "$state";
+pub const DERIVED_RUNE_NAME: &str = "$derived";
+pub const EFFECT_RUNE_NAME: &str = "$effect";
+pub const PROPS_RUNE_NAME: &str = "$props";
+pub const BINDABLE_RUNE_NAME: &str = "$bindable";
+pub const INSPECT_RUNE_NAME: &str = "$inspect";
+pub const HOST_RUNE_NAME: &str = "$host";
+
 /// Extract structural metadata from a parsed script Program AST.
 /// Pure syntax extraction — no semantic analysis (scoping, store detection, etc.).
 pub fn extract_script_info(
@@ -160,35 +168,35 @@ pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
 pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
-            "$state" => Some(RuneKind::State),
-            "$derived" => Some(RuneKind::Derived),
-            "$effect" => Some(RuneKind::Effect),
-            "$props" => Some(RuneKind::Props),
-            "$bindable" => Some(RuneKind::Bindable),
-            "$inspect" => Some(RuneKind::Inspect),
-            "$host" => Some(RuneKind::Host),
+            STATE_RUNE_NAME => Some(RuneKind::State),
+            DERIVED_RUNE_NAME => Some(RuneKind::Derived),
+            EFFECT_RUNE_NAME => Some(RuneKind::Effect),
+            PROPS_RUNE_NAME => Some(RuneKind::Props),
+            BINDABLE_RUNE_NAME => Some(RuneKind::Bindable),
+            INSPECT_RUNE_NAME => Some(RuneKind::Inspect),
+            HOST_RUNE_NAME => Some(RuneKind::Host),
             _ => None,
         },
         Expression::StaticMemberExpression(member) => {
             if let Expression::Identifier(obj) = &member.object {
                 let prop = member.property.name.as_str();
                 match (obj.name.as_str(), prop) {
-                    ("$derived", "by") => Some(RuneKind::DerivedBy),
-                    ("$state", "raw") => Some(RuneKind::StateRaw),
-                    ("$state", "eager") => Some(RuneKind::StateEager),
-                    ("$effect", "pre") => Some(RuneKind::EffectPre),
-                    ("$effect", "root") => Some(RuneKind::EffectRoot),
-                    ("$effect", "tracking") => Some(RuneKind::EffectTracking),
-                    ("$effect", "pending") => Some(RuneKind::EffectPending),
-                    ("$props", "id") => Some(RuneKind::PropsId),
-                    ("$inspect", "trace") => Some(RuneKind::InspectTrace),
+                    (DERIVED_RUNE_NAME, "by") => Some(RuneKind::DerivedBy),
+                    (STATE_RUNE_NAME, "raw") => Some(RuneKind::StateRaw),
+                    (STATE_RUNE_NAME, "eager") => Some(RuneKind::StateEager),
+                    (EFFECT_RUNE_NAME, "pre") => Some(RuneKind::EffectPre),
+                    (EFFECT_RUNE_NAME, "root") => Some(RuneKind::EffectRoot),
+                    (EFFECT_RUNE_NAME, "tracking") => Some(RuneKind::EffectTracking),
+                    (EFFECT_RUNE_NAME, "pending") => Some(RuneKind::EffectPending),
+                    (PROPS_RUNE_NAME, "id") => Some(RuneKind::PropsId),
+                    (INSPECT_RUNE_NAME, "trace") => Some(RuneKind::InspectTrace),
                     _ => None,
                 }
             } else if member.property.name == "with" {
                 // `$inspect(...).with(callback)` — callee is `$inspect(...).with`
                 if let Expression::CallExpression(inner) = &member.object {
                     if let Expression::Identifier(id) = &inner.callee {
-                        if id.name == "$inspect" {
+                        if id.name == INSPECT_RUNE_NAME {
                             return Some(RuneKind::InspectWith);
                         }
                     }
@@ -206,7 +214,13 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
 pub fn is_rune_name(name: &str) -> bool {
     matches!(
         name,
-        "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host"
+        STATE_RUNE_NAME
+            | DERIVED_RUNE_NAME
+            | EFFECT_RUNE_NAME
+            | PROPS_RUNE_NAME
+            | BINDABLE_RUNE_NAME
+            | INSPECT_RUNE_NAME
+            | HOST_RUNE_NAME
     )
 }
 

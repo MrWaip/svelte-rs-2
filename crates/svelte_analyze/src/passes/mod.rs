@@ -6,15 +6,16 @@ pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod css_prune_index;
+pub(crate) mod dynamism;
 pub(crate) mod element_flags;
 mod executor;
 pub(crate) mod finalize_component_name;
 pub(crate) mod hoistable;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
-pub(crate) mod mark_runes;
+pub(crate) mod populate_const_tag_syms;
 pub(crate) mod post_resolve;
-pub(crate) mod reactivity;
+pub(crate) mod resolve_render_tag_meta;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
 
@@ -29,20 +30,18 @@ pub(crate) enum PassKey {
     AnalyzeScript,
     BuildComponentSemantics,
     FinalizeComponentName,
-    MarkRunes,
+    ScanIgnoreComments,
     PrepareAwaitBindings,
     ExtractCeConfig,
     TemplateSideTables,
     CollectSymbols,
-    ResolveScriptStores,
     JsAnalyzePostTemplate,
     ClassifyNeedsContext,
     PostResolve,
     ResolveRenderTagMeta,
     CollectConstTagFragments,
-    MarkConstTagBindings,
-    PrecomputeDynamicCache,
-    MarkBlockedSymbolsDynamic,
+    PopulateConstTagSyms,
+    BuildReactivitySemantics,
     ClassifyExpressionDynamicity,
     MarkBlockedExpressionsDynamic,
     LowerTemplate,
@@ -59,21 +58,19 @@ pub(crate) enum DataToken {
     ScriptInfo,
     ScriptScoping,
     ComponentName,
-    RuneMarks,
+    IgnoreComments,
     AwaitBindings,
     CeConfig,
     TemplateSemantics,
     TemplateSideTables,
     SymbolRefs,
-    ScriptStoresResolved,
     JsAnalyzePostTemplate,
     NeedsContext,
     PostResolve,
     RenderTagMeta,
     ConstTagFragments,
-    ConstTagBindingMarks,
-    DynamicCache,
-    BlockedSymbolsDynamic,
+    ConstTagSyms,
+    ReactivitySemantics,
     ExpressionDynamicity,
     BlockedExpressionsDynamic,
     LoweredTemplate,
@@ -113,13 +110,13 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ComponentName],
     },
     PassDescriptor {
-        key: PassKey::MarkRunes,
+        key: PassKey::ScanIgnoreComments,
         requires: &[DataToken::ScriptInfo, DataToken::ScriptScoping],
-        produces: &[DataToken::RuneMarks],
+        produces: &[DataToken::IgnoreComments],
     },
     PassDescriptor {
         key: PassKey::PrepareAwaitBindings,
-        requires: &[DataToken::RuneMarks],
+        requires: &[DataToken::IgnoreComments],
         produces: &[DataToken::AwaitBindings],
     },
     PassDescriptor {
@@ -138,11 +135,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::SymbolRefs],
     },
     PassDescriptor {
-        key: PassKey::ResolveScriptStores,
-        requires: &[DataToken::SymbolRefs],
-        produces: &[DataToken::ScriptStoresResolved],
-    },
-    PassDescriptor {
         key: PassKey::JsAnalyzePostTemplate,
         requires: &[DataToken::ParsedExpressions],
         produces: &[DataToken::JsAnalyzePostTemplate],
@@ -159,7 +151,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::ResolveRenderTagMeta,
-        requires: &[DataToken::PostResolve, DataToken::ParsedExpressions],
+        requires: &[
+            DataToken::PostResolve,
+            DataToken::ParsedExpressions,
+            DataToken::ReactivitySemantics,
+        ],
         produces: &[DataToken::RenderTagMeta],
     },
     PassDescriptor {
@@ -168,23 +164,23 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ConstTagFragments],
     },
     PassDescriptor {
-        key: PassKey::MarkConstTagBindings,
+        key: PassKey::PopulateConstTagSyms,
         requires: &[DataToken::ConstTagFragments, DataToken::SymbolRefs],
-        produces: &[DataToken::ConstTagBindingMarks],
+        produces: &[DataToken::ConstTagSyms],
     },
     PassDescriptor {
-        key: PassKey::PrecomputeDynamicCache,
-        requires: &[DataToken::ConstTagBindingMarks],
-        produces: &[DataToken::DynamicCache],
-    },
-    PassDescriptor {
-        key: PassKey::MarkBlockedSymbolsDynamic,
-        requires: &[DataToken::DynamicCache, DataToken::JsAnalyzePostTemplate],
-        produces: &[DataToken::BlockedSymbolsDynamic],
+        key: PassKey::BuildReactivitySemantics,
+        requires: &[
+            DataToken::ConstTagSyms,
+            DataToken::TemplateSideTables,
+            DataToken::AwaitBindings,
+            DataToken::PostResolve,
+        ],
+        produces: &[DataToken::ReactivitySemantics],
     },
     PassDescriptor {
         key: PassKey::ClassifyExpressionDynamicity,
-        requires: &[DataToken::DynamicCache],
+        requires: &[DataToken::ReactivitySemantics],
         produces: &[DataToken::ExpressionDynamicity],
     },
     PassDescriptor {
@@ -235,26 +231,22 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::AnalyzeScript,
     PassKey::BuildComponentSemantics,
     PassKey::FinalizeComponentName,
-    PassKey::MarkRunes,
+    PassKey::ScanIgnoreComments,
     PassKey::PrepareAwaitBindings,
     PassKey::ExtractCeConfig,
 ];
 
-pub(crate) const INDEX_BUILD_STAGE: &[PassKey] = &[
-    PassKey::TemplateSideTables,
-    PassKey::CollectSymbols,
-    PassKey::ResolveScriptStores,
-];
+pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
+    &[PassKey::TemplateSideTables, PassKey::CollectSymbols];
 
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
     PassKey::ClassifyNeedsContext,
     PassKey::PostResolve,
-    PassKey::ResolveRenderTagMeta,
     PassKey::CollectConstTagFragments,
-    PassKey::MarkConstTagBindings,
-    PassKey::PrecomputeDynamicCache,
-    PassKey::MarkBlockedSymbolsDynamic,
+    PassKey::PopulateConstTagSyms,
+    PassKey::BuildReactivitySemantics,
+    PassKey::ResolveRenderTagMeta,
     PassKey::ClassifyExpressionDynamicity,
     PassKey::MarkBlockedExpressionsDynamic,
 ];
@@ -389,9 +381,9 @@ mod tests {
     fn resolves_topo_order_in_legacy_stable_order() {
         const DESCRIPTORS: &[PassDescriptor] = &[
             PassDescriptor {
-                key: PassKey::MarkRunes,
+                key: PassKey::ScanIgnoreComments,
                 requires: &[DataToken::ScriptInfo],
-                produces: &[DataToken::RuneMarks],
+                produces: &[DataToken::IgnoreComments],
             },
             PassDescriptor {
                 key: PassKey::AnalyzeScript,
@@ -401,7 +393,7 @@ mod tests {
         ];
         let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
 
-        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::MarkRunes]);
+        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]);
     }
 
     #[test]
@@ -409,13 +401,13 @@ mod tests {
         const DESCRIPTORS: &[PassDescriptor] = &[
             PassDescriptor {
                 key: PassKey::AnalyzeScript,
-                requires: &[DataToken::RuneMarks],
+                requires: &[DataToken::IgnoreComments],
                 produces: &[DataToken::ScriptInfo],
             },
             PassDescriptor {
-                key: PassKey::MarkRunes,
+                key: PassKey::ScanIgnoreComments,
                 requires: &[DataToken::ScriptInfo],
-                produces: &[DataToken::RuneMarks],
+                produces: &[DataToken::IgnoreComments],
             },
         ];
         let err = resolve_execution_order(DESCRIPTORS).expect_err("must fail");
@@ -426,16 +418,16 @@ mod tests {
     #[test]
     fn detects_missing_requirement() {
         const DESCRIPTORS: &[PassDescriptor] = &[PassDescriptor {
-            key: PassKey::MarkRunes,
+            key: PassKey::ScanIgnoreComments,
             requires: &[DataToken::ScriptInfo],
-            produces: &[DataToken::RuneMarks],
+            produces: &[DataToken::IgnoreComments],
         }];
         let err = resolve_execution_order(DESCRIPTORS).expect_err("must fail");
 
         assert_eq!(
             err,
             PassPlanError::MissingRequirement {
-                pass: PassKey::MarkRunes,
+                pass: PassKey::ScanIgnoreComments,
                 token: DataToken::ScriptInfo
             }
         );
@@ -450,14 +442,14 @@ mod tests {
                 produces: &[DataToken::ScriptInfo],
             },
             PassDescriptor {
-                key: PassKey::MarkRunes,
+                key: PassKey::ScanIgnoreComments,
                 requires: &[],
-                produces: &[DataToken::RuneMarks],
+                produces: &[DataToken::IgnoreComments],
             },
         ];
 
         let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
-        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::MarkRunes]);
+        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]);
     }
 
     #[test]

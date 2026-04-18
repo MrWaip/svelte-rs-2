@@ -9,7 +9,7 @@ use crate::types::data::{
 pub(crate) fn classify_render_tags(
     parsed: &mut ParserResult<'_>,
     component: &Component,
-    data: &mut AnalysisData,
+    data: &mut AnalysisData<'_>,
     source: &str,
     runes: bool,
 ) {
@@ -35,7 +35,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
     fn visit_render_tag(
         &mut self,
         tag: &svelte_ast::RenderTag,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        ctx: &mut crate::walker::VisitContext<'_, '_>,
     ) {
         let Some(handle) = self.parsed.expr_handle(tag.expression_span.start) else {
             return;
@@ -61,18 +61,20 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
     fn visit_await_block(
         &mut self,
         block: &svelte_ast::AwaitBlock,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        ctx: &mut crate::walker::VisitContext<'_, '_>,
     ) {
-        let Some(parsed) = ctx.parsed() else { return };
+        let Some(parsed) = ctx.parsed else { return };
         if let Some(val_span) = block.value_span {
-            if let Some(handle) = parsed.stmt_handle(val_span.start) {
+            let handle = parsed.stmt_handle(val_span.start);
+            let info = extract_await_binding_info(parsed, val_span.start);
+            if let Some(handle) = handle {
                 ctx.data
                     .template
                     .template_semantics
                     .await_value_stmt_handles
                     .insert(block.id, handle);
             }
-            if let Some(info) = extract_await_binding_info(parsed, val_span.start) {
+            if let Some(info) = info {
                 ctx.data
                     .template
                     .await_bindings
@@ -81,14 +83,16 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
             }
         }
         if let Some(err_span) = block.error_span {
-            if let Some(handle) = parsed.stmt_handle(err_span.start) {
+            let handle = parsed.stmt_handle(err_span.start);
+            let info = extract_await_binding_info(parsed, err_span.start);
+            if let Some(handle) = handle {
                 ctx.data
                     .template
                     .template_semantics
                     .await_error_stmt_handles
                     .insert(block.id, handle);
             }
-            if let Some(info) = extract_await_binding_info(parsed, err_span.start) {
+            if let Some(info) = info {
                 ctx.data
                     .template
                     .await_bindings

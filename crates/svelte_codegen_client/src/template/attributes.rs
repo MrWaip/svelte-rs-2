@@ -8,7 +8,7 @@ use svelte_analyze::{
 };
 use svelte_ast::{Attribute, Element, NodeId};
 
-use crate::builder::{Arg, AssignLeft, ObjProp};
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
@@ -19,23 +19,23 @@ use super::events::{
 use super::expression::{build_attr_concat, get_attr_expr, MemoAttr, MemoAttrUpdate};
 
 /// Build an object property for a directive expression.
-/// Handles the three-way branch: mutated rune -> `$.get(name)`, same-name -> shorthand, else -> key-value.
+/// Handles the three-way branch: mutated rune -> `$.get(expr_name)`, same-name
+/// -> shorthand, else -> key-value.
 fn build_directive_prop<'a>(
     ctx: &mut Ctx<'a>,
-    directive_id: NodeId,
+    _directive_id: NodeId,
     name: &str,
     expr: Expression<'a>,
     same_name: bool,
 ) -> ObjProp<'a> {
     let name_alloc = ctx.b.alloc_str(name);
-    // Pre-computed by analysis — no string-based symbol re-resolution.
-    if ctx.is_mutable_rune_target(directive_id) {
-        let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-        ObjProp::KeyValue(name_alloc, get_call)
-    } else if same_name && expr.is_identifier_reference() {
-        // Only use shorthand when the expression is still a plain identifier.
-        // Transform may have wrapped rune references with $.get(), making
-        // shorthand incorrect.
+    // The transform phase has already applied `$.get(name)` / prop-source /
+    // store rewrites to the expression, so `expr` is the authoritative
+    // lowering of the directive's value. Shorthand (`{ visible }`) only fires
+    // when the expression is still a bare identifier that matches the
+    // directive name — any rewrite wraps it in a `CallExpression` and the
+    // identifier check naturally falls through to explicit `key: value`.
+    if same_name && expr.is_identifier_reference() {
         ObjProp::Shorthand(name_alloc)
     } else {
         ObjProp::KeyValue(name_alloc, expr)
@@ -336,18 +336,6 @@ pub(crate) fn process_attr<'a>(
                 push_regular_attr_update(ctx, target, el_name, attr_update, val);
             }
         }
-        Attribute::Shorthand(a) => {
-            let val = get_attr_expr(ctx, attr_id);
-            let name = ctx
-                .query
-                .component
-                .source_text(a.expression_span)
-                .trim()
-                .to_string();
-            let attr_name = normalize_regular_attribute_name(&name, html_attr_namespace);
-            let attr_update = regular_attr_update(ctx, el_id, tag_name, &attr_name);
-            push_regular_attr_update(ctx, target, el_name, attr_update, val);
-        }
         Attribute::BindDirective(bind) => {
             let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
                 return;
@@ -361,9 +349,14 @@ pub(crate) fn process_attr<'a>(
                         .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
                 );
             }
-            if let Some(placement) =
-                gen_bind_directive(ctx, bind, bind_semantics, el_name, tag_name, has_use_directive)
-            {
+            if let Some(placement) = gen_bind_directive(
+                ctx,
+                bind,
+                bind_semantics,
+                el_name,
+                tag_name,
+                has_use_directive,
+            ) {
                 match placement {
                     BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                     BindPlacement::Init(stmt) => directive_init.push(stmt),
@@ -583,13 +576,11 @@ pub(crate) fn process_style_directives<'a>(
         };
 
         match &sd.value {
-            StyleDirectiveValue::Shorthand => {
-                let expr = ctx.b.rid_expr(name);
-                target.push(build_directive_prop(ctx, sd.id, name, expr, true));
-            }
-            StyleDirectiveValue::Expression(_) => {
+            StyleDirectiveValue::Expression => {
                 let parsed = get_attr_expr(ctx, sd.id);
-                let same_name = ctx.is_expression_shorthand(sd.id);
+                // Shorthand `style:name` is parsed as `Identifier(name)` so
+                // emission matches `style:name={name}` with same-name = true.
+                let same_name = sd.shorthand || ctx.is_expression_shorthand(sd.id);
                 target.push(build_directive_prop(ctx, sd.id, name, parsed, same_name));
             }
             StyleDirectiveValue::String(s) => {
@@ -643,7 +634,7 @@ fn build_style_concat<'a>(
     parts: &[svelte_ast::ConcatPart],
 ) -> Expression<'a> {
     use super::expression::get_concat_part_expr;
-    use crate::builder::TemplatePart;
+    use svelte_ast_builder::TemplatePart;
 
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
@@ -731,11 +722,6 @@ pub(crate) fn process_attrs_spread<'a>(
                 let expr = get_attr_expr(ctx, attr_id);
                 props.push(ObjProp::Spread(expr));
             }
-            Attribute::Shorthand(a) => {
-                let name = ctx.query.component.source_text(a.expression_span).trim();
-                let name_alloc = ctx.b.alloc_str(name);
-                props.push(ObjProp::Shorthand(name_alloc));
-            }
             Attribute::BindDirective(bind) => {
                 let has_use = ctx.has_use_directive(el_id);
                 let Some(bind_semantics) = ctx.bind_target_semantics(bind.id) else {
@@ -795,18 +781,9 @@ pub(crate) fn process_attrs_spread<'a>(
         for sd in &style_dirs {
             let name = &sd.name;
             match &sd.value {
-                StyleDirectiveValue::Shorthand => {
-                    style_props.push(build_directive_prop(
-                        ctx,
-                        sd.id,
-                        name,
-                        ctx.b.rid_expr(name),
-                        true,
-                    ));
-                }
-                StyleDirectiveValue::Expression(_) => {
+                StyleDirectiveValue::Expression => {
                     let parsed = get_attr_expr(ctx, sd.id);
-                    let same_name = ctx.is_expression_shorthand(sd.id);
+                    let same_name = sd.shorthand || ctx.is_expression_shorthand(sd.id);
                     style_props.push(build_directive_prop(ctx, sd.id, name, parsed, same_name));
                 }
                 StyleDirectiveValue::String(s) => {

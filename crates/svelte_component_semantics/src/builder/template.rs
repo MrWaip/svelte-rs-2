@@ -7,7 +7,6 @@ use oxc_syntax::symbol::SymbolId;
 use svelte_ast::FragmentKey;
 
 use super::js_visitor::JsSemanticVisitor;
-use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
 use crate::symbol::SymbolOwner;
 
@@ -17,8 +16,8 @@ use crate::symbol::SymbolOwner;
 /// Svelte AST types — the walker implementation (in `svelte_analyze`)
 /// knows about `Fragment`, `Node`, `AstStore`, etc., while this context
 /// only deals with scopes and JS AST.
-pub struct TemplateBuildContext<'s> {
-    semantics: &'s mut ComponentSemantics,
+pub struct TemplateBuildContext<'s, 'a> {
+    semantics: &'s mut ComponentSemantics<'a>,
     scope_stack: Vec<ScopeId>,
     /// Offset applied to OxcNodeIds read from template JS AST nodes.
     /// Ensures template NodeIds don't collide with script NodeIds.
@@ -28,9 +27,9 @@ pub struct TemplateBuildContext<'s> {
     next_synthetic_node_id: u32,
 }
 
-impl<'s> TemplateBuildContext<'s> {
+impl<'s, 'a> TemplateBuildContext<'s, 'a> {
     pub(crate) fn new(
-        semantics: &'s mut ComponentSemantics,
+        semantics: &'s mut ComponentSemantics<'a>,
         root_scope: ScopeId,
         node_id_offset: u32,
     ) -> Self {
@@ -84,7 +83,7 @@ impl<'s> TemplateBuildContext<'s> {
 
     /// Run the JS semantic visitor on an expression in the current scope.
     /// References are tagged as template references. NodeIds are offset.
-    pub fn visit_js_expression(&mut self, expr: &Expression<'_>) {
+    pub fn visit_js_expression(&mut self, expr: &Expression<'a>) {
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(
@@ -104,7 +103,7 @@ impl<'s> TemplateBuildContext<'s> {
 
     /// Run the JS semantic visitor on a statement in the current scope.
     /// References are tagged as template references. NodeIds are offset.
-    pub fn visit_js_statement(&mut self, stmt: &Statement<'_>) {
+    pub fn visit_js_statement(&mut self, stmt: &Statement<'a>) {
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(
@@ -124,7 +123,7 @@ impl<'s> TemplateBuildContext<'s> {
 
     /// Run the JS semantic visitor on an expression, with initial reference
     /// flags (e.g. Write for `bind:value`). References are tagged as template.
-    pub fn visit_js_expression_with_flags(&mut self, expr: &Expression<'_>, flags: ReferenceFlags) {
+    pub fn visit_js_expression_with_flags(&mut self, expr: &Expression<'a>, flags: ReferenceFlags) {
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(
@@ -151,28 +150,17 @@ impl<'s> TemplateBuildContext<'s> {
         OxcNodeId::from_usize(id as usize)
     }
 
-    /// Materialize a shorthand reference (e.g. `bind:name`, `class:name`, `style:name`).
-    /// Creates a template reference with a unique NodeId and resolves it if the name is bound.
-    pub fn materialize_shorthand_reference(
-        &mut self,
-        name: &str,
-        flags: ReferenceFlags,
-    ) -> Option<SymbolId> {
-        let scope = self.current_scope();
-        let node_id = self.alloc_node_id();
-        let mut reference = Reference::new(node_id, scope, flags);
-
-        if let Some(sym_id) = self.semantics.find_binding(scope, name) {
-            reference.set_symbol_id(sym_id);
-            let ref_id = self.semantics.create_template_reference(reference);
-            self.semantics.add_resolved_reference(sym_id, ref_id);
-            Some(sym_id)
-        } else {
-            let ref_id = self.semantics.create_template_reference(reference);
-            self.semantics
-                .add_root_unresolved_reference(compact_str::CompactString::from(name), ref_id);
-            None
-        }
+    /// Mark a symbol as member-mutated without creating a write reference.
+    ///
+    /// Used by template walkers when a member-expression bind target
+    /// (`bind:value={foo.bar}`) mutates `foo` through the member chain —
+    /// OXC reads `foo` as an object-side identifier, but the template
+    /// semantically writes to it. Mirrors reference compiler's
+    /// `phases/scope.js::BindDirective` final pass where MemberExpression
+    /// bind targets set `binding.mutated = true` on the root symbol (kept
+    /// separate from `reassigned`, which fires only for Identifier bind).
+    pub fn mark_symbol_member_mutated(&mut self, sym_id: SymbolId) {
+        self.semantics.mark_symbol_member_mutated(sym_id);
     }
 
     /// The highest NodeId allocated by this context (for builder counter tracking).
@@ -185,12 +173,12 @@ impl<'s> TemplateBuildContext<'s> {
     }
 
     /// Direct access to semantics for operations not covered by the context API.
-    pub fn semantics(&self) -> &ComponentSemantics {
+    pub fn semantics(&self) -> &ComponentSemantics<'a> {
         self.semantics
     }
 
     /// Mutable access to semantics for operations not covered by the context API.
-    pub fn semantics_mut(&mut self) -> &mut ComponentSemantics {
+    pub fn semantics_mut(&mut self) -> &mut ComponentSemantics<'a> {
         self.semantics
     }
 }
@@ -200,6 +188,6 @@ impl<'s> TemplateBuildContext<'s> {
 /// Implemented by `svelte_analyze` which knows the Svelte AST types.
 /// The builder calls `walk_template` and passes a `TemplateBuildContext`
 /// that provides scope management and JS semantic analysis.
-pub trait TemplateWalker {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>);
+pub trait TemplateWalker<'a> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>);
 }

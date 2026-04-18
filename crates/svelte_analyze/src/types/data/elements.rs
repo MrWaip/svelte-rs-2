@@ -32,10 +32,6 @@ pub enum ComponentPropKind {
         attr_id: NodeId,
         parts: Vec<ConcatPart>,
     },
-    Shorthand {
-        attr_id: NodeId,
-        name: String,
-    },
     BindThis {
         bind_id: NodeId,
     },
@@ -90,7 +86,6 @@ pub struct ElementFlags {
     pub(crate) needs_input_defaults: NodeBitSet,
     pub(crate) needs_var: NodeBitSet,
     pub(crate) needs_ref: NodeBitSet,
-    pub(crate) dynamic_attrs: NodeBitSet,
     pub(crate) bound_contenteditable: NodeBitSet,
     pub(crate) has_use_directive: NodeBitSet,
     pub(crate) has_dynamic_class_directives: NodeBitSet,
@@ -109,8 +104,6 @@ pub struct ElementFlags {
     /// `<option>` with a single ExpressionTag child and no explicit `value` attribute.
     /// Maps option element NodeId → ExpressionTag NodeId for `__value` synthesis.
     pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
-    /// Component references that require `$.component()` wrapping (dotted names, non-normal bindings).
-    pub(crate) is_dynamic_component: NodeBitSet,
     /// `<select>`, `<optgroup>`, `<option>` elements with rich DOM content requiring `$.customizable_select`.
     pub(crate) customizable_select: NodeBitSet,
     /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
@@ -135,7 +128,6 @@ impl ElementFlags {
             needs_input_defaults: NodeBitSet::new(node_count),
             needs_var: NodeBitSet::new(node_count),
             needs_ref: NodeBitSet::new(node_count),
-            dynamic_attrs: NodeBitSet::new(node_count),
             bound_contenteditable: NodeBitSet::new(node_count),
             has_use_directive: NodeBitSet::new(node_count),
             has_dynamic_class_directives: NodeBitSet::new(node_count),
@@ -146,7 +138,6 @@ impl ElementFlags {
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
-            is_dynamic_component: NodeBitSet::new(node_count),
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
             svelte_fragment_slots: NodeBitSet::new(node_count),
@@ -183,9 +174,6 @@ impl ElementFlags {
     pub fn needs_ref(&self, id: NodeId) -> bool {
         self.needs_ref.contains(&id)
     }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.dynamic_attrs.contains(&id)
-    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.static_class.get(id).map(|s| s.as_str())
     }
@@ -201,13 +189,8 @@ impl ElementFlags {
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
         self.has_dynamic_class_directives.contains(&id)
     }
-    pub fn class_needs_state(&self, element_id: NodeId) -> bool {
-        let class_attr_dynamic = self
-            .class_attr_id
-            .get(element_id)
-            .is_some_and(|&attr_id| self.dynamic_attrs.contains(&attr_id));
-        class_attr_dynamic || self.has_dynamic_class_directives.contains(&element_id)
-    }
+    /// `class_needs_state` moved to `AnalysisData::class_needs_state` because
+    /// it reads from `DynamismData`, which is not owned by `ElementFlags`.
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.expression_shorthand.contains(&id)
     }
@@ -233,9 +216,6 @@ impl ElementFlags {
     }
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.option_synthetic_value_expr.get(id).copied()
-    }
-    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.is_dynamic_component.contains(&id)
     }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.customizable_select.contains(&id)

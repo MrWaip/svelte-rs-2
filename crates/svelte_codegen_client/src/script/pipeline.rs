@@ -1,17 +1,15 @@
 use oxc_allocator::Allocator;
+use oxc_ast::ast::{Program, Statement};
 use oxc_ast::Comment;
-use oxc_ast::ast::{Expression, Program, Statement};
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
-use oxc_traverse::traverse_mut;
-use svelte_analyze::{ComponentScoping, PropsAnalysis, ScriptRuneCalls};
+use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
 use svelte_ast::ScriptLanguage;
 
-use crate::builder::Builder;
-use crate::context::Ctx;
+use svelte_ast_builder::Builder;
+use svelte_transform::{transform_script, IgnoreQuery};
 
-use super::{IgnoreQuery, PropsGenInfo, ScriptTransformer};
+use crate::context::Ctx;
 
 pub struct ScriptOutput<'a> {
     pub imports: Vec<Statement<'a>>,
@@ -47,31 +45,16 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         .content_span
         .start;
     let filename = ctx.state.filename;
-    let ignore_query = IgnoreQuery::new(ctx.query.view);
+    let ignore_query = IgnoreQuery::new(ctx.query.analysis);
 
     let program = ctx.state.parsed.program.take();
     if let Some(program) = program {
         let component_scoping = ctx.query.scoping();
-        let props = ctx.query.props();
-        let b = Builder::new(allocator);
-        let prop_defaults: Vec<Option<Expression<'a>>> = props
-            .map(|pa| {
-                pa.props
-                    .iter()
-                    .map(|p| {
-                        p.default_text
-                            .as_deref()
-                            .map(|text| b.parse_expression(text))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         return run_transform(
             allocator,
             program,
+            Some(ctx.query.analysis),
             component_scoping,
-            props,
-            prop_defaults,
             Some(ctx.script_rune_calls()),
             ctx.instance_script_node_id_offset(),
             true,
@@ -83,14 +66,12 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             ctx.query.accessors(),
             ctx.query.immutable(),
             ctx.state.experimental_async,
-            ctx.query.view.custom_element(),
             ignore_query,
             false,
         );
     }
 
     let component_scoping = ctx.query.scoping();
-    let props = ctx.query.props();
     let script = ctx.query.component.instance_script.as_ref().unwrap();
     let is_ts = script.language == ScriptLanguage::TypeScript;
     let script_text = ctx.query.component.source_text(script.content_span);
@@ -98,8 +79,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         allocator,
         script_text,
         is_ts,
+        Some(ctx.query.analysis),
         component_scoping,
-        props,
         true,
         dev,
         component_source,
@@ -111,38 +92,38 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         None,
         0,
         ctx.state.experimental_async,
-        ctx.query.view.custom_element(),
         ignore_query,
         true,
     )
 }
 
-pub fn transform_module_script<'a>(
+/// Transform an already-parsed standalone module `Program`. Used by
+/// `generate_module` so the `ReferenceId` namespace matches the parse that
+/// `analyze_module` built its `AnalysisData` against.
+pub fn transform_module_program<'a, 'b>(
     allocator: &'a Allocator,
-    source: &'a str,
-    is_ts: bool,
-    component_scoping: &ComponentScoping,
+    program: Program<'a>,
+    analysis: Option<&'b AnalysisData<'a>>,
+    component_scoping: &'b ComponentScoping<'a>,
 ) -> ScriptOutput<'a> {
-    transform_script_text(
+    run_transform(
         allocator,
-        source,
-        is_ts,
+        program,
+        analysis,
         component_scoping,
         None,
+        0,
         false,
         false,
-        source,
+        "",
         0,
         "(unknown)",
+        true,
         false,
-        false,
-        false,
-        None,
-        0,
         false,
         false,
         IgnoreQuery::empty(),
-        true,
+        false,
     )
 }
 
@@ -156,8 +137,8 @@ pub fn transform_component_module_script<'a>(
         allocator,
         source,
         is_ts,
-        &empty_scoping,
         None,
+        &empty_scoping,
         false,
         false,
         source,
@@ -169,24 +150,23 @@ pub fn transform_component_module_script<'a>(
         None,
         0,
         false,
-        false,
         IgnoreQuery::empty(),
         true,
     )
 }
 
-pub fn transform_component_module_program<'a>(
+pub fn transform_component_module_program<'a, 'b>(
     allocator: &'a Allocator,
     program: Program<'a>,
-    component_scoping: &ComponentScoping,
+    analysis: Option<&'b AnalysisData<'a>>,
+    component_scoping: &'b ComponentScoping<'a>,
     script_rune_calls: Option<&ScriptRuneCalls>,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
         program,
+        analysis,
         component_scoping,
-        None,
-        Vec::new(),
         script_rune_calls,
         0,
         false,
@@ -198,19 +178,17 @@ pub fn transform_component_module_program<'a>(
         false,
         false,
         false,
-        false,
         IgnoreQuery::empty(),
         false,
     )
 }
 
-/// Parse source text into a program and run the shared transform pipeline.
 fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    component_scoping: &ComponentScoping,
-    props: Option<&PropsAnalysis>,
+    analysis: Option<&'_ AnalysisData<'a>>,
+    component_scoping: &ComponentScoping<'a>,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -222,8 +200,7 @@ fn transform_script_text<'a>(
     script_rune_calls: Option<&ScriptRuneCalls>,
     script_node_id_offset: u32,
     experimental_async: bool,
-    custom_element: bool,
-    ignore_query: IgnoreQuery<'_>,
+    ignore_query: IgnoreQuery<'_, 'a>,
     prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
@@ -236,27 +213,11 @@ fn transform_script_text<'a>(
     let result = OxcParser::new(allocator, source, src_type).parse();
     let program = result.program;
 
-    let b = Builder::new(allocator);
-    let props_gen = props.map(PropsGenInfo::from_analysis);
-    let prop_default_exprs: Vec<Option<Expression<'a>>> = match &props_gen {
-        Some(pg) => pg
-            .props
-            .iter()
-            .map(|prop| {
-                prop.default_text
-                    .as_deref()
-                    .map(|text| b.parse_expression(text))
-            })
-            .collect(),
-        None => Vec::new(),
-    };
-
     run_transform(
         allocator,
         program,
+        analysis,
         component_scoping,
-        props,
-        prop_default_exprs,
         script_rune_calls,
         script_node_id_offset,
         strip_exports,
@@ -268,19 +229,16 @@ fn transform_script_text<'a>(
         accessors,
         immutable,
         experimental_async,
-        custom_element,
         ignore_query,
         prepare_semantic,
     )
 }
 
-/// Shared transform pipeline: semantic analysis → OXC traverse → post-processing → output.
 fn run_transform<'a>(
     allocator: &'a Allocator,
     mut program: Program<'a>,
-    component_scoping: &ComponentScoping,
-    props: Option<&PropsAnalysis>,
-    prop_default_exprs: Vec<Option<Expression<'a>>>,
+    analysis: Option<&'_ AnalysisData<'a>>,
+    component_scoping: &ComponentScoping<'a>,
     script_rune_calls: Option<&ScriptRuneCalls>,
     script_node_id_offset: u32,
     strip_exports: bool,
@@ -292,70 +250,32 @@ fn run_transform<'a>(
     accessors: bool,
     immutable: bool,
     experimental_async: bool,
-    custom_element: bool,
-    ignore_query: IgnoreQuery<'_>,
+    ignore_query: IgnoreQuery<'_, 'a>,
     prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
-    if prepare_semantic {
-        let _ = SemanticBuilder::new().build(&program);
-    }
-    let props_gen = props.map(PropsGenInfo::from_analysis);
 
-    let mut transformer = ScriptTransformer {
-        b: &b,
+    let out = transform_script(
+        allocator,
+        &mut program,
+        &b,
+        analysis,
         component_scoping,
-        props_gen,
-        runes,
-        accessors,
-        immutable,
-        derived_pending: rustc_hash::FxHashSet::default(),
-        async_derived_pending: rustc_hash::FxHashMap::default(),
+        script_rune_calls,
+        script_node_id_offset,
         strip_exports,
         dev,
-        is_ts,
-        function_info_stack: Vec::new(),
-        has_tracing: false,
-        needs_ownership_validator: false,
-        pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source,
         script_content_start,
         filename,
-        next_arrow_name: None,
-        ident_counter: 0,
-        class_state_stack: Vec::new(),
-        class_name_stack: Vec::new(),
-        prop_default_exprs,
-        script_rune_calls,
-        script_node_id_offset,
+        runes,
+        accessors,
+        immutable,
         experimental_async,
-        custom_element,
         ignore_query,
-        enclosing_stmt_start: Vec::new(),
-    };
-
-    let empty_scoping = oxc_semantic::Scoping::default();
-    traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
-
-    if !transformer.derived_pending.is_empty() {
-        let dev_ctx = dev.then(|| super::traverse::DevContext {
-            component_source,
-            script_content_start,
-            filename,
-            ignore_query: transformer.ignore_query,
-        });
-        super::traverse::wrap_derived_thunks(
-            &b,
-            &mut program,
-            &transformer.derived_pending,
-            &transformer.async_derived_pending,
-            dev_ctx.as_ref(),
-        );
-    }
-
-    let has_tracing = transformer.has_tracing;
-    let needs_ownership_validator = transformer.needs_ownership_validator;
+        prepare_semantic,
+    );
 
     if is_ts {
         reattach_orphaned_comments(&mut program);
@@ -377,8 +297,8 @@ fn run_transform<'a>(
     ScriptOutput {
         imports,
         body,
-        has_tracing,
-        needs_ownership_validator,
+        has_tracing: out.has_tracing,
+        needs_ownership_validator: out.needs_ownership_validator,
         comments,
         source_text,
         program_span_end,

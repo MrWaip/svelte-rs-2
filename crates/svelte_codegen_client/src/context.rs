@@ -6,8 +6,9 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
     AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
-    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
-    LoweredFragment, ParserResult, RenderTagPlan, RuntimePlan,
+    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo,
+    FragmentKey, IdentGen, LoweredFragment, ParserResult, RenderTagPlan,
+    RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -16,21 +17,23 @@ use svelte_ast::{
 };
 use svelte_transform::TransformData;
 
-use crate::builder::Builder;
+use svelte_ast_builder::Builder;
 
 /// Read-only codegen query context.
 ///
 /// Owns immutable access to component AST, analysis-derived view and compile metadata.
 pub struct CodegenQuery<'a> {
     pub component: &'a Component,
-    pub view: CodegenView<'a>,
+    pub view: CodegenView<'a, 'a>,
+    pub analysis: &'a AnalysisData<'a>,
 }
 
 impl<'a> CodegenQuery<'a> {
-    pub fn new(component: &'a Component, analysis: &'a AnalysisData) -> Self {
+    pub fn new(component: &'a Component, analysis: &'a AnalysisData<'a>) -> Self {
         Self {
             component,
             view: CodegenView::new(analysis),
+            analysis,
         }
     }
 
@@ -112,10 +115,11 @@ impl<'a> CodegenQuery<'a> {
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.view.runtime_plan()
     }
+
 }
 
 impl<'a> Deref for CodegenQuery<'a> {
-    type Target = CodegenView<'a>;
+    type Target = CodegenView<'a, 'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.view
@@ -331,11 +335,43 @@ impl<'a> Ctx<'a> {
     pub fn is_elseif_alt(&self, id: NodeId) -> bool {
         self.query.view.is_elseif_alt(id)
     }
-    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
-        self.query.view.is_mutable_rune_target(id)
+    /// `ReferenceId` of the root identifier in a directive's expression.
+    ///
+    /// After the shorthand rework, all directive expressions (bind, class,
+    /// style, each-collection, attr `{foo}`) are real `Expression::Identifier`
+    /// / `MemberExpression` trees parsed into `ParserResult`. The root
+    /// identifier carries a `ReferenceId` written by `JsSemanticVisitor`
+    /// during the builder pass — this is the single identity the consumer
+    /// needs to ask `reference_semantics(ref_id)` for the operation-level
+    /// answer.
+    pub fn directive_root_ref_id(
+        &self,
+        dir_id: NodeId,
+    ) -> Option<oxc_syntax::reference::ReferenceId> {
+        let handle = self.query.view.attr_expr_handle_opt(dir_id)?;
+        let expr = self.state.parsed.expr(handle)?;
+        let mut current = expr;
+        loop {
+            match current {
+                oxc_ast::ast::Expression::StaticMemberExpression(m) => current = &m.object,
+                oxc_ast::ast::Expression::ComputedMemberExpression(m) => current = &m.object,
+                oxc_ast::ast::Expression::Identifier(id) => return id.reference_id.get(),
+                _ => return None,
+            }
+        }
     }
-    pub fn is_prop_source_node(&self, id: NodeId) -> bool {
-        self.query.view.is_prop_source_node(id)
+
+    /// Convenience helper: `reference_semantics` of a directive's root
+    /// identifier. Returns `NonReactive` when the directive has no resolvable
+    /// root identifier (e.g. function-expression `bind:value={(get,set)}`).
+    pub fn directive_root_reference_semantics(
+        &self,
+        dir_id: NodeId,
+    ) -> svelte_analyze::ReferenceSemantics {
+        match self.directive_root_ref_id(dir_id) {
+            Some(ref_id) => self.query.view.reference_semantics(ref_id),
+            None => svelte_analyze::ReferenceSemantics::NonReactive,
+        }
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.query.view.bind_each_context(id)
@@ -572,12 +608,6 @@ impl<'a> Ctx<'a> {
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expr_deps(ExprSite::Node(id))
             .is_some_and(|deps| deps.needs_memo)
-    }
-    pub fn is_pickled_await(&self, offset: u32) -> bool {
-        self.query.view.is_pickled_await(offset)
-    }
-    pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
-        self.query.view.is_ignored(node_id, code)
     }
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.query.view.symbol_blocker(sym)

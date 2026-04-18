@@ -15,7 +15,7 @@ pub(crate) struct ContentAndVarVisitor<'s> {
 }
 
 impl TemplateVisitor for ContentAndVarVisitor<'_> {
-    fn leave_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_>) {
+    fn leave_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_, '_>) {
         let key = FragmentKey::Element(el.id);
 
         // Compute content_type + has_dynamic for this element's fragment
@@ -24,7 +24,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.dynamism));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -40,7 +40,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
     fn leave_slot_element_legacy(
         &mut self,
         el: &SlotElementLegacy,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        ctx: &mut crate::walker::VisitContext<'_, '_>,
     ) {
         let key = FragmentKey::Element(el.id);
         if let Some(lf) = ctx.data.template.fragments.lowered.get(&key) {
@@ -48,7 +48,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.dynamism));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -59,7 +59,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
     fn leave_svelte_fragment_legacy(
         &mut self,
         el: &SvelteFragmentLegacy,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        ctx: &mut crate::walker::VisitContext<'_, '_>,
     ) {
         let key = FragmentKey::Element(el.id);
         if let Some(lf) = ctx.data.template.fragments.lowered.get(&key) {
@@ -67,7 +67,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.output.dynamic_nodes));
+                .any(|item| item_is_dynamic(item, ctx.data, &ctx.data.dynamism));
             ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.template.fragments.has_dynamic_children.insert(key);
@@ -93,7 +93,7 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
         let has_dynamic = lf
             .items
             .iter()
-            .any(|item| item_is_dynamic(item, data, &data.output.dynamic_nodes));
+            .any(|item| item_is_dynamic(item, data, &data.dynamism));
         data.template.fragments.content_types.insert(key, cs);
         if has_dynamic {
             data.template.fragments.has_dynamic_children.insert(key);
@@ -183,12 +183,12 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
 fn item_is_dynamic(
     item: &FragmentItem,
     data: &AnalysisData,
-    dynamic_nodes: &crate::types::node_table::NodeBitSet,
+    dynamism: &crate::passes::dynamism::DynamismData,
 ) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts
             .iter()
-            .any(|p| matches!(p, LoweredTextPart::Expr(id) if dynamic_nodes.contains(id))),
+            .any(|p| matches!(p, LoweredTextPart::Expr(id) if dynamism.is_dynamic_node(*id))),
         FragmentItem::Element(id)
         | FragmentItem::SlotElementLegacy(id)
         | FragmentItem::ComponentNode(id)
@@ -199,9 +199,9 @@ fn item_is_dynamic(
         | FragmentItem::KeyBlock(id)
         | FragmentItem::SvelteElement(id)
         | FragmentItem::SvelteBoundary(id)
-        | FragmentItem::AwaitBlock(id) => dynamic_nodes.contains(id),
+        | FragmentItem::AwaitBlock(id) => dynamism.is_dynamic_node(*id),
         FragmentItem::SvelteFragmentLegacy(id) => {
-            dynamic_nodes.contains(id)
+            dynamism.is_dynamic_node(*id)
                 || data
                     .template
                     .fragments
@@ -210,7 +210,7 @@ fn item_is_dynamic(
                         fragment
                             .items
                             .iter()
-                            .any(|item| item_is_dynamic(item, data, dynamic_nodes))
+                            .any(|item| item_is_dynamic(item, data, dynamism))
                     })
         }
     }

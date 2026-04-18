@@ -2,8 +2,8 @@ use rustc_hash::FxHashSet;
 use svelte_ast::{Component, Node, NodeId};
 
 use crate::passes::{
-    bind_semantics, collect_symbols, content_types, element_flags, hoistable, js_analyze,
-    reactivity, template_side_tables, template_validation,
+    bind_semantics, collect_symbols, content_types, dynamism, element_flags, hoistable, js_analyze,
+    template_side_tables, template_validation,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -58,18 +58,18 @@ impl SymbolCollectionBundle {
 }
 
 pub(crate) struct ReactivityBundle {
-    reactivity: reactivity::ReactivityVisitor,
+    dynamism: dynamism::DynamismVisitor,
 }
 
 impl ReactivityBundle {
     pub(crate) fn new() -> Self {
         Self {
-            reactivity: reactivity::ReactivityVisitor::new(),
+            dynamism: dynamism::DynamismVisitor::new(),
         }
     }
 
     pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
-        [&mut self.reactivity]
+        [&mut self.dynamism]
     }
 }
 

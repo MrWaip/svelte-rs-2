@@ -3,7 +3,8 @@
 ## Current state
 - **Working**: 0/5 use cases
 - **Tests**: 0/5 green
-- Last updated: 2026-04-12
+- Last updated: 2026-04-13
+- Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
 
 ## Source
 
@@ -20,6 +21,7 @@
 - Prefer dedicated legacy data structures and helpers over partially overloading modern rune/state machinery with hidden mode checks.
 - Any new top-level helper, struct, or entry point added for this feature should use explicit legacy naming so ownership and future deletion are obvious.
 - If a modern pass must participate, keep the legacy branch as a narrow delegation point with the main runes path remaining the default flow.
+- The legacy-only hooks should populate and consume the unified `ReactivitySemantics` model rather than inventing a second legacy-only semantic classification system.
 
 ## How It Works
 

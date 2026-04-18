@@ -290,10 +290,17 @@ pub fn should_proxy(e: &Expression) -> bool {
 
 /// Walk an Expression member chain to find the root identifier name.
 pub fn find_expr_root_name<'b>(expr: &'b Expression) -> Option<&'b str> {
+    find_expr_root_identifier(expr).map(|id| id.name.as_str())
+}
+
+/// Walk an Expression member chain to find the root identifier reference node.
+pub fn find_expr_root_identifier<'b, 'a>(
+    expr: &'b Expression<'a>,
+) -> Option<&'b oxc_ast::ast::IdentifierReference<'a>> {
     let mut current = expr;
     loop {
         match current {
-            Expression::Identifier(id) => return Some(id.name.as_str()),
+            Expression::Identifier(id) => return Some(id),
             _ => current = current.as_member_expression()?.object(),
         }
     }
@@ -345,4 +352,15 @@ pub(crate) fn make_dollar_member<'a>(ast: &AstBuilder<'a>, method: &str) -> Expr
     Expression::StaticMemberExpression(
         ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
     )
+}
+
+/// Build `$.<method>(arg)` — single-argument call on the $-runtime object.
+pub fn make_dollar_call<'a>(
+    alloc: &'a Allocator,
+    method: &str,
+    arg: Expression<'a>,
+) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    let callee = make_dollar_member(&ast, method);
+    ast.expression_call(SPAN, callee, NONE, ast.vec1(Argument::from(arg)), false)
 }

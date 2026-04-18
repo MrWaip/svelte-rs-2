@@ -1,4 +1,5 @@
 /target
+/cclsp
 docs/compiler/
 node_modules/
 REVIEW.md
