@@ -5,20 +5,25 @@ use oxc_syntax::reference::ReferenceFlags;
 use oxc_syntax::symbol::SymbolFlags;
 
 use crate::builder::{ComponentSemanticsBuilder, TemplateBuildContext, TemplateWalker};
+use crate::reference::Reference;
 use crate::OxcNodeId;
 
 /// Parse JS source and build semantics via our builder.
-fn build_instance(source: &str) -> crate::ComponentSemantics {
-    build_instance_with_type(source, SourceType::mjs())
+/// Leaks the allocator — acceptable in tests (process exits after).
+fn build_instance(source: &'static str) -> crate::ComponentSemantics<'static> {
+    build_instance_with_type(Box::leak(Box::new(Allocator::default())), source, SourceType::mjs())
 }
 
-fn build_instance_ts(source: &str) -> crate::ComponentSemantics {
-    build_instance_with_type(source, SourceType::ts())
+fn build_instance_ts(source: &'static str) -> crate::ComponentSemantics<'static> {
+    build_instance_with_type(Box::leak(Box::new(Allocator::default())), source, SourceType::ts())
 }
 
-fn build_instance_with_type(source: &str, source_type: SourceType) -> crate::ComponentSemantics {
-    let alloc = Allocator::default();
-    let parsed = Parser::new(&alloc, source, source_type).parse();
+fn build_instance_with_type(
+    alloc: &'static Allocator,
+    source: &'static str,
+    source_type: SourceType,
+) -> crate::ComponentSemantics<'static> {
+    let parsed = Parser::new(alloc, source, source_type).parse();
     assert!(
         parsed.errors.is_empty(),
         "parse errors: {:?}",
@@ -30,21 +35,41 @@ fn build_instance_with_type(source: &str, source_type: SourceType) -> crate::Com
     builder.finish()
 }
 
-fn build_module_and_instance(module_src: &str, instance_src: &str) -> crate::ComponentSemantics {
-    let alloc = Allocator::default();
+fn build_module_and_instance(module_src: &'static str, instance_src: &'static str) -> crate::ComponentSemantics<'static> {
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 
-    let instance_parsed = Parser::new(&alloc, instance_src, source_type).parse();
+    let instance_parsed = Parser::new(alloc, instance_src, source_type).parse();
     assert!(instance_parsed.errors.is_empty());
 
-    let module_parsed = Parser::new(&alloc, module_src, source_type).parse();
+    let module_parsed = Parser::new(alloc, module_src, source_type).parse();
     assert!(module_parsed.errors.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
-    // Module first — its bindings must exist before instance resolution
     builder.add_module_program(&module_parsed.program);
     builder.add_instance_program(&instance_parsed.program);
     builder.finish()
+}
+
+fn materialize_shorthand_reference<'a>(
+    ctx: &mut TemplateBuildContext<'_, 'a>,
+    name: &str,
+    flags: ReferenceFlags,
+) -> Option<oxc_syntax::symbol::SymbolId> {
+    let scope = ctx.current_scope();
+    let node_id = ctx.alloc_node_id();
+    let mut reference = Reference::new(node_id, scope, flags);
+    let sem = ctx.semantics_mut();
+    if let Some(sym_id) = sem.find_binding(scope, name) {
+        reference.set_symbol_id(sym_id);
+        let ref_id = sem.create_template_reference(reference);
+        sem.add_resolved_reference(sym_id, ref_id);
+        Some(sym_id)
+    } else {
+        let ref_id = sem.create_template_reference(reference);
+        sem.add_root_unresolved_reference(compact_str::CompactString::from(name), ref_id);
+        None
+    }
 }
 
 #[test]
@@ -208,9 +233,9 @@ fn unresolved_shorthand_tracked() {
     let mut builder = ComponentSemanticsBuilder::new();
 
     struct UnresolvedShorthand;
-    impl TemplateWalker for UnresolvedShorthand {
-        fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
-            ctx.materialize_shorthand_reference("nonexistent", ReferenceFlags::Write);
+    impl<'a> TemplateWalker<'a> for UnresolvedShorthand {
+        fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
+            materialize_shorthand_reference(ctx, "nonexistent", ReferenceFlags::Write);
         }
     }
 
@@ -459,8 +484,8 @@ struct ExprRefWalker<'a> {
     alloc: &'a Allocator,
 }
 
-impl TemplateWalker for ExprRefWalker<'_> {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'a> TemplateWalker<'a> for ExprRefWalker<'a> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // Simulate: {count} in template → read reference to "count"
         let parsed = Parser::new(self.alloc, "count", SourceType::mjs())
             .parse_expression()
@@ -471,16 +496,16 @@ impl TemplateWalker for ExprRefWalker<'_> {
 
 #[test]
 fn template_expression_resolves_instance_binding() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 
-    let instance = Parser::new(&alloc, "let count = 0;", source_type).parse();
+    let instance = Parser::new(alloc, "let count = 0;", source_type).parse();
     assert!(instance.errors.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
 
-    let mut walker = ExprRefWalker { alloc: &alloc };
+    let mut walker = ExprRefWalker { alloc };
     builder.add_template(&mut walker);
 
     let sem = builder.finish();
@@ -499,8 +524,8 @@ struct ChildScopeWalker<'a> {
     alloc: &'a Allocator,
 }
 
-impl TemplateWalker for ChildScopeWalker<'_> {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'a> TemplateWalker<'a> for ChildScopeWalker<'a> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // Simulate: {#each items as item} {item} {/each}
         let each_scope = ctx.enter_child_scope();
         _ = each_scope;
@@ -524,16 +549,16 @@ impl TemplateWalker for ChildScopeWalker<'_> {
 
 #[test]
 fn template_child_scope_with_binding() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 
-    let instance = Parser::new(&alloc, "let items = [];", source_type).parse();
+    let instance = Parser::new(alloc, "let items = [];", source_type).parse();
     assert!(instance.errors.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
 
-    let mut walker = ChildScopeWalker { alloc: &alloc };
+    let mut walker = ChildScopeWalker { alloc };
     builder.add_template(&mut walker);
 
     let sem = builder.finish();
@@ -548,19 +573,19 @@ fn template_child_scope_with_binding() {
 /// Mock walker for shorthand bind:name reference.
 struct ShorthandBindWalker;
 
-impl TemplateWalker for ShorthandBindWalker {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'a> TemplateWalker<'a> for ShorthandBindWalker {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // Simulate: <input bind:value />
-        ctx.materialize_shorthand_reference("value", ReferenceFlags::Write);
+        materialize_shorthand_reference(ctx, "value", ReferenceFlags::Write);
     }
 }
 
 #[test]
 fn template_shorthand_bind_reference() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 
-    let instance = Parser::new(&alloc, "let value = '';", source_type).parse();
+    let instance = Parser::new(alloc, "let value = '';", source_type).parse();
     assert!(instance.errors.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
@@ -585,10 +610,10 @@ fn template_shorthand_bind_reference() {
 /// Mock walker for unresolved shorthand reference.
 struct UnresolvedShorthandWalker;
 
-impl TemplateWalker for UnresolvedShorthandWalker {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'a> TemplateWalker<'a> for UnresolvedShorthandWalker {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // Simulate: <input bind:nonexistent />
-        let result = ctx.materialize_shorthand_reference("nonexistent", ReferenceFlags::Write);
+        let result = materialize_shorthand_reference(ctx, "nonexistent", ReferenceFlags::Write);
         assert!(result.is_none());
     }
 }
@@ -608,8 +633,8 @@ struct UnresolvedExprWalker<'a> {
     alloc: &'a Allocator,
 }
 
-impl TemplateWalker for UnresolvedExprWalker<'_> {
-    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+impl<'a> TemplateWalker<'a> for UnresolvedExprWalker<'a> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         let parsed = Parser::new(self.alloc, "console.log(x)", SourceType::mjs())
             .parse_expression()
             .unwrap();
@@ -619,10 +644,10 @@ impl TemplateWalker for UnresolvedExprWalker<'_> {
 
 #[test]
 fn template_expression_unresolved_reference_tracked() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
 
     let mut builder = ComponentSemanticsBuilder::new();
-    let mut walker = UnresolvedExprWalker { alloc: &alloc };
+    let mut walker = UnresolvedExprWalker { alloc };
     builder.add_template(&mut walker);
 
     let sem = builder.finish();
@@ -643,19 +668,19 @@ fn template_expression_unresolved_reference_tracked() {
 
 #[test]
 fn template_shorthand_gets_unique_node_id() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
-    let instance = Parser::new(&alloc, "let value = ''; let name = '';", source_type).parse();
+    let instance = Parser::new(alloc, "let value = ''; let name = '';", source_type).parse();
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
     let after_instance = builder.next_node_id();
 
     struct TwoShorthands;
-    impl TemplateWalker for TwoShorthands {
-        fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
-            ctx.materialize_shorthand_reference("value", ReferenceFlags::Write);
-            ctx.materialize_shorthand_reference("name", ReferenceFlags::Read);
+    impl<'a> TemplateWalker<'a> for TwoShorthands {
+        fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
+            materialize_shorthand_reference(ctx, "value", ReferenceFlags::Write);
+            materialize_shorthand_reference(ctx, "name", ReferenceFlags::Read);
         }
     }
 
@@ -699,11 +724,11 @@ fn template_shorthand_gets_unique_node_id() {
 
 #[test]
 fn node_ids_no_collision_between_programs() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 
-    let module_parsed = Parser::new(&alloc, "export const shared = 42;", source_type).parse();
-    let instance_parsed = Parser::new(&alloc, "let x = shared;", source_type).parse();
+    let module_parsed = Parser::new(alloc, "export const shared = 42;", source_type).parse();
+    let instance_parsed = Parser::new(alloc, "let x = shared;", source_type).parse();
     assert!(module_parsed.errors.is_empty());
     assert!(instance_parsed.errors.is_empty());
 
@@ -737,9 +762,9 @@ fn node_ids_no_collision_between_programs() {
 
 #[test]
 fn single_program_node_ids_start_at_zero() {
-    let alloc = Allocator::default();
+    let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
-    let parsed = Parser::new(&alloc, "let a = 1;", source_type).parse();
+    let parsed = Parser::new(alloc, "let a = 1;", source_type).parse();
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&parsed.program);
