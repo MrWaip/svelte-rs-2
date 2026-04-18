@@ -23,7 +23,7 @@ permissions:
 
 env:
   NODE_VERSION: '22.13.0'
-  RUST_CHANNEL: 'nightly-2026-03-09'
+  RUST_CHANNEL: '1.94.1'
   NPM_CONFIG_CACHE: ${{ github.workspace }}/.npm-cache
 
 jobs:
