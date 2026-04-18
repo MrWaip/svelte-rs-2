@@ -630,50 +630,6 @@ fn find_snippet_block<'a>(
     None
 }
 
-fn find_await_block<'a>(
-    fragment: &'a Fragment,
-    component: &'a Component,
-    expr_text: &str,
-) -> Option<&'a svelte_ast::AwaitBlock> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
-            Node::AwaitBlock(block)
-                if component.source_text(block.expression_span) == expr_text =>
-            {
-                return Some(block);
-            }
-            Node::ComponentNode(node) => {
-                if let Some(block) = find_await_block(&node.fragment, component, expr_text) {
-                    return Some(block);
-                }
-            }
-            Node::Element(el) => {
-                if let Some(block) = find_await_block(&el.fragment, component, expr_text) {
-                    return Some(block);
-                }
-            }
-            Node::IfBlock(b) => {
-                if let Some(block) = find_await_block(&b.consequent, component, expr_text) {
-                    return Some(block);
-                }
-                if let Some(alt) = &b.alternate {
-                    if let Some(block) = find_await_block(alt, component, expr_text) {
-                        return Some(block);
-                    }
-                }
-            }
-            Node::EachBlock(b) => {
-                if let Some(block) = find_await_block(&b.body, component, expr_text) {
-                    return Some(block);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 // -----------------------------------------------------------------------
 // Assertion helpers
 // -----------------------------------------------------------------------
@@ -690,7 +646,7 @@ fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
     (component, data)
 }
 
-fn analyze_source_with_parsed(source: &str) -> (Component, AnalysisData, ParserResult<'_>) {
+fn analyze_source_with_parsed(source: &'static str) -> (Component, AnalysisData<'static>, ParserResult<'static>) {
     let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
