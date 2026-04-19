@@ -31,6 +31,16 @@ same bar.
   but must not stay parallel owners.
 - **Consumer Model.** Consumer code takes one query per unit, pattern-matches
   once, and may read AST only as emission payload after the branch is chosen.
+- **Consumer shape: Plan → builders → emit.** Inside a migrated branch the
+  consumer body stays readable by resolving all decisions up front into a
+  plain-data `Plan` struct (one pass over `sem` + source spans), then
+  dispatching to small focused builders — one per piece of output (e.g.
+  collection, key, fragment, fallback) — and finally emitting the call.
+  Builders receive `&Plan`, not `&sem`, so they never re-interpret
+  semantics. Reference implementation:
+  [`crates/svelte_codegen_client/src/template/each_block.rs`](crates/svelte_codegen_client/src/template/each_block.rs)
+  (`gen_each_block` / `EachPlan`). This is the form every migrated kind
+  consumer should converge to.
 - **Root Consumer Migration Rule.** Migration starts at the root consumer
   point for one unit kind. New branch selected by one top-level match on the
   semantic answer; legacy fallback untouched at the same point. No secondary
