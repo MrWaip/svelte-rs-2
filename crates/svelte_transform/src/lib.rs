@@ -189,7 +189,9 @@ fn walk_node<'a>(
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.snippet_body_scope(block.id, scope);
-            if let Some(handle) = ctx.analysis.snippet_stmt_handle(block.id) {
+            #[allow(deprecated)]
+            let handle = ctx.analysis.snippet_stmt_handle(block.id);
+            if let Some(handle) = handle {
                 ctx.stmt_handles.push((handle, Some(block.id)));
             }
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);

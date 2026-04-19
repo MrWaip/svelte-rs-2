@@ -315,11 +315,14 @@ pub(crate) fn gen_component<'a>(
     let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
     let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
     for snippet_id in &snippet_ids {
-        let snippet_name = ctx
-            .snippet_block(*snippet_id)
-            .name(ctx.state.source)
-            .to_string();
-        snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
+        let sem = match ctx.query.analysis.block_semantics(*snippet_id) {
+            svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
+            other => unreachable!(
+                "component snippet child must map to BlockSemantics::Snippet, got {other:?}"
+            ),
+        };
+        let snippet_name = ctx.query.view.symbol_name(sem.name).to_string();
+        snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, &sem, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
         items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
         let slot_key = if snippet_name == "children" {

@@ -81,24 +81,29 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // Identify which snippet children are named "failed" or "pending" (go into props),
     // and collect all snippet block IDs for hoisting.
     let boundary = ctx.svelte_boundary(id);
-    let mut hoisted_snippet_ids: Vec<(NodeId, Option<&str>)> = Vec::new();
+    let mut hoisted_snippet_ids: Vec<(
+        NodeId,
+        svelte_analyze::SnippetBlockSemantics,
+        Option<String>,
+    )> = Vec::new();
     for &nid in &boundary.fragment.nodes {
         let node = ctx.query.component.store.get(nid);
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            let name = block.name(ctx.state.source);
+            let sem = match ctx.query.analysis.block_semantics(block.id) {
+                svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
+                other => {
+                    unreachable!("SnippetBlock must map to BlockSemantics::Snippet, got {other:?}")
+                }
+            };
+            let name = ctx.query.view.symbol_name(sem.name).to_string();
             let prop_name = if name == "failed" || name == "pending" {
                 Some(name)
             } else {
                 None
             };
-            hoisted_snippet_ids.push((block.id, prop_name));
+            hoisted_snippet_ids.push((block.id, sem, prop_name));
         }
     }
-    // Clone to release borrow
-    let hoisted_snippet_ids: Vec<(NodeId, Option<String>)> = hoisted_snippet_ids
-        .into_iter()
-        .map(|(id, name)| (id, name.map(String::from)))
-        .collect();
 
     // Build props object
     let mut props: Vec<ObjProp<'a>> = Vec::new();
@@ -173,7 +178,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // Generate hoisted snippet declarations FIRST (ordering matters for ident numbering).
     // Snippets use cloned const tag expressions; the body uses originals.
     let mut hoisted_stmts: Vec<Statement<'a>> = Vec::new();
-    for (i, (snippet_id, prop_name)) in hoisted_snippet_ids.iter().enumerate() {
+    for (i, (snippet_id, sem, prop_name)) in hoisted_snippet_ids.iter().enumerate() {
         // Only inject const tags into snippets that actually reference the const-tag bindings
         let snippet_uses_const = if has_const_tags {
             let key = FragmentKey::SnippetBody(*snippet_id);
@@ -187,7 +192,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
             vec![]
         };
 
-        let snippet_stmt = gen_snippet_block(ctx, *snippet_id, const_tag_stmts);
+        let snippet_stmt = gen_snippet_block(ctx, *snippet_id, sem, const_tag_stmts);
         hoisted_stmts.push(snippet_stmt);
 
         if let Some(name) = prop_name {

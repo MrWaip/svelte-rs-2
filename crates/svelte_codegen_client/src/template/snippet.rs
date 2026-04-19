@@ -1,13 +1,20 @@
 //! SnippetBlock codegen — `{#snippet name(params)}...{/snippet}`
+//!
+//! Thin orchestrator in Plan → builders → emit form (matches
+//! `each_block.rs` / `await_block.rs`). `gen_snippet_block` reads the
+//! resolved [`SnippetBlockSemantics`], builds a plain-data `SnippetPlan`
+//! once, then dispatches to focused builders for each piece of output
+//! (formal parameters, destructure declarations, body, final const
+//! statement).
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{
-    AssignmentPattern, BindingPattern, ChainElement, Expression, FormalParameters, PropertyKey,
-    Statement,
+    AssignmentPattern, BindingPattern, ChainElement, Expression, FormalParameter, FormalParameters,
+    PropertyKey, Statement,
 };
 use oxc_span::SPAN;
 use rustc_hash::FxHashSet;
-use svelte_analyze::{is_simple_expression, FragmentKey};
+use svelte_analyze::{FragmentKey, SnippetBlockSemantics, SnippetDefaultKind, SnippetParam};
 use svelte_ast::NodeId;
 
 use crate::context::Ctx;
@@ -15,84 +22,116 @@ use svelte_ast_builder::Arg;
 
 use super::gen_fragment;
 
-/// Generate a `const name = ($$anchor, param1 = $.noop, ...) => { ... }` statement.
+/// Generate `const name = ($$anchor, ...) => { ... }` (or `wrap_snippet`
+/// in dev mode) for one `{#snippet}` block.
 ///
-/// `prepend_stmts` are injected before the fragment body (e.g., duplicated @const tags
-/// from boundary parents).
+/// `prepend_stmts` are injected before the fragment body (e.g.,
+/// duplicated `@const` tags from boundary parents). The root dispatch
+/// already matched `BlockSemantics::Snippet`; this function trusts
+/// `sem` and does not re-classify.
 pub(crate) fn gen_snippet_block<'a>(
     ctx: &mut Ctx<'a>,
-    id: NodeId,
+    block_id: NodeId,
+    sem: &SnippetBlockSemantics,
     prepend_stmts: Vec<Statement<'a>>,
 ) -> Statement<'a> {
-    let block = ctx.snippet_block(id);
-    let name = block.name(ctx.state.source).to_string();
+    let plan = SnippetPlan::build(ctx, block_id, sem);
 
-    let parsed_stmt = ctx
-        .snippet_stmt_handle(id)
-        .and_then(|h| ctx.state.parsed.take_stmt(h));
-    let stmt = parsed_stmt.unwrap_or_else(|| {
-        panic!(
-            "snippet block {:?} has no pre-parsed statement — parser invariant broken",
-            id
-        )
-    });
+    let mut binding_decls: Vec<Statement<'a>> = Vec::new();
+    let formal_params = build_formal_params(ctx, &plan, sem, &mut binding_decls);
+    let body_stmts = build_body_stmts(ctx, block_id, &plan, binding_decls, prepend_stmts);
 
-    let mut declarations: Vec<Statement<'a>> = Vec::new();
-    let params = build_snippet_params_from_parsed(ctx, &stmt, &mut declarations);
-    let body_stmts = gen_fragment(ctx, FragmentKey::SnippetBody(id));
-
-    let mut all_stmts = prepend_stmts;
-    if ctx.state.dev {
-        let args_id = ctx.b.rid_expr("arguments");
-        let validate_stmt = ctx
-            .b
-            .call_stmt("$.validate_snippet_args", [Arg::Spread(args_id)]);
-        all_stmts.push(validate_stmt);
-    }
-    all_stmts.extend(declarations);
-    all_stmts.extend(body_stmts);
-
-    let snippet_expr = if ctx.state.dev {
-        let fn_expr = ctx.b.function_expr(params, all_stmts);
-        let component_name = ctx.b.rid_expr(ctx.state.name);
-        ctx.b.call_expr(
-            "$.wrap_snippet",
-            [Arg::Expr(component_name), Arg::Expr(fn_expr)],
-        )
-    } else {
-        let arrow = ctx.b.arrow(params, all_stmts);
-        oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow))
-    };
-
-    ctx.b.const_stmt(&name, snippet_expr)
+    emit_snippet_const(ctx, &plan, formal_params, body_stmts)
 }
 
-fn build_snippet_params_from_parsed<'stmt, 'a: 'stmt>(
+// ---------------------------------------------------------------------------
+// Plan — the pre-computed, plain-data snapshot consumed by the builders.
+// ---------------------------------------------------------------------------
+
+/// Everything the output builders need to know, resolved up front from
+/// `sem` and the pre-parsed snippet arrow. Builders take `&SnippetPlan`
+/// and never re-inspect `sem` or the raw AST for classification.
+///
+/// The parsed `FormalParameter` slice is carried on the plan rather
+/// than re-extracted in each builder: destructured params need the AST
+/// subtree to build member paths and clone user defaults (which is
+/// emission payload, not re-classification).
+struct SnippetPlan<'a> {
+    /// Const name of the snippet (`symbol_name(sem.name)`).
+    name: String,
+    /// Enclosing component identifier — used only in dev for
+    /// `$.wrap_snippet(<component>, fn)`.
+    component_name: &'a str,
+    /// Dev mode — toggles `$.wrap_snippet` and `$.validate_snippet_args`.
+    dev: bool,
+    /// Fragment key for the body — passed to `gen_fragment`.
+    body_key: FragmentKey,
+    /// Pre-parsed `const <name> = (<params>) => {}` statement, owned by
+    /// this plan. Builders read the FormalParameter slice through
+    /// [`parsed_params`](Self::parsed_params) — keeping the statement
+    /// on the plan avoids juggling arena-scoped references.
+    parsed_stmt: Statement<'a>,
+}
+
+impl<'a> SnippetPlan<'a> {
+    fn build(ctx: &mut Ctx<'a>, block_id: NodeId, sem: &SnippetBlockSemantics) -> Self {
+        let name = ctx.query.view.symbol_name(sem.name).to_string();
+
+        #[allow(deprecated)]
+        let parsed_stmt = ctx
+            .snippet_stmt_handle(block_id)
+            .and_then(|h| ctx.state.parsed.take_stmt(h));
+        let parsed_stmt = parsed_stmt.unwrap_or_else(|| {
+            panic!(
+                "snippet block {block_id:?} has no pre-parsed statement — parser invariant broken",
+            )
+        });
+
+        Self {
+            name,
+            component_name: ctx.state.name,
+            dev: ctx.state.dev,
+            body_key: FragmentKey::SnippetBody(block_id),
+            parsed_stmt,
+        }
+    }
+
+    /// FormalParameter slice of the pre-parsed arrow, when present.
+    fn parsed_params(&self) -> Option<&[FormalParameter<'a>]> {
+        let Statement::VariableDeclaration(decl) = &self.parsed_stmt else {
+            return None;
+        };
+        let declarator = decl.declarations.first()?;
+        let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+            return None;
+        };
+        Some(arrow.params.items.as_slice())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Builders.
+// ---------------------------------------------------------------------------
+
+/// Assemble the snippet's `FormalParameters` — `$$anchor` followed by
+/// one entry per user parameter (identifier → `= $.noop` when no
+/// default; destructure → positional `$$argN`). Destructure bindings
+/// that need pre-declarations accumulate into `decls` for
+/// [`build_body_stmts`] to splice in front of the body.
+fn build_formal_params<'a>(
     ctx: &mut Ctx<'a>,
-    stmt: &'stmt Statement<'a>,
+    plan: &SnippetPlan<'a>,
+    sem: &SnippetBlockSemantics,
     decls: &mut Vec<Statement<'a>>,
 ) -> FormalParameters<'a> {
     use oxc_ast::ast;
 
-    let mut params: Vec<ast::FormalParameter<'a>> = Vec::new();
-
-    let anchor_pattern = ctx
-        .b
-        .ast
-        .binding_pattern_binding_identifier(SPAN, ctx.b.ast.atom("$$anchor"));
-    params.push(ctx.b.ast.formal_parameter(
-        SPAN,
-        ctx.b.ast.vec(),
-        anchor_pattern,
-        oxc_ast::NONE,
-        oxc_ast::NONE,
-        false,
-        None,
-        false,
-        false,
+    let mut params: Vec<FormalParameter<'a>> = Vec::new();
+    params.push(formal_param_ident(
+        ctx, "$$anchor", /*with_noop_default*/ false,
     ));
 
-    let Some(items) = extract_arrow_param_items(stmt) else {
+    let Some(items) = plan.parsed_params() else {
         return ctx.b.ast.formal_parameters(
             SPAN,
             ast::FormalParameterKind::ArrowFormalParameters,
@@ -101,73 +140,31 @@ fn build_snippet_params_from_parsed<'stmt, 'a: 'stmt>(
         );
     };
 
-    for (i, item) in items.iter().enumerate() {
-        match &item.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                let name = ctx.b.ast.atom(id.name.as_str());
-                let default_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "noop");
-                let inner = ctx.b.ast.binding_pattern_binding_identifier(SPAN, name);
-                let pattern =
-                    ctx.b
-                        .ast
-                        .binding_pattern_assignment_pattern(SPAN, inner, default_expr);
-                params.push(ctx.b.ast.formal_parameter(
-                    SPAN,
-                    ctx.b.ast.vec(),
-                    pattern,
-                    oxc_ast::NONE,
-                    oxc_ast::NONE,
-                    false,
-                    None,
-                    false,
-                    false,
-                ));
+    // `sem.params` and the parsed arrow's items are populated in the
+    // same source order by the block_semantics builder — zip them to
+    // pair each positional slot with its semantic classification.
+    for (i, (item, payload_param)) in items.iter().zip(sem.params.iter()).enumerate() {
+        match payload_param {
+            SnippetParam::Identifier { sym, .. } => {
+                // Reference compiler always emits `= $.noop` for
+                // identifier params — any user-specified default is
+                // dropped at the declaration site (the `default` field
+                // is captured for future behaviour parity but unused
+                // today).
+                let name = ctx.query.view.symbol_name(*sym);
+                let name_owned = name.to_string();
+                params.push(formal_param_ident_with_noop(ctx, &name_owned));
             }
-            pattern => {
+            SnippetParam::Pattern {
+                kind: _,
+                pattern_id: _,
+                bindings,
+            } => {
                 let arg_name = format!("$$arg{i}");
-                let plain = ctx
-                    .b
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, ctx.b.ast.atom(&arg_name));
-                params.push(ctx.b.ast.formal_parameter(
-                    SPAN,
-                    ctx.b.ast.vec(),
-                    plain,
-                    oxc_ast::NONE,
-                    oxc_ast::NONE,
-                    false,
-                    None,
-                    false,
-                    false,
+                params.push(formal_param_ident(
+                    ctx, &arg_name, /*with_noop_default*/ false,
                 ));
-
-                let access = ctx
-                    .b
-                    .maybe_call_expr(ctx.b.rid_expr(&arg_name), std::iter::empty::<Arg<'_, '_>>());
-                let mut inserts = Vec::new();
-                let mut paths = Vec::new();
-                collect_binding_pattern(ctx, pattern, access, false, &mut inserts, &mut paths);
-
-                let array_insert_names: FxHashSet<String> =
-                    inserts.iter().map(|insert| insert.name.clone()).collect();
-
-                for insert in inserts {
-                    let derived = ctx
-                        .b
-                        .call_expr("$.derived", [Arg::Expr(ctx.b.thunk(insert.value))]);
-                    decls.push(ctx.b.var_stmt(&insert.name, derived));
-                }
-
-                for mut path in paths {
-                    rewrite_array_reads(ctx, &mut path.expression, &array_insert_names);
-                    emit_leaf_binding(
-                        ctx,
-                        &path.name,
-                        path.expression,
-                        path.has_default_value,
-                        decls,
-                    );
-                }
+                emit_destructure_bindings(ctx, &item.pattern, &arg_name, bindings, decls);
             }
         }
     }
@@ -180,18 +177,136 @@ fn build_snippet_params_from_parsed<'stmt, 'a: 'stmt>(
     )
 }
 
-fn extract_arrow_param_items<'s, 'a: 's>(
-    stmt: &'s Statement<'a>,
-) -> Option<&'s [oxc_ast::ast::FormalParameter<'a>]> {
-    if let Statement::VariableDeclaration(decl) = stmt {
-        if let Some(declarator) = decl.declarations.first() {
-            if let Some(oxc_ast::ast::Expression::ArrowFunctionExpression(arrow)) = &declarator.init
-            {
-                return Some(arrow.params.items.as_slice());
-            }
-        }
+/// Emit the destructure-leaf declarations for a single `$$argN`-routed
+/// parameter. Default classification is driven by `payload_bindings`
+/// (pre-computed `SnippetDefaultKind::{None, Constant, Computed}` from
+/// Block Semantics) — the helpers below never re-inspect the default
+/// expression. `payload_bindings` carries one entry per leaf identifier
+/// in the same in-order traversal as the shared
+/// `collect_binding_pattern` walker, so a simple cursor matches AST
+/// leaves to payload bindings.
+fn emit_destructure_bindings<'a>(
+    ctx: &mut Ctx<'a>,
+    pattern: &BindingPattern<'a>,
+    arg_name: &str,
+    payload_bindings: &[svelte_analyze::SnippetPatternBinding],
+    decls: &mut Vec<Statement<'a>>,
+) {
+    let access = ctx
+        .b
+        .maybe_call_expr(ctx.b.rid_expr(arg_name), std::iter::empty::<Arg<'_, '_>>());
+    let mut inserts = Vec::new();
+    let mut paths = Vec::new();
+    let mut cursor = payload_bindings.iter();
+    collect_binding_pattern(
+        ctx,
+        pattern,
+        access,
+        SnippetDefaultKind::None,
+        &mut cursor,
+        &mut inserts,
+        &mut paths,
+    );
+
+    let array_insert_names: FxHashSet<String> =
+        inserts.iter().map(|insert| insert.name.clone()).collect();
+
+    for insert in inserts {
+        let derived = ctx
+            .b
+            .call_expr("$.derived", [Arg::Expr(ctx.b.thunk(insert.value))]);
+        decls.push(ctx.b.var_stmt(&insert.name, derived));
     }
-    None
+
+    for mut path in paths {
+        rewrite_array_reads(ctx, &mut path.expression, &array_insert_names);
+        emit_leaf_binding(ctx, &path.name, path.expression, path.default, decls);
+    }
+}
+
+/// Build the snippet function body: optional dev prologue
+/// (`$.validate_snippet_args`), prepend statements (boundary @const
+/// duplicates), destructure declarations accumulated by
+/// [`build_formal_params`], then the user-authored body fragment.
+fn build_body_stmts<'a>(
+    ctx: &mut Ctx<'a>,
+    _block_id: NodeId,
+    plan: &SnippetPlan<'a>,
+    binding_decls: Vec<Statement<'a>>,
+    prepend_stmts: Vec<Statement<'a>>,
+) -> Vec<Statement<'a>> {
+    let fragment_stmts = gen_fragment(ctx, plan.body_key);
+
+    let mut all = prepend_stmts;
+    if plan.dev {
+        let args_id = ctx.b.rid_expr("arguments");
+        all.push(
+            ctx.b
+                .call_stmt("$.validate_snippet_args", [Arg::Spread(args_id)]),
+        );
+    }
+    all.extend(binding_decls);
+    all.extend(fragment_stmts);
+    all
+}
+
+/// Wrap the assembled arrow in `$.wrap_snippet(component_name, fn)` in
+/// dev, otherwise emit a plain arrow. Returns the final `const name = ...`
+/// statement.
+fn emit_snippet_const<'a>(
+    ctx: &mut Ctx<'a>,
+    plan: &SnippetPlan<'a>,
+    params: FormalParameters<'a>,
+    body_stmts: Vec<Statement<'a>>,
+) -> Statement<'a> {
+    let snippet_expr = if plan.dev {
+        let fn_expr = ctx.b.function_expr(params, body_stmts);
+        let component = ctx.b.rid_expr(plan.component_name);
+        ctx.b
+            .call_expr("$.wrap_snippet", [Arg::Expr(component), Arg::Expr(fn_expr)])
+    } else {
+        let arrow = ctx.b.arrow(params, body_stmts);
+        Expression::ArrowFunctionExpression(ctx.b.alloc(arrow))
+    };
+    ctx.b.const_stmt(&plan.name, snippet_expr)
+}
+
+// ---------------------------------------------------------------------------
+// Small AST-builder helpers for FormalParameter construction.
+// ---------------------------------------------------------------------------
+
+fn formal_param_ident<'a>(
+    ctx: &Ctx<'a>,
+    name: &str,
+    with_noop_default: bool,
+) -> FormalParameter<'a> {
+    let inner = ctx
+        .b
+        .ast
+        .binding_pattern_binding_identifier(SPAN, ctx.b.ast.atom(name));
+    let pattern = if with_noop_default {
+        let default_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "noop");
+        ctx.b
+            .ast
+            .binding_pattern_assignment_pattern(SPAN, inner, default_expr)
+    } else {
+        inner
+    };
+    ctx.b.ast.formal_parameter(
+        SPAN,
+        ctx.b.ast.vec(),
+        pattern,
+        oxc_ast::NONE,
+        oxc_ast::NONE,
+        false,
+        None,
+        false,
+        false,
+    )
+}
+
+fn formal_param_ident_with_noop<'a>(ctx: &Ctx<'a>, name: &str) -> FormalParameter<'a> {
+    formal_param_ident(ctx, name, true)
 }
 
 // Snippet params need the same insert-before-path ordering as the reference
@@ -205,34 +320,85 @@ struct SnippetInsert<'a> {
 struct SnippetPath<'a> {
     name: String,
     expression: Expression<'a>,
-    has_default_value: bool,
+    /// Pre-classified by Block Semantics — `None` / `Constant` / `Computed`.
+    /// The consumer never re-inspects the default expression; `Computed`
+    /// triggers the thunk-wrapped `$.fallback` form, `Constant` the
+    /// inline form, `None` skips `$.fallback` entirely.
+    default: SnippetDefaultKind,
 }
 
-fn collect_binding_pattern<'a>(
+fn collect_binding_pattern<'p, 'a>(
     ctx: &mut Ctx<'a>,
     pattern: &BindingPattern<'a>,
     expression: Expression<'a>,
-    has_default_value: bool,
+    inherited_default: SnippetDefaultKind,
+    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
     match pattern {
         BindingPattern::BindingIdentifier(id) => {
+            // Pull the next payload binding — matched in lockstep with
+            // the AST traversal. The payload walker in
+            // `block_semantics::builder::snippet::walk_pattern` visits
+            // leaves in the same order, so matching by position is
+            // exact; we assert on `SymbolId` as a guardrail.
+            let payload = bindings
+                .next()
+                .expect("payload bindings exhausted before AST traversal completed");
+            let ast_sym = id.symbol_id.get();
+            debug_assert!(
+                ast_sym.is_none_or(|s| s == payload.sym),
+                "snippet pattern binding payload/AST mismatch",
+            );
             paths.push(SnippetPath {
                 name: id.name.as_str().to_string(),
                 expression,
-                has_default_value,
+                default: payload.default,
             });
         }
         BindingPattern::ObjectPattern(obj) => {
-            collect_object_pattern(ctx, obj, expression, has_default_value, inserts, paths);
+            collect_object_pattern(
+                ctx,
+                obj,
+                expression,
+                inherited_default,
+                bindings,
+                inserts,
+                paths,
+            );
         }
         BindingPattern::ArrayPattern(arr) => {
-            collect_array_pattern(ctx, arr, expression, has_default_value, inserts, paths);
+            collect_array_pattern(
+                ctx,
+                arr,
+                expression,
+                inherited_default,
+                bindings,
+                inserts,
+                paths,
+            );
         }
         BindingPattern::AssignmentPattern(assign) => {
-            let fallback = build_fallback_expr(ctx, &expression, assign);
-            collect_binding_pattern(ctx, &assign.left, fallback, true, inserts, paths);
+            // Peek: payload already knows the default classification of
+            // the upcoming leaf. Reading `bindings.clone().next()` does
+            // not advance the cursor — the actual consume happens when
+            // the recursion reaches the `BindingIdentifier` leaf.
+            let leaf_default = bindings
+                .clone()
+                .next()
+                .map(|b| b.default)
+                .unwrap_or(SnippetDefaultKind::None);
+            let fallback = build_fallback_expr(ctx, &expression, assign, leaf_default);
+            collect_binding_pattern(
+                ctx,
+                &assign.left,
+                fallback,
+                leaf_default,
+                bindings,
+                inserts,
+                paths,
+            );
         }
     }
 }
@@ -241,23 +407,28 @@ fn emit_leaf_binding<'a>(
     ctx: &mut Ctx<'a>,
     name: &str,
     access: Expression<'a>,
-    has_default_value: bool,
+    default: SnippetDefaultKind,
     decls: &mut Vec<Statement<'a>>,
 ) {
-    let init = if has_default_value {
+    let init = if matches!(default, SnippetDefaultKind::None) {
+        ctx.b.thunk(access)
+    } else {
+        // Both Constant and Computed defaults trigger the
+        // `$.derived_safe_equal` wrap — the thunk ensures the default
+        // is evaluated once, independently of whether `$.fallback`
+        // inlined it or wrapped it in its own thunk.
         let thunk = ctx.b.thunk(access);
         ctx.b.call_expr("$.derived_safe_equal", [Arg::Expr(thunk)])
-    } else {
-        ctx.b.thunk(access)
     };
     decls.push(ctx.b.let_init_stmt(name, init));
 }
 
-fn collect_object_pattern<'a>(
+fn collect_object_pattern<'p, 'a>(
     ctx: &mut Ctx<'a>,
     obj: &oxc_ast::ast::ObjectPattern<'a>,
     expression: Expression<'a>,
-    has_default_value: bool,
+    inherited_default: SnippetDefaultKind,
+    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
@@ -267,7 +438,8 @@ fn collect_object_pattern<'a>(
             ctx,
             &prop.value,
             property_access,
-            has_default_value,
+            inherited_default,
+            bindings,
             inserts,
             paths,
         );
@@ -279,18 +451,20 @@ fn collect_object_pattern<'a>(
             ctx,
             &rest.argument,
             rest_expr,
-            has_default_value,
+            inherited_default,
+            bindings,
             inserts,
             paths,
         );
     }
 }
 
-fn collect_array_pattern<'a>(
+fn collect_array_pattern<'p, 'a>(
     ctx: &mut Ctx<'a>,
     arr: &oxc_ast::ast::ArrayPattern<'a>,
     expression: Expression<'a>,
-    has_default_value: bool,
+    inherited_default: SnippetDefaultKind,
+    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
@@ -319,7 +493,8 @@ fn collect_array_pattern<'a>(
             ctx,
             pattern,
             element_access,
-            has_default_value,
+            inherited_default,
+            bindings,
             inserts,
             paths,
         );
@@ -334,35 +509,45 @@ fn collect_array_pattern<'a>(
             ctx,
             &rest.argument,
             rest_access,
-            has_default_value,
+            inherited_default,
+            bindings,
             inserts,
             paths,
         );
     }
 }
 
+/// Build `$.fallback(access, <default>)` — form chosen from the
+/// pre-classified [`SnippetDefaultKind`] carried on the payload's leaf.
+/// `Constant` inlines the default; `Computed` wraps it in a thunk plus
+/// the `true` eager flag (matches reference compiler
+/// `build_fallback` in `reference/compiler/utils/ast.js`). `None` is
+/// unreachable — the AssignmentPattern branch only enters this helper
+/// when a default is present.
 fn build_fallback_expr<'a>(
     ctx: &Ctx<'a>,
     access: &oxc_ast::ast::Expression<'a>,
     assign: &AssignmentPattern<'a>,
+    default: SnippetDefaultKind,
 ) -> oxc_ast::ast::Expression<'a> {
     let default_val = assign.right.clone_in(ctx.b.ast.allocator);
-    if is_simple_expression(&assign.right) {
-        return ctx.b.call_expr(
+    match default {
+        SnippetDefaultKind::Constant => ctx.b.call_expr(
             "$.fallback",
             [Arg::Expr(ctx.b.clone_expr(access)), Arg::Expr(default_val)],
-        );
+        ),
+        SnippetDefaultKind::Computed => ctx.b.call_expr(
+            "$.fallback",
+            [
+                Arg::Expr(ctx.b.clone_expr(access)),
+                Arg::Expr(ctx.b.thunk(default_val)),
+                Arg::Bool(true),
+            ],
+        ),
+        SnippetDefaultKind::None => {
+            unreachable!("build_fallback_expr called without a default in the payload")
+        }
     }
-    // Non-simple defaults must be lazy: `$.fallback(access, () => <default>, true)`
-    // matches reference compiler `build_fallback` (`reference/compiler/utils/ast.js`).
-    ctx.b.call_expr(
-        "$.fallback",
-        [
-            Arg::Expr(ctx.b.clone_expr(access)),
-            Arg::Expr(ctx.b.thunk(default_val)),
-            Arg::Bool(true),
-        ],
-    )
 }
 
 fn build_object_property_access<'a>(

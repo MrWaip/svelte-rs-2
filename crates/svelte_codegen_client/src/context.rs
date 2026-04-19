@@ -11,8 +11,7 @@ use svelte_analyze::{
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
-    RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteWindow,
+    RenderTag, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
 };
 use svelte_transform::TransformData;
 
@@ -49,9 +48,6 @@ impl<'a> CodegenQuery<'a> {
     }
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
         self.component.store.each_block(id)
-    }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.component.store.snippet_block(id)
     }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.component.store.render_tag(id)
@@ -285,9 +281,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
         self.query.component_node(id)
-    }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.query.snippet_block(id)
     }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
@@ -608,9 +601,6 @@ impl<'a> Ctx<'a> {
 
     // -- Snippet shortcuts --
 
-    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
-        self.query.view.is_snippet_hoistable(id)
-    }
     // -- ConstTag shortcuts --
 
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
@@ -653,6 +643,7 @@ impl<'a> Ctx<'a> {
         self.query.view.let_directive_stmt_handle(id)
     }
 
+    #[allow(deprecated)]
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
         self.query.view.snippet_stmt_handle(id)
     }

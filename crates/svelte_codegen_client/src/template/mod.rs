@@ -257,10 +257,16 @@ pub fn gen_root_fragment<'a>(
             svelte_ast::Node::SvelteDocument(d) => svelte_document_ids.push(d.id),
             svelte_ast::Node::SvelteBody(b) => svelte_body_ids.push(b.id),
             svelte_ast::Node::SnippetBlock(block) => {
-                if ctx.is_snippet_hoistable(block.id) {
-                    hoistable_snippet_ids.push(block.id);
+                let sem = match ctx.query.analysis.block_semantics(block.id) {
+                    svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
+                    other => unreachable!(
+                        "SnippetBlock must map to BlockSemantics::Snippet, got {other:?}"
+                    ),
+                };
+                if sem.hoistable {
+                    hoistable_snippet_ids.push((block.id, sem));
                 } else {
-                    instance_snippet_ids.push(block.id);
+                    instance_snippet_ids.push((block.id, sem));
                 }
             }
             _ => {}
@@ -276,12 +282,12 @@ pub fn gen_root_fragment<'a>(
 
     // Generate snippet bodies: instance first, then hoistable
     let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
-    for id in instance_snippet_ids {
-        snippet_stmts.push(snippet::gen_snippet_block(ctx, id, vec![]));
+    for (id, sem) in instance_snippet_ids {
+        snippet_stmts.push(snippet::gen_snippet_block(ctx, id, &sem, vec![]));
     }
     let mut hoistable_snippets: Vec<Statement<'a>> = Vec::new();
-    for id in hoistable_snippet_ids {
-        hoistable_snippets.push(snippet::gen_snippet_block(ctx, id, vec![]));
+    for (id, sem) in hoistable_snippet_ids {
+        hoistable_snippets.push(snippet::gen_snippet_block(ctx, id, &sem, vec![]));
     }
 
     let mut hoisted = Vec::with_capacity(4);
