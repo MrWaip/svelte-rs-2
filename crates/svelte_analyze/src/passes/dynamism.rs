@@ -1,37 +1,37 @@
-//! Dynamism classification — «should a template fragment / attribute / component
-//! be wrapped in reactive code at codegen time?».
+//! Dynamism classification — single source of truth for «should a template
+//! fragment / attribute / component be wrapped in reactive code at codegen
+//! time?». Reads `ReactivitySemantics` per-reference and does not depend on
+//! cached flags on `ExpressionInfo`; `ExprRole` on `ExpressionInfo` is
+//! re-synthesised from this storage by `populate_expr_roles`.
 //!
-//! Single source of truth for three orthogonal consumer questions:
+//! Four disjoint BitSets because the consumer questions are semantically
+//! different even when they touch the same NodeId:
 //! - `is_dynamic_node(id)` — fragment item needs `$.template_effect(...)` wrap.
-//! - `is_dynamic_attr(id)`  — attribute needs per-attr effect wrap (separate
-//!   from the node-level question because an element can be static overall but
-//!   hold a single dynamic `class:foo={bar}` directive).
-//! - `is_dynamic_component(id)` — component call site needs `$.component(...)`
-//!   (dotted callee / `<svelte:component>` / reactive-bound callee). Orthogonal
-//!   to `is_dynamic_node` on the same component: a dynamic callee with static
-//!   props does not need a template_effect wrap around the call.
-//!
-//! All three sets are populated by one template-walker pass that consults
-//! `ReactivitySemantics::reference_semantics(ref_id)` for per-reference answers
-//! and `DeclarationSemantics` for component-binding classification.
+//! - `is_dynamic_attr(id)` — element attribute needs per-attr effect wrap.
+//! - `is_dynamic_component(id)` — component call site needs `$.component(...)`.
+//! - `has_state_attr(id)` — attribute references anything non-plain; used by
+//!   legacy slot prop getter insertion and component props that care about
+//!   "any state" rather than just "dynamic".
 
 use svelte_ast::{
     Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SlotElementLegacy, SVELTE_COMPONENT,
 };
 use svelte_span::Span;
 
-use crate::types::data::{DeclarationSemantics, ParentKind};
+use crate::scope::{ComponentScoping, SymbolId};
+use crate::types::data::{
+    AnalysisData, DeclarationSemantics, ExpressionInfo, ExpressionKind, ParentKind,
+    PropDeclarationKind, PropDeclarationSemantics, ReactivitySemantics,
+};
 use crate::types::node_table::NodeBitSet;
 use crate::walker::{TemplateVisitor, VisitContext};
 
-/// Storage for dynamism classification. Three disjoint BitSets because the
-/// consumer questions are semantically different even when they touch the
-/// same NodeId (see module docs).
 #[derive(Debug)]
 pub struct DynamismData {
     dynamic_nodes: NodeBitSet,
     dynamic_attrs: NodeBitSet,
     dynamic_components: NodeBitSet,
+    has_state_attrs: NodeBitSet,
 }
 
 impl DynamismData {
@@ -40,6 +40,7 @@ impl DynamismData {
             dynamic_nodes: NodeBitSet::new(node_count),
             dynamic_attrs: NodeBitSet::new(node_count),
             dynamic_components: NodeBitSet::new(node_count),
+            has_state_attrs: NodeBitSet::new(node_count),
         }
     }
 
@@ -55,6 +56,10 @@ impl DynamismData {
         self.dynamic_components.contains(&id)
     }
 
+    pub fn has_state_attr(&self, id: NodeId) -> bool {
+        self.has_state_attrs.contains(&id)
+    }
+
     pub(crate) fn mark_dynamic_node(&mut self, id: NodeId) {
         self.dynamic_nodes.insert(id);
     }
@@ -66,16 +71,12 @@ impl DynamismData {
     pub(crate) fn mark_dynamic_component(&mut self, id: NodeId) {
         self.dynamic_components.insert(id);
     }
+
+    pub(crate) fn mark_has_state_attr(&mut self, id: NodeId) {
+        self.has_state_attrs.insert(id);
+    }
 }
 
-/// Single template walker that populates `DynamismData`'s three BitSets.
-///
-/// Logic mirrors the legacy `reactivity.rs` visitor (for `dynamic_nodes` +
-/// `dynamic_attrs`) and the component-branch of `element_flags.rs` (for
-/// `dynamic_components`). Source of truth for per-reference dynamism is
-/// `ExpressionInfo::is_dynamic` / `has_state` (for now — until Step 4 moves
-/// the per-reference query onto `ReferenceSemantics` directly and removes
-/// the cached flags).
 pub(crate) struct DynamismVisitor;
 
 impl DynamismVisitor {
@@ -90,12 +91,10 @@ impl TemplateVisitor for DynamismVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        if ctx
-            .data
-            .expressions
-            .get(tag.id)
-            .is_some_and(|info| info.is_dynamic())
-        {
+        let Some(info) = ctx.data.expressions.get(tag.id) else {
+            return;
+        };
+        if classify_template_info(info, ctx.data) {
             ctx.data.dynamism.mark_dynamic_node(tag.id);
         }
     }
@@ -105,9 +104,6 @@ impl TemplateVisitor for DynamismVisitor {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
-        // `needs_ref` lives alongside dynamism because the condition "this
-        // element hosts a bindable / reactive attr" is what later triggers
-        // both the effect wrap and the element reference emission.
         if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
             if let Some(el_id) = ctx.data.nearest_element(attr.id()) {
                 ctx.data.elements.flags.needs_ref.insert(el_id);
@@ -153,15 +149,22 @@ impl TemplateVisitor for DynamismVisitor {
                     )
                 });
 
-            let is_dynamic = ctx.data.attr_expressions.get(node_id).is_some_and(|info| {
-                if in_component {
-                    info.has_state()
-                } else {
-                    info.is_dynamic()
-                }
-            });
+            let Some(info) = ctx.data.attr_expressions.get(node_id) else {
+                return;
+            };
 
-            if is_dynamic {
+            let scoping = &ctx.data.scoping;
+            let reactivity = &ctx.data.reactivity;
+            let is_dyn_element = is_dynamic_element_attr(info, scoping, reactivity);
+            let has_state_component = has_state_component_attr(info, scoping, reactivity);
+
+            let classified_dynamic = if in_component {
+                has_state_component
+            } else {
+                is_dyn_element
+            };
+
+            if classified_dynamic {
                 ctx.data.dynamism.mark_dynamic_attr(attr_id);
                 if !in_component {
                     if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
@@ -176,32 +179,216 @@ impl TemplateVisitor for DynamismVisitor {
                     }
                 }
             }
+
+            if has_state_component {
+                ctx.data.dynamism.mark_has_state_attr(attr_id);
+            }
         } else if !(matches!(parent_kind, Some(ParentKind::SvelteElement))
             && parent.is_some_and(|p| p.id == node_id))
         {
-            if ctx
-                .data
-                .expressions
-                .get(node_id)
-                .is_some_and(|info| info.is_dynamic())
-            {
+            let Some(info) = ctx.data.expressions.get(node_id) else {
+                return;
+            };
+            if classify_template_info(info, ctx.data) {
                 ctx.data.dynamism.mark_dynamic_node(node_id);
             }
         }
     }
 }
 
-/// A component binding is «reactive» for the purposes of dynamic-component
-/// lowering when its declaration is anything other than `NonReactive` or
-/// `Unresolved`. Kept identical to the legacy `element_flags` helper so the
-/// parallel pass produces bit-for-bit the same classification.
-fn is_reactive_component_binding(
-    data: &crate::AnalysisData<'_>,
-    sym: crate::scope::SymbolId,
+fn classify_template_info(info: &ExpressionInfo, data: &AnalysisData<'_>) -> bool {
+    is_dynamic_template(
+        info,
+        &data.scoping,
+        &data.reactivity,
+        data.script.has_class_state_fields,
+    )
+}
+
+/// A symbol is "dynamic" when a template-level read of it may observe different
+/// values across evaluations (so the surrounding expression must be wrapped in
+/// reactive code).
+pub(crate) fn is_symbol_dynamic(
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+    sym_id: SymbolId,
 ) -> bool {
+    use crate::types::data::ConstDeclarationSemantics;
+    if scoping.is_each_index_non_dynamic(sym_id) {
+        return false;
+    }
+    let decl = reactivity.declaration_semantics(scoping.symbol_declaration(sym_id));
+    match decl {
+        DeclarationSemantics::State(_)
+        | DeclarationSemantics::Prop(_)
+        | DeclarationSemantics::Store(_)
+        | DeclarationSemantics::Contextual(_)
+        | DeclarationSemantics::RuntimeRune { .. } => true,
+        DeclarationSemantics::Derived(d) => d.reactive,
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { reactive, .. }) => {
+            reactive
+        }
+        DeclarationSemantics::OptimizedRune(opt) if opt.proxy_init => true,
+        DeclarationSemantics::NonReactive
+        | DeclarationSemantics::Unresolved
+        | DeclarationSemantics::OptimizedRune(_)
+        | DeclarationSemantics::LetCarrier { .. } => {
+            !scoping.is_component_top_level_symbol(sym_id)
+        }
+    }
+}
+
+fn is_dynamic_template(
+    info: &ExpressionInfo,
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+    has_class_state_fields: bool,
+) -> bool {
+    if info.has_await() || info.has_state_rune() || info.needs_context() {
+        return true;
+    }
+
+    if matches!(info.kind(), ExpressionKind::CallExpression { .. }) {
+        return info.has_store_ref()
+            || info.ref_symbols().iter().any(|&sym_id| {
+                is_symbol_dynamic(scoping, reactivity, sym_id)
+                    || (scoping.is_component_top_level_symbol(sym_id)
+                        && !scoping.is_import(sym_id))
+            });
+    }
+
+    if matches!(info.kind(), ExpressionKind::MemberExpression) {
+        return info.has_store_ref() || !info.ref_symbols().is_empty();
+    }
+
+    if info.has_store_ref() {
+        return true;
+    }
+    info.ref_symbols().iter().any(|&sym_id| {
+        if is_symbol_dynamic(scoping, reactivity, sym_id) {
+            return true;
+        }
+        if is_unified_prop_source(scoping, reactivity, sym_id) {
+            return true;
+        }
+        if has_class_state_fields
+            && scoping.is_component_top_level_symbol(sym_id)
+            && is_unified_plain_symbol(scoping, reactivity, sym_id)
+        {
+            return true;
+        }
+        false
+    })
+}
+
+fn is_dynamic_element_attr(
+    info: &ExpressionInfo,
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if info.has_await() {
+        return true;
+    }
+    attr_symbols(info, scoping).any(|sym_id| {
+        matches!(
+            reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
+            DeclarationSemantics::Prop(PropDeclarationSemantics {
+                kind: PropDeclarationKind::NonSource,
+                ..
+            })
+        ) || is_symbol_dynamic(scoping, reactivity, sym_id)
+    })
+}
+
+fn has_state_component_attr(
+    info: &ExpressionInfo,
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if info.has_await() {
+        return true;
+    }
+    attr_symbols(info, scoping).any(|sym_id| {
+        !scoping.is_component_top_level_symbol(sym_id)
+            || !is_unified_plain_symbol(scoping, reactivity, sym_id)
+    })
+}
+
+fn attr_symbols<'a>(
+    info: &'a ExpressionInfo,
+    scoping: &'a ComponentScoping,
+) -> impl Iterator<Item = SymbolId> + 'a {
+    let fallback = if info.ref_symbols().is_empty() {
+        info.identifier_name()
+            .and_then(|name| scoping.find_binding(scoping.root_scope_id(), name))
+    } else {
+        None
+    };
+    info.ref_symbols().iter().copied().chain(fallback)
+}
+
+fn is_unified_prop_source(
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+    sym_id: SymbolId,
+) -> bool {
+    matches!(
+        reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
+        DeclarationSemantics::Prop(PropDeclarationSemantics {
+            kind: PropDeclarationKind::Source { .. },
+            ..
+        })
+    )
+}
+
+fn is_unified_plain_symbol(
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+    sym_id: SymbolId,
+) -> bool {
+    matches!(
+        reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
+        DeclarationSemantics::NonReactive | DeclarationSemantics::Const(_)
+    )
+}
+
+fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool {
     !matches!(
         data.declaration_semantics(data.scoping.symbol_declaration(sym)),
         DeclarationSemantics::NonReactive | DeclarationSemantics::Unresolved,
     )
 }
 
+/// After the template walker populated `DynamismData`, apply the async-blocker
+/// rule and re-derive `ExprRole` on `ExpressionInfo` from the bitsets. Runs
+/// once per analyze and replaces the v1 `classify_expression_dynamicity` +
+/// `mark_blocked_expressions_dynamic` pair.
+pub(crate) fn populate_expr_roles(data: &mut AnalysisData<'_>) {
+    if data.script.blocker_data.has_async {
+        let blocked_node_ids: Vec<NodeId> = data
+            .expressions
+            .iter()
+            .filter_map(|(id, info)| {
+                if data.dynamism.is_dynamic_node(id) {
+                    return None;
+                }
+                info.ref_symbols()
+                    .iter()
+                    .any(|sym| data.script.blocker_data.symbol_blockers.contains_key(sym))
+                    .then_some(id)
+            })
+            .collect();
+        for id in blocked_node_ids {
+            data.dynamism.mark_dynamic_node(id);
+        }
+    }
+
+    let dynamism = &data.dynamism;
+    for (id, info) in data.expressions.iter_mut() {
+        info.set_expr_role_from_dynamism(dynamism.is_dynamic_node(id));
+    }
+    for (id, info) in data.attr_expressions.iter_mut() {
+        let is_dynamic = dynamism.is_dynamic_attr(id) || dynamism.has_state_attr(id);
+        info.set_expr_role_from_dynamism(is_dynamic);
+    }
+}

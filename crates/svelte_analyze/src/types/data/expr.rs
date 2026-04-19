@@ -37,8 +37,6 @@ pub struct ExpressionInfo {
     has_state_rune: bool,
     has_store_member_mutation: bool,
     needs_context: bool,
-    is_dynamic: bool,
-    has_state: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,8 +62,6 @@ impl ExpressionInfo {
             has_state_rune: false,
             has_store_member_mutation: false,
             needs_context: false,
-            is_dynamic: false,
-            has_state: false,
         }
     }
 
@@ -94,18 +90,36 @@ impl ExpressionInfo {
 
     pub(crate) fn set_needs_context(&mut self, needs_context: bool) {
         self.needs_context = needs_context;
-        self.refresh_expr_role();
+        // `ClassifyNeedsContext` runs before `Dynamism`, so `ExprRole` is
+        // provisionally set to `DynamicWithContext` here and may be overwritten
+        // later by `set_expr_role_from_dynamism` (which preserves
+        // `DynamicWithContext` when `needs_context` is set).
+        if self.expr_role == Some(ExprRole::RenderTag) {
+            return;
+        }
+        if needs_context {
+            self.expr_role = Some(ExprRole::DynamicWithContext);
+        }
     }
 
-    pub(crate) fn set_dynamicity(&mut self, is_dynamic: bool, has_state: bool) {
-        self.is_dynamic = is_dynamic;
-        self.has_state = has_state;
-        self.refresh_expr_role();
-    }
-
-    pub(crate) fn mark_dynamic(&mut self) {
-        self.is_dynamic = true;
-        self.refresh_expr_role();
+    /// Applied by the `dynamism` pass after `DynamismData` is built. `ExprRole`
+    /// is deliberately non-authoritative: the bitsets on `DynamismData` are the
+    /// source of truth; this mirror exists only so consumers that historically
+    /// asked "what kind of template role does this expression play?" keep the
+    /// same answer without re-querying the bitsets.
+    pub(crate) fn set_expr_role_from_dynamism(&mut self, is_dynamic: bool) {
+        if self.expr_role == Some(ExprRole::RenderTag) {
+            return;
+        }
+        self.expr_role = Some(if self.has_await {
+            ExprRole::Async
+        } else if self.needs_context {
+            ExprRole::DynamicWithContext
+        } else if is_dynamic {
+            ExprRole::DynamicPure
+        } else {
+            ExprRole::Static
+        });
     }
 
     pub(crate) fn mark_render_tag(&mut self) {
@@ -126,21 +140,6 @@ impl ExpressionInfo {
                 self.ref_symbols.push(sym);
             }
         }
-    }
-
-    fn refresh_expr_role(&mut self) {
-        if self.expr_role == Some(ExprRole::RenderTag) {
-            return;
-        }
-        self.expr_role = Some(if self.has_await {
-            ExprRole::Async
-        } else if self.needs_context {
-            ExprRole::DynamicWithContext
-        } else if self.is_dynamic {
-            ExprRole::DynamicPure
-        } else {
-            ExprRole::Static
-        });
     }
 
     pub fn kind(&self) -> &ExpressionKind {
@@ -222,14 +221,6 @@ impl ExpressionInfo {
 
     pub fn needs_context(&self) -> bool {
         self.needs_context
-    }
-
-    pub fn is_dynamic(&self) -> bool {
-        self.is_dynamic
-    }
-
-    pub fn has_state(&self) -> bool {
-        self.has_state
     }
 
     pub fn needs_memoized_value(&self) -> bool {

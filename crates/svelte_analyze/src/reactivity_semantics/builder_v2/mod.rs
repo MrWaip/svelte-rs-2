@@ -51,6 +51,11 @@ pub(crate) fn build_v2<'a>(
     data.reactivity.set_uses_runes(data.script.runes);
     build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
     contextual::collect_template_declarations(component, parsed, data);
+    // Reserve the dense reference-facts table once `ReferenceTable` is final
+    // (after script + template walks). Avoids per-insert resize chains while
+    // `references::collect_symbol_semantics` fills the table.
+    let reference_count = data.scoping.references_len();
+    data.reactivity.reserve_references(reference_count);
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(parsed, data);
 }

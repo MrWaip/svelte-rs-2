@@ -293,6 +293,10 @@ impl<'a> ComponentSemantics<'a> {
         }
     }
 
+    pub fn references_len(&self) -> usize {
+        self.references.len()
+    }
+
     pub fn get_reference_mut(&mut self, id: ReferenceId) -> &mut Reference {
         self.references.get_mut(id)
     }

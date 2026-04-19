@@ -74,6 +74,13 @@ impl<T> NodeTable<T> {
             .filter_map(|(i, slot)| slot.as_ref().map(|v| (NodeId(i as u32), v)))
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (NodeId, &mut T)> {
+        self.0
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(i, slot)| slot.as_mut().map(|v| (NodeId(i as u32), v)))
+    }
+
     /// Drain all populated entries, yielding (NodeId, T) pairs and clearing the table.
     pub fn drain(&mut self) -> impl Iterator<Item = (NodeId, T)> + '_ {
         self.0

@@ -1,4 +1,5 @@
 use crate::scope::SymbolId;
+use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::NodeId;
@@ -562,8 +563,17 @@ pub(crate) enum V2ReferenceFacts {
 /// - "does this `let:` leaf read through a carrier object?"
 #[derive(Clone, Debug)]
 pub struct ReactivitySemantics {
-    declaration_facts_v2: FxHashMap<OxcNodeId, V2DeclarationFacts>,
-    reference_facts_v2: FxHashMap<ReferenceId, V2ReferenceFacts>,
+    /// Dense table of declaration facts keyed by OXC `NodeId`. Using an
+    /// `IndexVec` indexed by `OxcNodeId` avoids hashing/rehashing on the hot
+    /// `declaration_semantics` / `declaration_facts_v2` path that gets hit
+    /// millions of times for big components.
+    declaration_facts_v2: IndexVec<OxcNodeId, Option<V2DeclarationFacts>>,
+    /// Secondary index into `declaration_facts_v2` for store-subscription
+    /// declarations only — so `iter_store_declarations` stays O(k_stores)
+    /// instead of O(n_all_nodes) after the table became dense.
+    store_declaration_ids: Vec<OxcNodeId>,
+    /// Dense table of reference facts keyed by `ReferenceId`.
+    reference_facts_v2: IndexVec<ReferenceId, Option<V2ReferenceFacts>>,
     symbol_declaration_roots: FxHashMap<SymbolId, OxcNodeId>,
     symbol_prop_facts: FxHashMap<SymbolId, PropBindingFacts>,
     /// Set of `ReferenceId`s that are the root identifier of a MemberExpression
@@ -600,10 +610,13 @@ pub struct ReactivitySemantics {
 }
 
 impl ReactivitySemantics {
-    pub fn new(_node_count: u32) -> Self {
+    pub fn new(node_count: u32) -> Self {
+        let mut declaration_facts_v2 = IndexVec::with_capacity(node_count as usize);
+        declaration_facts_v2.resize_with(node_count as usize, || None);
         Self {
-            declaration_facts_v2: FxHashMap::default(),
-            reference_facts_v2: FxHashMap::default(),
+            declaration_facts_v2,
+            store_declaration_ids: Vec::new(),
+            reference_facts_v2: IndexVec::new(),
             symbol_declaration_roots: FxHashMap::default(),
             symbol_prop_facts: FxHashMap::default(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
@@ -614,13 +627,23 @@ impl ReactivitySemantics {
         }
     }
 
+    /// Called by the v2 builder once the `ReferenceTable` length is known
+    /// (after template declarations + JS script walk). Sizes the dense
+    /// reference-facts table so subsequent `record_reference_semantics_v2`
+    /// calls don't pay for resize chains.
+    pub(crate) fn reserve_references(&mut self, reference_count: usize) {
+        if self.reference_facts_v2.len() < reference_count {
+            self.reference_facts_v2
+                .resize_with(reference_count, || None);
+        }
+    }
+
     pub fn uses_runes(&self) -> bool {
         self.uses_runes
     }
 
     pub fn declaration_semantics(&self, node_id: OxcNodeId) -> DeclarationSemantics {
-        self.declaration_facts_v2
-            .get(&node_id)
+        self.lookup_declaration_facts(node_id)
             .map(Self::declaration_semantics_from_facts)
             .unwrap_or(DeclarationSemantics::NonReactive)
     }
@@ -631,25 +654,23 @@ impl ReactivitySemantics {
     pub fn iter_store_declarations(
         &self,
     ) -> impl Iterator<Item = (OxcNodeId, StoreDeclarationSemantics)> + '_ {
-        self.declaration_facts_v2
-            .iter()
-            .filter_map(|(node_id, facts)| match facts {
-                V2DeclarationFacts::Store(store) => Some((*node_id, *store)),
+        self.store_declaration_ids.iter().filter_map(|&node_id| {
+            match self.lookup_declaration_facts(node_id)? {
+                V2DeclarationFacts::Store(store) => Some((node_id, *store)),
                 _ => None,
-            })
+            }
+        })
     }
 
     /// Whether any `$store` subscription declaration exists. Used by the
     /// runtime-plan assembly to decide if the component needs the store
     /// wiring block.
     pub fn has_store_declarations(&self) -> bool {
-        self.declaration_facts_v2
-            .values()
-            .any(|facts| matches!(facts, V2DeclarationFacts::Store(_)))
+        !self.store_declaration_ids.is_empty()
     }
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
-        match self.reference_facts_v2.get(&ref_id) {
+        match self.lookup_reference_facts(ref_id) {
             Some(V2ReferenceFacts::SignalRead { kind, safe }) => {
                 ReferenceSemantics::SignalRead {
                     kind: *kind,
@@ -737,14 +758,16 @@ impl ReactivitySemantics {
     }
 
     pub(crate) fn declaration_facts_v2(&self, node_id: OxcNodeId) -> Option<V2DeclarationFacts> {
-        self.declaration_facts_v2.get(&node_id).cloned()
+        self.lookup_declaration_facts(node_id).cloned()
     }
 
     pub(crate) fn declaration_facts_v2_mut(
         &mut self,
         node_id: OxcNodeId,
     ) -> Option<&mut V2DeclarationFacts> {
-        self.declaration_facts_v2.get_mut(&node_id)
+        self.declaration_facts_v2
+            .get_mut(node_id)
+            .and_then(|slot| slot.as_mut())
     }
 
     pub(crate) fn record_state_declaration_v2(
@@ -752,8 +775,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: StateDeclarationSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::State(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::State(semantics));
     }
 
     pub(crate) fn record_optimized_rune_declaration_v2(
@@ -761,8 +783,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: OptimizedRuneSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::OptimizedRune(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::OptimizedRune(semantics));
     }
 
     pub(crate) fn record_derived_declaration_v2(
@@ -770,8 +791,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: DerivedDeclarationSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::Derived(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::Derived(semantics));
     }
 
     pub(crate) fn record_prop_declaration_v2(
@@ -779,8 +799,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: PropDeclarationSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::Prop(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::Prop(semantics));
     }
 
     pub(crate) fn record_store_declaration_v2(
@@ -788,12 +807,12 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: StoreDeclarationSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::Store(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::Store(semantics));
+        self.store_declaration_ids.push(node_id);
     }
 
     pub(crate) fn record_const_declaration_v2(&mut self, node_id: OxcNodeId, destructured: bool) {
-        self.declaration_facts_v2.insert(
+        self.write_declaration(
             node_id,
             V2DeclarationFacts::Const(ConstDeclarationSemantics::ConstTag {
                 destructured,
@@ -807,7 +826,9 @@ impl ReactivitySemantics {
     /// Used by the `compute_derived_reactivity` fix-point pass to overwrite
     /// the `reactive` flag on an already-recorded Derived declaration.
     pub(crate) fn set_derived_reactive(&mut self, node_id: OxcNodeId, reactive: bool) {
-        if let Some(V2DeclarationFacts::Derived(d)) = self.declaration_facts_v2.get_mut(&node_id) {
+        if let Some(Some(V2DeclarationFacts::Derived(d))) =
+            self.declaration_facts_v2.get_mut(node_id)
+        {
             d.reactive = reactive;
         }
     }
@@ -818,8 +839,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         kind: RuntimeRuneKind,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::RuntimeRune { kind });
+        self.write_declaration(node_id, V2DeclarationFacts::RuntimeRune { kind });
     }
 
     pub(crate) fn record_contextual_declaration_v2(
@@ -827,8 +847,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         semantics: ContextualDeclarationSemantics,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::Contextual(semantics));
+        self.write_declaration(node_id, V2DeclarationFacts::Contextual(semantics));
     }
 
     pub(crate) fn record_carrier_alias_declaration_v2(
@@ -836,8 +855,27 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         carrier: SymbolId,
     ) {
+        self.write_declaration(node_id, V2DeclarationFacts::CarrierAlias { carrier });
+    }
+
+    fn write_declaration(&mut self, node_id: OxcNodeId, facts: V2DeclarationFacts) {
+        let idx = node_id.index();
+        if idx >= self.declaration_facts_v2.len() {
+            self.declaration_facts_v2.resize_with(idx + 1, || None);
+        }
+        self.declaration_facts_v2[node_id] = Some(facts);
+    }
+
+    fn lookup_declaration_facts(&self, node_id: OxcNodeId) -> Option<&V2DeclarationFacts> {
         self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::CarrierAlias { carrier });
+            .get(node_id)
+            .and_then(|slot| slot.as_ref())
+    }
+
+    fn lookup_reference_facts(&self, ref_id: ReferenceId) -> Option<&V2ReferenceFacts> {
+        self.reference_facts_v2
+            .get(ref_id)
+            .and_then(|slot| slot.as_ref())
     }
 
     pub(crate) fn record_contextual_owner_v2(&mut self, sym: SymbolId, owner_node: NodeId) {
@@ -869,7 +907,11 @@ impl ReactivitySemantics {
         ref_id: ReferenceId,
         semantics: V2ReferenceFacts,
     ) {
-        self.reference_facts_v2.insert(ref_id, semantics);
+        let idx = ref_id.index();
+        if idx >= self.reference_facts_v2.len() {
+            self.reference_facts_v2.resize_with(idx + 1, || None);
+        }
+        self.reference_facts_v2[ref_id] = Some(semantics);
     }
 
     pub(crate) fn record_prop_facts(&mut self, sym: SymbolId, facts: PropBindingFacts) {
@@ -881,8 +923,10 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         carrier_symbol: SymbolId,
     ) {
-        self.declaration_facts_v2
-            .insert(node_id, V2DeclarationFacts::LetCarrier { carrier_symbol });
+        self.write_declaration(
+            node_id,
+            V2DeclarationFacts::LetCarrier { carrier_symbol },
+        );
     }
 }
 

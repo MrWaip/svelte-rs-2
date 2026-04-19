@@ -203,7 +203,7 @@ fn legacy_slot_prop_needs_getter(ctx: &Ctx<'_>, attr_id: NodeId) -> bool {
         return false;
     };
 
-    info.has_state()
+    ctx.has_state_attr(attr_id)
         || info.has_call()
         || info.has_await()
         || info.ref_symbols().iter().any(|&sym| {

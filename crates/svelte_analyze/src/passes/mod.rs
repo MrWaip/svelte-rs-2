@@ -42,8 +42,6 @@ pub(crate) enum PassKey {
     CollectConstTagFragments,
     PopulateConstTagSyms,
     BuildReactivitySemantics,
-    ClassifyExpressionDynamicity,
-    MarkBlockedExpressionsDynamic,
     LowerTemplate,
     ReactivityWalk,
     TemplateClassificationWalk,
@@ -71,8 +69,6 @@ pub(crate) enum DataToken {
     ConstTagFragments,
     ConstTagSyms,
     ReactivitySemantics,
-    ExpressionDynamicity,
-    BlockedExpressionsDynamic,
     LoweredTemplate,
     Reactivity,
     TemplateClassification,
@@ -179,22 +175,9 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ReactivitySemantics],
     },
     PassDescriptor {
-        key: PassKey::ClassifyExpressionDynamicity,
-        requires: &[DataToken::ReactivitySemantics],
-        produces: &[DataToken::ExpressionDynamicity],
-    },
-    PassDescriptor {
-        key: PassKey::MarkBlockedExpressionsDynamic,
-        requires: &[
-            DataToken::ExpressionDynamicity,
-            DataToken::JsAnalyzePostTemplate,
-        ],
-        produces: &[DataToken::BlockedExpressionsDynamic],
-    },
-    PassDescriptor {
         key: PassKey::LowerTemplate,
         requires: &[
-            DataToken::ExpressionDynamicity,
+            DataToken::ReactivitySemantics,
             DataToken::ConstTagFragments,
         ],
         produces: &[DataToken::LoweredTemplate],
@@ -247,8 +230,6 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::PopulateConstTagSyms,
     PassKey::BuildReactivitySemantics,
     PassKey::ResolveRenderTagMeta,
-    PassKey::ClassifyExpressionDynamicity,
-    PassKey::MarkBlockedExpressionsDynamic,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
