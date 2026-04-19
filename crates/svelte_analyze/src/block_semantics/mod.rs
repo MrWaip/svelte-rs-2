@@ -69,4 +69,17 @@ impl BlockSemanticsStore {
     pub(crate) fn record_each_index_sym(&mut self, sym: SymbolId, block: NodeId) {
         self.each_index_sym_to_block.insert(sym, block);
     }
+
+    /// Post-populate mutator for the snippet `hoistable` flag. Kept
+    /// separate from `set` because hoistable is classified in a second
+    /// pass after all snippet references have been collected: the
+    /// populator seeds `hoistable: false` and the finalize stage flips
+    /// it for top-level snippets whose body never references an
+    /// instance-scope symbol.
+    pub(crate) fn set_snippet_hoistable(&mut self, id: NodeId, value: bool) {
+        let idx = id.0 as usize;
+        if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(idx) {
+            sem.hoistable = value;
+        }
+    }
 }

@@ -16,6 +16,7 @@ use super::common::{collect_binding_pattern_symbols, declarator_from_stmt};
 
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
+use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, Node, NodeId};
@@ -28,7 +29,6 @@ pub(super) fn populate(
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
-    hoistable_snippets: &FxHashSet<NodeId>,
     store: &mut BlockSemanticsStore,
 ) {
     let mut ctx = Ctx {
@@ -37,14 +37,99 @@ pub(super) fn populate(
         semantics,
         reactivity,
         blockers,
-        hoistable_snippets,
+        non_root_depth: 0,
+        snippet_scopes: Vec::new(),
+        snippet_name_syms: FxHashSet::default(),
         store,
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
     };
+    // Root fragment walk: `non_root_depth` stays 0 here, so any
+    // `SnippetBlock` encountered at this level is top-level.
     for &node_id in &component.fragment.nodes {
         ctx.visit_node(node_id);
     }
+
+    finalize_hoistable(
+        &ctx.snippet_scopes,
+        &ctx.snippet_name_syms,
+        semantics,
+        ctx.store,
+    );
+}
+
+/// Flip `SnippetBlockSemantics.hoistable` to `true` for every top-level
+/// snippet whose body contains no reference to an instance-scope symbol
+/// (i.e. nothing declared in `<script>`). Walk scope-chain from each
+/// reference's own scope up to the component root; if the chain passes
+/// through a collected snippet body scope and the reference resolves to
+/// an instance-scope symbol — that snippet is tainted.
+fn finalize_hoistable(
+    snippet_scopes: &[SnippetScope],
+    snippet_name_syms: &FxHashSet<SymbolId>,
+    semantics: &ComponentSemantics<'_>,
+    store: &mut BlockSemanticsStore,
+) {
+    if snippet_scopes.is_empty() {
+        return;
+    }
+
+    // Reverse lookup: body scope id → (block id, top-level flag). Scope ids
+    // are unique per snippet body so no collision is possible.
+    let mut scope_to_block: rustc_hash::FxHashMap<ScopeId, (NodeId, bool)> =
+        rustc_hash::FxHashMap::default();
+    for entry in snippet_scopes {
+        scope_to_block.insert(entry.body_scope, (entry.block_id, entry.top_level));
+    }
+
+    let mut tainted: FxHashSet<NodeId> = FxHashSet::default();
+
+    for idx in 0..semantics.references_len() {
+        let ref_id = ReferenceId::from_usize(idx);
+        if !semantics.is_instance_reference(ref_id) {
+            continue;
+        }
+        // Sibling snippet references live in instance scope too (every
+        // `{#snippet foo}` declares `foo` at the component function
+        // level). Calling one snippet from another must not taint the
+        // caller — match the legacy behaviour where only script-authored
+        // bindings counted.
+        if let Some(sym) = semantics.get_reference(ref_id).symbol_id() {
+            if snippet_name_syms.contains(&sym) {
+                continue;
+            }
+        }
+        // Walk up the scope chain from the reference's own scope; if we
+        // hit any snippet body scope along the way that snippet transitively
+        // reads an instance-scope symbol. Mark **every** snippet we pass
+        // through (a ref nested inside snippet A inside snippet B taints
+        // both — though B's top-level status is what matters for hoisting).
+        let mut scope = Some(semantics.get_reference(ref_id).scope_id());
+        while let Some(s) = scope {
+            if let Some(&(block_id, _)) = scope_to_block.get(&s) {
+                tainted.insert(block_id);
+            }
+            scope = semantics.scope_parent_id(s);
+        }
+    }
+
+    for entry in snippet_scopes {
+        if !entry.top_level {
+            // Nested snippets are never hoistable — populator already seeded
+            // `hoistable: false`; skip.
+            continue;
+        }
+        if !tainted.contains(&entry.block_id) {
+            store.set_snippet_hoistable(entry.block_id, true);
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub(super) struct SnippetScope {
+    pub(super) block_id: NodeId,
+    pub(super) body_scope: ScopeId,
+    pub(super) top_level: bool,
 }
 
 pub(super) struct Ctx<'c, 'a> {
@@ -53,12 +138,23 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) blockers: &'c BlockerData,
-    /// Set of `{#snippet}` block ids that were classified as hoistable by
-    /// the legacy `HoistableSnippetsVisitor`. Passed through by the
-    /// pipeline so the snippet populator can fold it into the block's
-    /// payload without re-deriving the fact. Will be internalized when
-    /// the legacy visitor is removed.
-    pub(super) hoistable_snippets: &'c FxHashSet<NodeId>,
+    /// Nesting counter updated as the walker descends into container
+    /// nodes (elements, blocks, components, slots, etc.). 0 means
+    /// "currently iterating the component fragment root" — the only
+    /// position where a `{#snippet}` counts as top-level for hoisting.
+    pub(super) non_root_depth: u32,
+    /// Body-scope snapshot for every `{#snippet}` encountered during the
+    /// walk. Consumed by `finalize_hoistable` after the walk completes:
+    /// for each ref in the component that resolves to an instance-scope
+    /// symbol we look up its scope chain against this table and taint
+    /// the enclosing snippet.
+    pub(super) snippet_scopes: Vec<SnippetScope>,
+    /// Symbols that name component snippets (the `foo` in
+    /// `{#snippet foo(...)}`). Registered by the snippet populator during
+    /// the walk. Used by `finalize_hoistable` to exclude references to
+    /// sibling snippets from the instance-scope taint set: calling one
+    /// snippet from another doesn't make the caller instance-bound.
+    pub(super) snippet_name_syms: FxHashSet<SymbolId>,
     pub(super) store: &'c mut BlockSemanticsStore,
     /// Stack of enclosing each-blocks during the walk. Each frame
     /// carries the symbols the each introduces in its body scope
@@ -111,10 +207,17 @@ impl<'a> Ctx<'_, 'a> {
         }
     }
 
+    /// Descend into a fragment's children. Every recursive descent goes
+    /// through here (populators for each/await/snippet invoke this to
+    /// recurse into their bodies), so it's the one place that owns the
+    /// root/non-root split: incrementing `non_root_depth` on entry turns
+    /// any further `SnippetBlock` encountered into a non-top-level one.
     pub(super) fn visit_fragment(&mut self, nodes: &[NodeId]) {
+        self.non_root_depth += 1;
         for &id in nodes {
             self.visit_node(id);
         }
+        self.non_root_depth -= 1;
     }
 
     /// Push a new each frame around a sub-traversal. The each populator

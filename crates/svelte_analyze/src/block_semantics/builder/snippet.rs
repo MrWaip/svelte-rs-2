@@ -16,14 +16,14 @@ use super::super::{
     SnippetParam, SnippetPatternBinding,
 };
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
-use super::walker::Ctx;
+use super::walker::{Ctx, SnippetScope};
 use crate::utils::is_simple_expression;
 use oxc_ast::ast::{
     ArrowFunctionExpression, BindingPattern, Expression, FormalParameter, Statement,
     VariableDeclarator,
 };
 use smallvec::SmallVec;
-use svelte_ast::SnippetBlock;
+use svelte_ast::{FragmentKey, SnippetBlock};
 use svelte_component_semantics::SymbolId;
 
 /// Populate `BlockSemantics::Snippet` for this block and recurse into
@@ -44,7 +44,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
     let arrow = declarator.and_then(arrow_from_declarator);
     let params = arrow.map(|arrow| collect_params(arrow)).unwrap_or_default();
 
-    let hoistable = ctx.hoistable_snippets.contains(&block.id);
+    // Top-level status is fixed by position in the walk: this snippet
+    // sits at the component fragment root iff the walker hasn't
+    // descended into any container yet. Capture the flag before
+    // recursing into the body — the recursion will bump the counter.
+    let top_level = ctx.non_root_depth == 0;
 
     // Recurse into body first so nested blocks are visited inside the
     // same template walk.
@@ -58,14 +62,34 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
         return;
     };
 
+    // Seed `hoistable: false`; finalize in walker::populate flips it to
+    // true for top-level snippets whose body has no instance-scope
+    // references.
     ctx.store.set(
         block.id,
         BlockSemantics::Snippet(SnippetBlockSemantics {
             name,
-            hoistable,
+            hoistable: false,
             params,
         }),
     );
+
+    // Track snippet name symbols so finalize can exclude sibling-snippet
+    // calls from the hoistable taint set.
+    ctx.snippet_name_syms.insert(name);
+
+    // Register this snippet's body scope so the post-walk hoistable pass
+    // can trace references back to the owning snippet.
+    if let Some(body_scope) = ctx
+        .semantics
+        .fragment_scope(&FragmentKey::SnippetBody(block.id))
+    {
+        ctx.snippet_scopes.push(SnippetScope {
+            block_id: block.id,
+            body_scope,
+            top_level,
+        });
+    }
 }
 
 fn arrow_from_declarator<'a>(

@@ -24,8 +24,7 @@ mod walker;
 use super::BlockSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{BlockerData, ParserResult};
-use rustc_hash::FxHashSet;
-use svelte_ast::{Component, NodeId};
+use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
 /// Build the [`BlockSemanticsStore`] for one component.
@@ -34,7 +33,10 @@ use svelte_component_semantics::ComponentSemantics;
 ///
 /// Inputs per SEMANTIC_LAYER_ARCHITECTURE.md Dependency Boundary:
 /// - `&Component` + `&ParserResult` — AST surface.
-/// - `&ComponentSemantics` — scopes, bindings, references.
+/// - `&ComponentSemantics` — scopes, bindings, references. Also the source
+///   of hoistable classification for `{#snippet}` blocks: references that
+///   resolve to an instance-scope symbol are traced back to the enclosing
+///   snippet's body scope.
 /// - `&ReactivitySemantics` — reactive per-reference classification
 ///   (store dependency for `collection.uses_store`).
 /// - `&BlockerData` — script-level async analysis used to fold
@@ -45,18 +47,11 @@ pub fn build(
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
-    hoistable_snippets: &FxHashSet<NodeId>,
     node_count: u32,
 ) -> BlockSemanticsStore {
     let mut store = BlockSemanticsStore::new(node_count);
     walker::populate(
-        component,
-        parsed,
-        semantics,
-        reactivity,
-        blockers,
-        hoistable_snippets,
-        &mut store,
+        component, parsed, semantics, reactivity, blockers, &mut store,
     );
     store
 }
