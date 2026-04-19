@@ -15,7 +15,7 @@ mod each;
 
 use super::BlockSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::ParserResult;
+use crate::types::data::{BlockerData, ParserResult};
 use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
@@ -26,16 +26,19 @@ use svelte_component_semantics::ComponentSemantics;
 /// Inputs per SEMANTIC_LAYER_ARCHITECTURE.md Dependency Boundary:
 /// - `&Component` + `&ParserResult` — AST surface.
 /// - `&ComponentSemantics` — scopes, bindings, references.
-/// - `&ReactivitySemantics` — reactive per-reference classification.
-///   Used to decide each-collection reactive facts (store dependency).
+/// - `&ReactivitySemantics` — reactive per-reference classification
+///   (store dependency for `collection.uses_store`).
+/// - `&BlockerData` — script-level async analysis used to fold
+///   collection-expression async facts into the block's payload.
 pub fn build(
     component: &Component,
     parsed: &ParserResult<'_>,
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
+    blockers: &BlockerData,
     node_count: u32,
 ) -> BlockSemanticsStore {
     let mut store = BlockSemanticsStore::new(node_count);
-    each::populate(component, parsed, semantics, reactivity, &mut store);
+    each::populate(component, parsed, semantics, reactivity, blockers, &mut store);
     store
 }

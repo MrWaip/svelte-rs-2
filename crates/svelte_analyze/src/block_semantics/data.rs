@@ -11,6 +11,7 @@
 
 use crate::scope::SymbolId;
 use bitflags::bitflags;
+use smallvec::SmallVec;
 use svelte_component_semantics::OxcNodeId;
 
 /// One answer for one block `NodeId`. `NonSpecial` is the neutral value
@@ -68,6 +69,31 @@ pub struct EachBlockSemantics {
     /// of the same name. Forces the runtime to thread the collection
     /// through an extra parameter so shadowed reads resolve correctly.
     pub shadows_outer: bool,
+    /// Async lowering decision for this each-block's collection. See
+    /// [`EachAsyncKind`]. Async is treated as a decoration on top of
+    /// the block — per SEMANTIC_LAYER_ARCHITECTURE.md — so it rides in
+    /// the block's semantic payload rather than a separate query.
+    pub async_kind: EachAsyncKind,
+}
+
+/// How the each-block's collection expression interacts with async.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EachAsyncKind {
+    /// Collection expression has no `await` and references no
+    /// async-gated symbols. Codegen uses the ordinary `$.each(...)`
+    /// shape without a `$.async` wrapper.
+    Sync,
+    /// Collection expression has an `await` and/or references
+    /// async-gated symbols (blockers). Codegen wraps the `$.each(...)`
+    /// call inside `$.async(anchor, [blockers], ..., (node, cond) => {...})`.
+    Async {
+        /// `await` token literally present in the collection expression.
+        has_await: bool,
+        /// Sorted, de-duplicated blocker indices (from
+        /// `BlockerData::symbol_blockers`) collected over every
+        /// identifier reference in the collection expression.
+        blockers: SmallVec<[u32; 2]>,
+    },
 }
 
 bitflags! {

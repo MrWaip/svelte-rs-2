@@ -12,7 +12,7 @@ use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 
-use super::async_plan::AsyncEmissionPlan;
+use super::async_plan::wrap_async_block;
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
@@ -94,9 +94,14 @@ pub(crate) fn gen_each_block<'a>(
         ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
     );
 
-    let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
-    let has_await = async_plan.has_await();
-    let needs_async = async_plan.needs_async();
+    // Async lowering shape is pre-computed by Block Semantics.
+    let (has_await, blockers): (bool, &[u32]) = match &sem.async_kind {
+        svelte_analyze::EachAsyncKind::Sync => (false, &[]),
+        svelte_analyze::EachAsyncKind::Async { has_await, blockers } => {
+            (*has_await, blockers.as_slice())
+        }
+    };
+    let needs_async = has_await || !blockers.is_empty();
 
     // User-declared index name: read from source via index_span.
     let user_index_name: Option<String> = block
@@ -245,8 +250,10 @@ pub(crate) fn gen_each_block<'a>(
         let each_call = ctx.b.call_expr("$.each", each_args);
         let each_stmt = super::add_svelte_meta(ctx, each_call, span_start, "each");
 
-        body.push(async_plan.wrap_async_block(
+        body.push(wrap_async_block(
             ctx,
+            has_await,
+            blockers,
             anchor,
             "node",
             "$$collection",

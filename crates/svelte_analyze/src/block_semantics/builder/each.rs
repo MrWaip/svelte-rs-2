@@ -5,11 +5,11 @@
 //! lookups come from `ComponentSemantics`. No `AnalysisData` access.
 
 use super::super::{
-    BlockSemantics, BlockSemanticsStore, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind, EachKeyKind,
+    BlockSemantics, BlockSemanticsStore, EachAsyncKind, EachBlockSemantics, EachFlags, EachFlavor,
+    EachIndexKind, EachItemKind, EachKeyKind,
 };
 use crate::reactivity_semantics::data::{ReactivitySemantics, ReferenceSemantics};
-use crate::types::data::ParserResult;
+use crate::types::data::{BlockerData, ParserResult};
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference, Statement};
 use oxc_ast_visit::Visit;
 use rustc_hash::FxHashSet;
@@ -22,6 +22,7 @@ pub(super) fn populate(
     parsed: &ParserResult<'_>,
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
+    blockers: &BlockerData,
     store: &mut BlockSemanticsStore,
 ) {
     let mut ctx = Ctx {
@@ -29,6 +30,7 @@ pub(super) fn populate(
         parsed,
         semantics,
         reactivity,
+        blockers,
         store,
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
@@ -43,6 +45,7 @@ struct Ctx<'c, 'a> {
     parsed: &'c ParserResult<'a>,
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
+    blockers: &'c BlockerData,
     store: &'c mut BlockSemanticsStore,
     /// Stack of enclosing each-blocks during the template walk. Each
     /// frame carries the node id and the symbols that each introduces
@@ -231,14 +234,23 @@ impl<'a> Ctx<'_, 'a> {
                     .any(|name| self.semantics.find_binding(parent, name).is_some())
             });
 
-        // Collection reactive facts — drive ITEM_REACTIVE / ITEM_IMMUTABLE.
-        // A collection is reactive if its expression depends on any binding
-        // declared outside the each-body function scope. Store deps force
-        // the reactive path and disable the runes-mode immutable bit.
-        let (has_external, uses_store) = match (collection_expr, body_scope) {
-            (Some(expr), Some(scope)) => self.collection_reactive_facts(expr, scope),
-            _ => (false, false),
+        // Collection expression facts — drive ITEM_REACTIVE /
+        // ITEM_IMMUTABLE and the async-lowering decision.
+        let collection_facts = match (collection_expr, body_scope) {
+            (Some(expr), Some(scope)) => self.collection_expression_facts(expr, scope),
+            _ => CollectionExprFacts::default(),
         };
+        let has_external = collection_facts.has_external;
+        let uses_store = collection_facts.uses_store;
+        let async_kind =
+            if collection_facts.has_await || !collection_facts.blockers.is_empty() {
+                EachAsyncKind::Async {
+                    has_await: collection_facts.has_await,
+                    blockers: collection_facts.blockers,
+                }
+            } else {
+                EachAsyncKind::Sync
+            };
 
         let has_key = !matches!(key, EachKeyKind::Unkeyed);
         let has_index = matches!(index, EachIndexKind::Declared { .. });
@@ -298,6 +310,7 @@ impl<'a> Ctx<'_, 'a> {
                 flavor,
                 each_flags,
                 shadows_outer,
+                async_kind,
             }),
         );
     }
@@ -377,42 +390,47 @@ impl<'a> Ctx<'_, 'a> {
         }
     }
 
-    /// Collection expression reactive facts: `(has_external, uses_store)`.
+    /// Collection expression facts gathered in a single walk:
     ///
-    /// - `has_external` — there is at least one identifier reference whose
-    ///   resolved symbol is declared in a function scope shallower than
-    ///   the each-body function scope (i.e. visible from outside).
-    /// - `uses_store` — at least one of those references is classified by
-    ///   reactivity_semantics as a store read/write/update.
-    ///
-    /// One visit over the collection expression, one lookup per ref.
-    fn collection_reactive_facts(
+    /// - `has_external` — some reference resolves to a symbol declared
+    ///   in a function scope shallower than the each-body scope.
+    /// - `uses_store` — some reference is classified as a store op by
+    ///   `reactivity_semantics`.
+    /// - `has_await` — an `await` literal appears in the expression.
+    /// - `blockers` — sorted, de-duplicated blocker indices from
+    ///   `BlockerData::symbol_blockers` for every ref.
+    fn collection_expression_facts(
         &self,
         expr: &Expression<'a>,
         body_scope: oxc_syntax::scope::ScopeId,
-    ) -> (bool, bool) {
+    ) -> CollectionExprFacts {
         // The each body lowers as an arrow callback (`($$anchor, item) => {...}`),
         // which is one function level deeper than the body-scope itself at
         // analyze time. Reference-compiler measures "external" as
         // `binding.function_depth < emit_scope.function_depth`; we mirror
         // that here by comparing binding scopes against body_scope+1.
         let each_depth = self.semantics.function_depth(body_scope) + 1;
-        let mut collector = RefCollector { refs: Vec::new() };
+        let mut collector = CollectionExprCollector {
+            refs: Vec::new(),
+            has_await: false,
+        };
         collector.visit_expression(expr);
 
         let mut has_external = false;
         let mut uses_store = false;
-        for ref_id in collector.refs {
-            let sem = self.reactivity.reference_semantics(ref_id);
-            // Effective symbol for scope-depth check. Store reads come
-            // with `symbol_id=None` on the Reference itself but carry
-            // the underlying store binding inside the semantic payload;
-            // use that so scope resolution works uniformly.
+        let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
+        for ref_id in &collector.refs {
+            let sem = self.reactivity.reference_semantics(*ref_id);
+            // Effective symbol for scope-depth and blocker lookup. Store
+            // reads come with `symbol_id=None` on the Reference itself
+            // but carry the underlying store binding inside the semantic
+            // payload; use that so scope / blocker resolution works
+            // uniformly.
             let effective_sym = match sem {
                 ReferenceSemantics::StoreRead { symbol }
                 | ReferenceSemantics::StoreWrite { symbol }
                 | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
-                _ => self.semantics.get_reference(ref_id).symbol_id(),
+                _ => self.semantics.get_reference(*ref_id).symbol_id(),
             };
             if !uses_store
                 && matches!(
@@ -424,19 +442,27 @@ impl<'a> Ctx<'_, 'a> {
             {
                 uses_store = true;
             }
-            if !has_external {
-                if let Some(sym) = effective_sym {
+            if let Some(sym) = effective_sym {
+                if !has_external {
                     let decl_scope = self.semantics.symbol_scope_id(sym);
                     if self.semantics.function_depth(decl_scope) < each_depth {
                         has_external = true;
                     }
                 }
-            }
-            if has_external && uses_store {
-                break;
+                if let Some(idx) = self.blockers.symbol_blocker(sym) {
+                    if !blockers.contains(&idx) {
+                        blockers.push(idx);
+                    }
+                }
             }
         }
-        (has_external, uses_store)
+        blockers.sort_unstable();
+        CollectionExprFacts {
+            has_external,
+            uses_store,
+            has_await: collector.has_await,
+            blockers,
+        }
     }
 
     /// Shallow scan of direct-child elements for an `animate:` directive.
@@ -505,6 +531,34 @@ fn collect_binding_pattern_symbols(pattern: &BindingPattern<'_>, out: &mut Small
         BP::AssignmentPattern(assign) => {
             collect_binding_pattern_symbols(&assign.left, out);
         }
+    }
+}
+
+#[derive(Default)]
+struct CollectionExprFacts {
+    has_external: bool,
+    uses_store: bool,
+    has_await: bool,
+    blockers: SmallVec<[u32; 2]>,
+}
+
+/// Collects identifier references plus detects `await` literals over a
+/// single Expression walk.
+struct CollectionExprCollector {
+    refs: Vec<ReferenceId>,
+    has_await: bool,
+}
+
+impl<'a> Visit<'a> for CollectionExprCollector {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        if let Some(ref_id) = ident.reference_id.get() {
+            self.refs.push(ref_id);
+        }
+    }
+    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+        self.has_await = true;
+        // Keep walking — nested refs inside the awaited expression count.
+        oxc_ast_visit::walk::walk_await_expression(self, expr);
     }
 }
 

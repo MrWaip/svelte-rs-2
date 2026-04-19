@@ -221,6 +221,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 data.scoping.semantics(),
                 &data.reactivity,
+                &data.script.blocker_data,
                 component.node_count(),
             );
         }
