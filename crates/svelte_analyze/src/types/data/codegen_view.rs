@@ -107,12 +107,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .ignore_data
             .is_ignored_at_span(span_start, code)
     }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.template.await_bindings.value(id)
-    }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.template.await_bindings.error(id)
-    }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         self.data.expr_deps(site)
     }
@@ -164,12 +158,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.snippet_stmt_handle(id)
-    }
-    pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.await_value_stmt_handle(id)
-    }
-    pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.await_error_stmt_handle(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)

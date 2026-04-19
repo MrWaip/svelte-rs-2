@@ -2,8 +2,7 @@ use oxc_ast::ast::Expression;
 use svelte_ast::{Component, NodeId};
 
 use crate::types::data::{
-    AnalysisData, AwaitBindingInfo, DestructureKind, ParserResult, RenderTagArgPlan,
-    RenderTagCalleeMode, RenderTagPlan,
+    AnalysisData, ParserResult, RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan,
 };
 
 pub(crate) fn classify_render_tags(
@@ -52,86 +51,6 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
                 }
             }
         }
-    }
-}
-
-pub(crate) struct BindingPreparer;
-
-impl crate::walker::TemplateVisitor for BindingPreparer {
-    fn visit_await_block(
-        &mut self,
-        block: &svelte_ast::AwaitBlock,
-        ctx: &mut crate::walker::VisitContext<'_, '_>,
-    ) {
-        let Some(parsed) = ctx.parsed else { return };
-        if let Some(val_span) = block.value_span {
-            let handle = parsed.stmt_handle(val_span.start);
-            let info = extract_await_binding_info(parsed, val_span.start);
-            if let Some(handle) = handle {
-                ctx.data
-                    .template
-                    .template_semantics
-                    .await_value_stmt_handles
-                    .insert(block.id, handle);
-            }
-            if let Some(info) = info {
-                ctx.data
-                    .template
-                    .await_bindings
-                    .values
-                    .insert(block.id, info);
-            }
-        }
-        if let Some(err_span) = block.error_span {
-            let handle = parsed.stmt_handle(err_span.start);
-            let info = extract_await_binding_info(parsed, err_span.start);
-            if let Some(handle) = handle {
-                ctx.data
-                    .template
-                    .template_semantics
-                    .await_error_stmt_handles
-                    .insert(block.id, handle);
-            }
-            if let Some(info) = info {
-                ctx.data
-                    .template
-                    .await_bindings
-                    .errors
-                    .insert(block.id, info);
-            }
-        }
-    }
-}
-
-fn extract_await_binding_info(parsed: &ParserResult<'_>, offset: u32) -> Option<AwaitBindingInfo> {
-    use oxc_ast::ast::{BindingPattern, Statement};
-
-    let stmt = parsed.stmt(parsed.stmt_handle(offset)?)?;
-    let Statement::VariableDeclaration(decl) = stmt else {
-        return None;
-    };
-    let declarator = decl.declarations.first()?;
-    match &declarator.id {
-        BindingPattern::BindingIdentifier(ident) => {
-            Some(AwaitBindingInfo::Simple(ident.name.to_string()))
-        }
-        BindingPattern::ObjectPattern(_) => {
-            let mut names = Vec::new();
-            crate::utils::binding_pattern::collect_binding_names(&declarator.id, &mut names);
-            Some(AwaitBindingInfo::Destructured {
-                kind: DestructureKind::Object,
-                names,
-            })
-        }
-        BindingPattern::ArrayPattern(_) => {
-            let mut names = Vec::new();
-            crate::utils::binding_pattern::collect_binding_names(&declarator.id, &mut names);
-            Some(AwaitBindingInfo::Destructured {
-                kind: DestructureKind::Array,
-                names,
-            })
-        }
-        _ => None,
     }
 }
 

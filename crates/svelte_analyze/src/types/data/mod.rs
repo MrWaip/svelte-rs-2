@@ -57,9 +57,7 @@ pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
     EventHandlerMode,
 };
-pub use expr::{
-    AwaitBindingInfo, DestructureKind, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind,
-};
+pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragments::{
     ContentStrategy, FragmentData, FragmentItem, FragmentKey, FragmentKeyExt, LoweredFragment,
@@ -74,10 +72,10 @@ pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichConten
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
-    AwaitBindingData, BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics,
-    ConstTagData, ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind,
-    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
-    TitleElementData, WindowBindKind,
+    BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics, ConstTagData,
+    ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
+    MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData,
+    WindowBindKind,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

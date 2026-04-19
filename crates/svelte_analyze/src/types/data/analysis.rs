@@ -79,7 +79,6 @@ pub struct TemplateAnalysis {
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
-    pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
 }
 
@@ -96,7 +95,6 @@ impl TemplateAnalysis {
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
-            await_bindings: AwaitBindingData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
         }
     }
@@ -637,20 +635,6 @@ impl<'a> AnalysisData<'a> {
         self.template
             .template_semantics
             .snippet_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .await_value_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .await_error_stmt_handles
             .get(id)
             .copied()
     }

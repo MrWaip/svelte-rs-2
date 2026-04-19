@@ -659,28 +659,49 @@ fn emit_single_block<'a>(
         _ => None,
     };
     if let Some(id) = semantic_node_id {
-        if let svelte_analyze::BlockSemantics::Each(sem) = ctx.query.analysis.block_semantics(id) {
-            let sem = sem.clone();
-            let _ = tpl_name;
-            let _ = is_root;
-            let _ = hoisted;
-            let _ = parent_key;
-            let frag = ctx.gen_ident("fragment");
-            let node = ctx.gen_ident("node");
-            body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
-            body.push(
-                ctx.b
-                    .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
-            );
-            if let FragmentSetup::PostCreate(stmts) = setup {
-                body.extend(stmts);
+        let sem_snapshot = ctx.query.analysis.block_semantics(id).clone();
+        match sem_snapshot {
+            svelte_analyze::BlockSemantics::Each(sem) => {
+                let _ = tpl_name;
+                let _ = is_root;
+                let _ = hoisted;
+                let _ = parent_key;
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                gen_each_block(ctx, id, &sem, ctx.b.rid_expr(&node), false, body);
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
             }
-            gen_each_block(ctx, id, &sem, ctx.b.rid_expr(&node), false, body);
-            body.push(
-                ctx.b
-                    .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
-            );
-            return;
+            svelte_analyze::BlockSemantics::Await(sem) => {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                gen_await_block(ctx, id, &sem, ctx.b.rid_expr(&node), body);
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
+            }
+            _ => {}
         }
     }
 
@@ -759,6 +780,11 @@ fn emit_single_block<'a>(
                 "FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of emit_single_block"
             )
         }
+        FragmentItem::AwaitBlock(_) => {
+            unreachable!(
+                "FragmentItem::AwaitBlock must be handled by BlockSemantics::Await at the top of emit_single_block"
+            )
+        }
         FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
@@ -770,9 +796,6 @@ fn emit_single_block<'a>(
         }
         FragmentItem::SvelteBoundary(id) => {
             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
-        }
-        FragmentItem::AwaitBlock(id) => {
-            gen_await_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         FragmentItem::RenderTag(id) => {
             gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);

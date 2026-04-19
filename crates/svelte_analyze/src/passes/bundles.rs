@@ -2,28 +2,12 @@ use rustc_hash::FxHashSet;
 use svelte_ast::{Component, Node, NodeId};
 
 use crate::passes::{
-    bind_semantics, collect_symbols, content_types, dynamism, element_flags, hoistable, js_analyze,
+    bind_semantics, collect_symbols, content_types, dynamism, element_flags, hoistable,
     template_side_tables, template_validation,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::walker::TemplateVisitor;
-
-pub(crate) struct AwaitBindingBundle {
-    binding_preparer: js_analyze::BindingPreparer,
-}
-
-impl AwaitBindingBundle {
-    pub(crate) fn new() -> Self {
-        Self {
-            binding_preparer: js_analyze::BindingPreparer,
-        }
-    }
-
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
-        [&mut self.binding_preparer]
-    }
-}
 
 pub(crate) struct TemplateSideTablesBundle<'c> {
     side_tables: template_side_tables::TemplateSideTablesVisitor<'c>,

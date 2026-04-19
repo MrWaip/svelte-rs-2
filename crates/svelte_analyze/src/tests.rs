@@ -634,7 +634,7 @@ fn find_snippet_block<'a>(
 // Assertion helpers
 // -----------------------------------------------------------------------
 
-fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
+pub(crate) fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
     let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(

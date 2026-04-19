@@ -4,17 +4,16 @@ pub mod node_table;
 pub mod script;
 
 pub use data::{
-    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BindHostKind,
-    BindPropertyKind, BindSemanticsData, BindTargetSemantics, BlockAnalysis, BlockerData,
-    ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ConstTagData, ContentEditableKind, ContentStrategy, DebugTagData, DestructureKind,
-    DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFlags, ElementSizeKind,
-    EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentData,
-    FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey, IgnoreData, ImageNaturalSizeKind,
-    LoweredFragment, LoweredTextPart, MediaBindKind, OutputPlanData, PropAnalysis, PropsAnalysis,
-    RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind, RuntimePlan,
-    ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData, TitleElementData,
-    WindowBindKind,
+    AnalysisData, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
+    BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData, ContentEditableKind,
+    ContentStrategy, DebugTagData, DocumentBindKind, EachContextIndex, ElementAnalysis,
+    ElementFlags, ElementSizeKind, EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
+    ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey,
+    IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
+    OutputPlanData, PropAnalysis, PropsAnalysis, RenderTagArgPlan, RenderTagCalleeMode,
+    RenderTagPlan, ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
+    TemplateSemanticsData, TitleElementData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{

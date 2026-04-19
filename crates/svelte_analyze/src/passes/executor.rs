@@ -103,20 +103,6 @@ pub(crate) fn execute_pass<'a>(
                 }
             }
         }
-        super::PassKey::PrepareAwaitBindings => {
-            let mut bundle = bundles::AwaitBindingBundle::new();
-            let mut visitors = bundle.visitors();
-            run_parsed_template_bundle(
-                component,
-                data,
-                parsed,
-                source,
-                runes,
-                options,
-                diags,
-                &mut visitors,
-            );
-        }
         super::PassKey::ExtractCeConfig => {
             if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
                 .options

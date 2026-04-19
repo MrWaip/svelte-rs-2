@@ -24,13 +24,13 @@ pub enum BlockSemantics {
     NonSpecial,
     /// `{#each ... as ...}` block.
     Each(EachBlockSemantics),
+    /// `{#await ...}` block.
+    Await(AwaitBlockSemantics),
     // Placeholders for later slices — payload lands when each kind is
     // migrated end-to-end. Keeping them here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
     // TODO(block-semantics): If payload.
     If,
-    // TODO(block-semantics): Await payload.
-    Await,
     // TODO(block-semantics): Key payload.
     Key,
     // TODO(block-semantics): Snippet payload.
@@ -177,4 +177,86 @@ pub enum EachFlavor {
     /// Body contains at least one `bind:group` directive — needs the
     /// group-index lowering path.
     BindGroup,
+}
+
+// ---------------------------------------------------------------------------
+// AwaitBlock
+// ---------------------------------------------------------------------------
+
+/// `{#await <expr>}...{:then <binding>}...{:catch <binding>}...{/await}` —
+/// the presence of each branch, its introduced binding, and the two
+/// independent async-shape facts that drive lowering.
+///
+/// The two async facts are kept as separate fields rather than folded
+/// into one enum: `expression_has_await` toggles the thunk wrapping the
+/// expression, while `wrapper` decides whether the whole `$.await` call
+/// must sit inside a `$.async(...)` block — two orthogonal lowering
+/// decisions, not one axis.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AwaitBlockSemantics {
+    /// `{#await expr}...{/await}` — pending fragment. Never carries a
+    /// binding, but the absence of a fragment still matters for
+    /// `$.await(...)` arg trimming.
+    pub pending: AwaitBranch,
+    /// `{:then [<binding>]}` branch.
+    pub then: AwaitBranch,
+    /// `{:catch [<binding>]}` branch.
+    pub catch: AwaitBranch,
+    /// Expression literally contains `await` — the expression thunk must
+    /// be `async () => await <expr>` rather than the plain `() => <expr>`.
+    pub expression_has_await: bool,
+    /// Expression references async-gated symbols (blockers) — the whole
+    /// `$.await(...)` call is wrapped in `$.async(node, [blockers], [], ...)`.
+    pub wrapper: AwaitWrapper,
+}
+
+/// Branch presence + optional introduced binding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AwaitBranch {
+    /// The branch does not appear in the source (no fragment, no binding).
+    Absent,
+    /// The branch is present. `binding` is `None` for pending (never
+    /// carries one) and for `{:then}` / `{:catch}` without a parameter.
+    Present { binding: AwaitBinding },
+}
+
+/// The introducer in `{:then <binding>}` / `{:catch <binding>}`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AwaitBinding {
+    /// No binding declared.
+    None,
+    /// `{:then user}` / `{:catch err}` — simple identifier.
+    Identifier(SymbolId),
+    /// `{:then { a, b }}` / `{:catch [msg, code]}` — destructured
+    /// pattern. The consumer reads the pattern subtree via
+    /// `ComponentSemantics.js_storage()` using `pattern_id`; leaf names
+    /// are looked up as `semantics.symbol_name(sym)` without re-walking
+    /// the pattern.
+    Pattern {
+        kind: AwaitDestructureKind,
+        leaves: SmallVec<[SymbolId; 4]>,
+        pattern_id: OxcNodeId,
+    },
+}
+
+/// Destructuring shape for `AwaitBinding::Pattern`. Intentionally a
+/// cluster-local enum, symmetric to `EachKeyKind` — decoupled from the
+/// legacy `DestructureKind` living in `types::data::expr` (which is
+/// shared with `render_tags` and cannot be deprecated here).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AwaitDestructureKind {
+    Object,
+    Array,
+}
+
+/// How the `$.await(...)` call must be wrapped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AwaitWrapper {
+    /// No wrapper — emit `$.await(...)` directly.
+    None,
+    /// `$.async(node, [blockers], [], (node) => { $.await(...) })`. The
+    /// blocker list mirrors the indices that `BlockerData` associates
+    /// with identifier references in the expression, sorted and
+    /// deduplicated.
+    AsyncWrap { blockers: SmallVec<[u32; 2]> },
 }

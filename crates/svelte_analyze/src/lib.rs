@@ -11,27 +11,28 @@ mod validate;
 pub(crate) mod walker;
 
 pub use block_semantics::{
+    AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
     EachIndexKind, EachItemKind, EachKeyKind,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BindHostKind,
-    BindPropertyKind, BindTargetSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
-    ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ConstDeclarationSemantics, ConstTagData, ContentEditableKind, ContentStrategy,
-    ContextualDeclarationSemantics, ContextualReadKind, ContextualReadSemantics, CssAnalysis,
-    DebugTagData, DeclarationSemantics, DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
-    DestructureKind, DirectiveModifierFlags, DocumentBindKind, EachContextIndex, EachIndexStrategy,
-    EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
-    ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps, ExprHandle, ExprRole, ExprSite,
-    ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem,
-    FragmentKey, FragmentKeyExt, IgnoreData, ImageNaturalSizeKind, LoweredFragment,
-    LoweredTextPart, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData,
-    ParentKind, ParentRef, ParserResult, PickledAwaitOffsets, PropAnalysis, PropDeclarationKind,
-    PropDeclarationSemantics, PropDefaultLowering, PropLoweringMode, PropReferenceSemantics,
-    PropsAnalysis, PropsObjectPropertySemantics, ProxyStateInits, ReactivitySemantics,
-    ReferenceSemantics, RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind, RichContentFacts,
+    AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindTargetSemantics,
+    BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstDeclarationSemantics,
+    ConstTagData, ContentEditableKind, ContentStrategy, ContextualDeclarationSemantics,
+    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DebugTagData, DeclarationSemantics,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
+    DocumentBindKind, EachContextIndex, EachIndexStrategy, EachItemStrategy, ElementAnalysis,
+    ElementFacts, ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode,
+    EventModifier, ExprDeps, ExprHandle, ExprRole, ExprSite, ExpressionInfo, ExpressionKind,
+    FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey, FragmentKeyExt,
+    IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
+    NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef, ParserResult,
+    PickledAwaitOffsets, PropAnalysis, PropDeclarationKind, PropDeclarationSemantics,
+    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, PropsAnalysis,
+    PropsObjectPropertySemantics, ProxyStateInits, ReactivitySemantics, ReferenceSemantics,
+    RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind, RichContentFacts,
     RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
     ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
     StateDeclarationSemantics, StateKind, StmtHandle, StoreDeclarationSemantics, TemplateAnalysis,
@@ -231,4 +232,4 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

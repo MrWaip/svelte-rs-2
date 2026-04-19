@@ -1,29 +1,5 @@
 use super::*;
 
-#[derive(Debug, Clone)]
-pub enum AwaitBindingInfo {
-    Simple(String),
-    Destructured {
-        kind: DestructureKind,
-        names: Vec<String>,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DestructureKind {
-    Object,
-    Array,
-}
-
-impl AwaitBindingInfo {
-    pub fn names(&self) -> &[String] {
-        match self {
-            Self::Simple(name) => std::slice::from_ref(name),
-            Self::Destructured { names, .. } => names,
-        }
-    }
-}
-
 /// Legacy catch-all bag of per-expression facts collected by
 /// `collect_symbols`. Consumers that reach for it are rebuilding
 /// semantic meaning from scattered booleans — exactly what the semantic

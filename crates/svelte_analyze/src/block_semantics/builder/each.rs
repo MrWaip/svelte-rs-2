@@ -8,11 +8,15 @@ use super::super::{
     BlockSemantics, BlockSemanticsStore, EachAsyncKind, EachBlockSemantics, EachCollectionKind,
     EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
 };
+use super::common::{
+    binding_ident_of, binding_pattern_node_id, collect_binding_pattern_symbols,
+    declarator_from_stmt,
+};
 use crate::reactivity_semantics::data::{
     PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics,
 };
 use crate::types::data::{BlockerData, ParserResult};
-use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference, Statement};
+use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
@@ -518,60 +522,6 @@ impl<'a> Ctx<'_, 'a> {
     }
 }
 
-fn declarator_from_stmt<'a>(
-    stmt: &'a Statement<'a>,
-) -> Option<&'a oxc_ast::ast::VariableDeclarator<'a>> {
-    let Statement::VariableDeclaration(decl) = stmt else {
-        return None;
-    };
-    decl.declarations.first()
-}
-
-fn binding_ident_of<'a>(
-    pattern: &'a BindingPattern<'a>,
-) -> Option<&'a oxc_ast::ast::BindingIdentifier<'a>> {
-    match pattern {
-        BindingPattern::BindingIdentifier(ident) => Some(ident),
-        _ => None,
-    }
-}
-
-/// Recursively collect `symbol_id` for every leaf `BindingIdentifier`
-/// inside a `BindingPattern`. Used to enumerate the symbols introduced
-/// by a destructured `{#each items as { a, b, ...rest }}` context.
-fn collect_binding_pattern_symbols(
-    pattern: &BindingPattern<'_>,
-    out: &mut SmallVec<[SymbolId; 4]>,
-) {
-    use oxc_ast::ast::BindingPattern as BP;
-    match pattern {
-        BP::BindingIdentifier(ident) => {
-            if let Some(sym) = ident.symbol_id.get() {
-                out.push(sym);
-            }
-        }
-        BP::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                collect_binding_pattern_symbols(&prop.value, out);
-            }
-            if let Some(rest) = &obj.rest {
-                collect_binding_pattern_symbols(&rest.argument, out);
-            }
-        }
-        BP::ArrayPattern(arr) => {
-            for el in arr.elements.iter().flatten() {
-                collect_binding_pattern_symbols(el, out);
-            }
-            if let Some(rest) = &arr.rest {
-                collect_binding_pattern_symbols(&rest.argument, out);
-            }
-        }
-        BP::AssignmentPattern(assign) => {
-            collect_binding_pattern_symbols(&assign.left, out);
-        }
-    }
-}
-
 #[derive(Default)]
 struct CollectionExprFacts {
     has_external: bool,
@@ -609,15 +559,6 @@ impl<'a> Visit<'a> for RefCollector {
         if let Some(ref_id) = ident.reference_id.get() {
             self.refs.push(ref_id);
         }
-    }
-}
-
-fn binding_pattern_node_id(pattern: &BindingPattern<'_>) -> OxcNodeId {
-    match pattern {
-        BindingPattern::BindingIdentifier(p) => p.node_id(),
-        BindingPattern::ObjectPattern(p) => p.node_id(),
-        BindingPattern::ArrayPattern(p) => p.node_id(),
-        BindingPattern::AssignmentPattern(p) => p.node_id(),
     }
 }
 

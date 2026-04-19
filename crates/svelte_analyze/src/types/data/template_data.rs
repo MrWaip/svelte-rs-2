@@ -6,8 +6,6 @@ pub struct TemplateSemanticsData {
     pub(crate) let_directive_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) await_value_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) await_error_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
     pub(crate) stmt_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
 }
@@ -20,8 +18,6 @@ impl TemplateSemanticsData {
             let_directive_stmt_handles: NodeTable::new(node_count),
             const_tag_stmt_handles: NodeTable::new(node_count),
             snippet_stmt_handles: NodeTable::new(node_count),
-            await_value_stmt_handles: NodeTable::new(node_count),
-            await_error_stmt_handles: NodeTable::new(node_count),
             node_ref_symbols: NodeTable::new(node_count),
             stmt_ref_symbols: NodeTable::new(node_count),
         }
@@ -144,27 +140,6 @@ impl TitleElementData {
 
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.by_fragment.get(key)
-    }
-}
-
-pub struct AwaitBindingData {
-    pub(crate) values: NodeTable<AwaitBindingInfo>,
-    pub(crate) errors: NodeTable<AwaitBindingInfo>,
-}
-
-impl AwaitBindingData {
-    pub fn new(node_count: u32) -> Self {
-        Self {
-            values: NodeTable::new(node_count),
-            errors: NodeTable::new(node_count),
-        }
-    }
-
-    pub fn value(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.values.get(id)
-    }
-    pub fn error(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.errors.get(id)
     }
 }
 

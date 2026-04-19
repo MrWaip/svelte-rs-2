@@ -387,12 +387,6 @@ impl<'a> Ctx<'a> {
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.nearest_element(id)
     }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.query.view.await_value_binding(id)
-    }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.query.view.await_error_binding(id)
-    }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.query.view.attr_is_import(attr_id)
     }

@@ -11,6 +11,8 @@
 //! Per-kind logic lives in submodules. Today only `{#each}` has its
 //! dedicated slice; the rest stay on the legacy path until migrated.
 
+mod await_;
+mod common;
 mod each;
 
 use super::BlockSemanticsStore;
@@ -42,5 +44,6 @@ pub fn build(
     each::populate(
         component, parsed, semantics, reactivity, blockers, &mut store,
     );
+    await_::populate(component, parsed, semantics, blockers, &mut store);
     store
 }

@@ -31,7 +31,6 @@ pub(crate) enum PassKey {
     BuildComponentSemantics,
     FinalizeComponentName,
     ScanIgnoreComments,
-    PrepareAwaitBindings,
     ExtractCeConfig,
     TemplateSideTables,
     CollectSymbols,
@@ -58,7 +57,6 @@ pub(crate) enum DataToken {
     ScriptScoping,
     ComponentName,
     IgnoreComments,
-    AwaitBindings,
     CeConfig,
     TemplateSemantics,
     TemplateSideTables,
@@ -111,11 +109,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::ScanIgnoreComments,
         requires: &[DataToken::ScriptInfo, DataToken::ScriptScoping],
         produces: &[DataToken::IgnoreComments],
-    },
-    PassDescriptor {
-        key: PassKey::PrepareAwaitBindings,
-        requires: &[DataToken::IgnoreComments],
-        produces: &[DataToken::AwaitBindings],
     },
     PassDescriptor {
         key: PassKey::ExtractCeConfig,
@@ -171,7 +164,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         requires: &[
             DataToken::ConstTagSyms,
             DataToken::TemplateSideTables,
-            DataToken::AwaitBindings,
             DataToken::PostResolve,
         ],
         produces: &[DataToken::ReactivitySemantics],
@@ -223,7 +215,6 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::BuildComponentSemantics,
     PassKey::FinalizeComponentName,
     PassKey::ScanIgnoreComments,
-    PassKey::PrepareAwaitBindings,
     PassKey::ExtractCeConfig,
 ];
 
