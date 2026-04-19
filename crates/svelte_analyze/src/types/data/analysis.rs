@@ -631,10 +631,12 @@ impl<'a> AnalysisData<'a> {
             .get(id)
             .copied()
     }
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
-        block_semantics::SnippetBlockSemantics"
-    )]
+    /// Handle to the pre-parsed `const <name> = (...) => {...}` statement
+    /// backing a `{#snippet}` block. Consumers that need to walk the arrow
+    /// (parameter defaults, body) ask for this handle and resolve it via
+    /// `ParserResult::stmt`. Semantic classification lives in
+    /// `block_semantics::SnippetBlockSemantics`; this accessor only
+    /// exposes the raw AST hook for emission-time AST cloning.
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.template
             .template_semantics

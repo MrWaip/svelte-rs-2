@@ -156,12 +156,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.let_directive_stmt_handle(id)
     }
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
-        block_semantics::SnippetBlockSemantics"
-    )]
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        #[allow(deprecated)]
         self.data.snippet_stmt_handle(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {

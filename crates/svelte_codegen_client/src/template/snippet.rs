@@ -77,7 +77,6 @@ impl<'a> SnippetPlan<'a> {
     fn build(ctx: &mut Ctx<'a>, block_id: NodeId, sem: &SnippetBlockSemantics) -> Self {
         let name = ctx.query.view.symbol_name(sem.name).to_string();
 
-        #[allow(deprecated)]
         let parsed_stmt = ctx
             .query
             .view
