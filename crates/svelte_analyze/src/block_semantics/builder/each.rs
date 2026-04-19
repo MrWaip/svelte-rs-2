@@ -141,9 +141,7 @@ impl<'a> Ctx<'_, 'a> {
                     let sym = self
                         .semantics
                         .fragment_scope(&FragmentKey::EachBody(block.id))
-                        .and_then(|scope| {
-                            self.semantics.find_binding(scope, ident.name.as_str())
-                        });
+                        .and_then(|scope| self.semantics.find_binding(scope, ident.name.as_str()));
                     match sym {
                         Some(sym) => (EachItemKind::Identifier(sym), Some(sym)),
                         None => (EachItemKind::NoBinding, None),
@@ -153,7 +151,9 @@ impl<'a> Ctx<'_, 'a> {
             },
         };
 
-        let body_scope = self.semantics.fragment_scope(&FragmentKey::EachBody(block.id));
+        let body_scope = self
+            .semantics
+            .fragment_scope(&FragmentKey::EachBody(block.id));
 
         // Index — raw symbol + usage-in-body/in-key split resolved below.
         let index_sym = index_declarator
@@ -242,15 +242,14 @@ impl<'a> Ctx<'_, 'a> {
         };
         let has_external = collection_facts.has_external;
         let uses_store = collection_facts.uses_store;
-        let async_kind =
-            if collection_facts.has_await || !collection_facts.blockers.is_empty() {
-                EachAsyncKind::Async {
-                    has_await: collection_facts.has_await,
-                    blockers: collection_facts.blockers,
-                }
-            } else {
-                EachAsyncKind::Sync
-            };
+        let async_kind = if collection_facts.has_await || !collection_facts.blockers.is_empty() {
+            EachAsyncKind::Async {
+                has_await: collection_facts.has_await,
+                blockers: collection_facts.blockers,
+            }
+        } else {
+            EachAsyncKind::Sync
+        };
 
         let has_key = !matches!(key, EachKeyKind::Unkeyed);
         let has_index = matches!(index, EachIndexKind::Declared { .. });
@@ -482,7 +481,6 @@ impl<'a> Ctx<'_, 'a> {
             }
         })
     }
-
 }
 
 fn declarator_from_stmt<'a>(
@@ -494,7 +492,9 @@ fn declarator_from_stmt<'a>(
     decl.declarations.first()
 }
 
-fn binding_ident_of<'a>(pattern: &'a BindingPattern<'a>) -> Option<&'a oxc_ast::ast::BindingIdentifier<'a>> {
+fn binding_ident_of<'a>(
+    pattern: &'a BindingPattern<'a>,
+) -> Option<&'a oxc_ast::ast::BindingIdentifier<'a>> {
     match pattern {
         BindingPattern::BindingIdentifier(ident) => Some(ident),
         _ => None,
@@ -504,7 +504,10 @@ fn binding_ident_of<'a>(pattern: &'a BindingPattern<'a>) -> Option<&'a oxc_ast::
 /// Recursively collect `symbol_id` for every leaf `BindingIdentifier`
 /// inside a `BindingPattern`. Used to enumerate the symbols introduced
 /// by a destructured `{#each items as { a, b, ...rest }}` context.
-fn collect_binding_pattern_symbols(pattern: &BindingPattern<'_>, out: &mut SmallVec<[SymbolId; 4]>) {
+fn collect_binding_pattern_symbols(
+    pattern: &BindingPattern<'_>,
+    out: &mut SmallVec<[SymbolId; 4]>,
+) {
     use oxc_ast::ast::BindingPattern as BP;
     match pattern {
         BP::BindingIdentifier(ident) => {

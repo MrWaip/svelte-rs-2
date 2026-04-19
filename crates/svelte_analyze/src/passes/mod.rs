@@ -383,7 +383,10 @@ mod tests {
         ];
         let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
 
-        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]);
+        assert_eq!(
+            order,
+            vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]
+        );
     }
 
     #[test]
@@ -439,7 +442,10 @@ mod tests {
         ];
 
         let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
-        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]);
+        assert_eq!(
+            order,
+            vec![PassKey::AnalyzeScript, PassKey::ScanIgnoreComments]
+        );
     }
 
     #[test]

@@ -6,9 +6,8 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
     AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
-    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo,
-    FragmentKey, IdentGen, LoweredFragment, ParserResult, RenderTagPlan,
-    RuntimePlan,
+    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
+    LoweredFragment, ParserResult, RenderTagPlan, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -115,7 +114,6 @@ impl<'a> CodegenQuery<'a> {
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.view.runtime_plan()
     }
-
 }
 
 impl<'a> Deref for CodegenQuery<'a> {

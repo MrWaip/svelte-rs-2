@@ -1,8 +1,6 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF,
-};
+use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -310,16 +308,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                 && {
                                     let base = &trimmed[1..];
                                     let root = data.scoping.root_scope_id();
-                                    data.scoping
-                                        .find_binding(root, base)
-                                        .is_some_and(|sym| {
-                                            matches!(
-                                                data.declaration_semantics(
-                                                    data.scoping.symbol_declaration(sym),
-                                                ),
-                                                crate::types::data::DeclarationSemantics::Store(_),
-                                            )
-                                        })
+                                    data.scoping.find_binding(root, base).is_some_and(|sym| {
+                                        matches!(
+                                            data.declaration_semantics(
+                                                data.scoping.symbol_declaration(sym),
+                                            ),
+                                            crate::types::data::DeclarationSemantics::Store(_),
+                                        )
+                                    })
                                 }
                         });
 
@@ -386,4 +382,3 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 }
-

@@ -463,7 +463,8 @@ fn collect_component_attr_snippets(
 fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
     data.scoping.is_import(sym_id)
         || matches!(
-            data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym_id)),
+            data.reactivity
+                .declaration_semantics(data.scoping.symbol_declaration(sym_id)),
             DeclarationSemantics::Prop(_),
         )
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()

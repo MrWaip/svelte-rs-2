@@ -214,11 +214,7 @@ fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut Ana
     }
 }
 
-fn store_expression_info(
-    node_id: NodeId,
-    info: ExpressionInfo,
-    ctx: &mut VisitContext<'_, '_>,
-) {
+fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_, '_>) {
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
         ctx.data.attr_expressions.insert(node_id, info);
     } else {

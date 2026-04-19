@@ -152,7 +152,9 @@ pub(crate) fn run_template<'a>(
         let assign_expr = b.assign_expr_raw(assign_target, value_ident);
 
         program.body.clear();
-        program.body.push(ast.statement_expression(SPAN, assign_expr));
+        program
+            .body
+            .push(ast.statement_expression(SPAN, assign_expr));
         transformer.in_bind_setter_traverse = true;
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
         transformer.in_bind_setter_traverse = false;

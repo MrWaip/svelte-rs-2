@@ -99,7 +99,11 @@ impl TemplateVisitor for DynamismVisitor {
         }
     }
 
-    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         ctx.data.dynamism.mark_dynamic_node(el.id);
     }
 
@@ -138,16 +142,12 @@ impl TemplateVisitor for DynamismVisitor {
 
         if parent_kind.is_some_and(|k| k.is_attr()) {
             let attr_id = parent.map_or(node_id, |p| p.id);
-            let in_component = ctx
-                .data
-                .expr_ancestors(node_id)
-                .nth(1)
-                .is_some_and(|gp| {
-                    matches!(
-                        gp.kind,
-                        ParentKind::ComponentNode | ParentKind::SvelteBoundary
-                    )
-                });
+            let in_component = ctx.data.expr_ancestors(node_id).nth(1).is_some_and(|gp| {
+                matches!(
+                    gp.kind,
+                    ParentKind::ComponentNode | ParentKind::SvelteBoundary
+                )
+            });
 
             let Some(info) = ctx.data.attr_expressions.get(node_id) else {
                 return;
@@ -232,9 +232,7 @@ pub(crate) fn is_symbol_dynamic(
         DeclarationSemantics::NonReactive
         | DeclarationSemantics::Unresolved
         | DeclarationSemantics::OptimizedRune(_)
-        | DeclarationSemantics::LetCarrier { .. } => {
-            !scoping.is_component_top_level_symbol(sym_id)
-        }
+        | DeclarationSemantics::LetCarrier { .. } => !scoping.is_component_top_level_symbol(sym_id),
     }
 }
 
@@ -252,8 +250,7 @@ fn is_dynamic_template(
         return info.has_store_ref()
             || info.ref_symbols().iter().any(|&sym_id| {
                 is_symbol_dynamic(scoping, reactivity, sym_id)
-                    || (scoping.is_component_top_level_symbol(sym_id)
-                        && !scoping.is_import(sym_id))
+                    || (scoping.is_component_top_level_symbol(sym_id) && !scoping.is_import(sym_id))
             });
     }
 

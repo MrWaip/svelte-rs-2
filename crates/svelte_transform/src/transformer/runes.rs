@@ -1,11 +1,9 @@
 use oxc_traverse::{Ancestor, TraverseCtx};
 
-use svelte_analyze::{
-    DeclarationSemantics, DerivedKind, DerivedLowering, RuneKind, StateKind,
-};
+use svelte_analyze::{DeclarationSemantics, DerivedKind, DerivedLowering, RuneKind, StateKind};
 
-use svelte_ast_builder::Arg;
 use super::model::AsyncDerivedMode;
+use svelte_ast_builder::Arg;
 
 use super::model::ComponentTransformer;
 
@@ -57,10 +55,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     let state_expr = oxc_ast::ast::Expression::CallExpression(call);
                     node.init = if self.dev {
                         let var_name = binding.name.as_str();
-                        Some(self.b.call_expr(
-                            "$.tag",
-                            [Arg::Expr(state_expr), Arg::StrRef(var_name)],
-                        ))
+                        Some(
+                            self.b
+                                .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(var_name)]),
+                        )
                     } else {
                         Some(state_expr)
                     };
@@ -87,10 +85,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     let state_expr = oxc_ast::ast::Expression::CallExpression(call);
                     node.init = if self.dev {
                         let var_name = binding.name.as_str();
-                        Some(self.b.call_expr(
-                            "$.tag",
-                            [Arg::Expr(state_expr), Arg::StrRef(var_name)],
-                        ))
+                        Some(
+                            self.b
+                                .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(var_name)]),
+                        )
                     } else {
                         Some(state_expr)
                     };
@@ -112,12 +110,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             // `$derived(...)` declarations must lower through `$.async_derived`
                             // instead of the ordinary thunk-wrapping path.
                             if matches!(derived.lowering, DerivedLowering::Async) {
-                                let mode = if self.strip_exports && self.function_info_stack.len() > 1
-                                {
-                                    AsyncDerivedMode::Save
-                                } else {
-                                    AsyncDerivedMode::Await
-                                };
+                                let mode =
+                                    if self.strip_exports && self.function_info_stack.len() > 1 {
+                                        AsyncDerivedMode::Save
+                                    } else {
+                                        AsyncDerivedMode::Await
+                                    };
                                 self.async_derived_pending.insert(sym_id, mode);
                             }
                             node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
@@ -229,15 +227,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         }
 
                         let state_expr = oxc_ast::ast::Expression::CallExpression(call);
-                        node.init = if self.dev {
-                            let var_name = binding.name.as_str();
-                            Some(self.b.call_expr(
-                                "$.tag",
-                                [Arg::Expr(state_expr), Arg::StrRef(var_name)],
-                            ))
-                        } else {
-                            Some(state_expr)
-                        };
+                        node.init =
+                            if self.dev {
+                                let var_name = binding.name.as_str();
+                                Some(self.b.call_expr(
+                                    "$.tag",
+                                    [Arg::Expr(state_expr), Arg::StrRef(var_name)],
+                                ))
+                            } else {
+                                Some(state_expr)
+                            };
                     } else {
                         let value = if call.arguments.is_empty() {
                             self.b.ast.expression_unary(
@@ -250,8 +249,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             dummy.into_expression()
                         };
-                        let is_proxy = kind == RuneKind::State
-                            && crate::rune_refs::should_proxy(&value);
+                        let is_proxy =
+                            kind == RuneKind::State && crate::rune_refs::should_proxy(&value);
                         let value = if is_proxy {
                             self.b.call_expr("$.proxy", [Arg::Expr(value)])
                         } else {
@@ -259,10 +258,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         };
                         let value = if self.dev && is_proxy {
                             let var_name = binding.name.as_str();
-                            self.b.call_expr(
-                                "$.tag_proxy",
-                                [Arg::Expr(value), Arg::StrRef(var_name)],
-                            )
+                            self.b
+                                .call_expr("$.tag_proxy", [Arg::Expr(value), Arg::StrRef(var_name)])
                         } else {
                             value
                         };
@@ -346,7 +343,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::Expression<'a>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        let Some(analysis) = self.analysis else { return };
+        let Some(analysis) = self.analysis else {
+            return;
+        };
         let is_lhs = matches!(
             ctx.parent(),
             Ancestor::AssignmentExpressionLeft(_) | Ancestor::UpdateExpressionArgument(_)
@@ -368,6 +367,5 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return;
             }
         }
-
     }
 }

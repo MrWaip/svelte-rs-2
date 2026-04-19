@@ -35,12 +35,10 @@ impl AwaitBindingInfo {
 ///   (`block_semantics` / `attribute_semantics` / `element_shape_semantics`)
 ///
 /// This type is kept only while existing call sites are migrated away.
-#[deprecated(
-    note = "ExpressionInfo is a legacy bag of facts. For new code: \
+#[deprecated(note = "ExpressionInfo is a legacy bag of facts. For new code: \
             use reactivity_semantics for per-reference decisions, or add \
             the needed higher-level answer to the owning semantic cluster \
-            (block_semantics / attribute_semantics / element_shape_semantics)."
-)]
+            (block_semantics / attribute_semantics / element_shape_semantics).")]
 #[derive(Debug, Clone)]
 pub struct ExpressionInfo {
     kind: ExpressionKind,

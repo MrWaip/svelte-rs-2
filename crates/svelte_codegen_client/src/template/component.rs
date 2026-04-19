@@ -5,12 +5,13 @@ use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKin
 
 use svelte_analyze::{
     scope::SymbolId, ComponentBindMode, ComponentPropKind, ConstDeclarationSemantics,
-    ContentStrategy, DeclarationSemantics, FragmentKey, PropDeclarationKind, PropDeclarationSemantics,
+    ContentStrategy, DeclarationSemantics, FragmentKey, PropDeclarationKind,
+    PropDeclarationSemantics,
 };
 use svelte_ast::{Attribute, Namespace, Node, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
-use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use super::events::{build_event_handler_s5, dev_event_handler};
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -845,7 +846,9 @@ fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Exp
         DeclarationSemantics::State(_) | DeclarationSemantics::Derived(_) => {
             ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
         }
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+            destructured, ..
+        }) => {
             if destructured {
                 ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
             } else {

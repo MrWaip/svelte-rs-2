@@ -6,10 +6,10 @@ use oxc_span::GetSpan;
 use svelte_analyze::RenderTagCalleeMode;
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
 use crate::template::async_plan::AsyncEmissionPlan;
 use crate::template::expression::{MemoValueRef, TemplateMemoState};
+use svelte_ast_builder::Arg;
 
 /// Generate a render tag call: `snippet(anchor, () => arg1, () => arg2, ...)`
 ///

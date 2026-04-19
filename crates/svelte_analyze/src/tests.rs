@@ -1,5 +1,5 @@
-use crate::types::script::RuneKind;
 use crate::reactivity_semantics::data::PropDefaultLowering;
+use crate::types::script::RuneKind;
 use oxc_ast::ast::{BindingPattern, CallExpression, Program, Statement};
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
@@ -646,7 +646,9 @@ fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
     (component, data)
 }
 
-fn analyze_source_with_parsed(source: &'static str) -> (Component, AnalysisData<'static>, ParserResult<'static>) {
+fn analyze_source_with_parsed(
+    source: &'static str,
+) -> (Component, AnalysisData<'static>, ParserResult<'static>) {
     let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
@@ -816,10 +818,7 @@ fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
     );
 }
 
-fn symbol_declaration_semantics(
-    data: &AnalysisData,
-    name: &str,
-) -> DeclarationSemantics {
+fn symbol_declaration_semantics(data: &AnalysisData, name: &str) -> DeclarationSemantics {
     let sym_id = data
         .scoping
         .find_binding_in_any_scope(name)
@@ -1141,8 +1140,8 @@ fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usiz
 
 fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
     use crate::types::data::{
-        DeclarationSemantics, DerivedDeclarationSemantics, DerivedKind,
-        OptimizedRuneSemantics, StateDeclarationSemantics, StateKind,
+        DeclarationSemantics, DerivedDeclarationSemantics, DerivedKind, OptimizedRuneSemantics,
+        StateDeclarationSemantics, StateKind,
     };
     let root = data.scoping.root_scope_id();
     let sym_id = data
@@ -1151,30 +1150,38 @@ fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
         .unwrap_or_else(|| panic!("no symbol '{name}'"));
     let decl = data.declaration_semantics(data.scoping.symbol_declaration(sym_id));
     let actual = match decl {
-        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::State, .. }) => {
-            RuneKind::State
-        }
-        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::StateRaw, .. }) => {
-            RuneKind::StateRaw
-        }
-        DeclarationSemantics::State(StateDeclarationSemantics { kind: StateKind::StateEager, .. }) => {
-            RuneKind::StateEager
-        }
-        DeclarationSemantics::Derived(DerivedDeclarationSemantics { kind: DerivedKind::Derived, .. }) => {
-            RuneKind::Derived
-        }
-        DeclarationSemantics::Derived(DerivedDeclarationSemantics { kind: DerivedKind::DerivedBy, .. }) => {
-            RuneKind::DerivedBy
-        }
-        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::State, .. }) => {
-            RuneKind::State
-        }
-        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::StateRaw, .. }) => {
-            RuneKind::StateRaw
-        }
-        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics { kind: StateKind::StateEager, .. }) => {
-            RuneKind::StateEager
-        }
+        DeclarationSemantics::State(StateDeclarationSemantics {
+            kind: StateKind::State,
+            ..
+        }) => RuneKind::State,
+        DeclarationSemantics::State(StateDeclarationSemantics {
+            kind: StateKind::StateRaw,
+            ..
+        }) => RuneKind::StateRaw,
+        DeclarationSemantics::State(StateDeclarationSemantics {
+            kind: StateKind::StateEager,
+            ..
+        }) => RuneKind::StateEager,
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            ..
+        }) => RuneKind::Derived,
+        DeclarationSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::DerivedBy,
+            ..
+        }) => RuneKind::DerivedBy,
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics {
+            kind: StateKind::State,
+            ..
+        }) => RuneKind::State,
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics {
+            kind: StateKind::StateRaw,
+            ..
+        }) => RuneKind::StateRaw,
+        DeclarationSemantics::OptimizedRune(OptimizedRuneSemantics {
+            kind: StateKind::StateEager,
+            ..
+        }) => RuneKind::StateEager,
         other => panic!("'{name}' is not a rune: {other:?}"),
     };
     assert_eq!(actual, expected, "expected '{name}' to be {expected:?}");
@@ -3763,10 +3770,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
     ));
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "bar", false, true, 0),
-        ReferenceSemantics::PropMutation {
-            bindable: true,
-            ..
-        }
+        ReferenceSemantics::PropMutation { bindable: true, .. }
     ));
     assert_eq!(
         script_reference_semantics(&data, &parsed, "rest", true, false, 0),
@@ -5360,7 +5364,11 @@ fn each_item_read_is_classified_as_contextual_signal_read() {
 
     match first_read_reference_semantics(&data, "item") {
         ReferenceSemantics::ContextualRead(ContextualReadSemantics {
-            kind: ContextualReadKind::EachItem { accessor: false, signal: true },
+            kind:
+                ContextualReadKind::EachItem {
+                    accessor: false,
+                    signal: true,
+                },
             ..
         }) => {}
         other => panic!("expected EachItem signal read, got {other:?}"),
@@ -5370,13 +5378,15 @@ fn each_item_read_is_classified_as_contextual_signal_read() {
 #[test]
 fn snippet_param_read_is_classified_as_contextual_accessor_call() {
     // Non-default snippet params are marked as getters → emitted as `item()`.
-    let (_c, data) = analyze_source(
-        r#"{#snippet row(item)}<p>{item}</p>{/snippet}"#,
-    );
+    let (_c, data) = analyze_source(r#"{#snippet row(item)}<p>{item}</p>{/snippet}"#);
 
     match first_read_reference_semantics(&data, "item") {
         ReferenceSemantics::ContextualRead(ContextualReadSemantics {
-            kind: ContextualReadKind::SnippetParam { accessor: true, signal: false },
+            kind:
+                ContextualReadKind::SnippetParam {
+                    accessor: true,
+                    signal: false,
+                },
             ..
         }) => {}
         other => panic!("expected SnippetParam accessor read, got {other:?}"),
@@ -5386,13 +5396,16 @@ fn snippet_param_read_is_classified_as_contextual_accessor_call() {
 #[test]
 fn snippet_default_leaf_is_classified_as_contextual_signal_read() {
     // Destructure leaves under `= default` are NOT getters → `$.get(label)`.
-    let (_c, data) = analyze_source(
-        r#"{#snippet withDefault({ label = "x" })}<p>{label}</p>{/snippet}"#,
-    );
+    let (_c, data) =
+        analyze_source(r#"{#snippet withDefault({ label = "x" })}<p>{label}</p>{/snippet}"#);
 
     match first_read_reference_semantics(&data, "label") {
         ReferenceSemantics::ContextualRead(ContextualReadSemantics {
-            kind: ContextualReadKind::SnippetParam { accessor: false, signal: true },
+            kind:
+                ContextualReadKind::SnippetParam {
+                    accessor: false,
+                    signal: true,
+                },
             ..
         }) => {}
         other => panic!("expected SnippetParam signal read, got {other:?}"),
@@ -5401,9 +5414,7 @@ fn snippet_default_leaf_is_classified_as_contextual_signal_read() {
 
 #[test]
 fn slot_let_destructure_leaf_is_classified_as_carrier_member_read() {
-    let (_c, data) = analyze_source(
-        r#"<Widget let:item={{ text }}>{text}</Widget>"#,
-    );
+    let (_c, data) = analyze_source(r#"<Widget let:item={{ text }}>{text}</Widget>"#);
 
     let carrier_expected = data
         .scoping
@@ -5551,9 +5562,8 @@ mod block_semantics_each_tests {
 
     #[test]
     fn each_keyed_uses_index_in_key() {
-        let (component, data) = analyze_source(
-            r#"{#each items as item, i (i)}<span>{item}</span>{/each}"#,
-        );
+        let (component, data) =
+            analyze_source(r#"{#each items as item, i (i)}<span>{item}</span>{/each}"#);
         let sem = first_each_semantics(&data, &component);
         match sem.index {
             EachIndexKind::Declared {
@@ -5578,9 +5588,8 @@ mod block_semantics_each_tests {
 
     #[test]
     fn each_keyed_by_expr() {
-        let (component, data) = analyze_source(
-            r#"{#each items as item (item.id)}<span>{item.id}</span>{/each}"#,
-        );
+        let (component, data) =
+            analyze_source(r#"{#each items as item (item.id)}<span>{item.id}</span>{/each}"#);
         let sem = first_each_semantics(&data, &component);
         assert!(matches!(sem.key, EachKeyKind::KeyedByExpr(_)));
     }

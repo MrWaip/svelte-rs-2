@@ -3,8 +3,8 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::DeclarationSemantics;
 use svelte_ast::{Attribute, NodeId};
 
-use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, ObjProp};
 
 use super::expression::{build_attr_concat, get_attr_expr, MemoValueRef, TemplateMemoState};
 use super::gen_fragment;
@@ -206,10 +206,10 @@ fn legacy_slot_prop_needs_getter(ctx: &Ctx<'_>, attr_id: NodeId) -> bool {
     ctx.has_state_attr(attr_id)
         || info.has_call()
         || info.has_await()
-        || info.ref_symbols().iter().any(|&sym| {
-            ctx.query.scoping().is_mutated(sym)
-                || symbol_needs_slot_getter(ctx, sym)
-        })
+        || info
+            .ref_symbols()
+            .iter()
+            .any(|&sym| ctx.query.scoping().is_mutated(sym) || symbol_needs_slot_getter(ctx, sym))
 }
 
 /// Does reading `sym` require a getter wrapper in a legacy `<slot>` prop?

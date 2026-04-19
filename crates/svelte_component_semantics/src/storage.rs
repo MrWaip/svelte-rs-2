@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use oxc_ast::{AstKind, ast::IdentifierReference};
+use oxc_ast::{ast::IdentifierReference, AstKind};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
@@ -343,7 +343,8 @@ impl<'a> ComponentSemantics<'a> {
     }
 
     pub fn is_member_mutated(&self, id: SymbolId) -> bool {
-        self.symbols.has_state(id, crate::symbol::state::MEMBER_MUTATED)
+        self.symbols
+            .has_state(id, crate::symbol::state::MEMBER_MUTATED)
     }
 
     /// True when `symbol` has either been reassigned (a write reference) or

@@ -11,11 +11,19 @@ use crate::OxcNodeId;
 /// Parse JS source and build semantics via our builder.
 /// Leaks the allocator — acceptable in tests (process exits after).
 fn build_instance(source: &'static str) -> crate::ComponentSemantics<'static> {
-    build_instance_with_type(Box::leak(Box::new(Allocator::default())), source, SourceType::mjs())
+    build_instance_with_type(
+        Box::leak(Box::new(Allocator::default())),
+        source,
+        SourceType::mjs(),
+    )
 }
 
 fn build_instance_ts(source: &'static str) -> crate::ComponentSemantics<'static> {
-    build_instance_with_type(Box::leak(Box::new(Allocator::default())), source, SourceType::ts())
+    build_instance_with_type(
+        Box::leak(Box::new(Allocator::default())),
+        source,
+        SourceType::ts(),
+    )
 }
 
 fn build_instance_with_type(
@@ -35,7 +43,10 @@ fn build_instance_with_type(
     builder.finish()
 }
 
-fn build_module_and_instance(module_src: &'static str, instance_src: &'static str) -> crate::ComponentSemantics<'static> {
+fn build_module_and_instance(
+    module_src: &'static str,
+    instance_src: &'static str,
+) -> crate::ComponentSemantics<'static> {
     let alloc: &'static Allocator = Box::leak(Box::new(Allocator::default()));
     let source_type = SourceType::mjs();
 

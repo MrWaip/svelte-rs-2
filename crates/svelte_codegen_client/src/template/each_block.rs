@@ -9,8 +9,8 @@ use svelte_analyze::{
 };
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::async_plan::wrap_async_block;
 use super::expression::get_node_expr;
@@ -97,9 +97,10 @@ pub(crate) fn gen_each_block<'a>(
     // Async lowering shape is pre-computed by Block Semantics.
     let (has_await, blockers): (bool, &[u32]) = match &sem.async_kind {
         svelte_analyze::EachAsyncKind::Sync => (false, &[]),
-        svelte_analyze::EachAsyncKind::Async { has_await, blockers } => {
-            (*has_await, blockers.as_slice())
-        }
+        svelte_analyze::EachAsyncKind::Async {
+            has_await,
+            blockers,
+        } => (*has_await, blockers.as_slice()),
     };
     let needs_async = has_await || !blockers.is_empty();
 

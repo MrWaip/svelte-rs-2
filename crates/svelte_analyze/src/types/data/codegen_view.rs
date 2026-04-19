@@ -60,8 +60,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn iter_store_declarations(
         &self,
-    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
-    {
+    ) -> impl Iterator<
+        Item = (
+            svelte_component_semantics::OxcNodeId,
+            StoreDeclarationSemantics,
+        ),
+    > + '_ {
         self.data.iter_store_declarations()
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
@@ -215,10 +219,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> Option<&str> {
         self.data.binding_origin_key_for_identifier_reference(id)
     }
-    pub fn declaration_root(
-        &self,
-        sym: SymbolId,
-    ) -> Option<svelte_component_semantics::OxcNodeId> {
+    pub fn declaration_root(&self, sym: SymbolId) -> Option<svelte_component_semantics::OxcNodeId> {
         self.data.declaration_root_for_symbol(sym)
     }
     pub fn declaration_semantics(

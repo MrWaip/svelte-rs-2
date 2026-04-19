@@ -949,7 +949,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let _ = has_spread; // used only in pre-computation above
     }
 
-    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
@@ -1222,7 +1226,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_bind_group_binding(dir, ctx);
     }
 
-    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let is_valid_parent = ctx.parent().is_some_and(|parent| {
             matches!(
                 parent.kind,
@@ -1318,7 +1326,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
     // event_directive_deprecated, mixed_event_handler_syntaxes
-    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_on_directive_legacy(
+        &mut self,
+        dir: &OnDirectiveLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let is_component = ctx
             .data
             .parent(dir.id)
@@ -2255,11 +2267,7 @@ fn validate_component_slot_conflicts(
 
 /// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
 /// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
-fn check_empty_fragment(
-    _fragment: &Fragment,
-    key: FragmentKey,
-    ctx: &mut VisitContext<'_, '_>,
-) {
+fn check_empty_fragment(_fragment: &Fragment, key: FragmentKey, ctx: &mut VisitContext<'_, '_>) {
     if let Some(node_id) = ctx.data.fragment_single_child(&key) {
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {

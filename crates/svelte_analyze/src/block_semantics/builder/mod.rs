@@ -39,6 +39,8 @@ pub fn build(
     node_count: u32,
 ) -> BlockSemanticsStore {
     let mut store = BlockSemanticsStore::new(node_count);
-    each::populate(component, parsed, semantics, reactivity, blockers, &mut store);
+    each::populate(
+        component, parsed, semantics, reactivity, blockers, &mut store,
+    );
     store
 }

@@ -2,9 +2,7 @@ use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, BindTargetSemantics};
 use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
-use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, Element, StyleDirective,
-};
+use svelte_ast::{Attribute, BindDirective, ClassDirective, Element, StyleDirective};
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
 /// symbol classifications from source text via string-based lookups.

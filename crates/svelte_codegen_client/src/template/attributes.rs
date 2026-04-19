@@ -8,8 +8,8 @@ use svelte_analyze::{
 };
 use svelte_ast::{Attribute, Element, NodeId};
 
-use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
 use super::events::{

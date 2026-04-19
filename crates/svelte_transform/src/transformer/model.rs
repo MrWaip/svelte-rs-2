@@ -2,8 +2,8 @@ use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{
-    AnalysisData, ComponentScoping, DeclarationSemantics, DerivedKind, RuneKind,
-    ScriptRuneCalls, StateKind,
+    AnalysisData, ComponentScoping, DeclarationSemantics, DerivedKind, RuneKind, ScriptRuneCalls,
+    StateKind,
 };
 
 use svelte_ast_builder::Builder;
@@ -48,7 +48,9 @@ pub struct IgnoreQuery<'d, 'a> {
 
 impl<'d, 'a> IgnoreQuery<'d, 'a> {
     pub fn new(analysis: &'d AnalysisData<'a>) -> Self {
-        Self { analysis: Some(analysis) }
+        Self {
+            analysis: Some(analysis),
+        }
     }
 
     pub fn empty() -> Self {
@@ -166,9 +168,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         sym_id: oxc_semantic::SymbolId,
     ) -> Option<DeclarationSemantics> {
         let analysis = self.analysis.as_ref()?;
-        Some(
-            analysis
-                .declaration_semantics(self.component_scoping.symbol_declaration(sym_id)),
-        )
+        Some(analysis.declaration_semantics(self.component_scoping.symbol_declaration(sym_id)))
     }
 }

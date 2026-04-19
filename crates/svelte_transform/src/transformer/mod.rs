@@ -5,10 +5,10 @@ mod inspect;
 mod location;
 pub(crate) mod model;
 mod props;
+mod rewrites;
 mod runes;
 mod state;
 mod statement_passes;
-mod rewrites;
 pub(crate) mod template_entry;
 mod template_rewrites;
 mod ts_cleanup;
@@ -30,7 +30,7 @@ use oxc_ast::ast::{
 use oxc_span::GetSpan;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use model::{FunctionInfo, ComponentTransformer};
+use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     // NOTE: every enter_/exit_ method below (apart from `enter_expression`

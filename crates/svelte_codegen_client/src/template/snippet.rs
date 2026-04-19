@@ -10,8 +10,8 @@ use rustc_hash::FxHashSet;
 use svelte_analyze::{is_simple_expression, FragmentKey};
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::gen_fragment;
 
@@ -673,7 +673,5 @@ fn rewrite_array_reads<'a>(
     if !array_insert_names.contains(ident.name.as_str()) {
         return;
     }
-    *expr = ctx
-        .b
-        .call_expr("$.get", [Arg::Ident(ident.name.as_str())]);
+    *expr = ctx.b.call_expr("$.get", [Arg::Ident(ident.name.as_str())]);
 }

@@ -2,8 +2,8 @@ use oxc_ast::ast::Statement;
 
 use svelte_analyze::FragmentKey;
 
-use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, ObjProp};
 
 /// Emit `$.template_effect(() => { console.log({...}); debugger; })` for each DebugTag.
 ///

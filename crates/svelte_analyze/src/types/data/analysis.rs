@@ -209,11 +209,7 @@ impl<'a> AnalysisData<'a> {
             .flags
             .class_attr_id(element_id)
             .is_some_and(|attr_id| self.dynamism.is_dynamic_attr(attr_id));
-        class_attr_dynamic
-            || self
-                .elements
-                .flags
-                .has_dynamic_class_directives(element_id)
+        class_attr_dynamic || self.elements.flags.has_dynamic_class_directives(element_id)
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
@@ -266,8 +262,12 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn iter_store_declarations(
         &self,
-    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
-    {
+    ) -> impl Iterator<
+        Item = (
+            svelte_component_semantics::OxcNodeId,
+            StoreDeclarationSemantics,
+        ),
+    > + '_ {
         self.reactivity.iter_store_declarations()
     }
     pub fn declaration_semantics(
@@ -746,8 +746,7 @@ impl<'a> AnalysisData<'a> {
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: self.dynamism.is_dynamic_attr(id)
-                        && info.needs_memoized_value(),
+                    needs_memo: self.dynamism.is_dynamic_attr(id) && info.needs_memoized_value(),
                 })
             }
         }

@@ -10,8 +10,8 @@ use svelte_analyze::{
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 // ---------------------------------------------------------------------------
 // Pre-transformed expression lookup (handle-based)
@@ -103,16 +103,16 @@ fn legacy_coarse_dep_getter<'a>(
             kind: PropDeclarationKind::Rest,
             ..
         }) => Some(ctx.b.rid_expr(ctx.query.symbol_name(sym))),
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+            destructured, ..
+        }) => {
             let helper = if destructured { "$.safe_get" } else { "$.get" };
             Some(ctx.b.call_expr(
                 helper,
                 [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
             ))
         }
-        DeclarationSemantics::Contextual(kind) => {
-            contextual_dep_getter(ctx, sym, kind)
-        }
+        DeclarationSemantics::Contextual(kind) => contextual_dep_getter(ctx, sym, kind),
         // Import-resolved reference — plain identifier in emission.
         DeclarationSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
             Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))

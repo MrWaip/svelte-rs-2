@@ -640,12 +640,8 @@ pub fn generate_module<'a>(
     dev: bool,
 ) -> String {
     let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
-    let script_output = script::transform_module_program(
-        alloc,
-        program,
-        Some(analysis),
-        &analysis.scoping,
-    );
+    let script_output =
+        script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping);
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");

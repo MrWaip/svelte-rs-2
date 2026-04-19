@@ -318,16 +318,16 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             // pass only knows the two-arg shape, so keep those handles on the
             // original identifier and let codegen build the silent setter
             // locally.
-            let is_window_or_document = ctx
-                .analysis
-                .bind_target_semantics(attr.id())
-                .is_some_and(|sem| {
-                    matches!(
-                        sem.property(),
-                        svelte_analyze::BindPropertyKind::Window(_)
-                            | svelte_analyze::BindPropertyKind::Document(_)
-                    )
-                });
+            let is_window_or_document =
+                ctx.analysis
+                    .bind_target_semantics(attr.id())
+                    .is_some_and(|sem| {
+                        matches!(
+                            sem.property(),
+                            svelte_analyze::BindPropertyKind::Window(_)
+                                | svelte_analyze::BindPropertyKind::Document(_)
+                        )
+                    });
             if is_window_or_document {
                 continue;
             }
@@ -340,9 +340,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 let mut current = expr;
                 loop {
                     match current {
-                        oxc_ast::ast::Expression::StaticMemberExpression(m) => {
-                            current = &m.object
-                        }
+                        oxc_ast::ast::Expression::StaticMemberExpression(m) => current = &m.object,
                         oxc_ast::ast::Expression::ComputedMemberExpression(m) => {
                             current = &m.object
                         }
@@ -561,12 +559,22 @@ mod tests {
 {/snippet}"#;
         let alloc = Allocator::default();
         let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
-        assert!(parse_diags.is_empty(), "unexpected parse diags: {parse_diags:?}");
+        assert!(
+            parse_diags.is_empty(),
+            "unexpected parse diags: {parse_diags:?}"
+        );
         let (analysis, mut parsed, diags) = analyze(&component, js_result);
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
-        transform_component(&alloc, &component, &analysis, &mut parsed, &mut ident_gen, false);
+        transform_component(
+            &alloc,
+            &component,
+            &analysis,
+            &mut parsed,
+            &mut ident_gen,
+            false,
+        );
 
         let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
@@ -575,7 +583,9 @@ mod tests {
         let handle = parsed
             .expr_handle(expr.expression_span.start)
             .unwrap_or_else(|| panic!("missing expr handle"));
-        let expr = parsed.expr(handle).unwrap_or_else(|| panic!("missing expr"));
+        let expr = parsed
+            .expr(handle)
+            .unwrap_or_else(|| panic!("missing expr"));
         assert!(
             matches!(expr, Expression::CallExpression(_)),
             "unexpected transformed expr: {expr:?}"
@@ -600,12 +610,22 @@ mod tests {
 {@render withDefault({})}"#;
         let alloc = Allocator::default();
         let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
-        assert!(parse_diags.is_empty(), "unexpected parse diags: {parse_diags:?}");
+        assert!(
+            parse_diags.is_empty(),
+            "unexpected parse diags: {parse_diags:?}"
+        );
         let (analysis, mut parsed, diags) = analyze(&component, js_result);
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
-        transform_component(&alloc, &component, &analysis, &mut parsed, &mut ident_gen, false);
+        transform_component(
+            &alloc,
+            &component,
+            &analysis,
+            &mut parsed,
+            &mut ident_gen,
+            false,
+        );
 
         let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
@@ -614,7 +634,9 @@ mod tests {
         let handle = parsed
             .expr_handle(expr.expression_span.start)
             .unwrap_or_else(|| panic!("missing expr handle"));
-        let expr = parsed.expr(handle).unwrap_or_else(|| panic!("missing expr"));
+        let expr = parsed
+            .expr(handle)
+            .unwrap_or_else(|| panic!("missing expr"));
         assert!(
             matches!(expr, Expression::CallExpression(_)),
             "unexpected transformed expr: {expr:?}"

@@ -9,8 +9,8 @@ use rustc_hash::FxHashSet;
 use svelte_analyze::FragmentKey;
 use svelte_ast::{Attribute, NodeId};
 
-use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, ObjProp};
 
 use super::expression::get_attr_expr;
 use super::gen_fragment;

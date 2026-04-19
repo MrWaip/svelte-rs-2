@@ -12,9 +12,7 @@ use svelte_analyze::{
 use svelte_ast_builder::Arg;
 
 use super::location::{compute_line_col, sanitize_location};
-use super::model::{
-    AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer,
-};
+use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     fn state_destructure_dev_label(
@@ -235,8 +233,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
 
         match self.analysis?.declaration_semantics(declarator.node_id()) {
-            DeclarationSemantics::Derived(derived) => declarator.init.as_ref().map(|init| {
-                match derived.lowering {
+            DeclarationSemantics::Derived(derived) => {
+                declarator.init.as_ref().map(|init| match derived.lowering {
                     DerivedLowering::Sync => self.gen_sync_derived_destructuring_semantic(
                         &declarator.id,
                         init.clone_in(self.b.ast.allocator),
@@ -249,8 +247,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         decl_span_start,
                         decl_kind,
                     ),
-                }
-            }),
+                })
+            }
             _ => None,
         }
     }
@@ -335,8 +333,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
         let arg_expr = call.arguments.remove(0).into_expression();
 
-        let use_direct_access =
-            matches!(derived.kind, DerivedKind::Derived) && matches!(arg_expr, Expression::Identifier(_));
+        let use_direct_access = matches!(derived.kind, DerivedKind::Derived)
+            && matches!(arg_expr, Expression::Identifier(_));
         let access_root = if use_direct_access {
             arg_expr
         } else {
@@ -392,11 +390,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         let mut i = 0;
         while i < stmts.len() {
             let replacement = match &stmts[i] {
-                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => self
-                    .try_gen_state_destructuring_semantic(
-                        &decl.declarations[0],
-                        decl.kind,
-                    ),
+                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => {
+                    self.try_gen_state_destructuring_semantic(&decl.declarations[0], decl.kind)
+                }
                 _ => None,
             };
             if let Some(replacement) = replacement {

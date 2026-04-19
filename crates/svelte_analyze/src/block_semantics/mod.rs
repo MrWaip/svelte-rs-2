@@ -59,8 +59,7 @@ impl BlockSemanticsStore {
     pub(crate) fn set(&mut self, id: NodeId, value: BlockSemantics) {
         let idx = id.0 as usize;
         if idx >= self.entries.len() {
-            self.entries
-                .resize_with(idx + 1, BlockSemantics::default);
+            self.entries.resize_with(idx + 1, BlockSemantics::default);
         }
         self.entries[idx] = value;
     }

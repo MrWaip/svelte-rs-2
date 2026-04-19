@@ -392,7 +392,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     return;
                 }
             }
-
         }
 
         // Member-target branches: prop member dev-validation + deep store
@@ -424,7 +423,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                                     analysis.binding_origin_key(symbol),
                                     self.prop_mutation_segments_from_member(member),
                                 ) {
-                                    let root_name = analysis.scoping.symbol_name(symbol).to_string();
+                                    let root_name =
+                                        analysis.scoping.symbol_name(symbol).to_string();
                                     semantic_prop_alias = Some(prop_alias.to_string());
                                     semantic_root_name = Some(root_name.clone());
                                     semantic_bindable = bindable;
@@ -438,7 +438,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                                     self.prop_mutation_segments_from_member(member),
                                 ) {
                                     semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
+                                    semantic_root_name =
+                                        Some(analysis.scoping.symbol_name(symbol).to_string());
                                     semantic_segments = Some(segments);
                                 }
                             }
@@ -629,7 +630,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     return;
                 }
             }
-
         }
 
         // Re-bind `upd`; the identifier-target block above may have consumed it.
@@ -684,14 +684,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 if let Some(root_id) = self.member_root_identifier(member) {
                     if let Some(ref_id) = root_id.reference_id.get() {
                         match analysis.reference_semantics(ref_id) {
-                            ReferenceSemantics::PropSourceMemberMutationRoot {
-                                symbol, ..
-                            } => {
+                            ReferenceSemantics::PropSourceMemberMutationRoot { symbol, .. } => {
                                 if let (Some(prop_alias), Some(segments)) = (
                                     analysis.binding_origin_key(symbol),
                                     self.prop_mutation_segments_from_member(member),
                                 ) {
-                                    let root_name = analysis.scoping.symbol_name(symbol).to_string();
+                                    let root_name =
+                                        analysis.scoping.symbol_name(symbol).to_string();
                                     semantic_prop_alias = Some(prop_alias.to_string());
                                     semantic_root_name = Some(root_name.clone());
                                     semantic_source_root_name = Some(root_name);
@@ -704,7 +703,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                                     self.prop_mutation_segments_from_member(member),
                                 ) {
                                     semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
+                                    semantic_root_name =
+                                        Some(analysis.scoping.symbol_name(symbol).to_string());
                                     semantic_segments = Some(segments);
                                 }
                             }

@@ -34,8 +34,8 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt, NamespaceKind};
 use svelte_ast::{Namespace, Node, NodeId};
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use element::process_element;
 
@@ -659,9 +659,7 @@ fn emit_single_block<'a>(
         _ => None,
     };
     if let Some(id) = semantic_node_id {
-        if let svelte_analyze::BlockSemantics::Each(sem) =
-            ctx.query.analysis.block_semantics(id)
-        {
+        if let svelte_analyze::BlockSemantics::Each(sem) = ctx.query.analysis.block_semantics(id) {
             let sem = sem.clone();
             let _ = tpl_name;
             let _ = is_root;
@@ -757,7 +755,9 @@ fn emit_single_block<'a>(
             }
         }
         FragmentItem::EachBlock(_) => {
-            unreachable!("FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of emit_single_block")
+            unreachable!(
+                "FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of emit_single_block"
+            )
         }
         FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);

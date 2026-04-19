@@ -6,8 +6,8 @@ use svelte_analyze::FragmentKey;
 use svelte_analyze::{AwaitBindingInfo, DestructureKind};
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::expression::build_node_thunk;
 use super::gen_fragment;

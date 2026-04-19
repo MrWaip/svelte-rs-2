@@ -530,13 +530,19 @@ pub(crate) enum V2DeclarationFacts {
     Store(StoreDeclarationSemantics),
     Const(ConstDeclarationSemantics),
     Contextual(ContextualDeclarationSemantics),
-    RuntimeRune { kind: RuntimeRuneKind },
-    LetCarrier { carrier_symbol: SymbolId },
+    RuntimeRune {
+        kind: RuntimeRuneKind,
+    },
+    LetCarrier {
+        carrier_symbol: SymbolId,
+    },
     /// Slot `let:` destructured-leaf binding whose value is read as
     /// `<carrier>.<leaf>`. Public `declaration_semantics()` normalizes this
     /// to `Contextual(LetDirective)` — consumers see the carrier through
     /// `ReferenceSemantics::CarrierMemberRead` instead.
-    CarrierAlias { carrier: SymbolId },
+    CarrierAlias {
+        carrier: SymbolId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -545,16 +551,37 @@ pub(crate) enum V2ReferenceFacts {
         kind: SignalReferenceKind,
         safe: bool,
     },
-    SignalWrite { kind: StateKind },
-    SignalUpdate { kind: StateKind, safe: bool },
-    StoreRead { symbol: SymbolId },
-    StoreWrite { symbol: SymbolId },
-    StoreUpdate { symbol: SymbolId },
+    SignalWrite {
+        kind: StateKind,
+    },
+    SignalUpdate {
+        kind: StateKind,
+        safe: bool,
+    },
+    StoreRead {
+        symbol: SymbolId,
+    },
+    StoreWrite {
+        symbol: SymbolId,
+    },
+    StoreUpdate {
+        symbol: SymbolId,
+    },
     PropRead(PropReferenceSemantics),
-    PropMutation { bindable: bool, symbol: SymbolId },
-    PropSourceMemberMutationRoot { bindable: bool, symbol: SymbolId },
-    PropNonSourceMemberMutationRoot { symbol: SymbolId },
-    ConstAliasRead { owner_node: NodeId },
+    PropMutation {
+        bindable: bool,
+        symbol: SymbolId,
+    },
+    PropSourceMemberMutationRoot {
+        bindable: bool,
+        symbol: SymbolId,
+    },
+    PropNonSourceMemberMutationRoot {
+        symbol: SymbolId,
+    },
+    ConstAliasRead {
+        owner_node: NodeId,
+    },
     ContextualRead(ContextualReadSemantics),
     CarrierMemberRead(CarrierMemberReadSemantics),
     RestPropMemberRewrite,
@@ -687,12 +714,10 @@ impl ReactivitySemantics {
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         match self.lookup_reference_facts(ref_id) {
-            Some(V2ReferenceFacts::SignalRead { kind, safe }) => {
-                ReferenceSemantics::SignalRead {
-                    kind: *kind,
-                    safe: *safe,
-                }
-            }
+            Some(V2ReferenceFacts::SignalRead { kind, safe }) => ReferenceSemantics::SignalRead {
+                kind: *kind,
+                safe: *safe,
+            },
             Some(V2ReferenceFacts::SignalWrite { kind }) => {
                 ReferenceSemantics::SignalWrite { kind: *kind }
             }
@@ -850,7 +875,6 @@ impl ReactivitySemantics {
         }
     }
 
-
     pub(crate) fn record_runtime_rune_declaration_v2(
         &mut self,
         node_id: OxcNodeId,
@@ -940,10 +964,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         carrier_symbol: SymbolId,
     ) {
-        self.write_declaration(
-            node_id,
-            V2DeclarationFacts::LetCarrier { carrier_symbol },
-        );
+        self.write_declaration(node_id, V2DeclarationFacts::LetCarrier { carrier_symbol });
     }
 }
 
@@ -960,14 +981,12 @@ impl ReactivitySemantics {
             V2DeclarationFacts::RuntimeRune { kind } => {
                 DeclarationSemantics::RuntimeRune { kind: *kind }
             }
-            V2DeclarationFacts::LetCarrier { carrier_symbol } => {
-                DeclarationSemantics::LetCarrier {
-                    carrier_symbol: *carrier_symbol,
-                }
+            V2DeclarationFacts::LetCarrier { carrier_symbol } => DeclarationSemantics::LetCarrier {
+                carrier_symbol: *carrier_symbol,
+            },
+            V2DeclarationFacts::CarrierAlias { .. } => {
+                DeclarationSemantics::Contextual(ContextualDeclarationSemantics::LetDirective)
             }
-            V2DeclarationFacts::CarrierAlias { .. } => DeclarationSemantics::Contextual(
-                ContextualDeclarationSemantics::LetDirective,
-            ),
         }
     }
 }

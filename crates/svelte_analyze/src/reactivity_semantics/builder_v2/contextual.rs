@@ -10,12 +10,10 @@
 //! Consumers see only the final declaration shape — no `is_getter` /
 //! `is_each_non_reactive` lookups required.
 
-use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, SnippetBlock, NodeId};
-use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingIdentifier, Statement, VariableDeclarator,
-};
+use oxc_ast::ast::{ArrowFunctionExpression, BindingIdentifier, Statement, VariableDeclarator};
 use oxc_ast_visit::Visit;
 use rustc_hash::FxHashSet;
+use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, SnippetBlock};
 use svelte_component_semantics::OxcNodeId;
 
 use super::super::data::{
@@ -130,7 +128,8 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
             }
         };
         let _ = sym;
-        data.reactivity.record_contextual_declaration_v2(node_id, semantics);
+        data.reactivity
+            .record_contextual_declaration_v2(node_id, semantics);
     }
 }
 
@@ -162,14 +161,16 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 .reactivity
                 .record_const_declaration_v2(node_id, is_destructured);
             if is_destructured {
-                ctx.data
-                    .reactivity
-                    .record_const_alias_owner_v2(sym, tag.id);
+                ctx.data.reactivity.record_const_alias_owner_v2(sym, tag.id);
             }
         }
     }
 
-    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         // Take the bindings snapshot first so the parsed borrow is released
         // before we mutate `ctx.data` (carrier synthesis needs `&mut`).
         let (bindings, is_destructured, stmt_node_id) = {
@@ -214,9 +215,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             ctx.data
                 .reactivity
                 .record_symbol_declaration_root(sym, node_id);
-            ctx.data
-                .reactivity
-                .record_contextual_owner_v2(sym, dir.id);
+            ctx.data.reactivity.record_contextual_owner_v2(sym, dir.id);
             match (binding.kind, carrier_sym) {
                 (LegacySlotBindingKind::DestructuredLeaf, Some(carrier)) => {
                     ctx.data
@@ -347,13 +346,22 @@ pub(super) fn classify_contextual_read_kind(
     let _ = (data, sym);
     match kind {
         ContextualDeclarationSemantics::EachItem(EachItemStrategy::Accessor) => {
-            ContextualReadKind::EachItem { accessor: true, signal: false }
+            ContextualReadKind::EachItem {
+                accessor: true,
+                signal: false,
+            }
         }
         ContextualDeclarationSemantics::EachItem(EachItemStrategy::Direct) => {
-            ContextualReadKind::EachItem { accessor: false, signal: false }
+            ContextualReadKind::EachItem {
+                accessor: false,
+                signal: false,
+            }
         }
         ContextualDeclarationSemantics::EachItem(EachItemStrategy::Signal) => {
-            ContextualReadKind::EachItem { accessor: false, signal: true }
+            ContextualReadKind::EachItem {
+                accessor: false,
+                signal: true,
+            }
         }
         ContextualDeclarationSemantics::EachIndex(EachIndexStrategy::Direct) => {
             ContextualReadKind::EachIndex { signal: false }
@@ -365,10 +373,16 @@ pub(super) fn classify_contextual_read_kind(
         ContextualDeclarationSemantics::AwaitError => ContextualReadKind::AwaitError,
         ContextualDeclarationSemantics::LetDirective => ContextualReadKind::LetDirective,
         ContextualDeclarationSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
-            ContextualReadKind::SnippetParam { accessor: true, signal: false }
+            ContextualReadKind::SnippetParam {
+                accessor: true,
+                signal: false,
+            }
         }
         ContextualDeclarationSemantics::SnippetParam(SnippetParamStrategy::Signal) => {
-            ContextualReadKind::SnippetParam { accessor: false, signal: true }
+            ContextualReadKind::SnippetParam {
+                accessor: false,
+                signal: true,
+            }
         }
     }
 }
@@ -455,7 +469,11 @@ fn mark_key_is_item_each_binding(
     else {
         return;
     };
-    let Some(ident_name) = declarator.id.get_binding_identifier().map(|i| i.name.as_str()) else {
+    let Some(ident_name) = declarator
+        .id
+        .get_binding_identifier()
+        .map(|i| i.name.as_str())
+    else {
         return;
     };
     let Some(ctx_sym) = ctx.data.scoping.get_binding(body_scope, ident_name) else {
@@ -591,7 +609,8 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
         self.data
             .reactivity
             .record_contextual_owner_v2(sym_id, self.owner_node);
-        self.staging.push(sym_id, node_id, PendingKind::SnippetParam);
+        self.staging
+            .push(sym_id, node_id, PendingKind::SnippetParam);
         if !self.in_default {
             self.staging.mark_getter(sym_id);
         }

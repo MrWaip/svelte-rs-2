@@ -2,8 +2,8 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
 
-use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 /// Emit `const name = $.derived(() => init_expr)` for each ConstTag in a fragment.
 ///

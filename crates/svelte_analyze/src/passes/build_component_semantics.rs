@@ -480,11 +480,7 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         }
     }
 
-    fn walk_bind_directive(
-        &mut self,
-        dir: &BindDirective,
-        ctx: &mut TemplateBuildContext<'_, 'a>,
-    ) {
+    fn walk_bind_directive(&mut self, dir: &BindDirective, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // `expression_span` is non-optional; shorthand `bind:name` carries the
         // span of `name` which the parser already parsed as
         // `Expression::Identifier(name)`. Reference-compiler parity

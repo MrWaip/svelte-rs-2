@@ -13,9 +13,8 @@
 
 use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element,
-    Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument,
-    SvelteElement, SvelteWindow,
+    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element, Namespace,
+    Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
 use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
@@ -625,7 +624,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                     if let Some(key_span) = block.key_span {
                         let is_key_item = ctx
                             .parsed()
-                            .and_then(|p| p.expr_handle(key_span.start).and_then(|handle| p.expr(handle)))
+                            .and_then(|p| {
+                                p.expr_handle(key_span.start)
+                                    .and_then(|handle| p.expr(handle))
+                            })
                             .and_then(|expr| match expr {
                                 Expression::Identifier(ident) => ident.reference_id.get(),
                                 _ => None,
@@ -643,7 +645,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         if let Some(idx_span) = block.index_span {
             let idx_name = ctx
                 .parsed()
-                .and_then(|p| p.stmt_handle(idx_span.start).and_then(|handle| get_declarator(p, handle)))
+                .and_then(|p| {
+                    p.stmt_handle(idx_span.start)
+                        .and_then(|handle| get_declarator(p, handle))
+                })
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name {
@@ -711,7 +716,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-            if let Some(parsed) = ctx.parsed {
+        if let Some(parsed) = ctx.parsed {
             if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
                 .stmt_handle(tag.expression_span.start)
                 .and_then(|handle| parsed.stmt(handle))
@@ -774,7 +779,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             ),
         );
     }
-
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
@@ -895,7 +899,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record_node_parent(block.id, ctx.parent());
     }
 
-    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_await_block(
+        &mut self,
+        block: &svelte_ast::AwaitBlock,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         ctx.data
             .template
             .template_topology
@@ -925,4 +933,3 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 // Reactivity marker visitors (`SnippetParamMarker`, `DestructuredGetterMarker`,
 // `EachRestMarker`) are owned by
 // `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs`.
-

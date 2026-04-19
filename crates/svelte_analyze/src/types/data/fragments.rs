@@ -98,13 +98,11 @@ pub struct LoweredFragment {
 /// in `SEMANTIC_LAYER_ARCHITECTURE.md` — it replaces the dispatcher
 /// with a semantic-first walk over Svelte AST plus a separate
 /// representation for `TextConcat` and hoisted-node filtering.
-#[deprecated(
-    note = "FragmentItem duplicates Block / ElementShape Semantics for \
+#[deprecated(note = "FragmentItem duplicates Block / ElementShape Semantics for \
             node-kind discrimination. New consumers must ask the \
             owning semantic cluster instead of pattern-matching this \
             enum. See SEMANTIC_LAYER_ARCHITECTURE.md ('Prerequisite: \
-            Kill FragmentItem')."
-)]
+            Kill FragmentItem').")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentItem {
     Element(NodeId),

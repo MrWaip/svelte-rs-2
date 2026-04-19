@@ -4,8 +4,8 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{FragmentItem, LoweredTextPart};
 
-use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::await_block::gen_await_block;
 use super::component::gen_component;
@@ -65,23 +65,13 @@ pub(crate) fn traverse_items<'a>(
                 {
                     let sem = sem.clone();
                     let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
-                        build_sibling_call(
-                            ctx,
-                            SiblingPrev::Ident(ident),
-                            sibling_offset,
-                            is_text,
-                        )
+                        build_sibling_call(ctx, SiblingPrev::Ident(ident), sibling_offset, is_text)
                     } else {
                         let fc = prev_expr.take().unwrap();
                         if sibling_offset == 0 {
                             fc
                         } else {
-                            build_sibling_call(
-                                ctx,
-                                SiblingPrev::Expr(fc),
-                                sibling_offset,
-                                is_text,
-                            )
+                            build_sibling_call(ctx, SiblingPrev::Expr(fc), sibling_offset, is_text)
                         }
                     };
                     let node_name = ctx.gen_ident("node");
