@@ -49,17 +49,32 @@ same bar.
   resolved at consumption time via identity-keyed lookups.
 - **Lowering Boundary.** Answers may encode "what operation is required" but
   not "which runtime helper to call" / "which builder recipe to invoke".
+- **Composite answers.** A cluster builder is expected to compose facts
+  from multiple allowed inputs (AST, `ComponentSemantics`,
+  `ReactivitySemantics`, analyzer-output tables) into one high-level
+  decision that the consumer can read as a single variant or bit. The
+  consumer must not reassemble the same decision from scattered
+  low-level facts. Example: `EachFlags::ITEM_REACTIVE` is computed by
+  the Block Semantics builder from a composition of
+  "collection expression references an external binding" (scope check
+  via `ComponentSemantics`), "expression has a store dependency" (via
+  `ReactivitySemantics`), "key is the item identifier" (own payload),
+  and "runes mode" — the codegen consumer sees one bit on the payload,
+  never the four underlying facts.
 - **Dependency Boundary.** Each cluster builds on `ComponentSemantics` and AST,
   not on legacy Svelte-specific classification tables. Concretely: a cluster
   builder's signature accepts only AST (`&Component` and `&ParserResult` —
   the latter is the parser's pre-parsed JS store for template spans and is
   considered part of the AST surface, not a separate cluster),
-  `ComponentSemantics`, and — where genuinely needed —
-  `ReactivitySemantics`. It never accepts `&AnalysisData` (full or partial
-  borrow), never reads other clusters' side-tables, and never reaches into
-  legacy fields like `EachContextIndex`, `TemplateSemanticsData`,
-  `ExpressionInfo`. Pipeline code assembles the builder's output into
-  `AnalysisData`; the builder itself does not see it.
+  `ComponentSemantics`, `ReactivitySemantics`, and narrow analyzer-output
+  tables that carry **generic** (non-cluster) facts consumed by multiple
+  clusters — e.g. `BlockerData` (script-level async analysis: which
+  symbols are blocked by which await barriers). These are distinguished
+  from cluster side-tables (`EachContextIndex`, `TemplateSemanticsData`,
+  `ExpressionInfo`) which must not be read. A builder never accepts
+  `&AnalysisData` (full or partial borrow) and never reaches into the
+  excluded legacy surfaces. Pipeline code assembles the builder's output
+  into `AnalysisData`; the builder itself does not see it.
 - **Escalation On Missing Facts.** If during a cluster's implementation the
   allowed inputs (AST + `ComponentSemantics` + `ReactivitySemantics`) turn
   out to be insufficient for some specific fact, the builder author does
@@ -230,9 +245,16 @@ Notes:
 
 ## Async Semantics
 
-Scope: everything gated behind the `experimental.async` compile flag.
+**Not a parallel cluster with its own identity.** Async is a decoration
+over the other three clusters. Per-kind async facts ride inside the
+owning cluster's payload, not behind a separate `async_semantics(id)`
+query. This is the architectural refinement that came out of the
+EachBlock slice: the original draft split Async into its own enum and
+own query surface; in practice every async question is "how does this
+*specific* block / attribute / element lower under async?", which is
+precisely a field on that unit's semantic payload.
 
-In scope:
+Scope:
 - Pickled await expressions inside template / attribute / component-prop
   expressions.
 - Async blockers and barrier placement.
@@ -244,30 +266,34 @@ Out of scope:
 - Non-async `{#await}` — owned by Block Semantics.
 - Regular reactive state lifecycle — owned by `reactivity_semantics`.
 
-Identity: unit `NodeId` of the construct owning the async behavior (block,
-await expression, attribute expression, component-prop expression).
+Layout:
+- Each cluster defines its own per-kind async payload variant. Example
+  (already landed for `{#each}`): `EachBlockSemantics.async_kind:
+  EachAsyncKind { Sync | Async { has_await, blockers } }`. Similar fields
+  land on `IfBlockSemantics`, `AwaitBlockSemantics`, `HtmlBindSemantics`,
+  `ComponentPropSemantics`, etc. when their slices migrate.
+- Top-level `await` in `<script>` and the async-mode runtime harness
+  stay as analyzer-wide output (e.g. `BlockerData`), not a cluster
+  payload — they are component-global facts, not per-unit.
+- No public `async_semantics(id)` query exists. Consumers read the
+  async field from the cluster payload they already have in hand.
 
-Draft answer shape:
+Identity: still the unit `NodeId` — but the answer lives on that unit's
+cluster payload, not in a separate store.
 
-```rust
-pub enum AsyncSemantics {
-    NonAsync,
-
-    AwaitBlock(AwaitBlockAsyncSemantics),
-    TopLevelAwait(TopLevelAwaitSemantics),
-    PickledAwait(PickledAwaitSemantics),
-    Blocker(AsyncBlockerSemantics),
-
-    Unresolved,
-}
-```
-
-Async is migrated last because it decorates units already stabilized by the
-other three clusters.
+Migration order: async is no longer "migrated last" as a distinct
+cluster. Async fields are added to each cluster's payload during that
+cluster's own slice, because without them the cluster's consumer still
+has to route through legacy `AsyncEmissionPlan` / `ExpressionInfo` and
+the Root Consumer Migration Rule fails. Each cluster gains its async
+field end-to-end with the rest of its payload.
 
 ## Migration Order
 
-Fixed: **Block → Attribute → ElementShape → Async.**
+Fixed: **Block → Attribute → ElementShape.**
+
+Async is no longer a fourth step — see "Async Semantics" above. Each
+cluster grows its own async payload field during its own slice.
 
 Rationale:
 
@@ -282,9 +308,6 @@ Rationale:
 3. **ElementShape third.** Collapses the AST-node-kind dispatch in consumers
    into one semantic dispatch. Builds on stable Attribute identity for
    per-attribute lookups inside each element-shape variant.
-4. **Async last.** Async is a decoration layer on top of the other three;
-   each cluster must already expose stable node-id identity for async to
-   attach without reaching back into AST.
 
 ## Migration Unit Within A Cluster
 
@@ -365,8 +388,15 @@ state.
 
 Surfaces marked deprecated as the first step of each kind migration:
 - Block-specific `AnalysisData` classifications (per-kind, as each migrates)
+- `ExpressionInfo` — the legacy per-expression bag-of-facts
+  (`has_store_ref`, `has_await`, `ref_symbols`, etc.) that consumers
+  previously assembled into semantic decisions. Replaced by
+  `reactivity_semantics` for per-reference classification and by the
+  owning cluster's payload for higher-level answers.
 - Attribute dynamism / ExpressionInfo bit combinations re-derived in consumers
 - Element-kind AST dispatch in template traversal
+- `FragmentItem` — duplicates Block / ElementShape node-kind
+  discrimination; see "Prerequisite: Kill `FragmentItem`" below
 - Async-specific side tables (`AsyncEmissionPlan`, pickled-await bookkeeping)
 
 Deletion is gradual and per-kind; parallel ownership is contained by the
