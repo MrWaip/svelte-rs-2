@@ -206,16 +206,13 @@ fn walk_node<'a>(
                 ctx.stmt_handles.push((handle, Some(tag.id)));
             }
 
-            let names = ctx
-                .analysis
-                .template
-                .const_tags
-                .names(tag.id)
-                .cloned()
-                .unwrap_or_default();
-            if names.len() > 1 {
-                let tmp = ctx.ident_gen.gen("computed_const");
-                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
+            if let svelte_analyze::BlockSemantics::ConstTag(sem) =
+                ctx.analysis.block_semantics(tag.id)
+            {
+                if sem.bindings.len() > 1 {
+                    let tmp = ctx.ident_gen.gen("computed_const");
+                    ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
+                }
             }
         }
         Node::KeyBlock(block) => {
