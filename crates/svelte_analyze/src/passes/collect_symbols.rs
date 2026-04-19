@@ -1,4 +1,4 @@
-use oxc_ast::ast::{Expression, FormalParameters, IdentifierReference, Statement};
+use oxc_ast::ast::{Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, EachBlock, NodeId, RenderTag, StyleDirectiveValue};
@@ -64,30 +64,6 @@ impl TemplateVisitor for CollectSymbolsVisitor {
             ctx.data,
         );
         store_expression_info(node_id, info, ctx);
-    }
-
-    fn visit_js_statement(
-        &mut self,
-        node_id: NodeId,
-        stmt: &Statement<'_>,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
-        #[allow(deprecated)]
-        let has_handle = ctx.data.snippet_stmt_handle(node_id).is_some();
-        if !has_handle {
-            return;
-        }
-        let Some(params) = extract_arrow_params(stmt) else {
-            return;
-        };
-        let symbols = collect_ref_symbols_from_formal_parameters(params, &mut ctx.data.scoping);
-        if !symbols.is_empty() {
-            ctx.data
-                .template
-                .template_semantics
-                .stmt_ref_symbols
-                .insert(node_id, symbols);
-        }
     }
 
     fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
@@ -179,26 +155,6 @@ fn collect_ref_symbols(
     collect_resolved_ref_symbols(scoping, |collector| {
         collector.visit_expression(expr);
     })
-}
-
-fn collect_ref_symbols_from_formal_parameters(
-    params: &FormalParameters<'_>,
-    scoping: &mut ComponentScoping,
-) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols(scoping, |collector| {
-        collector.visit_formal_parameters(params)
-    })
-}
-
-fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s FormalParameters<'a>> {
-    let Statement::VariableDeclaration(decl) = stmt else {
-        return None;
-    };
-    let declarator = decl.declarations.first()?;
-    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
-        return None;
-    };
-    Some(&arrow.params)
 }
 
 fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut AnalysisData) {

@@ -7,7 +7,6 @@ pub struct TemplateSemanticsData {
     pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
-    pub(crate) stmt_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
 }
 
 impl TemplateSemanticsData {
@@ -19,21 +18,15 @@ impl TemplateSemanticsData {
             const_tag_stmt_handles: NodeTable::new(node_count),
             snippet_stmt_handles: NodeTable::new(node_count),
             node_ref_symbols: NodeTable::new(node_count),
-            stmt_ref_symbols: NodeTable::new(node_count),
         }
     }
 
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.node_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
     }
-
-    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.stmt_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
-    }
 }
 
 pub struct SnippetData {
-    pub(crate) hoistable: NodeBitSet,
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
     /// Named slots for component children: maps component NodeId → vec of (slot_element_id, fragment_key).
     pub(crate) component_named_slots: NodeTable<Vec<(NodeId, FragmentKey)>>,
@@ -44,7 +37,6 @@ pub struct SnippetData {
 impl SnippetData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
             component_named_slots: NodeTable::new(node_count),
             local_snippets: Vec::new(),
@@ -52,17 +44,6 @@ impl SnippetData {
         }
     }
 
-    pub fn is_hoistable(&self, id: NodeId) -> bool {
-        self.hoistable.contains(&id)
-    }
-    /// Snapshot of hoistable snippet ids as an `FxHashSet`. Used by the
-    /// block_semantics builder pipeline so the payload can carry the
-    /// flag per-block without the builder reading `AnalysisData` directly.
-    /// Will be removed alongside the legacy `HoistableSnippetsVisitor`
-    /// once block_semantics becomes the single source.
-    pub fn hoistable_ids(&self) -> rustc_hash::FxHashSet<NodeId> {
-        self.hoistable.iter().collect()
-    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets
             .get(id)

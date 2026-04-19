@@ -1,11 +1,9 @@
-use rustc_hash::FxHashSet;
-use svelte_ast::{Component, Node, NodeId};
+use svelte_ast::Component;
 
 use crate::passes::{
-    bind_semantics, collect_symbols, content_types, dynamism, element_flags, hoistable,
-    template_side_tables, template_validation,
+    bind_semantics, collect_symbols, content_types, dynamism, element_flags, template_side_tables,
+    template_validation,
 };
-use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
@@ -59,58 +57,28 @@ impl ReactivityBundle {
 
 pub(crate) struct TemplateClassificationBundle<'s> {
     element_flags: element_flags::ElementFlagsVisitor<'s>,
-    hoistable: hoistable::HoistableSnippetsVisitor,
     bind_semantics: bind_semantics::BindSemanticsVisitor<'s>,
     content_types: content_types::ContentAndVarVisitor<'s>,
 }
 
 impl<'s> TemplateClassificationBundle<'s> {
-    pub(crate) fn new(component: &'s Component, data: &AnalysisData, source: &'s str) -> Self {
-        let root = data.scoping.root_scope_id();
-        let script_syms: FxHashSet<SymbolId> = data
-            .script
-            .info
-            .as_ref()
-            .map(|s| {
-                s.declarations
-                    .iter()
-                    .filter_map(|d| data.scoping.find_binding(root, &d.name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let top_level_snippet_ids: FxHashSet<NodeId> = component
-            .fragment
-            .nodes
-            .iter()
-            .filter_map(|&id| {
-                if let Node::SnippetBlock(b) = component.store.get(id) {
-                    Some(b.id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
+    pub(crate) fn new(_component: &'s Component, _data: &AnalysisData, source: &'s str) -> Self {
         Self {
             element_flags: element_flags::ElementFlagsVisitor::new(source),
-            hoistable: hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics: bind_semantics::BindSemanticsVisitor::new(source),
             content_types: content_types::ContentAndVarVisitor { source },
         }
     }
 
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 4] {
+    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 3] {
         [
             &mut self.bind_semantics,
             &mut self.element_flags,
-            &mut self.hoistable,
             &mut self.content_types,
         ]
     }
 
-    pub(crate) fn finish(self, data: &mut AnalysisData) {
-        self.hoistable.finish(data);
-    }
+    pub(crate) fn finish(self, _data: &mut AnalysisData) {}
 }
 
 pub(crate) struct TemplateValidationBundle {

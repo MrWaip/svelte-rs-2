@@ -10,7 +10,6 @@ pub(crate) mod dynamism;
 pub(crate) mod element_flags;
 mod executor;
 pub(crate) mod finalize_component_name;
-pub(crate) mod hoistable;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
 pub(crate) mod populate_const_tag_syms;

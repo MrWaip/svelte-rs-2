@@ -167,17 +167,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
     }
-    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.data.stmt_ref_symbols(id)
-    }
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
-        block_semantics::SnippetBlockSemantics"
-    )]
-    pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        #[allow(deprecated)]
-        self.data.snippet_param_ref_symbols(id)
-    }
     pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.data.shorthand_symbol(id)
     }

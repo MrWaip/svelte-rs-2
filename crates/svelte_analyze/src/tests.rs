@@ -902,33 +902,16 @@ fn assert_snippet_hoistable(
     name: &str,
     expected: bool,
 ) {
+    use crate::BlockSemantics;
     let block = find_snippet_block(&component.fragment, component, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
+    let actual = match data.block_semantics(block.id) {
+        BlockSemantics::Snippet(s) => s.hoistable,
+        other => panic!("expected Snippet payload for '{name}', got {other:?}"),
+    };
     assert_eq!(
-        data.template.snippets.is_hoistable(block.id),
-        expected,
+        actual, expected,
         "unexpected hoistability for snippet '{name}'",
-    );
-}
-
-fn assert_snippet_param_refs_include(
-    data: &AnalysisData,
-    component: &Component,
-    snippet_name: &str,
-    binding_name: &str,
-) {
-    let block = find_snippet_block(&component.fragment, component, snippet_name)
-        .unwrap_or_else(|| panic!("no SnippetBlock named '{snippet_name}'"));
-    let root = data.scoping.root_scope_id();
-    let sym = data
-        .scoping
-        .find_binding(root, binding_name)
-        .unwrap_or_else(|| panic!("no binding '{binding_name}'"));
-    #[allow(deprecated)]
-    let refs = data.snippet_param_ref_symbols(block.id);
-    assert!(
-        refs.contains(&sym),
-        "expected snippet '{snippet_name}' params to reference '{binding_name}'",
     );
 }
 
@@ -4809,25 +4792,6 @@ function key() {
     );
 
     assert_snippet_hoistable(&data, &component, "view", false);
-}
-
-#[test]
-fn snippet_param_ref_symbols_capture_script_refs() {
-    let (component, data) = analyze_source(
-        r#"<script>
-function key() {
-    return "label";
-}
-let fallback = () => "ok";
-</script>
-
-{#snippet view({ [key()]: value = fallback() })}
-    <p>{value}</p>
-{/snippet}"#,
-    );
-
-    assert_snippet_param_refs_include(&data, &component, "view", "key");
-    assert_snippet_param_refs_include(&data, &component, "view", "fallback");
 }
 
 #[test]
