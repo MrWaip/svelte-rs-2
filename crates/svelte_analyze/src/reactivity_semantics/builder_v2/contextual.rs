@@ -139,13 +139,15 @@ struct TemplateDeclarationCollector<'s> {
 
 impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        let syms: Vec<SymbolId> = ctx
-            .data
-            .template
-            .const_tags
-            .syms(tag.id)
-            .cloned()
-            .unwrap_or_default();
+        // Resolve binding leaves locally from the pre-parsed
+        // `{@const <pattern> = ...}` statement — one walk of the
+        // binding pattern plus a `find_binding` per leaf, against the
+        // enclosing fragment scope carried by `ctx.scope`. This used
+        // to read `const_tags.syms(tag.id)` which was populated by a
+        // separate pass; moving the derivation in-line drops that
+        // side-table and lets the ConstTagData cluster shrink to
+        // `by_fragment` only.
+        let syms: Vec<SymbolId> = collect_const_tag_syms(tag, ctx);
 
         // Only destructured const-tags (`{@const { a, b } = ...}`) carry a
         // per-leaf owner — single-identifier const-tags don't need it because
@@ -632,4 +634,36 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.visit_formal_parameters(&arrow.params);
     }
+}
+
+/// Resolve the leaf `SymbolId`s introduced by a `{@const <pattern> = ...}`
+/// tag. The binding pattern is walked over the pre-parsed statement and
+/// each identifier name is looked up in the enclosing fragment's scope.
+/// Used by `visit_const_tag` to avoid holding a precomputed side-table
+/// (`ConstTagData::syms`) just for this consumer.
+fn collect_const_tag_syms(
+    tag: &svelte_ast::ConstTag,
+    ctx: &mut VisitContext<'_, '_>,
+) -> Vec<SymbolId> {
+    let Some(parsed) = ctx.parsed() else {
+        return Vec::new();
+    };
+    let Some(stmt) = parsed
+        .stmt_handle(tag.expression_span.start)
+        .and_then(|handle| parsed.stmt(handle))
+    else {
+        return Vec::new();
+    };
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return Vec::new();
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    collect_binding_names(&declarator.id, &mut names);
+    names
+        .into_iter()
+        .filter_map(|name| ctx.data.scoping.find_binding(ctx.scope, &name))
+        .collect()
 }

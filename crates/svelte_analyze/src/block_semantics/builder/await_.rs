@@ -12,14 +12,13 @@ use super::super::{
 };
 use super::common::{
     binding_ident_of, binding_pattern_node_id, collect_binding_pattern_symbols,
-    declarator_from_stmt,
+    declarator_from_stmt, expression_async_facts,
 };
 use super::walker::Ctx;
-use oxc_ast::ast::{AwaitExpression, BindingPattern, Expression, IdentifierReference};
-use oxc_ast_visit::Visit;
+use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::{AwaitBlock, FragmentKey};
-use svelte_component_semantics::{ReferenceId, SymbolId};
+use svelte_component_semantics::SymbolId;
 
 /// Populate `BlockSemantics::Await` for this block and recurse into its
 /// pending / then / catch fragments.
@@ -49,7 +48,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
         .expr_handle(block.expression_span.start)
         .and_then(|h| ctx.parsed.expr(h))
     {
-        Some(expr) => expression_facts(ctx, expr),
+        Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
         None => (false, SmallVec::new()),
     };
     let wrapper = if blockers.is_empty() {
@@ -61,13 +60,13 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
     // Recurse first so nested blocks (of any migrated kind) populate inside
     // the same template walk.
     if let Some(f) = &block.pending {
-        ctx.visit_fragment(&f.nodes);
+        ctx.visit_fragment(FragmentKey::AwaitPending(block.id), &f.nodes);
     }
     if let Some(f) = &block.then {
-        ctx.visit_fragment(&f.nodes);
+        ctx.visit_fragment(FragmentKey::AwaitThen(block.id), &f.nodes);
     }
     if let Some(f) = &block.catch {
-        ctx.visit_fragment(&f.nodes);
+        ctx.visit_fragment(FragmentKey::AwaitCatch(block.id), &f.nodes);
     }
 
     ctx.store.set(
@@ -131,47 +130,6 @@ fn binding_from_pattern<'a>(
         kind,
         leaves,
         pattern_id: binding_pattern_node_id(pattern),
-    }
-}
-
-/// One walk over the expression subtree — collects `has_await` and the
-/// sorted, de-duplicated blocker list in a single pass.
-fn expression_facts<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> (bool, SmallVec<[u32; 2]>) {
-    let mut collector = ExprCollector {
-        refs: Vec::new(),
-        has_await: false,
-    };
-    collector.visit_expression(expr);
-
-    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
-    for ref_id in &collector.refs {
-        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
-            continue;
-        };
-        if let Some(idx) = ctx.blockers.symbol_blocker(sym) {
-            if !blockers.contains(&idx) {
-                blockers.push(idx);
-            }
-        }
-    }
-    blockers.sort_unstable();
-    (collector.has_await, blockers)
-}
-
-struct ExprCollector {
-    refs: Vec<ReferenceId>,
-    has_await: bool,
-}
-
-impl<'a> Visit<'a> for ExprCollector {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(ref_id) = ident.reference_id.get() {
-            self.refs.push(ref_id);
-        }
-    }
-    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        self.has_await = true;
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
     }
 }
 

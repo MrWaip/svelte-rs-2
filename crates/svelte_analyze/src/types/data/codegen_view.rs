@@ -379,12 +379,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.data.template.const_tags.names(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.data.const_tag_syms(id)
-    }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.data.template.const_tags.by_fragment(key)
     }

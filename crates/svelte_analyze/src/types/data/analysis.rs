@@ -699,12 +699,6 @@ impl<'a> AnalysisData<'a> {
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.blocks.render_tag_plans.get(id)
     }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.template
-            .const_tags
-            .syms(id)
-            .map(|syms| syms.as_slice())
-    }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {
             ExprSite::Node(id) => {

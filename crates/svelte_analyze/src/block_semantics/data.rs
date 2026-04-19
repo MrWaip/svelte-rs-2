@@ -10,6 +10,7 @@
 //! consume-time, not stored on the payload.
 
 use crate::scope::SymbolId;
+use crate::types::data::StmtHandle;
 use bitflags::bitflags;
 use smallvec::SmallVec;
 use svelte_component_semantics::OxcNodeId;
@@ -28,6 +29,8 @@ pub enum BlockSemantics {
     Await(AwaitBlockSemantics),
     /// `{#snippet name(params)}` block.
     Snippet(SnippetBlockSemantics),
+    /// `{@const <pattern> = <init>}` block.
+    ConstTag(ConstTagBlockSemantics),
     // Placeholders for later slices — payload lands when each kind is
     // migrated end-to-end. Keeping them here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
@@ -35,8 +38,6 @@ pub enum BlockSemantics {
     If,
     // TODO(block-semantics): Key payload.
     Key,
-    // TODO(block-semantics): ConstTag payload.
-    ConstTag,
     // TODO(block-semantics): Render payload.
     Render,
 }
@@ -341,4 +342,57 @@ pub enum SnippetDefaultKind {
 pub enum SnippetDestructureKind {
     Object,
     Array,
+}
+
+/// `{@const <pattern> = <init>}` — declaration-shape answer.
+///
+/// Per-symbol read strategy for the bindings themselves (how each
+/// introduced name is read inside downstream expressions — `$.get` vs
+/// `$.safe_get` vs plain) lives in
+/// `reactivity_semantics::ConstDeclarationSemantics::ConstTag`. This
+/// payload answers only declaration-shape questions: which symbols the
+/// tag introduces, whether the pattern is destructured, how the init
+/// expression interacts with async. The init expression itself is
+/// cloned/taken from the pre-parsed `Statement` via `stmt_handle` at
+/// emit time — the consumer never re-interprets it semantically.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstTagBlockSemantics {
+    /// Bindings in source order — for destructured patterns, leaf order
+    /// of the pattern. A single element means a plain-identifier tag
+    /// (`{@const x = ...}`).
+    pub bindings: SmallVec<[SymbolId; 2]>,
+    /// `true` iff the init is a destructure pattern
+    /// (`{@const { a, b } = expr}` / `{@const [x, y] = expr}`). Consumer
+    /// branches on this single flag instead of inspecting `bindings.len()`.
+    pub is_destructured: bool,
+    /// Handle to the pre-parsed `const <pattern> = <init>;` statement.
+    /// Consumer calls `ParserResult::take_stmt(handle)` at emit time to
+    /// extract the init expression. Same role as
+    /// `AnalysisData::snippet_stmt_handle` in the snippet slice.
+    pub stmt_handle: StmtHandle,
+    /// Async lowering decision for the init expression.
+    pub async_kind: ConstTagAsyncKind,
+}
+
+/// How a `{@const}` init expression interacts with async.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstTagAsyncKind {
+    /// No `await` and no async-gated symbol references. Codegen emits
+    /// `const X = $.derived(() => init)`.
+    Sync,
+    /// Init contains an `await` literal and/or references async-gated
+    /// symbols (script-level blockers). Codegen emits `let X;` plus a
+    /// thunk pushed into a per-fragment `$.run([...])` pack; when
+    /// `has_await` is true the thunk is wrapped in
+    /// `$.async_derived(async () => ...)`, otherwise in
+    /// `$.derived(() => ...)`.
+    Async {
+        /// Literal `await` appears in the init expression — chooses
+        /// between `$.async_derived` and `$.derived` at emit time.
+        has_await: bool,
+        /// Sorted, de-duplicated blocker indices (from
+        /// `BlockerData::symbol_blockers`) collected across every
+        /// identifier reference in the init expression.
+        blockers: SmallVec<[u32; 2]>,
+    },
 }

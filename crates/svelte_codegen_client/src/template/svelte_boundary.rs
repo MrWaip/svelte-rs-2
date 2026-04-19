@@ -6,7 +6,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::FragmentKey;
+use svelte_analyze::{ConstTagBlockSemantics, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 
 use crate::context::Ctx;
@@ -128,17 +128,25 @@ pub(crate) fn gen_svelte_boundary<'a>(
         .const_tags_for_fragment(&FragmentKey::SvelteBoundaryBody(id))
         .cloned()
         .unwrap_or_default();
-    let has_const_tags = !const_tag_ids.is_empty();
+
+    // Fetch block semantics for every const-tag in this fragment — one
+    // query per tag replaces the scatter of `const_tag_names` /
+    // `const_tag_syms` / `const_tag_stmt_handle` lookups that used to
+    // reconstruct the tag's shape at every use-site.
+    let const_tag_sems: Vec<(NodeId, ConstTagBlockSemantics)> = const_tag_ids
+        .iter()
+        .filter_map(|&cid| match ctx.query.analysis.block_semantics(cid) {
+            svelte_analyze::BlockSemantics::ConstTag(s) => Some((cid, s.clone())),
+            _ => None,
+        })
+        .collect();
+    let has_const_tags = !const_tag_sems.is_empty();
 
     // Resolve const-tag binding SymbolIds for snippet reference checking
     let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
-        const_tag_ids
+        const_tag_sems
             .iter()
-            .flat_map(|cid| {
-                ctx.const_tag_syms(*cid)
-                    .map(|syms| syms.to_vec())
-                    .unwrap_or_default()
-            })
+            .flat_map(|(_, sem)| sem.bindings.iter().copied())
             .collect()
     } else {
         FxHashSet::default()
@@ -149,21 +157,27 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let snippet_count = hoisted_snippet_ids.len();
     let mut cloned_exprs: Vec<Vec<(NodeId, Vec<String>, Expression<'a>)>> = Vec::new();
     if has_const_tags && snippet_count > 0 {
-        // Collect info and clone expressions for each snippet
-        let mut infos: Vec<(NodeId, Vec<String>)> = Vec::new();
-        for &cid in &const_tag_ids {
-            let names = ctx.const_tag_names(cid).cloned().unwrap_or_default();
-            infos.push((cid, names));
-        }
+        // Collect names per tag once (resolved via symbol_name), then
+        // clone the init expression snippet_count times.
+        let infos: Vec<(NodeId, Vec<String>, svelte_analyze::StmtHandle)> = const_tag_sems
+            .iter()
+            .map(|(cid, sem)| {
+                let names: Vec<String> = sem
+                    .bindings
+                    .iter()
+                    .map(|sym| ctx.query.view.symbol_name(*sym).to_string())
+                    .collect();
+                (*cid, names, sem.stmt_handle)
+            })
+            .collect();
 
         for _ in 0..snippet_count {
             let mut set: Vec<(NodeId, Vec<String>, Expression<'a>)> = Vec::new();
-            for (cid, names) in &infos {
+            for (cid, names, stmt_handle) in &infos {
                 // Clone init expression from the pre-parsed Statement in stmts.
                 // Shallow destructure — known top-level shape, not removing yet.
-                let stmt_handle = ctx.const_tag_stmt_handle(*cid);
                 if let Some(Statement::VariableDeclaration(decl)) =
-                    stmt_handle.and_then(|handle| ctx.state.parsed.stmt(handle))
+                    ctx.state.parsed.stmt(*stmt_handle)
                 {
                     if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref()) {
                         let cloned = ctx.b.clone_expr(init);

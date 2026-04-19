@@ -170,9 +170,9 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     // Recurse through body/fallback while this each sits on the walker's
     // bind:group stack, so a nested `bind:group` attributes back to us.
     ctx.push_each_frame(block.id, introduced);
-    ctx.visit_fragment(&block.body.nodes);
+    ctx.visit_fragment(FragmentKey::EachBody(block.id), &block.body.nodes);
     if let Some(fb) = &block.fallback {
-        ctx.visit_fragment(&fb.nodes);
+        ctx.visit_fragment(FragmentKey::EachFallback(block.id), &fb.nodes);
     }
     ctx.pop_each_frame();
 

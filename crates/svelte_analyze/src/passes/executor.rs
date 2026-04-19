@@ -4,8 +4,8 @@ use svelte_diagnostics::Diagnostic;
 use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
 
 use super::{
-    bundles, content_types, finalize_component_name, js_analyze, lower, populate_const_tag_syms,
-    post_resolve, resolve_render_tag_meta,
+    bundles, content_types, finalize_component_name, js_analyze, lower, post_resolve,
+    resolve_render_tag_meta,
 };
 
 fn run_template_bundle<'d, 'a, const N: usize>(
@@ -194,9 +194,6 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::CollectConstTagFragments => {
             lower::collect_const_tag_fragments(component, data);
-        }
-        super::PassKey::PopulateConstTagSyms => {
-            populate_const_tag_syms::run(data);
         }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);

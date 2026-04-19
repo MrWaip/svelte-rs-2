@@ -603,12 +603,6 @@ impl<'a> Ctx<'a> {
 
     // -- ConstTag shortcuts --
 
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.query.view.const_tag_names(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.query.view.const_tag_syms(id)
-    }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.query.view.const_tags_for_fragment(key)
     }

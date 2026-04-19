@@ -12,9 +12,10 @@ pub(crate) mod walker;
 
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
-    EachIndexKind, EachItemKind, EachKeyKind, SnippetBlockSemantics, SnippetDefaultKind,
-    SnippetDestructureKind, SnippetParam, SnippetPatternBinding,
+    BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
+    EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
+    SnippetBlockSemantics, SnippetDefaultKind, SnippetDestructureKind, SnippetParam,
+    SnippetPatternBinding,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

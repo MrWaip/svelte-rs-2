@@ -19,7 +19,7 @@ use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, BindDirective, Component, EachBlock, Node, NodeId};
+use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentKey, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId};
 
 /// Entry point: run the single cluster-wide template walk.
@@ -31,6 +31,14 @@ pub(super) fn populate(
     blockers: &BlockerData,
     store: &mut BlockSemanticsStore,
 ) {
+    // Root fragment scope seeds the walker's enclosing-scope stack.
+    // Populators that need the current fragment scope (e.g. `{@const}`
+    // resolving pattern-leaf names to `SymbolId`) read `ctx.current_scope`
+    // — each `visit_fragment` descent pushes and pops the right scope
+    // around nested children.
+    let root_scope = semantics
+        .fragment_scope(&FragmentKey::Root)
+        .unwrap_or_else(|| semantics.root_scope_id());
     let mut ctx = Ctx {
         component,
         parsed,
@@ -38,6 +46,7 @@ pub(super) fn populate(
         reactivity,
         blockers,
         non_root_depth: 0,
+        current_scope: root_scope,
         snippet_scopes: Vec::new(),
         snippet_name_syms: FxHashSet::default(),
         store,
@@ -143,6 +152,13 @@ pub(super) struct Ctx<'c, 'a> {
     /// "currently iterating the component fragment root" — the only
     /// position where a `{#snippet}` counts as top-level for hoisting.
     pub(super) non_root_depth: u32,
+    /// Scope of the fragment we are currently visiting. Saved/restored
+    /// by [`Self::visit_fragment`] via its `FragmentKey` argument — each
+    /// descent looks up `semantics.fragment_scope(key)` and installs it
+    /// for the children's traversal. Populators that need the enclosing
+    /// fragment scope (e.g. `{@const}` resolves `BindingPattern`-leaf
+    /// names against it) read this field directly.
+    pub(super) current_scope: ScopeId,
     /// Body-scope snapshot for every `{#snippet}` encountered during the
     /// walk. Consumed by `finalize_hoistable` after the walk completes:
     /// for each ref in the component that resolves to an instance-scope
@@ -184,40 +200,83 @@ impl<'a> Ctx<'_, 'a> {
             Node::AwaitBlock(block) => super::await_::populate(self, block),
             Node::Element(el) => {
                 self.check_bind_group_in_attrs(&el.attributes);
-                self.visit_fragment(&el.fragment.nodes);
+                self.visit_fragment(FragmentKey::Element(el.id), &el.fragment.nodes);
             }
-            Node::SlotElementLegacy(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::ComponentNode(cn) => self.visit_fragment(&cn.fragment.nodes),
+            // Legacy `<slot>` doesn't bind a fragment scope of its own
+            // (no FragmentKey variant). Descend with the current scope.
+            Node::SlotElementLegacy(el) => {
+                self.visit_children_inheriting_scope(&el.fragment.nodes)
+            }
+            Node::ComponentNode(cn) => {
+                self.visit_fragment(FragmentKey::ComponentNode(cn.id), &cn.fragment.nodes);
+            }
             Node::IfBlock(block) => {
-                self.visit_fragment(&block.consequent.nodes);
+                self.visit_fragment(FragmentKey::IfConsequent(block.id), &block.consequent.nodes);
                 if let Some(alt) = &block.alternate {
-                    self.visit_fragment(&alt.nodes);
+                    self.visit_fragment(FragmentKey::IfAlternate(block.id), &alt.nodes);
                 }
             }
             Node::SnippetBlock(block) => super::snippet::populate(self, block),
-            Node::KeyBlock(block) => self.visit_fragment(&block.fragment.nodes),
-            Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),
+            Node::ConstTag(tag) => super::const_tag::populate(self, tag),
+            Node::KeyBlock(block) => {
+                self.visit_fragment(FragmentKey::KeyBlockBody(block.id), &block.fragment.nodes);
+            }
+            Node::SvelteHead(el) => {
+                self.visit_fragment(FragmentKey::SvelteHeadBody(el.id), &el.fragment.nodes);
+            }
+            // `<svelte:fragment>` (legacy) is an owner of a named slot
+            // placement rather than a fresh scope. Inherit current scope.
+            Node::SvelteFragmentLegacy(el) => {
+                self.visit_children_inheriting_scope(&el.fragment.nodes);
+            }
             Node::SvelteElement(el) => {
                 self.check_bind_group_in_attrs(&el.attributes);
-                self.visit_fragment(&el.fragment.nodes);
+                self.visit_fragment(
+                    FragmentKey::SvelteElementBody(el.id),
+                    &el.fragment.nodes,
+                );
             }
-            Node::SvelteBoundary(el) => self.visit_fragment(&el.fragment.nodes),
+            Node::SvelteBoundary(el) => {
+                self.visit_fragment(
+                    FragmentKey::SvelteBoundaryBody(el.id),
+                    &el.fragment.nodes,
+                );
+            }
             _ => {}
         }
     }
 
-    /// Descend into a fragment's children. Every recursive descent goes
-    /// through here (populators for each/await/snippet invoke this to
-    /// recurse into their bodies), so it's the one place that owns the
-    /// root/non-root split: incrementing `non_root_depth` on entry turns
-    /// any further `SnippetBlock` encountered into a non-top-level one.
-    pub(super) fn visit_fragment(&mut self, nodes: &[NodeId]) {
+    /// Descend without changing `current_scope` — used for legacy
+    /// pass-through containers (`<slot>`, `<svelte:fragment>`) that do
+    /// not own a FragmentKey.
+    fn visit_children_inheriting_scope(&mut self, nodes: &[NodeId]) {
         self.non_root_depth += 1;
         for &id in nodes {
             self.visit_node(id);
         }
         self.non_root_depth -= 1;
+    }
+
+    /// Descend into a fragment's children. Every recursive descent goes
+    /// through here (populators for each/await/snippet invoke this to
+    /// recurse into their bodies), so it's the one place that owns two
+    /// pieces of walker state:
+    ///   - `non_root_depth` — incrementing on entry turns any further
+    ///     `SnippetBlock` encountered into a non-top-level one.
+    ///   - `current_scope` — looked up from the fragment's own
+    ///     `FragmentKey` so populators inside (e.g. `{@const}` resolving
+    ///     pattern leaves) see the enclosing fragment's scope.
+    pub(super) fn visit_fragment(&mut self, key: FragmentKey, nodes: &[NodeId]) {
+        let prev_scope = self.current_scope;
+        if let Some(scope) = self.semantics.fragment_scope(&key) {
+            self.current_scope = scope;
+        }
+        self.non_root_depth += 1;
+        for &id in nodes {
+            self.visit_node(id);
+        }
+        self.non_root_depth -= 1;
+        self.current_scope = prev_scope;
     }
 
     /// Push a new each frame around a sub-traversal. The each populator

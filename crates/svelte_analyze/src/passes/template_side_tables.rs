@@ -18,7 +18,6 @@ use svelte_ast::{
 };
 
 use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
-use crate::utils::binding_pattern::collect_binding_names;
 use crate::walker::{TemplateVisitor, VisitContext};
 use crate::ElementFactsEntry;
 use svelte_parser::ParserResult;
@@ -696,22 +695,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-        if let Some(parsed) = ctx.parsed {
-            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
-                .stmt_handle(tag.expression_span.start)
-                .and_then(|handle| parsed.stmt(handle))
-            {
-                if let Some(declarator) = decl.declarations.first() {
-                    let mut name_strings = Vec::new();
-                    collect_binding_names(&declarator.id, &mut name_strings);
-                    ctx.data
-                        .template
-                        .const_tags
-                        .names
-                        .insert(tag.id, name_strings);
-                }
-            }
-        }
+        // `{@const}` binding names used to be snapshotted here into
+        // `ConstTagData::names`; reactivity / codegen now derive leaves
+        // from the pre-parsed statement on demand (via block_semantics
+        // or a local pattern walk), so no per-tag side-table write is
+        // required anymore.
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {

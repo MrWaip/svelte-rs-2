@@ -52,7 +52,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 
     // Recurse into body first so nested blocks are visited inside the
     // same template walk.
-    ctx.visit_fragment(&block.body.nodes);
+    ctx.visit_fragment(FragmentKey::SnippetBody(block.id), &block.body.nodes);
 
     let Some(name) = name_sym else {
         // Parser invariant: every snippet block has a named declarator.

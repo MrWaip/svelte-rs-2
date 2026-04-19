@@ -20,8 +20,9 @@ use crate::types::data::{AnalysisData, ParserResult};
 use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
-    AssignmentExpression, BindingPattern, CallExpression, Expression, StaticMemberExpression,
-    UpdateExpression, VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    AssignmentExpression, BindingPattern, CallExpression, Expression, Statement,
+    StaticMemberExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
+    VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_static_member_expression, walk_variable_declaration, walk_variable_declarator,
@@ -67,17 +68,26 @@ pub(crate) fn build_v2<'a>(
 /// where `y = $derived(inert)`) fold correctly.
 fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut AnalysisData<'a>) {
     use super::data::{ConstDeclarationSemantics, DeclarationSemantics};
-    let tag_ids: Vec<svelte_ast::NodeId> = data
+    use crate::utils::binding_pattern::collect_binding_names;
+    // Snapshot `(scope, tag_id)` pairs up front: the fragment scope for
+    // each tag is carried by `by_fragment` and looked up once, so we
+    // can traverse without re-reading the side-table during the
+    // fix-point work below.
+    let tag_pairs: Vec<(oxc_semantic::ScopeId, svelte_ast::NodeId)> = data
         .template
         .const_tags
         .by_fragment
-        .values()
-        .flat_map(|v| v.iter().copied())
+        .iter()
+        .filter_map(|(frag_key, tag_ids)| {
+            let scope = data.scoping.fragment_scope(frag_key)?;
+            Some((scope, tag_ids.clone()))
+        })
+        .flat_map(|(scope, tag_ids)| tag_ids.into_iter().map(move |id| (scope, id)))
         .collect();
-    if tag_ids.is_empty() {
+    if tag_pairs.is_empty() {
         return;
     }
-    for tag_id in tag_ids {
+    for (scope, tag_id) in tag_pairs {
         // Collect ReferenceIds from the const-tag init expression via OXC Visit.
         let Some(handle) = data.const_tag_stmt_handle(tag_id) else {
             continue;
@@ -85,6 +95,25 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
         let Some(stmt) = parsed.stmt(handle) else {
             continue;
         };
+
+        // Resolve the binding leaves locally from the pattern — avoids
+        // depending on `const_tags.syms` (removed in this slice).
+        let Statement::VariableDeclaration(decl) = stmt else {
+            continue;
+        };
+        let Some(declarator) = decl.declarations.first() else {
+            continue;
+        };
+        let mut names = Vec::new();
+        collect_binding_names(&declarator.id, &mut names);
+        let syms: Vec<SymbolId> = names
+            .into_iter()
+            .filter_map(|name| data.scoping.find_binding(scope, &name))
+            .collect();
+        if syms.is_empty() {
+            continue;
+        }
+
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
         let mut collector = RefCollector {
@@ -123,14 +152,6 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
                 }
             });
 
-        // Update every leaf recorded for this tag.
-        let syms: Vec<SymbolId> = data
-            .template
-            .const_tags
-            .syms
-            .get(tag_id)
-            .cloned()
-            .unwrap_or_default();
         for sym in syms {
             let node_id = data.scoping.symbol_declaration(sym);
             if let Some(V2DeclarationFacts::Const(ConstDeclarationSemantics::ConstTag {
