@@ -1263,6 +1263,7 @@ dependencies = [
  "svelte_analyze",
  "svelte_ast",
  "svelte_ast_builder",
+ "svelte_component_semantics",
  "svelte_parser",
  "svelte_span",
  "svelte_transform",
@@ -1365,6 +1366,7 @@ dependencies = [
  "svelte_analyze",
  "svelte_ast",
  "svelte_ast_builder",
+ "svelte_component_semantics",
  "svelte_parser",
  "svelte_span",
 ]

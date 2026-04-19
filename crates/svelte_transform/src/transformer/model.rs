@@ -147,7 +147,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
     ) -> Option<RuneKind> {
-        let sym_id = id.symbol_id.get()?;
+        self.rune_for_symbol(id.symbol_id.get()?)
+    }
+
+    pub(crate) fn rune_for_symbol(&self, sym_id: oxc_semantic::SymbolId) -> Option<RuneKind> {
         let kind = match self.declaration_semantics_for_symbol(sym_id)? {
             DeclarationSemantics::State(state) => match state.kind {
                 StateKind::State => RuneKind::State,

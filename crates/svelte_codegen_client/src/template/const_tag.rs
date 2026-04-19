@@ -176,7 +176,10 @@ fn emit_async<'a>(
 
     for item in &plan.items {
         let (has_await, blockers_slice) = match &item.async_kind {
-            ConstTagAsyncKind::Async { has_await, blockers } => (*has_await, blockers.as_slice()),
+            ConstTagAsyncKind::Async {
+                has_await,
+                blockers,
+            } => (*has_await, blockers.as_slice()),
             // Sync-items inside an async fragment still go through the
             // `$.run([...])` pack — mirror the legacy behaviour where
             // async mode pulls every tag into the same pipeline.
@@ -322,11 +325,7 @@ fn build_async_destructured<'a>(
 // -- Shared helpers -----------------------------------------------------
 
 /// `() => $$promises[N].promise` / `() => $.wait([$$promises[i], ...])`.
-fn build_blocker_thunks<'a>(
-    ctx: &mut Ctx<'a>,
-    blockers: &[u32],
-    thunks: &mut Vec<Expression<'a>>,
-) {
+fn build_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
     if blockers.is_empty() {
         return;
     }
@@ -351,11 +350,7 @@ fn build_blocker_thunks<'a>(
     }
 }
 
-fn create_derived<'a>(
-    ctx: &mut Ctx<'a>,
-    init: Expression<'a>,
-    has_await: bool,
-) -> Expression<'a> {
+fn create_derived<'a>(ctx: &mut Ctx<'a>, init: Expression<'a>, has_await: bool) -> Expression<'a> {
     if has_await {
         let thunk = ctx.b.async_thunk(init);
         ctx.b.call_expr("$.async_derived", [Arg::Expr(thunk)])

@@ -14,10 +14,11 @@
 //! parallel per-feature descriptor types.
 //!
 //! # Invariants
-//! - `BindingIdentifier.symbol_id` is assumed resolved (semantic pass has
-//!   run). The walker panics on unresolved ids — this matches our
-//!   `ComponentSemantics` lifecycle, where analyze / transform / codegen
-//!   always run after semantics.
+//! - `BindingIdentifier.symbol_id` is expected to be resolved (semantic
+//!   pass has run); leaves without a resolved symbol are silently
+//!   skipped. This matches the classic helpers the walker replaces —
+//!   they dropped unresolved identifiers rather than panicking, so
+//!   synthetic subtrees introduced mid-transform don't break the walk.
 //! - `path` is empty only for: (a) a plain identifier at the root, or
 //!   (b) an object-rest directly on the root object pattern.
 //! - `excluded` is non-empty only when `is_rest && path.last()` came from an
@@ -85,10 +86,12 @@ where
 {
     match pat {
         BindingPattern::BindingIdentifier(ident) => {
-            let symbol = ident
-                .symbol_id
-                .get()
-                .expect("BindingIdentifier.symbol_id resolved before pattern walk");
+            let Some(symbol) = ident.symbol_id.get() else {
+                // Skip synthetic identifiers inserted mid-transform that
+                // the semantic pass hasn't annotated. Classic helpers
+                // dropped these silently; we preserve that behaviour.
+                return;
+            };
             visit(BindingVisit {
                 symbol,
                 path,
