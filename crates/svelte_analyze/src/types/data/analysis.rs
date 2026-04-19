@@ -1,10 +1,10 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 use svelte_component_semantics::SymbolFlags;
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
-    pub props: Option<PropsAnalysis>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
     pub instance_node_id_offset: u32,
@@ -27,7 +27,6 @@ impl ScriptAnalysis {
     fn new() -> Self {
         Self {
             info: None,
-            props: None,
             props_id: None,
             exports: Vec::new(),
             instance_node_id_offset: 0,
@@ -45,6 +44,13 @@ impl ScriptAnalysis {
             blocker_data: BlockerData::default(),
             script_rune_calls: ScriptRuneCalls::new(),
         }
+    }
+
+    /// Pre-semantic `$props()` declaration shape, or `None` when the
+    /// component has no `$props()` call. Consumers read props metadata
+    /// straight from this — no post-semantic copy.
+    pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
+        self.info.as_ref()?.props_declaration.as_ref()
     }
 }
 

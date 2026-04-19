@@ -361,7 +361,7 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
         return;
     }
 
-    let Some(props) = &data.script.props else {
+    let Some(props) = data.script.props_declaration() else {
         return;
     };
 

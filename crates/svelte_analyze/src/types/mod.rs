@@ -11,9 +11,9 @@ pub use data::{
     ElementFlags, ElementSizeKind, EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
     ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey,
     IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
-    OutputPlanData, PropAnalysis, PropsAnalysis, RenderTagArgPlan, RenderTagCalleeMode,
-    RenderTagPlan, ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
-    TemplateSemanticsData, TitleElementData, WindowBindKind,
+    OutputPlanData, RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind,
+    RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData,
+    TitleElementData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{

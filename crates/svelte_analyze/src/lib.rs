@@ -30,14 +30,14 @@ pub use types::data::{
     FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey, FragmentKeyExt,
     IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
     NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef, ParserResult,
-    PickledAwaitOffsets, PropAnalysis, PropDeclarationKind, PropDeclarationSemantics,
-    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, PropsAnalysis,
-    PropsObjectPropertySemantics, ProxyStateInits, ReactivitySemantics, ReferenceSemantics,
-    RenderTagCalleeMode, RenderTagPlan, ResizeObserverKind, RichContentFacts,
-    RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
-    ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
-    StateDeclarationSemantics, StateKind, StmtHandle, StoreDeclarationSemantics, TemplateAnalysis,
-    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    PickledAwaitOffsets, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
+    PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ProxyStateInits,
+    ReactivitySemantics, ReferenceSemantics, RenderTagCalleeMode, RenderTagPlan,
+    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
+    RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls, SignalReferenceKind,
+    SnippetData, SnippetParamStrategy, StateBindingSemantics, StateDeclarationSemantics, StateKind,
+    StmtHandle, StoreDeclarationSemantics, TemplateAnalysis, TemplateElementEntry,
+    TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -202,14 +202,16 @@ pub fn analyze_module<'a>(
 }
 fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
     let has_exports = !data.script.exports.is_empty();
-    let has_bindable = data.script.props.as_ref().is_some_and(|p| p.has_bindable);
+    let has_bindable = data
+        .script
+        .props_declaration()
+        .is_some_and(|d| d.has_bindable());
     let has_stores = data.reactivity.has_store_declarations();
     let has_ce_props = data.output.custom_element
         && data
             .script
-            .props
-            .as_ref()
-            .is_some_and(|p| !p.props.is_empty());
+            .props_declaration()
+            .is_some_and(|d| !d.props.is_empty());
     let needs_push = has_bindable
         || has_exports
         || has_ce_props
@@ -218,7 +220,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         || (!data.uses_runes() && data.script.immutable)
         || dev;
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
-    let needs_props_param = data.script.props.is_some() || needs_push;
+    let needs_props_param = data.script.props_declaration().is_some() || needs_push;
 
     RuntimePlan {
         needs_push,

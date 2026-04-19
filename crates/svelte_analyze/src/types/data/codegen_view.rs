@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -40,8 +41,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
-    pub fn props(&self) -> Option<&PropsAnalysis> {
-        self.data.script.props.as_ref()
+    pub fn props(&self) -> Option<&PropsDeclaration> {
+        self.data.script.props_declaration()
     }
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context

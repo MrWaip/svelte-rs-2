@@ -4113,9 +4113,8 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
 
     let props = data
         .script
-        .props
-        .as_ref()
-        .unwrap_or_else(|| panic!("expected props analysis in legacy mode"));
+        .props_declaration()
+        .unwrap_or_else(|| panic!("expected props declaration in legacy mode"));
     assert_eq!(props.props.len(), 1);
     assert_eq!(props.props[0].local_name.as_str(), "count");
     assert_eq!(props.props[0].default_text.as_deref(), Some("1"));
