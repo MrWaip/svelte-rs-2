@@ -5,10 +5,12 @@
 //! lookups come from `ComponentSemantics`. No `AnalysisData` access.
 
 use super::super::{
-    BlockSemantics, BlockSemanticsStore, EachAsyncKind, EachBlockSemantics, EachFlags, EachFlavor,
-    EachIndexKind, EachItemKind, EachKeyKind,
+    BlockSemantics, BlockSemanticsStore, EachAsyncKind, EachBlockSemantics, EachCollectionKind,
+    EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
 };
-use crate::reactivity_semantics::data::{ReactivitySemantics, ReferenceSemantics};
+use crate::reactivity_semantics::data::{
+    PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics,
+};
 use crate::types::data::{BlockerData, ParserResult};
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference, Statement};
 use oxc_ast_visit::Visit;
@@ -251,6 +253,12 @@ impl<'a> Ctx<'_, 'a> {
             EachAsyncKind::Sync
         };
 
+        // Collection read lowering — bool-ified on the root identifier
+        // of the collection expression.
+        let collection_kind = collection_expr
+            .map(|e| self.collection_kind(e))
+            .unwrap_or(EachCollectionKind::Regular);
+
         let has_key = !matches!(key, EachKeyKind::Unkeyed);
         let has_index = matches!(index, EachIndexKind::Declared { .. });
         let key_is_item = matches!(key, EachKeyKind::KeyedByItem);
@@ -310,8 +318,35 @@ impl<'a> Ctx<'_, 'a> {
                 each_flags,
                 shadows_outer,
                 async_kind,
+                collection_kind,
             }),
         );
+    }
+
+    /// Walk the collection expression to its root identifier through
+    /// member accesses and parentheses, then ask reactivity whether the
+    /// root is a prop-source getter. Non-identifier roots → `Regular`.
+    fn collection_kind(&self, expr: &Expression<'a>) -> EachCollectionKind {
+        let mut current = expr;
+        loop {
+            match current {
+                Expression::StaticMemberExpression(m) => current = &m.object,
+                Expression::ComputedMemberExpression(m) => current = &m.object,
+                Expression::ParenthesizedExpression(p) => current = &p.expression,
+                Expression::Identifier(id) => {
+                    let Some(ref_id) = id.reference_id.get() else {
+                        return EachCollectionKind::Regular;
+                    };
+                    return match self.reactivity.reference_semantics(ref_id) {
+                        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. }) => {
+                            EachCollectionKind::PropSource
+                        }
+                        _ => EachCollectionKind::Regular,
+                    };
+                }
+                _ => return EachCollectionKind::Regular,
+            }
+        }
     }
 
     /// Collect all `SymbolId`s introduced by this each-block in its

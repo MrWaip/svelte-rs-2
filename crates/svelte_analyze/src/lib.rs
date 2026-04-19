@@ -11,8 +11,8 @@ mod validate;
 pub(crate) mod walker;
 
 pub use block_semantics::{
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind, EachKeyKind,
+    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
+    EachIndexKind, EachItemKind, EachKeyKind,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

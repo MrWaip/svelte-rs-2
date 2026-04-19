@@ -69,6 +69,28 @@ pub struct EachBlockSemantics {
     /// the block — per SEMANTIC_LAYER_ARCHITECTURE.md — so it rides in
     /// the block's semantic payload rather than a separate query.
     pub async_kind: EachAsyncKind,
+    /// Lowering shape of the collection read. Resolved from
+    /// `reactivity_semantics` on the root identifier of the collection
+    /// expression. Codegen uses this to choose between a thunk-wrapped
+    /// read and a direct prop-getter call; it never re-queries reactivity
+    /// for this answer.
+    pub collection_kind: EachCollectionKind,
+}
+
+/// How the each-block's collection expression lowers at the call site.
+///
+/// The answer is keyed off the *root identifier* of the expression
+/// (after walking through member accesses and parentheses). Non-
+/// identifier roots — literals, calls, `this`, etc. — fall into
+/// `Regular`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EachCollectionKind {
+    /// Wrap the expression in a thunk `() => <expr>` before passing
+    /// it to `$.each(...)`.
+    Regular,
+    /// Root is a prop-source getter — pass the identifier directly
+    /// without thunk-wrapping, since the getter is already a function.
+    PropSource,
 }
 
 /// How the each-block's collection expression interacts with async.

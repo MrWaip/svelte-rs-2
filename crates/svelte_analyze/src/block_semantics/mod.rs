@@ -11,8 +11,8 @@ pub mod data;
 
 pub use builder::build;
 pub use data::{
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind, EachKeyKind,
+    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
+    EachIndexKind, EachItemKind, EachKeyKind,
 };
 
 use crate::scope::SymbolId;

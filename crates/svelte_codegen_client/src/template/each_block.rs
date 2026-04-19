@@ -4,8 +4,8 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 
 use svelte_analyze::{
-    EachBlockSemantics, EachFlags, EachIndexKind, EachItemKind, EachKeyKind, FragmentKey,
-    PropReferenceSemantics, ReferenceSemantics,
+    EachBlockSemantics, EachCollectionKind, EachFlags, EachIndexKind, EachItemKind, EachKeyKind,
+    FragmentKey,
 };
 use svelte_ast::NodeId;
 
@@ -84,15 +84,9 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_CONTROLLED;
     }
 
-    // Prop-source detection for the collection read: prop-source getters
-    // lower as a direct call without the usual thunk wrap. This is a
-    // lowering-shape question answered by reactivity at the root
-    // identifier of the collection expression.
-    let collection_root_semantics = node_root_reference_semantics(ctx, block_id);
-    let is_prop_source = matches!(
-        collection_root_semantics,
-        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
-    );
+    // Collection read lowering shape is pre-computed by Block Semantics
+    // from reactivity — codegen just reads the answer.
+    let is_prop_source = matches!(sem.collection_kind, EachCollectionKind::PropSource);
 
     // Async lowering shape is pre-computed by Block Semantics.
     let (has_await, blockers): (bool, &[u32]) = match &sem.async_kind {
@@ -281,32 +275,6 @@ pub(crate) fn gen_each_block<'a>(
 
         let each_call = ctx.b.call_expr("$.each", each_args);
         body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
-    }
-}
-
-/// Reference-semantics of the root identifier of an `{#each <expr> as ...}`
-/// collection expression. Walks through member accesses and parentheses
-/// to the leaf identifier and asks reactivity for its classification.
-/// Returns `NonReactive` for non-identifier roots (literals, calls, ...).
-fn node_root_reference_semantics(ctx: &Ctx<'_>, block_id: NodeId) -> ReferenceSemantics {
-    let handle = ctx.query.view.node_expr_handle(block_id);
-    let Some(expr) = ctx.state.parsed.expr(handle) else {
-        return ReferenceSemantics::NonReactive;
-    };
-    let mut current = expr;
-    loop {
-        match current {
-            Expression::StaticMemberExpression(m) => current = &m.object,
-            Expression::ComputedMemberExpression(m) => current = &m.object,
-            Expression::ParenthesizedExpression(p) => current = &p.expression,
-            Expression::Identifier(id) => {
-                return match id.reference_id.get() {
-                    Some(ref_id) => ctx.query.analysis.reference_semantics(ref_id),
-                    None => ReferenceSemantics::NonReactive,
-                };
-            }
-            _ => return ReferenceSemantics::NonReactive,
-        }
     }
 }
 
