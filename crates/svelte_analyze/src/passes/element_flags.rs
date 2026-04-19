@@ -219,11 +219,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         let data = &mut *ctx.data;
-        let base_name = cn
-            .name
-            .split('.')
-            .next()
-            .unwrap_or_else(|| cn.name.as_str());
+        let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
         if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
             data.elements
                 .flags

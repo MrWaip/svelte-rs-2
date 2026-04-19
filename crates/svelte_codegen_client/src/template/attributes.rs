@@ -246,7 +246,6 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) if a.name == "class" => {
             // Handled by process_class_attribute_and_directives
-            return;
         }
         Attribute::ExpressionAttribute(a) if a.name == "autofocus" => {
             let val = get_attr_expr(ctx, attr_id);

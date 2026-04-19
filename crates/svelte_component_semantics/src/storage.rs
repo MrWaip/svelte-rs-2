@@ -513,7 +513,7 @@ impl<'a> ComponentSemantics<'a> {
     pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbols
             .symbol_names()
-            .map(|s| CompactString::from(s))
+            .map(CompactString::from)
             .collect()
     }
 

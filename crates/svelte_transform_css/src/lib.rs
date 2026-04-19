@@ -251,7 +251,7 @@ impl VisitMut for ScopeSelectors<'_> {
                 node.prelude_override = Some(CompactString::new(stripped));
             } else if self.keyframes.iter().any(|k| k.as_str() == prelude) {
                 // Local keyframe: prefix with component hash
-                node.prelude_override = Some(CompactString::new(&format!(
+                node.prelude_override = Some(CompactString::new(format!(
                     "{}-{}",
                     self.hash_class, prelude
                 )));

@@ -111,6 +111,12 @@ pub struct DebugTagData {
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
+impl Default for DebugTagData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DebugTagData {
     pub fn new() -> Self {
         Self {
@@ -125,6 +131,12 @@ impl DebugTagData {
 
 pub struct TitleElementData {
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+}
+
+impl Default for TitleElementData {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TitleElementData {

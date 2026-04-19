@@ -596,12 +596,24 @@ fn each_block_with_index_and_key() {
     };
     assert_eq!(tag.collection_span.source_text(source), "items");
     assert_eq!(
-        tag.context_span.as_ref().unwrap().source_text(source),
+        tag.context_span
+            .as_ref()
+            .expect("test invariant")
+            .source_text(source),
         "item"
     );
-    assert_eq!(tag.index_span.as_ref().unwrap().source_text(source), "i");
     assert_eq!(
-        tag.key_span.as_ref().unwrap().source_text(source),
+        tag.index_span
+            .as_ref()
+            .expect("test invariant")
+            .source_text(source),
+        "i"
+    );
+    assert_eq!(
+        tag.key_span
+            .as_ref()
+            .expect("test invariant")
+            .source_text(source),
         "item.id"
     );
 }
@@ -975,7 +987,7 @@ fn recovery_unterminated_start_tag_with_partial_attr() {
     let mut scanner = Scanner::new("<div class=");
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert!(!diagnostics.is_empty());
 }
 
@@ -988,7 +1000,7 @@ fn recovery_unclosed_script_tag() {
     if let TokenType::ScriptTag(ref st) = tokens[0].token_type {
         assert_eq!(st.content_span.source_text(source), "code");
     }
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
@@ -1001,7 +1013,7 @@ fn recovery_unclosed_style_tag() {
     if let TokenType::StyleTag(ref st) = tokens[0].token_type {
         assert_eq!(st.content_span.source_text(source), ".foo{}");
     }
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
@@ -1010,7 +1022,7 @@ fn recovery_unclosed_comment() {
     let mut scanner = Scanner::new("<!-- text");
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(tokens[0].token_type == TokenType::Comment);
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
@@ -1023,7 +1035,7 @@ fn recovery_unclosed_interpolation() {
     if let TokenType::Interpolation(ref et) = tokens[0].token_type {
         assert_eq!(et.expression_span.source_text(source), "name");
     }
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
@@ -1036,7 +1048,7 @@ fn recovery_unclosed_if_tag() {
     if let TokenType::StartIfTag(ref st) = tokens[0].token_type {
         assert_eq!(st.expression_span.source_text(source), "cond");
     }
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
@@ -1053,6 +1065,6 @@ fn recovery_start_tag_then_more_content() {
     let mut scanner = Scanner::new("<div<p>hello</p>");
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(tokens.len() > 1);
-    assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert!(!diagnostics.is_empty());
 }

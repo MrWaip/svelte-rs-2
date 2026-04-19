@@ -243,7 +243,7 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
                     .data
                     .scoping
                     .find_binding(root, base)
-                    .is_some_and(|sym_id| !is_props_binding(&self.data, sym_id))
+                    .is_some_and(|sym_id| !is_props_binding(self.data, sym_id))
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {

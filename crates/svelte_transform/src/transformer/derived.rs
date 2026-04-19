@@ -124,7 +124,12 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                     call.arguments.push(arg);
                                 }
                                 call.callee = b.rid_expr("$.async_derived");
-                                let call_expr = b.move_expr(declarator.init.as_mut().unwrap());
+                                let call_expr = b.move_expr(
+                                    declarator
+                                        .init
+                                        .as_mut()
+                                        .expect("$derived declarator always has an initializer"),
+                                );
                                 declarator.init =
                                     Some(match async_mode.unwrap_or(AsyncDerivedMode::Await) {
                                         AsyncDerivedMode::Await => b.await_expr(call_expr),
@@ -143,7 +148,9 @@ fn wrap_derived_thunks_in_stmts<'a>(
 
                                 if dev_ctx.is_some() {
                                     let derived_expr =
-                                        b.move_expr(declarator.init.as_mut().unwrap());
+                                        b.move_expr(declarator.init.as_mut().expect(
+                                            "$derived declarator always has an initializer",
+                                        ));
                                     declarator.init = Some(b.call_expr(
                                         "$.tag",
                                         [Arg::Expr(derived_expr), Arg::Str(var_name)],

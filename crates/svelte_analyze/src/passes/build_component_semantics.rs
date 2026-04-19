@@ -174,7 +174,7 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
                                 block.id,
                                 self.parsed
                                     .stmt_handle(block.expression_span.start)
-                                    .unwrap(),
+                                    .expect("snippet block expression was pre-parsed"),
                             );
                         ctx.visit_js_statement(stmt);
                         // The arrow visitor created its own scope — read it back

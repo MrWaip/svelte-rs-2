@@ -38,6 +38,12 @@ pub struct RichContentFacts {
     entries: FxHashMap<FragmentKey, RichContentFactsEntry>,
 }
 
+impl Default for RichContentFacts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RichContentFacts {
     pub fn new() -> Self {
         Self {

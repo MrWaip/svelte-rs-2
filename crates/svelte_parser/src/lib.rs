@@ -153,6 +153,7 @@ struct AwaitBlockEntry {
 
 /// Push a node id onto the current children list.
 /// Debug-asserts the stack is non-empty; gracefully no-ops in release.
+#[allow(clippy::ptr_arg)]
 fn push_child(children_stack: &mut Vec<Vec<NodeId>>, id: NodeId) {
     debug_assert!(
         !children_stack.is_empty(),

@@ -30,6 +30,12 @@ pub struct FragmentData {
     pub(crate) fragment_blockers: FxHashMap<FragmentKey, SmallVec<[u32; 2]>>,
 }
 
+impl Default for FragmentData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FragmentData {
     pub fn new() -> Self {
         Self {

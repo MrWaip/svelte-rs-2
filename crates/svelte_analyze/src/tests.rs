@@ -1498,7 +1498,9 @@ fn each_block_dynamic() {
 fn if_block_alternate_content_type() {
     let (c, data) = analyze_source("{#if x}Hello{:else}<span></span>{/if}");
     assert_consequent_content_type(&data, &c, "x", ContentStrategy::Static("Hello".to_string()));
-    let if_id = find_if_block(&c.fragment, &c, "x").unwrap().id;
+    let if_id = find_if_block(&c.fragment, &c, "x")
+        .expect("test invariant")
+        .id;
     assert_content_strategy_variant(&data, FragmentKey::IfAlternate(if_id), "SingleElement");
 }
 
@@ -1521,18 +1523,24 @@ fn each_block_shadowing() {
     assert_dynamic_tag(&data, &c, "item");
 
     let root = data.scoping.root_scope_id();
-    let root_sym = data.scoping.find_binding(root, "item").unwrap();
+    let root_sym = data
+        .scoping
+        .find_binding(root, "item")
+        .expect("test invariant");
     assert!(matches!(
         data.declaration_semantics(data.scoping.symbol_declaration(root_sym)),
         crate::types::data::DeclarationSemantics::State(_)
     ));
 
-    let each_block = find_each_block(&c.fragment, &c, "items").unwrap();
+    let each_block = find_each_block(&c.fragment, &c, "items").expect("test invariant");
     let each_scope = data
         .scoping
         .fragment_scope(&FragmentKey::EachBody(each_block.id))
-        .unwrap();
-    let each_sym = data.scoping.find_binding(each_scope, "item").unwrap();
+        .expect("test invariant");
+    let each_sym = data
+        .scoping
+        .find_binding(each_scope, "item")
+        .expect("test invariant");
     assert!(matches!(
         data.declaration_semantics(data.scoping.symbol_declaration(each_sym)),
         crate::types::data::DeclarationSemantics::Contextual(_)
@@ -2440,16 +2448,18 @@ fn script_rune_calls_survive_template_node_id_activity() {
 {@html html}"#;
     let (component, data, parsed) = analyze_source_with_parsed(source);
 
-    let module_source = component.source_text(parsed.module_script_content_span.unwrap());
-    let instance_source = component.source_text(parsed.script_content_span.unwrap());
+    let module_source =
+        component.source_text(parsed.module_script_content_span.expect("test invariant"));
+    let instance_source =
+        component.source_text(parsed.script_content_span.expect("test invariant"));
     let module_call = find_call_node_id(
-        parsed.module_program.as_ref().unwrap(),
+        parsed.module_program.as_ref().expect("test invariant"),
         module_source,
         "$effect.root(() => {})",
     )
     .expect("missing module rune call");
     let instance_call = find_call_node_id(
-        parsed.program.as_ref().unwrap(),
+        parsed.program.as_ref().expect("test invariant"),
         instance_source,
         "$state(0)",
     )
@@ -2795,7 +2805,7 @@ mod expression_info_tests {
 
     #[test]
     fn analyze_simple_identifier() {
-        let info = parse_and_analyze("count", 0).unwrap();
+        let info = parse_and_analyze("count", 0).expect("test invariant");
         assert_eq!(info.kind(), &ExpressionKind::Identifier(compact("count")));
         assert_eq!(info.identifier_name(), Some("count"));
         assert!(info.is_identifier());
@@ -2806,7 +2816,7 @@ mod expression_info_tests {
 
     #[test]
     fn analyze_binary_expression() {
-        let info = parse_and_analyze("count + 1", 0).unwrap();
+        let info = parse_and_analyze("count + 1", 0).expect("test invariant");
         assert_eq!(info.identifier_name(), None);
         assert!(!info.has_store_ref());
         assert!(!info.has_call());
@@ -2816,7 +2826,7 @@ mod expression_info_tests {
 
     #[test]
     fn analyze_call_expression() {
-        let info = parse_and_analyze("foo(a, b)", 0).unwrap();
+        let info = parse_and_analyze("foo(a, b)", 0).expect("test invariant");
         assert!(matches!(info.kind(), ExpressionKind::CallExpression { .. }));
         assert!(info.has_call());
         assert!(info.has_side_effects());
@@ -2827,7 +2837,7 @@ mod expression_info_tests {
 
     #[test]
     fn analyze_assignment() {
-        let info = parse_and_analyze("count = 10", 0).unwrap();
+        let info = parse_and_analyze("count = 10", 0).expect("test invariant");
         assert_eq!(info.kind(), &ExpressionKind::Assignment);
         assert!(info.has_side_effects());
         assert!(info.needs_legacy_coarse_wrap());
@@ -2835,7 +2845,7 @@ mod expression_info_tests {
 
     #[test]
     fn analyze_store_ref() {
-        let info = parse_and_analyze("$count + 1", 0).unwrap();
+        let info = parse_and_analyze("$count + 1", 0).expect("test invariant");
         assert!(info.has_store_ref());
     }
 }
@@ -3720,8 +3730,10 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let mut options = AnalyzeOptions::default();
-    options.warning_filter = Some(Box::new(|_| false));
+    let options = AnalyzeOptions {
+        warning_filter: Some(Box::new(|_| false)),
+        ..AnalyzeOptions::default()
+    };
     let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
 
@@ -3803,8 +3815,10 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let mut options = AnalyzeOptions::default();
-    options.warning_filter = Some(Box::new(|_| false));
+    let options = AnalyzeOptions {
+        warning_filter: Some(Box::new(|_| false)),
+        ..AnalyzeOptions::default()
+    };
     let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
 
@@ -3859,8 +3873,10 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
         parse_diags.is_empty(),
         "unexpected parse diagnostics: {parse_diags:?}"
     );
-    let mut options = AnalyzeOptions::default();
-    options.warning_filter = Some(Box::new(|_| false));
+    let options = AnalyzeOptions {
+        warning_filter: Some(Box::new(|_| false)),
+        ..AnalyzeOptions::default()
+    };
     let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
 
@@ -5613,7 +5629,7 @@ mod block_semantics_each_tests {
                 Node::EachBlock(b) => Some(b.id),
                 _ => None,
             })
-            .unwrap();
+            .expect("test invariant");
         let BlockSemantics::Each(sem) = data.block_semantics(block_id) else {
             panic!("expected Each variant")
         };

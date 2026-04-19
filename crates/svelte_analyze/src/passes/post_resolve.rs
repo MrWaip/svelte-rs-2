@@ -30,7 +30,7 @@ fn analyze_declarations(data: &mut AnalysisData) {
 
         let sym_id = data.scoping.find_binding(root, &decl.name);
         let rune_kind = decl.is_rune;
-        let is_mutated = sym_id.map_or(false, |id| data.scoping.is_mutated(id));
+        let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
 
         let is_foldable_rune = rune_kind == Some(RuneKind::State) && !is_mutated;
 

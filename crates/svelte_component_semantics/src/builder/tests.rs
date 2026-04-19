@@ -102,7 +102,7 @@ fn write_ref_marks_mutated() {
     let sem = build_instance("let x = 1; x = 2;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "x").unwrap();
+    let sym = sem.find_binding(root, "x").expect("test invariant");
     assert!(sem.is_mutated(sym));
 
     let refs = sem.get_resolved_reference_ids(sym);
@@ -115,7 +115,7 @@ fn compound_assignment_is_read_write() {
     let sem = build_instance("let x = 0; x += 1;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "x").unwrap();
+    let sym = sem.find_binding(root, "x").expect("test invariant");
     assert!(sem.is_mutated(sym));
 
     let refs = sem.get_resolved_reference_ids(sym);
@@ -128,7 +128,9 @@ fn compound_assignment_is_read_write() {
 #[test]
 fn update_expression_is_read_write() {
     let sem = build_instance("let x = 0; x++;");
-    let sym = sem.find_binding(sem.root_scope_id(), "x").unwrap();
+    let sym = sem
+        .find_binding(sem.root_scope_id(), "x")
+        .expect("test invariant");
     assert!(sem.is_mutated(sym));
 
     let refs = sem.get_resolved_reference_ids(sym);
@@ -147,7 +149,7 @@ fn var_hoists_to_function_scope() {
     assert!(sem.find_binding(root, "x").is_none());
 
     // f should be in root
-    let f_sym = sem.find_binding(root, "f").unwrap();
+    let f_sym = sem.find_binding(root, "f").expect("test invariant");
     assert_eq!(sem.symbol_name(f_sym), "f");
 
     // x should be in f's function scope, not in the block scope
@@ -174,7 +176,7 @@ fn function_declaration_hoisting() {
     let sem = build_instance("function foo() {}");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "foo").unwrap();
+    let sym = sem.find_binding(root, "foo").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::Function));
 }
 
@@ -184,7 +186,7 @@ fn forward_reference_to_function() {
     let sem = build_instance("foo(); function foo() {}");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "foo").unwrap();
+    let sym = sem.find_binding(root, "foo").expect("test invariant");
     let refs = sem.get_resolved_reference_ids(sym);
     assert_eq!(refs.len(), 1, "forward ref to foo should be resolved");
     assert!(sem.get_reference(refs[0]).is_read());
@@ -196,7 +198,7 @@ fn forward_reference_to_var() {
     let sem = build_instance("x; var x = 1;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "x").unwrap();
+    let sym = sem.find_binding(root, "x").expect("test invariant");
     let refs = sem.get_resolved_reference_ids(sym);
     assert_eq!(refs.len(), 1, "forward ref to var x should be resolved");
 }
@@ -207,7 +209,7 @@ fn forward_reference_to_let_in_same_scope() {
     let sem = build_instance("x; let x = 1;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "x").unwrap();
+    let sym = sem.find_binding(root, "x").expect("test invariant");
     let refs = sem.get_resolved_reference_ids(sym);
     assert_eq!(
         refs.len(),
@@ -299,7 +301,7 @@ fn import_binding() {
     let sem = build_instance("import { foo } from 'bar';");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "foo").unwrap();
+    let sym = sem.find_binding(root, "foo").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::Import));
 }
 
@@ -308,7 +310,7 @@ fn import_default_binding() {
     let sem = build_instance("import Foo from 'bar';");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "Foo").unwrap();
+    let sym = sem.find_binding(root, "Foo").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::Import));
 }
 
@@ -317,7 +319,7 @@ fn import_namespace_binding() {
     let sem = build_instance("import * as ns from 'bar';");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "ns").unwrap();
+    let sym = sem.find_binding(root, "ns").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::Import));
 }
 
@@ -327,7 +329,7 @@ fn member_expression_clears_write() {
     let sem = build_instance("let obj = {}; obj.x = 1;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "obj").unwrap();
+    let sym = sem.find_binding(root, "obj").expect("test invariant");
     // obj has a read reference from `obj.x = 1` (member base is read)
     // NOT a write reference
     assert!(!sem.is_mutated(sym));
@@ -368,11 +370,11 @@ fn module_and_instance_cross_resolution() {
     let root = sem.root_scope_id();
 
     // instance binding
-    let x_sym = sem.find_binding(root, "x").unwrap();
+    let x_sym = sem.find_binding(root, "x").expect("test invariant");
     assert_eq!(sem.symbol_name(x_sym), "x");
 
     // module binding should be visible from instance (instance root parents to module)
-    let shared_sym = sem.find_binding(root, "shared").unwrap();
+    let shared_sym = sem.find_binding(root, "shared").expect("test invariant");
     assert_eq!(sem.symbol_name(shared_sym), "shared");
 
     // shared should have a read reference from instance
@@ -386,7 +388,7 @@ fn const_variable_not_mutated() {
     let sem = build_instance("const x = 1; x;");
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "x").unwrap();
+    let sym = sem.find_binding(root, "x").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::ConstVariable));
     assert!(!sem.is_mutated(sym));
 }
@@ -438,7 +440,7 @@ fn switch_statement_scope() {
 fn class_declaration_binding() {
     let sem = build_instance("class Foo {}");
     let root = sem.root_scope_id();
-    let sym = sem.find_binding(root, "Foo").unwrap();
+    let sym = sem.find_binding(root, "Foo").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::Class));
 }
 
@@ -455,7 +457,7 @@ fn class_expression_name_in_own_scope() {
 fn ts_enum_declaration_binding() {
     let sem = build_instance_ts("enum Direction { Up, Down }");
     let root = sem.root_scope_id();
-    let sym = sem.find_binding(root, "Direction").unwrap();
+    let sym = sem.find_binding(root, "Direction").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::RegularEnum));
 }
 
@@ -463,7 +465,7 @@ fn ts_enum_declaration_binding() {
 fn ts_const_enum_declaration_binding() {
     let sem = build_instance_ts("const enum Status { Active, Inactive }");
     let root = sem.root_scope_id();
-    let sym = sem.find_binding(root, "Status").unwrap();
+    let sym = sem.find_binding(root, "Status").expect("test invariant");
     assert!(sem.symbol_flags(sym).contains(SymbolFlags::ConstEnum));
 }
 
@@ -500,7 +502,7 @@ impl<'a> TemplateWalker<'a> for ExprRefWalker<'a> {
         // Simulate: {count} in template → read reference to "count"
         let parsed = Parser::new(self.alloc, "count", SourceType::mjs())
             .parse_expression()
-            .unwrap();
+            .expect("test invariant");
         ctx.visit_js_expression(&parsed);
     }
 }
@@ -522,7 +524,7 @@ fn template_expression_resolves_instance_binding() {
     let sem = builder.finish();
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "count").unwrap();
+    let sym = sem.find_binding(root, "count").expect("test invariant");
     let refs = sem.get_resolved_reference_ids(sym);
     // One ref from template expression
     assert_eq!(refs.len(), 1);
@@ -551,7 +553,7 @@ impl<'a> TemplateWalker<'a> for ChildScopeWalker<'a> {
         // Now reference "item" from template
         let expr = Parser::new(self.alloc, "item", SourceType::mjs())
             .parse_expression()
-            .unwrap();
+            .expect("test invariant");
         ctx.visit_js_expression(&expr);
 
         ctx.leave_scope();
@@ -608,7 +610,7 @@ fn template_shorthand_bind_reference() {
     let sem = builder.finish();
     let root = sem.root_scope_id();
 
-    let sym = sem.find_binding(root, "value").unwrap();
+    let sym = sem.find_binding(root, "value").expect("test invariant");
     // bind:value creates a Write reference → mutated
     assert!(sem.is_mutated(sym));
 
@@ -648,7 +650,7 @@ impl<'a> TemplateWalker<'a> for UnresolvedExprWalker<'a> {
     fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         let parsed = Parser::new(self.alloc, "console.log(x)", SourceType::mjs())
             .parse_expression()
-            .unwrap();
+            .expect("test invariant");
         ctx.visit_js_expression(&parsed);
     }
 }
@@ -699,8 +701,12 @@ fn template_shorthand_gets_unique_node_id() {
     builder.add_template(&mut walker);
     let sem = builder.finish();
 
-    let value_sym = sem.find_binding(sem.root_scope_id(), "value").unwrap();
-    let name_sym = sem.find_binding(sem.root_scope_id(), "name").unwrap();
+    let value_sym = sem
+        .find_binding(sem.root_scope_id(), "value")
+        .expect("test invariant");
+    let name_sym = sem
+        .find_binding(sem.root_scope_id(), "name")
+        .expect("test invariant");
 
     let value_refs = sem.get_resolved_reference_ids(value_sym);
     let name_refs = sem.get_resolved_reference_ids(name_sym);
@@ -760,8 +766,8 @@ fn node_ids_no_collision_between_programs() {
 
     // Both symbols should have distinct declaration NodeIds
     let root = sem.root_scope_id();
-    let shared_sym = sem.find_binding(root, "shared").unwrap();
-    let x_sym = sem.find_binding(root, "x").unwrap();
+    let shared_sym = sem.find_binding(root, "shared").expect("test invariant");
+    let x_sym = sem.find_binding(root, "x").expect("test invariant");
 
     let shared_node = sem.symbol_declaration(shared_sym);
     let x_node = sem.symbol_declaration(x_sym);

@@ -724,7 +724,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 semantic_source_root_name,
                 segments,
             );
-            return;
         }
     }
 

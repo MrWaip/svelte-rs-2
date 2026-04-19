@@ -84,7 +84,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         ctx.query.view.namespace(el.id),
         Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) | Some(NamespaceKind::AnnotationXml)
     );
-    write!(html, "<{}", el.name).unwrap();
+    write!(html, "<{}", el.name).expect("writing to String never fails");
 
     // Track whether we emitted a class attribute so we know to add one later.
     let mut wrote_class_attr = false;
@@ -104,9 +104,11 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                         // Static class: bake scoped hash directly into the template.
                         let val = ctx.query.component.source_text(a.value_span);
                         if is_scoped {
-                            write!(html, " class=\"{val} {css_hash}\"").unwrap();
+                            write!(html, " class=\"{val} {css_hash}\"")
+                                .expect("writing to String never fails");
                         } else {
-                            write!(html, " class=\"{val}\"").unwrap();
+                            write!(html, " class=\"{val}\"")
+                                .expect("writing to String never fails");
                         }
                         wrote_class_attr = true;
                         continue;
@@ -119,16 +121,19 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                     }
                     let val = ctx.query.component.source_text(a.value_span);
                     if lowercase_attrs {
-                        write!(html, " {}=\"{val}\"", a.name.to_lowercase()).unwrap();
+                        write!(html, " {}=\"{val}\"", a.name.to_lowercase())
+                            .expect("writing to String never fails");
                     } else {
-                        write!(html, " {}=\"{val}\"", a.name).unwrap();
+                        write!(html, " {}=\"{val}\"", a.name)
+                            .expect("writing to String never fails");
                     }
                 }
                 Attribute::BooleanAttribute(a) => {
                     if lowercase_attrs {
-                        write!(html, " {}=\"\"", a.name.to_lowercase()).unwrap();
+                        write!(html, " {}=\"\"", a.name.to_lowercase())
+                            .expect("writing to String never fails");
                     } else {
-                        write!(html, " {}=\"\"", a.name).unwrap();
+                        write!(html, " {}=\"\"", a.name).expect("writing to String never fails");
                     }
                 }
                 Attribute::LetDirectiveLegacy(_) => {}
@@ -139,7 +144,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         // When class directives or a dynamic class attr are present, set_class
         // carries the scope hash — don't also bake it into the template HTML.
         if is_scoped && !wrote_class_attr && !has_class_directives && !has_class_attribute {
-            write!(html, " class=\"{css_hash}\"").unwrap();
+            write!(html, " class=\"{css_hash}\"").expect("writing to String never fails");
         }
     }
 
@@ -151,7 +156,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
 
     // noscript content is stripped in the template
     if el.name == "noscript" {
-        write!(html, "</{}>", el.name).unwrap();
+        write!(html, "</{}>", el.name).expect("writing to String never fails");
         return (html, import_node);
     }
 
@@ -159,7 +164,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     // Only a hydration comment placeholder goes inside the element itself.
     if ctx.is_customizable_select(el.id) {
         html.push_str("<!>");
-        write!(html, "</{}>", el.name).unwrap();
+        write!(html, "</{}>", el.name).expect("writing to String never fails");
         return (html, import_node);
     }
 
@@ -196,6 +201,6 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         }
     }
 
-    write!(html, "</{}>", el.name).unwrap();
+    write!(html, "</{}>", el.name).expect("writing to String never fails");
     (html, import_node)
 }

@@ -25,7 +25,7 @@ fn to_base36(mut n: u32) -> String {
         n /= 36;
     }
     buf.reverse();
-    String::from_utf8(buf).unwrap()
+    String::from_utf8(buf).expect("DIGITS contains only ASCII bytes — always valid UTF-8")
 }
 
 #[cfg(test)]

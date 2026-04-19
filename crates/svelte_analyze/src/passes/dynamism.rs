@@ -118,11 +118,7 @@ impl TemplateVisitor for DynamismVisitor {
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         let data = &*ctx.data;
         let uses_runes = data.uses_runes();
-        let base_name = cn
-            .name
-            .split('.')
-            .next()
-            .unwrap_or_else(|| cn.name.as_str());
+        let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
         if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
             if uses_runes && is_reactive_component_binding(data, sym_id) {
                 ctx.data.dynamism.mark_dynamic_component(cn.id);

@@ -15,9 +15,7 @@ pub(crate) fn gen_const_tags<'a>(
     key: FragmentKey,
     stmts: &mut Vec<Statement<'a>>,
 ) -> Option<Statement<'a>> {
-    let Some(ids) = ctx.const_tags_for_fragment(&key).cloned() else {
-        return None;
-    };
+    let ids = ctx.const_tags_for_fragment(&key).cloned()?;
 
     // Check if any const tag triggers async mode
     let needs_async = ctx.state.experimental_async

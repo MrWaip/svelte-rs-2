@@ -41,7 +41,7 @@ pub(crate) fn gen_use_directive<'a>(
         .parsed
         .expr_handle(ud.name.start)
         .and_then(|handle| ctx.state.parsed.take_expr(handle))
-        .unwrap();
+        .expect("directive expression was pre-parsed");
 
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$node")];
     if has_expr {
@@ -120,7 +120,7 @@ pub(crate) fn gen_transition_directive<'a>(
         .parsed
         .expr_handle(td.name.start)
         .and_then(|handle| ctx.state.parsed.take_expr(handle))
-        .unwrap();
+        .expect("directive expression was pre-parsed");
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -160,7 +160,7 @@ pub(crate) fn gen_animate_directive<'a>(
         .parsed
         .expr_handle(ad.name.start)
         .and_then(|handle| ctx.state.parsed.take_expr(handle))
-        .unwrap();
+        .expect("directive expression was pre-parsed");
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(el_name), Arg::Expr(name_thunk)];

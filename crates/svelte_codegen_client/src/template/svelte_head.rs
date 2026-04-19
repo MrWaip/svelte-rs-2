@@ -48,5 +48,5 @@ fn to_base36(mut n: u32) -> String {
         n /= 36;
     }
     result.reverse();
-    String::from_utf8(result).unwrap()
+    String::from_utf8(result).expect("ASCII base-36 digits are always valid UTF-8")
 }

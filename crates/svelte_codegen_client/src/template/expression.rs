@@ -274,7 +274,9 @@ pub(crate) fn build_concat_from_parts<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.query.component.source).unwrap();
+                let s = part
+                    .text_value(&ctx.query.component.source)
+                    .expect("TextSpan/TextOwned parts always have a text value");
                 // Merge with previous Str part if possible
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
@@ -522,7 +524,7 @@ impl<'a> TemplateMemoState<'a> {
                     .computed_member_expr(ctx.b.rid_expr("$$promises"), ctx.b.num_expr(idx as f64))
             })
             .collect();
-        all_blockers.extend(self.extra_blockers.drain(..));
+        all_blockers.append(&mut self.extra_blockers);
         if all_blockers.is_empty() {
             ctx.b.void_zero_expr()
         } else {
@@ -909,7 +911,9 @@ fn build_concat_with_memo<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.query.component.source).unwrap();
+                let s = part
+                    .text_value(&ctx.query.component.source)
+                    .expect("TextSpan/TextOwned parts always have a text value");
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
                 } else {

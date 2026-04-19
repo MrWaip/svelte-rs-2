@@ -40,8 +40,8 @@ pub(crate) fn gen_each_block<'a>(
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
     let span_start = block.span.start;
-    let has_key = !matches!(sem.key, EachKeyKind::Unkeyed);
-    let has_index = matches!(sem.index, EachIndexKind::Declared { .. });
+    let _has_key = !matches!(sem.key, EachKeyKind::Unkeyed);
+    let _has_index = matches!(sem.index, EachIndexKind::Declared { .. });
     let has_fallback = block.fallback.is_some();
 
     // Extract the context binding pattern once when `as ...` is present.
@@ -75,7 +75,7 @@ pub(crate) fn gen_each_block<'a>(
         EachItemKind::NoBinding => SYNTHETIC_ITEM_NAME.to_string(),
     };
 
-    let key_is_item = matches!(sem.key, EachKeyKind::KeyedByItem);
+    let _key_is_item = matches!(sem.key, EachKeyKind::KeyedByItem);
 
     // Flag computation is owned by Block Semantics. Codegen only OR's in
     // EACH_IS_CONTROLLED, which is a call-site lowering decision.

@@ -88,7 +88,11 @@ pub(crate) fn run_template<'a>(
 
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
 
-        let Statement::ExpressionStatement(es) = program.body.pop().unwrap() else {
+        let Statement::ExpressionStatement(es) = program
+            .body
+            .pop()
+            .expect("body was pushed with a single statement above")
+        else {
             unreachable!()
         };
         parsed.replace_expr(handle, es.unbox().expression);
@@ -104,7 +108,13 @@ pub(crate) fn run_template<'a>(
 
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
 
-        parsed.replace_stmt(handle, program.body.pop().unwrap());
+        parsed.replace_stmt(
+            handle,
+            program
+                .body
+                .pop()
+                .expect("body was pushed with a single statement above"),
+        );
     }
 
     // Bind-directive expressions: build `SequenceExpression(getter_arrow, setter_arrow)`
@@ -137,7 +147,11 @@ pub(crate) fn run_template<'a>(
         program.body.clear();
         program.body.push(ast.statement_expression(SPAN, orig));
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
-        let Statement::ExpressionStatement(es) = program.body.pop().unwrap() else {
+        let Statement::ExpressionStatement(es) = program
+            .body
+            .pop()
+            .expect("body was pushed with a single statement above")
+        else {
             unreachable!()
         };
         let getter_body = es.unbox().expression;
@@ -158,7 +172,11 @@ pub(crate) fn run_template<'a>(
         transformer.in_bind_setter_traverse = true;
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
         transformer.in_bind_setter_traverse = false;
-        let Statement::ExpressionStatement(es) = program.body.pop().unwrap() else {
+        let Statement::ExpressionStatement(es) = program
+            .body
+            .pop()
+            .expect("body was pushed with a single statement above")
+        else {
             unreachable!()
         };
         let setter_body = es.unbox().expression;

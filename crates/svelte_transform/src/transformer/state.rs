@@ -73,7 +73,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 decl_kind,
                 decl_span_start,
                 declarator,
-                rune_kind.unwrap(),
+                rune_kind.expect("predicate returned true only for known rune kinds"),
             );
             stmts.insert(i, replacement);
             self.ident_counter += 1;
@@ -175,10 +175,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             call.arguments.first()
                                 .and_then(|arg| arg.as_expression())
                                 .is_some_and(|expr| {
-                                    !matches!(expr, Expression::AwaitExpression(_))
-                                        && !(dev
+                                    !(matches!(expr, Expression::AwaitExpression(_))
+                                        || (dev
                                             && matches!(expr, Expression::CallExpression(c)
-                                                if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_))))
+                                                if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_)))))
                                 })
                         } else {
                             false
@@ -186,7 +186,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     })
             },
             |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 this.gen_sync_derived_destructuring(&declarator.id, init, rune_kind, decl_kind)
             },
         );
@@ -212,7 +215,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     })
             },
             |this, decl_kind, decl_span_start, mut declarator, _| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start, decl_kind)
             },
         );
@@ -414,7 +420,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     && declarator.init.is_some()
             },
             |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 let value = if let Expression::CallExpression(mut call) = init {
                     if call.arguments.is_empty() {
                         this.b
@@ -708,14 +717,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = if self.dev && dev_label.is_some() {
-                    let label = dev_label.unwrap();
-                    self.b.call_expr(
+                let derived_call = match dev_label.filter(|_| self.dev) {
+                    Some(label) => self.b.call_expr(
                         "$.tag",
                         [Arg::Expr(derived_call), Arg::Str(label.to_string())],
-                    )
-                } else {
-                    derived_call
+                    ),
+                    None => derived_call,
                 };
 
                 let array_declarator = self.b.ast.variable_declarator(
@@ -924,14 +931,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = if self.dev && dev_label.is_some() {
-                    let label = dev_label.unwrap();
-                    self.b.call_expr(
+                let derived_call = match dev_label.filter(|_| self.dev) {
+                    Some(label) => self.b.call_expr(
                         "$.tag",
                         [Arg::Expr(derived_call), Arg::Str(label.to_string())],
-                    )
-                } else {
-                    derived_call
+                    ),
+                    None => derived_call,
                 };
 
                 let array_declarator = self.b.ast.variable_declarator(
@@ -1466,7 +1471,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 .as_deref()
                 .is_some_and(|n| info.ctor_synth_names.contains(n))
         }) {
-            let name = field_info.public_name.as_deref().unwrap();
+            let name = field_info
+                .public_name
+                .as_deref()
+                .expect("field_info with public_name is required by caller filter");
             new_body.push(self.b.class_private_field(&field_info.private_name, None));
             self.emit_getter_setter(&mut new_body, field_info, name);
         }
@@ -1573,7 +1581,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     _ => String::new(),
                 };
                 let label = self.class_tag_label(&field_name);
-                let value = self.b.move_expr(prop.value.as_mut().unwrap());
+                let value = self.b.move_expr(
+                    prop.value
+                        .as_mut()
+                        .expect("rune property definitions always carry an initializer"),
+                );
                 prop.value = Some(
                     self.b
                         .call_expr("$.tag", [Arg::Expr(value), Arg::Str(label)]),

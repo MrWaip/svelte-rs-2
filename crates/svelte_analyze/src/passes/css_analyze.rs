@@ -148,21 +148,21 @@ fn is_unscoped_pseudo_class(sel: &SimpleSelector) -> bool {
     // These pseudo-classes make the selector scoped
     if name == "has" || name == "is" || name == "where" {
         // ...unless all their children are global
-        return pc.args.as_ref().map_or(true, |args| {
+        return pc.args.as_ref().is_none_or(|args| {
             args.children
                 .iter()
-                .all(|c| c.children.iter().all(|r| is_global_relative_selector(r)))
+                .all(|c| c.children.iter().all(is_global_relative_selector))
         });
     }
     if name == "not" {
         // :not is special: unscoped unless it has multiple selectors in args
         // (e.g. :not(.x .y) should be scoped, :not(.x) is unscoped)
-        return pc.args.as_ref().map_or(true, |args| {
+        return pc.args.as_ref().is_none_or(|args| {
             args.children.iter().all(|c| c.children.len() == 1)
                 || args
                     .children
                     .iter()
-                    .all(|c| c.children.iter().all(|r| is_global_relative_selector(r)))
+                    .all(|c| c.children.iter().all(is_global_relative_selector))
         });
     }
     // All other pseudo-classes are unscoped
@@ -274,7 +274,7 @@ impl<'a> CssValidator<'a> {
                                         BlockChild::Declaration(d) => Some(d.span),
                                         _ => None,
                                     })
-                                    .unwrap();
+                                    .expect("has_declaration returned true");
                                 self.emit(
                                     DiagnosticKind::CssGlobalBlockInvalidDeclaration,
                                     decl_span,
@@ -310,7 +310,7 @@ impl<'a> CssValidator<'a> {
 
         let parent_is_lone_global_block = if has_parent {
             self.current_rule()
-                .map_or(false, |r| r.is_lone_global_block && !r.has_parent_rule)
+                .is_some_and(|r| r.is_lone_global_block && !r.has_parent_rule)
         } else {
             false
         };
@@ -358,8 +358,8 @@ impl<'a> CssValidator<'a> {
             let idx = node
                 .children
                 .iter()
-                .position(|r| is_global_relative_selector(r))
-                .unwrap();
+                .position(is_global_relative_selector)
+                .expect("caller guarantees selector contains a :global(...) child");
             if let SimpleSelector::Global {
                 args: Some(_),
                 span,
@@ -419,13 +419,13 @@ impl<'a> CssValidator<'a> {
     /// Validate nesting selector (`&`) placement.
     /// Ported from the `NestingSelector` visitor in `css-analyze.js`.
     fn validate_nesting_selector(&mut self, span: svelte_span::Span) {
-        let has_parent = self.current_rule().map_or(false, |r| r.has_parent_rule);
+        let has_parent = self.current_rule().is_some_and(|r| r.has_parent_rule);
 
         if !has_parent {
             // `&` outside nested rule — only valid inside lone `:global(&)`
             let valid = self
                 .current_rule()
-                .map_or(false, |r| r.is_lone_global_with_nesting_arg);
+                .is_some_and(|r| r.is_lone_global_with_nesting_arg);
             if !valid {
                 self.emit(DiagnosticKind::CssNestingSelectorInvalidPlacement, span);
             }
@@ -433,7 +433,7 @@ impl<'a> CssValidator<'a> {
             // `:global { &.foo { ... } }` — `&` inside lone top-level global block is invalid
             if self
                 .current_rule()
-                .map_or(false, |r| r.parent_is_lone_global_block)
+                .is_some_and(|r| r.parent_is_lone_global_block)
             {
                 self.emit(DiagnosticKind::CssGlobalBlockInvalidModifierStart, span);
             }
@@ -446,7 +446,7 @@ fn is_nesting_in_global_args(args: &SelectorList) -> bool {
     args.children
         .first()
         .and_then(|c| c.children.first())
-        .map_or(false, |r| {
+        .is_some_and(|r| {
             r.selectors.len() == 1 && matches!(r.selectors[0], SimpleSelector::Nesting(_))
         })
 }
@@ -472,14 +472,12 @@ impl Visit for CssValidator<'_> {
         // Validate relative selectors (leading combinator), walk into them, then validate complex
         for (i, child) in node.children.iter().enumerate() {
             if i == 0
-                && child.combinator.is_some()
                 && !self.in_pseudo_class
-                && !self.current_rule().map_or(false, |r| r.has_parent_rule)
+                && !self.current_rule().is_some_and(|r| r.has_parent_rule)
             {
-                self.emit(
-                    DiagnosticKind::CssSelectorInvalid,
-                    child.combinator.as_ref().unwrap().span,
-                );
+                if let Some(combinator) = child.combinator.as_ref() {
+                    self.emit(DiagnosticKind::CssSelectorInvalid, combinator.span);
+                }
             }
             self.visit_relative_selector(child);
         }

@@ -363,9 +363,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.b.ast.allocator,
                 &self.transform_data,
                 node,
-            ) {
-                return;
-            }
+            ) {}
         }
     }
 }

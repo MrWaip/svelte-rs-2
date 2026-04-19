@@ -588,9 +588,6 @@ impl<'a> Ctx<'a> {
     pub fn parent_each_blocks(&self, id: NodeId) -> Vec<NodeId> {
         self.query.view.parent_each_blocks(id).into_iter().collect()
     }
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.query.view.contains_group_binding(id)
-    }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.query.view.bind_blockers(id)
     }
@@ -644,24 +641,6 @@ impl<'a> Ctx<'a> {
         self.query.view.title_elements_for_fragment(key)
     }
 
-    // -- EachBlock shortcuts --
-
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.query.view.each_key_uses_index(id)
-    }
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.query.view.each_body_uses_index(id)
-    }
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.query.view.each_key_is_item(id)
-    }
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.query.view.each_has_animate(id)
-    }
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.query.view.each_needs_collection_id(id)
-    }
-
     // -- Parsed template JS handles --
 
     pub fn node_expr_handle(&self, node_id: NodeId) -> svelte_analyze::ExprHandle {
@@ -678,10 +657,6 @@ impl<'a> Ctx<'a> {
 
     pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
         self.query.view.let_directive_stmt_handle(id)
-    }
-
-    pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
-        self.query.view.each_context_stmt_handle(id)
     }
 
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {

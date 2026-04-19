@@ -624,6 +624,7 @@ struct FilteredNode<'a> {
 /// 4. For internal Text nodes: collapse boundary whitespace to single space,
 ///    but preserve whitespace adjacent to ExpressionTag
 /// 5. Group consecutive Text + ExpressionTag into TextConcat
+///
 /// Returns true for nodes that are filtered out of lowered representation.
 #[inline]
 fn is_skipped_node(node: &Node, inside_head: bool) -> bool {

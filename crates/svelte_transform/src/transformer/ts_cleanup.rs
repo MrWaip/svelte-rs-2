@@ -170,6 +170,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn strip_ts_expression_wrappers(&self, node: &mut Expression<'a>) {
         if self.is_ts {
+            #[allow(clippy::while_let_loop)]
             loop {
                 match node {
                     Expression::TSAsExpression(_)

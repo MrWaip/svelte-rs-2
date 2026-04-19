@@ -386,7 +386,7 @@ pub(crate) fn gen_fragment_with_setup<'a>(
             | ContentStrategy::SingleBlock(_)
     );
     if has_append && !body.is_empty() {
-        let append = body.pop().unwrap();
+        let append = body.pop().expect("body is non-empty (checked above)");
         emit_title_elements(ctx, key, &mut body);
         body.push(append);
     } else {

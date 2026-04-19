@@ -55,7 +55,7 @@ pub(crate) fn gen_if_block<'a>(
                 .query
                 .lowered_fragment(&alternate_key)
                 .first_if_block_id()
-                .unwrap();
+                .expect("alt_is_elseif guarantees the alternate fragment starts with an IfBlock");
 
             // Don't flatten if the else-if has await or introduces blockers
             // not present in the parent — it needs its own $.async() wrapper.
@@ -159,7 +159,7 @@ pub(crate) fn gen_if_block<'a>(
         else_clause = Some(if_stmt);
     }
 
-    let render_body_stmt = else_clause.unwrap();
+    let render_body_stmt = else_clause.expect("branch loop guarantees at least one iteration");
     let render_fn = ctx.b.arrow(ctx.b.params(["$$render"]), [render_body_stmt]);
 
     // 4. $.if() call + optional $.async() wrapping

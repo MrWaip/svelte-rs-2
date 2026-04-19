@@ -108,6 +108,12 @@ pub struct FragmentFacts {
     entries: FxHashMap<FragmentKey, FragmentFactsEntry>,
 }
 
+impl Default for FragmentFacts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FragmentFacts {
     pub fn new() -> Self {
         Self {

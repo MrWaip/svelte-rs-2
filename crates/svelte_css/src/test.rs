@@ -16,7 +16,7 @@ fn p(src: &str) -> StyleSheet {
     ss
 }
 
-fn text<'a>(span: svelte_span::Span, src: &'a str) -> &'a str {
+fn text(span: svelte_span::Span, src: &str) -> &str {
     span.source_text(src)
 }
 
@@ -177,7 +177,7 @@ fn pseudo_class_not() {
     };
     assert_eq!(pc.name.as_str(), "not");
     assert!(pc.args.is_some());
-    let args = pc.args.as_ref().unwrap();
+    let args = pc.args.as_ref().expect("test invariant");
     assert_eq!(args.children.len(), 1);
     assert!(matches!(
         &args.children[0].children[0].selectors[0],
@@ -376,8 +376,8 @@ fn attribute_with_value() {
         panic!("expected attribute selector");
     };
     assert_eq!(attr.name.as_str(), "href");
-    assert_eq!(text(attr.matcher.unwrap(), src), "^=");
-    assert_eq!(text(attr.value.unwrap(), src), "https");
+    assert_eq!(text(attr.matcher.expect("test invariant"), src), "^=");
+    assert_eq!(text(attr.value.expect("test invariant"), src), "https");
 }
 
 #[test]
@@ -393,7 +393,7 @@ fn attribute_with_flags() {
     };
     assert_eq!(attr.name.as_str(), "class");
     assert!(attr.flags.is_some());
-    assert_eq!(text(attr.flags.unwrap(), src), "i");
+    assert_eq!(text(attr.flags.expect("test invariant"), src), "i");
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +431,7 @@ fn at_keyframes() {
         panic!("expected at-rule");
     };
     assert_eq!(at.name.as_str(), "keyframes");
-    let block = at.block.as_ref().unwrap();
+    let block = at.block.as_ref().expect("test invariant");
     assert_eq!(block.children.len(), 2);
 }
 
@@ -1061,7 +1061,7 @@ fn pseudo_element_part() {
     assert_eq!(pe.name.as_str(), "part");
     // Args should be preserved
     assert!(pe.args.is_some(), "::part(foo) should have args");
-    let args = pe.args.as_ref().unwrap();
+    let args = pe.args.as_ref().expect("test invariant");
     assert_eq!(args.children.len(), 1);
 }
 
@@ -1134,7 +1134,7 @@ fn data_attribute_with_value() {
         panic!("expected attribute selector");
     };
     assert_eq!(attr.name.as_str(), "data-foo-bar");
-    assert_eq!(text(attr.value.unwrap(), src), "baz");
+    assert_eq!(text(attr.value.expect("test invariant"), src), "baz");
 }
 
 // ---------------------------------------------------------------------------
@@ -1338,7 +1338,7 @@ fn keyframes_percentages() {
         panic!("expected at-rule");
     };
     assert_eq!(at.name.as_str(), "keyframes");
-    let block = at.block.as_ref().unwrap();
+    let block = at.block.as_ref().expect("test invariant");
     assert_eq!(block.children.len(), 2);
 }
 
@@ -1376,7 +1376,7 @@ fn pseudo_class_is() {
         panic!("expected pseudo-class");
     };
     assert_eq!(pc.name.as_str(), "is");
-    let args = pc.args.as_ref().unwrap();
+    let args = pc.args.as_ref().expect("test invariant");
     assert_eq!(args.children.len(), 3);
 }
 
@@ -1487,7 +1487,7 @@ fn attribute_unquoted_value() {
     };
     assert_eq!(attr.name.as_str(), "type");
     assert!(attr.matcher.is_some());
-    assert_eq!(text(attr.value.unwrap(), src), "text");
+    assert_eq!(text(attr.value.expect("test invariant"), src), "text");
 }
 
 #[test]
@@ -1509,6 +1509,6 @@ fn attribute_all_matchers() {
         let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
             panic!("expected attribute selector for {op}");
         };
-        assert_eq!(text(attr.matcher.unwrap(), &full), op);
+        assert_eq!(text(attr.matcher.expect("test invariant"), &full), op);
     }
 }

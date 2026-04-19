@@ -67,7 +67,9 @@ pub(crate) fn traverse_items<'a>(
                     let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
                         build_sibling_call(ctx, SiblingPrev::Ident(ident), sibling_offset, is_text)
                     } else {
-                        let fc = prev_expr.take().unwrap();
+                        let fc = prev_expr.take().expect(
+                            "when prev_ident is None, prev_expr always holds the last sibling",
+                        );
                         if sibling_offset == 0 {
                             fc
                         } else {
@@ -90,7 +92,9 @@ pub(crate) fn traverse_items<'a>(
             let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
                 build_sibling_call(ctx, SiblingPrev::Ident(ident), sibling_offset, is_text)
             } else {
-                let fc = prev_expr.take().unwrap();
+                let fc = prev_expr
+                    .take()
+                    .expect("when prev_ident is None, prev_expr always holds the last sibling");
                 if sibling_offset == 0 {
                     fc
                 } else {

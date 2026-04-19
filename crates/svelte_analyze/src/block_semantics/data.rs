@@ -17,9 +17,10 @@ use svelte_component_semantics::OxcNodeId;
 /// One answer for one block `NodeId`. `NonSpecial` is the neutral value
 /// returned for every node that is not a control-flow block; the store
 /// never returns `None`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum BlockSemantics {
     /// Node is not a control-flow block in the sense owned by this cluster.
+    #[default]
     NonSpecial,
     /// `{#each ... as ...}` block.
     Each(EachBlockSemantics),
@@ -38,12 +39,6 @@ pub enum BlockSemantics {
     ConstTag,
     // TODO(block-semantics): Render payload.
     Render,
-}
-
-impl Default for BlockSemantics {
-    fn default() -> Self {
-        Self::NonSpecial
-    }
 }
 
 /// `{#each items as <item>[, <index>] [(<key>)]}` — the identities of the

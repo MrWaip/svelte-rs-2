@@ -144,7 +144,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .template
             .const_tags
             .syms(tag.id)
-            .map(|v| v.clone())
+            .cloned()
             .unwrap_or_default();
 
         // Only destructured const-tags (`{@const { a, b } = ...}`) carry a

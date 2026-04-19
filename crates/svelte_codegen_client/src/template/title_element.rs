@@ -178,7 +178,8 @@ fn build_title_value<'a>(
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
                 push_title_text(
                     &mut built_parts,
-                    part.text_value(&ctx.query.component.source).unwrap(),
+                    part.text_value(&ctx.query.component.source)
+                        .expect("TextSpan/TextOwned parts always have a text value"),
                 );
             }
             LoweredTextPart::Expr(id) => {
@@ -192,7 +193,12 @@ fn build_title_value<'a>(
     }
 
     let value = if built_parts.len() == 1 {
-        memoizer.part_expr(ctx, built_parts.pop().unwrap())
+        memoizer.part_expr(
+            ctx,
+            built_parts
+                .pop()
+                .expect("built_parts.len() == 1 checked above"),
+        )
     } else {
         let template_parts = built_parts.into_iter().map(|part| match part {
             TitleValuePart::Str(value) => TemplatePart::Str(value),

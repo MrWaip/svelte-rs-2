@@ -235,7 +235,7 @@ fn validate_snippet_exports(
             let name = ident.name.as_str();
             // Only fire if the name is NOT declared in module scope (matches reference compiler).
             // If bound in module scope, it's a valid export of a module-local binding.
-            if snippet_names.iter().any(|&s| s == name) && !is_module_bound(module_program, name) {
+            if snippet_names.contains(&name) && !is_module_bound(module_program, name) {
                 let span = Span::new(specifier.span.start, specifier.span.end);
                 diags.push(Diagnostic::error(
                     DiagnosticKind::SnippetInvalidExport,

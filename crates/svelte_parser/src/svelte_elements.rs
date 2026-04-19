@@ -98,7 +98,9 @@ impl<'a> Parser<'a> {
 
         let node_id = component.fragment.nodes.remove(idx);
         let node = component.store.get(node_id);
-        let el = node.as_element().unwrap();
+        let el = node
+            .as_element()
+            .expect("node was found via options_idx — must be an element");
 
         // Check for duplicate <svelte:options>
         let has_another = component.fragment.nodes.iter().any(|&id| {
@@ -303,11 +305,11 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_head(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component
+            if component
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == SVELTE_HEAD)
+                .is_none_or(|el| el.name != SVELTE_HEAD)
             {
                 continue;
             }
@@ -329,11 +331,11 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_window(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component
+            if component
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == SVELTE_WINDOW)
+                .is_none_or(|el| el.name != SVELTE_WINDOW)
             {
                 continue;
             }
@@ -356,11 +358,11 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_document(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component
+            if component
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == SVELTE_DOCUMENT)
+                .is_none_or(|el| el.name != SVELTE_DOCUMENT)
             {
                 continue;
             }
@@ -383,11 +385,11 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_body(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component
+            if component
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == SVELTE_BODY)
+                .is_none_or(|el| el.name != SVELTE_BODY)
             {
                 continue;
             }

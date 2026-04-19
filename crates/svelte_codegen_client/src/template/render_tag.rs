@@ -165,7 +165,7 @@ pub(crate) fn gen_render_tag<'a>(
         stmts.push(ctx.b.call_stmt(
             "$.async",
             [
-                Arg::Expr(outer_anchor.unwrap()),
+                Arg::Expr(outer_anchor.expect("needs_async path always allocates outer_anchor")),
                 Arg::Expr(deps.blockers_expr(ctx)),
                 Arg::Expr(deps.async_values_expr(ctx)),
                 Arg::Expr(callback),

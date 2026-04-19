@@ -109,7 +109,7 @@ pub fn generate<'a>(
     // hoistable_snippets is kept separate so it can be placed before module_body
     // in the final program (snippet consts → module exports → template vars).
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
-    all_hoisted.extend(ctx.state.module_hoisted.drain(..));
+    all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
 
     // -----------------------------------------------------------------------

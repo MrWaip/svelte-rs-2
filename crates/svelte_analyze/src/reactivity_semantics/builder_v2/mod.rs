@@ -1241,19 +1241,19 @@ pub(super) fn prop_binding_kind(facts: &PropBindingFacts) -> PropDeclarationKind
 }
 
 fn is_simple_expression(expr: &Expression<'_>) -> bool {
-    match expr {
+    matches!(
+        expr,
         Expression::Identifier(_)
-        | Expression::NullLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::NumericLiteral(_)
-        | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_)
-        | Expression::TemplateLiteral(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        _ => false,
-    }
+            | Expression::NullLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::RegExpLiteral(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+    )
 }
 
 fn derived_lowering(call: &CallExpression<'_>, rune_kind: RuneKind) -> DerivedLowering {
