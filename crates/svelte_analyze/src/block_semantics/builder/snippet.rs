@@ -11,13 +11,9 @@
 //! Per-symbol **read-side** classification (`name()` vs `$.get(name)`)
 //! lives in `reactivity_semantics::ContextualDeclarationSemantics::SnippetParam`.
 
-use super::super::{
-    BlockSemantics, SnippetBlockSemantics, SnippetDefaultKind, SnippetDestructureKind,
-    SnippetParam, SnippetPatternBinding,
-};
+use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
 use super::walker::{Ctx, SnippetScope};
-use crate::utils::is_simple_expression;
 use oxc_ast::ast::{
     ArrowFunctionExpression, BindingPattern, Expression, FormalParameter, Statement,
     VariableDeclarator,
@@ -132,100 +128,14 @@ fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
             let sym = ident.symbol_id.get()?;
             Some(SnippetParam::Identifier { sym })
         }
-        BindingPattern::ObjectPattern(_) => Some(SnippetParam::Pattern {
-            kind: SnippetDestructureKind::Object,
-            pattern_id: binding_pattern_node_id(pattern),
-            bindings: collect_pattern_bindings(pattern),
-        }),
-        BindingPattern::ArrayPattern(_) => Some(SnippetParam::Pattern {
-            kind: SnippetDestructureKind::Array,
-            pattern_id: binding_pattern_node_id(pattern),
-            bindings: collect_pattern_bindings(pattern),
-        }),
+        BindingPattern::ObjectPattern(_) | BindingPattern::ArrayPattern(_) => {
+            Some(SnippetParam::Pattern {
+                pattern_id: binding_pattern_node_id(pattern),
+            })
+        }
         // Nested AssignmentPattern inside AssignmentPattern isn't legal
         // in JS grammar — treat as no-op.
         BindingPattern::AssignmentPattern(_) => None,
-    }
-}
-
-fn collect_pattern_bindings<'a>(
-    pattern: &BindingPattern<'a>,
-) -> SmallVec<[SnippetPatternBinding; 4]> {
-    let mut out: SmallVec<[SnippetPatternBinding; 4]> = SmallVec::new();
-    walk_pattern(pattern, false, SnippetDefaultKind::None, &mut out);
-    out
-}
-
-fn walk_pattern<'a>(
-    pattern: &BindingPattern<'a>,
-    is_rest: bool,
-    inherited_default: SnippetDefaultKind,
-    out: &mut SmallVec<[SnippetPatternBinding; 4]>,
-) {
-    match pattern {
-        BindingPattern::BindingIdentifier(ident) => {
-            if let Some(sym) = ident.symbol_id.get() {
-                out.push(SnippetPatternBinding {
-                    sym,
-                    default: inherited_default,
-                    is_rest,
-                });
-            }
-        }
-        BindingPattern::AssignmentPattern(assign) => {
-            let d = default_kind_of(&assign.right);
-            walk_pattern(&assign.left, is_rest, d, out);
-        }
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                walk_pattern(&prop.value, false, SnippetDefaultKind::None, out);
-            }
-            if let Some(rest) = &obj.rest {
-                collect_rest_target(&rest.argument, /* is_rest */ true, out);
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for el in arr.elements.iter().flatten() {
-                walk_pattern(el, false, SnippetDefaultKind::None, out);
-            }
-            if let Some(rest) = &arr.rest {
-                // Array rest isn't flagged as `is_rest` in the payload:
-                // consumer emits it via array-slice, not via
-                // exclude_from_object. Only the object-rest case needs
-                // the flag. Keep the leaf symbol so name order stays
-                // correct for downstream consumers.
-                collect_rest_target(&rest.argument, /* is_rest */ false, out);
-            }
-        }
-    }
-}
-
-fn collect_rest_target<'a>(
-    target: &BindingPattern<'a>,
-    is_rest: bool,
-    out: &mut SmallVec<[SnippetPatternBinding; 4]>,
-) {
-    match target {
-        BindingPattern::BindingIdentifier(ident) => {
-            if let Some(sym) = ident.symbol_id.get() {
-                out.push(SnippetPatternBinding {
-                    sym,
-                    default: SnippetDefaultKind::None,
-                    is_rest,
-                });
-            }
-        }
-        // `{ ...{ a } }` / `[ ...[a] ]` — destructured rest. Recurse
-        // without rest flag; leaves become regular bindings.
-        _ => walk_pattern(target, false, SnippetDefaultKind::None, out),
-    }
-}
-
-fn default_kind_of(expr: &Expression<'_>) -> SnippetDefaultKind {
-    if is_simple_expression(expr) {
-        SnippetDefaultKind::Constant
-    } else {
-        SnippetDefaultKind::Computed
     }
 }
 
@@ -238,10 +148,7 @@ fn _ensure_imports_used(_: &Statement<'_>, _: SymbolId) {}
 #[cfg(test)]
 mod tests {
     use crate::tests::analyze_source;
-    use crate::{
-        BlockSemantics, SnippetBlockSemantics, SnippetDefaultKind, SnippetDestructureKind,
-        SnippetParam,
-    };
+    use crate::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
     use svelte_ast::{Component, Node, SnippetBlock};
 
     fn first_snippet(component: &Component) -> &SnippetBlock {
@@ -298,17 +205,18 @@ mod tests {
         });
     }
 
+    // Structural details of destructured snippet params — form
+    // (Object / Array), key names, defaults, rest — live in the OXC
+    // `BindingPattern` subtree reached via `pattern_id`. They are
+    // verified by snippet codegen tests, not by block-semantics unit
+    // tests. Here we assert only the variant classification.
+
     #[test]
     fn snippet_object_destructure() {
         with_snippet(
             r#"{#snippet row({ a, b })}<p>{a} {b}</p>{/snippet}"#,
             |sem| match &sem.params[0] {
-                SnippetParam::Pattern { kind, bindings, .. } => {
-                    assert_eq!(*kind, SnippetDestructureKind::Object);
-                    assert_eq!(bindings.len(), 2);
-                    assert_eq!(bindings[0].default, SnippetDefaultKind::None);
-                    assert!(!bindings[0].is_rest);
-                }
+                SnippetParam::Pattern { .. } => {}
                 other => panic!("expected Pattern, got {other:?}"),
             },
         );
@@ -319,10 +227,7 @@ mod tests {
         with_snippet(
             r#"{#snippet row({ a = 1, b })}<p>{a} {b}</p>{/snippet}"#,
             |sem| match &sem.params[0] {
-                SnippetParam::Pattern { bindings, .. } => {
-                    assert_eq!(bindings[0].default, SnippetDefaultKind::Constant);
-                    assert_eq!(bindings[1].default, SnippetDefaultKind::None);
-                }
+                SnippetParam::Pattern { .. } => {}
                 other => panic!("expected Pattern, got {other:?}"),
             },
         );
@@ -333,11 +238,7 @@ mod tests {
         with_snippet(
             r#"{#snippet row({ a, ...rest })}<p>{a}</p>{/snippet}"#,
             |sem| match &sem.params[0] {
-                SnippetParam::Pattern { bindings, .. } => {
-                    assert_eq!(bindings.len(), 2);
-                    assert!(!bindings[0].is_rest);
-                    assert!(bindings[1].is_rest);
-                }
+                SnippetParam::Pattern { .. } => {}
                 other => panic!("expected Pattern, got {other:?}"),
             },
         );
@@ -348,10 +249,7 @@ mod tests {
         with_snippet(
             r#"{#snippet row([x, y])}<p>{x} {y}</p>{/snippet}"#,
             |sem| match &sem.params[0] {
-                SnippetParam::Pattern { kind, bindings, .. } => {
-                    assert_eq!(*kind, SnippetDestructureKind::Array);
-                    assert_eq!(bindings.len(), 2);
-                }
+                SnippetParam::Pattern { .. } => {}
                 other => panic!("expected Pattern, got {other:?}"),
             },
         );
@@ -364,20 +262,8 @@ mod tests {
             |sem| {
                 assert_eq!(sem.params.len(), 3);
                 assert!(matches!(sem.params[0], SnippetParam::Identifier { .. }));
-                assert!(matches!(
-                    sem.params[1],
-                    SnippetParam::Pattern {
-                        kind: SnippetDestructureKind::Object,
-                        ..
-                    }
-                ));
-                assert!(matches!(
-                    sem.params[2],
-                    SnippetParam::Pattern {
-                        kind: SnippetDestructureKind::Array,
-                        ..
-                    }
-                ));
+                assert!(matches!(sem.params[1], SnippetParam::Pattern { .. }));
+                assert!(matches!(sem.params[2], SnippetParam::Pattern { .. }));
             },
         );
     }

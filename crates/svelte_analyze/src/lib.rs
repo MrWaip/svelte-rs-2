@@ -14,8 +14,7 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    SnippetBlockSemantics, SnippetDefaultKind, SnippetDestructureKind, SnippetParam,
-    SnippetPatternBinding,
+    SnippetBlockSemantics, SnippetParam,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

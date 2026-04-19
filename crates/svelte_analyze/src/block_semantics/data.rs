@@ -290,6 +290,12 @@ pub struct SnippetBlockSemantics {
 }
 
 /// One parameter of a `{#snippet}` declaration.
+///
+/// Structural information about destructured parameters (form, keys,
+/// indexes, defaults, rest) lives in the OXC `BindingPattern` reached
+/// through `pattern_id`. Codegen walks it directly at emit time and
+/// classifies defaults inline via `is_simple_expression` — there is
+/// deliberately no parallel per-leaf Svelte-side shape here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SnippetParam {
     /// `(name)` — identifier parameter. Lowers to the arrow argument
@@ -300,48 +306,11 @@ pub enum SnippetParam {
     Identifier { sym: SymbolId },
     /// `({ a, b })` / `([x, y])` — destructured parameter. Lowers to a
     /// positional `$$argN` argument plus per-binding `let` declarations
-    /// inside the body.
-    Pattern {
-        kind: SnippetDestructureKind,
-        /// `OxcNodeId` of the outer `BindingPattern`. Consumer walks the
-        /// pattern subtree from here to build member paths and clone
-        /// default expressions.
-        pattern_id: OxcNodeId,
-        bindings: SmallVec<[SnippetPatternBinding; 4]>,
-    },
-}
-
-/// One leaf identifier introduced by a destructured `SnippetParam::Pattern`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SnippetPatternBinding {
-    pub sym: SymbolId,
-    pub default: SnippetDefaultKind,
-    /// `true` — leaf was introduced by `...rest` in an object pattern.
-    pub is_rest: bool,
-}
-
-/// Whether a snippet parameter / pattern leaf carries a user-specified
-/// default, and how the default expression lowers. Classification is
-/// pre-computed: the consumer never re-walks the default expression to
-/// decide simple-vs-computed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnippetDefaultKind {
-    /// No user default. Identifier params get `= $.noop` at emit time;
-    /// pattern leaves fall back to a plain member access.
-    None,
-    /// Default is a simple literal / identifier — inlines directly:
-    /// `$.fallback(access, <value>)`.
-    Constant,
-    /// Default is an arbitrary expression — lowers through a thunk:
-    /// `$.fallback(access, () => <value>, true)`.
-    Computed,
-}
-
-/// Destructure flavor for `SnippetParam::Pattern`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnippetDestructureKind {
-    Object,
-    Array,
+    /// inside the body. `pattern_id` is the `OxcNodeId` of the outer
+    /// `BindingPattern`; codegen walks that subtree to emit the
+    /// destructuring, including `$.to_array` intermediates for arrays
+    /// (per-level state that doesn't fit a flat leaf model).
+    Pattern { pattern_id: OxcNodeId },
 }
 
 /// `{@const <pattern> = <init>}` — declaration-shape answer.
