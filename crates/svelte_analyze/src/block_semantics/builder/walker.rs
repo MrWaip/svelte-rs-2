@@ -12,7 +12,7 @@ use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{BlockerData, ParserResult};
 
 use super::super::BlockSemanticsStore;
-use super::common::{collect_binding_pattern_symbols, declarator_from_stmt};
+use super::common::declarator_from_stmt;
 
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
@@ -20,7 +20,7 @@ use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentKey, Node, NodeId};
-use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId};
+use svelte_component_semantics::{walk_bindings, ComponentSemantics, ReferenceId, SymbolId};
 
 /// Entry point: run the single cluster-wide template walk.
 pub(super) fn populate(
@@ -204,9 +204,7 @@ impl<'a> Ctx<'_, 'a> {
             }
             // Legacy `<slot>` doesn't bind a fragment scope of its own
             // (no FragmentKey variant). Descend with the current scope.
-            Node::SlotElementLegacy(el) => {
-                self.visit_children_inheriting_scope(&el.fragment.nodes)
-            }
+            Node::SlotElementLegacy(el) => self.visit_children_inheriting_scope(&el.fragment.nodes),
             Node::ComponentNode(cn) => {
                 self.visit_fragment(FragmentKey::ComponentNode(cn.id), &cn.fragment.nodes);
             }
@@ -231,16 +229,10 @@ impl<'a> Ctx<'_, 'a> {
             }
             Node::SvelteElement(el) => {
                 self.check_bind_group_in_attrs(&el.attributes);
-                self.visit_fragment(
-                    FragmentKey::SvelteElementBody(el.id),
-                    &el.fragment.nodes,
-                );
+                self.visit_fragment(FragmentKey::SvelteElementBody(el.id), &el.fragment.nodes);
             }
             Node::SvelteBoundary(el) => {
-                self.visit_fragment(
-                    FragmentKey::SvelteBoundaryBody(el.id),
-                    &el.fragment.nodes,
-                );
+                self.visit_fragment(FragmentKey::SvelteBoundaryBody(el.id), &el.fragment.nodes);
             }
             _ => {}
         }
@@ -322,7 +314,7 @@ impl<'a> Ctx<'_, 'a> {
                 .and_then(|cs| self.parsed.stmt_handle(cs.start))
                 .and_then(|h| declarator_from_stmt(self.parsed.stmt(h)?))
             {
-                collect_binding_pattern_symbols(&decl.id, &mut out);
+                walk_bindings(&decl.id, |v| out.push(v.symbol));
             }
         }
         if let Some(sym) = index_sym {

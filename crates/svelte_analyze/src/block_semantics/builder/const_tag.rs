@@ -12,13 +12,12 @@
 //! lives in `reactivity_semantics::ConstDeclarationSemantics::ConstTag`.
 
 use super::super::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
-use super::common::{
-    collect_binding_pattern_symbols, declarator_from_stmt, expression_async_facts,
-};
+use super::common::{declarator_from_stmt, expression_async_facts};
 use super::walker::Ctx;
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::ConstTag;
+use svelte_component_semantics::walk_bindings;
 
 /// Populate `BlockSemantics::ConstTag` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
@@ -33,16 +32,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     };
 
     let is_destructured = !matches!(declarator.id, BindingPattern::BindingIdentifier(_));
-    let mut bindings: SmallVec<[_; 4]> = SmallVec::new();
-    collect_binding_pattern_symbols(&declarator.id, &mut bindings);
+    let mut bindings: SmallVec<[_; 2]> = SmallVec::new();
+    walk_bindings(&declarator.id, |v| bindings.push(v.symbol));
     if bindings.is_empty() {
         return;
     }
-    // Drop the shared [_; 4] capacity down to the payload's [_; 2] to
-    // keep `ConstTagBlockSemantics` cheap. Most `{@const}` tags are
-    // single-identifier or 2-leaf destructure — a real overflow here
-    // falls back to heap, identical to the wider helper's behaviour.
-    let bindings: SmallVec<[_; 2]> = bindings.into_iter().collect();
 
     let Some(init) = declarator.init.as_ref() else {
         return;

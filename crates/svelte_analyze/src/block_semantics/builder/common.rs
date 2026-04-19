@@ -7,12 +7,11 @@
 //! collecting the symbol ids of every leaf identifier inside a pattern.
 
 use oxc_ast::ast::{
-    AwaitExpression, BindingPattern, Expression, IdentifierReference, Statement,
-    VariableDeclarator,
+    AwaitExpression, BindingPattern, Expression, IdentifierReference, Statement, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
-use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, SymbolId};
+use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId};
 
 use crate::types::data::BlockerData;
 
@@ -50,43 +49,6 @@ pub(super) fn binding_pattern_node_id(pattern: &BindingPattern<'_>) -> OxcNodeId
         BindingPattern::ObjectPattern(p) => p.node_id(),
         BindingPattern::ArrayPattern(p) => p.node_id(),
         BindingPattern::AssignmentPattern(p) => p.node_id(),
-    }
-}
-
-/// Recursively collect `SymbolId` for every leaf `BindingIdentifier`
-/// inside a `BindingPattern`. Used to enumerate the symbols introduced
-/// by a destructured template binding — each-block context, then /
-/// catch value pattern, etc.
-pub(super) fn collect_binding_pattern_symbols(
-    pattern: &BindingPattern<'_>,
-    out: &mut SmallVec<[SymbolId; 4]>,
-) {
-    use oxc_ast::ast::BindingPattern as BP;
-    match pattern {
-        BP::BindingIdentifier(ident) => {
-            if let Some(sym) = ident.symbol_id.get() {
-                out.push(sym);
-            }
-        }
-        BP::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                collect_binding_pattern_symbols(&prop.value, out);
-            }
-            if let Some(rest) = &obj.rest {
-                collect_binding_pattern_symbols(&rest.argument, out);
-            }
-        }
-        BP::ArrayPattern(arr) => {
-            for el in arr.elements.iter().flatten() {
-                collect_binding_pattern_symbols(el, out);
-            }
-            if let Some(rest) = &arr.rest {
-                collect_binding_pattern_symbols(&rest.argument, out);
-            }
-        }
-        BP::AssignmentPattern(assign) => {
-            collect_binding_pattern_symbols(&assign.left, out);
-        }
     }
 }
 

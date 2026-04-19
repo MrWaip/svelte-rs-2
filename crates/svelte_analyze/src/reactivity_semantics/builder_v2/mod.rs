@@ -68,26 +68,23 @@ pub(crate) fn build_v2<'a>(
 /// where `y = $derived(inert)`) fold correctly.
 fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut AnalysisData<'a>) {
     use super::data::{ConstDeclarationSemantics, DeclarationSemantics};
-    use crate::utils::binding_pattern::collect_binding_names;
+    use svelte_component_semantics::walk_bindings;
     // Snapshot `(scope, tag_id)` pairs up front: the fragment scope for
     // each tag is carried by `by_fragment` and looked up once, so we
     // can traverse without re-reading the side-table during the
     // fix-point work below.
-    let tag_pairs: Vec<(oxc_semantic::ScopeId, svelte_ast::NodeId)> = data
+    let tag_ids: Vec<svelte_ast::NodeId> = data
         .template
         .const_tags
         .by_fragment
-        .iter()
-        .filter_map(|(frag_key, tag_ids)| {
-            let scope = data.scoping.fragment_scope(frag_key)?;
-            Some((scope, tag_ids.clone()))
-        })
-        .flat_map(|(scope, tag_ids)| tag_ids.into_iter().map(move |id| (scope, id)))
+        .values()
+        .flatten()
+        .copied()
         .collect();
-    if tag_pairs.is_empty() {
+    if tag_ids.is_empty() {
         return;
     }
-    for (scope, tag_id) in tag_pairs {
+    for tag_id in tag_ids {
         // Collect ReferenceIds from the const-tag init expression via OXC Visit.
         let Some(handle) = data.const_tag_stmt_handle(tag_id) else {
             continue;
@@ -104,12 +101,8 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
         let Some(declarator) = decl.declarations.first() else {
             continue;
         };
-        let mut names = Vec::new();
-        collect_binding_names(&declarator.id, &mut names);
-        let syms: Vec<SymbolId> = names
-            .into_iter()
-            .filter_map(|name| data.scoping.find_binding(scope, &name))
-            .collect();
+        let mut syms: Vec<SymbolId> = Vec::new();
+        walk_bindings(&declarator.id, |v| syms.push(v.symbol));
         if syms.is_empty() {
             continue;
         }

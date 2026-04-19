@@ -1,4 +1,12 @@
-//! Utilities for extracting names from OXC BindingPattern.
+//! Pre-semantic pattern-name collector.
+//!
+//! Used only by passes that run BEFORE `ComponentSemantics` is built
+//! (`script_info::extract_script_info`), where `BindingIdentifier.symbol_id`
+//! is not yet populated and the shared `walk_bindings` walker would panic.
+//!
+//! Post-semantic code (analyze passes that run after `ComponentSemantics`,
+//! transform, codegen) MUST use `svelte_component_semantics::walk_bindings`
+//! — it yields `SymbolId` directly and carries path / default / rest info.
 
 use oxc_ast::ast::BindingPattern;
 

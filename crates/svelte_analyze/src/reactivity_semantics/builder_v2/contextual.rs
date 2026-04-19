@@ -22,7 +22,6 @@ use super::super::data::{
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, FragmentKey, ParserResult, StmtHandle};
-use crate::utils::binding_pattern::collect_binding_names;
 use crate::utils::legacy_slot::{
     collect_legacy_slot_bindings, legacy_slot_is_destructured, LegacySlotBindingKind,
 };
@@ -293,24 +292,19 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 }
 
 fn scoped_stmt_symbols(
-    data: &AnalysisData,
-    scope: oxc_semantic::ScopeId,
+    _data: &AnalysisData,
+    _scope: oxc_semantic::ScopeId,
     stmt: &Statement<'_>,
 ) -> Vec<SymbolId> {
-    let mut names = Vec::new();
-    collect_stmt_binding_names(stmt, &mut names);
-    names
-        .into_iter()
-        .filter_map(|name| data.scoping.get_binding(scope, &name))
-        .collect()
-}
-
-fn collect_stmt_binding_names(stmt: &Statement<'_>, out: &mut Vec<String>) {
-    if let Statement::VariableDeclaration(decl) = stmt {
-        if let Some(declarator) = decl.declarations.first() {
-            collect_binding_names(&declarator.id, out);
-        }
-    }
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return Vec::new();
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| out.push(v.symbol));
+    out
 }
 
 /// Synthesize (or reuse) the carrier symbol for a destructured `let:`
@@ -660,10 +654,7 @@ fn collect_const_tag_syms(
     let Some(declarator) = decl.declarations.first() else {
         return Vec::new();
     };
-    let mut names = Vec::new();
-    collect_binding_names(&declarator.id, &mut names);
-    names
-        .into_iter()
-        .filter_map(|name| ctx.data.scoping.find_binding(ctx.scope, &name))
-        .collect()
+    let mut out = Vec::new();
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| out.push(v.symbol));
+    out
 }

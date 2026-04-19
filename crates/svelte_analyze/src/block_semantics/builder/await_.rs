@@ -11,14 +11,13 @@ use super::super::{
     BlockSemantics,
 };
 use super::common::{
-    binding_ident_of, binding_pattern_node_id, collect_binding_pattern_symbols,
-    declarator_from_stmt, expression_async_facts,
+    binding_ident_of, binding_pattern_node_id, declarator_from_stmt, expression_async_facts,
 };
 use super::walker::Ctx;
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::{AwaitBlock, FragmentKey};
-use svelte_component_semantics::SymbolId;
+use svelte_component_semantics::{walk_bindings, SymbolId};
 
 /// Populate `BlockSemantics::Await` for this block and recurse into its
 /// pending / then / catch fragments.
@@ -125,7 +124,7 @@ fn binding_from_pattern<'a>(
         _ => return AwaitBinding::None,
     };
     let mut leaves: SmallVec<[SymbolId; 4]> = SmallVec::new();
-    collect_binding_pattern_symbols(pattern, &mut leaves);
+    walk_bindings(pattern, |v| leaves.push(v.symbol));
     AwaitBinding::Pattern {
         kind,
         leaves,
