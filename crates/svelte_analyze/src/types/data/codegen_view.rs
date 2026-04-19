@@ -305,6 +305,9 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_attr(id)
     }
+    pub fn has_state_attr(&self, id: NodeId) -> bool {
+        self.data.dynamism.has_state_attr(id)
+    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.data.elements.flags.static_class(id)
     }

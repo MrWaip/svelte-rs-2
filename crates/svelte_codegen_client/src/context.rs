@@ -510,6 +510,9 @@ impl<'a> Ctx<'a> {
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic_attr(id)
     }
+    pub fn has_state_attr(&self, id: NodeId) -> bool {
+        self.query.view.has_state_attr(id)
+    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.query.view.static_class(id)
     }
