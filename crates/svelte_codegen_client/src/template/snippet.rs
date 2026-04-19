@@ -79,6 +79,8 @@ impl<'a> SnippetPlan<'a> {
 
         #[allow(deprecated)]
         let parsed_stmt = ctx
+            .query
+            .view
             .snippet_stmt_handle(block_id)
             .and_then(|h| ctx.state.parsed.take_stmt(h));
         let parsed_stmt = parsed_stmt.unwrap_or_else(|| {
@@ -145,15 +147,12 @@ fn build_formal_params<'a>(
     // pair each positional slot with its semantic classification.
     for (i, (item, payload_param)) in items.iter().zip(sem.params.iter()).enumerate() {
         match payload_param {
-            SnippetParam::Identifier { sym, .. } => {
+            SnippetParam::Identifier { sym } => {
                 // Reference compiler always emits `= $.noop` for
                 // identifier params — any user-specified default is
-                // dropped at the declaration site (the `default` field
-                // is captured for future behaviour parity but unused
-                // today).
-                let name = ctx.query.view.symbol_name(*sym);
-                let name_owned = name.to_string();
-                params.push(formal_param_ident_with_noop(ctx, &name_owned));
+                // dropped at the declaration site.
+                let name = ctx.query.view.symbol_name(*sym).to_string();
+                params.push(formal_param_ident_with_noop(ctx, &name));
             }
             SnippetParam::Pattern {
                 kind: _,

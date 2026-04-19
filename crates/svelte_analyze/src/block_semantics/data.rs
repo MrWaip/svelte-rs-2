@@ -291,13 +291,12 @@ pub struct SnippetBlockSemantics {
 /// One parameter of a `{#snippet}` declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SnippetParam {
-    /// `(name)` or `(name = <default>)` — identifier parameter. Lowers
-    /// to the arrow argument directly; absent default becomes `= $.noop`
-    /// at emit time.
-    Identifier {
-        sym: SymbolId,
-        default: SnippetDefaultKind,
-    },
+    /// `(name)` — identifier parameter. Lowers to the arrow argument
+    /// with `= $.noop` default. User-specified defaults on top-level
+    /// identifier params are deliberately not captured: the reference
+    /// compiler drops them at the declaration site, so there is no
+    /// lowering decision for the payload to answer.
+    Identifier { sym: SymbolId },
     /// `({ a, b })` / `([x, y])` — destructured parameter. Lowers to a
     /// positional `$$argN` argument plus per-binding `let` declarations
     /// inside the body.

@@ -93,30 +93,20 @@ fn collect_params<'a>(arrow: &ArrowFunctionExpression<'a>) -> SmallVec<[SnippetP
 /// `({ a } = fallback)`); in that case we peel it off once to expose
 /// the inner identifier / destructure shape.
 fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
-    // OXC stores `(x = <default>)` as `FormalParameter { pattern: <inner>,
-    // initializer: Some(<default>) }` — the default is NOT wrapped in a
-    // surrounding `AssignmentPattern`. We still handle the
-    // `AssignmentPattern` case because it may appear for patterns with a
-    // whole-pattern default (`({ a } = fallback)`) — there the
-    // `AssignmentPattern` node wraps the destructure itself.
-    let initializer_default = param
-        .initializer
-        .as_ref()
-        .map(|e| default_kind_of(e))
-        .unwrap_or(SnippetDefaultKind::None);
-
-    let (pattern, top_level_default) = match &param.pattern {
-        BindingPattern::AssignmentPattern(assign) => (&assign.left, default_kind_of(&assign.right)),
-        other => (other, initializer_default),
+    // `FormalParameter.initializer` (OXC's form for `(x = default)`) and
+    // the `AssignmentPattern` wrapper (for `({ a } = fallback)`) are
+    // both peeled here so the match below sees the inner shape. Only
+    // destructured patterns carry their default through — identifier
+    // params drop it at lowering time per the reference compiler.
+    let pattern = match &param.pattern {
+        BindingPattern::AssignmentPattern(assign) => &assign.left,
+        other => other,
     };
 
     match pattern {
         BindingPattern::BindingIdentifier(ident) => {
             let sym = ident.symbol_id.get()?;
-            Some(SnippetParam::Identifier {
-                sym,
-                default: top_level_default,
-            })
+            Some(SnippetParam::Identifier { sym })
         }
         BindingPattern::ObjectPattern(_) => Some(SnippetParam::Pattern {
             kind: SnippetDestructureKind::Object,
@@ -280,40 +270,8 @@ mod tests {
         with_snippet(r#"{#snippet row(item)}<p>{item()}</p>{/snippet}"#, |sem| {
             assert!(sem.hoistable);
             assert_eq!(sem.params.len(), 1);
-            match &sem.params[0] {
-                SnippetParam::Identifier { default, .. } => {
-                    assert_eq!(*default, SnippetDefaultKind::None);
-                }
-                other => panic!("expected Identifier, got {other:?}"),
-            }
+            assert!(matches!(sem.params[0], SnippetParam::Identifier { .. }));
         });
-    }
-
-    #[test]
-    fn snippet_ident_with_constant_default() {
-        with_snippet(
-            r#"{#snippet row(item = 5)}<p>{item()}</p>{/snippet}"#,
-            |sem| match &sem.params[0] {
-                SnippetParam::Identifier { default, .. } => {
-                    assert_eq!(*default, SnippetDefaultKind::Constant);
-                }
-                other => panic!("expected Identifier, got {other:?}"),
-            },
-        );
-    }
-
-    #[test]
-    fn snippet_ident_with_computed_default() {
-        with_snippet(
-            r#"<script>function compute() { return 1; }</script>
-{#snippet row(item = compute())}<p>{item()}</p>{/snippet}"#,
-            |sem| match &sem.params[0] {
-                SnippetParam::Identifier { default, .. } => {
-                    assert_eq!(*default, SnippetDefaultKind::Computed);
-                }
-                other => panic!("expected Identifier, got {other:?}"),
-            },
-        );
     }
 
     #[test]
