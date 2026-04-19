@@ -354,6 +354,16 @@ pub enum ReferenceSemantics {
     ///
     /// Example: `local` in `local = 1` or `console.log(local)`.
     NonReactive,
+    /// Local reads lower as a plain identifier (no `$.get()` wrap), but
+    /// the binding itself is wrapped in a runtime `$.proxy(...)`.
+    /// Mutations to its fields and external reassignment via bind/prop
+    /// remain observable, so child-passing consumers (each collection,
+    /// component props, render callee, boundary slots, dynamism) must
+    /// treat this as reactive.
+    ///
+    /// Example: `let items = $state([1, 2, 3])` when `items` is never
+    /// reassigned inside the component.
+    Proxy,
     /// Reference reads through the signal family.
     ///
     /// `safe = true` corresponds to the var-declared `$state` safe-get path.
@@ -549,6 +559,12 @@ pub(crate) enum V2ReferenceFacts {
     CarrierMemberRead(CarrierMemberReadSemantics),
     RestPropMemberRewrite,
     IllegalWrite,
+    /// Local reads lower as a plain identifier, but the binding itself
+    /// is wrapped in a runtime `$.proxy(...)` — its fields and external
+    /// reassignment stay observable, so child-passing consumers must
+    /// treat it as reactive. Originates from unmutated `$state(proxyable)`
+    /// bindings (`OptimizedRune` with `proxy_init = true`).
+    Proxy,
 }
 
 /// Analyzer-owned storage for normalized reactivity facts.
@@ -726,6 +742,7 @@ impl ReactivitySemantics {
                 ReferenceSemantics::RestPropMemberRewrite
             }
             Some(V2ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
+            Some(V2ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
         }
     }

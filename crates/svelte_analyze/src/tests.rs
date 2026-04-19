@@ -5470,3 +5470,222 @@ fn derived_reactivity_flag_true_when_dep_is_mutated_state() {
         other => panic!("expected Derived decl for doubled, got {other:?}"),
     }
 }
+
+// -------------------------------------------------------------------------
+// block_semantics — {#each} (subsession B)
+// -------------------------------------------------------------------------
+
+mod block_semantics_each_tests {
+    use super::analyze_source;
+    use crate::block_semantics::{
+        BlockSemantics, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
+    };
+    use svelte_ast::Node;
+
+    fn first_each_semantics<'a>(
+        data: &'a crate::AnalysisData<'_>,
+        component: &'a svelte_ast::Component,
+    ) -> &'a crate::block_semantics::EachBlockSemantics {
+        let block_id = component
+            .fragment
+            .nodes
+            .iter()
+            .find_map(|&id| match component.store.get(id) {
+                Node::EachBlock(b) => Some(b.id),
+                _ => None,
+            })
+            .expect("component must have a top-level {#each}");
+        match data.block_semantics(block_id) {
+            BlockSemantics::Each(sem) => sem,
+            other => panic!("expected BlockSemantics::Each, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn each_plain() {
+        let (component, data) =
+            analyze_source(r#"{#each items as item}<span>{item}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        assert!(matches!(sem.item, EachItemKind::Identifier(_)));
+        assert_eq!(sem.index, EachIndexKind::Absent);
+        assert_eq!(sem.key, EachKeyKind::Unkeyed);
+        assert_eq!(sem.flavor, EachFlavor::Regular);
+    }
+
+    #[test]
+    fn each_indexed_body_uses_index() {
+        let (component, data) =
+            analyze_source(r#"{#each items as item, i}<span>{i}:{item}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        assert!(matches!(sem.item, EachItemKind::Identifier(_)));
+        match sem.index {
+            EachIndexKind::Declared {
+                used_in_body,
+                used_in_key,
+                ..
+            } => {
+                assert!(used_in_body, "body uses `i`");
+                assert!(!used_in_key, "no key expression");
+            }
+            _ => panic!("expected Declared"),
+        }
+    }
+
+    #[test]
+    fn each_indexed_body_unused() {
+        let (component, data) =
+            analyze_source(r#"{#each items as item, i}<span>{item}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        match sem.index {
+            EachIndexKind::Declared {
+                used_in_body,
+                used_in_key,
+                ..
+            } => {
+                assert!(!used_in_body, "body does not reference `i`");
+                assert!(!used_in_key);
+            }
+            _ => panic!("expected Declared"),
+        }
+    }
+
+    #[test]
+    fn each_keyed_uses_index_in_key() {
+        let (component, data) = analyze_source(
+            r#"{#each items as item, i (i)}<span>{item}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        match sem.index {
+            EachIndexKind::Declared {
+                used_in_body,
+                used_in_key,
+                ..
+            } => {
+                assert!(used_in_key, "key expression uses `i`");
+                assert!(!used_in_body, "body does not reference `i`");
+            }
+            _ => panic!("expected Declared"),
+        }
+    }
+
+    #[test]
+    fn each_keyed_by_item() {
+        let (component, data) =
+            analyze_source(r#"{#each items as item (item)}<span>{item}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        assert_eq!(sem.key, EachKeyKind::KeyedByItem);
+    }
+
+    #[test]
+    fn each_keyed_by_expr() {
+        let (component, data) = analyze_source(
+            r#"{#each items as item (item.id)}<span>{item.id}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert!(matches!(sem.key, EachKeyKind::KeyedByExpr(_)));
+    }
+
+    #[test]
+    fn each_destructured() {
+        let (component, data) =
+            analyze_source(r#"{#each pairs as { a, b }}<span>{a}:{b}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        assert!(matches!(sem.item, EachItemKind::Pattern(_)));
+    }
+
+    #[test]
+    fn each_no_binding() {
+        let (component, data) = analyze_source(r#"{#each items}<span>x</span>{/each}"#);
+        let block_id = component
+            .fragment
+            .nodes
+            .iter()
+            .find_map(|&id| match component.store.get(id) {
+                Node::EachBlock(b) => Some(b.id),
+                _ => None,
+            })
+            .unwrap();
+        let BlockSemantics::Each(sem) = data.block_semantics(block_id) else {
+            panic!("expected Each variant")
+        };
+        assert_eq!(sem.item, EachItemKind::NoBinding);
+        assert_eq!(sem.index, EachIndexKind::Absent);
+        assert_eq!(sem.key, EachKeyKind::Unkeyed);
+    }
+
+    #[test]
+    fn each_with_bind_group_referencing_item_member_is_bind_group_flavor() {
+        // The group expression references `item.picks` — a member of an
+        // each-owned symbol — so this each frame must be flagged BindGroup.
+        let (component, data) = analyze_source(
+            r#"{#each items as item}
+  <input type="checkbox" bind:group={item.picks} value={item.name}>
+{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_eq!(sem.flavor, EachFlavor::BindGroup);
+    }
+
+    #[test]
+    fn each_with_bind_group_on_outer_symbol_is_regular() {
+        // `selected` is declared outside of every enclosing each, so
+        // the bind:group does not belong to THIS each frame (Svelte's
+        // scope-qualified rule).
+        let (component, data) = analyze_source(
+            r#"<script>let selected = $state([]);</script>
+{#each items as item}
+  <input type="checkbox" bind:group={selected} value={item}>
+{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_eq!(sem.flavor, EachFlavor::Regular);
+    }
+
+    #[test]
+    fn each_without_bind_group_is_regular_flavor() {
+        let (component, data) = analyze_source(
+            r#"{#each items as item}<input type="checkbox" bind:checked={item.on}>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_eq!(sem.flavor, EachFlavor::Regular);
+    }
+
+    #[test]
+    fn each_has_animate_when_direct_child_has_animate_directive() {
+        use crate::block_semantics::EachFlags;
+        let (component, data) = analyze_source(
+            r#"{#each items as item (item.id)}<span animate:flip>{item}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert!(sem.each_flags.contains(EachFlags::ANIMATED));
+    }
+
+    #[test]
+    fn each_no_animate_without_directive() {
+        use crate::block_semantics::EachFlags;
+        let (component, data) =
+            analyze_source(r#"{#each items as item}<span>{item}</span>{/each}"#);
+        let sem = first_each_semantics(&data, &component);
+        assert!(!sem.each_flags.contains(EachFlags::ANIMATED));
+    }
+
+    #[test]
+    fn each_shadows_outer_when_body_rebinds_outer_name() {
+        let (component, data) = analyze_source(
+            r#"<script>let item = $state(null);</script>
+{#each items as item}<span>{item}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert!(sem.shadows_outer);
+    }
+
+    #[test]
+    fn each_does_not_shadow_when_names_differ() {
+        let (component, data) = analyze_source(
+            r#"<script>let outer = $state(null);</script>
+{#each items as item}<span>{item}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert!(!sem.shadows_outer);
+    }
+}

@@ -1,3 +1,4 @@
+pub mod block_semantics;
 pub(crate) mod css;
 pub(crate) mod passes;
 pub(crate) mod reactivity_semantics;
@@ -9,6 +10,10 @@ pub(crate) mod utils;
 mod validate;
 pub(crate) mod walker;
 
+pub use block_semantics::{
+    BlockSemantics, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
+    EachKeyKind,
+};
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BindHostKind,

@@ -42,6 +42,7 @@ pub(crate) enum PassKey {
     CollectConstTagFragments,
     PopulateConstTagSyms,
     BuildReactivitySemantics,
+    BuildBlockSemantics,
     LowerTemplate,
     ReactivityWalk,
     TemplateClassificationWalk,
@@ -69,6 +70,7 @@ pub(crate) enum DataToken {
     ConstTagFragments,
     ConstTagSyms,
     ReactivitySemantics,
+    BlockSemantics,
     LoweredTemplate,
     Reactivity,
     TemplateClassification,
@@ -175,9 +177,15 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ReactivitySemantics],
     },
     PassDescriptor {
+        key: PassKey::BuildBlockSemantics,
+        requires: &[DataToken::ReactivitySemantics],
+        produces: &[DataToken::BlockSemantics],
+    },
+    PassDescriptor {
         key: PassKey::LowerTemplate,
         requires: &[
             DataToken::ReactivitySemantics,
+            DataToken::BlockSemantics,
             DataToken::ConstTagFragments,
         ],
         produces: &[DataToken::LoweredTemplate],
@@ -230,6 +238,7 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::PopulateConstTagSyms,
     PassKey::BuildReactivitySemantics,
     PassKey::ResolveRenderTagMeta,
+    PassKey::BuildBlockSemantics,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[

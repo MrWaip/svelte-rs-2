@@ -42,6 +42,59 @@ pub(crate) fn traverse_items<'a>(
         // with no surrounding text nodes in the same sequence
         let is_text = item.is_standalone_expr();
 
+        // Root Consumer Migration: semantic dispatch at the very top of
+        // the loop. Migrated block kinds take the semantic branch and
+        // `continue`; everything else falls through to the legacy
+        // FragmentItem dispatcher below. DOM-slot allocation is
+        // duplicated here intentionally — it collapses once the
+        // FragmentItem kill-off slice lands (see
+        // SEMANTIC_LAYER_ARCHITECTURE.md "Prerequisite: Kill FragmentItem").
+        if needs_var {
+            let semantic_node_id = match item {
+                FragmentItem::IfBlock(id)
+                | FragmentItem::EachBlock(id)
+                | FragmentItem::AwaitBlock(id)
+                | FragmentItem::KeyBlock(id)
+                | FragmentItem::RenderTag(id)
+                | FragmentItem::HtmlTag(id) => Some(*id),
+                _ => None,
+            };
+            if let Some(id) = semantic_node_id {
+                if let svelte_analyze::BlockSemantics::Each(sem) =
+                    ctx.query.analysis.block_semantics(id)
+                {
+                    let sem = sem.clone();
+                    let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
+                        build_sibling_call(
+                            ctx,
+                            SiblingPrev::Ident(ident),
+                            sibling_offset,
+                            is_text,
+                        )
+                    } else {
+                        let fc = prev_expr.take().unwrap();
+                        if sibling_offset == 0 {
+                            fc
+                        } else {
+                            build_sibling_call(
+                                ctx,
+                                SiblingPrev::Expr(fc),
+                                sibling_offset,
+                                is_text,
+                            )
+                        }
+                    };
+                    let node_name = ctx.gen_ident("node");
+                    init.push(ctx.b.var_stmt(&node_name, node_expr));
+                    sibling_offset = 1;
+                    let anchor = ctx.b.rid_expr(&node_name);
+                    gen_each_block(ctx, id, &sem, anchor, false, init);
+                    prev_ident = Some(node_name);
+                    continue;
+                }
+            }
+        }
+
         if needs_var {
             // Build the expression to get this node's DOM reference
             let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
@@ -140,8 +193,10 @@ pub(crate) fn traverse_items<'a>(
                             let stmts = gen_if_block(ctx, *id, anchor);
                             init.push(ctx.b.block_stmt(stmts));
                         }
-                        FragmentItem::EachBlock(id) => {
-                            gen_each_block(ctx, *id, anchor, false, init)
+                        FragmentItem::EachBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of the loop"
+                            )
                         }
                         FragmentItem::RenderTag(id) => {
                             gen_render_tag(ctx, *id, anchor, false, init)

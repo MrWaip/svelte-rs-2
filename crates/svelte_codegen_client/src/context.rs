@@ -373,6 +373,7 @@ impl<'a> Ctx<'a> {
             None => svelte_analyze::ReferenceSemantics::NonReactive,
         }
     }
+
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.query.view.bind_each_context(id)
     }

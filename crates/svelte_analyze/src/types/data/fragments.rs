@@ -81,6 +81,30 @@ pub struct LoweredFragment {
     pub items: Vec<FragmentItem>,
 }
 
+/// Legacy per-fragment dispatcher enum. Conflates two unrelated things:
+///
+/// - Real lowering facts with no AST analog: `TextConcat` (merged
+///   text+expression runs), hoisted-node filtering, whitespace
+///   normalization. These stay useful.
+/// - Node-kind discrimination that now duplicates Block Semantics
+///   (`*Block`, `*Tag`) and ElementShape Semantics (`Element`,
+///   `ComponentNode`, `SvelteElement`, `SvelteBoundary`,
+///   `SlotElementLegacy`, `SvelteFragmentLegacy`). Consumers should
+///   ask the semantic cluster for node-kind decisions, not pattern-
+///   match on this enum.
+///
+/// Marked deprecated so new consumer code does not grow more call
+/// sites. Planned removal: the "Kill `FragmentItem`" slice documented
+/// in `SEMANTIC_LAYER_ARCHITECTURE.md` — it replaces the dispatcher
+/// with a semantic-first walk over Svelte AST plus a separate
+/// representation for `TextConcat` and hoisted-node filtering.
+#[deprecated(
+    note = "FragmentItem duplicates Block / ElementShape Semantics for \
+            node-kind discrimination. New consumers must ask the \
+            owning semantic cluster instead of pattern-matching this \
+            enum. See SEMANTIC_LAYER_ARCHITECTURE.md ('Prerequisite: \
+            Kill FragmentItem')."
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentItem {
     Element(NodeId),

@@ -215,6 +215,15 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);
         }
+        super::PassKey::BuildBlockSemantics => {
+            data.block_semantics_store = crate::block_semantics::build(
+                component,
+                parsed,
+                data.scoping.semantics(),
+                &data.reactivity,
+                component.node_count(),
+            );
+        }
         super::PassKey::LowerTemplate => {
             lower::lower(component, data);
         }

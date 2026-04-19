@@ -159,6 +159,7 @@ pub struct AnalysisData<'a> {
     pub blocks: BlockAnalysis,
     pub output: OutputPlanData,
     pub reactivity: ReactivitySemantics,
+    pub(crate) block_semantics_store: crate::block_semantics::BlockSemanticsStore,
     pub dynamism: crate::passes::dynamism::DynamismData,
 }
 
@@ -174,6 +175,7 @@ impl<'a> AnalysisData<'a> {
             blocks: BlockAnalysis::new(node_count),
             output: OutputPlanData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
+            block_semantics_store: crate::block_semantics::BlockSemanticsStore::new(node_count),
             dynamism: crate::passes::dynamism::DynamismData::new(node_count),
         }
     }
@@ -288,6 +290,12 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn uses_runes(&self) -> bool {
         self.reactivity.uses_runes()
+    }
+    /// Block Semantics query: one answer per block `NodeId`. Returns
+    /// `&BlockSemantics::NonSpecial` for any node that is not a
+    /// control-flow block. See SEMANTIC_LAYER_ARCHITECTURE.md.
+    pub fn block_semantics(&self, id: NodeId) -> &crate::block_semantics::BlockSemantics {
+        self.block_semantics_store.get(id)
     }
     pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.entry(key)
@@ -497,31 +505,49 @@ impl<'a> AnalysisData<'a> {
     ) -> impl Iterator<Item = NodeId> + '_ {
         self.template.template_elements.previous_siblings(id)
     }
+    #[deprecated(note = "use block_semantics(id); see crates/svelte_analyze/src/block_semantics/")]
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
+        #[allow(deprecated)]
         self.blocks.each_context.index_sym(id)
     }
+    #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym)")]
     pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
+        #[allow(deprecated)]
         self.blocks.each_context.block_for_index_sym(sym)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_key_node_id(&self, id: NodeId) -> Option<NodeId> {
+        #[allow(deprecated)]
         self.blocks.each_context.key_node_id(id)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_key_uses_index(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.key_uses_index(id)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.is_destructured(id)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_body_uses_index(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.body_uses_index(id)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_key_is_item(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.key_is_item(id)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_has_animate(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.has_animate(id)
     }
+    #[deprecated(note = "read the name from the source via block.context_span")]
     pub fn each_context_name(&self, id: NodeId) -> &str {
+        #[allow(deprecated)]
         self.blocks.each_context.context_name(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
@@ -549,10 +575,14 @@ impl<'a> AnalysisData<'a> {
             })
             .collect()
     }
+    #[deprecated(note = "use block_semantics(id) — matches!(sem.flavor, EachFlavor::BindGroup)")]
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.contains_group_binding(id)
     }
+    #[deprecated(note = "use block_semantics(id).shadows_outer")]
     pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.needs_collection_id(id)
     }
     pub fn css_hash(&self) -> &str {

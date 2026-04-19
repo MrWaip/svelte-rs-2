@@ -27,6 +27,11 @@ pub struct EachBlockEntry {
     key_node_id: Option<NodeId>,
 }
 
+#[deprecated(
+    note = "use AnalysisData::block_semantics(id) -> BlockSemantics::Each(...) \
+            from crates/svelte_analyze/src/block_semantics/. This legacy side \
+            table will be removed once all consumers have been migrated."
+)]
 pub struct EachContextIndex {
     entries: NodeTable<EachBlockEntry>,
     index_sym_to_block: FxHashMap<SymbolId, NodeId>,

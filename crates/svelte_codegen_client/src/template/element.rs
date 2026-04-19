@@ -295,8 +295,17 @@ pub(crate) fn process_element<'a>(
             }
 
             ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
-                // Controlled each block: element itself is the anchor, no $.child() traversal
-                gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
+                // Controlled each block: element itself is the anchor, no $.child() traversal.
+                // Root Consumer Migration: semantic query decides the branch.
+                let svelte_analyze::BlockSemantics::Each(sem) =
+                    ctx.query.analysis.block_semantics(id)
+                else {
+                    unreachable!(
+                        "FragmentItem::EachBlock must be handled by BlockSemantics::Each"
+                    );
+                };
+                let sem = sem.clone();
+                gen_each_block(ctx, id, &sem, ctx.b.rid_expr(el_name), true, init);
                 init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
             }
 

@@ -24,6 +24,23 @@ impl AwaitBindingInfo {
     }
 }
 
+/// Legacy catch-all bag of per-expression facts collected by
+/// `collect_symbols`. Consumers that reach for it are rebuilding
+/// semantic meaning from scattered booleans — exactly what the semantic
+/// cluster migration aims to eliminate. The proper path for any new
+/// consumer question is:
+///
+/// - reactive per-reference decisions → `reactivity_semantics`
+/// - per-cluster higher-level answers → the owning cluster
+///   (`block_semantics` / `attribute_semantics` / `element_shape_semantics`)
+///
+/// This type is kept only while existing call sites are migrated away.
+#[deprecated(
+    note = "ExpressionInfo is a legacy bag of facts. For new code: \
+            use reactivity_semantics for per-reference decisions, or add \
+            the needed higher-level answer to the owning semantic cluster \
+            (block_semantics / attribute_semantics / element_shape_semantics)."
+)]
 #[derive(Debug, Clone)]
 pub struct ExpressionInfo {
     kind: ExpressionKind,

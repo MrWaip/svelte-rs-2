@@ -1,0 +1,41 @@
+//! Block Semantics builder. Builds a [`BlockSemanticsStore`] keyed by
+//! block `NodeId`, reading raw facts from [`ComponentSemantics`] and the
+//! Svelte AST — nothing else.
+//!
+//! Dependency boundary (see SEMANTIC_LAYER_ARCHITECTURE.md): this builder
+//! deliberately does **not** accept `&AnalysisData`. Only AST,
+//! `ComponentSemantics`, and — if needed in later slices —
+//! `ReactivitySemantics` are permitted inputs. Pipeline code in
+//! `passes::executor` assembles the result into `AnalysisData`.
+//!
+//! Per-kind logic lives in submodules. Today only `{#each}` has its
+//! dedicated slice; the rest stay on the legacy path until migrated.
+
+mod each;
+
+use super::BlockSemanticsStore;
+use crate::reactivity_semantics::data::ReactivitySemantics;
+use crate::types::data::ParserResult;
+use svelte_ast::Component;
+use svelte_component_semantics::ComponentSemantics;
+
+/// Build the [`BlockSemanticsStore`] for one component.
+///
+/// Pipeline placement: see `passes::executor` `PassKey::BuildBlockSemantics`.
+///
+/// Inputs per SEMANTIC_LAYER_ARCHITECTURE.md Dependency Boundary:
+/// - `&Component` + `&ParserResult` — AST surface.
+/// - `&ComponentSemantics` — scopes, bindings, references.
+/// - `&ReactivitySemantics` — reactive per-reference classification.
+///   Used to decide each-collection reactive facts (store dependency).
+pub fn build(
+    component: &Component,
+    parsed: &ParserResult<'_>,
+    semantics: &ComponentSemantics<'_>,
+    reactivity: &ReactivitySemantics,
+    node_count: u32,
+) -> BlockSemanticsStore {
+    let mut store = BlockSemanticsStore::new(node_count);
+    each::populate(component, parsed, semantics, reactivity, &mut store);
+    store
+}

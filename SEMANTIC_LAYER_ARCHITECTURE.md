@@ -50,7 +50,37 @@ same bar.
 - **Lowering Boundary.** Answers may encode "what operation is required" but
   not "which runtime helper to call" / "which builder recipe to invoke".
 - **Dependency Boundary.** Each cluster builds on `ComponentSemantics` and AST,
-  not on legacy Svelte-specific classification tables.
+  not on legacy Svelte-specific classification tables. Concretely: a cluster
+  builder's signature accepts only AST (`&Component` and `&ParserResult` —
+  the latter is the parser's pre-parsed JS store for template spans and is
+  considered part of the AST surface, not a separate cluster),
+  `ComponentSemantics`, and — where genuinely needed —
+  `ReactivitySemantics`. It never accepts `&AnalysisData` (full or partial
+  borrow), never reads other clusters' side-tables, and never reaches into
+  legacy fields like `EachContextIndex`, `TemplateSemanticsData`,
+  `ExpressionInfo`. Pipeline code assembles the builder's output into
+  `AnalysisData`; the builder itself does not see it.
+- **Escalation On Missing Facts.** If during a cluster's implementation the
+  allowed inputs (AST + `ComponentSemantics` + `ReactivitySemantics`) turn
+  out to be insufficient for some specific fact, the builder author does
+  **not** silently widen the dependency surface. The kind's work stops and
+  the gap is surfaced to the human: which fact, why it's not reachable,
+  which options are on the table. Accepted resolutions include: (1) moving
+  the fact into `ComponentSemantics` if it is generic; (2) lifting it from
+  AST into the cluster builder if it is the cluster's own; (3) admitting a
+  narrow dependency on another cluster with explicit justification; or
+  (4) re-opening the cluster decomposition. Quiet AnalysisData reads are
+  not an option.
+- **Traversal Budget.** Each cluster's builder is held to a fixed number of
+  walks per component: **1 walk of the instance script** (OXC Visit), **1
+  walk of the module script** (OXC Visit), and **1 walk of the template**
+  (Svelte AST). Nested sub-walks over template-owned statement/expression
+  subtrees are permitted inside the template walk when the fact cannot be
+  answered from `ComponentSemantics` directly, but must stay single-pass
+  per subtree. Re-walking the same nodes within the cluster is forbidden.
+  Facts already available via `ComponentSemantics` (references, scopes,
+  symbol facts) are read, not re-derived — and the read does not count
+  against the traversal budget.
 - **Reactive meaning stays in `reactivity_semantics`.** When a cluster answer
   refers to an expression or identifier, it carries only the `ReferenceId`
   of the relevant reference. The transformer rewrites that reference from
@@ -341,6 +371,108 @@ Surfaces marked deprecated as the first step of each kind migration:
 
 Deletion is gradual and per-kind; parallel ownership is contained by the
 `#[deprecated]` warning.
+
+## Prerequisite: Kill `FragmentItem`
+
+The codegen consumer path in `svelte_codegen_client` does not walk the
+Svelte AST directly. It walks `LoweredFragment { items: Vec<FragmentItem> }`
+produced by `svelte_analyze`, where `FragmentItem` is an enum that
+discriminates template items by AST node kind:
+
+```rust
+pub enum FragmentItem {
+    Element(NodeId),
+    ComponentNode(NodeId),
+    IfBlock(NodeId),
+    EachBlock(NodeId),
+    AwaitBlock(NodeId),
+    KeyBlock(NodeId),
+    RenderTag(NodeId),
+    HtmlTag(NodeId),
+    SvelteElement(NodeId),
+    SvelteBoundary(NodeId),
+    SlotElementLegacy(NodeId),
+    SvelteFragmentLegacy(NodeId),
+    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
+}
+```
+
+This enum conflates two very different things:
+
+1. **Real lowering facts that AST does not carry.** `TextConcat` merges a
+   run of adjacent `Text` / `ExpressionTag` / `Text` nodes into a single
+   runtime `$.set_text` target; lowering also filters hoisted nodes
+   (`SnippetBlock`, `SvelteHead`, `{@const}`, `{@debug}`, `<svelte:window>`,
+   whitespace-only text) and normalizes sibling order per the reference
+   compiler's whitespace rules. These are genuine additions over AST.
+2. **Node-kind discrimination that Block / ElementShape Semantics now
+   own.** Every `FragmentItem::*Block(id)` / `*Tag(id)` / `*Element(id)` /
+   `ComponentNode(id)` / `SvelteBoundary(id)` variant is redundant with a
+   one-query `block_semantics(id)` or `element_shape_semantics(id)` lookup.
+
+The consequence: as long as `FragmentItem` is the codegen dispatcher, a
+migrated cluster cannot produce a clean root consumer point. The Root
+Consumer Migration Rule is violated by construction — every block-kind
+emission currently starts at a `match FragmentItem::*` site, and a
+`match block_semantics(id)` inside a single FragmentItem arm is a
+meaningless narrowing (one-variant match inside a variant). The form the
+architecture actually wants is:
+
+```rust
+for &node_id in fragment_plan {  // plan = filtered, ordered NodeIds + TextConcat pseudo-items
+    match analysis.block_semantics(node_id) {
+        BlockSemantics::Each(sem) => gen_each_block(ctx, node_id, sem, ...),
+        BlockSemantics::If(sem)   => gen_if_block(...),
+        BlockSemantics::Await(..) => gen_await_block(...),
+        ...
+        BlockSemantics::NonSpecial => match analysis.element_shape_semantics(node_id) {
+            ElementShapeSemantics::Html(..) => process_element(...),
+            ElementShapeSemantics::Component(..) => gen_component(...),
+            ...
+        }
+    }
+}
+```
+
+This is not achievable inside the Block Semantics migration. It requires
+a separate initiative:
+
+### Separate slice: **kill `FragmentItem`**
+
+Scope:
+- Reshape `LoweredFragment` to hold a plan of `NodeId`s (plus
+  `TextConcat` as an explicit pseudo-node or side table) without
+  duplicating node-kind discrimination.
+- Replace `FragmentItem::*` matches across `svelte_codegen_client`
+  (~250 call sites) and `svelte_analyze` consumers with Block / ElementShape
+  Semantics queries, falling back to AST node-kind reads only where the
+  cluster does not yet own the decision.
+- Preserve lowering's genuine work: whitespace collapse, hoisted-node
+  filtering, TextConcat merging, fragment-scoped flags consumed by
+  codegen (`ContentStrategy`, `has_dynamic_children`, etc.).
+- Remove `FragmentItem` once no consumer references it.
+
+Ordering vs. the semantic clusters:
+- **Precedes** end-to-end Block Semantics consumer migration. Until it
+  lands, block-kind consumer migrations can only land as transitional
+  `match block_semantics(id)` inserted inside the existing `FragmentItem`
+  dispatcher, which is tolerated but not the target form.
+- **Independent** of Attribute Semantics (attributes live on element
+  nodes, not on fragment items).
+- **Coordinates with** ElementShape Semantics: both need the semantic
+  dispatcher in codegen; landing ElementShape and the FragmentItem kill
+  in the same slice may be the simplest path.
+
+Migration unit: not a cluster. A dedicated infrastructure slice with its
+own spec. It does not add new semantic meaning; it removes a duplicated
+dispatcher that blocks the cluster migrations from reaching their target
+consumer shape.
+
+Until this slice lands, the Block Semantics payload is built and unit
+tested, but consumer code for block kinds either (a) reads the payload
+from inside a FragmentItem arm (acceptable transitional form), or
+(b) does not migrate its consumer at all and only lives as an
+analyzer-side contract (preferred when no clean consumer path exists).
 
 ## Open Questions
 

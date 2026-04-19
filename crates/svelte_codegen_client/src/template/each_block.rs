@@ -3,7 +3,10 @@
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 
-use svelte_analyze::{ExprSite, FragmentKey};
+use svelte_analyze::{
+    EachBlockSemantics, EachFlags, EachIndexKind, EachItemKind, EachKeyKind, FragmentKey,
+    PropReferenceSemantics, ReferenceSemantics,
+};
 use svelte_ast::NodeId;
 
 use svelte_ast_builder::Arg;
@@ -13,17 +16,22 @@ use super::async_plan::AsyncEmissionPlan;
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
-// Each block flags (from Svelte constants)
-const EACH_ITEM_REACTIVE: u32 = 1;
-const EACH_INDEX_REACTIVE: u32 = 2;
+// IS_CONTROLLED is the only flag decided at the codegen call site; the
+// rest are pre-computed by Block Semantics on `sem.each_flags`.
 const EACH_IS_CONTROLLED: u32 = 4;
-const EACH_IS_ANIMATED: u32 = 8;
-const EACH_ITEM_IMMUTABLE: u32 = 16;
+
+const SYNTHETIC_ITEM_NAME: &str = "$$item";
 
 /// Generate statements for an `{#each ...}` block.
+///
+/// `sem` is the already-resolved [`EachBlockSemantics`] — the root consumer
+/// point performed the one semantic `match` before calling this function
+/// (see SEMANTIC_LAYER_ARCHITECTURE.md / REACTIVITY_ARCHITECTURE.md
+/// "Root Consumer Migration Rule").
 pub(crate) fn gen_each_block<'a>(
     ctx: &mut Ctx<'a>,
     block_id: NodeId,
+    sem: &EachBlockSemantics,
     anchor: Expression<'a>,
     is_controlled: bool,
     body: &mut Vec<Statement<'a>>,
@@ -32,8 +40,8 @@ pub(crate) fn gen_each_block<'a>(
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
     let span_start = block.span.start;
-    let has_key = block.key_span.is_some();
-    let has_index = block.index_span.is_some();
+    let has_key = !matches!(sem.key, EachKeyKind::Unkeyed);
+    let has_index = matches!(sem.index, EachIndexKind::Declared { .. });
     let has_fallback = block.fallback.is_some();
 
     // Extract the context binding pattern once when `as ...` is present.
@@ -43,8 +51,9 @@ pub(crate) fn gen_each_block<'a>(
             .state
             .parsed
             .take_stmt(
-                ctx.each_context_stmt_handle(block_id)
-                    .or_else(|| ctx.state.parsed.stmt_handle(cs.start))
+                ctx.state
+                    .parsed
+                    .stmt_handle(cs.start)
                     .expect("each block with context must have pre-parsed context stmt handle"),
             )
             .expect("each block with context must have pre-parsed context stmt");
@@ -54,60 +63,65 @@ pub(crate) fn gen_each_block<'a>(
         var_decl.declarations.remove(0).id
     });
 
-    let context_name = ctx.query.each_context_name(block_id).to_string();
+    // Item binding name for the arrow parameter: destructured patterns use
+    // a synthetic `$$item`; simple identifiers read their name from source
+    // via `context_span`.
+    let context_name: String = match &sem.item {
+        EachItemKind::Pattern(_) => SYNTHETIC_ITEM_NAME.to_string(),
+        EachItemKind::Identifier(_) => block
+            .context_span
+            .map(|cs| ctx.query.component.source_text(cs).trim().to_string())
+            .unwrap_or_else(|| SYNTHETIC_ITEM_NAME.to_string()),
+        EachItemKind::NoBinding => SYNTHETIC_ITEM_NAME.to_string(),
+    };
 
-    let key_is_item = ctx.each_key_is_item(block_id);
+    let key_is_item = matches!(sem.key, EachKeyKind::KeyedByItem);
 
-    // Compute flags
-    let mut flags: u32 = 0;
-
-    // EACH_INDEX_REACTIVE: keyed block with user-declared index
-    if has_key && has_index {
-        flags |= EACH_INDEX_REACTIVE;
-    }
-
-    // EACH_ITEM_REACTIVE: collection references external state.
-    // Reference also filters deps by function_depth (only external deps count),
-    // but our ref_symbols already excludes each-local bindings via scope resolution.
-    // In runes mode: skip when key_is_item unless store deps are present.
-    let expr_deps = ctx
-        .expr_deps(ExprSite::Node(block_id))
-        .unwrap_or_else(|| panic!("missing expression deps for each block {:?}", block_id));
-    let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
-    let expr_has_refs = !expr_deps.info.ref_symbols().is_empty();
-    let uses_store = expr_deps.info.has_store_ref();
-    let has_await = async_plan.has_await();
-    let needs_async = async_plan.needs_async();
-    if uses_store || (expr_has_refs && !key_is_item) {
-        flags |= EACH_ITEM_REACTIVE;
-    }
-
-    // EACH_ITEM_IMMUTABLE: runes mode without store dependency.
-    // Reference: `runes && !uses_store`. We only compile runes mode currently.
-    if !uses_store {
-        flags |= EACH_ITEM_IMMUTABLE;
-    }
-
+    // Flag computation is owned by Block Semantics. Codegen only OR's in
+    // EACH_IS_CONTROLLED, which is a call-site lowering decision.
+    let mut flags: u32 = sem.each_flags.bits() as u32;
     if is_controlled {
         flags |= EACH_IS_CONTROLLED;
     }
 
-    if has_key && ctx.each_has_animate(block_id) {
-        flags |= EACH_IS_ANIMATED;
-    }
+    // Prop-source detection for the collection read: prop-source getters
+    // lower as a direct call without the usual thunk wrap. This is a
+    // lowering-shape question answered by reactivity at the root
+    // identifier of the collection expression.
+    let collection_root_semantics = node_root_reference_semantics(ctx, block_id);
+    let is_prop_source = matches!(
+        collection_root_semantics,
+        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+    );
 
-    // User-declared index name (always available regardless of body usage)
-    let user_index_name = ctx.each_index_name(block_id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
+    let has_await = async_plan.has_await();
+    let needs_async = async_plan.needs_async();
+
+    // User-declared index name: read from source via index_span.
+    let user_index_name: Option<String> = block
+        .index_span
+        .map(|is| ctx.query.component.source_text(is).trim().to_string());
+
+    let (body_uses_index, key_uses_index) = match sem.index {
+        EachIndexKind::Declared {
+            used_in_body,
+            used_in_key,
+            ..
+        } => (used_in_body, used_in_key),
+        EachIndexKind::Absent => (false, false),
+    };
 
     // Reference: EachBlock.js lines 316–318. When the each body shadows an outer
     // binding, the reference compiler always emits an index param (even if unused)
     // followed by a unique `$$array` param so the body can reach the collection.
-    let needs_collection_id = ctx.each_needs_collection_id(block_id);
+    let needs_collection_id = sem.shadows_outer;
 
-    // Render function index param: only when body uses it, group binding needs it,
-    // or collection_id forces an index slot.
-    let needs_group_index = ctx.contains_group_binding(block_id);
-    let body_uses_index = ctx.each_body_uses_index(block_id);
+    // `EachFlavor::BindGroup` is already scope-qualified by the Block
+    // Semantics builder: it's set only when a `bind:group={...}` in the
+    // body references a symbol this each introduces (item / index /
+    // destructured leaf). Codegen just reads it.
+    let needs_group_index = matches!(sem.flavor, svelte_analyze::EachFlavor::BindGroup);
     let render_index_name = if body_uses_index || needs_group_index || needs_collection_id {
         user_index_name.clone().or_else(|| {
             let name = ctx.gen_ident("$$index");
@@ -129,15 +143,8 @@ pub(crate) fn gen_each_block<'a>(
         None
     };
 
-    // One reference-level semantic query: prop-source reads lower the
-    // collection without a thunk because the prop accessor is already a
-    // callable. All other variants (signal, non-source prop, store, plain)
-    // stay on the thunked path.
-    use svelte_analyze::{PropReferenceSemantics, ReferenceSemantics};
-    let is_prop_source = matches!(
-        ctx.directive_root_reference_semantics(block_id),
-        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
-    );
+    // Collection-read lowering — decided from the same semantic answer
+    // used above for reactive/immutable flags.
     let collection_fn = if needs_async {
         // Inside $.async callback: () => $.get($$collection)
         ctx.b
@@ -166,7 +173,7 @@ pub(crate) fn gen_each_block<'a>(
                 }
                 None => ctx.b.formal_parameter_from_str(&context_name),
             };
-            if ctx.each_key_uses_index(block_id) {
+            if key_uses_index {
                 let idx_name = user_index_name
                     .as_ref()
                     .expect("key_uses_index implies index exists");
@@ -184,8 +191,9 @@ pub(crate) fn gen_each_block<'a>(
         }
     };
 
-    // Destructuring declarations prepended to body
-    let item_reactive = flags & EACH_ITEM_REACTIVE != 0;
+    // Destructuring declarations prepended to body. `item_reactive`
+    // mirrors the pre-computed ITEM_REACTIVE flag from Block Semantics.
+    let item_reactive = sem.each_flags.contains(EachFlags::ITEM_REACTIVE);
     let destructured_decls = match context_pattern {
         Some(pattern @ (BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_))) => {
             gen_destructuring_declarations(ctx, pattern, item_reactive)
@@ -265,6 +273,32 @@ pub(crate) fn gen_each_block<'a>(
 
         let each_call = ctx.b.call_expr("$.each", each_args);
         body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
+    }
+}
+
+/// Reference-semantics of the root identifier of an `{#each <expr> as ...}`
+/// collection expression. Walks through member accesses and parentheses
+/// to the leaf identifier and asks reactivity for its classification.
+/// Returns `NonReactive` for non-identifier roots (literals, calls, ...).
+fn node_root_reference_semantics(ctx: &Ctx<'_>, block_id: NodeId) -> ReferenceSemantics {
+    let handle = ctx.query.view.node_expr_handle(block_id);
+    let Some(expr) = ctx.state.parsed.expr(handle) else {
+        return ReferenceSemantics::NonReactive;
+    };
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::StaticMemberExpression(m) => current = &m.object,
+            Expression::ComputedMemberExpression(m) => current = &m.object,
+            Expression::ParenthesizedExpression(p) => current = &p.expression,
+            Expression::Identifier(id) => {
+                return match id.reference_id.get() {
+                    Some(ref_id) => ctx.query.analysis.reference_semantics(ref_id),
+                    None => ReferenceSemantics::NonReactive,
+                };
+            }
+            _ => return ReferenceSemantics::NonReactive,
+        }
     }
 }
 

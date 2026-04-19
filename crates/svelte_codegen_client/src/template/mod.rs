@@ -643,6 +643,49 @@ fn emit_single_block<'a>(
     body: &mut Vec<Statement<'a>>,
     setup: FragmentSetup<'a>,
 ) {
+    // Root Consumer Migration: semantic query before any legacy
+    // FragmentItem handling. Migrated block kinds take the semantic
+    // branch and `return`; everything else falls through to the legacy
+    // matches below. DOM-slot allocation is duplicated from the legacy
+    // path on purpose — it collapses once the FragmentItem kill-off
+    // slice lands (see SEMANTIC_LAYER_ARCHITECTURE.md).
+    let semantic_node_id = match item {
+        FragmentItem::IfBlock(id)
+        | FragmentItem::EachBlock(id)
+        | FragmentItem::AwaitBlock(id)
+        | FragmentItem::KeyBlock(id)
+        | FragmentItem::RenderTag(id)
+        | FragmentItem::HtmlTag(id) => Some(*id),
+        _ => None,
+    };
+    if let Some(id) = semantic_node_id {
+        if let svelte_analyze::BlockSemantics::Each(sem) =
+            ctx.query.analysis.block_semantics(id)
+        {
+            let sem = sem.clone();
+            let _ = tpl_name;
+            let _ = is_root;
+            let _ = hoisted;
+            let _ = parent_key;
+            let frag = ctx.gen_ident("fragment");
+            let node = ctx.gen_ident("node");
+            body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+            body.push(
+                ctx.b
+                    .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+            );
+            if let FragmentSetup::PostCreate(stmts) = setup {
+                body.extend(stmts);
+            }
+            gen_each_block(ctx, id, &sem, ctx.b.rid_expr(&node), false, body);
+            body.push(
+                ctx.b
+                    .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+            );
+            return;
+        }
+    }
+
     // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
@@ -701,6 +744,9 @@ fn emit_single_block<'a>(
         body.extend(stmts);
     }
 
+    // Legacy FragmentItem dispatcher. `FragmentItem::EachBlock(_)` is
+    // never reached here — it is handled by the semantic branch at the
+    // top of this function.
     match item {
         FragmentItem::IfBlock(id) => {
             let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
@@ -710,8 +756,8 @@ fn emit_single_block<'a>(
                 body.push(ctx.b.block_stmt(stmts));
             }
         }
-        FragmentItem::EachBlock(id) => {
-            gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, body);
+        FragmentItem::EachBlock(_) => {
+            unreachable!("FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of emit_single_block")
         }
         FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
