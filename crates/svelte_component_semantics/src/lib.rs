@@ -81,6 +81,7 @@
 //! ```
 
 pub mod builder;
+pub mod pattern;
 mod reference;
 mod scope;
 mod storage;
@@ -89,6 +90,7 @@ mod symbol;
 pub use builder::{
     ComponentSemanticsBuilder, JsSemanticVisitor, TemplateBuildContext, TemplateWalker,
 };
+pub use pattern::{walk_bindings, Access, BindingVisit, Step};
 pub use reference::Reference;
 pub use storage::{ComponentSemantics, JsNode, JsStorage};
 pub use svelte_ast::FragmentKey;
