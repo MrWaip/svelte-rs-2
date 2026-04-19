@@ -156,7 +156,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.let_directive_stmt_handle(id)
     }
+    #[deprecated(
+        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
+        block_semantics::SnippetBlockSemantics"
+    )]
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
+        #[allow(deprecated)]
         self.data.snippet_stmt_handle(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
@@ -165,7 +170,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.stmt_ref_symbols(id)
     }
+    #[deprecated(
+        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
+        block_semantics::SnippetBlockSemantics"
+    )]
     pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        #[allow(deprecated)]
         self.data.snippet_param_ref_symbols(id)
     }
     pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
@@ -338,9 +348,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_component(id)
-    }
-    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
-        self.data.template.snippets.is_hoistable(id)
     }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
         self.data.elements.flags.event_handler_mode(id)

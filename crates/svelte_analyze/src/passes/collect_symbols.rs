@@ -72,7 +72,9 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         stmt: &Statement<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if ctx.data.snippet_stmt_handle(node_id).is_none() {
+        #[allow(deprecated)]
+        let has_handle = ctx.data.snippet_stmt_handle(node_id).is_some();
+        if !has_handle {
             return;
         }
         let Some(params) = extract_arrow_params(stmt) else {

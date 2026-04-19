@@ -41,10 +41,10 @@ pub(crate) enum PassKey {
     CollectConstTagFragments,
     PopulateConstTagSyms,
     BuildReactivitySemantics,
-    BuildBlockSemantics,
     LowerTemplate,
     ReactivityWalk,
     TemplateClassificationWalk,
+    BuildBlockSemantics,
     ClassifyRemainingFragments,
     ValidateTemplate,
     Validate,
@@ -169,17 +169,8 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ReactivitySemantics],
     },
     PassDescriptor {
-        key: PassKey::BuildBlockSemantics,
-        requires: &[DataToken::ReactivitySemantics],
-        produces: &[DataToken::BlockSemantics],
-    },
-    PassDescriptor {
         key: PassKey::LowerTemplate,
-        requires: &[
-            DataToken::ReactivitySemantics,
-            DataToken::BlockSemantics,
-            DataToken::ConstTagFragments,
-        ],
+        requires: &[DataToken::ReactivitySemantics, DataToken::ConstTagFragments],
         produces: &[DataToken::LoweredTemplate],
     },
     PassDescriptor {
@@ -191,6 +182,14 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::TemplateClassificationWalk,
         requires: &[DataToken::Reactivity],
         produces: &[DataToken::TemplateClassification],
+    },
+    PassDescriptor {
+        key: PassKey::BuildBlockSemantics,
+        requires: &[
+            DataToken::ReactivitySemantics,
+            DataToken::TemplateClassification,
+        ],
+        produces: &[DataToken::BlockSemantics],
     },
     PassDescriptor {
         key: PassKey::ClassifyRemainingFragments,
@@ -229,13 +228,13 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::PopulateConstTagSyms,
     PassKey::BuildReactivitySemantics,
     PassKey::ResolveRenderTagMeta,
-    PassKey::BuildBlockSemantics,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::LowerTemplate,
     PassKey::ReactivityWalk,
     PassKey::TemplateClassificationWalk,
+    PassKey::BuildBlockSemantics,
     PassKey::ClassifyRemainingFragments,
 ];
 

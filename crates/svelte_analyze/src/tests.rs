@@ -924,8 +924,10 @@ fn assert_snippet_param_refs_include(
         .scoping
         .find_binding(root, binding_name)
         .unwrap_or_else(|| panic!("no binding '{binding_name}'"));
+    #[allow(deprecated)]
+    let refs = data.snippet_param_ref_symbols(block.id);
     assert!(
-        data.snippet_param_ref_symbols(block.id).contains(&sym),
+        refs.contains(&sym),
         "expected snippet '{snippet_name}' params to reference '{binding_name}'",
     );
 }

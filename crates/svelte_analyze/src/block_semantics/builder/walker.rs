@@ -28,6 +28,7 @@ pub(super) fn populate(
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
+    hoistable_snippets: &FxHashSet<NodeId>,
     store: &mut BlockSemanticsStore,
 ) {
     let mut ctx = Ctx {
@@ -36,6 +37,7 @@ pub(super) fn populate(
         semantics,
         reactivity,
         blockers,
+        hoistable_snippets,
         store,
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
@@ -51,6 +53,12 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) blockers: &'c BlockerData,
+    /// Set of `{#snippet}` block ids that were classified as hoistable by
+    /// the legacy `HoistableSnippetsVisitor`. Passed through by the
+    /// pipeline so the snippet populator can fold it into the block's
+    /// payload without re-deriving the fact. Will be internalized when
+    /// the legacy visitor is removed.
+    pub(super) hoistable_snippets: &'c FxHashSet<NodeId>,
     pub(super) store: &'c mut BlockSemanticsStore,
     /// Stack of enclosing each-blocks during the walk. Each frame
     /// carries the symbols the each introduces in its body scope
@@ -90,7 +98,7 @@ impl<'a> Ctx<'_, 'a> {
                     self.visit_fragment(&alt.nodes);
                 }
             }
-            Node::SnippetBlock(block) => self.visit_fragment(&block.body.nodes),
+            Node::SnippetBlock(block) => super::snippet::populate(self, block),
             Node::KeyBlock(block) => self.visit_fragment(&block.fragment.nodes),
             Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
             Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),

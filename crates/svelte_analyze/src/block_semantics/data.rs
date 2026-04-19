@@ -26,6 +26,8 @@ pub enum BlockSemantics {
     Each(EachBlockSemantics),
     /// `{#await ...}` block.
     Await(AwaitBlockSemantics),
+    /// `{#snippet name(params)}` block.
+    Snippet(SnippetBlockSemantics),
     // Placeholders for later slices — payload lands when each kind is
     // migrated end-to-end. Keeping them here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
@@ -33,8 +35,6 @@ pub enum BlockSemantics {
     If,
     // TODO(block-semantics): Key payload.
     Key,
-    // TODO(block-semantics): Snippet payload.
-    Snippet,
     // TODO(block-semantics): ConstTag payload.
     ConstTag,
     // TODO(block-semantics): Render payload.
@@ -259,4 +259,87 @@ pub enum AwaitWrapper {
     /// with identifier references in the expression, sorted and
     /// deduplicated.
     AsyncWrap { blockers: SmallVec<[u32; 2]> },
+}
+
+// ---------------------------------------------------------------------------
+// SnippetBlock
+// ---------------------------------------------------------------------------
+
+/// `{#snippet name(params)}...{/snippet}` — declaration-shape answer.
+///
+/// Per-symbol read strategy (how `name` / `label` read inside the body
+/// lowers to `name()` vs `$.get(name)`) stays in `reactivity_semantics`
+/// under `ContextualDeclarationSemantics::SnippetParam`. This payload
+/// covers only facts the consumer needs when emitting the
+/// `const name = ($$anchor, ...) => { ... }` declaration itself:
+/// the snippet's own const name, whether it hoists above the component
+/// function, and each parameter's declaration form.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnippetBlockSemantics {
+    /// Const name under which the snippet is declared. Read by the
+    /// consumer via `ComponentSemantics::symbol_name(sym)` — the source
+    /// text slice is never stored.
+    pub name: SymbolId,
+    /// `true` — snippet lowers to a module-level declaration hoisted
+    /// above the component function. `false` — instance-level (inside
+    /// the component function) or locally inside a parent block.
+    pub hoistable: bool,
+    /// Parameters in source order.
+    pub params: SmallVec<[SnippetParam; 4]>,
+}
+
+/// One parameter of a `{#snippet}` declaration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SnippetParam {
+    /// `(name)` or `(name = <default>)` — identifier parameter. Lowers
+    /// to the arrow argument directly; absent default becomes `= $.noop`
+    /// at emit time.
+    Identifier {
+        sym: SymbolId,
+        default: SnippetDefaultKind,
+    },
+    /// `({ a, b })` / `([x, y])` — destructured parameter. Lowers to a
+    /// positional `$$argN` argument plus per-binding `let` declarations
+    /// inside the body.
+    Pattern {
+        kind: SnippetDestructureKind,
+        /// `OxcNodeId` of the outer `BindingPattern`. Consumer walks the
+        /// pattern subtree from here to build member paths and clone
+        /// default expressions.
+        pattern_id: OxcNodeId,
+        bindings: SmallVec<[SnippetPatternBinding; 4]>,
+    },
+}
+
+/// One leaf identifier introduced by a destructured `SnippetParam::Pattern`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SnippetPatternBinding {
+    pub sym: SymbolId,
+    pub default: SnippetDefaultKind,
+    /// `true` — leaf was introduced by `...rest` in an object pattern.
+    pub is_rest: bool,
+}
+
+/// Whether a snippet parameter / pattern leaf carries a user-specified
+/// default, and how the default expression lowers. Classification is
+/// pre-computed: the consumer never re-walks the default expression to
+/// decide simple-vs-computed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnippetDefaultKind {
+    /// No user default. Identifier params get `= $.noop` at emit time;
+    /// pattern leaves fall back to a plain member access.
+    None,
+    /// Default is a simple literal / identifier — inlines directly:
+    /// `$.fallback(access, <value>)`.
+    Constant,
+    /// Default is an arbitrary expression — lowers through a thunk:
+    /// `$.fallback(access, () => <value>, true)`.
+    Computed,
+}
+
+/// Destructure flavor for `SnippetParam::Pattern`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnippetDestructureKind {
+    Object,
+    Array,
 }

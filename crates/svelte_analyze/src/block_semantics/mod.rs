@@ -13,7 +13,8 @@ pub use builder::build;
 pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
-    EachIndexKind, EachItemKind, EachKeyKind,
+    EachIndexKind, EachItemKind, EachKeyKind, SnippetBlockSemantics, SnippetDefaultKind,
+    SnippetDestructureKind, SnippetParam, SnippetPatternBinding,
 };
 
 use crate::scope::SymbolId;

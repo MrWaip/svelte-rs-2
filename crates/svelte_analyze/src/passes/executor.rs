@@ -202,12 +202,14 @@ pub(crate) fn execute_pass<'a>(
             crate::reactivity_semantics::build_v2(component, parsed, data);
         }
         super::PassKey::BuildBlockSemantics => {
+            let hoistable_snippets = data.template.snippets.hoistable_ids();
             data.block_semantics_store = crate::block_semantics::build(
                 component,
                 parsed,
                 data.scoping.semantics(),
                 &data.reactivity,
                 &data.script.blocker_data,
+                &hoistable_snippets,
                 component.node_count(),
             );
         }

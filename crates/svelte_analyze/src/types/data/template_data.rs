@@ -55,6 +55,14 @@ impl SnippetData {
     pub fn is_hoistable(&self, id: NodeId) -> bool {
         self.hoistable.contains(&id)
     }
+    /// Snapshot of hoistable snippet ids as an `FxHashSet`. Used by the
+    /// block_semantics builder pipeline so the payload can carry the
+    /// flag per-block without the builder reading `AnalysisData` directly.
+    /// Will be removed alongside the legacy `HoistableSnippetsVisitor`
+    /// once block_semantics becomes the single source.
+    pub fn hoistable_ids(&self) -> rustc_hash::FxHashSet<NodeId> {
+        self.hoistable.iter().collect()
+    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets
             .get(id)

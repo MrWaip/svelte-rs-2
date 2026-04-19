@@ -41,12 +41,9 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
             return;
         }
 
-        if ctx
-            .data
-            .snippet_param_ref_symbols(block.id)
-            .iter()
-            .any(|sym| self.script_syms.contains(sym))
-        {
+        #[allow(deprecated)]
+        let param_refs = ctx.data.snippet_param_ref_symbols(block.id);
+        if param_refs.iter().any(|sym| self.script_syms.contains(sym)) {
             self.tainted.insert(block.id);
         }
     }

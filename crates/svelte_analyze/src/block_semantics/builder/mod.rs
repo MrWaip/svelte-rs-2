@@ -18,12 +18,14 @@
 mod await_;
 mod common;
 mod each;
+mod snippet;
 mod walker;
 
 use super::BlockSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{BlockerData, ParserResult};
-use svelte_ast::Component;
+use rustc_hash::FxHashSet;
+use svelte_ast::{Component, NodeId};
 use svelte_component_semantics::ComponentSemantics;
 
 /// Build the [`BlockSemanticsStore`] for one component.
@@ -43,11 +45,18 @@ pub fn build(
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
+    hoistable_snippets: &FxHashSet<NodeId>,
     node_count: u32,
 ) -> BlockSemanticsStore {
     let mut store = BlockSemanticsStore::new(node_count);
     walker::populate(
-        component, parsed, semantics, reactivity, blockers, &mut store,
+        component,
+        parsed,
+        semantics,
+        reactivity,
+        blockers,
+        hoistable_snippets,
+        &mut store,
     );
     store
 }
