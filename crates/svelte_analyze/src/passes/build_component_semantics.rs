@@ -272,11 +272,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         ctx.enter_fragment_scope(FragmentKey::EachBody(block.id));
         if let Some(span) = block.context_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                self.data
-                    .template
-                    .template_semantics
-                    .each_context_stmt_handles
-                    .insert(block.id, handle);
                 if let Some(stmt) = self.parsed.stmt(handle) {
                     ctx.visit_js_statement(stmt);
                 }
@@ -284,11 +279,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         }
         if let Some(span) = block.index_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                self.data
-                    .template
-                    .template_semantics
-                    .each_index_stmt_handles
-                    .insert(block.id, handle);
                 if let Some(stmt) = self.parsed.stmt(handle) {
                     ctx.visit_js_statement(stmt);
                 }

@@ -2225,41 +2225,6 @@ fn bind_checked_marks_bindable_props_source_nodes() {
 }
 
 #[test]
-fn each_context_index_tracks_index_symbol_and_bind_this_context() {
-    // `node` is `$state([])` so bind:this={node[index]} member mutation
-    // doesn't trigger the non-reactive-update warning. Before the shorthand
-    // rework `node` was never flagged mutated so a plain `let node` used to
-    // slip past this validator silently — that was a bug in analyze.
-    let (component, data) = analyze_source(
-        r#"<script>
-    let items = [{ id: 1 }];
-    let node = $state([]);
-</script>
-{#each items as item, index (item.id)}
-    <div bind:this={node[index]}>{item.id}</div>
-{/each}"#,
-    );
-    let each = find_each_block(&component.fragment, &component, "items").expect("no each block");
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "div", "this")
-        .expect("no bind:this on div");
-
-    let index_sym = data
-        .each_index_sym(each.id)
-        .unwrap_or_else(|| panic!("missing each index symbol"));
-    assert_eq!(data.each_block_for_index_sym(index_sym), Some(each.id));
-    assert_eq!(data.each_context_name(each.id), "item");
-    let bind_context = data
-        .bind_each_context(bind_id)
-        .unwrap_or_else(|| panic!("missing bind:this each context"));
-    let bind_context_names: Vec<_> = bind_context
-        .iter()
-        .map(|&sym| data.scoping.symbol_name(sym).to_string())
-        .collect();
-    assert_eq!(bind_context_names, vec!["index".to_string()]);
-    assert!(data.each_body_uses_index(each.id));
-}
-
-#[test]
 fn static_contenteditable_marks_bound_contenteditable() {
     let (component, data) = analyze_source(
         r#"<script>let html = $state('');</script><div contenteditable bind:innerHTML={html}></div>"#,

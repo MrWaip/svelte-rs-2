@@ -103,6 +103,11 @@ impl TemplateAnalysis {
 }
 
 pub struct BlockAnalysis {
+    #[deprecated(
+        note = "use AnalysisData::block_semantics(id); this legacy index is still \
+                written by template passes but will be removed once its remaining \
+                readers (validation, reactivity_semantics, bind_semantics) migrate."
+    )]
     pub each_context: EachContextIndex,
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     pub(crate) render_tag_is_chain: NodeBitSet,
@@ -111,6 +116,7 @@ pub struct BlockAnalysis {
 
 impl BlockAnalysis {
     fn new(node_count: u32) -> Self {
+        #[allow(deprecated)]
         Self {
             each_context: EachContextIndex::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
@@ -631,20 +637,6 @@ impl<'a> AnalysisData<'a> {
         self.template
             .template_semantics
             .snippet_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .each_context_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .each_index_stmt_handles
             .get(id)
             .copied()
     }

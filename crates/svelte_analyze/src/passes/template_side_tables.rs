@@ -535,26 +535,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(block.id, ctx.parent());
-        if let Some(handle) = block
-            .context_span
-            .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
-        {
-            ctx.data
-                .template
-                .template_semantics
-                .each_context_stmt_handles
-                .insert(block.id, handle);
-        }
-        if let Some(handle) = block
-            .index_span
-            .and_then(|span| parsed.and_then(|p| p.stmt_handle(span.start)))
-        {
-            ctx.data
-                .template
-                .template_semantics
-                .each_index_stmt_handles
-                .insert(block.id, handle);
-        }
         let is_destructured = block
             .context_span
             .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
