@@ -1,226 +1,161 @@
 //! `{#await}` population for Block Semantics.
 //!
-//! One template walk, symmetric to [`super::each`]. All identity comes
-//! from `ParserResult` (pre-parsed value / error / expression spans) and
-//! `ComponentSemantics` (binding resolution). No `AnalysisData` access.
+//! Free function invoked by the cluster-wide walker in [`super::walker`]:
+//! given the shared `Ctx`, consume one `AwaitBlock` — record its
+//! `BlockSemantics::Await(...)` payload — then recurse into its child
+//! fragments through the same walker so nested blocks of every migrated
+//! kind get visited inside a single template walk.
 
 use super::super::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, BlockSemanticsStore,
+    BlockSemantics,
 };
 use super::common::{
     binding_ident_of, binding_pattern_node_id, collect_binding_pattern_symbols,
     declarator_from_stmt,
 };
-use crate::types::data::{BlockerData, ParserResult};
+use super::walker::Ctx;
 use oxc_ast::ast::{AwaitExpression, BindingPattern, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
-use svelte_ast::{AwaitBlock, Component, FragmentKey, Node, NodeId};
-use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId};
+use svelte_ast::{AwaitBlock, FragmentKey};
+use svelte_component_semantics::{ReferenceId, SymbolId};
 
-pub(super) fn populate(
-    component: &Component,
-    parsed: &ParserResult<'_>,
-    semantics: &ComponentSemantics<'_>,
-    blockers: &BlockerData,
-    store: &mut BlockSemanticsStore,
-) {
-    let mut ctx = Ctx {
-        component,
-        parsed,
-        semantics,
-        blockers,
-        store,
+/// Populate `BlockSemantics::Await` for this block and recurse into its
+/// pending / then / catch fragments.
+pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
+    let pending = if block.pending.is_some() {
+        AwaitBranch::Present {
+            binding: AwaitBinding::None,
+        }
+    } else {
+        AwaitBranch::Absent
     };
-    for &node_id in &component.fragment.nodes {
-        ctx.visit_node(node_id);
+    let then = resolve_branch(
+        ctx,
+        block.then.is_some(),
+        block.value_span,
+        FragmentKey::AwaitThen(block.id),
+    );
+    let catch = resolve_branch(
+        ctx,
+        block.catch.is_some(),
+        block.error_span,
+        FragmentKey::AwaitCatch(block.id),
+    );
+
+    let (expression_has_await, blockers) = match ctx
+        .parsed
+        .expr_handle(block.expression_span.start)
+        .and_then(|h| ctx.parsed.expr(h))
+    {
+        Some(expr) => expression_facts(ctx, expr),
+        None => (false, SmallVec::new()),
+    };
+    let wrapper = if blockers.is_empty() {
+        AwaitWrapper::None
+    } else {
+        AwaitWrapper::AsyncWrap { blockers }
+    };
+
+    // Recurse first so nested blocks (of any migrated kind) populate inside
+    // the same template walk.
+    if let Some(f) = &block.pending {
+        ctx.visit_fragment(&f.nodes);
     }
+    if let Some(f) = &block.then {
+        ctx.visit_fragment(&f.nodes);
+    }
+    if let Some(f) = &block.catch {
+        ctx.visit_fragment(&f.nodes);
+    }
+
+    ctx.store.set(
+        block.id,
+        BlockSemantics::Await(AwaitBlockSemantics {
+            pending,
+            then,
+            catch,
+            expression_has_await,
+            wrapper,
+        }),
+    );
 }
 
-struct Ctx<'c, 'a> {
-    component: &'c Component,
-    parsed: &'c ParserResult<'a>,
-    semantics: &'c ComponentSemantics<'a>,
-    blockers: &'c BlockerData,
-    store: &'c mut BlockSemanticsStore,
-}
-
-impl<'a> Ctx<'_, 'a> {
-    fn visit_node(&mut self, id: NodeId) {
-        let node = self.component.store.get(id);
-        match node {
-            Node::AwaitBlock(block) => self.visit_await(block),
-            Node::EachBlock(block) => {
-                // Each populator already ran on this slice; we only
-                // recurse into its fragments so nested await-blocks get
-                // visited.
-                self.visit_fragment(&block.body.nodes);
-                if let Some(fb) = &block.fallback {
-                    self.visit_fragment(&fb.nodes);
-                }
-            }
-            Node::Element(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SlotElementLegacy(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::ComponentNode(cn) => self.visit_fragment(&cn.fragment.nodes),
-            Node::IfBlock(block) => {
-                self.visit_fragment(&block.consequent.nodes);
-                if let Some(alt) = &block.alternate {
-                    self.visit_fragment(&alt.nodes);
-                }
-            }
-            Node::SnippetBlock(block) => self.visit_fragment(&block.body.nodes),
-            Node::KeyBlock(block) => self.visit_fragment(&block.fragment.nodes),
-            Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SvelteElement(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SvelteBoundary(el) => self.visit_fragment(&el.fragment.nodes),
-            _ => {}
-        }
+/// Resolve a `{:then}` / `{:catch}` branch. `has_fragment` captures
+/// branch presence; the optional binding pattern is pulled from the
+/// pre-parsed `let <pattern>` statement at `binding_span`.
+fn resolve_branch(
+    ctx: &Ctx<'_, '_>,
+    has_fragment: bool,
+    binding_span: Option<svelte_span::Span>,
+    scope_key: FragmentKey,
+) -> AwaitBranch {
+    if !has_fragment {
+        return AwaitBranch::Absent;
     }
-
-    fn visit_fragment(&mut self, nodes: &[NodeId]) {
-        for &id in nodes {
-            self.visit_node(id);
-        }
-    }
-
-    fn visit_await(&mut self, block: &AwaitBlock) {
-        let pending = if block.pending.is_some() {
-            AwaitBranch::Present {
-                binding: AwaitBinding::None,
-            }
-        } else {
-            AwaitBranch::Absent
-        };
-
-        let then = self.resolve_branch(
-            block.then.is_some(),
-            block.value_span,
-            FragmentKey::AwaitThen(block.id),
-        );
-        let catch = self.resolve_branch(
-            block.catch.is_some(),
-            block.error_span,
-            FragmentKey::AwaitCatch(block.id),
-        );
-
-        // Expression facts — single walk over the pre-parsed expression
-        // subtree. Produces both `has_await` and the blocker list.
-        let (expression_has_await, blockers) = match self
+    let binding = match binding_span {
+        None => AwaitBinding::None,
+        Some(span) => ctx
             .parsed
-            .expr_handle(block.expression_span.start)
-            .and_then(|h| self.parsed.expr(h))
-        {
-            Some(expr) => self.expression_facts(expr),
-            None => (false, SmallVec::new()),
-        };
+            .stmt_handle(span.start)
+            .and_then(|h| ctx.parsed.stmt(h))
+            .and_then(declarator_from_stmt)
+            .map(|decl| binding_from_pattern(ctx, &decl.id, scope_key))
+            .unwrap_or(AwaitBinding::None),
+    };
+    AwaitBranch::Present { binding }
+}
 
-        let wrapper = if blockers.is_empty() {
-            AwaitWrapper::None
-        } else {
-            AwaitWrapper::AsyncWrap { blockers }
-        };
-
-        // Recurse into fragments so nested await-blocks are populated too.
-        if let Some(f) = &block.pending {
-            self.visit_fragment(&f.nodes);
-        }
-        if let Some(f) = &block.then {
-            self.visit_fragment(&f.nodes);
-        }
-        if let Some(f) = &block.catch {
-            self.visit_fragment(&f.nodes);
-        }
-
-        self.store.set(
-            block.id,
-            BlockSemantics::Await(AwaitBlockSemantics {
-                pending,
-                then,
-                catch,
-                expression_has_await,
-                wrapper,
-            }),
-        );
+fn binding_from_pattern<'a>(
+    ctx: &Ctx<'_, 'a>,
+    pattern: &BindingPattern<'a>,
+    scope_key: FragmentKey,
+) -> AwaitBinding {
+    if let Some(ident) = binding_ident_of(pattern) {
+        return ctx
+            .semantics
+            .fragment_scope(&scope_key)
+            .and_then(|scope| ctx.semantics.find_binding(scope, ident.name.as_str()))
+            .map(AwaitBinding::Identifier)
+            .unwrap_or(AwaitBinding::None);
     }
-
-    /// Resolve a `{:then}` / `{:catch}` branch. `has_fragment` captures
-    /// branch presence; the optional binding pattern is pulled from the
-    /// pre-parsed `let <pattern>` statement at `binding_span`.
-    fn resolve_branch(
-        &self,
-        has_fragment: bool,
-        binding_span: Option<svelte_span::Span>,
-        scope_key: FragmentKey,
-    ) -> AwaitBranch {
-        if !has_fragment {
-            return AwaitBranch::Absent;
-        }
-        let binding = match binding_span {
-            None => AwaitBinding::None,
-            Some(span) => self
-                .parsed
-                .stmt_handle(span.start)
-                .and_then(|h| self.parsed.stmt(h))
-                .and_then(declarator_from_stmt)
-                .map(|decl| self.binding_from_pattern(&decl.id, scope_key))
-                .unwrap_or(AwaitBinding::None),
-        };
-        AwaitBranch::Present { binding }
+    let kind = match pattern {
+        BindingPattern::ObjectPattern(_) => AwaitDestructureKind::Object,
+        BindingPattern::ArrayPattern(_) => AwaitDestructureKind::Array,
+        _ => return AwaitBinding::None,
+    };
+    let mut leaves: SmallVec<[SymbolId; 4]> = SmallVec::new();
+    collect_binding_pattern_symbols(pattern, &mut leaves);
+    AwaitBinding::Pattern {
+        kind,
+        leaves,
+        pattern_id: binding_pattern_node_id(pattern),
     }
+}
 
-    fn binding_from_pattern(
-        &self,
-        pattern: &BindingPattern<'a>,
-        scope_key: FragmentKey,
-    ) -> AwaitBinding {
-        if let Some(ident) = binding_ident_of(pattern) {
-            // Resolve the identifier in the then/catch body scope.
-            return self
-                .semantics
-                .fragment_scope(&scope_key)
-                .and_then(|scope| self.semantics.find_binding(scope, ident.name.as_str()))
-                .map(AwaitBinding::Identifier)
-                .unwrap_or(AwaitBinding::None);
-        }
-        let kind = match pattern {
-            BindingPattern::ObjectPattern(_) => AwaitDestructureKind::Object,
-            BindingPattern::ArrayPattern(_) => AwaitDestructureKind::Array,
-            _ => return AwaitBinding::None,
+/// One walk over the expression subtree — collects `has_await` and the
+/// sorted, de-duplicated blocker list in a single pass.
+fn expression_facts<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> (bool, SmallVec<[u32; 2]>) {
+    let mut collector = ExprCollector {
+        refs: Vec::new(),
+        has_await: false,
+    };
+    collector.visit_expression(expr);
+
+    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
+    for ref_id in &collector.refs {
+        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
+            continue;
         };
-        let mut leaves: SmallVec<[SymbolId; 4]> = SmallVec::new();
-        collect_binding_pattern_symbols(pattern, &mut leaves);
-        AwaitBinding::Pattern {
-            kind,
-            leaves,
-            pattern_id: binding_pattern_node_id(pattern),
-        }
-    }
-
-    /// Single walk over the expression subtree — collects `has_await`
-    /// and the (sorted, de-duplicated) blocker list.
-    fn expression_facts(&self, expr: &Expression<'a>) -> (bool, SmallVec<[u32; 2]>) {
-        let mut collector = ExprCollector {
-            refs: Vec::new(),
-            has_await: false,
-        };
-        collector.visit_expression(expr);
-
-        let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
-        for ref_id in &collector.refs {
-            let Some(sym) = self.semantics.get_reference(*ref_id).symbol_id() else {
-                continue;
-            };
-            if let Some(idx) = self.blockers.symbol_blocker(sym) {
-                if !blockers.contains(&idx) {
-                    blockers.push(idx);
-                }
+        if let Some(idx) = ctx.blockers.symbol_blocker(sym) {
+            if !blockers.contains(&idx) {
+                blockers.push(idx);
             }
         }
-        blockers.sort_unstable();
-        (collector.has_await, blockers)
     }
+    blockers.sort_unstable();
+    (collector.has_await, blockers)
 }
 
 struct ExprCollector {

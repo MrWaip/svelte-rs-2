@@ -8,12 +8,17 @@
 //! `ReactivitySemantics` are permitted inputs. Pipeline code in
 //! `passes::executor` assembles the result into `AnalysisData`.
 //!
-//! Per-kind logic lives in submodules. Today only `{#each}` has its
-//! dedicated slice; the rest stay on the legacy path until migrated.
+//! Layout:
+//! - `walker` — cluster-wide template traversal; one walk drives every
+//!   migrated kind's populator.
+//! - `each`, `await_` — per-kind populators (free functions invoked
+//!   from the walker's node dispatch).
+//! - `common` — AST-shape helpers shared by populators.
 
 mod await_;
 mod common;
 mod each;
+mod walker;
 
 use super::BlockSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
@@ -41,9 +46,8 @@ pub fn build(
     node_count: u32,
 ) -> BlockSemanticsStore {
     let mut store = BlockSemanticsStore::new(node_count);
-    each::populate(
+    walker::populate(
         component, parsed, semantics, reactivity, blockers, &mut store,
     );
-    await_::populate(component, parsed, semantics, blockers, &mut store);
     store
 }
