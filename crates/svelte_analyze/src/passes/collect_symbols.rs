@@ -278,10 +278,23 @@ fn set_pending_flags(
 
 fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
     if let Some(parsed) = ctx.parsed {
-        if let Some(Expression::CallExpression(call)) = parsed
+        // Handle both `fn(args)` (`CallExpression`) and `fn?.(args)`
+        // (`ChainExpression` wrapping a `CallExpression`). The Block
+        // Semantics render builder needs the ChainExpression wrapper
+        // intact to classify callee shape, so this legacy pass no
+        // longer pre-unwraps it.
+        let call = match parsed
             .expr_handle(tag.expression_span.start)
             .and_then(|handle| parsed.expr(handle))
         {
+            Some(Expression::CallExpression(call)) => Some(call.as_ref()),
+            Some(Expression::ChainExpression(chain)) => match &chain.expression {
+                oxc_ast::ast::ChainElement::CallExpression(call) => Some(call.as_ref()),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(call) = call {
             if let Expression::Identifier(ident) = &call.callee {
                 if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
                     #[allow(deprecated)]

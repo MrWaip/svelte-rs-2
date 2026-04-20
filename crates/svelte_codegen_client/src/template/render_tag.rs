@@ -47,16 +47,32 @@ pub(crate) fn gen_render_tag<'a>(
         .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id));
     let mode = plan.callee_mode;
 
-    // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
+    // Take ownership from ParsedExprs. Legacy analyze no longer
+    // pre-unwraps `ChainExpression` (the new block-semantics render
+    // builder needs to see the wrapper to classify the callee shape),
+    // so handle both shapes here for the legacy consumer.
     let expr = ctx
         .state
         .parsed
         .take_expr(ctx.node_expr_handle(id))
         .expect("render tag expression should be pre-parsed");
 
-    let Expression::CallExpression(call) = expr else {
-        debug_assert!(false, "render tag expression should be a CallExpression");
-        return;
+    let call = match expr {
+        Expression::CallExpression(call) => call,
+        Expression::ChainExpression(chain) => match chain.unbox().expression {
+            oxc_ast::ast::ChainElement::CallExpression(call) => call,
+            _ => {
+                debug_assert!(
+                    false,
+                    "render tag ChainExpression should wrap a CallExpression"
+                );
+                return;
+            }
+        },
+        _ => {
+            debug_assert!(false, "render tag expression should be a CallExpression");
+            return;
+        }
     };
 
     // Extract callee text from original source for non-dynamic path

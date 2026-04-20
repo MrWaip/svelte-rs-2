@@ -48,12 +48,6 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
         ) {
             #[allow(deprecated)]
             ctx.data.blocks.render_tag_is_chain.insert(tag.id);
-            if let Some(Expression::ChainExpression(chain)) = self.parsed.take_expr(handle) {
-                if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
-                    self.parsed
-                        .replace_expr(handle, Expression::CallExpression(call));
-                }
-            }
         }
     }
 }
@@ -65,24 +59,34 @@ pub(crate) fn classify_render_tag_args(
     data: &mut AnalysisData,
     tag_id: NodeId,
 ) {
-    if let Expression::CallExpression(call) = expr {
-        let arg_plans: Vec<RenderTagArgPlan> = call
-            .arguments
-            .iter()
-            .map(|arg| RenderTagArgPlan {
-                info: crate::passes::collect_symbols::build_expression_info(
-                    arg.to_expression(),
-                    &mut data.scoping,
-                ),
-                prop_source: None,
-            })
-            .collect();
-        data.blocks.render_tag_plans.insert(
-            tag_id,
-            RenderTagPlan {
-                callee_mode: RenderTagCalleeMode::Direct,
-                arg_plans,
-            },
-        );
-    }
+    // `{@render fn?.(x)}` comes in as a `ChainExpression` wrapping a
+    // `CallExpression`; unwrap once so the legacy plan sees the same
+    // call body regardless of syntax form. (The new block-semantics
+    // builder keeps the wrapper intact to classify `RenderCalleeShape`.)
+    let call = match expr {
+        Expression::CallExpression(call) => call.as_ref(),
+        Expression::ChainExpression(chain) => match &chain.expression {
+            oxc_ast::ast::ChainElement::CallExpression(call) => call.as_ref(),
+            _ => return,
+        },
+        _ => return,
+    };
+    let arg_plans: Vec<RenderTagArgPlan> = call
+        .arguments
+        .iter()
+        .map(|arg| RenderTagArgPlan {
+            info: crate::passes::collect_symbols::build_expression_info(
+                arg.to_expression(),
+                &mut data.scoping,
+            ),
+            prop_source: None,
+        })
+        .collect();
+    data.blocks.render_tag_plans.insert(
+        tag_id,
+        RenderTagPlan {
+            callee_mode: RenderTagCalleeMode::Direct,
+            arg_plans,
+        },
+    );
 }
