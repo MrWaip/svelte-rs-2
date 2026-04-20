@@ -43,7 +43,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
         _ => return,
     };
 
-    let callee_shape = classify_callee_shape(ctx, &call.callee, is_chain);
+    let callee_sym = callee_symbol(&call.callee, ctx);
+    let callee_shape = classify_callee_shape(ctx, &call.callee, is_chain, callee_sym);
     let args = classify_args(ctx, &call.arguments);
     let async_kind = classify_async_kind(ctx, call);
 
@@ -51,6 +52,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
         tag.id,
         BlockSemantics::Render(RenderTagBlockSemantics {
             callee_shape,
+            callee_sym,
             args,
             async_kind,
         }),
@@ -59,15 +61,16 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
 
 fn classify_callee_shape(
     ctx: &Ctx<'_, '_>,
-    callee: &Expression<'_>,
+    _callee: &Expression<'_>,
     is_chain: bool,
+    callee_sym: Option<SymbolId>,
 ) -> RenderCalleeShape {
     // A callee is "dynamic" iff its binding has any reactive declaration
     // semantics. Non-identifier callees (member expressions, calls, etc.)
     // are treated as dynamic — matching the reference compiler's
     // `binding?.kind !== 'normal'` where a missing binding falls into
     // the non-normal branch.
-    let is_dynamic = callee_symbol(callee, ctx).map_or(true, |sym| is_reactive_symbol(ctx, sym));
+    let is_dynamic = callee_sym.is_none_or(|sym| is_reactive_symbol(ctx, sym));
     match (is_dynamic, is_chain) {
         (false, false) => RenderCalleeShape::Static,
         (false, true) => RenderCalleeShape::StaticChain,

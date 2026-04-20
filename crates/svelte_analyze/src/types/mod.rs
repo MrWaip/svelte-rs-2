@@ -14,8 +14,6 @@ pub use data::{
     OutputPlanData, ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
     TemplateSemanticsData, TitleElementData, WindowBindKind,
 };
-#[allow(deprecated)]
-pub use data::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,

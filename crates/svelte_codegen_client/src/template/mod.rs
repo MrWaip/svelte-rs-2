@@ -18,7 +18,6 @@ pub(crate) mod if_block;
 pub(crate) mod key_block;
 pub(crate) mod prop_object;
 pub(crate) mod render_block_semantics;
-pub(crate) mod render_tag;
 pub(crate) mod slot;
 pub(crate) mod snippet;
 pub(crate) mod svelte_body;

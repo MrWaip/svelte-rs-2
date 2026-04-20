@@ -66,9 +66,8 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         store_expression_info(node_id, info, ctx);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, _ctx: &mut VisitContext<'_, '_>) {
         self.pending_render_tag = Some(tag.id);
-        resolve_render_tag_callee(tag, ctx);
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
@@ -236,15 +235,13 @@ fn classify_clsx(
 
 fn classify_render_tag(
     node_id: NodeId,
-    expr: &Expression<'_>,
+    _expr: &Expression<'_>,
     info: &mut ExpressionInfo,
     pending: &mut Option<NodeId>,
-    data: &mut AnalysisData,
+    _data: &mut AnalysisData,
 ) {
     if pending.take() == Some(node_id) {
         info.mark_render_tag();
-        #[allow(deprecated)]
-        js_analyze::classify_render_tag_args(expr, data, node_id);
     }
 }
 
@@ -276,35 +273,6 @@ fn set_pending_flags(
     }
 }
 
-fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
-    if let Some(parsed) = ctx.parsed {
-        // Handle both `fn(args)` (`CallExpression`) and `fn?.(args)`
-        // (`ChainExpression` wrapping a `CallExpression`). The Block
-        // Semantics render builder needs the ChainExpression wrapper
-        // intact to classify callee shape, so this legacy pass no
-        // longer pre-unwraps it.
-        let call = match parsed
-            .expr_handle(tag.expression_span.start)
-            .and_then(|handle| parsed.expr(handle))
-        {
-            Some(Expression::CallExpression(call)) => Some(call.as_ref()),
-            Some(Expression::ChainExpression(chain)) => match &chain.expression {
-                oxc_ast::ast::ChainElement::CallExpression(call) => Some(call.as_ref()),
-                _ => None,
-            },
-            _ => None,
-        };
-        if let Some(call) = call {
-            if let Expression::Identifier(ident) = &call.callee {
-                if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
-                    #[allow(deprecated)]
-                    ctx.data.blocks.render_tag_callee_sym.insert(tag.id, sym_id);
-                }
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -328,14 +296,6 @@ fn merge_concat_expression_info(
     // callers may care about the holder node even when its dynamic parts were
     // already recorded individually.
     ctx.data.attr_expressions.insert(parent_id, merged);
-}
-
-fn resolve_identifier_symbol(
-    ident: &IdentifierReference,
-    scoping: &ComponentScoping<'_>,
-) -> Option<SymbolId> {
-    let ref_id = ident.reference_id.get()?;
-    scoping.get_reference(ref_id).symbol_id()
 }
 
 struct ResolvedRefCollector<'s, 'a> {

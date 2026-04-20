@@ -42,8 +42,6 @@ pub use types::data::{
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
-#[allow(deprecated)]
-pub use types::{RenderTagCalleeMode, RenderTagPlan};
 pub use utils::script_info::BINDABLE_RUNE_NAME;
 pub use utils::IdentGen;
 pub use utils::{

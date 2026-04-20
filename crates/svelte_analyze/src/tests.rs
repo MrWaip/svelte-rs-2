@@ -2498,7 +2498,6 @@ fn module_imports_are_visible_from_instance_scope() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn module_exported_render_tag_callee_stays_direct_with_snippets() {
     let source = r#"<script module>
     export const KIND = "v1";
@@ -2520,14 +2519,16 @@ fn module_exported_render_tag_callee_stays_direct_with_snippets() {
 
     let render_id = find_render_tag(&component.fragment, &component, "row(label(title))")
         .expect("expected render tag");
-    let plan = data
-        .render_tag_plan(render_id)
-        .expect("expected render tag plan");
-    assert_eq!(
-        plan.callee_mode,
-        RenderTagCalleeMode::Direct,
-        "snippet render call should stay direct when the callee is a normal snippet binding"
-    );
+    match data.block_semantics(render_id) {
+        crate::BlockSemantics::Render(sem) => {
+            assert_eq!(
+                sem.callee_shape,
+                crate::RenderCalleeShape::Static,
+                "snippet render call should stay static when the callee is a normal snippet binding"
+            );
+        }
+        other => panic!("expected BlockSemantics::Render, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -4,8 +4,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-#[allow(deprecated)]
-use svelte_analyze::RenderTagPlan;
 use svelte_analyze::{
     AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
     ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
@@ -564,11 +562,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
-    }
-    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
-    #[allow(deprecated)]
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.query.view.render_tag_plan(id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.query.view.has_bind_group(id)

@@ -375,6 +375,13 @@ pub struct RenderTagBlockSemantics {
     /// 4-way enum so the consumer dispatches the call shape with a
     /// single match.
     pub callee_shape: RenderCalleeShape,
+    /// `Some(sym)` when the callee is a plain `Identifier` resolving
+    /// to a binding; `None` for member / computed / chain-head
+    /// callees. Read by CSS pruning to narrow the set of possible
+    /// snippets this render tag can target without re-resolving the
+    /// callee identifier. Orthogonal to `callee_shape` — shape
+    /// decides lowering, `callee_sym` decides downstream analysis.
+    pub callee_sym: Option<SymbolId>,
     /// Per-argument lowering answer, in source order. Length matches
     /// the `CallExpression.arguments` length exactly (spread is
     /// rejected at analyze time, so every arg is an `Expression`).
