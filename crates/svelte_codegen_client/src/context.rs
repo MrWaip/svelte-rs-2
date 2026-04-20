@@ -323,9 +323,6 @@ impl<'a> Ctx<'a> {
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic(id)
     }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.query.view.is_elseif_alt(id)
-    }
     /// `ReferenceId` of the root identifier in a directive's expression.
     ///
     /// After the shorthand rework, all directive expressions (bind, class,

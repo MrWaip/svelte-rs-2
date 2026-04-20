@@ -14,7 +14,7 @@ use super::element::{item_needs_var, process_element};
 use super::element_ident_prefix;
 use super::expression::{parts_are_dynamic, MemoAttr};
 use super::html_tag::gen_html_tag;
-use super::if_block::gen_if_block;
+use super::if_block_semantics::gen_if_block;
 use super::key_block::gen_key_block;
 use super::render_block_semantics::gen_render_block;
 use super::slot::{emit_slot_call, is_legacy_slot_element};
@@ -91,6 +91,23 @@ pub(crate) fn traverse_items<'a>(
                         sibling_offset = 1;
                         let anchor = ctx.b.rid_expr(&node_name);
                         gen_await_block(ctx, id, &sem, anchor, init);
+                        prev_ident = Some(node_name);
+                        continue;
+                    }
+                    svelte_analyze::BlockSemantics::If(sem) => {
+                        let node_expr = sibling_node_expr(
+                            ctx,
+                            &mut prev_expr,
+                            &prev_ident,
+                            sibling_offset,
+                            is_text,
+                        );
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        let stmts = gen_if_block(ctx, id, &sem, anchor);
+                        init.push(ctx.b.block_stmt(stmts));
                         prev_ident = Some(node_name);
                         continue;
                     }
@@ -195,9 +212,10 @@ pub(crate) fn traverse_items<'a>(
                         FragmentItem::ComponentNode(id) => {
                             gen_component(ctx, *id, anchor, init, true)
                         }
-                        FragmentItem::IfBlock(id) => {
-                            let stmts = gen_if_block(ctx, *id, anchor);
-                            init.push(ctx.b.block_stmt(stmts));
+                        FragmentItem::IfBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::IfBlock must be handled by BlockSemantics::If at the top of the loop"
+                            )
                         }
                         FragmentItem::EachBlock(_) => {
                             unreachable!(

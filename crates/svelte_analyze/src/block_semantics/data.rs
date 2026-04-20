@@ -12,6 +12,7 @@
 use crate::scope::SymbolId;
 use bitflags::bitflags;
 use smallvec::SmallVec;
+use svelte_ast::NodeId;
 use svelte_component_semantics::OxcNodeId;
 
 /// One answer for one block `NodeId`. `NonSpecial` is the neutral value
@@ -32,11 +33,13 @@ pub enum BlockSemantics {
     ConstTag(ConstTagBlockSemantics),
     /// `{@render expr(args...)}` tag.
     Render(RenderTagBlockSemantics),
-    // Placeholders for later slices — payload lands when each kind is
-    // migrated end-to-end. Keeping them here shapes the public enum so
+    /// `{#if ...} ... {:else if ...} ... {:else} ... {/if}` block (root
+    /// only — flattened `{:else if}` IfBlocks are tombstoned to
+    /// [`BlockSemantics::NonSpecial`] by the builder).
+    If(IfBlockSemantics),
+    // Placeholder for the Key slice — payload lands when that kind is
+    // migrated end-to-end. Keeping it here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
-    // TODO(block-semantics): If payload.
-    If,
     // TODO(block-semantics): Key payload.
     Key,
 }
@@ -458,5 +461,123 @@ pub enum RenderAsyncKind {
         /// included — the reference compiler does not route the
         /// callee expression through the memoizer.
         blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// IfBlock
+// ---------------------------------------------------------------------------
+
+/// `{#if expr} ... {:else if expr} ... {:else} ... {/if}` — the full
+/// branch chain after elseif flattening.
+///
+/// Identity: the **root** IfBlock `NodeId`. IfBlocks that the builder
+/// absorbs as flattened branches carry [`BlockSemantics::NonSpecial`] so
+/// the codegen dispatcher never wakes them up. An elseif that stopped
+/// flattening (because it introduces new blockers or its own `await`)
+/// gets its own `BlockSemantics::If` payload: it becomes the alternate
+/// fragment's first child and codegen re-dispatches through the normal
+/// fragment-walk path.
+///
+/// Reactive meaning of the branch test expressions stays in
+/// `reactivity_semantics` (one `ReferenceId` per identifier); the
+/// transformer rewrites references before codegen sees them. This
+/// payload answers only the branch-layout and async-shape questions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IfBlockSemantics {
+    /// One entry per branch in source order: the root `{#if}` first,
+    /// then each flattened `{:else if}`. Length >= 1.
+    pub branches: SmallVec<[IfBranch; 2]>,
+    /// Disposition of the final alternate fragment.
+    ///
+    /// `None` when the last branch has no `alternate`.
+    /// `Fragment { last_branch_block_id }` when a concrete `{:else}`
+    /// fragment exists — the consumer emits it as a fragment-rendering
+    /// arrow. This also covers "alternate is a non-flattenable nested
+    /// IfBlock": the nested IfBlock carries its own root payload and
+    /// normal fragment codegen dispatches through it from inside the
+    /// alternate arrow.
+    pub final_alternate: IfAlternate,
+    /// `true` iff the root IfBlock carries `IfBlock.elseif == true` —
+    /// i.e. this payload describes a non-flattened elseif that is being
+    /// re-dispatched as its own root. Consumer forwards as the third
+    /// argument to `$.if(...)` so the runtime marks the branch as
+    /// `EFFECT_TRANSPARENT` for transition purposes.
+    pub is_elseif_root: bool,
+    /// Root-level async wrapper decision. Folded from the root branch's
+    /// test expression only — flattening ensures no absorbed branch
+    /// adds new await/blockers.
+    pub async_kind: IfAsyncKind,
+}
+
+/// One branch of a flattened `{#if} / {:else if}` chain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IfBranch {
+    /// `NodeId` of the IfBlock node that authored this branch. For
+    /// branch `0` this equals the payload's own root NodeId; for
+    /// flattened branches it is the absorbed elseif IfBlock's NodeId.
+    /// Used by the consumer to key `FragmentKey::IfConsequent(id)` and
+    /// to fetch the branch's test expression through
+    /// `ctx.node_expr_handle(id)`.
+    pub block_id: NodeId,
+    /// How the branch's test expression lowers at the `$.if` call site.
+    pub condition: IfConditionKind,
+}
+
+/// Three non-overlapping lowering shapes for a branch condition.
+///
+/// Mirrors the reference compiler's three emission variants
+/// (`reference/compiler/phases/3-transform/client/visitors/IfBlock.js`
+/// lines 39-52). Collapses the legacy consumer's `has_await` /
+/// `has_call` bit arithmetic into a single enum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IfConditionKind {
+    /// Raw expression, read inline in the `$$render` callback.
+    Raw,
+    /// Wrap the expression in a `$.derived` memo declared alongside the
+    /// consequent arrow, and read through `$.get(d)`. Chosen when the
+    /// expression contains a call but no `await`.
+    Memo,
+    /// Root branch **only**, when the root test contains `await`. The
+    /// branch reads its condition through the enclosing `$.async`
+    /// wrapper's `$$condition` parameter: `test = $.get($$condition)`.
+    /// The expression itself is pulled out as the async wrapper's
+    /// thunk.
+    AsyncParam,
+}
+
+/// Root-level async wrapper decision. Shape mirrors
+/// [`EachAsyncKind`] / [`RenderAsyncKind::Async`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IfAsyncKind {
+    /// No `await` in the root test and no script-level blocker on any
+    /// identifier it references. Codegen emits `$.if(...)` directly.
+    Sync,
+    /// Root wrapped in
+    /// `$.async(anchor, blockers, async_values, (node, $$condition?) => { ... })`.
+    ///
+    /// * `root_has_await` drives two things: the async-values array
+    ///   carries the root expression's thunk, and the callback gains
+    ///   the `$$condition` parameter.
+    /// * `blockers` is the sorted, de-duplicated script-level blocker
+    ///   index set for the root test's references.
+    Async {
+        root_has_await: bool,
+        blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+/// Final-alternate disposition after flattening stops.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IfAlternate {
+    /// No `{:else}` exists on the last flattened branch.
+    None,
+    /// A concrete `{:else}` fragment exists on the last flattened
+    /// branch. Consumer emits it as a fragment-rendering arrow keyed
+    /// by `FragmentKey::IfAlternate(last_branch_block_id)`.
+    Fragment {
+        /// `NodeId` of the IfBlock whose alternate fragment this is —
+        /// i.e. the last branch's block id.
+        last_branch_block_id: NodeId,
     },
 }

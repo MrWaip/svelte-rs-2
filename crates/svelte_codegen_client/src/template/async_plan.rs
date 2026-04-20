@@ -33,15 +33,6 @@ impl AsyncEmissionPlan {
         self.has_await
     }
 
-    pub(crate) fn blockers(&self) -> &[u32] {
-        &self.blockers
-    }
-
-    /// Returns true if this plan's blockers are a superset of `other`.
-    pub(crate) fn blockers_contain_all(&self, other: &[u32]) -> bool {
-        other.iter().all(|b| self.blockers.contains(b))
-    }
-
     pub(crate) fn async_thunk<'a>(
         &self,
         ctx: &mut Ctx<'a>,

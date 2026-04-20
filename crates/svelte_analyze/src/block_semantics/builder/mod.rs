@@ -19,6 +19,7 @@ mod await_;
 mod common;
 mod const_tag;
 mod each;
+mod if_;
 mod render;
 mod snippet;
 mod walker;

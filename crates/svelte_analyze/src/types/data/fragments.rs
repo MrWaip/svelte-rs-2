@@ -170,13 +170,6 @@ impl LoweredFragment {
         self.items.first()?.element_like_id()
     }
 
-    pub fn first_if_block_id(&self) -> Option<NodeId> {
-        match self.items.first()? {
-            FragmentItem::IfBlock(id) => Some(*id),
-            _ => None,
-        }
-    }
-
     pub fn first_each_block_id(&self) -> Option<NodeId> {
         match self.items.first()? {
             FragmentItem::EachBlock(id) => Some(*id),

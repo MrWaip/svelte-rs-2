@@ -14,7 +14,7 @@ pub(crate) mod events;
 pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod html_tag;
-pub(crate) mod if_block;
+pub(crate) mod if_block_semantics;
 pub(crate) mod key_block;
 pub(crate) mod prop_object;
 pub(crate) mod render_block_semantics;
@@ -211,7 +211,7 @@ use each_block::gen_each_block;
 use expression::{emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
 use html_tag::gen_html_tag;
-use if_block::gen_if_block;
+use if_block_semantics::gen_if_block;
 use key_block::gen_key_block;
 use render_block_semantics::gen_render_block;
 use slot::emit_slot_template_anchor;
@@ -707,6 +707,29 @@ fn emit_single_block<'a>(
                 );
                 return;
             }
+            svelte_analyze::BlockSemantics::If(sem) => {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                let stmts = gen_if_block(ctx, id, &sem, ctx.b.rid_expr(&node));
+                if stmts.len() == 1 {
+                    body.extend(stmts);
+                } else {
+                    body.push(ctx.b.block_stmt(stmts));
+                }
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
+            }
             _ => {}
         }
     }
@@ -784,13 +807,10 @@ fn emit_single_block<'a>(
     // never reached here — it is handled by the semantic branch at the
     // top of this function.
     match item {
-        FragmentItem::IfBlock(id) => {
-            let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
-            if stmts.len() == 1 {
-                body.extend(stmts);
-            } else {
-                body.push(ctx.b.block_stmt(stmts));
-            }
+        FragmentItem::IfBlock(_) => {
+            unreachable!(
+                "FragmentItem::IfBlock must be handled by BlockSemantics::If at the top of emit_single_block"
+            )
         }
         FragmentItem::EachBlock(_) => {
             unreachable!(

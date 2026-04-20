@@ -442,15 +442,6 @@ fn lower_nodes(
                         in_mathml,
                         preserve_whitespace,
                     );
-                    // Detect elseif: alternate has a single IfBlock child marked as elseif
-                    let is_elseif = data.template.fragments.lowered.get(&alt_key).is_some_and(|lf| {
-                        lf.items.len() == 1
-                            && matches!(&lf.items[0], FragmentItem::IfBlock(id)
-                                if alt.nodes.iter().any(|&nid| matches!(store.get(nid), Node::IfBlock(ib) if ib.id == *id && ib.elseif)))
-                    });
-                    if is_elseif {
-                        data.output.alt_is_elseif.insert(block.id);
-                    }
                 }
             }
             Node::EachBlock(block) => {

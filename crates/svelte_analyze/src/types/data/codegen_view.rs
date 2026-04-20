@@ -35,9 +35,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_node(id)
     }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.data.is_elseif_alt(id)
-    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }

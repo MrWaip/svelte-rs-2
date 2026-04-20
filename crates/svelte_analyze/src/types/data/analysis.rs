@@ -125,7 +125,6 @@ impl BlockAnalysis {
 }
 
 pub struct OutputPlanData {
-    pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
     pub custom_element_slot_names: Vec<String>,
@@ -140,7 +139,6 @@ pub struct OutputPlanData {
 impl OutputPlanData {
     fn new(node_count: u32) -> Self {
         Self {
-            alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
             needs_sanitized_legacy_slots: false,
             custom_element_slot_names: Vec::new(),
@@ -217,9 +215,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
-    }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.output.alt_is_elseif.contains(&id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
