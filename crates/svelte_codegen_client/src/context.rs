@@ -7,7 +7,7 @@ use oxc_semantic::SymbolId;
 use svelte_analyze::{
     AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
     ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
-    LoweredFragment, ParserResult, RenderTagPlan, RuntimePlan,
+    LoweredFragment, ParserResult, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -94,10 +94,6 @@ impl<'a> CodegenQuery<'a> {
     #[allow(dead_code)]
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
         self.view.expr_has_blockers(id)
-    }
-
-    pub fn expression_blockers(&self, id: NodeId) -> Vec<u32> {
-        self.view.expression_blockers(id).into_iter().collect()
     }
 
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
@@ -285,9 +281,6 @@ impl<'a> Ctx<'a> {
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
     }
-    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock {
-        self.query.key_block(id)
-    }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement {
         self.query.svelte_element(id)
     }
@@ -322,9 +315,6 @@ impl<'a> Ctx<'a> {
 
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic(id)
-    }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.query.view.is_elseif_alt(id)
     }
     /// `ReferenceId` of the root identifier in a directive's expression.
     ///
@@ -562,9 +552,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
-    }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.query.view.render_tag_plan(id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.query.view.has_bind_group(id)

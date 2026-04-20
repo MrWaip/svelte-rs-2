@@ -113,9 +113,6 @@ pub struct BlockAnalysis {
                 readers (validation, reactivity_semantics, bind_semantics) migrate."
     )]
     pub each_context: EachContextIndex,
-    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
-    pub(crate) render_tag_is_chain: NodeBitSet,
-    pub render_tag_plans: NodeTable<RenderTagPlan>,
 }
 
 impl BlockAnalysis {
@@ -123,15 +120,11 @@ impl BlockAnalysis {
         #[allow(deprecated)]
         Self {
             each_context: EachContextIndex::new(node_count),
-            render_tag_callee_sym: NodeTable::new(node_count),
-            render_tag_is_chain: NodeBitSet::new(node_count),
-            render_tag_plans: NodeTable::new(node_count),
         }
     }
 }
 
 pub struct OutputPlanData {
-    pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
     pub custom_element_slot_names: Vec<String>,
@@ -146,7 +139,6 @@ pub struct OutputPlanData {
 impl OutputPlanData {
     fn new(node_count: u32) -> Self {
         Self {
-            alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
             needs_sanitized_legacy_slots: false,
             custom_element_slot_names: Vec::new(),
@@ -223,9 +215,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
-    }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.output.alt_is_elseif.contains(&id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
@@ -531,34 +520,9 @@ impl<'a> AnalysisData<'a> {
         self.blocks.each_context.key_node_id(id)
     }
     #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.key_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
         #[allow(deprecated)]
         self.blocks.each_context.is_destructured(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.body_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.key_is_item(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.has_animate(id)
-    }
-    #[deprecated(note = "read the name from the source via block.context_span")]
-    pub fn each_context_name(&self, id: NodeId) -> &str {
-        #[allow(deprecated)]
-        self.blocks.each_context.context_name(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.template.bind_semantics.bind_this_each_context(id)
@@ -584,16 +548,6 @@ impl<'a> AnalysisData<'a> {
                     .then_some(parent.id)
             })
             .collect()
-    }
-    #[deprecated(note = "use block_semantics(id) — matches!(sem.flavor, EachFlavor::BindGroup)")]
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.contains_group_binding(id)
-    }
-    #[deprecated(note = "use block_semantics(id).shadows_outer")]
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.needs_collection_id(id)
     }
     pub fn css_hash(&self) -> &str {
         &self.output.css.hash
@@ -701,9 +655,6 @@ impl<'a> AnalysisData<'a> {
                         .contains(SymbolFlags::Function)
                 })
         })
-    }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.blocks.render_tag_plans.get(id)
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {

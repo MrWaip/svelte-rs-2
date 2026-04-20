@@ -176,6 +176,7 @@ pub enum BlockSemantics {
 
     Each(EachBlockSemantics),
     If(IfBlockSemantics),
+
     Await(AwaitBlockSemantics),
     Key(KeyBlockSemantics),
     Snippet(SnippetBlockSemantics),

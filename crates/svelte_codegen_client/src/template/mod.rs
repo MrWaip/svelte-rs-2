@@ -14,10 +14,10 @@ pub(crate) mod events;
 pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod html_tag;
-pub(crate) mod if_block;
-pub(crate) mod key_block;
+pub(crate) mod if_block_semantics;
+pub(crate) mod key_block_semantics;
 pub(crate) mod prop_object;
-pub(crate) mod render_tag;
+pub(crate) mod render_block_semantics;
 pub(crate) mod slot;
 pub(crate) mod snippet;
 pub(crate) mod svelte_body;
@@ -211,9 +211,9 @@ use each_block::gen_each_block;
 use expression::{emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
 use html_tag::gen_html_tag;
-use if_block::gen_if_block;
-use key_block::gen_key_block;
-use render_tag::gen_render_tag;
+use if_block_semantics::gen_if_block;
+use key_block_semantics::gen_key_block;
+use render_block_semantics::gen_render_block;
 use slot::emit_slot_template_anchor;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
@@ -707,6 +707,47 @@ fn emit_single_block<'a>(
                 );
                 return;
             }
+            svelte_analyze::BlockSemantics::If(sem) => {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                let stmts = gen_if_block(ctx, id, &sem, ctx.b.rid_expr(&node));
+                if stmts.len() == 1 {
+                    body.extend(stmts);
+                } else {
+                    body.push(ctx.b.block_stmt(stmts));
+                }
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
+            }
+            svelte_analyze::BlockSemantics::Key(sem) => {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                gen_key_block(ctx, id, &sem, ctx.b.rid_expr(&node), body);
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
+            }
             _ => {}
         }
     }
@@ -715,16 +756,27 @@ fn emit_single_block<'a>(
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
         FragmentItem::RenderTag(id)
-            if !ctx
-                .render_tag_plan(*id)
-                .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id))
-                .callee_mode
-                .is_dynamic() =>
+            if {
+                let sem = ctx.query.analysis.block_semantics(*id);
+                matches!(
+                    sem,
+                    svelte_analyze::BlockSemantics::Render(s)
+                        if matches!(
+                            s.callee_shape,
+                            svelte_analyze::RenderCalleeShape::Static
+                                | svelte_analyze::RenderCalleeShape::StaticChain,
+                        )
+                )
+            } =>
         {
             if !is_root {
                 ctx.gen_ident("fragment");
             }
-            gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
+            let sem = match ctx.query.analysis.block_semantics(*id) {
+                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                other => unreachable!("render tag expected Render, got {other:?}"),
+            };
+            gen_render_block(ctx, *id, &sem, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
         FragmentItem::ComponentNode(id)
@@ -773,13 +825,10 @@ fn emit_single_block<'a>(
     // never reached here — it is handled by the semantic branch at the
     // top of this function.
     match item {
-        FragmentItem::IfBlock(id) => {
-            let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
-            if stmts.len() == 1 {
-                body.extend(stmts);
-            } else {
-                body.push(ctx.b.block_stmt(stmts));
-            }
+        FragmentItem::IfBlock(_) => {
+            unreachable!(
+                "FragmentItem::IfBlock must be handled by BlockSemantics::If at the top of emit_single_block"
+            )
         }
         FragmentItem::EachBlock(_) => {
             unreachable!(
@@ -794,8 +843,10 @@ fn emit_single_block<'a>(
         FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
-        FragmentItem::KeyBlock(id) => {
-            gen_key_block(ctx, *id, ctx.b.rid_expr(&node), body);
+        FragmentItem::KeyBlock(_) => {
+            unreachable!(
+                "FragmentItem::KeyBlock must be handled by BlockSemantics::Key at the top of emit_single_block"
+            )
         }
         FragmentItem::SvelteElement(id) => {
             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), body);
@@ -804,7 +855,11 @@ fn emit_single_block<'a>(
             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         FragmentItem::RenderTag(id) => {
-            gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
+            let sem = match ctx.query.analysis.block_semantics(*id) {
+                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                other => unreachable!("render tag expected Render, got {other:?}"),
+            };
+            gen_render_block(ctx, *id, &sem, ctx.b.rid_expr(&node), false, body);
         }
         FragmentItem::ComponentNode(id) => {
             gen_component(ctx, *id, ctx.b.rid_expr(&node), body, true);

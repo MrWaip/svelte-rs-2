@@ -1,124 +1,86 @@
-//! Block Semantics — answer shapes for template control-flow blocks.
-//!
-//! Consumer Model (see SEMANTIC_LAYER_ARCHITECTURE.md): one query per block
-//! `NodeId`, returning exactly one variant. Consumers pattern-match at the
-//! root dispatch point and never re-inspect the AST to reconstruct meaning.
-//!
-//! Storage Content Rule: only `NodeId` / `OxcNodeId` / `ReferenceId` /
-//! `SymbolId`, enum variants, bools and numeric payloads. Never `String` /
-//! `&str` / `CompactString` — names are read from the source via spans at
-//! consume-time, not stored on the payload.
-
 use crate::scope::SymbolId;
 use bitflags::bitflags;
 use smallvec::SmallVec;
+use svelte_ast::NodeId;
 use svelte_component_semantics::OxcNodeId;
 
-/// One answer for one block `NodeId`. `NonSpecial` is the neutral value
-/// returned for every node that is not a control-flow block; the store
-/// never returns `None`.
+/// Semantic answer for one template block `NodeId`. Every non-block node
+/// gets [`BlockSemantics::NonSpecial`].
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum BlockSemantics {
-    /// Node is not a control-flow block in the sense owned by this cluster.
+    /// Node is not a control-flow block.
     #[default]
     NonSpecial,
-    /// `{#each ... as ...}` block.
+    /// `{#each items as item}...{/each}`
     Each(EachBlockSemantics),
-    /// `{#await ...}` block.
+    /// `{#await promise}...{:then v}...{:catch e}...{/await}`
     Await(AwaitBlockSemantics),
-    /// `{#snippet name(params)}` block.
+    /// `{#snippet row(x)}...{/snippet}`
     Snippet(SnippetBlockSemantics),
-    /// `{@const <pattern> = <init>}` block.
+    /// `{@const doubled = x * 2}`
     ConstTag(ConstTagBlockSemantics),
-    // Placeholders for later slices — payload lands when each kind is
-    // migrated end-to-end. Keeping them here shapes the public enum so
-    // consumers can already switch on it exhaustively once migrated.
-    // TODO(block-semantics): If payload.
-    If,
-    // TODO(block-semantics): Key payload.
-    Key,
-    // TODO(block-semantics): Render payload.
-    Render,
+    /// `{@render row(item)}`
+    Render(RenderTagBlockSemantics),
+    /// `{#if cond}...{:else if c2}...{:else}...{/if}` — root only;
+    /// flattened `{:else if}` branches are tombstoned to `NonSpecial`.
+    If(IfBlockSemantics),
+    /// `{#key expr}...{/key}`
+    Key(KeyBlockSemantics),
 }
 
-/// `{#each items as <item>[, <index>] [(<key>)]}` — the identities of the
-/// three introducers plus the block's high-level flavor.
-///
-/// Reactive meaning of `item`/`index` bindings stays in `reactivity_semantics`
-/// (queried via the `SymbolId` carried here). The AST node of a destructured
-/// pattern or key expression is read by the consumer via
-/// `ComponentSemantics.js_storage()` using the `OxcNodeId` carried here.
+/// `{#each items as item, i (key)}...{/each}` — shape of the three
+/// introducers plus block flavor and async/collection lowering.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EachBlockSemantics {
+    /// The `as <pattern>` introducer.
     pub item: EachItemKind,
+    /// The `, <index>` introducer.
     pub index: EachIndexKind,
+    /// The `(<key>)` key expression.
     pub key: EachKeyKind,
+    /// Default vs. `bind:group` lowering.
     pub flavor: EachFlavor,
-    /// Runtime `$.each(...)` flags, pre-computed by the Block Semantics
-    /// builder. Covers `ITEM_REACTIVE`, `INDEX_REACTIVE`, `ANIMATED`, and
-    /// `ITEM_IMMUTABLE`. Does **not** include `IS_CONTROLLED` — that bit
-    /// is decided at the codegen call site (element-anchor vs. comment
-    /// anchor) and OR'd in there.
+    /// Runtime `$.each(...)` flag bits. `IS_CONTROLLED` is OR'd in by
+    /// codegen, not stored here.
     pub each_flags: EachFlags,
-    /// Some binding introduced in the each body shadows an outer binding
-    /// of the same name. Forces the runtime to thread the collection
-    /// through an extra parameter so shadowed reads resolve correctly.
+    /// A binding inside the body shadows an outer binding of the same name.
+    /// Example: `{#each items as items}` — inner `items` shadows outer.
     pub shadows_outer: bool,
-    /// Async lowering decision for this each-block's collection. See
-    /// [`EachAsyncKind`]. Async is treated as a decoration on top of
-    /// the block — per SEMANTIC_LAYER_ARCHITECTURE.md — so it rides in
-    /// the block's semantic payload rather than a separate query.
+    /// Async lowering decision for the collection expression.
     pub async_kind: EachAsyncKind,
-    /// Lowering shape of the collection read. Resolved from
-    /// `reactivity_semantics` on the root identifier of the collection
-    /// expression. Codegen uses this to choose between a thunk-wrapped
-    /// read and a direct prop-getter call; it never re-queries reactivity
-    /// for this answer.
+    /// Whether the collection read is thunk-wrapped or passed directly.
     pub collection_kind: EachCollectionKind,
 }
 
-/// How the each-block's collection expression lowers at the call site.
-///
-/// The answer is keyed off the *root identifier* of the expression
-/// (after walking through member accesses and parentheses). Non-
-/// identifier roots — literals, calls, `this`, etc. — fall into
-/// `Regular`.
+/// How the collection expression lowers at the `$.each` call site.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EachCollectionKind {
-    /// Wrap the expression in a thunk `() => <expr>` before passing
-    /// it to `$.each(...)`.
+    /// Wrap in a thunk. Example: `{#each items as x}` → `() => items`.
     Regular,
-    /// Root is a prop-source getter — pass the identifier directly
-    /// without thunk-wrapping, since the getter is already a function.
+    /// Root is a prop-source getter; pass directly. Example:
+    /// `{#each items as x}` where `items` comes from `$props()`.
     PropSource,
 }
 
-/// How the each-block's collection expression interacts with async.
+/// How the collection expression interacts with async.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EachAsyncKind {
-    /// Collection expression has no `await` and references no
-    /// async-gated symbols. Codegen uses the ordinary `$.each(...)`
-    /// shape without a `$.async` wrapper.
+    /// Plain `{#each items as x}` — no `await`, no async-gated symbols.
     Sync,
-    /// Collection expression has an `await` and/or references
-    /// async-gated symbols (blockers). Codegen wraps the `$.each(...)`
-    /// call inside `$.async(anchor, [blockers], ..., (node, cond) => {...})`.
+    /// Expression has `await` or references async-gated symbols. Example:
+    /// `{#each await fetchItems() as x}`.
     Async {
-        /// `await` token literally present in the collection expression.
+        /// Literal `await` in the expression.
         has_await: bool,
-        /// Sorted, de-duplicated blocker indices (from
-        /// `BlockerData::symbol_blockers`) collected over every
-        /// identifier reference in the collection expression.
+        /// Sorted, deduplicated blocker indices.
         blockers: SmallVec<[u32; 2]>,
     },
 }
 
 bitflags! {
-    /// Pre-computed intrinsic runtime flags for an `{#each}` block.
-    /// Bit layout matches Svelte runtime constants (see reference
-    /// `constants.js`): `ITEM_REACTIVE=1`, `INDEX_REACTIVE=2`,
-    /// `ANIMATED=8`, `ITEM_IMMUTABLE=16`. Bit `4` (`IS_CONTROLLED`) is
-    /// deliberately left to the codegen call site.
+    /// Runtime flag bits for an `{#each}` block. Matches reference
+    /// `constants.js`: `ITEM_REACTIVE=1`, `INDEX_REACTIVE=2`,
+    /// `ANIMATED=8`, `ITEM_IMMUTABLE=16`.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct EachFlags: u8 {
         const ITEM_REACTIVE  = 1;
@@ -128,54 +90,50 @@ bitflags! {
     }
 }
 
-/// The `as <pattern>` introducer.
+/// The `as <pattern>` introducer of `{#each}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EachItemKind {
-    /// `{#each items}` — no `as` binding at all.
+    /// `{#each items}` — no `as` binding.
     NoBinding,
-    /// `{#each items as item}` — single identifier introducer.
+    /// `{#each items as item}` — identifier introducer.
     Identifier(SymbolId),
-    /// `{#each items as { a, b }}` / `{#each items as [a, b]}` — destructured.
-    /// The `OxcNodeId` points at the `BindingPattern` node; the consumer
-    /// reads it via `ComponentSemantics.js_storage().kind(id)`.
+    /// `{#each items as { a, b }}` / `{#each items as [a, b]}`.
     Pattern(OxcNodeId),
 }
 
-/// The `, <index>` introducer.
+/// The `, <index>` introducer of `{#each}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EachIndexKind {
-    /// No index binding.
+    /// `{#each items as x}` — no index.
     Absent,
-    /// `, i` — declared index identifier, with usage facts.
+    /// `{#each items as x, i}` — index declared, with usage facts.
     Declared {
         sym: SymbolId,
-        /// At least one expression in the body references the index symbol.
+        /// Body references `i`.
         used_in_body: bool,
-        /// The key expression references the index symbol.
+        /// Key expression references `i`, e.g. `(i)`.
         used_in_key: bool,
     },
 }
 
-/// The `(<key>)` key expression.
+/// The `(<key>)` key expression of `{#each}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EachKeyKind {
-    /// No `(...)` — block is unkeyed; runtime uses positional index.
+    /// `{#each items as x}` — unkeyed, positional.
     Unkeyed,
-    /// `(item)` — key is the item identifier itself. Optimized path:
-    /// the key function can be elided in some lowerings.
+    /// `{#each items as item (item)}` — key is the item identifier itself.
     KeyedByItem,
-    /// `(<expr>)` — any other key expression. The `OxcNodeId` points at
-    /// the key expression node.
+    /// `{#each items as x (x.id)}` — arbitrary key expression.
     KeyedByExpr(OxcNodeId),
 }
 
-/// High-level lowering flavor.
+/// High-level lowering flavor of `{#each}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EachFlavor {
     /// Default `$.each(...)` lowering.
     Regular,
-    /// Body contains at least one `bind:group` directive — needs the
-    /// group-index lowering path.
+    /// Body has `bind:group` — uses the group-index path. Example:
+    /// `{#each opts as o}<input type="radio" bind:group={x} value={o}>{/each}`.
     BindGroup,
 }
 
@@ -183,55 +141,39 @@ pub enum EachFlavor {
 // AwaitBlock
 // ---------------------------------------------------------------------------
 
-/// `{#await <expr>}...{:then <binding>}...{:catch <binding>}...{/await}` —
-/// the presence of each branch, its introduced binding, and the two
-/// independent async-shape facts that drive lowering.
-///
-/// The two async facts are kept as separate fields rather than folded
-/// into one enum: `expression_has_await` toggles the thunk wrapping the
-/// expression, while `wrapper` decides whether the whole `$.await` call
-/// must sit inside a `$.async(...)` block — two orthogonal lowering
-/// decisions, not one axis.
+/// `{#await p}pending{:then v}ok{:catch e}err{/await}` — branch presence,
+/// introduced bindings, and the two orthogonal async lowering decisions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AwaitBlockSemantics {
-    /// `{#await expr}...{/await}` — pending fragment. Never carries a
-    /// binding, but the absence of a fragment still matters for
-    /// `$.await(...)` arg trimming.
+    /// Pending branch (before `{:then}`). Never carries a binding.
     pub pending: AwaitBranch,
     /// `{:then [<binding>]}` branch.
     pub then: AwaitBranch,
     /// `{:catch [<binding>]}` branch.
     pub catch: AwaitBranch,
-    /// Expression literally contains `await` — the expression thunk must
-    /// be `async () => await <expr>` rather than the plain `() => <expr>`.
+    /// Expression contains literal `await`, e.g. `{#await await p()}`.
     pub expression_has_await: bool,
-    /// Expression references async-gated symbols (blockers) — the whole
-    /// `$.await(...)` call is wrapped in `$.async(node, [blockers], [], ...)`.
+    /// Whether the whole `$.await(...)` call sits inside `$.async(...)`.
     pub wrapper: AwaitWrapper,
 }
 
-/// Branch presence + optional introduced binding.
+/// One branch of `{#await}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AwaitBranch {
-    /// The branch does not appear in the source (no fragment, no binding).
+    /// Branch not present in source.
     Absent,
-    /// The branch is present. `binding` is `None` for pending (never
-    /// carries one) and for `{:then}` / `{:catch}` without a parameter.
+    /// Branch present, optionally with a binding (never for pending).
     Present { binding: AwaitBinding },
 }
 
 /// The introducer in `{:then <binding>}` / `{:catch <binding>}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AwaitBinding {
-    /// No binding declared.
+    /// No binding, e.g. `{:then}` / `{:catch}`.
     None,
-    /// `{:then user}` / `{:catch err}` — simple identifier.
+    /// `{:then user}` / `{:catch err}`.
     Identifier(SymbolId),
-    /// `{:then { a, b }}` / `{:catch [msg, code]}` — destructured
-    /// pattern. The consumer reads the pattern subtree via
-    /// `ComponentSemantics.js_storage()` using `pattern_id`; leaf names
-    /// are looked up as `semantics.symbol_name(sym)` without re-walking
-    /// the pattern.
+    /// `{:then { a, b }}` / `{:catch [msg, code]}`.
     Pattern {
         kind: AwaitDestructureKind,
         leaves: SmallVec<[SymbolId; 4]>,
@@ -239,25 +181,21 @@ pub enum AwaitBinding {
     },
 }
 
-/// Destructuring shape for `AwaitBinding::Pattern`. Intentionally a
-/// cluster-local enum, symmetric to `EachKeyKind` — decoupled from the
-/// legacy `DestructureKind` living in `types::data::expr` (which is
-/// shared with `render_tags` and cannot be deprecated here).
+/// Destructuring shape for [`AwaitBinding::Pattern`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AwaitDestructureKind {
+    /// `{:then { a, b }}`
     Object,
+    /// `{:then [a, b]}`
     Array,
 }
 
-/// How the `$.await(...)` call must be wrapped.
+/// How the `$.await(...)` call is wrapped.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AwaitWrapper {
-    /// No wrapper — emit `$.await(...)` directly.
+    /// Emit `$.await(...)` directly.
     None,
-    /// `$.async(node, [blockers], [], (node) => { $.await(...) })`. The
-    /// blocker list mirrors the indices that `BlockerData` associates
-    /// with identifier references in the expression, sorted and
-    /// deduplicated.
+    /// Wrap in `$.async(node, [blockers], [], ...)`.
     AsyncWrap { blockers: SmallVec<[u32; 2]> },
 }
 
@@ -265,96 +203,208 @@ pub enum AwaitWrapper {
 // SnippetBlock
 // ---------------------------------------------------------------------------
 
-/// `{#snippet name(params)}...{/snippet}` — declaration-shape answer.
-///
-/// Per-symbol read strategy (how `name` / `label` read inside the body
-/// lowers to `name()` vs `$.get(name)`) stays in `reactivity_semantics`
-/// under `ContextualDeclarationSemantics::SnippetParam`. This payload
-/// covers only facts the consumer needs when emitting the
-/// `const name = ($$anchor, ...) => { ... }` declaration itself:
-/// the snippet's own const name, whether it hoists above the component
-/// function, and each parameter's declaration form.
+/// `{#snippet name(a, { b })}...{/snippet}` — declaration shape:
+/// snippet name, hoisting decision, and parameter forms.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetBlockSemantics {
-    /// Const name under which the snippet is declared. Read by the
-    /// consumer via `ComponentSemantics::symbol_name(sym)` — the source
-    /// text slice is never stored.
+    /// Const name under which the snippet is declared.
     pub name: SymbolId,
-    /// `true` — snippet lowers to a module-level declaration hoisted
-    /// above the component function. `false` — instance-level (inside
-    /// the component function) or locally inside a parent block.
+    /// `true` = hoisted to module level above the component function;
+    /// `false` = instance-level or nested in a parent block.
     pub hoistable: bool,
     /// Parameters in source order.
     pub params: SmallVec<[SnippetParam; 4]>,
 }
 
 /// One parameter of a `{#snippet}` declaration.
-///
-/// Structural information about destructured parameters (form, keys,
-/// indexes, defaults, rest) lives in the OXC `BindingPattern` reached
-/// through `pattern_id`. Codegen walks it directly at emit time and
-/// classifies defaults inline via `is_simple_expression` — there is
-/// deliberately no parallel per-leaf Svelte-side shape here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SnippetParam {
-    /// `(name)` — identifier parameter. Lowers to the arrow argument
-    /// with `= $.noop` default. User-specified defaults on top-level
-    /// identifier params are deliberately not captured: the reference
-    /// compiler drops them at the declaration site, so there is no
-    /// lowering decision for the payload to answer.
+    /// `{#snippet row(item)}` — plain identifier parameter.
     Identifier { sym: SymbolId },
-    /// `({ a, b })` / `([x, y])` — destructured parameter. Lowers to a
-    /// positional `$$argN` argument plus per-binding `let` declarations
-    /// inside the body. `pattern_id` is the `OxcNodeId` of the outer
-    /// `BindingPattern`; codegen walks that subtree to emit the
-    /// destructuring, including `$.to_array` intermediates for arrays
-    /// (per-level state that doesn't fit a flat leaf model).
+    /// `{#snippet row({ a, b })}` / `{#snippet row([x, y])}`.
     Pattern { pattern_id: OxcNodeId },
 }
 
-/// `{@const <pattern> = <init>}` — declaration-shape answer.
-///
-/// Per-symbol read strategy for the bindings themselves (how each
-/// introduced name is read inside downstream expressions — `$.get` vs
-/// `$.safe_get` vs plain) lives in
-/// `reactivity_semantics::ConstDeclarationSemantics::ConstTag`. This
-/// payload answers only declaration-shape questions: where the pattern
-/// and init live in the AST and how the init interacts with async.
-///
-/// Pattern bindings / destructure flavour / init expression are read on
-/// demand in the consumer via `ComponentSemantics::js_storage().kind(id)`
-/// + `walk_bindings(&pattern, ...)` — the payload stays minimal per the
-/// Parser-handle ban (no `StmtHandle` / `ExprHandle` in cluster answers).
+/// `{@const <pattern> = <init>}` — declaration shape and async lowering
+/// of the initializer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstTagBlockSemantics {
-    /// `OxcNodeId` of the `VariableDeclaration` backing the tag
-    /// (`const <pattern> = <init>`). Consumers resolve the statement
-    /// through `ComponentSemantics::js_kind(id)` when they need the
-    /// binding pattern or init expression.
+    /// `OxcNodeId` of the backing `VariableDeclaration`.
     pub decl_node_id: OxcNodeId,
     /// Async lowering decision for the init expression.
     pub async_kind: ConstTagAsyncKind,
 }
 
-/// How a `{@const}` init expression interacts with async.
+/// How a `{@const}` initializer interacts with async.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConstTagAsyncKind {
-    /// No `await` and no async-gated symbol references. Codegen emits
-    /// `const X = $.derived(() => init)`.
+    /// `{@const x = a + b}` — sync. Emits `const X = $.derived(() => init)`.
     Sync,
-    /// Init contains an `await` literal and/or references async-gated
-    /// symbols (script-level blockers). Codegen emits `let X;` plus a
-    /// thunk pushed into a per-fragment `$.run([...])` pack; when
-    /// `has_await` is true the thunk is wrapped in
-    /// `$.async_derived(async () => ...)`, otherwise in
-    /// `$.derived(() => ...)`.
+    /// `{@const x = await p()}` or init references async-gated symbols.
+    /// Emits `let X;` plus a thunk pushed into `$.run([...])`.
     Async {
-        /// Literal `await` appears in the init expression — chooses
-        /// between `$.async_derived` and `$.derived` at emit time.
+        /// Literal `await` in the init.
         has_await: bool,
-        /// Sorted, de-duplicated blocker indices (from
-        /// `BlockerData::symbol_blockers`) collected across every
-        /// identifier reference in the init expression.
+        /// Sorted, deduplicated blocker indices.
+        blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// RenderTag
+// ---------------------------------------------------------------------------
+
+/// `{@render expr(args...)}` — call-site lowering shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderTagBlockSemantics {
+    /// Reactive-callee × optional-chain, collapsed into 4 variants.
+    pub callee_shape: RenderCalleeShape,
+    /// `Some(sym)` for plain `{@render name(...)}` where `name` resolves
+    /// to a binding. Used by CSS pruning.
+    pub callee_sym: Option<SymbolId>,
+    /// Per-argument lowering, in source order. Length matches the
+    /// call's argument list exactly.
+    pub args: SmallVec<[RenderArgLowering; 4]>,
+    /// Async wrapper decision for the whole render call.
+    pub async_kind: RenderAsyncKind,
+}
+
+/// Four non-overlapping lowering shapes of the `{@render}` callee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderCalleeShape {
+    /// `{@render row(x)}` — normal binding → `row(anchor, ...thunks)`.
+    Static,
+    /// `{@render row?.(x)}` — normal binding, optional chain.
+    StaticChain,
+    /// `{@render row(x)}` where `row` is a reactive binding (prop / rune /
+    /// store). Lowers via `$.snippet(anchor, () => row, ...thunks)`.
+    Dynamic,
+    /// `{@render row?.(x)}` with a reactive callee.
+    DynamicChain,
+}
+
+/// Lowering shape of a single `{@render}` argument.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderArgLowering {
+    /// Arg is a bare prop-source identifier. Example: `{@render r(items)}`
+    /// where `items` comes from `$props()`. Passed directly, no thunk.
+    PropSource { sym: SymbolId },
+    /// Arg has a call but no `await`. Example: `{@render r(map(xs))}`.
+    /// Wrapped in a local `$.derived(() => arg)` memo.
+    MemoSync,
+    /// Arg has `await`. Example: `{@render r(await load())}`. Becomes an
+    /// async-values entry, read inside the callback as `$.get($$async_id_k)`.
+    MemoAsync,
+    /// Plain `() => arg` thunk — no memo, no prop pass-through.
+    Plain,
+}
+
+/// Async wrapper decision for the whole `{@render}` call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RenderAsyncKind {
+    /// No arg has `await`, no dep has a blocker. Emit directly.
+    Sync,
+    /// Wrap in `$.async(anchor, blockers, async_values, (anchor, $$a0, ...) => {...})`.
+    Async {
+        /// Sorted, deduplicated blocker indices unioned across all args.
+        /// Callee blockers are excluded.
+        blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// IfBlock
+// ---------------------------------------------------------------------------
+
+/// `{#if a}...{:else if b}...{:else}...{/if}` — full branch chain after
+/// `{:else if}` flattening. Identity is the root IfBlock `NodeId`;
+/// absorbed elseifs carry `NonSpecial`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IfBlockSemantics {
+    /// One entry per branch in source order: root `{#if}` first, then
+    /// each flattened `{:else if}`. Length ≥ 1.
+    pub branches: SmallVec<[IfBranch; 2]>,
+    /// Disposition of the final alternate fragment.
+    pub final_alternate: IfAlternate,
+    /// `true` when this payload describes a non-flattened elseif being
+    /// re-dispatched as its own root (marks the branch as
+    /// `EFFECT_TRANSPARENT` for transitions).
+    pub is_elseif_root: bool,
+    /// Root-level async wrapper decision, driven by the root test only.
+    pub async_kind: IfAsyncKind,
+}
+
+/// One branch of a flattened `{#if} / {:else if}` chain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IfBranch {
+    /// `NodeId` of the IfBlock node that authored this branch. For
+    /// branch 0 this equals the payload's own root id.
+    pub block_id: NodeId,
+    /// Lowering shape of the branch's test expression.
+    pub condition: IfConditionKind,
+}
+
+/// Three non-overlapping lowering shapes for a branch condition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IfConditionKind {
+    /// `{#if x > 0}` — raw expression, read inline in `$$render`.
+    Raw,
+    /// `{#if f(x)}` — expression has a call but no `await`. Wrapped in a
+    /// `$.derived` memo, read via `$.get(d)`.
+    Memo,
+    /// Root-only. `{#if await check()}` — read through the enclosing
+    /// `$.async` wrapper's `$$condition` parameter.
+    AsyncParam,
+}
+
+/// Root-level async wrapper decision for `{#if}`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IfAsyncKind {
+    /// No `await`, no blocker. Emit `$.if(...)` directly.
+    Sync,
+    /// Root wrapped in `$.async(anchor, blockers, async_values,
+    /// (node, $$condition?) => {...})`.
+    Async {
+        /// Root test contains literal `await` — callback gains `$$condition`.
+        root_has_await: bool,
+        /// Sorted, deduplicated blocker indices for the root test's refs.
+        blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+/// Disposition of the `{:else}` fragment after flattening stops.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IfAlternate {
+    /// No `{:else}` on the last flattened branch.
+    None,
+    /// A concrete `{:else}` fragment exists on the last flattened branch.
+    Fragment {
+        /// `NodeId` of the IfBlock whose alternate fragment this is.
+        last_branch_block_id: NodeId,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// KeyBlock
+// ---------------------------------------------------------------------------
+
+/// `{#key expr}...{/key}` — root-level async wrapper decision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyBlockSemantics {
+    pub async_kind: KeyAsyncKind,
+}
+
+/// Whether `{#key}` lowers directly or through `$.async`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyAsyncKind {
+    /// `{#key x}` — emit `$.key(...)` directly.
+    Sync,
+    /// `{#key await load()}` — wrap in `$.async(anchor, [blockers],
+    /// async_values, (node, $$key?) => { $.key(node, () => $.get($$key), body) })`.
+    Async {
+        /// Literal `await` in the expression.
+        has_await: bool,
+        /// Sorted, deduplicated blocker indices for resolved refs.
         blockers: SmallVec<[u32; 2]>,
     },
 }

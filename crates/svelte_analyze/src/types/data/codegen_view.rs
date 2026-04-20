@@ -35,9 +35,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_node(id)
     }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.data.is_elseif_alt(id)
-    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
@@ -355,9 +352,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_svelte_self(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_self(id)
     }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.data.render_tag_plan(id)
-    }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)
     }
@@ -366,10 +360,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         self.data.parent_each_blocks(id)
-    }
-    #[deprecated(note = "use block_semantics(id) — matches!(sem.flavor, EachFlavor::BindGroup)")]
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.data.contains_group_binding(id)
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.data.template.bind_semantics.bind_blockers(id)
@@ -391,6 +381,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     #[deprecated(note = "use block_semantics(id)")]
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
+        #[allow(deprecated)]
         self.data
             .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
@@ -400,31 +391,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     /// interpolation referencing one never needs a `?? ""` fallback.
     #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym).is_some()")]
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
+        #[allow(deprecated)]
         self.data.each_block_for_index_sym(sym).is_some()
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_key_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_body_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.data.each_key_is_item(id)
-    }
-    #[deprecated(note = "use block_semantics(id).shadows_outer")]
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.data.each_needs_collection_id(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.data.each_has_animate(id)
-    }
-    #[deprecated(note = "read the name from the source via block.context_span")]
-    pub fn each_context_name(&self, id: NodeId) -> &str {
-        self.data.each_context_name(id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.data.expression(id)

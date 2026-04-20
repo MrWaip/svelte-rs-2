@@ -14,7 +14,9 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    SnippetBlockSemantics, SnippetParam,
+    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
+    KeyBlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
@@ -32,12 +34,11 @@ pub use types::data::{
     NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef, ParserResult,
     PickledAwaitOffsets, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
     PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ProxyStateInits,
-    ReactivitySemantics, ReferenceSemantics, RenderTagCalleeMode, RenderTagPlan,
-    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
-    RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls, SignalReferenceKind,
-    SnippetData, SnippetParamStrategy, StateBindingSemantics, StateDeclarationSemantics, StateKind,
-    StmtHandle, StoreDeclarationSemantics, TemplateAnalysis, TemplateElementEntry,
-    TemplateElementIndex, TemplateTopology, WindowBindKind,
+    ReactivitySemantics, ReferenceSemantics, ResizeObserverKind, RichContentFacts,
+    RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
+    ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
+    StateDeclarationSemantics, StateKind, StmtHandle, StoreDeclarationSemantics, TemplateAnalysis,
+    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,

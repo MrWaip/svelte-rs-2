@@ -2113,8 +2113,6 @@ fn bind_group_tracks_matching_ancestor_each_blocks_via_query_layer() {
         parent_each_blocks.as_slice(),
         &[inner_each.id, outer_each.id]
     );
-    assert!(data.contains_group_binding(inner_each.id));
-    assert!(data.contains_group_binding(outer_each.id));
 }
 
 #[test]
@@ -2130,16 +2128,10 @@ fn bind_group_without_each_references_does_not_mark_enclosing_each_blocks() {
     {/each}
 {/each}"#,
     );
-    let outer_each = find_each_block(&component.fragment, &component, "groups")
-        .expect("no outer each block for groups");
-    let inner_each = find_each_block(&outer_each.body, &component, "group")
-        .expect("no inner each block for group");
     let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
         .expect("no bind:group on input");
 
     assert!(data.parent_each_blocks(bind_id).is_empty());
-    assert!(!data.contains_group_binding(inner_each.id));
-    assert!(!data.contains_group_binding(outer_each.id));
 }
 
 #[test]
@@ -2157,8 +2149,6 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
     );
     let outer_each = find_each_block(&component.fragment, &component, "groups")
         .expect("no outer each block for groups");
-    let inner_each = find_each_block(&outer_each.body, &component, "group")
-        .expect("no inner each block for group");
     let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
         .expect("no bind:group on input");
 
@@ -2166,8 +2156,6 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
         data.parent_each_blocks(bind_id).as_slice(),
         &[outer_each.id]
     );
-    assert!(data.contains_group_binding(outer_each.id));
-    assert!(!data.contains_group_binding(inner_each.id));
 }
 
 #[test]
@@ -2519,14 +2507,16 @@ fn module_exported_render_tag_callee_stays_direct_with_snippets() {
 
     let render_id = find_render_tag(&component.fragment, &component, "row(label(title))")
         .expect("expected render tag");
-    let plan = data
-        .render_tag_plan(render_id)
-        .expect("expected render tag plan");
-    assert_eq!(
-        plan.callee_mode,
-        RenderTagCalleeMode::Direct,
-        "snippet render call should stay direct when the callee is a normal snippet binding"
-    );
+    match data.block_semantics(render_id) {
+        crate::BlockSemantics::Render(sem) => {
+            assert_eq!(
+                sem.callee_shape,
+                crate::RenderCalleeShape::Static,
+                "snippet render call should stay static when the callee is a normal snippet binding"
+            );
+        }
+        other => panic!("expected BlockSemantics::Render, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4257,7 +4247,6 @@ fn fragment_facts_track_each_body_child_shape_and_animate() {
         Some(div.id)
     );
     assert!(data.fragment_has_direct_animate_child(&FragmentKey::EachBody(each.id)));
-    assert!(data.each_has_animate(each.id));
 }
 
 #[test]
@@ -4272,7 +4261,6 @@ fn fragment_facts_track_svelte_element_animate_in_each_body() {
     let each = find_each_block(&component.fragment, &component, "items").expect("expected each");
 
     assert!(data.fragment_has_direct_animate_child(&FragmentKey::EachBody(each.id)));
-    assert!(data.each_has_animate(each.id));
 }
 
 #[test]

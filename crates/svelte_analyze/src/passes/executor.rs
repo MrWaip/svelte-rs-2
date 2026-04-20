@@ -3,10 +3,7 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
 
-use super::{
-    bundles, content_types, finalize_component_name, js_analyze, lower, post_resolve,
-    resolve_render_tag_meta,
-};
+use super::{bundles, content_types, finalize_component_name, js_analyze, lower, post_resolve};
 
 fn run_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -70,9 +67,6 @@ pub(crate) fn execute_pass<'a>(
     let source = &component.source;
 
     match key {
-        super::PassKey::ClassifyRenderTags => {
-            js_analyze::classify_render_tags(parsed, component, data, source, runes);
-        }
         super::PassKey::AnalyzeScript => {
             let script_info = parsed.program.as_ref().and_then(|program| {
                 let span = parsed.script_content_span?;
@@ -188,9 +182,6 @@ pub(crate) fn execute_pass<'a>(
                                 .any(|&sym| data.scoping.is_rest_prop(sym))
                     });
             }
-        }
-        super::PassKey::ResolveRenderTagMeta => {
-            resolve_render_tag_meta::run(data, parsed);
         }
         super::PassKey::CollectConstTagFragments => {
             lower::collect_const_tag_fragments(component, data);

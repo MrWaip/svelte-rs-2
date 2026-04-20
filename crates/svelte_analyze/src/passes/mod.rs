@@ -13,7 +13,6 @@ pub(crate) mod finalize_component_name;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
 pub(crate) mod post_resolve;
-pub(crate) mod resolve_render_tag_meta;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
 
@@ -24,7 +23,6 @@ pub(crate) use executor::execute_pass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PassKey {
-    ClassifyRenderTags,
     AnalyzeScript,
     BuildComponentSemantics,
     FinalizeComponentName,
@@ -35,7 +33,6 @@ pub(crate) enum PassKey {
     JsAnalyzePostTemplate,
     ClassifyNeedsContext,
     PostResolve,
-    ResolveRenderTagMeta,
     CollectConstTagFragments,
     BuildReactivitySemantics,
     LowerTemplate,
@@ -49,7 +46,6 @@ pub(crate) enum PassKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum DataToken {
-    ParsedExpressions,
     ScriptInfo,
     ScriptScoping,
     ComponentName,
@@ -61,7 +57,6 @@ pub(crate) enum DataToken {
     JsAnalyzePostTemplate,
     NeedsContext,
     PostResolve,
-    RenderTagMeta,
     ConstTagFragments,
     ReactivitySemantics,
     BlockSemantics,
@@ -82,18 +77,13 @@ pub(crate) struct PassDescriptor {
 
 pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     PassDescriptor {
-        key: PassKey::ClassifyRenderTags,
-        requires: &[DataToken::ParsedExpressions],
-        produces: &[DataToken::ParsedExpressions],
-    },
-    PassDescriptor {
         key: PassKey::AnalyzeScript,
-        requires: &[DataToken::ParsedExpressions],
+        requires: &[],
         produces: &[DataToken::ScriptInfo],
     },
     PassDescriptor {
         key: PassKey::BuildComponentSemantics,
-        requires: &[DataToken::ParsedExpressions, DataToken::ScriptInfo],
+        requires: &[DataToken::ScriptInfo],
         produces: &[DataToken::ScriptScoping, DataToken::TemplateSemantics],
     },
     PassDescriptor {
@@ -108,7 +98,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::ExtractCeConfig,
-        requires: &[DataToken::ParsedExpressions],
+        requires: &[],
         produces: &[DataToken::CeConfig],
     },
     PassDescriptor {
@@ -123,7 +113,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::JsAnalyzePostTemplate,
-        requires: &[DataToken::ParsedExpressions],
+        requires: &[],
         produces: &[DataToken::JsAnalyzePostTemplate],
     },
     PassDescriptor {
@@ -135,15 +125,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::PostResolve,
         requires: &[DataToken::NeedsContext],
         produces: &[DataToken::PostResolve],
-    },
-    PassDescriptor {
-        key: PassKey::ResolveRenderTagMeta,
-        requires: &[
-            DataToken::PostResolve,
-            DataToken::ParsedExpressions,
-            DataToken::ReactivitySemantics,
-        ],
-        produces: &[DataToken::RenderTagMeta],
     },
     PassDescriptor {
         key: PassKey::CollectConstTagFragments,
@@ -205,7 +186,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
 ];
 
 pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
-    PassKey::ClassifyRenderTags,
     PassKey::AnalyzeScript,
     PassKey::BuildComponentSemantics,
     PassKey::FinalizeComponentName,
@@ -222,7 +202,6 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::PostResolve,
     PassKey::CollectConstTagFragments,
     PassKey::BuildReactivitySemantics,
-    PassKey::ResolveRenderTagMeta,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[

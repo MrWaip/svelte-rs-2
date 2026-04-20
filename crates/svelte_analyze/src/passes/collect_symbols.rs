@@ -53,7 +53,6 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         if info.uses_legacy_slots() {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
-        detect_each_index_usage(node_id, info.ref_symbols(), ctx.data);
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
         classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
         classify_render_tag(
@@ -66,9 +65,8 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         store_expression_info(node_id, info, ctx);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, _ctx: &mut VisitContext<'_, '_>) {
         self.pending_render_tag = Some(tag.id);
-        resolve_render_tag_callee(tag, ctx);
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
@@ -157,21 +155,6 @@ fn collect_ref_symbols(
     })
 }
 
-fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut AnalysisData) {
-    for &sym in symbols {
-        if let Some(block_id) = data.each_block_for_index_sym(sym) {
-            let is_key = data
-                .each_key_node_id(block_id)
-                .is_some_and(|kid| kid == node_id);
-            if is_key {
-                data.blocks.each_context.mark_key_uses_index(block_id);
-            } else {
-                data.blocks.each_context.mark_body_uses_index(block_id);
-            }
-        }
-    }
-}
-
 fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_, '_>) {
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
         ctx.data.attr_expressions.insert(node_id, info);
@@ -236,14 +219,13 @@ fn classify_clsx(
 
 fn classify_render_tag(
     node_id: NodeId,
-    expr: &Expression<'_>,
+    _expr: &Expression<'_>,
     info: &mut ExpressionInfo,
     pending: &mut Option<NodeId>,
-    data: &mut AnalysisData,
+    _data: &mut AnalysisData,
 ) {
     if pending.take() == Some(node_id) {
         info.mark_render_tag();
-        js_analyze::classify_render_tag_args(expr, data, node_id);
     }
 }
 
@@ -275,21 +257,6 @@ fn set_pending_flags(
     }
 }
 
-fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
-    if let Some(parsed) = ctx.parsed {
-        if let Some(Expression::CallExpression(call)) = parsed
-            .expr_handle(tag.expression_span.start)
-            .and_then(|handle| parsed.expr(handle))
-        {
-            if let Expression::Identifier(ident) = &call.callee {
-                if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
-                    ctx.data.blocks.render_tag_callee_sym.insert(tag.id, sym_id);
-                }
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -313,14 +280,6 @@ fn merge_concat_expression_info(
     // callers may care about the holder node even when its dynamic parts were
     // already recorded individually.
     ctx.data.attr_expressions.insert(parent_id, merged);
-}
-
-fn resolve_identifier_symbol(
-    ident: &IdentifierReference,
-    scoping: &ComponentScoping<'_>,
-) -> Option<SymbolId> {
-    let ref_id = ident.reference_id.get()?;
-    scoping.get_reference(ref_id).symbol_id()
 }
 
 struct ResolvedRefCollector<'s, 'a> {

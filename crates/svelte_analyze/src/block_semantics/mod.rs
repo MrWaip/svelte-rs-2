@@ -14,7 +14,9 @@ pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    SnippetBlockSemantics, SnippetParam,
+    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
+    KeyBlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 
 use crate::scope::SymbolId;
