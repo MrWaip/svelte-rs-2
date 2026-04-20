@@ -53,7 +53,6 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         if info.uses_legacy_slots() {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
-        detect_each_index_usage(node_id, info.ref_symbols(), ctx.data);
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
         classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
         classify_render_tag(
@@ -154,21 +153,6 @@ fn collect_ref_symbols(
     collect_resolved_ref_symbols(scoping, |collector| {
         collector.visit_expression(expr);
     })
-}
-
-fn detect_each_index_usage(node_id: NodeId, symbols: &[SymbolId], data: &mut AnalysisData) {
-    for &sym in symbols {
-        if let Some(block_id) = data.each_block_for_index_sym(sym) {
-            let is_key = data
-                .each_key_node_id(block_id)
-                .is_some_and(|kid| kid == node_id);
-            if is_key {
-                data.blocks.each_context.mark_key_uses_index(block_id);
-            } else {
-                data.blocks.each_context.mark_body_uses_index(block_id);
-            }
-        }
-    }
 }
 
 fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_, '_>) {

@@ -520,34 +520,9 @@ impl<'a> AnalysisData<'a> {
         self.blocks.each_context.key_node_id(id)
     }
     #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.key_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
         #[allow(deprecated)]
         self.blocks.each_context.is_destructured(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.body_uses_index(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.key_is_item(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.has_animate(id)
-    }
-    #[deprecated(note = "read the name from the source via block.context_span")]
-    pub fn each_context_name(&self, id: NodeId) -> &str {
-        #[allow(deprecated)]
-        self.blocks.each_context.context_name(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.template.bind_semantics.bind_this_each_context(id)
@@ -573,16 +548,6 @@ impl<'a> AnalysisData<'a> {
                     .then_some(parent.id)
             })
             .collect()
-    }
-    #[deprecated(note = "use block_semantics(id) — matches!(sem.flavor, EachFlavor::BindGroup)")]
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.contains_group_binding(id)
-    }
-    #[deprecated(note = "use block_semantics(id).shadows_outer")]
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.needs_collection_id(id)
     }
     pub fn css_hash(&self) -> &str {
         &self.output.css.hash

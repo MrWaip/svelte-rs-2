@@ -145,14 +145,6 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                     .bind_group_value_attr
                     .insert(bind_group_id, value_attr_id);
             }
-
-            let parent_eaches = ctx.data.parent_each_blocks(bind_group_id);
-            for each_id in parent_eaches {
-                ctx.data
-                    .blocks
-                    .each_context
-                    .mark_contains_group_binding(each_id);
-            }
         }
 
         if has_contenteditable && has_content_bind {

@@ -96,10 +96,6 @@ impl<'a> CodegenQuery<'a> {
         self.view.expr_has_blockers(id)
     }
 
-    pub fn expression_blockers(&self, id: NodeId) -> Vec<u32> {
-        self.view.expression_blockers(id).into_iter().collect()
-    }
-
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.view.expression(id)
     }
