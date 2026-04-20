@@ -65,6 +65,7 @@ pub use fragments::{
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;
+#[allow(deprecated)]
 pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::RuntimePlan;

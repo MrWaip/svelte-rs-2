@@ -13,14 +13,19 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::NodeId;
 
-use crate::types::data::{AnalysisData, DeclarationSemantics, RenderTagCalleeMode};
+#[allow(deprecated)]
+use crate::types::data::RenderTagCalleeMode;
+use crate::types::data::{AnalysisData, DeclarationSemantics};
 use crate::ParserResult;
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+#[allow(deprecated)]
 pub(crate) fn run(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     resolve_arg_prop_sources(data, parsed);
     resolve_callee_dynamism(data);
 }
 
+#[allow(deprecated)]
 fn resolve_arg_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     let tag_ids: Vec<NodeId> = data.blocks.render_tag_plans.keys().collect();
     for tag_id in tag_ids {
@@ -72,6 +77,7 @@ fn resolve_arg_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) 
     }
 }
 
+#[allow(deprecated)]
 fn resolve_callee_dynamism(data: &mut AnalysisData) {
     let all_ids: Vec<NodeId> = data.blocks.render_tag_plans.keys().collect();
 

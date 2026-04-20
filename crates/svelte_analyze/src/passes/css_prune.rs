@@ -379,7 +379,9 @@ fn record_possible_snippets(
 }
 
 fn render_tag_possible_snippets(id: NodeId, data: &AnalysisData) -> Vec<NodeId> {
-    if let Some(sym_id) = data.blocks.render_tag_callee_sym.get(id).copied() {
+    #[allow(deprecated)]
+    let callee_sym = data.blocks.render_tag_callee_sym.get(id).copied();
+    if let Some(sym_id) = callee_sym {
         if let Some(snippet_id) = data.template.snippets.snippet_by_symbol(sym_id) {
             return vec![snippet_id];
         }

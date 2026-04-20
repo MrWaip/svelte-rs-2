@@ -1,10 +1,13 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{Component, NodeId};
 
+#[allow(deprecated)]
 use crate::types::data::{
     AnalysisData, ParserResult, RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan,
 };
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+#[allow(deprecated)]
 pub(crate) fn classify_render_tags(
     parsed: &mut ParserResult<'_>,
     component: &Component,
@@ -43,6 +46,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
             self.parsed.expr(handle),
             Some(Expression::ChainExpression(_))
         ) {
+            #[allow(deprecated)]
             ctx.data.blocks.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.take_expr(handle) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
@@ -54,6 +58,8 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
     }
 }
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+#[allow(deprecated)]
 pub(crate) fn classify_render_tag_args(
     expr: &Expression<'_>,
     data: &mut AnalysisData,

@@ -715,11 +715,13 @@ fn emit_single_block<'a>(
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
         FragmentItem::RenderTag(id)
-            if !ctx
-                .render_tag_plan(*id)
-                .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id))
-                .callee_mode
-                .is_dynamic() =>
+            if {
+                #[allow(deprecated)]
+                let plan = ctx
+                    .render_tag_plan(*id)
+                    .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id));
+                !plan.callee_mode.is_dynamic()
+            } =>
         {
             if !is_root {
                 ctx.gen_ident("fragment");

@@ -113,8 +113,12 @@ pub struct BlockAnalysis {
                 readers (validation, reactivity_semantics, bind_semantics) migrate."
     )]
     pub each_context: EachContextIndex,
+    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
+    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
     pub(crate) render_tag_is_chain: NodeBitSet,
+    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+    #[allow(deprecated)]
     pub render_tag_plans: NodeTable<RenderTagPlan>,
 }
 
@@ -702,6 +706,8 @@ impl<'a> AnalysisData<'a> {
                 })
         })
     }
+    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+    #[allow(deprecated)]
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.blocks.render_tag_plans.get(id)
     }

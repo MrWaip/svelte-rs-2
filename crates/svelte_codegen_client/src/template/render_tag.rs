@@ -1,4 +1,5 @@
 //! RenderTag codegen — `{@render snippet(args)}`
+#![allow(deprecated)]
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_span::GetSpan;

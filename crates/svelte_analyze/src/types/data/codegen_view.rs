@@ -355,6 +355,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_svelte_self(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_self(id)
     }
+    #[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
+    #[allow(deprecated)]
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.data.render_tag_plan(id)
     }

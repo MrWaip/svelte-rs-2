@@ -71,6 +71,7 @@ pub(crate) fn execute_pass<'a>(
 
     match key {
         super::PassKey::ClassifyRenderTags => {
+            #[allow(deprecated)]
             js_analyze::classify_render_tags(parsed, component, data, source, runes);
         }
         super::PassKey::AnalyzeScript => {
@@ -190,6 +191,7 @@ pub(crate) fn execute_pass<'a>(
             }
         }
         super::PassKey::ResolveRenderTagMeta => {
+            #[allow(deprecated)]
             resolve_render_tag_meta::run(data, parsed);
         }
         super::PassKey::CollectConstTagFragments => {

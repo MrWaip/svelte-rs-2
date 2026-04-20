@@ -2498,6 +2498,7 @@ fn module_imports_are_visible_from_instance_scope() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn module_exported_render_tag_callee_stays_direct_with_snippets() {
     let source = r#"<script module>
     export const KIND = "v1";

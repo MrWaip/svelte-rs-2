@@ -1,5 +1,6 @@
 use super::*;
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderTagCalleeMode {
     Direct,
@@ -8,6 +9,7 @@ pub enum RenderTagCalleeMode {
     DynamicChain,
 }
 
+#[allow(deprecated)]
 impl RenderTagCalleeMode {
     pub fn is_dynamic(self) -> bool {
         matches!(self, Self::DynamicRegular | Self::DynamicChain)
@@ -17,12 +19,15 @@ impl RenderTagCalleeMode {
     }
 }
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
 #[derive(Debug, Clone)]
+#[allow(deprecated)]
 pub struct RenderTagPlan {
     pub callee_mode: RenderTagCalleeMode,
     pub arg_plans: Vec<RenderTagArgPlan>,
 }
 
+#[deprecated(note = "use BlockSemantics::Render / block_semantics(id) instead")]
 #[derive(Debug, Clone)]
 pub struct RenderTagArgPlan {
     pub info: ExpressionInfo,

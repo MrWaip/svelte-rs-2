@@ -243,6 +243,7 @@ fn classify_render_tag(
 ) {
     if pending.take() == Some(node_id) {
         info.mark_render_tag();
+        #[allow(deprecated)]
         js_analyze::classify_render_tag_args(expr, data, node_id);
     }
 }
@@ -283,6 +284,7 @@ fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         {
             if let Expression::Identifier(ident) = &call.callee {
                 if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
+                    #[allow(deprecated)]
                     ctx.data.blocks.render_tag_callee_sym.insert(tag.id, sym_id);
                 }
             }
