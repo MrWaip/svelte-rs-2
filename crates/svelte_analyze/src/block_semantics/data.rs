@@ -37,11 +37,8 @@ pub enum BlockSemantics {
     /// only — flattened `{:else if}` IfBlocks are tombstoned to
     /// [`BlockSemantics::NonSpecial`] by the builder).
     If(IfBlockSemantics),
-    // Placeholder for the Key slice — payload lands when that kind is
-    // migrated end-to-end. Keeping it here shapes the public enum so
-    // consumers can already switch on it exhaustively once migrated.
-    // TODO(block-semantics): Key payload.
-    Key,
+    /// `{#key expr} ... {/key}` block.
+    Key(KeyBlockSemantics),
 }
 
 /// `{#each items as <item>[, <index>] [(<key>)]}` — the identities of the
@@ -579,5 +576,46 @@ pub enum IfAlternate {
         /// `NodeId` of the IfBlock whose alternate fragment this is —
         /// i.e. the last branch's block id.
         last_branch_block_id: NodeId,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// KeyBlock
+// ---------------------------------------------------------------------------
+
+/// `{#key expr}...{/key}` — root-level async wrapper decision.
+///
+/// Identity: KeyBlock `NodeId`. The body fragment is reached via
+/// `FragmentKey::KeyBlockBody(id)` by the consumer — not carried on
+/// the payload. The key expression itself is consumed from
+/// `ParserResult` via the block's `expression_span` (existing
+/// `get_node_expr` path).
+///
+/// Reactive meaning of identifiers inside the expression stays in
+/// `reactivity_semantics`; the transformer rewrites references before
+/// codegen takes ownership of the expression.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyBlockSemantics {
+    pub async_kind: KeyAsyncKind,
+}
+
+/// Whether `{#key}` lowers directly or inside an `$.async` wrapper.
+/// Shape mirrors [`EachAsyncKind`] / [`IfAsyncKind`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyAsyncKind {
+    /// No `await`, no script-level blockers. Emit `$.key(...)` directly.
+    Sync,
+    /// Wrap in
+    /// `$.async(anchor, [blockers], async_values, (node, $$key?) => { $.key(node, () => $.get($$key), body) })`.
+    ///
+    /// * `has_await` — literal `await` appears in the expression.
+    ///   Drives the `$$key` callback parameter and the async-values
+    ///   thunk.
+    /// * `blockers` — sorted, de-duplicated script-level blocker
+    ///   indices for every resolved identifier reference in the
+    ///   expression.
+    Async {
+        has_await: bool,
+        blockers: SmallVec<[u32; 2]>,
     },
 }

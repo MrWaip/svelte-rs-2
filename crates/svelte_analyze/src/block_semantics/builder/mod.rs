@@ -20,6 +20,7 @@ mod common;
 mod const_tag;
 mod each;
 mod if_;
+mod key;
 mod render;
 mod snippet;
 mod walker;

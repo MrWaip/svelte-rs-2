@@ -15,7 +15,7 @@ pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod html_tag;
 pub(crate) mod if_block_semantics;
-pub(crate) mod key_block;
+pub(crate) mod key_block_semantics;
 pub(crate) mod prop_object;
 pub(crate) mod render_block_semantics;
 pub(crate) mod slot;
@@ -212,7 +212,7 @@ use expression::{emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
 use html_tag::gen_html_tag;
 use if_block_semantics::gen_if_block;
-use key_block::gen_key_block;
+use key_block_semantics::gen_key_block;
 use render_block_semantics::gen_render_block;
 use slot::emit_slot_template_anchor;
 use svelte_boundary::gen_svelte_boundary;
@@ -730,6 +730,24 @@ fn emit_single_block<'a>(
                 );
                 return;
             }
+            svelte_analyze::BlockSemantics::Key(sem) => {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(
+                    ctx.b
+                        .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+                );
+                if let FragmentSetup::PostCreate(stmts) = setup {
+                    body.extend(stmts);
+                }
+                gen_key_block(ctx, id, &sem, ctx.b.rid_expr(&node), body);
+                body.push(
+                    ctx.b
+                        .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+                );
+                return;
+            }
             _ => {}
         }
     }
@@ -825,8 +843,10 @@ fn emit_single_block<'a>(
         FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
-        FragmentItem::KeyBlock(id) => {
-            gen_key_block(ctx, *id, ctx.b.rid_expr(&node), body);
+        FragmentItem::KeyBlock(_) => {
+            unreachable!(
+                "FragmentItem::KeyBlock must be handled by BlockSemantics::Key at the top of emit_single_block"
+            )
         }
         FragmentItem::SvelteElement(id) => {
             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), body);

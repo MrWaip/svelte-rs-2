@@ -14,9 +14,9 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, RenderArgLowering,
-    RenderAsyncKind, RenderCalleeShape, RenderTagBlockSemantics, SnippetBlockSemantics,
-    SnippetParam,
+    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
+    KeyBlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

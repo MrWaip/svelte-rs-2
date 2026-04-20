@@ -285,9 +285,6 @@ impl<'a> Ctx<'a> {
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
     }
-    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock {
-        self.query.key_block(id)
-    }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement {
         self.query.svelte_element(id)
     }

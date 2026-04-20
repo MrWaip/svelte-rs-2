@@ -192,7 +192,7 @@ impl<'a> Ctx<'_, 'a> {
             Node::SnippetBlock(block) => super::snippet::populate(self, block),
             Node::ConstTag(tag) => super::const_tag::populate(self, tag),
             Node::RenderTag(tag) => super::render::populate(self, tag),
-            Node::KeyBlock(block) => self.visit_fragment(&block.fragment.nodes),
+            Node::KeyBlock(block) => super::key::populate(self, block),
             Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
             Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),
             Node::SvelteElement(el) => {
