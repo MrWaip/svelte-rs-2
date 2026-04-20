@@ -2,8 +2,9 @@
 
 ## Current state
 - **Working**: 6/6 use cases
-- **Tests**: 7/7 green
-- Last updated: 2026-04-04
+- **Tests**: 7/7 snapshot tests + 4 block-semantics builder unit tests green
+- Migrated to `BlockSemantics::Key` (see SEMANTIC_LAYER_ARCHITECTURE.md). Legacy consumer (`template/key_block.rs`) and `Ctx::key_block` wrapper removed. `AsyncEmissionPlan::for_node` no longer called from KeyBlock codegen.
+- Last updated: 2026-04-20
 
 ## Source
 
@@ -44,9 +45,11 @@
 - `crates/svelte_analyze/src/passes/template_scoping.rs`
 - `crates/svelte_analyze/src/passes/reactivity.rs`
 - `crates/svelte_analyze/src/passes/content_types.rs`
+- `crates/svelte_analyze/src/block_semantics/data.rs` (`KeyBlockSemantics`, `KeyAsyncKind`)
+- `crates/svelte_analyze/src/block_semantics/builder/key.rs`
 - `crates/svelte_analyze/src/tests.rs`
 - `crates/svelte_transform/src/lib.rs`
-- `crates/svelte_codegen_client/src/template/key_block.rs`
+- `crates/svelte_codegen_client/src/template/key_block_semantics.rs`
 - `tasks/compiler_tests/cases2/key_block/case.svelte`
 - `tasks/compiler_tests/cases2/async_key_basic/case.svelte`
 - `tasks/compiler_tests/cases2/key_block_nested/case.svelte`

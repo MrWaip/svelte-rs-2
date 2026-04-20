@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use oxc_ast::{AstKind, ast::IdentifierReference};
+use oxc_ast::{ast::IdentifierReference, AstKind};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
@@ -285,6 +285,33 @@ impl<'a> ComponentSemantics<'a> {
         self.references.get(id)
     }
 
+    /// True iff this reference resolves to a symbol declared directly in the
+    /// component's instance scope (`<script>`-level bindings). Symbols
+    /// declared in nested scopes inside the instance script (e.g. function
+    /// locals) return false — consumers interested in "anything under
+    /// instance" should walk the scope chain explicitly.
+    pub fn is_instance_reference(&self, id: ReferenceId) -> bool {
+        let Some(instance) = self.instance_scope_id else {
+            return false;
+        };
+        let Some(sym) = self.references.get(id).symbol_id() else {
+            return false;
+        };
+        self.symbols.symbol_scope_id(sym) == instance
+    }
+
+    /// True iff this reference resolves to a symbol declared directly in the
+    /// component's module scope (`<script module>`-level bindings).
+    pub fn is_module_reference(&self, id: ReferenceId) -> bool {
+        let Some(module) = self.module_scope_id else {
+            return false;
+        };
+        let Some(sym) = self.references.get(id).symbol_id() else {
+            return false;
+        };
+        self.symbols.symbol_scope_id(sym) == module
+    }
+
     pub fn try_get_reference(&self, id: ReferenceId) -> Option<&Reference> {
         if id.index() < self.references.len() {
             Some(self.references.get(id))
@@ -343,7 +370,8 @@ impl<'a> ComponentSemantics<'a> {
     }
 
     pub fn is_member_mutated(&self, id: SymbolId) -> bool {
-        self.symbols.has_state(id, crate::symbol::state::MEMBER_MUTATED)
+        self.symbols
+            .has_state(id, crate::symbol::state::MEMBER_MUTATED)
     }
 
     /// True when `symbol` has either been reassigned (a write reference) or
@@ -512,7 +540,7 @@ impl<'a> ComponentSemantics<'a> {
     pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbols
             .symbol_names()
-            .map(|s| CompactString::from(s))
+            .map(CompactString::from)
             .collect()
     }
 

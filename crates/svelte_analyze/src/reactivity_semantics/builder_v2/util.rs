@@ -3,9 +3,7 @@
 //! Contains AST drill-down utilities for member-expression LHS detection
 //! (`foo.bar.baz = x` → root `foo`) and property-key atom extraction.
 
-use oxc_ast::ast::{
-    AssignmentTarget, Expression, PropertyKey, SimpleAssignmentTarget,
-};
+use oxc_ast::ast::{AssignmentTarget, Expression, PropertyKey, SimpleAssignmentTarget};
 use oxc_span::Ident;
 use svelte_component_semantics::ReferenceId;
 

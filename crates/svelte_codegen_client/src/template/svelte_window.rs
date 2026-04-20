@@ -5,8 +5,8 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::{BindPropertyKind, WindowBindKind};
 use svelte_ast::{Attribute, NodeId};
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::bind::{build_binding_getter, build_binding_setter_silent, gen_bind_property_stmt};
 use super::events::{gen_event_attr_on, gen_legacy_event_on};

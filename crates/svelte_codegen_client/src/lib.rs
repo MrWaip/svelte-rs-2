@@ -109,7 +109,7 @@ pub fn generate<'a>(
     // hoistable_snippets is kept separate so it can be placed before module_body
     // in the final program (snippet consts → module exports → template vars).
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
-    all_hoisted.extend(ctx.state.module_hoisted.drain(..));
+    all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
 
     // -----------------------------------------------------------------------
@@ -261,9 +261,9 @@ pub fn generate<'a>(
         // Legacy component accessors and custom-element wrappers both expose
         // props through the returned exports object.
         if ctx.query.accessors() || runtime.has_ce_props {
-            if let Some(props_analysis) = ctx.query.props() {
-                for prop in &props_analysis.props {
-                    if prop.is_rest || prop.is_reserved {
+            if let Some(props_decl) = ctx.query.props() {
+                for prop in &props_decl.props {
+                    if prop.is_rest || prop.is_reserved() {
                         continue;
                     }
                     let key: &str = ctx.b.alloc_str(&prop.prop_name);
@@ -640,12 +640,8 @@ pub fn generate_module<'a>(
     dev: bool,
 ) -> String {
     let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
-    let script_output = script::transform_module_program(
-        alloc,
-        program,
-        Some(analysis),
-        &analysis.scoping,
-    );
+    let script_output =
+        script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping);
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");

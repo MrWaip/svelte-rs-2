@@ -278,7 +278,7 @@ fn classify_items(items: &[FragmentItem], source: &str) -> ContentStrategy {
             parts
                 .iter()
                 .map(|p| match p {
-                    LoweredTextPart::TextSpan(span) => span.source_text(&source),
+                    LoweredTextPart::TextSpan(span) => span.source_text(source),
                     LoweredTextPart::TextOwned(t) => t.as_str(),
                     LoweredTextPart::Expr(_) => "",
                 })

@@ -1,8 +1,6 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF,
-};
+use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -221,11 +219,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         let data = &mut *ctx.data;
-        let base_name = cn
-            .name
-            .split('.')
-            .next()
-            .unwrap_or_else(|| cn.name.as_str());
+        let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
         if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
             data.elements
                 .flags
@@ -310,16 +304,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                 && {
                                     let base = &trimmed[1..];
                                     let root = data.scoping.root_scope_id();
-                                    data.scoping
-                                        .find_binding(root, base)
-                                        .is_some_and(|sym| {
-                                            matches!(
-                                                data.declaration_semantics(
-                                                    data.scoping.symbol_declaration(sym),
-                                                ),
-                                                crate::types::data::DeclarationSemantics::Store(_),
-                                            )
-                                        })
+                                    data.scoping.find_binding(root, base).is_some_and(|sym| {
+                                        matches!(
+                                            data.declaration_semantics(
+                                                data.scoping.symbol_declaration(sym),
+                                            ),
+                                            crate::types::data::DeclarationSemantics::Store(_),
+                                        )
+                                    })
                                 }
                         });
 
@@ -386,4 +378,3 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 }
-

@@ -2,8 +2,8 @@ use oxc_ast::ast::Statement;
 
 use svelte_analyze::FragmentKey;
 
-use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, ObjProp};
 
 /// Emit `$.template_effect(() => { console.log({...}); debugger; })` for each DebugTag.
 ///
@@ -23,8 +23,7 @@ pub(crate) fn emit_debug_tags<'a>(
 
         let props: Vec<ObjProp<'a>> = identifiers
             .iter()
-            .enumerate()
-            .map(|(_i, span)| {
+            .map(|span| {
                 let name = ctx.query.component.source_text(*span);
                 let name_alloc: &str = ctx.b.alloc_str(name);
                 // Use pre-transformed expression (with $.get() wrapping for each-block vars)

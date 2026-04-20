@@ -2,8 +2,8 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 fn should_return_event_handler_directly<'a>(
     ctx: &Ctx<'a>,

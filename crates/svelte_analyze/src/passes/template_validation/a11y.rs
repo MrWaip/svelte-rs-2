@@ -468,7 +468,7 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
 
             if semantic_role == Some(role)
                 && !matches!(el.name.as_str(), "ul" | "ol" | "li" | "menu")
-                && !(el.name == "a" && !ctx.data.has_attribute(el.id, "href"))
+                && (el.name != "a" || ctx.data.has_attribute(el.id, "href"))
             {
                 ctx.warnings_mut().push(Diagnostic::warning(
                     DiagnosticKind::A11yNoRedundantRoles {
@@ -672,28 +672,30 @@ fn check_a11y_role_attribute_interaction_warnings(
         }
     }
 
-    if !has_spread && handlers.iter().any(|handler| handler == "mouseover") {
-        if !handlers.iter().any(|handler| handler == "focus") {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yMouseEventsHaveKeyEvents {
-                    event: "mouseover".to_string(),
-                    accompanied_by: "focus".to_string(),
-                },
-                el.span,
-            ));
-        }
+    if !has_spread
+        && handlers.iter().any(|handler| handler == "mouseover")
+        && !handlers.iter().any(|handler| handler == "focus")
+    {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::A11yMouseEventsHaveKeyEvents {
+                event: "mouseover".to_string(),
+                accompanied_by: "focus".to_string(),
+            },
+            el.span,
+        ));
     }
 
-    if !has_spread && handlers.iter().any(|handler| handler == "mouseout") {
-        if !handlers.iter().any(|handler| handler == "blur") {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yMouseEventsHaveKeyEvents {
-                    event: "mouseout".to_string(),
-                    accompanied_by: "blur".to_string(),
-                },
-                el.span,
-            ));
-        }
+    if !has_spread
+        && handlers.iter().any(|handler| handler == "mouseout")
+        && !handlers.iter().any(|handler| handler == "blur")
+    {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::A11yMouseEventsHaveKeyEvents {
+                event: "mouseout".to_string(),
+                accompanied_by: "blur".to_string(),
+            },
+            el.span,
+        ));
     }
 
     let has_interactive_handlers = handlers
@@ -1268,7 +1270,7 @@ fn is_hidden_from_screen_reader(
 
     ctx.data
         .attribute(el.id, attrs, "aria-hidden")
-        .map_or(false, |attr| match attr {
+        .is_some_and(|attr| match attr {
             Attribute::BooleanAttribute(_) => true,
             _ => static_text_attr_value(attr, ctx.source).is_some_and(|value| value == "true"),
         })

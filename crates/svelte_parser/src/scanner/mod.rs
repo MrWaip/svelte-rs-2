@@ -148,7 +148,10 @@ impl<'a> Scanner<'a> {
             self.current += 1;
             b as char
         } else {
-            let ch = self.source[self.current..].chars().next().unwrap();
+            let ch = self.source[self.current..]
+                .chars()
+                .next()
+                .expect("source slice is non-empty — b was read above");
             self.current += ch.len_utf8();
             ch
         }
@@ -1271,7 +1274,7 @@ impl<'a> Scanner<'a> {
         };
 
         while !self.is_at_end() {
-            let ch = self.peek().unwrap();
+            let ch = self.peek().expect("loop condition guarantees not at end");
             match ch {
                 '\'' | '"' => {
                     self.advance();
@@ -1427,7 +1430,7 @@ impl<'a> Scanner<'a> {
         };
 
         while !self.is_at_end() {
-            let ch = self.peek().unwrap();
+            let ch = self.peek().expect("loop condition guarantees not at end");
             match ch {
                 '\'' | '"' => {
                     self.advance();
@@ -2122,7 +2125,7 @@ impl<'a> Scanner<'a> {
         // Scan the collection expression, tracking nesting depth.
         // Stop on `}` at depth 0 (no `as` binding) or on `as` keyword at depth 0.
         while !self.is_at_end() {
-            let ch = self.peek().unwrap();
+            let ch = self.peek().expect("loop condition guarantees not at end");
             match ch {
                 '\'' | '"' | '`' => {
                     self.advance();
@@ -2133,9 +2136,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 ')' | ']' => {
-                    if depth > 0 {
-                        depth -= 1;
-                    }
+                    depth = depth.saturating_sub(1);
                     self.advance();
                 }
                 '}' if depth > 0 => {

@@ -5,12 +5,13 @@ use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKin
 
 use svelte_analyze::{
     scope::SymbolId, ComponentBindMode, ComponentPropKind, ConstDeclarationSemantics,
-    ContentStrategy, DeclarationSemantics, FragmentKey, PropDeclarationKind, PropDeclarationSemantics,
+    ContentStrategy, DeclarationSemantics, FragmentKey, PropDeclarationKind,
+    PropDeclarationSemantics,
 };
 use svelte_ast::{Attribute, Namespace, Node, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
-use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use super::events::{build_event_handler_s5, dev_event_handler};
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -314,11 +315,14 @@ pub(crate) fn gen_component<'a>(
     let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
     let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
     for snippet_id in &snippet_ids {
-        let snippet_name = ctx
-            .snippet_block(*snippet_id)
-            .name(ctx.state.source)
-            .to_string();
-        snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
+        let sem = match ctx.query.analysis.block_semantics(*snippet_id) {
+            svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
+            other => unreachable!(
+                "component snippet child must map to BlockSemantics::Snippet, got {other:?}"
+            ),
+        };
+        let snippet_name = ctx.query.view.symbol_name(sem.name).to_string();
+        snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, &sem, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
         items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
         let slot_key = if snippet_name == "children" {
@@ -845,7 +849,9 @@ fn build_component_binding_read_expr<'a>(ctx: &Ctx<'a>, sym_id: SymbolId) -> Exp
         DeclarationSemantics::State(_) | DeclarationSemantics::Derived(_) => {
             ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
         }
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+            destructured, ..
+        }) => {
             if destructured {
                 ctx.b.call_expr("$.safe_get", [Arg::Ident(symbol_name)])
             } else {
@@ -934,10 +940,13 @@ fn slot_let_directive_stmt<'a>(
         Statement::VariableDeclaration(decl) => decl.node_id(),
         _ => panic!("slot let directive must be a VariableDeclaration"),
     };
+    // Resolve binding names from the ORIGINAL statement — cloning via
+    // `clone_in` drops symbol-id cells, and the walker reads them.
+    let binding_names_owned = slot_let_binding_names(ctx, original_stmt);
     let stmt = original_stmt.clone_in(ctx.b.ast.allocator);
 
     if slot_let_stmt_is_destructured(&stmt) {
-        return destructured_slot_let_stmt(ctx, stmt_oxc_node_id, &stmt);
+        return destructured_slot_let_stmt(ctx, stmt_oxc_node_id, &stmt, binding_names_owned);
     }
 
     direct_slot_let_stmt(ctx, &stmt)
@@ -965,6 +974,7 @@ fn destructured_slot_let_stmt<'a>(
     ctx: &mut Ctx<'a>,
     stmt_oxc_node_id: oxc_syntax::node::NodeId,
     stmt: &Statement<'a>,
+    binding_names: Vec<String>,
 ) -> Statement<'a> {
     let carrier_sym_id = match ctx.query.view.declaration_semantics(stmt_oxc_node_id) {
         svelte_analyze::DeclarationSemantics::LetCarrier { carrier_symbol } => carrier_symbol,
@@ -974,7 +984,6 @@ fn destructured_slot_let_stmt<'a>(
         ),
     };
     let carrier_name = ctx.symbol_name(carrier_sym_id).to_string();
-    let binding_names = slot_let_binding_names(stmt);
 
     let mut destructure_stmt = stmt.clone_in(ctx.b.ast.allocator);
     if let Statement::VariableDeclaration(decl) = &mut destructure_stmt {
@@ -1008,35 +1017,14 @@ fn slot_let_stmt_is_destructured(stmt: &Statement<'_>) -> bool {
     )
 }
 
-fn slot_let_binding_names(stmt: &Statement<'_>) -> Vec<String> {
-    fn walk_binding_pattern(pattern: &BindingPattern<'_>, out: &mut Vec<String>) {
-        match pattern {
-            BindingPattern::BindingIdentifier(id) => out.push(id.name.as_str().to_string()),
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    walk_binding_pattern(&prop.value, out);
-                }
-                if let Some(rest) = &obj.rest {
-                    walk_binding_pattern(&rest.argument, out);
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for elem in arr.elements.iter().flatten() {
-                    walk_binding_pattern(elem, out);
-                }
-                if let Some(rest) = &arr.rest {
-                    walk_binding_pattern(&rest.argument, out);
-                }
-            }
-            BindingPattern::AssignmentPattern(assign) => walk_binding_pattern(&assign.left, out),
-        }
-    }
-
+fn slot_let_binding_names(ctx: &Ctx<'_>, stmt: &Statement<'_>) -> Vec<String> {
     let Some(declarator) = slot_let_declarator(stmt) else {
         return Vec::new();
     };
     let mut names = Vec::new();
-    walk_binding_pattern(&declarator.id, &mut names);
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+        names.push(ctx.symbol_name(v.symbol).to_string());
+    });
     names
 }
 

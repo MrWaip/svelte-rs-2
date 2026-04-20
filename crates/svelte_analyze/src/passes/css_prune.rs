@@ -248,7 +248,9 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
 
             for elem_id in candidate_elements(
                 self.elements,
-                plan.relatives.last().unwrap(),
+                plan.relatives
+                    .last()
+                    .expect("plan always has at least one relative selector"),
                 plan.needs_full_scan,
             ) {
                 if apply_selector(
@@ -377,7 +379,11 @@ fn record_possible_snippets(
 }
 
 fn render_tag_possible_snippets(id: NodeId, data: &AnalysisData) -> Vec<NodeId> {
-    if let Some(sym_id) = data.blocks.render_tag_callee_sym.get(id).copied() {
+    let callee_sym = match data.block_semantics(id) {
+        crate::BlockSemantics::Render(sem) => sem.callee_sym,
+        _ => None,
+    };
+    if let Some(sym_id) = callee_sym {
         if let Some(snippet_id) = data.template.snippets.snippet_by_symbol(sym_id) {
             return vec![snippet_id];
         }
@@ -463,7 +469,8 @@ fn collect_component_attr_snippets(
 fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
     data.scoping.is_import(sym_id)
         || matches!(
-            data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym_id)),
+            data.reactivity
+                .declaration_semantics(data.scoping.symbol_declaration(sym_id)),
             DeclarationSemantics::Prop(_),
         )
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
@@ -584,7 +591,7 @@ fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
         match simple {
             SimpleSelector::PseudoClass(pc) => {
                 if matches!(pc.name.as_str(), "is" | "where") {
-                    selector_list = pc.args.as_ref().map(|args| &**args);
+                    selector_list = pc.args.as_deref();
                 } else {
                     can_be_global = is_unscoped_pseudo_class(pc, Some(rule_ctx));
                 }
@@ -657,9 +664,7 @@ fn is_unscoped_pseudo_class(pc: &PseudoClassSelector, rule_ctx: Option<&RuleCont
 }
 
 fn contains_explicit_nesting(relatives: &[RelativeSelector]) -> bool {
-    relatives
-        .iter()
-        .any(|relative| relative_has_explicit_nesting(relative))
+    relatives.iter().any(relative_has_explicit_nesting)
 }
 
 fn relative_has_explicit_nesting(relative: &RelativeSelector) -> bool {
@@ -772,10 +777,10 @@ fn apply_selector(
     };
 
     let matched =
-        relative_selector_matches(pruner, &relative_selector, rule_ctx, elem_id, direction)
+        relative_selector_matches(pruner, relative_selector, rule_ctx, elem_id, direction)
             && apply_combinator(
                 pruner,
-                &relative_selector,
+                relative_selector,
                 selectors,
                 rest_from,
                 rest_to,
@@ -784,10 +789,8 @@ fn apply_selector(
                 direction,
             );
 
-    if matched {
-        if !is_outer_global(&relative_selector) {
-            pruner.scoped.insert(elem_id);
-        }
+    if matched && !is_outer_global(relative_selector) {
+        pruner.scoped.insert(elem_id);
     }
 
     matched
@@ -909,8 +912,9 @@ fn relative_selector_matches(
                 let include_self =
                     *include_self.get_or_insert_with(|| has_global_or_root_selector(rule_ctx));
                 let mut matched = false;
+                let args = pc.args.as_ref().expect("guarded above");
 
-                for complex in &pc.args.as_ref().unwrap().children {
+                for complex in &args.children {
                     let inner = build_truncated_relatives(complex);
                     if inner.is_empty() {
                         pruner.used.insert(complex.id);
@@ -1436,12 +1440,12 @@ fn collect_possible_siblings(
             break;
         };
 
-        let mut indices: Box<dyn Iterator<Item = usize>> = match direction {
+        let indices: Box<dyn Iterator<Item = usize>> = match direction {
             Direction::Forward => Box::new(current_index + 1..lowered.items.len()),
             Direction::Backward => Box::new((0..current_index).rev()),
         };
 
-        while let Some(index) = indices.next() {
+        for index in indices {
             match &lowered.items[index] {
                 crate::types::data::FragmentItem::Element(id)
                 | crate::types::data::FragmentItem::SlotElementLegacy(id)
@@ -1663,12 +1667,12 @@ fn loop_child(
         return result;
     };
 
-    let mut indices: Box<dyn Iterator<Item = usize>> = match direction {
+    let indices: Box<dyn Iterator<Item = usize>> = match direction {
         Direction::Forward => Box::new(0..lowered.items.len()),
         Direction::Backward => Box::new((0..lowered.items.len()).rev()),
     };
 
-    while let Some(index) = indices.next() {
+    for index in indices {
         match &lowered.items[index] {
             crate::types::data::FragmentItem::Element(id)
             | crate::types::data::FragmentItem::SlotElementLegacy(id)
@@ -1900,7 +1904,7 @@ fn attribute_matches(
                 }
                 let matches = test_attribute(
                     operator,
-                    expected_value.unwrap(),
+                    expected_value.expect("is_none branch returns above"),
                     case_insensitive,
                     attr.value_span.source_text(&pruner.component.source),
                 );
@@ -1918,7 +1922,7 @@ fn attribute_matches(
                 };
                 if match_attribute_chunks(
                     operator,
-                    expected_value.unwrap(),
+                    expected_value.expect("is_none branch returns above"),
                     case_insensitive,
                     &chunks,
                 ) {
@@ -1936,7 +1940,7 @@ fn attribute_matches(
                 let chunks = attribute_chunks_for_concat(pruner, &attr.parts);
                 if match_attribute_chunks(
                     operator,
-                    expected_value.unwrap(),
+                    expected_value.expect("is_none branch returns above"),
                     case_insensitive,
                     &chunks,
                 ) {
@@ -2222,10 +2226,7 @@ fn ends_with_whitespace(value: &str) -> bool {
     value.chars().next_back().is_some_and(char::is_whitespace)
 }
 
-fn element_attributes<'a>(
-    component: &'a SvelteComponent,
-    elem_id: NodeId,
-) -> Option<&'a [Attribute]> {
+fn element_attributes(component: &SvelteComponent, elem_id: NodeId) -> Option<&[Attribute]> {
     match component.store.get(elem_id) {
         Node::Element(element) => Some(&element.attributes),
         Node::SvelteElement(element) => Some(&element.attributes),

@@ -174,7 +174,7 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
                                 block.id,
                                 self.parsed
                                     .stmt_handle(block.expression_span.start)
-                                    .unwrap(),
+                                    .expect("snippet block expression was pre-parsed"),
                             );
                         ctx.visit_js_statement(stmt);
                         // The arrow visitor created its own scope — read it back
@@ -272,11 +272,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         ctx.enter_fragment_scope(FragmentKey::EachBody(block.id));
         if let Some(span) = block.context_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                self.data
-                    .template
-                    .template_semantics
-                    .each_context_stmt_handles
-                    .insert(block.id, handle);
                 if let Some(stmt) = self.parsed.stmt(handle) {
                     ctx.visit_js_statement(stmt);
                 }
@@ -284,11 +279,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         }
         if let Some(span) = block.index_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                self.data
-                    .template
-                    .template_semantics
-                    .each_index_stmt_handles
-                    .insert(block.id, handle);
                 if let Some(stmt) = self.parsed.stmt(handle) {
                     ctx.visit_js_statement(stmt);
                 }
@@ -331,11 +321,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
             ctx.enter_fragment_scope(FragmentKey::AwaitThen(block.id));
             if let Some(span) = block.value_span {
                 if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                    self.data
-                        .template
-                        .template_semantics
-                        .await_value_stmt_handles
-                        .insert(block.id, handle);
                     if let Some(stmt) = self.parsed.stmt(handle) {
                         ctx.visit_js_statement(stmt);
                     }
@@ -348,11 +333,6 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
             ctx.enter_fragment_scope(FragmentKey::AwaitCatch(block.id));
             if let Some(span) = block.error_span {
                 if let Some(handle) = self.parsed.stmt_handle(span.start) {
-                    self.data
-                        .template
-                        .template_semantics
-                        .await_error_stmt_handles
-                        .insert(block.id, handle);
                     if let Some(stmt) = self.parsed.stmt(handle) {
                         ctx.visit_js_statement(stmt);
                     }
@@ -480,11 +460,7 @@ impl<'d, 'a, 'b> AnalyzeTemplateWalker<'d, 'a, 'b> {
         }
     }
 
-    fn walk_bind_directive(
-        &mut self,
-        dir: &BindDirective,
-        ctx: &mut TemplateBuildContext<'_, 'a>,
-    ) {
+    fn walk_bind_directive(&mut self, dir: &BindDirective, ctx: &mut TemplateBuildContext<'_, 'a>) {
         // `expression_span` is non-optional; shorthand `bind:name` carries the
         // span of `name` which the parser already parsed as
         // `Expression::Identifier(name)`. Reference-compiler parity

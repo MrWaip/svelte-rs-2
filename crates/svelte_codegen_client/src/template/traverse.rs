@@ -4,8 +4,8 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{FragmentItem, LoweredTextPart};
 
-use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::await_block::gen_await_block;
 use super::component::gen_component;
@@ -14,9 +14,9 @@ use super::element::{item_needs_var, process_element};
 use super::element_ident_prefix;
 use super::expression::{parts_are_dynamic, MemoAttr};
 use super::html_tag::gen_html_tag;
-use super::if_block::gen_if_block;
-use super::key_block::gen_key_block;
-use super::render_tag::gen_render_tag;
+use super::if_block_semantics::gen_if_block;
+use super::key_block_semantics::gen_key_block;
+use super::render_block_semantics::gen_render_block;
 use super::slot::{emit_slot_call, is_legacy_slot_element};
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
@@ -42,12 +42,104 @@ pub(crate) fn traverse_items<'a>(
         // with no surrounding text nodes in the same sequence
         let is_text = item.is_standalone_expr();
 
+        // Root Consumer Migration: semantic dispatch at the very top of
+        // the loop. Migrated block kinds take the semantic branch and
+        // `continue`; everything else falls through to the legacy
+        // FragmentItem dispatcher below. DOM-slot allocation is
+        // duplicated here intentionally — it collapses once the
+        // FragmentItem kill-off slice lands (see
+        // SEMANTIC_LAYER_ARCHITECTURE.md "Prerequisite: Kill FragmentItem").
+        if needs_var {
+            let semantic_node_id = match item {
+                FragmentItem::IfBlock(id)
+                | FragmentItem::EachBlock(id)
+                | FragmentItem::AwaitBlock(id)
+                | FragmentItem::KeyBlock(id)
+                | FragmentItem::RenderTag(id)
+                | FragmentItem::HtmlTag(id) => Some(*id),
+                _ => None,
+            };
+            if let Some(id) = semantic_node_id {
+                let sem_snapshot = ctx.query.analysis.block_semantics(id).clone();
+                match sem_snapshot {
+                    svelte_analyze::BlockSemantics::Each(sem) => {
+                        let node_expr = sibling_node_expr(
+                            ctx,
+                            &mut prev_expr,
+                            &prev_ident,
+                            sibling_offset,
+                            is_text,
+                        );
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        gen_each_block(ctx, id, &sem, anchor, false, init);
+                        prev_ident = Some(node_name);
+                        continue;
+                    }
+                    svelte_analyze::BlockSemantics::Await(sem) => {
+                        let node_expr = sibling_node_expr(
+                            ctx,
+                            &mut prev_expr,
+                            &prev_ident,
+                            sibling_offset,
+                            is_text,
+                        );
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        gen_await_block(ctx, id, &sem, anchor, init);
+                        prev_ident = Some(node_name);
+                        continue;
+                    }
+                    svelte_analyze::BlockSemantics::If(sem) => {
+                        let node_expr = sibling_node_expr(
+                            ctx,
+                            &mut prev_expr,
+                            &prev_ident,
+                            sibling_offset,
+                            is_text,
+                        );
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        let stmts = gen_if_block(ctx, id, &sem, anchor);
+                        init.push(ctx.b.block_stmt(stmts));
+                        prev_ident = Some(node_name);
+                        continue;
+                    }
+                    svelte_analyze::BlockSemantics::Key(sem) => {
+                        let node_expr = sibling_node_expr(
+                            ctx,
+                            &mut prev_expr,
+                            &prev_ident,
+                            sibling_offset,
+                            is_text,
+                        );
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        gen_key_block(ctx, id, &sem, anchor, init);
+                        prev_ident = Some(node_name);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         if needs_var {
             // Build the expression to get this node's DOM reference
             let node_expr: Expression<'a> = if let Some(ident) = &prev_ident {
                 build_sibling_call(ctx, SiblingPrev::Ident(ident), sibling_offset, is_text)
             } else {
-                let fc = prev_expr.take().unwrap();
+                let fc = prev_expr
+                    .take()
+                    .expect("when prev_ident is None, prev_expr always holds the last sibling");
                 if sibling_offset == 0 {
                     fc
                 } else {
@@ -136,25 +228,42 @@ pub(crate) fn traverse_items<'a>(
                         FragmentItem::ComponentNode(id) => {
                             gen_component(ctx, *id, anchor, init, true)
                         }
-                        FragmentItem::IfBlock(id) => {
-                            let stmts = gen_if_block(ctx, *id, anchor);
-                            init.push(ctx.b.block_stmt(stmts));
+                        FragmentItem::IfBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::IfBlock must be handled by BlockSemantics::If at the top of the loop"
+                            )
                         }
-                        FragmentItem::EachBlock(id) => {
-                            gen_each_block(ctx, *id, anchor, false, init)
+                        FragmentItem::EachBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::EachBlock must be handled by BlockSemantics::Each at the top of the loop"
+                            )
+                        }
+                        FragmentItem::AwaitBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::AwaitBlock must be handled by BlockSemantics::Await at the top of the loop"
+                            )
                         }
                         FragmentItem::RenderTag(id) => {
-                            gen_render_tag(ctx, *id, anchor, false, init)
+                            let sem = match ctx.query.analysis.block_semantics(*id) {
+                                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                                other => unreachable!(
+                                    "render tag expected BlockSemantics::Render, got {other:?}"
+                                ),
+                            };
+                            gen_render_block(ctx, *id, &sem, anchor, false, init);
                         }
                         FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, false, init),
-                        FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
+                        FragmentItem::KeyBlock(_) => {
+                            unreachable!(
+                                "FragmentItem::KeyBlock must be handled by BlockSemantics::Key at the top of the loop"
+                            )
+                        }
                         FragmentItem::SvelteElement(id) => {
                             super::svelte_element::gen_svelte_element(ctx, *id, anchor, init)
                         }
                         FragmentItem::SvelteBoundary(id) => {
                             super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init)
                         }
-                        FragmentItem::AwaitBlock(id) => gen_await_block(ctx, *id, anchor, init),
                         _ => unreachable!(),
                     }
                     prev_ident = Some(node_name);
@@ -175,6 +284,29 @@ pub(crate) fn traverse_items<'a>(
 enum SiblingPrev<'a, 'b> {
     Ident(&'b str),
     Expr(Expression<'a>),
+}
+
+/// Shared between the semantic-early-dispatch branches and the legacy
+/// fallback — builds the expression that resolves the current item's
+/// DOM node from the previous sibling (or first-child seed).
+fn sibling_node_expr<'a>(
+    ctx: &Ctx<'a>,
+    prev_expr: &mut Option<Expression<'a>>,
+    prev_ident: &Option<String>,
+    sibling_offset: usize,
+    is_text: bool,
+) -> Expression<'a> {
+    if let Some(ident) = prev_ident {
+        return build_sibling_call(ctx, SiblingPrev::Ident(ident), sibling_offset, is_text);
+    }
+    let fc = prev_expr
+        .take()
+        .expect("when prev_ident is None, prev_expr always holds the last sibling");
+    if sibling_offset == 0 {
+        fc
+    } else {
+        build_sibling_call(ctx, SiblingPrev::Expr(fc), sibling_offset, is_text)
+    }
 }
 
 /// Build `$.sibling(prev, offset?, is_text?)` call.

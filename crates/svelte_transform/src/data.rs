@@ -9,6 +9,12 @@ pub struct TransformData {
     pub const_tag_tmp_names: FxHashMap<NodeId, String>,
 }
 
+impl Default for TransformData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransformData {
     pub fn new() -> Self {
         Self {

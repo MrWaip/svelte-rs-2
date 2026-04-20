@@ -2,8 +2,8 @@ use oxc_ast::ast::Statement;
 
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::handlers::{build_event_handler_s5, build_legacy_event_handler, dev_event_handler};
 

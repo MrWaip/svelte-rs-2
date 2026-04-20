@@ -69,7 +69,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(*name));
+                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
                 self.ast.variable_declarator(
                     SPAN,
                     VariableDeclarationKind::Var,
@@ -131,7 +131,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(*name));
+                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
                 Some(pattern)
             })
             .collect();

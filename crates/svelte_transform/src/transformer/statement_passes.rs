@@ -1,7 +1,7 @@
 use oxc_span::{GetSpan, GetSpanMut};
 
-use super::model::ComponentTransformer;
 use super::inspect::{is_inspect_call, is_inspect_trace_call};
+use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn process_statement_block(

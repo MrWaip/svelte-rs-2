@@ -949,7 +949,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let _ = has_spread; // used only in pre-computation above
     }
 
-    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
@@ -1146,26 +1150,24 @@ impl TemplateVisitor for TemplateValidationVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
         if attr.event_name.is_some() {
-            if let Some(expr) = ctx
+            if let Some(Expression::Identifier(ident)) = ctx
                 .parsed()
                 .and_then(|parsed| parsed.expr_handle(attr.expression_span.start))
                 .and_then(|handle| ctx.parsed().and_then(|parsed| parsed.expr(handle)))
             {
-                if let Expression::Identifier(ident) = expr {
-                    if ident.name.as_str() == attr.name.as_str()
-                        && ctx
-                            .data
-                            .scoping
-                            .find_binding(ctx.scope, ident.name.as_str())
-                            .is_none()
-                    {
-                        ctx.warnings_mut().push(Diagnostic::warning(
-                            DiagnosticKind::AttributeGlobalEventReference {
-                                name: attr.name.clone(),
-                            },
-                            attr.expression_span,
-                        ));
-                    }
+                if ident.name.as_str() == attr.name.as_str()
+                    && ctx
+                        .data
+                        .scoping
+                        .find_binding(ctx.scope, ident.name.as_str())
+                        .is_none()
+                {
+                    ctx.warnings_mut().push(Diagnostic::warning(
+                        DiagnosticKind::AttributeGlobalEventReference {
+                            name: attr.name.clone(),
+                        },
+                        attr.expression_span,
+                    ));
                 }
             }
         }
@@ -1222,7 +1224,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_bind_group_binding(dir, ctx);
     }
 
-    fn visit_let_directive_legacy(&mut self, dir: &LetDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_let_directive_legacy(
+        &mut self,
+        dir: &LetDirectiveLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let is_valid_parent = ctx.parent().is_some_and(|parent| {
             matches!(
                 parent.kind,
@@ -1318,7 +1324,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
     // event_directive_deprecated, mixed_event_handler_syntaxes
-    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_on_directive_legacy(
+        &mut self,
+        dir: &OnDirectiveLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let is_component = ctx
             .data
             .parent(dir.id)
@@ -1491,11 +1501,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use case 2: each_key_without_as
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
-        if block.key_span.is_some() && block.context_span.is_none() {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::EachKeyWithoutAs,
-                block.key_span.unwrap(),
-            ));
+        if let Some(key_span) = block.key_span {
+            if block.context_span.is_none() {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::EachKeyWithoutAs,
+                    key_span,
+                ));
+            }
         }
     }
 
@@ -1538,8 +1550,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
             Some(ParentKind::EachBlock) => {
                 // Scope the store borrow so it ends before warnings_mut() is called.
                 let diag = {
-                    let each_id = grandparent.unwrap().id;
-                    let each_block = ctx.store.get(each_id).as_each_block().unwrap();
+                    let each_id = grandparent
+                        .expect("EachBlock parent implies grandparent is the each block")
+                        .id;
+                    let each_block = ctx
+                        .store
+                        .get(each_id)
+                        .as_each_block()
+                        .expect("grandparent id resolved from ParentKind::EachBlock");
                     if each_block.key_span.is_none() {
                         Some(DiagnosticKind::AnimationMissingKey)
                     } else {
@@ -2255,11 +2273,7 @@ fn validate_component_slot_conflicts(
 
 /// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
 /// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
-fn check_empty_fragment(
-    _fragment: &Fragment,
-    key: FragmentKey,
-    ctx: &mut VisitContext<'_, '_>,
-) {
+fn check_empty_fragment(_fragment: &Fragment, key: FragmentKey, ctx: &mut VisitContext<'_, '_>) {
     if let Some(node_id) = ctx.data.fragment_single_child(&key) {
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {
@@ -2836,37 +2850,6 @@ fn has_whitespace_before_clause(window: &str, clause: &str) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::has_whitespace_before_clause;
-
-    #[test]
-    fn no_whitespace_before_then() {
-        assert!(!has_whitespace_before_clause("{:then ", ":then"));
-    }
-
-    #[test]
-    fn whitespace_before_then() {
-        assert!(has_whitespace_before_clause("{ :then ", ":then"));
-    }
-
-    #[test]
-    fn multiple_spaces_before_catch() {
-        assert!(has_whitespace_before_clause("{  :catch ", ":catch"));
-    }
-
-    #[test]
-    fn no_brace_in_window() {
-        assert!(!has_whitespace_before_clause(":then val", ":then"));
-    }
-
-    #[test]
-    fn shorthand_then_form() {
-        // {#await expr then val} — no `{:then` pattern before binding
-        assert!(!has_whitespace_before_clause(" expr then ", ":then"));
-    }
-}
-
 fn contains_invalid_snippet_param_assignment(expr: &Expression<'_>, data: &AnalysisData) -> bool {
     let mut visitor = InvalidSnippetParamAssignmentVisitor { data, found: false };
     visitor.visit_expression(expr);
@@ -3092,7 +3075,8 @@ fn warn_missing_attr(el: &Element, attrs: &[&str]) -> Diagnostic {
         .first()
         .copied()
         .map(|attr| match attr.chars().next() {
-            Some('a' | 'e' | 'i' | 'o' | 'u') | _ if attr == "href" => "an",
+            _ if attr == "href" => "an",
+            Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
             _ => "a",
         })
         .unwrap_or("a")
@@ -3116,4 +3100,35 @@ fn warn_missing_attr(el: &Element, attrs: &[&str]) -> Diagnostic {
         },
         el.span,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_whitespace_before_clause;
+
+    #[test]
+    fn no_whitespace_before_then() {
+        assert!(!has_whitespace_before_clause("{:then ", ":then"));
+    }
+
+    #[test]
+    fn whitespace_before_then() {
+        assert!(has_whitespace_before_clause("{ :then ", ":then"));
+    }
+
+    #[test]
+    fn multiple_spaces_before_catch() {
+        assert!(has_whitespace_before_clause("{  :catch ", ":catch"));
+    }
+
+    #[test]
+    fn no_brace_in_window() {
+        assert!(!has_whitespace_before_clause(":then val", ":then"));
+    }
+
+    #[test]
+    fn shorthand_then_form() {
+        // {#await expr then val} — no `{:then` pattern before binding
+        assert!(!has_whitespace_before_clause(" expr then ", ":then"));
+    }
 }

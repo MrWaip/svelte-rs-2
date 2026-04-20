@@ -41,10 +41,8 @@ pub fn fuzzymatch<'a>(input: &str, candidates: &[&'a str]) -> Option<&'a str> {
 
     for &candidate in candidates {
         let dist = levenshtein(input, candidate);
-        if dist <= threshold {
-            if best.map_or(true, |(_, d)| dist < d) {
-                best = Some((candidate, dist));
-            }
+        if dist <= threshold && best.is_none_or(|(_, d)| dist < d) {
+            best = Some((candidate, dist));
         }
     }
 

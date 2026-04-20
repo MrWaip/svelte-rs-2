@@ -66,6 +66,7 @@ pub struct WasmCompiler {}
 #[wasm_bindgen]
 impl WasmCompiler {
     #[wasm_bindgen(constructor)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {}
     }

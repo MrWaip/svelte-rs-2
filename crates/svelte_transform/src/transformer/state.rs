@@ -12,9 +12,7 @@ use svelte_analyze::{
 use svelte_ast_builder::Arg;
 
 use super::location::{compute_line_col, sanitize_location};
-use super::model::{
-    AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer,
-};
+use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     fn state_destructure_dev_label(
@@ -75,7 +73,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 decl_kind,
                 decl_span_start,
                 declarator,
-                rune_kind.unwrap(),
+                rune_kind.expect("predicate returned true only for known rune kinds"),
             );
             stmts.insert(i, replacement);
             self.ident_counter += 1;
@@ -87,8 +85,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         declarator: &oxc_ast::ast::VariableDeclarator<'a>,
     ) -> Option<RuneKind> {
-        Self::first_binding_identifier(&declarator.id)
-            .and_then(|id| self.rune_for_binding(id))
+        Self::first_binding_symbol(&declarator.id)
+            .and_then(|sym| self.rune_for_symbol(sym))
             .or_else(|| {
                 declarator
                     .init
@@ -111,34 +109,19 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         None
     }
 
-    fn first_binding_identifier<'p>(
-        pattern: &'p oxc_ast::ast::BindingPattern<'a>,
-    ) -> Option<&'p oxc_ast::ast::BindingIdentifier<'a>> {
-        match pattern {
-            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => Some(id),
-            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => obj
-                .properties
-                .iter()
-                .find_map(|prop| Self::first_binding_identifier(&prop.value))
-                .or_else(|| {
-                    obj.rest
-                        .as_ref()
-                        .and_then(|rest| Self::first_binding_identifier(&rest.argument))
-                }),
-            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => arr
-                .elements
-                .iter()
-                .flatten()
-                .find_map(Self::first_binding_identifier)
-                .or_else(|| {
-                    arr.rest
-                        .as_ref()
-                        .and_then(|rest| Self::first_binding_identifier(&rest.argument))
-                }),
-            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                Self::first_binding_identifier(&assign.left)
+    /// First declared leaf of a binding pattern. Used to identify the
+    /// rune attached to a destructured `let { a, b } = $state(...)` via
+    /// any of its leaves — one walker pass, first visit wins.
+    fn first_binding_symbol(
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+    ) -> Option<svelte_component_semantics::SymbolId> {
+        let mut first = None;
+        svelte_component_semantics::walk_bindings(pattern, |v| {
+            if first.is_none() {
+                first = Some(v.symbol);
             }
-        }
+        });
+        first
     }
 
     /// Rewrite destructured `$derived(...)` / `$derived.by(...)` declarations.
@@ -177,10 +160,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             call.arguments.first()
                                 .and_then(|arg| arg.as_expression())
                                 .is_some_and(|expr| {
-                                    !matches!(expr, Expression::AwaitExpression(_))
-                                        && !(dev
+                                    !(matches!(expr, Expression::AwaitExpression(_))
+                                        || (dev
                                             && matches!(expr, Expression::CallExpression(c)
-                                                if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_))))
+                                                if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_)))))
                                 })
                         } else {
                             false
@@ -188,7 +171,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     })
             },
             |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 this.gen_sync_derived_destructuring(&declarator.id, init, rune_kind, decl_kind)
             },
         );
@@ -214,7 +200,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     })
             },
             |this, decl_kind, decl_span_start, mut declarator, _| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start, decl_kind)
             },
         );
@@ -235,8 +224,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
 
         match self.analysis?.declaration_semantics(declarator.node_id()) {
-            DeclarationSemantics::Derived(derived) => declarator.init.as_ref().map(|init| {
-                match derived.lowering {
+            DeclarationSemantics::Derived(derived) => {
+                declarator.init.as_ref().map(|init| match derived.lowering {
                     DerivedLowering::Sync => self.gen_sync_derived_destructuring_semantic(
                         &declarator.id,
                         init.clone_in(self.b.ast.allocator),
@@ -249,8 +238,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         decl_span_start,
                         decl_kind,
                     ),
-                }
-            }),
+                })
+            }
             _ => None,
         }
     }
@@ -335,8 +324,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
         let arg_expr = call.arguments.remove(0).into_expression();
 
-        let use_direct_access =
-            matches!(derived.kind, DerivedKind::Derived) && matches!(arg_expr, Expression::Identifier(_));
+        let use_direct_access = matches!(derived.kind, DerivedKind::Derived)
+            && matches!(arg_expr, Expression::Identifier(_));
         let access_root = if use_direct_access {
             arg_expr
         } else {
@@ -392,11 +381,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         let mut i = 0;
         while i < stmts.len() {
             let replacement = match &stmts[i] {
-                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => self
-                    .try_gen_state_destructuring_semantic(
-                        &decl.declarations[0],
-                        decl.kind,
-                    ),
+                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => {
+                    self.try_gen_state_destructuring_semantic(&decl.declarations[0], decl.kind)
+                }
                 _ => None,
             };
             if let Some(replacement) = replacement {
@@ -418,7 +405,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     && declarator.init.is_some()
             },
             |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
-                let init = declarator.init.take().unwrap();
+                let init = declarator
+                    .init
+                    .take()
+                    .expect("predicate matched only declarators with an initializer");
                 let value = if let Expression::CallExpression(mut call) = init {
                     if call.arguments.is_empty() {
                         this.b
@@ -712,14 +702,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = if self.dev && dev_label.is_some() {
-                    let label = dev_label.unwrap();
-                    self.b.call_expr(
+                let derived_call = match dev_label.filter(|_| self.dev) {
+                    Some(label) => self.b.call_expr(
                         "$.tag",
                         [Arg::Expr(derived_call), Arg::Str(label.to_string())],
-                    )
-                } else {
-                    derived_call
+                    ),
+                    None => derived_call,
                 };
 
                 let array_declarator = self.b.ast.variable_declarator(
@@ -928,14 +916,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = if self.dev && dev_label.is_some() {
-                    let label = dev_label.unwrap();
-                    self.b.call_expr(
+                let derived_call = match dev_label.filter(|_| self.dev) {
+                    Some(label) => self.b.call_expr(
                         "$.tag",
                         [Arg::Expr(derived_call), Arg::Str(label.to_string())],
-                    )
-                } else {
-                    derived_call
+                    ),
+                    None => derived_call,
                 };
 
                 let array_declarator = self.b.ast.variable_declarator(
@@ -1470,7 +1456,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 .as_deref()
                 .is_some_and(|n| info.ctor_synth_names.contains(n))
         }) {
-            let name = field_info.public_name.as_deref().unwrap();
+            let name = field_info
+                .public_name
+                .as_deref()
+                .expect("field_info with public_name is required by caller filter");
             new_body.push(self.b.class_private_field(&field_info.private_name, None));
             self.emit_getter_setter(&mut new_body, field_info, name);
         }
@@ -1577,7 +1566,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     _ => String::new(),
                 };
                 let label = self.class_tag_label(&field_name);
-                let value = self.b.move_expr(prop.value.as_mut().unwrap());
+                let value = self.b.move_expr(
+                    prop.value
+                        .as_mut()
+                        .expect("rune property definitions always carry an initializer"),
+                );
                 prop.value = Some(
                     self.b
                         .call_expr("$.tag", [Arg::Expr(value), Arg::Str(label)]),

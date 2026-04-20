@@ -496,13 +496,27 @@ fn walk_attrs<'a>(
                 // Shorthand `class:name` has expression_span = span of `name`,
                 // so parse_span synthesizes the `Expression::Identifier` just
                 // like for the explicit `class:name={expr}` form.
-                parse_span(alloc, component, a.expression_span, typescript, result, diags);
+                parse_span(
+                    alloc,
+                    component,
+                    a.expression_span,
+                    typescript,
+                    result,
+                    diags,
+                );
             }
             Attribute::StyleDirective(a) => {
                 use svelte_ast::StyleDirectiveValue;
                 match &a.value {
                     StyleDirectiveValue::Expression => {
-                        parse_span(alloc, component, a.expression_span, typescript, result, diags);
+                        parse_span(
+                            alloc,
+                            component,
+                            a.expression_span,
+                            typescript,
+                            result,
+                            diags,
+                        );
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
@@ -516,7 +530,14 @@ fn walk_attrs<'a>(
             }
             Attribute::BindDirective(a) => {
                 // Shorthand `bind:name` has expression_span = span of `name`.
-                parse_span(alloc, component, a.expression_span, typescript, result, diags);
+                parse_span(
+                    alloc,
+                    component,
+                    a.expression_span,
+                    typescript,
+                    result,
+                    diags,
+                );
             }
             Attribute::LetDirectiveLegacy(a) => {
                 let pattern_span = a.expression_span.unwrap_or(a.name_span);

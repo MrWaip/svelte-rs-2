@@ -83,7 +83,7 @@ pub fn transform_script<'a, 'b>(
     traverse_mut(&mut transformer, allocator, program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {
-        let dev_ctx = dev.then(|| super::derived::DevContext {
+        let dev_ctx = dev.then_some(super::derived::DevContext {
             component_source,
             script_content_start,
             filename,

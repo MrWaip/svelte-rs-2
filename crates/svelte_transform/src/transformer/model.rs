@@ -2,8 +2,8 @@ use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{
-    AnalysisData, ComponentScoping, DeclarationSemantics, DerivedKind, RuneKind,
-    ScriptRuneCalls, StateKind,
+    AnalysisData, ComponentScoping, DeclarationSemantics, DerivedKind, RuneKind, ScriptRuneCalls,
+    StateKind,
 };
 
 use svelte_ast_builder::Builder;
@@ -48,7 +48,9 @@ pub struct IgnoreQuery<'d, 'a> {
 
 impl<'d, 'a> IgnoreQuery<'d, 'a> {
     pub fn new(analysis: &'d AnalysisData<'a>) -> Self {
-        Self { analysis: Some(analysis) }
+        Self {
+            analysis: Some(analysis),
+        }
     }
 
     pub fn empty() -> Self {
@@ -145,7 +147,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
     ) -> Option<RuneKind> {
-        let sym_id = id.symbol_id.get()?;
+        self.rune_for_symbol(id.symbol_id.get()?)
+    }
+
+    pub(crate) fn rune_for_symbol(&self, sym_id: oxc_semantic::SymbolId) -> Option<RuneKind> {
         let kind = match self.declaration_semantics_for_symbol(sym_id)? {
             DeclarationSemantics::State(state) => match state.kind {
                 StateKind::State => RuneKind::State,
@@ -166,9 +171,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         sym_id: oxc_semantic::SymbolId,
     ) -> Option<DeclarationSemantics> {
         let analysis = self.analysis.as_ref()?;
-        Some(
-            analysis
-                .declaration_semantics(self.component_scoping.symbol_declaration(sym_id)),
-        )
+        Some(analysis.declaration_semantics(self.component_scoping.symbol_declaration(sym_id)))
     }
 }

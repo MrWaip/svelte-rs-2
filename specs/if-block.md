@@ -2,8 +2,9 @@
 
 ## Current state
 - **Working**: 10/10 use cases
-- **Tests**: 10/10 green
-- Last updated: 2026-04-03
+- **Tests**: 10/10 snapshot tests + 9 block-semantics builder unit tests green
+- Migrated to `BlockSemantics::If` (see SEMANTIC_LAYER_ARCHITECTURE.md). Legacy consumer (`template/if_block.rs`), `alt_is_elseif` populator and bitset, `first_if_block_id` accessor, and `Ctx::is_elseif_alt` removed.
+- Last updated: 2026-04-20
 
 ## Source
 
@@ -44,9 +45,10 @@
 - Our parser/analyze/codegen:
 - `crates/svelte_parser/src/scanner/mod.rs`
 - `crates/svelte_parser/src/handlers.rs`
-- `crates/svelte_analyze/src/passes/lower.rs`
-- `crates/svelte_analyze/src/types/data/analysis.rs`
-- `crates/svelte_codegen_client/src/template/if_block.rs`
+- `crates/svelte_analyze/src/block_semantics/data.rs` (`IfBlockSemantics`, `IfBranch`, `IfConditionKind`, `IfAsyncKind`, `IfAlternate`)
+- `crates/svelte_analyze/src/block_semantics/builder/if_.rs`
+- `crates/svelte_analyze/src/block_semantics/builder/common.rs` (`expression_if_facts`)
+- `crates/svelte_codegen_client/src/template/if_block_semantics.rs`
 - `crates/svelte_codegen_client/src/template/async_plan.rs`
 
 ## Test cases

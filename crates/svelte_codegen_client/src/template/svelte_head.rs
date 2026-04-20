@@ -5,8 +5,8 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::Arg;
 use crate::context::Ctx;
+use svelte_ast_builder::Arg;
 
 use super::gen_fragment;
 
@@ -48,5 +48,5 @@ fn to_base36(mut n: u32) -> String {
         n /= 36;
     }
     result.reverse();
-    String::from_utf8(result).unwrap()
+    String::from_utf8(result).expect("ASCII base-36 digits are always valid UTF-8")
 }

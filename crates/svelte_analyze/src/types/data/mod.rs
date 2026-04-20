@@ -24,9 +24,7 @@ mod fragment_facts;
 mod fragments;
 mod ignore;
 mod pickled_await_offsets;
-mod props;
 mod proxy_state_inits;
-mod render;
 mod rich_content_facts;
 mod runtime;
 mod script_rune_calls;
@@ -36,14 +34,12 @@ pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
     CarrierMemberReadSemantics, ConstDeclarationSemantics, ContextualDeclarationSemantics,
-    ContextualReadKind, ContextualReadSemantics, DeclarationSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
-    EachIndexStrategy, EachItemStrategy, OptimizedRuneSemantics, SnippetParamStrategy,
+    ContextualReadKind, ContextualReadSemantics, DeclarationSemantics, DerivedDeclarationSemantics,
+    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy, OptimizedRuneSemantics,
     PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering, PropLoweringMode,
-    PropReferenceSemantics, PropsObjectPropertySemantics,
-    ReactivitySemantics, ReferenceSemantics, RuntimeRuneKind,
-    SignalReferenceKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
-    StoreDeclarationSemantics,
+    PropReferenceSemantics, PropsObjectPropertySemantics, ReactivitySemantics, ReferenceSemantics,
+    RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy, StateBindingSemantics,
+    StateDeclarationSemantics, StateKind, StoreDeclarationSemantics,
 };
 pub use analysis::{
     AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis, TemplateAnalysis,
@@ -59,9 +55,7 @@ pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
     EventHandlerMode,
 };
-pub use expr::{
-    AwaitBindingInfo, DestructureKind, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind,
-};
+pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragments::{
     ContentStrategy, FragmentData, FragmentItem, FragmentKey, FragmentKeyExt, LoweredFragment,
@@ -69,17 +63,15 @@ pub use fragments::{
 };
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
-pub use props::{PropAnalysis, PropsAnalysis};
 pub use proxy_state_inits::ProxyStateInits;
-pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
-    AwaitBindingData, BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics,
-    ConstTagData, ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind,
-    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
-    TitleElementData, WindowBindKind,
+    BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics, ConstTagData,
+    ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
+    MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData,
+    WindowBindKind,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

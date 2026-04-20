@@ -30,6 +30,12 @@ pub struct FragmentData {
     pub(crate) fragment_blockers: FxHashMap<FragmentKey, SmallVec<[u32; 2]>>,
 }
 
+impl Default for FragmentData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FragmentData {
     pub fn new() -> Self {
         Self {
@@ -81,6 +87,28 @@ pub struct LoweredFragment {
     pub items: Vec<FragmentItem>,
 }
 
+/// Legacy per-fragment dispatcher enum. Conflates two unrelated things:
+///
+/// - Real lowering facts with no AST analog: `TextConcat` (merged
+///   text+expression runs), hoisted-node filtering, whitespace
+///   normalization. These stay useful.
+/// - Node-kind discrimination that now duplicates Block Semantics
+///   (`*Block`, `*Tag`) and ElementShape Semantics (`Element`,
+///   `ComponentNode`, `SvelteElement`, `SvelteBoundary`,
+///   `SlotElementLegacy`, `SvelteFragmentLegacy`). Consumers should
+///   ask the semantic cluster for node-kind decisions, not pattern-
+///   match on this enum.
+///
+/// Marked deprecated so new consumer code does not grow more call
+/// sites. Planned removal: the "Kill `FragmentItem`" slice documented
+/// in `SEMANTIC_LAYER_ARCHITECTURE.md` — it replaces the dispatcher
+/// with a semantic-first walk over Svelte AST plus a separate
+/// representation for `TextConcat` and hoisted-node filtering.
+#[deprecated(note = "FragmentItem duplicates Block / ElementShape Semantics for \
+            node-kind discrimination. New consumers must ask the \
+            owning semantic cluster instead of pattern-matching this \
+            enum. See SEMANTIC_LAYER_ARCHITECTURE.md ('Prerequisite: \
+            Kill FragmentItem').")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentItem {
     Element(NodeId),
@@ -140,13 +168,6 @@ impl FragmentItem {
 impl LoweredFragment {
     pub fn first_element_id(&self) -> Option<NodeId> {
         self.items.first()?.element_like_id()
-    }
-
-    pub fn first_if_block_id(&self) -> Option<NodeId> {
-        match self.items.first()? {
-            FragmentItem::IfBlock(id) => Some(*id),
-            _ => None,
-        }
     }
 
     pub fn first_each_block_id(&self) -> Option<NodeId> {

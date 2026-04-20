@@ -1841,7 +1841,9 @@ mod tests {
         let source = "line1\nline2\nline3\nline4\nline5";
         let idx = LineIndex::new(source);
         // Error at start of line3 (byte offset 12)
-        let frame = idx.code_frame(source, Span::new(12, 17)).unwrap();
+        let frame = idx
+            .code_frame(source, Span::new(12, 17))
+            .expect("code_frame returns Some for valid spans");
         assert!(frame.contains("1 | line1"));
         assert!(frame.contains("3 | line3"));
         assert!(frame.contains("5 | line5"));
@@ -1852,7 +1854,9 @@ mod tests {
     fn code_frame_first_line() {
         let source = "error_here\nline2\nline3";
         let idx = LineIndex::new(source);
-        let frame = idx.code_frame(source, Span::new(0, 5)).unwrap();
+        let frame = idx
+            .code_frame(source, Span::new(0, 5))
+            .expect("code_frame returns Some for valid spans");
         assert!(frame.contains("1 | error_here"));
         assert!(frame.contains("^"));
         assert!(frame.contains("3 | line3"));
@@ -1863,7 +1867,9 @@ mod tests {
         let source = "line1\nline2\nline3\nline4\nerror_here";
         let idx = LineIndex::new(source);
         // Error at start of line5 (byte offset = 24)
-        let frame = idx.code_frame(source, Span::new(24, 34)).unwrap();
+        let frame = idx
+            .code_frame(source, Span::new(24, 34))
+            .expect("code_frame returns Some for valid spans");
         assert!(frame.contains("5 | error_here"));
         assert!(frame.contains("^"));
         assert!(frame.contains("3 | line3"));
@@ -1873,7 +1879,9 @@ mod tests {
     fn code_frame_with_tabs() {
         let source = "\tindented";
         let idx = LineIndex::new(source);
-        let frame = idx.code_frame(source, Span::new(1, 5)).unwrap();
+        let frame = idx
+            .code_frame(source, Span::new(1, 5))
+            .expect("code_frame returns Some for valid spans");
         // Tab should be replaced with 2 spaces in display
         assert!(frame.contains("  indented"));
         // Pointer should account for tab width

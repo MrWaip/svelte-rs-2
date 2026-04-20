@@ -9,8 +9,8 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("compiler");
 
     for entry in files {
-        let path = entry.unwrap();
-        let source = read_to_string(&path).unwrap();
+        let path = entry.expect("test invariant");
+        let source = read_to_string(&path).expect("test invariant");
         let id = BenchmarkId::from_parameter(path.display().to_string());
 
         let opts = svelte_compiler::CompileOptions::default();

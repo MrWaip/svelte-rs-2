@@ -6,14 +6,12 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
     AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
-    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo,
-    FragmentKey, IdentGen, LoweredFragment, ParserResult, RenderTagPlan,
-    RuntimePlan,
+    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
+    LoweredFragment, ParserResult, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
-    RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteWindow,
+    RenderTag, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
 };
 use svelte_transform::TransformData;
 
@@ -50,9 +48,6 @@ impl<'a> CodegenQuery<'a> {
     }
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
         self.component.store.each_block(id)
-    }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.component.store.snippet_block(id)
     }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.component.store.render_tag(id)
@@ -101,10 +96,6 @@ impl<'a> CodegenQuery<'a> {
         self.view.expr_has_blockers(id)
     }
 
-    pub fn expression_blockers(&self, id: NodeId) -> Vec<u32> {
-        self.view.expression_blockers(id).into_iter().collect()
-    }
-
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.view.expression(id)
     }
@@ -115,7 +106,6 @@ impl<'a> CodegenQuery<'a> {
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.view.runtime_plan()
     }
-
 }
 
 impl<'a> Deref for CodegenQuery<'a> {
@@ -288,14 +278,8 @@ impl<'a> Ctx<'a> {
     pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
         self.query.component_node(id)
     }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.query.snippet_block(id)
-    }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
-    }
-    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock {
-        self.query.key_block(id)
     }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement {
         self.query.svelte_element(id)
@@ -331,9 +315,6 @@ impl<'a> Ctx<'a> {
 
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic(id)
-    }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.query.view.is_elseif_alt(id)
     }
     /// `ReferenceId` of the root identifier in a directive's expression.
     ///
@@ -373,6 +354,7 @@ impl<'a> Ctx<'a> {
             None => svelte_analyze::ReferenceSemantics::NonReactive,
         }
     }
+
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.query.view.bind_each_context(id)
     }
@@ -387,12 +369,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.nearest_element(id)
-    }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.query.view.await_value_binding(id)
-    }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.query.view.await_error_binding(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.query.view.attr_is_import(attr_id)
@@ -577,9 +553,6 @@ impl<'a> Ctx<'a> {
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.query.view.render_tag_plan(id)
-    }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.query.view.has_bind_group(id)
     }
@@ -588,9 +561,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> Vec<NodeId> {
         self.query.view.parent_each_blocks(id).into_iter().collect()
-    }
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.query.view.contains_group_binding(id)
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.query.view.bind_blockers(id)
@@ -618,17 +588,8 @@ impl<'a> Ctx<'a> {
 
     // -- Snippet shortcuts --
 
-    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
-        self.query.view.is_snippet_hoistable(id)
-    }
     // -- ConstTag shortcuts --
 
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.query.view.const_tag_names(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.query.view.const_tag_syms(id)
-    }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.query.view.const_tags_for_fragment(key)
     }
@@ -645,24 +606,6 @@ impl<'a> Ctx<'a> {
         self.query.view.title_elements_for_fragment(key)
     }
 
-    // -- EachBlock shortcuts --
-
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.query.view.each_key_uses_index(id)
-    }
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.query.view.each_body_uses_index(id)
-    }
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.query.view.each_key_is_item(id)
-    }
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.query.view.each_has_animate(id)
-    }
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.query.view.each_needs_collection_id(id)
-    }
-
     // -- Parsed template JS handles --
 
     pub fn node_expr_handle(&self, node_id: NodeId) -> svelte_analyze::ExprHandle {
@@ -673,20 +616,8 @@ impl<'a> Ctx<'a> {
         self.query.view.attr_expr_handle(attr_id)
     }
 
-    pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
-        self.query.view.const_tag_stmt_handle(id)
-    }
-
     pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
         self.query.view.let_directive_stmt_handle(id)
-    }
-
-    pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
-        self.query.view.each_context_stmt_handle(id)
-    }
-
-    pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
-        self.query.view.snippet_stmt_handle(id)
     }
 
     pub fn fragment_references_any_symbol(

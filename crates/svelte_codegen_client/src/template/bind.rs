@@ -5,8 +5,8 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{BindPropertyKind, BindTargetSemantics, ImageNaturalSizeKind, MediaBindKind};
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::expression::get_attr_expr;
 
@@ -26,8 +26,12 @@ pub(crate) fn take_bind_getter_setter<'a>(
     };
     let seq = seq.unbox();
     let mut exprs = seq.expressions.into_iter();
-    let get = exprs.next().expect("bind SequenceExpression missing getter");
-    let set = exprs.next().expect("bind SequenceExpression missing setter");
+    let get = exprs
+        .next()
+        .expect("bind SequenceExpression missing getter");
+    let set = exprs
+        .next()
+        .expect("bind SequenceExpression missing setter");
     Some((get, set))
 }
 
@@ -216,9 +220,10 @@ pub(crate) fn gen_bind_directive<'a>(
                 let _ = ctx.state.parsed.take_expr(handle);
             }
             let var_alloc = ctx.b.alloc_str(&var_name);
-            let stmt = ctx
-                .b
-                .call_stmt("$.bind_checked", [Arg::Ident(el_name), Arg::Ident(var_alloc)]);
+            let stmt = ctx.b.call_stmt(
+                "$.bind_checked",
+                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
+            );
             let mut stmt = stmt;
             if has_use_directive {
                 let effect_body = ctx.b.arrow_expr(ctx.b.no_params(), [stmt]);
@@ -236,192 +241,193 @@ pub(crate) fn gen_bind_directive<'a>(
     }
 
     if !semantics.is_this() {
-        let stmt_opt = take_bind_getter_setter(ctx, bind.id).map(|(get_fn, set_fn)| match bind_property {
-            BindPropertyKind::Value if tag_name == "select" => ctx.b.call_stmt(
-                "$.bind_select_value",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Value => ctx.b.call_stmt(
-                "$.bind_value",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Checked => ctx.b.call_stmt(
-                "$.bind_checked",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Files => ctx.b.call_stmt(
-                "$.bind_files",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Indeterminate => gen_bind_property_stmt(
-                ctx,
-                "indeterminate",
-                "change",
-                el_name,
-                set_fn,
-                Some(get_fn),
-            ),
-            BindPropertyKind::Open => {
-                gen_bind_property_stmt(ctx, "open", "toggle", el_name, set_fn, Some(get_fn))
-            }
-            BindPropertyKind::ContentEditable(kind) => ctx.b.call_stmt(
-                "$.bind_content_editable",
-                [
-                    Arg::StrRef(kind.name()),
-                    Arg::Ident(el_name),
-                    Arg::Expr(get_fn),
-                    Arg::Expr(set_fn),
-                ],
-            ),
-            BindPropertyKind::ElementSize(kind) => ctx.b.call_stmt(
-                "$.bind_element_size",
-                [
-                    Arg::Ident(el_name),
-                    Arg::StrRef(kind.name()),
-                    Arg::Expr(set_fn),
-                ],
-            ),
-            BindPropertyKind::ResizeObserver(kind) => ctx.b.call_stmt(
-                "$.bind_resize_observer",
-                [
-                    Arg::Ident(el_name),
-                    Arg::StrRef(kind.name()),
-                    Arg::Expr(set_fn),
-                ],
-            ),
-            BindPropertyKind::Media(MediaBindKind::CurrentTime) => ctx.b.call_stmt(
-                "$.bind_current_time",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Media(MediaBindKind::PlaybackRate) => ctx.b.call_stmt(
-                "$.bind_playback_rate",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Media(MediaBindKind::Paused) => ctx.b.call_stmt(
-                "$.bind_paused",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Media(MediaBindKind::Volume) => ctx.b.call_stmt(
-                "$.bind_volume",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Media(MediaBindKind::Muted) => ctx.b.call_stmt(
-                "$.bind_muted",
-                [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
-            ),
-            // Readonly bindings: only the setter is meaningful; the getter is
-            // discarded (runtime doesn't read it back).
-            BindPropertyKind::Media(MediaBindKind::Buffered) => ctx
-                .b
-                .call_stmt("$.bind_buffered", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Media(MediaBindKind::Seekable) => ctx
-                .b
-                .call_stmt("$.bind_seekable", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Media(MediaBindKind::Seeking) => ctx
-                .b
-                .call_stmt("$.bind_seeking", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Media(MediaBindKind::Ended) => ctx
-                .b
-                .call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Media(MediaBindKind::ReadyState) => ctx.b.call_stmt(
-                "$.bind_ready_state",
-                [Arg::Ident(el_name), Arg::Expr(set_fn)],
-            ),
-            BindPropertyKind::Media(MediaBindKind::Played) => ctx
-                .b
-                .call_stmt("$.bind_played", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Media(MediaBindKind::Duration) => {
-                gen_bind_property_stmt(ctx, "duration", "durationchange", el_name, set_fn, None)
-            }
-            BindPropertyKind::Media(MediaBindKind::VideoWidth) => {
-                gen_bind_property_stmt(ctx, "videoWidth", "resize", el_name, set_fn, None)
-            }
-            BindPropertyKind::Media(MediaBindKind::VideoHeight) => {
-                gen_bind_property_stmt(ctx, "videoHeight", "resize", el_name, set_fn, None)
-            }
-            BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth) => {
-                gen_bind_property_stmt(ctx, "naturalWidth", "load", el_name, set_fn, None)
-            }
-            BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalHeight) => {
-                gen_bind_property_stmt(ctx, "naturalHeight", "load", el_name, set_fn, None)
-            }
-            BindPropertyKind::Focused => ctx
-                .b
-                .call_stmt("$.bind_focused", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
-            BindPropertyKind::Group => {
-                // Group needs index array and shared binding_group; getter/setter are already
-                // the transform-built pair from the primary expression.
-                ctx.state.needs_binding_group = true;
-                let parent_eaches = ctx.parent_each_blocks(bind.id);
-                let index_array = if !parent_eaches.is_empty() {
-                    let indexes: Vec<_> = parent_eaches
-                        .iter()
-                        .map(|&each_id| {
-                            let idx_name = ctx
-                                .each_index_name(each_id)
-                                .or_else(|| ctx.group_index_names.get(&each_id).cloned())
-                                .unwrap_or_else(|| {
-                                    panic!("missing index name for each block {:?}", each_id)
-                                });
-                            ctx.b.rid_expr(&idx_name)
-                        })
-                        .collect();
-                    ctx.b.array_expr(indexes)
-                } else {
-                    ctx.b.empty_array_expr()
-                };
-                // When the parent element also has a dynamic `value` attribute, the
-                // runtime needs to re-read it before computing the getter so the group
-                // index stays in sync. Wrap the transform-built getter so the
-                // `value` expression runs first as a side effect.
-                let getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
-                    let val_expr = ctx
-                        .state
-                        .parsed
-                        .expr(ctx.attr_expr_handle(val_attr_id))
-                        .map(|expr| ctx.b.clone_expr(expr))
-                        .unwrap_or_else(|| ctx.b.str_expr(""));
-                    let val_stmt = ctx.b.expr_stmt(val_expr);
-                    // Unwrap the arrow body so we can re-wrap it with the side-effect
-                    // statement in front.
-                    let body_expr = match get_fn {
-                        Expression::ArrowFunctionExpression(arrow) => {
-                            let arrow = arrow.unbox();
-                            let mut stmts = arrow.body.unbox().statements.into_iter();
-                            let first = stmts.next().expect("getter arrow missing body");
-                            match first {
-                                oxc_ast::ast::Statement::ExpressionStatement(es) => {
-                                    es.unbox().expression
-                                }
-                                _ => panic!("getter arrow body is not an ExpressionStatement"),
-                            }
-                        }
-                        _ => panic!("bind:group getter is not an ArrowFunction"),
-                    };
-                    let return_stmt = ctx.b.return_stmt(body_expr);
-                    ctx.b
-                        .arrow_block_expr(ctx.b.no_params(), vec![val_stmt, return_stmt])
-                } else {
-                    get_fn
-                };
-                ctx.b.call_stmt(
-                    "$.bind_group",
+        let stmt_opt =
+            take_bind_getter_setter(ctx, bind.id).map(|(get_fn, set_fn)| match bind_property {
+                BindPropertyKind::Value if tag_name == "select" => ctx.b.call_stmt(
+                    "$.bind_select_value",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Value => ctx.b.call_stmt(
+                    "$.bind_value",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Checked => ctx.b.call_stmt(
+                    "$.bind_checked",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Files => ctx.b.call_stmt(
+                    "$.bind_files",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Indeterminate => gen_bind_property_stmt(
+                    ctx,
+                    "indeterminate",
+                    "change",
+                    el_name,
+                    set_fn,
+                    Some(get_fn),
+                ),
+                BindPropertyKind::Open => {
+                    gen_bind_property_stmt(ctx, "open", "toggle", el_name, set_fn, Some(get_fn))
+                }
+                BindPropertyKind::ContentEditable(kind) => ctx.b.call_stmt(
+                    "$.bind_content_editable",
                     [
-                        Arg::Ident("binding_group"),
-                        Arg::Expr(index_array),
+                        Arg::StrRef(kind.name()),
                         Arg::Ident(el_name),
-                        Arg::Expr(getter),
+                        Arg::Expr(get_fn),
                         Arg::Expr(set_fn),
                     ],
-                )
-            }
-            BindPropertyKind::This
-            | BindPropertyKind::Window(_)
-            | BindPropertyKind::Document(_)
-            | BindPropertyKind::ComponentProp => {
-                unreachable!("unexpected bind property routed through getter/setter path")
-            }
-        });
+                ),
+                BindPropertyKind::ElementSize(kind) => ctx.b.call_stmt(
+                    "$.bind_element_size",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::StrRef(kind.name()),
+                        Arg::Expr(set_fn),
+                    ],
+                ),
+                BindPropertyKind::ResizeObserver(kind) => ctx.b.call_stmt(
+                    "$.bind_resize_observer",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::StrRef(kind.name()),
+                        Arg::Expr(set_fn),
+                    ],
+                ),
+                BindPropertyKind::Media(MediaBindKind::CurrentTime) => ctx.b.call_stmt(
+                    "$.bind_current_time",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::PlaybackRate) => ctx.b.call_stmt(
+                    "$.bind_playback_rate",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Paused) => ctx.b.call_stmt(
+                    "$.bind_paused",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Volume) => ctx.b.call_stmt(
+                    "$.bind_volume",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Muted) => ctx.b.call_stmt(
+                    "$.bind_muted",
+                    [Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn)],
+                ),
+                // Readonly bindings: only the setter is meaningful; the getter is
+                // discarded (runtime doesn't read it back).
+                BindPropertyKind::Media(MediaBindKind::Buffered) => ctx
+                    .b
+                    .call_stmt("$.bind_buffered", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Media(MediaBindKind::Seekable) => ctx
+                    .b
+                    .call_stmt("$.bind_seekable", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Media(MediaBindKind::Seeking) => ctx
+                    .b
+                    .call_stmt("$.bind_seeking", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Media(MediaBindKind::Ended) => ctx
+                    .b
+                    .call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Media(MediaBindKind::ReadyState) => ctx.b.call_stmt(
+                    "$.bind_ready_state",
+                    [Arg::Ident(el_name), Arg::Expr(set_fn)],
+                ),
+                BindPropertyKind::Media(MediaBindKind::Played) => ctx
+                    .b
+                    .call_stmt("$.bind_played", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Media(MediaBindKind::Duration) => {
+                    gen_bind_property_stmt(ctx, "duration", "durationchange", el_name, set_fn, None)
+                }
+                BindPropertyKind::Media(MediaBindKind::VideoWidth) => {
+                    gen_bind_property_stmt(ctx, "videoWidth", "resize", el_name, set_fn, None)
+                }
+                BindPropertyKind::Media(MediaBindKind::VideoHeight) => {
+                    gen_bind_property_stmt(ctx, "videoHeight", "resize", el_name, set_fn, None)
+                }
+                BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth) => {
+                    gen_bind_property_stmt(ctx, "naturalWidth", "load", el_name, set_fn, None)
+                }
+                BindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalHeight) => {
+                    gen_bind_property_stmt(ctx, "naturalHeight", "load", el_name, set_fn, None)
+                }
+                BindPropertyKind::Focused => ctx
+                    .b
+                    .call_stmt("$.bind_focused", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
+                BindPropertyKind::Group => {
+                    // Group needs index array and shared binding_group; getter/setter are already
+                    // the transform-built pair from the primary expression.
+                    ctx.state.needs_binding_group = true;
+                    let parent_eaches = ctx.parent_each_blocks(bind.id);
+                    let index_array = if !parent_eaches.is_empty() {
+                        let indexes: Vec<_> = parent_eaches
+                            .iter()
+                            .map(|&each_id| {
+                                let idx_name = ctx
+                                    .each_index_name(each_id)
+                                    .or_else(|| ctx.group_index_names.get(&each_id).cloned())
+                                    .unwrap_or_else(|| {
+                                        panic!("missing index name for each block {:?}", each_id)
+                                    });
+                                ctx.b.rid_expr(&idx_name)
+                            })
+                            .collect();
+                        ctx.b.array_expr(indexes)
+                    } else {
+                        ctx.b.empty_array_expr()
+                    };
+                    // When the parent element also has a dynamic `value` attribute, the
+                    // runtime needs to re-read it before computing the getter so the group
+                    // index stays in sync. Wrap the transform-built getter so the
+                    // `value` expression runs first as a side effect.
+                    let getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
+                        let val_expr = ctx
+                            .state
+                            .parsed
+                            .expr(ctx.attr_expr_handle(val_attr_id))
+                            .map(|expr| ctx.b.clone_expr(expr))
+                            .unwrap_or_else(|| ctx.b.str_expr(""));
+                        let val_stmt = ctx.b.expr_stmt(val_expr);
+                        // Unwrap the arrow body so we can re-wrap it with the side-effect
+                        // statement in front.
+                        let body_expr = match get_fn {
+                            Expression::ArrowFunctionExpression(arrow) => {
+                                let arrow = arrow.unbox();
+                                let mut stmts = arrow.body.unbox().statements.into_iter();
+                                let first = stmts.next().expect("getter arrow missing body");
+                                match first {
+                                    oxc_ast::ast::Statement::ExpressionStatement(es) => {
+                                        es.unbox().expression
+                                    }
+                                    _ => panic!("getter arrow body is not an ExpressionStatement"),
+                                }
+                            }
+                            _ => panic!("bind:group getter is not an ArrowFunction"),
+                        };
+                        let return_stmt = ctx.b.return_stmt(body_expr);
+                        ctx.b
+                            .arrow_block_expr(ctx.b.no_params(), vec![val_stmt, return_stmt])
+                    } else {
+                        get_fn
+                    };
+                    ctx.b.call_stmt(
+                        "$.bind_group",
+                        [
+                            Arg::Ident("binding_group"),
+                            Arg::Expr(index_array),
+                            Arg::Ident(el_name),
+                            Arg::Expr(getter),
+                            Arg::Expr(set_fn),
+                        ],
+                    )
+                }
+                BindPropertyKind::This
+                | BindPropertyKind::Window(_)
+                | BindPropertyKind::Document(_)
+                | BindPropertyKind::ComponentProp => {
+                    unreachable!("unexpected bind property routed through getter/setter path")
+                }
+            });
 
         if let Some(stmt) = stmt_opt {
             let mut stmt = stmt;
@@ -525,8 +531,10 @@ pub(crate) fn gen_bind_directive<'a>(
         }
         ctx.b.call_expr("$.set", args)
     } else {
-        ctx.b
-            .assign_expr(AssignLeft::Ident(var_name.clone()), ctx.b.rid_expr("$$value"))
+        ctx.b.assign_expr(
+            AssignLeft::Ident(var_name.clone()),
+            ctx.b.rid_expr("$$value"),
+        )
     };
     let setter = ctx
         .b

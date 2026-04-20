@@ -101,7 +101,7 @@ pub struct NodeBitSet {
 impl NodeBitSet {
     pub fn new(node_count: u32) -> Self {
         let len = node_count as usize;
-        let word_count = (len + 63) / 64;
+        let word_count = len.div_ceil(64);
         Self {
             words: vec![0u64; word_count],
             len,

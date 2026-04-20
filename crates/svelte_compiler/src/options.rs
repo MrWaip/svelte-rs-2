@@ -92,7 +92,7 @@ impl CompileOptions {
                 "Component".to_string()
             } else {
                 let mut chars = name.chars();
-                let first = chars.next().unwrap();
+                let first = chars.next().expect("name is non-empty (checked above)");
                 let mut capitalized = String::new();
                 capitalized.extend(first.to_uppercase());
                 capitalized.extend(chars);
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn serde_defaults() {
         let json = r#"{}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert!(!opts.dev);
         assert_eq!(opts.generate, GenerateMode::Client);
         assert_eq!(opts.filename, "(unknown)");
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn serde_camel_case() {
         let json = r#"{"preserveComments": true, "customElement": true}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert!(opts.preserve_comments);
         assert!(opts.custom_element);
     }
@@ -294,50 +294,50 @@ mod tests {
     #[test]
     fn serde_namespace() {
         let json = r#"{"namespace": "svg"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.namespace, Namespace::Svg);
     }
 
     #[test]
     fn serde_css_mode() {
         let json = r#"{"css": "injected"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.css, CssMode::Injected);
     }
 
     #[test]
     fn serde_generate_mode() {
         let json = r#"{"generate": "client"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.generate, GenerateMode::Client);
 
         let json = r#"{"generate": "server"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.generate, GenerateMode::Server);
 
         let json = r#"{"generate": "false"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.generate, GenerateMode::False);
     }
 
     #[test]
     fn serde_generate_mode_default() {
         let json = r#"{}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.generate, GenerateMode::Client);
     }
 
     #[test]
     fn serde_root_dir() {
         let json = r#"{"rootDir": "/home/user/project"}"#;
-        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.root_dir.as_deref(), Some("/home/user/project"));
     }
 
     #[test]
     fn serde_module_options() {
         let json = r#"{"dev": true, "generate": "server", "filename": "mod.svelte.js", "rootDir": "/app"}"#;
-        let opts: ModuleCompileOptions = serde_json::from_str(json).unwrap();
+        let opts: ModuleCompileOptions = serde_json::from_str(json).expect("test invariant");
         assert!(opts.dev);
         assert_eq!(opts.generate, GenerateMode::Server);
         assert_eq!(opts.filename, "mod.svelte.js");
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn serde_module_options_defaults() {
         let json = r#"{}"#;
-        let opts: ModuleCompileOptions = serde_json::from_str(json).unwrap();
+        let opts: ModuleCompileOptions = serde_json::from_str(json).expect("test invariant");
         assert!(!opts.dev);
         assert_eq!(opts.generate, GenerateMode::Client);
         assert_eq!(opts.filename, "(unknown)");

@@ -38,7 +38,6 @@ pub(crate) fn rewrite_template_enter<'a>(
         return;
     }
 
-
     // Identifier reads — shared with Script via `rewrites::rewrite_identifier_read`.
     // Newly-synthesized identifiers inside `$.get(name)` etc. have
     // `reference_id = None`, so the helper short-circuits and Traverse
@@ -94,7 +93,10 @@ pub(crate) fn rewrite_template_enter<'a>(
             DeclarationSemantics::Store(_) => {
                 *it = rune_refs::make_rune_get(alloc, name);
             }
-            DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+            DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+                destructured,
+                ..
+            }) => {
                 if destructured {
                     *it = rune_refs::make_rune_safe_get(alloc, name);
                 } else {
@@ -105,7 +107,9 @@ pub(crate) fn rewrite_template_enter<'a>(
                 use svelte_analyze::{EachIndexStrategy, EachItemStrategy, SnippetParamStrategy};
                 match kind {
                     ContextualDeclarationSemantics::EachItem(EachItemStrategy::Accessor)
-                    | ContextualDeclarationSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
+                    | ContextualDeclarationSemantics::SnippetParam(
+                        SnippetParamStrategy::Accessor,
+                    ) => {
                         *it = rune_refs::make_thunk_call(alloc, name);
                     }
                     ContextualDeclarationSemantics::EachItem(EachItemStrategy::Direct)
@@ -160,7 +164,10 @@ pub(crate) fn rewrite_template_enter<'a>(
 /// Call rewrites run in exit (not enter) for the same reason they did before:
 /// the freshly-synthesized `() => arg` arrow for `$state.eager` carries no
 /// `scope_id`, which would panic the outer Traverse on the next descent.
-pub(crate) fn rewrite_template_exit<'a>(t: &mut ComponentTransformer<'_, 'a>, it: &mut Expression<'a>) {
+pub(crate) fn rewrite_template_exit<'a>(
+    t: &mut ComponentTransformer<'_, 'a>,
+    it: &mut Expression<'a>,
+) {
     // Template is never dev-mode, so snapshot-uncloneable flag is always false.
     super::rewrites::rewrite_shared_call(t.b.ast.allocator, it, false);
 
@@ -172,9 +179,12 @@ pub(crate) fn rewrite_template_exit<'a>(t: &mut ComponentTransformer<'_, 'a>, it
     // in an IIFE; the wrapping is a template-phase AST transformation, not
     // a codegen concern.
     if let Expression::AwaitExpression(await_expr) = it {
-        let ignored = t
-            .template_owner_node
-            .is_some_and(|id| analysis.output.ignore_data.is_ignored(id, "await_reactivity_loss"));
+        let ignored = t.template_owner_node.is_some_and(|id| {
+            analysis
+                .output
+                .ignore_data
+                .is_ignored(id, "await_reactivity_loss")
+        });
         let is_pickled = analysis.is_pickled_await(await_expr.span.start);
 
         let ast = oxc_ast::AstBuilder::new(alloc);
@@ -187,29 +197,23 @@ pub(crate) fn rewrite_template_exit<'a>(t: &mut ComponentTransformer<'_, 'a>, it
             // (await $.save(arg))()
             let save_call = rune_refs::make_dollar_call(alloc, "save", arg);
             await_expr.argument = save_call;
-            let Expression::AwaitExpression(_) = &*it else { unreachable!() };
-            let awaited = std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
-            *it = ast.expression_call(
-                oxc_span::SPAN,
-                awaited,
-                oxc_ast::NONE,
-                ast.vec(),
-                false,
-            );
+            let Expression::AwaitExpression(_) = &*it else {
+                unreachable!()
+            };
+            let awaited =
+                std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
+            *it = ast.expression_call(oxc_span::SPAN, awaited, oxc_ast::NONE, ast.vec(), false);
             return;
         } else if t.dev && !ignored {
             // (await $.track_reactivity_loss(arg))()
             let track_call = rune_refs::make_dollar_call(alloc, "track_reactivity_loss", arg);
             await_expr.argument = track_call;
-            let Expression::AwaitExpression(_) = &*it else { unreachable!() };
-            let awaited = std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
-            *it = ast.expression_call(
-                oxc_span::SPAN,
-                awaited,
-                oxc_ast::NONE,
-                ast.vec(),
-                false,
-            );
+            let Expression::AwaitExpression(_) = &*it else {
+                unreachable!()
+            };
+            let awaited =
+                std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
+            *it = ast.expression_call(oxc_span::SPAN, awaited, oxc_ast::NONE, ast.vec(), false);
             return;
         } else {
             // Restore the original argument (no wrapping).

@@ -162,21 +162,16 @@ Hoist **after** `process_element`, not before. The element's children write into
 
 `ContentStrategy::SingleElement(NodeId)` — exactly one `Element` node. `SingleBlock(FragmentItem)` — exactly one block node (IfBlock, EachBlock, etc.), stored as a `FragmentItem` directly (no intermediate enum). Codegen paths are fundamentally different: SingleElement uses `$.template(...)`, SingleBlock uses `$.comment()` as anchor.
 
-### 6. `IfBlock.elseif` vs `data.alt_is_elseif`
-
-- `IfBlock.elseif: bool` (AST field) — marks that *this* IfBlock is an elseif branch.
-- `data.alt_is_elseif: HashSet<NodeId>` — contains the NodeId of the *parent* IfBlock whose alternate is a single elseif. Different things.
-
-### 7. `BindSemanticsData` is pre-computed in analysis, not codegen
+### 6. `BindSemanticsData` is pre-computed in analysis, not codegen
 
 Directive targets (mutable rune? prop source? each-block context?) are classified once during the composite walk via `BindSemanticsVisitor`. Codegen queries by `NodeId` (`ctx.is_mutable_rune_target(id)`, `ctx.is_prop_source_node(id)`, `ctx.bind_each_context(id)`). Do **not** re-resolve symbols from source text in codegen — use the pre-computed side tables.
 
-### 8. `needs_var` vs `needs_ref`
+### 7. `needs_var` vs `needs_ref`
 
 - `needs_var` — element needs a JS variable in codegen (for dynamic attributes, directives, etc.)
 - `needs_ref` — element needs a ref-semantic variable specifically (for `bind:this`)
 
-### 9. `$host()` without props/exports breaks at runtime (reference compiler bug)
+### 8. `$host()` without props/exports breaks at runtime (reference compiler bug)
 
 `$host()` transforms to `$$props.$$host`. But `$$props` is only added as a function parameter when `needs_push` is true (has props, exports, effects, or bindable). A custom element component that uses `$host()` alone (no `$props()`, no exports, no `$effect`) compiles to:
 
@@ -188,7 +183,7 @@ export default function App($$anchor) {   // ← no $$props param
 
 **This is a bug in the reference Svelte compiler that we intentionally replicate.** The fix would be: detect `$host()` in script analysis → set `needs_context = true` → triggers `$$props` param + `$.push`/`$.pop`. Not implemented because the reference compiler has the same bug. See `host_basic` test case.
 
-### 10. Counter-alignment hacks in codegen
+### 9. Counter-alignment hacks in codegen
 
 The reference compiler's identifier counter (`scope.generate('fragment')`, `unique('root')`) increments unconditionally along certain code paths, even when the identifier produced is ultimately unused. Our `gen_ident` calls must mirror that order exactly, or all downstream names shift.
 
@@ -206,7 +201,7 @@ The reference compiler visits the `SvelteFragment` wrapper as its own `Fragment`
 
 If the reference compiler changes its counter allocation order, these calls will silently misalign. Track via `svelte_fragment_named_slot` and `svelte_self_if` compiler test cases.
 
-### 11. `Text::raw_value()` and `Text::value()` are intentionally different
+### 10. `Text::raw_value()` and `Text::value()` are intentionally different
 
 - `Text::raw_value(source)` is for span-accurate diagnostics and source slicing.
 - `Text::value(source)` is for semantic text content and may return decoded HTML entities.

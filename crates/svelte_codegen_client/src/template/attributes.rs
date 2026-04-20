@@ -8,8 +8,8 @@ use svelte_analyze::{
 };
 use svelte_ast::{Attribute, Element, NodeId};
 
-use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
 use super::events::{
@@ -246,7 +246,6 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) if a.name == "class" => {
             // Handled by process_class_attribute_and_directives
-            return;
         }
         Attribute::ExpressionAttribute(a) if a.name == "autofocus" => {
             let val = get_attr_expr(ctx, attr_id);
