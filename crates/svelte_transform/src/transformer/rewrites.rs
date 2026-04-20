@@ -166,8 +166,7 @@ pub(crate) fn rewrite_signal_or_store_identifier_update<'a>(
     let Expression::UpdateExpression(upd) = node else {
         return false;
     };
-    let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
-    else {
+    let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
         return false;
     };
     let Some(ref_id) = id.reference_id.get() else {
@@ -307,11 +306,9 @@ pub(crate) fn rewrite_shared_call<'a>(
             let ast = oxc_ast::AstBuilder::new(alloc);
             call.callee = rune_refs::make_dollar_member(&ast, "snapshot");
             if dev_snapshot_uncloneable_ignored {
-                call.arguments
-                    .push(oxc_ast::ast::Argument::from(ast.expression_boolean_literal(
-                        oxc_span::SPAN,
-                        true,
-                    )));
+                call.arguments.push(oxc_ast::ast::Argument::from(
+                    ast.expression_boolean_literal(oxc_span::SPAN, true),
+                ));
             }
             true
         }

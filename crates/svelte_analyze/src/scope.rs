@@ -146,5 +146,4 @@ impl<'a> ComponentScoping<'a> {
     pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
         self.semantics.find_symbol_by_name(name)
     }
-
 }

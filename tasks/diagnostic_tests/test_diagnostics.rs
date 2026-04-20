@@ -18,9 +18,9 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         .join("cases")
         .join(case)
         .join("case.svelte");
-    let input = read_to_string(&path).unwrap();
+    let input = read_to_string(&path).expect("test invariant");
 
-    let dir = path.parent().unwrap();
+    let dir = path.parent().expect("test invariant");
     let config_path = dir.join("config.json");
     let mut opts = CompileOptions {
         name: Some("App".into()),
@@ -28,7 +28,8 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
     };
     if config_path.exists() {
         let config: serde_json::Value =
-            serde_json::from_str(&read_to_string(&config_path).unwrap()).unwrap();
+            serde_json::from_str(&read_to_string(&config_path).expect("test invariant"))
+                .expect("test invariant");
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
@@ -63,7 +64,7 @@ fn expected_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
         .join("cases")
         .join(case)
         .join("case-svelte.json");
-    serde_json::from_str(&read_to_string(path).unwrap()).unwrap()
+    serde_json::from_str(&read_to_string(path).expect("test invariant")).expect("test invariant")
 }
 
 fn normalize_actual_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {

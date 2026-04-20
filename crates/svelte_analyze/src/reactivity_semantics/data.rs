@@ -354,6 +354,16 @@ pub enum ReferenceSemantics {
     ///
     /// Example: `local` in `local = 1` or `console.log(local)`.
     NonReactive,
+    /// Local reads lower as a plain identifier (no `$.get()` wrap), but
+    /// the binding itself is wrapped in a runtime `$.proxy(...)`.
+    /// Mutations to its fields and external reassignment via bind/prop
+    /// remain observable, so child-passing consumers (each collection,
+    /// component props, render callee, boundary slots, dynamism) must
+    /// treat this as reactive.
+    ///
+    /// Example: `let items = $state([1, 2, 3])` when `items` is never
+    /// reassigned inside the component.
+    Proxy,
     /// Reference reads through the signal family.
     ///
     /// `safe = true` corresponds to the var-declared `$state` safe-get path.
@@ -520,13 +530,19 @@ pub(crate) enum V2DeclarationFacts {
     Store(StoreDeclarationSemantics),
     Const(ConstDeclarationSemantics),
     Contextual(ContextualDeclarationSemantics),
-    RuntimeRune { kind: RuntimeRuneKind },
-    LetCarrier { carrier_symbol: SymbolId },
+    RuntimeRune {
+        kind: RuntimeRuneKind,
+    },
+    LetCarrier {
+        carrier_symbol: SymbolId,
+    },
     /// Slot `let:` destructured-leaf binding whose value is read as
     /// `<carrier>.<leaf>`. Public `declaration_semantics()` normalizes this
     /// to `Contextual(LetDirective)` — consumers see the carrier through
     /// `ReferenceSemantics::CarrierMemberRead` instead.
-    CarrierAlias { carrier: SymbolId },
+    CarrierAlias {
+        carrier: SymbolId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -535,20 +551,47 @@ pub(crate) enum V2ReferenceFacts {
         kind: SignalReferenceKind,
         safe: bool,
     },
-    SignalWrite { kind: StateKind },
-    SignalUpdate { kind: StateKind, safe: bool },
-    StoreRead { symbol: SymbolId },
-    StoreWrite { symbol: SymbolId },
-    StoreUpdate { symbol: SymbolId },
+    SignalWrite {
+        kind: StateKind,
+    },
+    SignalUpdate {
+        kind: StateKind,
+        safe: bool,
+    },
+    StoreRead {
+        symbol: SymbolId,
+    },
+    StoreWrite {
+        symbol: SymbolId,
+    },
+    StoreUpdate {
+        symbol: SymbolId,
+    },
     PropRead(PropReferenceSemantics),
-    PropMutation { bindable: bool, symbol: SymbolId },
-    PropSourceMemberMutationRoot { bindable: bool, symbol: SymbolId },
-    PropNonSourceMemberMutationRoot { symbol: SymbolId },
-    ConstAliasRead { owner_node: NodeId },
+    PropMutation {
+        bindable: bool,
+        symbol: SymbolId,
+    },
+    PropSourceMemberMutationRoot {
+        bindable: bool,
+        symbol: SymbolId,
+    },
+    PropNonSourceMemberMutationRoot {
+        symbol: SymbolId,
+    },
+    ConstAliasRead {
+        owner_node: NodeId,
+    },
     ContextualRead(ContextualReadSemantics),
     CarrierMemberRead(CarrierMemberReadSemantics),
     RestPropMemberRewrite,
     IllegalWrite,
+    /// Local reads lower as a plain identifier, but the binding itself
+    /// is wrapped in a runtime `$.proxy(...)` — its fields and external
+    /// reassignment stay observable, so child-passing consumers must
+    /// treat it as reactive. Originates from unmutated `$state(proxyable)`
+    /// bindings (`OptimizedRune` with `proxy_init = true`).
+    Proxy,
 }
 
 /// Analyzer-owned storage for normalized reactivity facts.
@@ -671,12 +714,10 @@ impl ReactivitySemantics {
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         match self.lookup_reference_facts(ref_id) {
-            Some(V2ReferenceFacts::SignalRead { kind, safe }) => {
-                ReferenceSemantics::SignalRead {
-                    kind: *kind,
-                    safe: *safe,
-                }
-            }
+            Some(V2ReferenceFacts::SignalRead { kind, safe }) => ReferenceSemantics::SignalRead {
+                kind: *kind,
+                safe: *safe,
+            },
             Some(V2ReferenceFacts::SignalWrite { kind }) => {
                 ReferenceSemantics::SignalWrite { kind: *kind }
             }
@@ -726,6 +767,7 @@ impl ReactivitySemantics {
                 ReferenceSemantics::RestPropMemberRewrite
             }
             Some(V2ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
+            Some(V2ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
         }
     }
@@ -833,7 +875,6 @@ impl ReactivitySemantics {
         }
     }
 
-
     pub(crate) fn record_runtime_rune_declaration_v2(
         &mut self,
         node_id: OxcNodeId,
@@ -923,10 +964,7 @@ impl ReactivitySemantics {
         node_id: OxcNodeId,
         carrier_symbol: SymbolId,
     ) {
-        self.write_declaration(
-            node_id,
-            V2DeclarationFacts::LetCarrier { carrier_symbol },
-        );
+        self.write_declaration(node_id, V2DeclarationFacts::LetCarrier { carrier_symbol });
     }
 }
 
@@ -943,14 +981,12 @@ impl ReactivitySemantics {
             V2DeclarationFacts::RuntimeRune { kind } => {
                 DeclarationSemantics::RuntimeRune { kind: *kind }
             }
-            V2DeclarationFacts::LetCarrier { carrier_symbol } => {
-                DeclarationSemantics::LetCarrier {
-                    carrier_symbol: *carrier_symbol,
-                }
+            V2DeclarationFacts::LetCarrier { carrier_symbol } => DeclarationSemantics::LetCarrier {
+                carrier_symbol: *carrier_symbol,
+            },
+            V2DeclarationFacts::CarrierAlias { .. } => {
+                DeclarationSemantics::Contextual(ContextualDeclarationSemantics::LetDirective)
             }
-            V2DeclarationFacts::CarrierAlias { .. } => DeclarationSemantics::Contextual(
-                ContextualDeclarationSemantics::LetDirective,
-            ),
         }
     }
 }

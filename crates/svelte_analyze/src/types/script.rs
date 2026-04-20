@@ -15,6 +15,14 @@ pub struct PropInfo {
     pub is_simple_default: bool,
 }
 
+impl PropInfo {
+    /// Prop keys starting with `$$` (e.g. `$$slots`, `$$events`) are
+    /// reserved and never emitted as component accessors.
+    pub fn is_reserved(&self) -> bool {
+        self.prop_name.starts_with("$$")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PropsDeclaration {
     pub props: Vec<PropInfo>,
@@ -22,6 +30,13 @@ pub struct PropsDeclaration {
     pub is_identifier_pattern: bool,
     /// Full statement spans that introduced this props declaration.
     pub declaration_spans: Vec<Span>,
+}
+
+impl PropsDeclaration {
+    /// Any leaf declared bindable via `$bindable()` default.
+    pub fn has_bindable(&self) -> bool {
+        self.props.iter().any(|p| p.is_bindable)
+    }
 }
 
 #[derive(Debug, Clone)]

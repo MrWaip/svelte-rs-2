@@ -12,18 +12,17 @@ use util::{
 use super::data::{
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, OptimizedRuneSemantics,
     PropBindingFacts, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
-    PropLoweringMode, PropsObjectPropertySemantics, RuntimeRuneKind,
-    StateBindingSemantics, StateDeclarationSemantics, StateKind,
-    V2DeclarationFacts, V2ReferenceFacts,
+    PropLoweringMode, PropsObjectPropertySemantics, RuntimeRuneKind, StateBindingSemantics,
+    StateDeclarationSemantics, StateKind, V2DeclarationFacts, V2ReferenceFacts,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, ParserResult};
 use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
-    AssignmentExpression, BindingPattern, CallExpression, Expression,
-    StaticMemberExpression, UpdateExpression,
-    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    AssignmentExpression, BindingPattern, CallExpression, Expression, Statement,
+    StaticMemberExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
+    VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_static_member_expression, walk_variable_declaration, walk_variable_declarator,
@@ -32,8 +31,8 @@ use oxc_ast_visit::Visit;
 use oxc_span::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_component_semantics::{OxcNodeId, ReferenceId};
 use svelte_ast::Component;
+use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 const JS_UNDEFINED_NAME: &str = "undefined";
 
@@ -69,8 +68,18 @@ pub(crate) fn build_v2<'a>(
 /// where `y = $derived(inert)`) fold correctly.
 fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut AnalysisData<'a>) {
     use super::data::{ConstDeclarationSemantics, DeclarationSemantics};
-    let tag_ids: Vec<svelte_ast::NodeId> = data.template.const_tags.by_fragment.values()
-        .flat_map(|v| v.iter().copied())
+    use svelte_component_semantics::walk_bindings;
+    // Snapshot `(scope, tag_id)` pairs up front: the fragment scope for
+    // each tag is carried by `by_fragment` and looked up once, so we
+    // can traverse without re-reading the side-table during the
+    // fix-point work below.
+    let tag_ids: Vec<svelte_ast::NodeId> = data
+        .template
+        .const_tags
+        .by_fragment
+        .values()
+        .flatten()
+        .copied()
         .collect();
     if tag_ids.is_empty() {
         return;
@@ -83,6 +92,21 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
         let Some(stmt) = parsed.stmt(handle) else {
             continue;
         };
+
+        // Resolve the binding leaves locally from the pattern — avoids
+        // depending on `const_tags.syms` (removed in this slice).
+        let Statement::VariableDeclaration(decl) = stmt else {
+            continue;
+        };
+        let Some(declarator) = decl.declarations.first() else {
+            continue;
+        };
+        let mut syms: Vec<SymbolId> = Vec::new();
+        walk_bindings(&declarator.id, |v| syms.push(v.symbol));
+        if syms.is_empty() {
+            continue;
+        }
+
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
         let mut collector = RefCollector {
@@ -92,29 +116,35 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
         collector.visit_statement(stmt);
 
         // Resolve reactivity for each ref via already-classified declaration facts.
-        let reactive = eager_rune || refs.iter().any(|&ref_id| {
-            let Some(sym) = data.scoping.symbol_for_reference(ref_id) else {
-                return false;
-            };
-            let decl = data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym));
-            match decl {
-                DeclarationSemantics::State(_)
-                | DeclarationSemantics::Prop(_)
-                | DeclarationSemantics::Store(_)
-                | DeclarationSemantics::Contextual(_)
-                | DeclarationSemantics::RuntimeRune { .. } => true,
-                DeclarationSemantics::Derived(d) => d.reactive,
-                DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { reactive, .. }) => reactive,
-                DeclarationSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-                DeclarationSemantics::NonReactive
-                | DeclarationSemantics::Unresolved
-                | DeclarationSemantics::OptimizedRune(_)
-                | DeclarationSemantics::LetCarrier { .. } => !data.scoping.is_component_top_level_symbol(sym),
-            }
-        });
+        let reactive = eager_rune
+            || refs.iter().any(|&ref_id| {
+                let Some(sym) = data.scoping.symbol_for_reference(ref_id) else {
+                    return false;
+                };
+                let decl = data
+                    .reactivity
+                    .declaration_semantics(data.scoping.symbol_declaration(sym));
+                match decl {
+                    DeclarationSemantics::State(_)
+                    | DeclarationSemantics::Prop(_)
+                    | DeclarationSemantics::Store(_)
+                    | DeclarationSemantics::Contextual(_)
+                    | DeclarationSemantics::RuntimeRune { .. } => true,
+                    DeclarationSemantics::Derived(d) => d.reactive,
+                    DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+                        reactive,
+                        ..
+                    }) => reactive,
+                    DeclarationSemantics::OptimizedRune(opt) if opt.proxy_init => true,
+                    DeclarationSemantics::NonReactive
+                    | DeclarationSemantics::Unresolved
+                    | DeclarationSemantics::OptimizedRune(_)
+                    | DeclarationSemantics::LetCarrier { .. } => {
+                        !data.scoping.is_component_top_level_symbol(sym)
+                    }
+                }
+            });
 
-        // Update every leaf recorded for this tag.
-        let syms: Vec<SymbolId> = data.template.const_tags.syms.get(tag_id).cloned().unwrap_or_default();
         for sym in syms {
             let node_id = data.scoping.symbol_declaration(sym);
             if let Some(V2DeclarationFacts::Const(ConstDeclarationSemantics::ConstTag {
@@ -294,11 +324,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         loop {
             let mut changed = false;
             for (decl_node, refs) in &entries {
-                let current_reactive = match self
-                    .data
-                    .reactivity
-                    .declaration_facts_v2(*decl_node)
-                {
+                let current_reactive = match self.data.reactivity.declaration_facts_v2(*decl_node) {
                     Some(V2DeclarationFacts::Derived(d)) => d.reactive,
                     _ => continue,
                 };
@@ -337,9 +363,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             | DeclarationSemantics::Contextual(_)
             | DeclarationSemantics::RuntimeRune { .. } => true,
             DeclarationSemantics::Derived(d) => d.reactive,
-            DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { reactive, .. }) => {
-                reactive
-            }
+            DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+                reactive, ..
+            }) => reactive,
             // A non-mutated `$state(proxyable)` is lowered as an `OptimizedRune`
             // but its underlying value is still proxy-wrapped, so mutations to
             // its fields (or reassignment from the outside via bind/prop) remain
@@ -364,8 +390,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
 
         let var_declared = matches!(self.current_decl_kind, Some(VariableDeclarationKind::Var));
-        let init_proxyable = matches!(rune_kind, RuneKind::State)
-            && state_initializer_is_proxyable(call);
+        let init_proxyable =
+            matches!(rune_kind, RuneKind::State) && state_initializer_is_proxyable(call);
 
         match rune_kind {
             RuneKind::State => {
@@ -458,7 +484,11 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.record_props_pattern(&declarator.id, root_node);
             }
             RuneKind::PropsId => {
-                self.record_runtime_rune_pattern(&declarator.id, root_node, RuntimeRuneKind::PropsId);
+                self.record_runtime_rune_pattern(
+                    &declarator.id,
+                    root_node,
+                    RuntimeRuneKind::PropsId,
+                );
             }
             RuneKind::EffectTracking => {
                 self.record_runtime_rune_pattern(
@@ -601,7 +631,11 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
-    fn record_pattern_declaration_root(&mut self, pattern: &BindingPattern<'_>, root_node: OxcNodeId) {
+    fn record_pattern_declaration_root(
+        &mut self,
+        pattern: &BindingPattern<'_>,
+        root_node: OxcNodeId,
+    ) {
         match pattern {
             BindingPattern::BindingIdentifier(ident) => {
                 let Some(sym) = ident.symbol_id.get() else {
@@ -837,11 +871,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         None => return,
                     }
                 }
-                self.pending_prop_objects.push(PendingPropObjectDeclaration {
-                    root_node,
-                    property_syms,
-                    has_rest: obj.rest.is_some(),
-                });
+                self.pending_prop_objects
+                    .push(PendingPropObjectDeclaration {
+                        root_node,
+                        property_syms,
+                        has_rest: obj.rest.is_some(),
+                    });
             }
             _ => {}
         }
@@ -1012,7 +1047,6 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         walk_static_member_expression(self, member);
     }
 }
-
 
 fn rune_call<'a>(
     declarator: &'a VariableDeclarator<'a>,
@@ -1221,19 +1255,19 @@ pub(super) fn prop_binding_kind(facts: &PropBindingFacts) -> PropDeclarationKind
 }
 
 fn is_simple_expression(expr: &Expression<'_>) -> bool {
-    match expr {
+    matches!(
+        expr,
         Expression::Identifier(_)
-        | Expression::NullLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::NumericLiteral(_)
-        | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_)
-        | Expression::TemplateLiteral(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        _ => false,
-    }
+            | Expression::NullLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::RegExpLiteral(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+    )
 }
 
 fn derived_lowering(call: &CallExpression<'_>, rune_kind: RuneKind) -> DerivedLowering {
@@ -1327,4 +1361,3 @@ impl<'a> Visit<'a> for RefCollector<'_> {
         oxc_ast_visit::walk::walk_call_expression(self, call);
     }
 }
-

@@ -469,7 +469,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         match detect_rune_from_call(call) {
-            Some(k) if matches!(k, RuneKind::State | RuneKind::StateRaw) => {
+            Some(RuneKind::State | RuneKind::StateRaw) => {
                 self.visit_expression(&call.callee);
                 let prev = std::mem::replace(&mut self.in_state_rune_arg, true);
                 for arg in &call.arguments {
@@ -524,7 +524,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 impl<'a> Visit<'a> for RuneValidator<'_> {
     fn visit_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) {
         let prev = std::mem::replace(&mut self.in_expression_statement_expr, true);
-        let prev_span = std::mem::replace(&mut self.current_expr_stmt_span, Some(stmt.span));
+        let prev_span = self.current_expr_stmt_span.replace(stmt.span);
         walk_expression_statement(self, stmt);
         self.in_expression_statement_expr = prev;
         self.current_expr_stmt_span = prev_span;

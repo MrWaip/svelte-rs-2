@@ -10,7 +10,7 @@ fn parse(source: &str) -> Component {
 }
 
 /// Get a node reference from the component's root fragment by index.
-fn node_at<'a>(c: &'a Component, index: usize) -> &'a Node {
+fn node_at(c: &Component, index: usize) -> &Node {
     c.store.get(c.fragment.nodes[index])
 }
 
@@ -682,9 +682,9 @@ fn dual_scripts_instance_and_module() {
     let c = parse("<script module>export let x = 1;</script><script>let y = 2;</script>");
     assert!(c.module_script.is_some());
     assert!(c.instance_script.is_some());
-    let ms = c.module_script.as_ref().unwrap();
+    let ms = c.module_script.as_ref().expect("test invariant");
     assert_eq!(ms.context, ScriptContext::Module);
-    let is_ = c.instance_script.as_ref().unwrap();
+    let is_ = c.instance_script.as_ref().expect("test invariant");
     assert_eq!(is_.context, ScriptContext::Default);
 }
 
@@ -1309,8 +1309,8 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
-        let program =
-            crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false)
+            .expect("test invariant");
         // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
         assert!(!program.body.is_empty());
     }
@@ -1320,8 +1320,8 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
-        let program =
-            crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false)
+            .expect("test invariant");
         assert!(!program.body.is_empty());
     }
 }

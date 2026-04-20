@@ -25,6 +25,12 @@ pub struct ParserResult<'a> {
     pub typescript: bool,
 }
 
+impl<'a> Default for ParserResult<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> ParserResult<'a> {
     pub fn new() -> Self {
         Self {

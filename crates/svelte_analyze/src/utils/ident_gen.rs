@@ -22,6 +22,12 @@ pub struct IdentGen {
     conflicts: FxHashSet<CompactString>,
 }
 
+impl Default for IdentGen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IdentGen {
     pub fn new() -> Self {
         Self {
@@ -50,7 +56,10 @@ impl IdentGen {
         *count += 1;
 
         while self.conflicts.contains(name.as_str()) {
-            let c = self.counters.get_mut(prefix).unwrap();
+            let c = self
+                .counters
+                .get_mut(prefix)
+                .expect("counter was inserted for this prefix above");
             name = build_name(prefix, *c);
             *c += 1;
         }

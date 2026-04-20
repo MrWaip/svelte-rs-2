@@ -1,3 +1,5 @@
+#![allow(clippy::ptr_arg)]
+
 use svelte_ast::{
     AwaitBlock, ComponentNode, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId,
     SnippetBlock,
@@ -50,12 +52,16 @@ impl<'a> Parser<'a> {
                 // Auto-close any intervening entries
                 let entries_to_close = entry_stack.len() - 1 - idx;
                 for _ in 0..entries_to_close {
-                    let entry = entry_stack.pop().unwrap();
+                    let entry = entry_stack
+                        .pop()
+                        .expect("entries_to_close is derived from stack length");
                     self.auto_close_entry(entry, children_stack);
                 }
 
                 // Now close the matching element
-                let entry = entry_stack.pop().unwrap();
+                let entry = entry_stack
+                    .pop()
+                    .expect("matching element at idx guarantees stack is non-empty");
                 let StackEntry::Element(el) = entry else {
                     unreachable!();
                 };
@@ -108,7 +114,9 @@ impl<'a> Parser<'a> {
                 children_stack.push(consequent_children);
                 return;
             }
-            let entry = entry_stack.last_mut().unwrap();
+            let entry = entry_stack
+                .last_mut()
+                .expect("valid check above guarantees non-empty stack");
             let StackEntry::IfBlock(ref mut ib) = entry else {
                 unreachable!()
             };
@@ -117,7 +125,9 @@ impl<'a> Parser<'a> {
 
             children_stack.push(vec![]);
 
-            let expr_span = else_tag.expression_span.unwrap();
+            let expr_span = else_tag
+                .expression_span
+                .expect("elseif tag always carries an expression span");
             entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
                 span,
                 test_span: expr_span,

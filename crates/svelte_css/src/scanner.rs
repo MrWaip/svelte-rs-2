@@ -157,7 +157,10 @@ impl<'src> Scanner<'src> {
         if idx < self.tokens.len() {
             self.tokens[idx]
         } else {
-            *self.tokens.last().unwrap() // Eof
+            *self
+                .tokens
+                .last()
+                .expect("scanner always emits an Eof token at the end of tokens")
         }
     }
 
@@ -219,13 +222,10 @@ impl<'src> Scanner<'src> {
 
     /// Skip `Whitespace`, `Comment`, `Cdo`, and `Cdc` tokens.
     pub fn skip_whitespace_and_comments(&mut self) {
-        loop {
-            match self.peek().kind {
-                TokenKind::Whitespace | TokenKind::Comment | TokenKind::Cdo | TokenKind::Cdc => {
-                    self.advance();
-                }
-                _ => break,
-            }
+        while let TokenKind::Whitespace | TokenKind::Comment | TokenKind::Cdo | TokenKind::Cdc =
+            self.peek().kind
+        {
+            self.advance();
         }
     }
 

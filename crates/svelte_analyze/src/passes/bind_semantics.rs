@@ -2,9 +2,7 @@ use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, BindTargetSemantics};
 use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
-use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, Element, StyleDirective,
-};
+use svelte_ast::{Attribute, BindDirective, ClassDirective, Element, StyleDirective};
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
 /// symbol classifications from source text via string-based lookups.
@@ -146,14 +144,6 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                     .bind_semantics
                     .bind_group_value_attr
                     .insert(bind_group_id, value_attr_id);
-            }
-
-            let parent_eaches = ctx.data.parent_each_blocks(bind_group_id);
-            for each_id in parent_eaches {
-                ctx.data
-                    .blocks
-                    .each_context
-                    .mark_contains_group_binding(each_id);
             }
         }
 

@@ -1,6 +1,5 @@
+use crate::types::data::AnalysisData;
 use crate::types::script::{DeclarationKind, RuneKind};
-
-use crate::types::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 
 /// Run all passes that depend on resolve_references but are independent of each other.
 /// Combines known value collection, props analysis, and needs_context aggregation.
@@ -30,7 +29,7 @@ fn analyze_declarations(data: &mut AnalysisData) {
 
         let sym_id = data.scoping.find_binding(root, &decl.name);
         let rune_kind = decl.is_rune;
-        let is_mutated = sym_id.map_or(false, |id| data.scoping.is_mutated(id));
+        let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
 
         let is_foldable_rune = rune_kind == Some(RuneKind::State) && !is_mutated;
 
@@ -47,55 +46,31 @@ fn analyze_declarations(data: &mut AnalysisData) {
         }
     }
 
-    analyze_props_declaration(data);
+    mark_rest_prop_symbol(data);
 }
 
-fn analyze_props_declaration(data: &mut AnalysisData) {
-    let decl = match data
-        .script
-        .info
-        .as_ref()
-        .and_then(|s| s.props_declaration.as_ref())
-    {
-        Some(d) => d,
-        None => return,
+/// Mark the rest-prop's leaf symbol so downstream passes (static member
+/// rewrites, codegen) can recognise `<rest>.<key>` reads without
+/// walking the pattern again. This is the only post-semantic side
+/// effect we need from the `$props()` declaration — the rest of the
+/// information is read directly from `ScriptAnalysis::props_declaration`.
+fn mark_rest_prop_symbol(data: &mut AnalysisData) {
+    let Some(decl) = data.script.props_declaration() else {
+        return;
     };
-
     let root = data.scoping.root_scope_id();
-
-    let props = decl
+    // Snapshot rest-prop names before mutating scoping.
+    let rest_names: Vec<String> = decl
         .props
         .iter()
-        .map(|p| {
-            let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
-
-            if p.is_rest {
-                if let Some(sym_id) = sym_id {
-                    data.scoping.mark_rest_prop_sym(sym_id);
-                }
-            }
-
-            PropAnalysis {
-                local_name: p.local_name.to_string(),
-                prop_name: p.prop_name.to_string(),
-                default_span: p.default_span,
-                default_text: p.default_text.clone(),
-                default_is_simple: p.is_simple_default,
-                is_bindable: p.is_bindable,
-                is_rest: p.is_rest,
-                is_reserved: p.prop_name.starts_with("$$"),
-            }
-        })
-        .collect::<Vec<PropAnalysis>>();
-
-    let has_bindable = decl.props.iter().any(|p| p.is_bindable);
-
-    data.script.props = Some(PropsAnalysis {
-        props,
-        has_bindable,
-        is_identifier_pattern: decl.is_identifier_pattern,
-        declaration_spans: decl.declaration_spans.clone(),
-    });
+        .filter(|p| p.is_rest)
+        .map(|p| p.local_name.to_string())
+        .collect();
+    for name in rest_names {
+        if let Some(sym_id) = data.scoping.find_binding(root, &name) {
+            data.scoping.mark_rest_prop_sym(sym_id);
+        }
+    }
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.

@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 
-use svelte_ast_builder::{Arg, ObjProp};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, ObjProp};
 
 pub(crate) enum PropOrSpread<'a> {
     Prop(ObjProp<'a>),

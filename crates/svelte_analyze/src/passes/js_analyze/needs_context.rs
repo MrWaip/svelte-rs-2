@@ -27,7 +27,7 @@ impl<'a> NeedsContextVisitor<'a> {
 
         for d in &script_info.declarations {
             if d.is_rune == Some(RuneKind::Props) {
-                if let Some(sym) = scoping.find_binding(root, d.name.as_str().into()) {
+                if let Some(sym) = scoping.find_binding(root, d.name.as_str()) {
                     unsafe_prop_syms.insert(sym);
                 }
             }
@@ -35,7 +35,7 @@ impl<'a> NeedsContextVisitor<'a> {
         if let Some(ref decl) = script_info.props_declaration {
             for p in &decl.props {
                 if p.is_rest {
-                    if let Some(sym) = scoping.find_binding(root, p.local_name.as_str().into()) {
+                    if let Some(sym) = scoping.find_binding(root, p.local_name.as_str()) {
                         unsafe_prop_syms.insert(sym);
                     }
                 }

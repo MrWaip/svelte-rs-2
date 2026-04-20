@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
+staged_rs=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
+
+if [ -z "$staged_rs" ]; then
+    exit 0
+fi
+
+if ! echo "$staged_rs" | xargs rustfmt --edition 2021 --check >/dev/null 2>&1; then
+    echo "pre-commit: formatting staged Rust files with rustfmt"
+    echo "$staged_rs" | xargs rustfmt --edition 2021
+    echo "$staged_rs" | xargs git add
+fi

@@ -5,8 +5,8 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::{Arg, AssignLeft};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::attributes::{
     process_attr, process_attrs_spread, process_class_attribute_and_directives,
@@ -295,8 +295,15 @@ pub(crate) fn process_element<'a>(
             }
 
             ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
-                // Controlled each block: element itself is the anchor, no $.child() traversal
-                gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
+                // Controlled each block: element itself is the anchor, no $.child() traversal.
+                // Root Consumer Migration: semantic query decides the branch.
+                let svelte_analyze::BlockSemantics::Each(sem) =
+                    ctx.query.analysis.block_semantics(id)
+                else {
+                    unreachable!("FragmentItem::EachBlock must be handled by BlockSemantics::Each");
+                };
+                let sem = sem.clone();
+                gen_each_block(ctx, id, &sem, ctx.b.rid_expr(el_name), true, init);
                 init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
             }
 

@@ -262,7 +262,10 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         };
     }
 
-    let program = parsed.program.take().expect("analyze_module produced no program");
+    let program = parsed
+        .program
+        .take()
+        .expect("analyze_module produced no program");
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         svelte_codegen_client::generate_module(&js_alloc, program, &analysis, dev)
     }));

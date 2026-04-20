@@ -31,6 +31,16 @@ same bar.
   but must not stay parallel owners.
 - **Consumer Model.** Consumer code takes one query per unit, pattern-matches
   once, and may read AST only as emission payload after the branch is chosen.
+- **Consumer shape: Plan → builders → emit.** Inside a migrated branch the
+  consumer body stays readable by resolving all decisions up front into a
+  plain-data `Plan` struct (one pass over `sem` + source spans), then
+  dispatching to small focused builders — one per piece of output (e.g.
+  collection, key, fragment, fallback) — and finally emitting the call.
+  Builders receive `&Plan`, not `&sem`, so they never re-interpret
+  semantics. Reference implementation:
+  [`crates/svelte_codegen_client/src/template/each_block.rs`](crates/svelte_codegen_client/src/template/each_block.rs)
+  (`gen_each_block` / `EachPlan`). This is the form every migrated kind
+  consumer should converge to.
 - **Root Consumer Migration Rule.** Migration starts at the root consumer
   point for one unit kind. New branch selected by one top-level match on the
   semantic answer; legacy fallback untouched at the same point. No secondary
@@ -47,10 +57,85 @@ same bar.
   `ReferenceId`, `SymbolId`, enum variants, bools, numeric payloads. No
   `String`, `Box<str>`, `&str`, `Cow<str>` in stored facts or answers. Text is
   resolved at consumption time via identity-keyed lookups.
+- **Parser-handle ban.** `StmtHandle` and `ExprHandle` are parser-internal
+  indices into `ParserResult.stmts` / `.exprs` and **must not** appear in
+  cluster payloads (`block_semantics::*`, `attribute_semantics::*`,
+  `element_shape_semantics::*`, …). Payloads carry `OxcNodeId` as the
+  sole AST hook; consumers resolve the statement / expression on demand
+  through `ComponentSemantics::js_storage()` / the equivalent `kind(id)` /
+  `node(id)` lookup, not through handle tables. Handles remain legal
+  inside the parser and analyze-local side tables that own their own
+  identity (e.g. `TemplateSemanticsData::snippet_stmt_handles`), but
+  they never cross into a cluster answer variant. Rationale: handles
+  are a second identity system layered over the same AST — hauling them
+  into cluster payloads forces consumers to mix two identities and
+  turns payloads into JSON-shuffling thin wrappers over `ParserResult`.
+- **No binding-pattern repack.** `BindingPattern` subtrees
+  (`$props`, `$state`, `$derived`, `{@const}`, `{#snippet}` params,
+  `{#each … as pat}`, `{#await … then pat}`, `let:` directives, etc.)
+  are **not** re-shaped into cluster-local DTOs. Every attempt — a flat
+  `leaves: Vec<SymbolId>`, a `destructured: bool`, a parallel per-leaf
+  struct — is a JSON repack of the OXC AST plus `ComponentSemantics`
+  data that is already reachable by `OxcNodeId`. The cluster payload
+  carries the `OxcNodeId` of the pattern (or its owning node) and
+  nothing else; the consumer walks the pattern on demand via the shared
+  `svelte_component_semantics::pattern::walk_bindings(&pat, |visit| …)`
+  helper. This is the single traversal for every destructuring site in
+  the pipeline — do not add a second one, do not cache its output.
+  Rationale: the OXC `BindingPattern` is already the canonical form
+  (symbols are attached to `BindingIdentifier.symbol_id`, defaults are
+  attached to `AssignmentPattern.right`, rest is `ObjectPattern.rest` /
+  `ArrayPattern.rest`). Any parallel structure must prove it carries
+  a *classification* that AST does not — not a copy of AST data.
 - **Lowering Boundary.** Answers may encode "what operation is required" but
   not "which runtime helper to call" / "which builder recipe to invoke".
+- **Composite answers.** A cluster builder is expected to compose facts
+  from multiple allowed inputs (AST, `ComponentSemantics`,
+  `ReactivitySemantics`, analyzer-output tables) into one high-level
+  decision that the consumer can read as a single variant or bit. The
+  consumer must not reassemble the same decision from scattered
+  low-level facts. Example: `EachFlags::ITEM_REACTIVE` is computed by
+  the Block Semantics builder from a composition of
+  "collection expression references an external binding" (scope check
+  via `ComponentSemantics`), "expression has a store dependency" (via
+  `ReactivitySemantics`), "key is the item identifier" (own payload),
+  and "runes mode" — the codegen consumer sees one bit on the payload,
+  never the four underlying facts.
 - **Dependency Boundary.** Each cluster builds on `ComponentSemantics` and AST,
-  not on legacy Svelte-specific classification tables.
+  not on legacy Svelte-specific classification tables. Concretely: a cluster
+  builder's signature accepts only AST (`&Component` and `&ParserResult` —
+  the latter is the parser's pre-parsed JS store for template spans and is
+  considered part of the AST surface, not a separate cluster),
+  `ComponentSemantics`, `ReactivitySemantics`, and narrow analyzer-output
+  tables that carry **generic** (non-cluster) facts consumed by multiple
+  clusters — e.g. `BlockerData` (script-level async analysis: which
+  symbols are blocked by which await barriers). These are distinguished
+  from cluster side-tables (`EachContextIndex`, `TemplateSemanticsData`,
+  `ExpressionInfo`) which must not be read. A builder never accepts
+  `&AnalysisData` (full or partial borrow) and never reaches into the
+  excluded legacy surfaces. Pipeline code assembles the builder's output
+  into `AnalysisData`; the builder itself does not see it.
+- **Escalation On Missing Facts.** If during a cluster's implementation the
+  allowed inputs (AST + `ComponentSemantics` + `ReactivitySemantics`) turn
+  out to be insufficient for some specific fact, the builder author does
+  **not** silently widen the dependency surface. The kind's work stops and
+  the gap is surfaced to the human: which fact, why it's not reachable,
+  which options are on the table. Accepted resolutions include: (1) moving
+  the fact into `ComponentSemantics` if it is generic; (2) lifting it from
+  AST into the cluster builder if it is the cluster's own; (3) admitting a
+  narrow dependency on another cluster with explicit justification; or
+  (4) re-opening the cluster decomposition. Quiet AnalysisData reads are
+  not an option.
+- **Traversal Budget.** Each cluster's builder is held to a fixed number of
+  walks per component: **1 walk of the instance script** (OXC Visit), **1
+  walk of the module script** (OXC Visit), and **1 walk of the template**
+  (Svelte AST). Nested sub-walks over template-owned statement/expression
+  subtrees are permitted inside the template walk when the fact cannot be
+  answered from `ComponentSemantics` directly, but must stay single-pass
+  per subtree. Re-walking the same nodes within the cluster is forbidden.
+  Facts already available via `ComponentSemantics` (references, scopes,
+  symbol facts) are read, not re-derived — and the read does not count
+  against the traversal budget.
 - **Reactive meaning stays in `reactivity_semantics`.** When a cluster answer
   refers to an expression or identifier, it carries only the `ReferenceId`
   of the relevant reference. The transformer rewrites that reference from
@@ -91,6 +176,7 @@ pub enum BlockSemantics {
 
     Each(EachBlockSemantics),
     If(IfBlockSemantics),
+
     Await(AwaitBlockSemantics),
     Key(KeyBlockSemantics),
     Snippet(SnippetBlockSemantics),
@@ -200,9 +286,16 @@ Notes:
 
 ## Async Semantics
 
-Scope: everything gated behind the `experimental.async` compile flag.
+**Not a parallel cluster with its own identity.** Async is a decoration
+over the other three clusters. Per-kind async facts ride inside the
+owning cluster's payload, not behind a separate `async_semantics(id)`
+query. This is the architectural refinement that came out of the
+EachBlock slice: the original draft split Async into its own enum and
+own query surface; in practice every async question is "how does this
+*specific* block / attribute / element lower under async?", which is
+precisely a field on that unit's semantic payload.
 
-In scope:
+Scope:
 - Pickled await expressions inside template / attribute / component-prop
   expressions.
 - Async blockers and barrier placement.
@@ -214,30 +307,34 @@ Out of scope:
 - Non-async `{#await}` — owned by Block Semantics.
 - Regular reactive state lifecycle — owned by `reactivity_semantics`.
 
-Identity: unit `NodeId` of the construct owning the async behavior (block,
-await expression, attribute expression, component-prop expression).
+Layout:
+- Each cluster defines its own per-kind async payload variant. Example
+  (already landed for `{#each}`): `EachBlockSemantics.async_kind:
+  EachAsyncKind { Sync | Async { has_await, blockers } }`. Similar fields
+  land on `IfBlockSemantics`, `AwaitBlockSemantics`, `HtmlBindSemantics`,
+  `ComponentPropSemantics`, etc. when their slices migrate.
+- Top-level `await` in `<script>` and the async-mode runtime harness
+  stay as analyzer-wide output (e.g. `BlockerData`), not a cluster
+  payload — they are component-global facts, not per-unit.
+- No public `async_semantics(id)` query exists. Consumers read the
+  async field from the cluster payload they already have in hand.
 
-Draft answer shape:
+Identity: still the unit `NodeId` — but the answer lives on that unit's
+cluster payload, not in a separate store.
 
-```rust
-pub enum AsyncSemantics {
-    NonAsync,
-
-    AwaitBlock(AwaitBlockAsyncSemantics),
-    TopLevelAwait(TopLevelAwaitSemantics),
-    PickledAwait(PickledAwaitSemantics),
-    Blocker(AsyncBlockerSemantics),
-
-    Unresolved,
-}
-```
-
-Async is migrated last because it decorates units already stabilized by the
-other three clusters.
+Migration order: async is no longer "migrated last" as a distinct
+cluster. Async fields are added to each cluster's payload during that
+cluster's own slice, because without them the cluster's consumer still
+has to route through legacy `AsyncEmissionPlan` / `ExpressionInfo` and
+the Root Consumer Migration Rule fails. Each cluster gains its async
+field end-to-end with the rest of its payload.
 
 ## Migration Order
 
-Fixed: **Block → Attribute → ElementShape → Async.**
+Fixed: **Block → Attribute → ElementShape.**
+
+Async is no longer a fourth step — see "Async Semantics" above. Each
+cluster grows its own async payload field during its own slice.
 
 Rationale:
 
@@ -252,9 +349,6 @@ Rationale:
 3. **ElementShape third.** Collapses the AST-node-kind dispatch in consumers
    into one semantic dispatch. Builds on stable Attribute identity for
    per-attribute lookups inside each element-shape variant.
-4. **Async last.** Async is a decoration layer on top of the other three;
-   each cluster must already expose stable node-id identity for async to
-   attach without reaching back into AST.
 
 ## Migration Unit Within A Cluster
 
@@ -335,12 +429,121 @@ state.
 
 Surfaces marked deprecated as the first step of each kind migration:
 - Block-specific `AnalysisData` classifications (per-kind, as each migrates)
+- `ExpressionInfo` — the legacy per-expression bag-of-facts
+  (`has_store_ref`, `has_await`, `ref_symbols`, etc.) that consumers
+  previously assembled into semantic decisions. Replaced by
+  `reactivity_semantics` for per-reference classification and by the
+  owning cluster's payload for higher-level answers.
 - Attribute dynamism / ExpressionInfo bit combinations re-derived in consumers
 - Element-kind AST dispatch in template traversal
+- `FragmentItem` — duplicates Block / ElementShape node-kind
+  discrimination; see "Prerequisite: Kill `FragmentItem`" below
 - Async-specific side tables (`AsyncEmissionPlan`, pickled-await bookkeeping)
 
 Deletion is gradual and per-kind; parallel ownership is contained by the
 `#[deprecated]` warning.
+
+## Prerequisite: Kill `FragmentItem`
+
+The codegen consumer path in `svelte_codegen_client` does not walk the
+Svelte AST directly. It walks `LoweredFragment { items: Vec<FragmentItem> }`
+produced by `svelte_analyze`, where `FragmentItem` is an enum that
+discriminates template items by AST node kind:
+
+```rust
+pub enum FragmentItem {
+    Element(NodeId),
+    ComponentNode(NodeId),
+    IfBlock(NodeId),
+    EachBlock(NodeId),
+    AwaitBlock(NodeId),
+    KeyBlock(NodeId),
+    RenderTag(NodeId),
+    HtmlTag(NodeId),
+    SvelteElement(NodeId),
+    SvelteBoundary(NodeId),
+    SlotElementLegacy(NodeId),
+    SvelteFragmentLegacy(NodeId),
+    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
+}
+```
+
+This enum conflates two very different things:
+
+1. **Real lowering facts that AST does not carry.** `TextConcat` merges a
+   run of adjacent `Text` / `ExpressionTag` / `Text` nodes into a single
+   runtime `$.set_text` target; lowering also filters hoisted nodes
+   (`SnippetBlock`, `SvelteHead`, `{@const}`, `{@debug}`, `<svelte:window>`,
+   whitespace-only text) and normalizes sibling order per the reference
+   compiler's whitespace rules. These are genuine additions over AST.
+2. **Node-kind discrimination that Block / ElementShape Semantics now
+   own.** Every `FragmentItem::*Block(id)` / `*Tag(id)` / `*Element(id)` /
+   `ComponentNode(id)` / `SvelteBoundary(id)` variant is redundant with a
+   one-query `block_semantics(id)` or `element_shape_semantics(id)` lookup.
+
+The consequence: as long as `FragmentItem` is the codegen dispatcher, a
+migrated cluster cannot produce a clean root consumer point. The Root
+Consumer Migration Rule is violated by construction — every block-kind
+emission currently starts at a `match FragmentItem::*` site, and a
+`match block_semantics(id)` inside a single FragmentItem arm is a
+meaningless narrowing (one-variant match inside a variant). The form the
+architecture actually wants is:
+
+```rust
+for &node_id in fragment_plan {  // plan = filtered, ordered NodeIds + TextConcat pseudo-items
+    match analysis.block_semantics(node_id) {
+        BlockSemantics::Each(sem) => gen_each_block(ctx, node_id, sem, ...),
+        BlockSemantics::If(sem)   => gen_if_block(...),
+        BlockSemantics::Await(..) => gen_await_block(...),
+        ...
+        BlockSemantics::NonSpecial => match analysis.element_shape_semantics(node_id) {
+            ElementShapeSemantics::Html(..) => process_element(...),
+            ElementShapeSemantics::Component(..) => gen_component(...),
+            ...
+        }
+    }
+}
+```
+
+This is not achievable inside the Block Semantics migration. It requires
+a separate initiative:
+
+### Separate slice: **kill `FragmentItem`**
+
+Scope:
+- Reshape `LoweredFragment` to hold a plan of `NodeId`s (plus
+  `TextConcat` as an explicit pseudo-node or side table) without
+  duplicating node-kind discrimination.
+- Replace `FragmentItem::*` matches across `svelte_codegen_client`
+  (~250 call sites) and `svelte_analyze` consumers with Block / ElementShape
+  Semantics queries, falling back to AST node-kind reads only where the
+  cluster does not yet own the decision.
+- Preserve lowering's genuine work: whitespace collapse, hoisted-node
+  filtering, TextConcat merging, fragment-scoped flags consumed by
+  codegen (`ContentStrategy`, `has_dynamic_children`, etc.).
+- Remove `FragmentItem` once no consumer references it.
+
+Ordering vs. the semantic clusters:
+- **Precedes** end-to-end Block Semantics consumer migration. Until it
+  lands, block-kind consumer migrations can only land as transitional
+  `match block_semantics(id)` inserted inside the existing `FragmentItem`
+  dispatcher, which is tolerated but not the target form.
+- **Independent** of Attribute Semantics (attributes live on element
+  nodes, not on fragment items).
+- **Coordinates with** ElementShape Semantics: both need the semantic
+  dispatcher in codegen; landing ElementShape and the FragmentItem kill
+  in the same slice may be the simplest path.
+
+Migration unit: not a cluster. A dedicated infrastructure slice with its
+own spec. It does not add new semantic meaning; it removes a duplicated
+dispatcher that blocks the cluster migrations from reaching their target
+consumer shape.
+
+Until this slice lands, the Block Semantics payload is built and unit
+tested, but consumer code for block kinds either (a) reads the payload
+from inside a FragmentItem arm (acceptable transitional form), or
+(b) does not migrate its consumer at all and only lives as an
+analyzer-side contract (preferred when no clean consumer path exists).
 
 ## Open Questions
 

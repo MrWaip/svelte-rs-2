@@ -35,9 +35,9 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         .join("cases2")
         .join(case)
         .join("case.svelte");
-    let input = read_to_string(&path).unwrap();
+    let input = read_to_string(&path).expect("test invariant");
 
-    let dir = path.parent().unwrap();
+    let dir = path.parent().expect("test invariant");
     let config_path = dir.join("config.json");
     let mut opts = CompileOptions {
         name: Some("App".into()),
@@ -45,7 +45,8 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
     };
     if config_path.exists() {
         let config: serde_json::Value =
-            serde_json::from_str(&read_to_string(&config_path).unwrap()).unwrap();
+            serde_json::from_str(&read_to_string(&config_path).expect("test invariant"))
+                .expect("test invariant");
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
@@ -86,13 +87,13 @@ fn assert_compiler(case: &str) {
         .js
         .unwrap_or_else(|| panic!("[{case}] compile produced no JS"));
 
-    let dir = path.parent().unwrap();
-    let expected_js = read_to_string(dir.join("case-svelte.js")).unwrap();
+    let dir = path.parent().expect("test invariant");
+    let expected_js = read_to_string(dir.join("case-svelte.js")).expect("test invariant");
 
     File::create(dir.join("case-rust.js"))
-        .unwrap()
+        .expect("test invariant")
         .write_all(js.as_bytes())
-        .unwrap();
+        .expect("test invariant");
 
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
@@ -100,12 +101,12 @@ fn assert_compiler(case: &str) {
     // Normalize whitespace (indent style varies between lightningcss and JS reference).
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
-        let expected_css = read_to_string(&expected_css_path).unwrap();
+        let expected_css = read_to_string(&expected_css_path).expect("test invariant");
         let actual_css = result.css.unwrap_or_default();
         File::create(dir.join("case-rust.css"))
-            .unwrap()
+            .expect("test invariant")
             .write_all(actual_css.as_bytes())
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(
             normalize_css(&actual_css),
             normalize_css(&expected_css),
@@ -1657,20 +1658,20 @@ fn assert_compiler_module(case: &str) {
         .join("cases2")
         .join(case)
         .join("case.svelte.js");
-    let input = read_to_string(&path).unwrap();
+    let input = read_to_string(&path).expect("test invariant");
 
     let result = compile_module(&input, &ModuleCompileOptions::default());
     let js = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile_module produced no JS"));
 
-    let dir = path.parent().unwrap();
-    let expected = read_to_string(dir.join("case-svelte.js")).unwrap();
+    let dir = path.parent().expect("test invariant");
+    let expected = read_to_string(dir.join("case-svelte.js")).expect("test invariant");
 
     File::create(dir.join("case-rust.js"))
-        .unwrap()
+        .expect("test invariant")
         .write_all(js.as_bytes())
-        .unwrap();
+        .expect("test invariant");
     assert_eq!(js, expected);
 }
 

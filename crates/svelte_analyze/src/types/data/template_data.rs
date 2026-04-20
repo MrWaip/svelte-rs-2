@@ -6,12 +6,7 @@ pub struct TemplateSemanticsData {
     pub(crate) let_directive_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) each_context_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) each_index_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) await_value_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) await_error_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
-    pub(crate) stmt_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
 }
 
 impl TemplateSemanticsData {
@@ -22,26 +17,16 @@ impl TemplateSemanticsData {
             let_directive_stmt_handles: NodeTable::new(node_count),
             const_tag_stmt_handles: NodeTable::new(node_count),
             snippet_stmt_handles: NodeTable::new(node_count),
-            each_context_stmt_handles: NodeTable::new(node_count),
-            each_index_stmt_handles: NodeTable::new(node_count),
-            await_value_stmt_handles: NodeTable::new(node_count),
-            await_error_stmt_handles: NodeTable::new(node_count),
             node_ref_symbols: NodeTable::new(node_count),
-            stmt_ref_symbols: NodeTable::new(node_count),
         }
     }
 
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.node_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
     }
-
-    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.stmt_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
-    }
 }
 
 pub struct SnippetData {
-    pub(crate) hoistable: NodeBitSet,
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
     /// Named slots for component children: maps component NodeId → vec of (slot_element_id, fragment_key).
     pub(crate) component_named_slots: NodeTable<Vec<(NodeId, FragmentKey)>>,
@@ -52,7 +37,6 @@ pub struct SnippetData {
 impl SnippetData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
             component_named_slots: NodeTable::new(node_count),
             local_snippets: Vec::new(),
@@ -60,9 +44,6 @@ impl SnippetData {
         }
     }
 
-    pub fn is_hoistable(&self, id: NodeId) -> bool {
-        self.hoistable.contains(&id)
-    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets
             .get(id)
@@ -81,27 +62,23 @@ impl SnippetData {
     }
 }
 
+/// Fragment-level index of `{@const}` tag ids. Per-tag semantic data
+/// (bindings, destructure shape, async lowering) lives in
+/// `block_semantics::ConstTagBlockSemantics`; this struct only answers
+/// "which tags belong to which fragment" so codegen / reactivity passes
+/// can iterate them in emit order. When the Kill-FragmentItem slice
+/// lands this too will collapse into the fragment plan.
 pub struct ConstTagData {
-    pub(crate) names: NodeTable<Vec<String>>,
-    pub(crate) syms: NodeTable<Vec<SymbolId>>,
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
 impl ConstTagData {
-    pub fn new(node_count: u32) -> Self {
+    pub fn new(_node_count: u32) -> Self {
         Self {
-            names: NodeTable::new(node_count),
-            syms: NodeTable::new(node_count),
             by_fragment: FxHashMap::default(),
         }
     }
 
-    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.names.get(id)
-    }
-    pub fn syms(&self, id: NodeId) -> Option<&Vec<SymbolId>> {
-        self.syms.get(id)
-    }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.by_fragment.get(key)
     }
@@ -109,6 +86,12 @@ impl ConstTagData {
 
 pub struct DebugTagData {
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+}
+
+impl Default for DebugTagData {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DebugTagData {
@@ -127,6 +110,12 @@ pub struct TitleElementData {
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
+impl Default for TitleElementData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TitleElementData {
     pub fn new() -> Self {
         Self {
@@ -136,27 +125,6 @@ impl TitleElementData {
 
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.by_fragment.get(key)
-    }
-}
-
-pub struct AwaitBindingData {
-    pub(crate) values: NodeTable<AwaitBindingInfo>,
-    pub(crate) errors: NodeTable<AwaitBindingInfo>,
-}
-
-impl AwaitBindingData {
-    pub fn new(node_count: u32) -> Self {
-        Self {
-            values: NodeTable::new(node_count),
-            errors: NodeTable::new(node_count),
-        }
-    }
-
-    pub fn value(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.values.get(id)
-    }
-    pub fn error(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.errors.get(id)
     }
 }
 

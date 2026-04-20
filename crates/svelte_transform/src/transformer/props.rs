@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Argument, BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    BINDABLE_RUNE_NAME, DeclarationSemantics, PropDeclarationKind, PropDefaultLowering,
-    PropLoweringMode, PropsObjectPropertySemantics,
+    DeclarationSemantics, PropDeclarationKind, PropDefaultLowering, PropLoweringMode,
+    PropsObjectPropertySemantics, BINDABLE_RUNE_NAME,
 };
 
 use svelte_ast_builder::Arg;
@@ -35,20 +35,26 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 .map(Arg::Str)
                                 .collect::<Vec<_>>(),
                         );
-                        let init = self
-                            .b
-                            .call_expr("$.rest_props", [Arg::Ident("$$props"), Arg::Expr(arr_expr)]);
+                        let init = self.b.call_expr(
+                            "$.rest_props",
+                            [Arg::Ident("$$props"), Arg::Expr(arr_expr)],
+                        );
                         Some(vec![self.b.const_stmt(id.name.as_str(), init)])
                     }
                     _ => None,
                 }
             }
             BindingPattern::ObjectPattern(obj) => {
-                let DeclarationSemantics::Prop(root_prop) = analysis.declaration_semantics(root_node) else {
+                let DeclarationSemantics::Prop(root_prop) =
+                    analysis.declaration_semantics(root_node)
+                else {
                     return None;
                 };
                 let lowering_mode = root_prop.lowering_mode;
-                let PropDeclarationKind::Object { properties, has_rest } = root_prop.kind
+                let PropDeclarationKind::Object {
+                    properties,
+                    has_rest,
+                } = root_prop.kind
                 else {
                     return None;
                 };
@@ -64,24 +70,27 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 }
 
                 let mut declarators = Vec::new();
-                for (prop, property_semantics) in obj.properties.iter_mut().zip(properties.into_iter()) {
+                for (prop, property_semantics) in
+                    obj.properties.iter_mut().zip(properties.into_iter())
+                {
                     let prop_name = static_prop_key_name(&prop.key)?;
 
-                    let (local_name, default_expr): (String, Option<Expression<'a>>) = match &mut prop.value {
-                        BindingPattern::BindingIdentifier(id) => {
-                            (id.name.as_str().to_string(), None)
-                        }
-                        BindingPattern::AssignmentPattern(assign) => {
-                            let BindingPattern::BindingIdentifier(id) = &assign.left else {
-                                return None;
-                            };
-                            (
-                                id.name.as_str().to_string(),
-                                Some(self.b.move_expr(&mut assign.right)),
-                            )
-                        }
-                        _ => return None,
-                    };
+                    let (local_name, default_expr): (String, Option<Expression<'a>>) =
+                        match &mut prop.value {
+                            BindingPattern::BindingIdentifier(id) => {
+                                (id.name.as_str().to_string(), None)
+                            }
+                            BindingPattern::AssignmentPattern(assign) => {
+                                let BindingPattern::BindingIdentifier(id) = &assign.left else {
+                                    return None;
+                                };
+                                (
+                                    id.name.as_str().to_string(),
+                                    Some(self.b.move_expr(&mut assign.right)),
+                                )
+                            }
+                            _ => return None,
+                        };
 
                     match property_semantics {
                         PropsObjectPropertySemantics::NonSource => {}
@@ -91,8 +100,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             default_lowering,
                             default_needs_proxy,
                         } => {
-                            let default_expr =
-                                default_expr.and_then(|expr| prop_assignment_default_expr(expr, bindable));
+                            let default_expr = default_expr
+                                .and_then(|expr| prop_assignment_default_expr(expr, bindable));
                             let mut flags: u32 = 0;
                             if self.immutable || self.runes {
                                 flags |= PROPS_IS_IMMUTABLE;
@@ -110,10 +119,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 flags |= PROPS_IS_UPDATED;
                             }
 
-                            let mut args: Vec<Arg<'a, '_>> = vec![
-                                Arg::Ident("$$props"),
-                                Arg::Str(prop_name.to_string()),
-                            ];
+                            let mut args: Vec<Arg<'a, '_>> =
+                                vec![Arg::Ident("$$props"), Arg::Str(prop_name.to_string())];
                             match default_lowering {
                                 PropDefaultLowering::None => {
                                     if bindable && !updated {
@@ -133,9 +140,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                         panic!("default expr missing for prop {}", local_name)
                                     });
                                     let default_expr = if default_needs_proxy {
-                                        let proxied = self
-                                            .b
-                                            .call_expr("$.proxy", [Arg::Expr(default_expr)]);
+                                        let proxied =
+                                            self.b.call_expr("$.proxy", [Arg::Expr(default_expr)]);
                                         if self.dev {
                                             self.b.call_expr(
                                                 "$.tag_proxy",
@@ -147,14 +153,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                     } else {
                                         default_expr
                                     };
-                                    let default_expr = if matches!(
-                                        default_lowering,
-                                        PropDefaultLowering::Eager
-                                    ) {
-                                        default_expr
-                                    } else {
-                                        super::derived::wrap_lazy(self.b, default_expr)
-                                    };
+                                    let default_expr =
+                                        if matches!(default_lowering, PropDefaultLowering::Eager) {
+                                            default_expr
+                                        } else {
+                                            super::derived::wrap_lazy(self.b, default_expr)
+                                        };
                                     args.push(Arg::Expr(default_expr));
                                 }
                             }
@@ -226,7 +230,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             false
         })
     }
-
 }
 
 fn base_rest_excluded(lowering_mode: PropLoweringMode) -> Vec<String> {

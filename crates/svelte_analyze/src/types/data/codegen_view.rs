@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -34,14 +35,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_node(id)
     }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.data.is_elseif_alt(id)
-    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
-    pub fn props(&self) -> Option<&PropsAnalysis> {
-        self.data.script.props.as_ref()
+    pub fn props(&self) -> Option<&PropsDeclaration> {
+        self.data.script.props_declaration()
     }
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context
@@ -60,8 +58,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn iter_store_declarations(
         &self,
-    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
-    {
+    ) -> impl Iterator<
+        Item = (
+            svelte_component_semantics::OxcNodeId,
+            StoreDeclarationSemantics,
+        ),
+    > + '_ {
         self.data.iter_store_declarations()
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
@@ -102,12 +104,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .output
             .ignore_data
             .is_ignored_at_span(span_start, code)
-    }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.template.await_bindings.value(id)
-    }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.template.await_bindings.error(id)
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         self.data.expr_deps(site)
@@ -161,26 +157,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.snippet_stmt_handle(id)
     }
-    pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.each_context_stmt_handle(id)
-    }
-    pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.each_index_stmt_handle(id)
-    }
-    pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.await_value_stmt_handle(id)
-    }
-    pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.await_error_stmt_handle(id)
-    }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
-    }
-    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.data.stmt_ref_symbols(id)
-    }
-    pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.data.snippet_param_ref_symbols(id)
     }
     pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.data.shorthand_symbol(id)
@@ -215,10 +193,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> Option<&str> {
         self.data.binding_origin_key_for_identifier_reference(id)
     }
-    pub fn declaration_root(
-        &self,
-        sym: SymbolId,
-    ) -> Option<svelte_component_semantics::OxcNodeId> {
+    pub fn declaration_root(&self, sym: SymbolId) -> Option<svelte_component_semantics::OxcNodeId> {
         self.data.declaration_root_for_symbol(sym)
     }
     pub fn declaration_semantics(
@@ -356,9 +331,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_component(id)
     }
-    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
-        self.data.template.snippets.is_hoistable(id)
-    }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
         self.data.elements.flags.event_handler_mode(id)
     }
@@ -380,9 +352,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_svelte_self(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_self(id)
     }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.data.render_tag_plan(id)
-    }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)
     }
@@ -391,9 +360,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         self.data.parent_each_blocks(id)
-    }
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.data.contains_group_binding(id)
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.data.template.bind_semantics.bind_blockers(id)
@@ -404,12 +370,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.data.template.const_tags.names(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.data.const_tag_syms(id)
-    }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.data.template.const_tags.by_fragment(key)
     }
@@ -419,7 +379,9 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn title_elements_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.data.template.title_elements.by_fragment(key)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
+        #[allow(deprecated)]
         self.data
             .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
@@ -427,26 +389,10 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     /// Returns true when the given symbol is the `index` binding of some
     /// `{#each}` block. Each-block indices are always `number`, so an
     /// interpolation referencing one never needs a `?? ""` fallback.
+    #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym).is_some()")]
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
+        #[allow(deprecated)]
         self.data.each_block_for_index_sym(sym).is_some()
-    }
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_key_uses_index(id)
-    }
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_body_uses_index(id)
-    }
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.data.each_key_is_item(id)
-    }
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.data.each_needs_collection_id(id)
-    }
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.data.each_has_animate(id)
-    }
-    pub fn each_context_name(&self, id: NodeId) -> &str {
-        self.data.each_context_name(id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.data.expression(id)

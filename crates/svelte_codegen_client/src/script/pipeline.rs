@@ -41,7 +41,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         .component
         .instance_script
         .as_ref()
-        .unwrap()
+        .expect("early return above when instance_script is None")
         .content_span
         .start;
     let filename = ctx.state.filename;
@@ -72,7 +72,12 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     }
 
     let component_scoping = ctx.query.scoping();
-    let script = ctx.query.component.instance_script.as_ref().unwrap();
+    let script = ctx
+        .query
+        .component
+        .instance_script
+        .as_ref()
+        .expect("early return above when instance_script is None");
     let is_ts = script.language == ScriptLanguage::TypeScript;
     let script_text = ctx.query.component.source_text(script.content_span);
     transform_script_text(

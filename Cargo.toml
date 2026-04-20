@@ -4,6 +4,11 @@ resolver = "2"
 
 [workspace.lints.rust]
 # unsafe_code = "deny"
+# Semantic-layer migration: `#[deprecated]` is used as a navigation
+# hint for contributors ("do not grow more call sites") rather than
+# a hard rule. Silence call-site warnings globally; the attribute
+# still appears on declarations so IDE / rustdoc surface the hint.
+deprecated = "allow"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"

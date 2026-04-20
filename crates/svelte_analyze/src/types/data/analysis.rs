@@ -1,10 +1,10 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 use svelte_component_semantics::SymbolFlags;
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
-    pub props: Option<PropsAnalysis>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
     pub instance_node_id_offset: u32,
@@ -27,7 +27,6 @@ impl ScriptAnalysis {
     fn new() -> Self {
         Self {
             info: None,
-            props: None,
             props_id: None,
             exports: Vec::new(),
             instance_node_id_offset: 0,
@@ -45,6 +44,13 @@ impl ScriptAnalysis {
             blocker_data: BlockerData::default(),
             script_rune_calls: ScriptRuneCalls::new(),
         }
+    }
+
+    /// Pre-semantic `$props()` declaration shape, or `None` when the
+    /// component has no `$props()` call. Consumers read props metadata
+    /// straight from this — no post-semantic copy.
+    pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
+        self.info.as_ref()?.props_declaration.as_ref()
     }
 }
 
@@ -79,7 +85,6 @@ pub struct TemplateAnalysis {
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
-    pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
 }
 
@@ -96,32 +101,30 @@ impl TemplateAnalysis {
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
-            await_bindings: AwaitBindingData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
         }
     }
 }
 
 pub struct BlockAnalysis {
+    #[deprecated(
+        note = "use AnalysisData::block_semantics(id); this legacy index is still \
+                written by template passes but will be removed once its remaining \
+                readers (validation, reactivity_semantics, bind_semantics) migrate."
+    )]
     pub each_context: EachContextIndex,
-    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
-    pub(crate) render_tag_is_chain: NodeBitSet,
-    pub render_tag_plans: NodeTable<RenderTagPlan>,
 }
 
 impl BlockAnalysis {
     fn new(node_count: u32) -> Self {
+        #[allow(deprecated)]
         Self {
             each_context: EachContextIndex::new(node_count),
-            render_tag_callee_sym: NodeTable::new(node_count),
-            render_tag_is_chain: NodeBitSet::new(node_count),
-            render_tag_plans: NodeTable::new(node_count),
         }
     }
 }
 
 pub struct OutputPlanData {
-    pub alt_is_elseif: NodeBitSet,
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
     pub custom_element_slot_names: Vec<String>,
@@ -136,7 +139,6 @@ pub struct OutputPlanData {
 impl OutputPlanData {
     fn new(node_count: u32) -> Self {
         Self {
-            alt_is_elseif: NodeBitSet::new(node_count),
             needs_context: false,
             needs_sanitized_legacy_slots: false,
             custom_element_slot_names: Vec::new(),
@@ -159,6 +161,7 @@ pub struct AnalysisData<'a> {
     pub blocks: BlockAnalysis,
     pub output: OutputPlanData,
     pub reactivity: ReactivitySemantics,
+    pub(crate) block_semantics_store: crate::block_semantics::BlockSemanticsStore,
     pub dynamism: crate::passes::dynamism::DynamismData,
 }
 
@@ -174,6 +177,7 @@ impl<'a> AnalysisData<'a> {
             blocks: BlockAnalysis::new(node_count),
             output: OutputPlanData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
+            block_semantics_store: crate::block_semantics::BlockSemanticsStore::new(node_count),
             dynamism: crate::passes::dynamism::DynamismData::new(node_count),
         }
     }
@@ -207,17 +211,10 @@ impl<'a> AnalysisData<'a> {
             .flags
             .class_attr_id(element_id)
             .is_some_and(|attr_id| self.dynamism.is_dynamic_attr(attr_id));
-        class_attr_dynamic
-            || self
-                .elements
-                .flags
-                .has_dynamic_class_directives(element_id)
+        class_attr_dynamic || self.elements.flags.has_dynamic_class_directives(element_id)
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
-    }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.output.alt_is_elseif.contains(&id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
@@ -264,8 +261,12 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn iter_store_declarations(
         &self,
-    ) -> impl Iterator<Item = (svelte_component_semantics::OxcNodeId, StoreDeclarationSemantics)> + '_
-    {
+    ) -> impl Iterator<
+        Item = (
+            svelte_component_semantics::OxcNodeId,
+            StoreDeclarationSemantics,
+        ),
+    > + '_ {
         self.reactivity.iter_store_declarations()
     }
     pub fn declaration_semantics(
@@ -288,6 +289,12 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn uses_runes(&self) -> bool {
         self.reactivity.uses_runes()
+    }
+    /// Block Semantics query: one answer per block `NodeId`. Returns
+    /// `&BlockSemantics::NonSpecial` for any node that is not a
+    /// control-flow block. See SEMANTIC_LAYER_ARCHITECTURE.md.
+    pub fn block_semantics(&self, id: NodeId) -> &crate::block_semantics::BlockSemantics {
+        self.block_semantics_store.get(id)
     }
     pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.entry(key)
@@ -497,32 +504,25 @@ impl<'a> AnalysisData<'a> {
     ) -> impl Iterator<Item = NodeId> + '_ {
         self.template.template_elements.previous_siblings(id)
     }
+    #[deprecated(note = "use block_semantics(id); see crates/svelte_analyze/src/block_semantics/")]
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
+        #[allow(deprecated)]
         self.blocks.each_context.index_sym(id)
     }
+    #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym)")]
     pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
+        #[allow(deprecated)]
         self.blocks.each_context.block_for_index_sym(sym)
     }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_key_node_id(&self, id: NodeId) -> Option<NodeId> {
+        #[allow(deprecated)]
         self.blocks.each_context.key_node_id(id)
     }
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.blocks.each_context.key_uses_index(id)
-    }
+    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
+        #[allow(deprecated)]
         self.blocks.each_context.is_destructured(id)
-    }
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.blocks.each_context.body_uses_index(id)
-    }
-    pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.blocks.each_context.key_is_item(id)
-    }
-    pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.blocks.each_context.has_animate(id)
-    }
-    pub fn each_context_name(&self, id: NodeId) -> &str {
-        self.blocks.each_context.context_name(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.template.bind_semantics.bind_this_each_context(id)
@@ -548,12 +548,6 @@ impl<'a> AnalysisData<'a> {
                     .then_some(parent.id)
             })
             .collect()
-    }
-    pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.blocks.each_context.contains_group_binding(id)
-    }
-    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.blocks.each_context.needs_collection_id(id)
     }
     pub fn css_hash(&self) -> &str {
         &self.output.css.hash
@@ -597,6 +591,12 @@ impl<'a> AnalysisData<'a> {
             .get(id)
             .copied()
     }
+    /// Handle to the pre-parsed `const <name> = (...) => {...}` statement
+    /// backing a `{#snippet}` block. Consumers that need to walk the arrow
+    /// (parameter defaults, body) ask for this handle and resolve it via
+    /// `ParserResult::stmt`. Semantic classification lives in
+    /// `block_semantics::SnippetBlockSemantics`; this accessor only
+    /// exposes the raw AST hook for emission-time AST cloning.
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.template
             .template_semantics
@@ -604,42 +604,8 @@ impl<'a> AnalysisData<'a> {
             .get(id)
             .copied()
     }
-    pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .each_context_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .each_index_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .await_value_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .await_error_stmt_handles
-            .get(id)
-            .copied()
-    }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template.template_semantics.node_ref_symbols(id)
-    }
-    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.template.template_semantics.stmt_ref_symbols(id)
-    }
-    pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.template.template_semantics.stmt_ref_symbols(id)
     }
     pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.template
@@ -690,15 +656,6 @@ impl<'a> AnalysisData<'a> {
                 })
         })
     }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.blocks.render_tag_plans.get(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.template
-            .const_tags
-            .syms(id)
-            .map(|syms| syms.as_slice())
-    }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {
             ExprSite::Node(id) => {
@@ -716,8 +673,7 @@ impl<'a> AnalysisData<'a> {
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: self.dynamism.is_dynamic_attr(id)
-                        && info.needs_memoized_value(),
+                    needs_memo: self.dynamism.is_dynamic_attr(id) && info.needs_memoized_value(),
                 })
             }
         }

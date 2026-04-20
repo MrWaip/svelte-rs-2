@@ -172,7 +172,8 @@ impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
             .find_binding(root, base)
             .is_some_and(|sym| {
                 matches!(
-                    self.data.declaration_semantics(self.data.scoping.symbol_declaration(sym)),
+                    self.data
+                        .declaration_semantics(self.data.scoping.symbol_declaration(sym)),
                     DeclarationSemantics::Store(_),
                 )
             })
@@ -242,7 +243,7 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
                     .data
                     .scoping
                     .find_binding(root, base)
-                    .is_some_and(|sym_id| !is_props_binding(&self.data, sym_id))
+                    .is_some_and(|sym_id| !is_props_binding(self.data, sym_id))
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {
@@ -262,7 +263,8 @@ fn is_props_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -
     // `$props()` identifier/rest bindings are special compiler-owned bindings, not
     // user-authored locals that can be mistaken for store subscriptions.
     matches!(
-        data.reactivity.declaration_semantics(data.scoping.symbol_declaration(sym_id)),
+        data.reactivity
+            .declaration_semantics(data.scoping.symbol_declaration(sym_id)),
         DeclarationSemantics::Prop(_),
     )
 }

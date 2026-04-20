@@ -83,10 +83,18 @@ fn classify_reference_semantics(
 ) -> Option<V2ReferenceFacts> {
     match declaration {
         // Binding lowers as a plain `let`; reference-level reads are plain
-        // identifiers. Child-passing consumers (boundary / component props /
-        // render callee / dynamicity) branch on `DeclarationSemantics::OptimizedRune`
-        // at the passing site, not here.
-        V2DeclarationFacts::OptimizedRune(_) => None,
+        // identifiers. For proxy-wrapped inits (`$state({...})`,
+        // `$state([...])`) the runtime wrapper keeps field mutations and
+        // outside reassignment observable — child-passing consumers must
+        // see that reactivity at the reference site. Other OptimizedRune
+        // cases (primitive `$state(0)` never mutated) stay fully inert.
+        V2DeclarationFacts::OptimizedRune(opt) => {
+            if is_read && opt.proxy_init {
+                Some(V2ReferenceFacts::Proxy)
+            } else {
+                None
+            }
+        }
         V2DeclarationFacts::State(state) => {
             if is_write && is_read {
                 Some(V2ReferenceFacts::SignalUpdate {

@@ -10,8 +10,8 @@ use svelte_analyze::{
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 
-use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 // ---------------------------------------------------------------------------
 // Pre-transformed expression lookup (handle-based)
@@ -103,16 +103,16 @@ fn legacy_coarse_dep_getter<'a>(
             kind: PropDeclarationKind::Rest,
             ..
         }) => Some(ctx.b.rid_expr(ctx.query.symbol_name(sym))),
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { destructured, .. }) => {
+        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
+            destructured, ..
+        }) => {
             let helper = if destructured { "$.safe_get" } else { "$.get" };
             Some(ctx.b.call_expr(
                 helper,
                 [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
             ))
         }
-        DeclarationSemantics::Contextual(kind) => {
-            contextual_dep_getter(ctx, sym, kind)
-        }
+        DeclarationSemantics::Contextual(kind) => contextual_dep_getter(ctx, sym, kind),
         // Import-resolved reference — plain identifier in emission.
         DeclarationSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
             Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))
@@ -274,7 +274,9 @@ pub(crate) fn build_concat_from_parts<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.query.component.source).unwrap();
+                let s = part
+                    .text_value(&ctx.query.component.source)
+                    .expect("TextSpan/TextOwned parts always have a text value");
                 // Merge with previous Str part if possible
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
@@ -522,7 +524,7 @@ impl<'a> TemplateMemoState<'a> {
                     .computed_member_expr(ctx.b.rid_expr("$$promises"), ctx.b.num_expr(idx as f64))
             })
             .collect();
-        all_blockers.extend(self.extra_blockers.drain(..));
+        all_blockers.append(&mut self.extra_blockers);
         if all_blockers.is_empty() {
             ctx.b.void_zero_expr()
         } else {
@@ -909,7 +911,9 @@ fn build_concat_with_memo<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.query.component.source).unwrap();
+                let s = part
+                    .text_value(&ctx.query.component.source)
+                    .expect("TextSpan/TextOwned parts always have a text value");
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
                 } else {
