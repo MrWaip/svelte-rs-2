@@ -12,7 +12,6 @@ mod executor;
 pub(crate) mod finalize_component_name;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
-pub(crate) mod populate_const_tag_syms;
 pub(crate) mod post_resolve;
 pub(crate) mod resolve_render_tag_meta;
 pub(crate) mod template_side_tables;
@@ -38,7 +37,6 @@ pub(crate) enum PassKey {
     PostResolve,
     ResolveRenderTagMeta,
     CollectConstTagFragments,
-    PopulateConstTagSyms,
     BuildReactivitySemantics,
     LowerTemplate,
     ReactivityWalk,
@@ -65,7 +63,6 @@ pub(crate) enum DataToken {
     PostResolve,
     RenderTagMeta,
     ConstTagFragments,
-    ConstTagSyms,
     ReactivitySemantics,
     BlockSemantics,
     LoweredTemplate,
@@ -154,14 +151,14 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ConstTagFragments],
     },
     PassDescriptor {
-        key: PassKey::PopulateConstTagSyms,
-        requires: &[DataToken::ConstTagFragments, DataToken::SymbolRefs],
-        produces: &[DataToken::ConstTagSyms],
-    },
-    PassDescriptor {
         key: PassKey::BuildReactivitySemantics,
+        // ConstTagFragments carries the `{@const}` scope map the
+        // reactivity fix-point now walks patterns against (it used to
+        // receive `ConstTagSyms` from a dedicated pass; the pass was
+        // folded into the fix-point itself).
         requires: &[
-            DataToken::ConstTagSyms,
+            DataToken::ConstTagFragments,
+            DataToken::SymbolRefs,
             DataToken::TemplateSideTables,
             DataToken::PostResolve,
         ],
@@ -224,7 +221,6 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::ClassifyNeedsContext,
     PassKey::PostResolve,
     PassKey::CollectConstTagFragments,
-    PassKey::PopulateConstTagSyms,
     PassKey::BuildReactivitySemantics,
     PassKey::ResolveRenderTagMeta,
 ];

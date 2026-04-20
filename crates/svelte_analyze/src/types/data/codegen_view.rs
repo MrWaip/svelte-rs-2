@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -40,8 +41,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
-    pub fn props(&self) -> Option<&PropsAnalysis> {
-        self.data.script.props.as_ref()
+    pub fn props(&self) -> Option<&PropsDeclaration> {
+        self.data.script.props_declaration()
     }
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context
@@ -156,12 +157,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.data.let_directive_stmt_handle(id)
     }
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
-        block_semantics::SnippetBlockSemantics"
-    )]
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        #[allow(deprecated)]
         self.data.snippet_stmt_handle(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
@@ -383,12 +379,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
-    }
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.data.template.const_tags.names(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.data.const_tag_syms(id)
     }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.data.template.const_tags.by_fragment(key)

@@ -57,6 +57,36 @@ same bar.
   `ReferenceId`, `SymbolId`, enum variants, bools, numeric payloads. No
   `String`, `Box<str>`, `&str`, `Cow<str>` in stored facts or answers. Text is
   resolved at consumption time via identity-keyed lookups.
+- **Parser-handle ban.** `StmtHandle` and `ExprHandle` are parser-internal
+  indices into `ParserResult.stmts` / `.exprs` and **must not** appear in
+  cluster payloads (`block_semantics::*`, `attribute_semantics::*`,
+  `element_shape_semantics::*`, …). Payloads carry `OxcNodeId` as the
+  sole AST hook; consumers resolve the statement / expression on demand
+  through `ComponentSemantics::js_storage()` / the equivalent `kind(id)` /
+  `node(id)` lookup, not through handle tables. Handles remain legal
+  inside the parser and analyze-local side tables that own their own
+  identity (e.g. `TemplateSemanticsData::snippet_stmt_handles`), but
+  they never cross into a cluster answer variant. Rationale: handles
+  are a second identity system layered over the same AST — hauling them
+  into cluster payloads forces consumers to mix two identities and
+  turns payloads into JSON-shuffling thin wrappers over `ParserResult`.
+- **No binding-pattern repack.** `BindingPattern` subtrees
+  (`$props`, `$state`, `$derived`, `{@const}`, `{#snippet}` params,
+  `{#each … as pat}`, `{#await … then pat}`, `let:` directives, etc.)
+  are **not** re-shaped into cluster-local DTOs. Every attempt — a flat
+  `leaves: Vec<SymbolId>`, a `destructured: bool`, a parallel per-leaf
+  struct — is a JSON repack of the OXC AST plus `ComponentSemantics`
+  data that is already reachable by `OxcNodeId`. The cluster payload
+  carries the `OxcNodeId` of the pattern (or its owning node) and
+  nothing else; the consumer walks the pattern on demand via the shared
+  `svelte_component_semantics::pattern::walk_bindings(&pat, |visit| …)`
+  helper. This is the single traversal for every destructuring site in
+  the pipeline — do not add a second one, do not cache its output.
+  Rationale: the OXC `BindingPattern` is already the canonical form
+  (symbols are attached to `BindingIdentifier.symbol_id`, defaults are
+  attached to `AssignmentPattern.right`, rest is `ObjectPattern.rest` /
+  `ArrayPattern.rest`). Any parallel structure must prove it carries
+  a *classification* that AST does not — not a copy of AST data.
 - **Lowering Boundary.** Answers may encode "what operation is required" but
   not "which runtime helper to call" / "which builder recipe to invoke".
 - **Composite answers.** A cluster builder is expected to compose facts

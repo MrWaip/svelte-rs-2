@@ -12,9 +12,9 @@ pub mod data;
 pub use builder::build;
 pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
-    EachIndexKind, EachItemKind, EachKeyKind, SnippetBlockSemantics, SnippetDefaultKind,
-    SnippetDestructureKind, SnippetParam, SnippetPatternBinding,
+    BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
+    EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
+    SnippetBlockSemantics, SnippetParam,
 };
 
 use crate::scope::SymbolId;

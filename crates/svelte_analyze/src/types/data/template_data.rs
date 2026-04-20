@@ -62,27 +62,23 @@ impl SnippetData {
     }
 }
 
+/// Fragment-level index of `{@const}` tag ids. Per-tag semantic data
+/// (bindings, destructure shape, async lowering) lives in
+/// `block_semantics::ConstTagBlockSemantics`; this struct only answers
+/// "which tags belong to which fragment" so codegen / reactivity passes
+/// can iterate them in emit order. When the Kill-FragmentItem slice
+/// lands this too will collapse into the fragment plan.
 pub struct ConstTagData {
-    pub(crate) names: NodeTable<Vec<String>>,
-    pub(crate) syms: NodeTable<Vec<SymbolId>>,
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
 impl ConstTagData {
-    pub fn new(node_count: u32) -> Self {
+    pub fn new(_node_count: u32) -> Self {
         Self {
-            names: NodeTable::new(node_count),
-            syms: NodeTable::new(node_count),
             by_fragment: FxHashMap::default(),
         }
     }
 
-    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.names.get(id)
-    }
-    pub fn syms(&self, id: NodeId) -> Option<&Vec<SymbolId>> {
-        self.syms.get(id)
-    }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
         self.by_fragment.get(key)
     }

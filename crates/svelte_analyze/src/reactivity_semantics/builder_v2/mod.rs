@@ -20,8 +20,9 @@ use crate::types::data::{AnalysisData, ParserResult};
 use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
-    AssignmentExpression, BindingPattern, CallExpression, Expression, StaticMemberExpression,
-    UpdateExpression, VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    AssignmentExpression, BindingPattern, CallExpression, Expression, Statement,
+    StaticMemberExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
+    VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_static_member_expression, walk_variable_declaration, walk_variable_declarator,
@@ -67,12 +68,18 @@ pub(crate) fn build_v2<'a>(
 /// where `y = $derived(inert)`) fold correctly.
 fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut AnalysisData<'a>) {
     use super::data::{ConstDeclarationSemantics, DeclarationSemantics};
+    use svelte_component_semantics::walk_bindings;
+    // Snapshot `(scope, tag_id)` pairs up front: the fragment scope for
+    // each tag is carried by `by_fragment` and looked up once, so we
+    // can traverse without re-reading the side-table during the
+    // fix-point work below.
     let tag_ids: Vec<svelte_ast::NodeId> = data
         .template
         .const_tags
         .by_fragment
         .values()
-        .flat_map(|v| v.iter().copied())
+        .flatten()
+        .copied()
         .collect();
     if tag_ids.is_empty() {
         return;
@@ -85,6 +92,21 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
         let Some(stmt) = parsed.stmt(handle) else {
             continue;
         };
+
+        // Resolve the binding leaves locally from the pattern — avoids
+        // depending on `const_tags.syms` (removed in this slice).
+        let Statement::VariableDeclaration(decl) = stmt else {
+            continue;
+        };
+        let Some(declarator) = decl.declarations.first() else {
+            continue;
+        };
+        let mut syms: Vec<SymbolId> = Vec::new();
+        walk_bindings(&declarator.id, |v| syms.push(v.symbol));
+        if syms.is_empty() {
+            continue;
+        }
+
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
         let mut collector = RefCollector {
@@ -123,14 +145,6 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
                 }
             });
 
-        // Update every leaf recorded for this tag.
-        let syms: Vec<SymbolId> = data
-            .template
-            .const_tags
-            .syms
-            .get(tag_id)
-            .cloned()
-            .unwrap_or_default();
         for sym in syms {
             let node_id = data.scoping.symbol_declaration(sym);
             if let Some(V2DeclarationFacts::Const(ConstDeclarationSemantics::ConstTag {

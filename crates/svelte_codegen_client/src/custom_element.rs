@@ -142,12 +142,12 @@ fn build_props_metadata<'a>(ctx: &Ctx<'a>, parsed_opts: Option<&ParsedCeConfig>)
     }
 
     // Second: emit remaining component props not already in CE config
-    if let Some(props_analysis) = ctx.query.props() {
-        for prop in &props_analysis.props {
-            if prop.is_rest || prop.is_reserved {
+    if let Some(props_decl) = ctx.query.props() {
+        for prop in &props_decl.props {
+            if prop.is_rest || prop.is_reserved() {
                 continue;
             }
-            let key = &prop.prop_name;
+            let key: &str = prop.prop_name.as_str();
             // Skip if already covered by CE config
             if ce_prop_names.iter().any(|&n| n == key) {
                 continue;
@@ -167,7 +167,7 @@ fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
     if let Some(props) = ctx.query.props() {
         for prop in &props.props {
             if prop.local_name == name || prop.prop_name == name {
-                return prop.prop_name.clone();
+                return prop.prop_name.to_string();
             }
         }
     }

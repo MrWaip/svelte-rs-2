@@ -6,7 +6,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::FragmentKey;
+use svelte_analyze::{ConstTagBlockSemantics, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 
 use crate::context::Ctx;
@@ -128,17 +128,49 @@ pub(crate) fn gen_svelte_boundary<'a>(
         .const_tags_for_fragment(&FragmentKey::SvelteBoundaryBody(id))
         .cloned()
         .unwrap_or_default();
-    let has_const_tags = !const_tag_ids.is_empty();
+
+    // One query per tag resolves `ConstTagBlockSemantics`; leaves and
+    // destructure flavour are derived from the `decl_node_id` via the
+    // shared pattern walker, not cached on the payload
+    // (SEMANTIC_LAYER_ARCHITECTURE.md: "No binding-pattern repack").
+    let const_tag_sems: Vec<(NodeId, ConstTagBlockSemantics)> = const_tag_ids
+        .iter()
+        .filter_map(|&cid| match ctx.query.analysis.block_semantics(cid) {
+            svelte_analyze::BlockSemantics::ConstTag(s) => Some((cid, s.clone())),
+            _ => None,
+        })
+        .collect();
+    let has_const_tags = !const_tag_sems.is_empty();
+
+    // Collect leaf symbols + resolved names once per tag by walking the
+    // pattern behind `decl_node_id`. The resulting `(symbols, names)`
+    // are reused per snippet-copy below.
+    let const_tag_infos: Vec<(NodeId, Vec<SymbolId>, Vec<String>)> = const_tag_sems
+        .iter()
+        .map(|(cid, sem)| {
+            let mut syms: Vec<SymbolId> = Vec::new();
+            if let Some(oxc_ast::AstKind::VariableDeclaration(decl)) =
+                ctx.query.view.scoping().js_kind(sem.decl_node_id)
+            {
+                if let Some(declarator) = decl.declarations.first() {
+                    svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+                        syms.push(v.symbol)
+                    });
+                }
+            }
+            let names: Vec<String> = syms
+                .iter()
+                .map(|sym| ctx.query.view.symbol_name(*sym).to_string())
+                .collect();
+            (*cid, syms, names)
+        })
+        .collect();
 
     // Resolve const-tag binding SymbolIds for snippet reference checking
     let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
-        const_tag_ids
+        const_tag_infos
             .iter()
-            .flat_map(|cid| {
-                ctx.const_tag_syms(*cid)
-                    .map(|syms| syms.to_vec())
-                    .unwrap_or_default()
-            })
+            .flat_map(|(_, syms, _)| syms.iter().copied())
             .collect()
     } else {
         FxHashSet::default()
@@ -149,21 +181,17 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let snippet_count = hoisted_snippet_ids.len();
     let mut cloned_exprs: Vec<Vec<(NodeId, Vec<String>, Expression<'a>)>> = Vec::new();
     if has_const_tags && snippet_count > 0 {
-        // Collect info and clone expressions for each snippet
-        let mut infos: Vec<(NodeId, Vec<String>)> = Vec::new();
-        for &cid in &const_tag_ids {
-            let names = ctx.const_tag_names(cid).cloned().unwrap_or_default();
-            infos.push((cid, names));
-        }
-
         for _ in 0..snippet_count {
             let mut set: Vec<(NodeId, Vec<String>, Expression<'a>)> = Vec::new();
-            for (cid, names) in &infos {
-                // Clone init expression from the pre-parsed Statement in stmts.
-                // Shallow destructure — known top-level shape, not removing yet.
-                let stmt_handle = ctx.const_tag_stmt_handle(*cid);
+            for (cid, _syms, names) in &const_tag_infos {
+                // StmtHandle lives on the analyze-side side table; look
+                // it up on demand by tag id rather than carrying it on
+                // the payload (Parser-handle ban).
+                let Some(stmt_handle) = ctx.query.view.const_tag_stmt_handle(*cid) else {
+                    continue;
+                };
                 if let Some(Statement::VariableDeclaration(decl)) =
-                    stmt_handle.and_then(|handle| ctx.state.parsed.stmt(handle))
+                    ctx.state.parsed.stmt(stmt_handle)
                 {
                     if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref()) {
                         let cloned = ctx.b.clone_expr(init);

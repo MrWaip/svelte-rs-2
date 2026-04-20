@@ -14,8 +14,32 @@ use oxc_ast::ast::{
 };
 use oxc_span::SPAN;
 use rustc_hash::FxHashSet;
-use svelte_analyze::{FragmentKey, SnippetBlockSemantics, SnippetDefaultKind, SnippetParam};
+use svelte_analyze::{is_simple_expression, FragmentKey, SnippetBlockSemantics, SnippetParam};
 use svelte_ast::NodeId;
+
+/// Codegen-local classification of a destructure leaf's default. Mirrors
+/// what the reference compiler's `build_fallback` branches on: no default
+/// → plain thunk; simple default → inline `$.fallback`; arbitrary default
+/// → lazy-thunk `$.fallback(..., true)`. Computed once when a
+/// `BindingPattern::AssignmentPattern` is entered, via
+/// `is_simple_expression(&assign.right)` — exactly the same check the
+/// old Block Semantics payload pre-computed.
+#[derive(Clone, Copy)]
+enum LeafDefault {
+    None,
+    Constant,
+    Computed,
+}
+
+impl LeafDefault {
+    fn classify(right: &Expression<'_>) -> Self {
+        if is_simple_expression(right) {
+            Self::Constant
+        } else {
+            Self::Computed
+        }
+    }
+}
 
 use crate::context::Ctx;
 use svelte_ast_builder::Arg;
@@ -77,7 +101,6 @@ impl<'a> SnippetPlan<'a> {
     fn build(ctx: &mut Ctx<'a>, block_id: NodeId, sem: &SnippetBlockSemantics) -> Self {
         let name = ctx.query.view.symbol_name(sem.name).to_string();
 
-        #[allow(deprecated)]
         let parsed_stmt = ctx
             .query
             .view
@@ -154,16 +177,12 @@ fn build_formal_params<'a>(
                 let name = ctx.query.view.symbol_name(*sym).to_string();
                 params.push(formal_param_ident_with_noop(ctx, &name));
             }
-            SnippetParam::Pattern {
-                kind: _,
-                pattern_id: _,
-                bindings,
-            } => {
+            SnippetParam::Pattern { pattern_id: _ } => {
                 let arg_name = format!("$$arg{i}");
                 params.push(formal_param_ident(
                     ctx, &arg_name, /*with_noop_default*/ false,
                 ));
-                emit_destructure_bindings(ctx, &item.pattern, &arg_name, bindings, decls);
+                emit_destructure_bindings(ctx, &item.pattern, &arg_name, decls);
             }
         }
     }
@@ -177,18 +196,15 @@ fn build_formal_params<'a>(
 }
 
 /// Emit the destructure-leaf declarations for a single `$$argN`-routed
-/// parameter. Default classification is driven by `payload_bindings`
-/// (pre-computed `SnippetDefaultKind::{None, Constant, Computed}` from
-/// Block Semantics) — the helpers below never re-inspect the default
-/// expression. `payload_bindings` carries one entry per leaf identifier
-/// in the same in-order traversal as the shared
-/// `collect_binding_pattern` walker, so a simple cursor matches AST
-/// leaves to payload bindings.
+/// parameter. The structural recursion follows the OXC `BindingPattern`
+/// subtree; default classification is inlined at each
+/// `AssignmentPattern` via `is_simple_expression` (see [`LeafDefault`])
+/// — there is no separate Block Semantics cursor payload to match
+/// against the AST.
 fn emit_destructure_bindings<'a>(
     ctx: &mut Ctx<'a>,
     pattern: &BindingPattern<'a>,
     arg_name: &str,
-    payload_bindings: &[svelte_analyze::SnippetPatternBinding],
     decls: &mut Vec<Statement<'a>>,
 ) {
     let access = ctx
@@ -196,13 +212,11 @@ fn emit_destructure_bindings<'a>(
         .maybe_call_expr(ctx.b.rid_expr(arg_name), std::iter::empty::<Arg<'_, '_>>());
     let mut inserts = Vec::new();
     let mut paths = Vec::new();
-    let mut cursor = payload_bindings.iter();
     collect_binding_pattern(
         ctx,
         pattern,
         access,
-        SnippetDefaultKind::None,
-        &mut cursor,
+        LeafDefault::None,
         &mut inserts,
         &mut paths,
     );
@@ -319,85 +333,39 @@ struct SnippetInsert<'a> {
 struct SnippetPath<'a> {
     name: String,
     expression: Expression<'a>,
-    /// Pre-classified by Block Semantics — `None` / `Constant` / `Computed`.
-    /// The consumer never re-inspects the default expression; `Computed`
-    /// triggers the thunk-wrapped `$.fallback` form, `Constant` the
-    /// inline form, `None` skips `$.fallback` entirely.
-    default: SnippetDefaultKind,
+    /// Set when the leaf's `BindingPattern` was wrapped by an
+    /// `AssignmentPattern`. `Constant` → inline `$.fallback` form;
+    /// `Computed` → thunk-wrapped `$.fallback(..., true)`; `None` →
+    /// skip `$.fallback` entirely.
+    default: LeafDefault,
 }
 
-fn collect_binding_pattern<'p, 'a>(
+fn collect_binding_pattern<'a>(
     ctx: &mut Ctx<'a>,
     pattern: &BindingPattern<'a>,
     expression: Expression<'a>,
-    inherited_default: SnippetDefaultKind,
-    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
+    inherited_default: LeafDefault,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
     match pattern {
         BindingPattern::BindingIdentifier(id) => {
-            // Pull the next payload binding — matched in lockstep with
-            // the AST traversal. The payload walker in
-            // `block_semantics::builder::snippet::walk_pattern` visits
-            // leaves in the same order, so matching by position is
-            // exact; we assert on `SymbolId` as a guardrail.
-            let payload = bindings
-                .next()
-                .expect("payload bindings exhausted before AST traversal completed");
-            let ast_sym = id.symbol_id.get();
-            debug_assert!(
-                ast_sym.is_none_or(|s| s == payload.sym),
-                "snippet pattern binding payload/AST mismatch",
-            );
             paths.push(SnippetPath {
                 name: id.name.as_str().to_string(),
                 expression,
-                default: payload.default,
+                default: inherited_default,
             });
         }
         BindingPattern::ObjectPattern(obj) => {
-            collect_object_pattern(
-                ctx,
-                obj,
-                expression,
-                inherited_default,
-                bindings,
-                inserts,
-                paths,
-            );
+            collect_object_pattern(ctx, obj, expression, inherited_default, inserts, paths);
         }
         BindingPattern::ArrayPattern(arr) => {
-            collect_array_pattern(
-                ctx,
-                arr,
-                expression,
-                inherited_default,
-                bindings,
-                inserts,
-                paths,
-            );
+            collect_array_pattern(ctx, arr, expression, inherited_default, inserts, paths);
         }
         BindingPattern::AssignmentPattern(assign) => {
-            // Peek: payload already knows the default classification of
-            // the upcoming leaf. Reading `bindings.clone().next()` does
-            // not advance the cursor — the actual consume happens when
-            // the recursion reaches the `BindingIdentifier` leaf.
-            let leaf_default = bindings
-                .clone()
-                .next()
-                .map(|b| b.default)
-                .unwrap_or(SnippetDefaultKind::None);
+            let leaf_default = LeafDefault::classify(&assign.right);
             let fallback = build_fallback_expr(ctx, &expression, assign, leaf_default);
-            collect_binding_pattern(
-                ctx,
-                &assign.left,
-                fallback,
-                leaf_default,
-                bindings,
-                inserts,
-                paths,
-            );
+            collect_binding_pattern(ctx, &assign.left, fallback, leaf_default, inserts, paths);
         }
     }
 }
@@ -406,10 +374,10 @@ fn emit_leaf_binding<'a>(
     ctx: &mut Ctx<'a>,
     name: &str,
     access: Expression<'a>,
-    default: SnippetDefaultKind,
+    default: LeafDefault,
     decls: &mut Vec<Statement<'a>>,
 ) {
-    let init = if matches!(default, SnippetDefaultKind::None) {
+    let init = if matches!(default, LeafDefault::None) {
         ctx.b.thunk(access)
     } else {
         // Both Constant and Computed defaults trigger the
@@ -422,12 +390,11 @@ fn emit_leaf_binding<'a>(
     decls.push(ctx.b.let_init_stmt(name, init));
 }
 
-fn collect_object_pattern<'p, 'a>(
+fn collect_object_pattern<'a>(
     ctx: &mut Ctx<'a>,
     obj: &oxc_ast::ast::ObjectPattern<'a>,
     expression: Expression<'a>,
-    inherited_default: SnippetDefaultKind,
-    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
+    inherited_default: LeafDefault,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
@@ -438,7 +405,6 @@ fn collect_object_pattern<'p, 'a>(
             &prop.value,
             property_access,
             inherited_default,
-            bindings,
             inserts,
             paths,
         );
@@ -451,19 +417,17 @@ fn collect_object_pattern<'p, 'a>(
             &rest.argument,
             rest_expr,
             inherited_default,
-            bindings,
             inserts,
             paths,
         );
     }
 }
 
-fn collect_array_pattern<'p, 'a>(
+fn collect_array_pattern<'a>(
     ctx: &mut Ctx<'a>,
     arr: &oxc_ast::ast::ArrayPattern<'a>,
     expression: Expression<'a>,
-    inherited_default: SnippetDefaultKind,
-    bindings: &mut std::slice::Iter<'p, svelte_analyze::SnippetPatternBinding>,
+    inherited_default: LeafDefault,
     inserts: &mut Vec<SnippetInsert<'a>>,
     paths: &mut Vec<SnippetPath<'a>>,
 ) {
@@ -493,7 +457,6 @@ fn collect_array_pattern<'p, 'a>(
             pattern,
             element_access,
             inherited_default,
-            bindings,
             inserts,
             paths,
         );
@@ -509,7 +472,6 @@ fn collect_array_pattern<'p, 'a>(
             &rest.argument,
             rest_access,
             inherited_default,
-            bindings,
             inserts,
             paths,
         );
@@ -517,25 +479,25 @@ fn collect_array_pattern<'p, 'a>(
 }
 
 /// Build `$.fallback(access, <default>)` — form chosen from the
-/// pre-classified [`SnippetDefaultKind`] carried on the payload's leaf.
-/// `Constant` inlines the default; `Computed` wraps it in a thunk plus
-/// the `true` eager flag (matches reference compiler
-/// `build_fallback` in `reference/compiler/utils/ast.js`). `None` is
-/// unreachable — the AssignmentPattern branch only enters this helper
-/// when a default is present.
+/// [`LeafDefault`] classified by the caller. `Constant` inlines the
+/// default; `Computed` wraps it in a thunk plus the `true` eager flag
+/// (matches reference compiler `build_fallback` in
+/// `reference/compiler/utils/ast.js`). `None` is unreachable — the
+/// AssignmentPattern branch only enters this helper when a default is
+/// present.
 fn build_fallback_expr<'a>(
     ctx: &Ctx<'a>,
     access: &oxc_ast::ast::Expression<'a>,
     assign: &AssignmentPattern<'a>,
-    default: SnippetDefaultKind,
+    default: LeafDefault,
 ) -> oxc_ast::ast::Expression<'a> {
     let default_val = assign.right.clone_in(ctx.b.ast.allocator);
     match default {
-        SnippetDefaultKind::Constant => ctx.b.call_expr(
+        LeafDefault::Constant => ctx.b.call_expr(
             "$.fallback",
             [Arg::Expr(ctx.b.clone_expr(access)), Arg::Expr(default_val)],
         ),
-        SnippetDefaultKind::Computed => ctx.b.call_expr(
+        LeafDefault::Computed => ctx.b.call_expr(
             "$.fallback",
             [
                 Arg::Expr(ctx.b.clone_expr(access)),
@@ -543,8 +505,8 @@ fn build_fallback_expr<'a>(
                 Arg::Bool(true),
             ],
         ),
-        SnippetDefaultKind::None => {
-            unreachable!("build_fallback_expr called without a default in the payload")
+        LeafDefault::None => {
+            unreachable!("build_fallback_expr called without a default")
         }
     }
 }

@@ -1,10 +1,10 @@
 use super::*;
+use crate::types::script::PropsDeclaration;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 use svelte_component_semantics::SymbolFlags;
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
-    pub props: Option<PropsAnalysis>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
     pub instance_node_id_offset: u32,
@@ -27,7 +27,6 @@ impl ScriptAnalysis {
     fn new() -> Self {
         Self {
             info: None,
-            props: None,
             props_id: None,
             exports: Vec::new(),
             instance_node_id_offset: 0,
@@ -45,6 +44,13 @@ impl ScriptAnalysis {
             blocker_data: BlockerData::default(),
             script_rune_calls: ScriptRuneCalls::new(),
         }
+    }
+
+    /// Pre-semantic `$props()` declaration shape, or `None` when the
+    /// component has no `$props()` call. Consumers read props metadata
+    /// straight from this — no post-semantic copy.
+    pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
+        self.info.as_ref()?.props_declaration.as_ref()
     }
 }
 
@@ -631,10 +637,12 @@ impl<'a> AnalysisData<'a> {
             .get(id)
             .copied()
     }
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); snippet-param data lives in \
-        block_semantics::SnippetBlockSemantics"
-    )]
+    /// Handle to the pre-parsed `const <name> = (...) => {...}` statement
+    /// backing a `{#snippet}` block. Consumers that need to walk the arrow
+    /// (parameter defaults, body) ask for this handle and resolve it via
+    /// `ParserResult::stmt`. Semantic classification lives in
+    /// `block_semantics::SnippetBlockSemantics`; this accessor only
+    /// exposes the raw AST hook for emission-time AST cloning.
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
         self.template
             .template_semantics
@@ -696,12 +704,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.blocks.render_tag_plans.get(id)
-    }
-    pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.template
-            .const_tags
-            .syms(id)
-            .map(|syms| syms.as_slice())
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {

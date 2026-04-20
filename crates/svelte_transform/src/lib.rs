@@ -189,7 +189,6 @@ fn walk_node<'a>(
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.snippet_body_scope(block.id, scope);
-            #[allow(deprecated)]
             let handle = ctx.analysis.snippet_stmt_handle(block.id);
             if let Some(handle) = handle {
                 ctx.stmt_handles.push((handle, Some(block.id)));
@@ -207,16 +206,17 @@ fn walk_node<'a>(
                 ctx.stmt_handles.push((handle, Some(tag.id)));
             }
 
-            let names = ctx
-                .analysis
-                .template
-                .const_tags
-                .names(tag.id)
-                .cloned()
-                .unwrap_or_default();
-            if names.len() > 1 {
-                let tmp = ctx.ident_gen.gen("computed_const");
-                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
+            // Destructured const-tags need a tmp binding for the derived
+            // (`computed_const_N`). Resolve the pattern on demand from
+            // the payload's `decl_node_id` — block_semantics does not
+            // cache per-leaf data.
+            if let svelte_analyze::BlockSemantics::ConstTag(sem) =
+                ctx.analysis.block_semantics(tag.id)
+            {
+                if is_destructured_const_tag(ctx.analysis, sem.decl_node_id) {
+                    let tmp = ctx.ident_gen.gen("computed_const");
+                    ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
+                }
             }
         }
         Node::KeyBlock(block) => {
@@ -460,6 +460,23 @@ fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str>
         Node::ComponentNode(node) => attrs_static_slot_name(&node.attributes, source),
         _ => None,
     }
+}
+
+/// `true` if the `{@const}` backed by `decl_node_id` uses a destructure
+/// pattern — resolved on demand from the OXC AST so block_semantics
+/// does not have to cache per-tag binding lists.
+fn is_destructured_const_tag(
+    analysis: &svelte_analyze::AnalysisData<'_>,
+    decl_node_id: svelte_component_semantics::OxcNodeId,
+) -> bool {
+    use oxc_ast::{ast::BindingPattern, AstKind};
+    let Some(AstKind::VariableDeclaration(decl)) = analysis.scoping.js_kind(decl_node_id) else {
+        return false;
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return false;
+    };
+    !matches!(declarator.id, BindingPattern::BindingIdentifier(_))
 }
 
 #[cfg(test)]

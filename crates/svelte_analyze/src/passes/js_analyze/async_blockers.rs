@@ -120,16 +120,18 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
                     continue;
                 }
 
-                let names = collect_binding_names(&declarator.id);
-                for name in &names {
-                    if let Some(sym) = data.scoping.find_binding(root, name) {
-                        data.script
-                            .blocker_data
-                            .symbol_blockers
-                            .insert(sym, async_index);
-                    }
+                let mut syms: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+                svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+                    syms.push(v.symbol);
+                });
+                for sym in syms {
+                    data.script
+                        .blocker_data
+                        .symbol_blockers
+                        .insert(sym, async_index);
+                    hoist_names.push(data.scoping.symbol_name(sym).to_string());
                 }
-                hoist_names.extend(names);
+                let _ = root;
                 async_index += 1;
             }
         } else {
@@ -158,35 +160,4 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
 
     data.script.blocker_data.async_thunk_count = async_index;
     data.script.blocker_data.has_async = async_index > 0;
-}
-
-fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Vec<String> {
-    use oxc_ast::ast::BindingPattern;
-
-    let mut names = Vec::new();
-    match pattern {
-        BindingPattern::BindingIdentifier(id) => {
-            names.push(id.name.to_string());
-        }
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                names.extend(collect_binding_names(&prop.value));
-            }
-            if let Some(ref rest) = obj.rest {
-                names.extend(collect_binding_names(&rest.argument));
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for elem in arr.elements.iter().flatten() {
-                names.extend(collect_binding_names(elem));
-            }
-            if let Some(ref rest) = arr.rest {
-                names.extend(collect_binding_names(&rest.argument));
-            }
-        }
-        BindingPattern::AssignmentPattern(assign) => {
-            names.extend(collect_binding_names(&assign.left));
-        }
-    }
-    names
 }

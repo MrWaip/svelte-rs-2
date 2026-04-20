@@ -24,7 +24,6 @@ mod fragment_facts;
 mod fragments;
 mod ignore;
 mod pickled_await_offsets;
-mod props;
 mod proxy_state_inits;
 mod render;
 mod rich_content_facts;
@@ -65,7 +64,6 @@ pub use fragments::{
 };
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
-pub use props::{PropAnalysis, PropsAnalysis};
 pub use proxy_state_inits::ProxyStateInits;
 pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};

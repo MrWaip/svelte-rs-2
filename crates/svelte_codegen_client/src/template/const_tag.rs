@@ -1,190 +1,354 @@
-use oxc_ast::ast::{Expression, Statement};
+//! `{@const}` codegen — fragment-level pre-pass before DOM init.
+//!
+//! Consumer form: Plan → builders → emit. One `block_semantics(id)`
+//! query per tag resolves every declaration-shape decision; emit-time
+//! AST clone from `sem.stmt_handle` is the only remaining AST read.
 
-use svelte_analyze::FragmentKey;
+// File was originally prefixed with `#![allow(deprecated)]` while the
+// migration was in flight. After this slice's consumer migration landed
+// the const-tag path reads exclusively through block_semantics — no
+// deprecated accessors remain in this module.
+use oxc_ast::{
+    ast::{BindingPattern, Expression, Statement},
+    AstKind,
+};
+use oxc_semantic::SymbolId;
+use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, FragmentKey};
+use svelte_ast::NodeId;
+use svelte_component_semantics::{walk_bindings, OxcNodeId};
 
 use crate::context::Ctx;
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
-/// Emit `const name = $.derived(() => init_expr)` for each ConstTag in a fragment.
+/// Emit ConstTag declarations for one fragment.
 ///
-/// Called before DOM init code in every fragment codegen path.
-/// Returns an optional `var promises = $.run([...])` statement when async mode
-/// is triggered (any const tag has upstream blockers or contains `await`).
+/// Returns `Some(var promises = $.run([...]))` when the fragment enters
+/// async mode — any tag in this fragment carries a `ConstTagAsyncKind::Async`
+/// under `experimental_async`. The caller splices the returned statement
+/// after the emitted declarations.
 pub(crate) fn gen_const_tags<'a>(
     ctx: &mut Ctx<'a>,
     key: FragmentKey,
     stmts: &mut Vec<Statement<'a>>,
 ) -> Option<Statement<'a>> {
     let ids = ctx.const_tags_for_fragment(&key).cloned()?;
-
-    // Check if any const tag triggers async mode
-    let needs_async = ctx.state.experimental_async
-        && ids
-            .iter()
-            .any(|&id| ctx.expr_has_await(id) || !ctx.query.expression_blockers(id).is_empty());
-
-    if needs_async {
-        gen_const_tags_async(ctx, key, &ids, stmts)
-    } else {
-        emit_const_tags_sync(ctx, &ids, stmts);
-        None
+    let plan = ConstTagsPlan::build(ctx, &ids);
+    if plan.items.is_empty() {
+        return None;
+    }
+    match plan.mode {
+        ConstTagsMode::Sync => {
+            emit_sync(ctx, &plan, stmts);
+            None
+        }
+        ConstTagsMode::Async => emit_async(ctx, &plan, stmts),
     }
 }
 
-/// Sync path: `const name = $.derived(() => init)` for each const tag.
-fn emit_const_tags_sync<'a>(
-    ctx: &mut Ctx<'a>,
-    ids: &[svelte_ast::NodeId],
-    stmts: &mut Vec<Statement<'a>>,
-) {
-    for &id in ids {
-        let names = ctx.const_tag_names(id).cloned().unwrap_or_default();
-        let init_expr = extract_const_init(ctx, id);
+// -- Plan ---------------------------------------------------------------
 
-        if names.len() == 1 {
-            let thunk = ctx.b.thunk(init_expr);
-            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+struct ConstTagsPlan {
+    items: Vec<ConstTagItem>,
+    mode: ConstTagsMode,
+}
 
-            let final_expr = if ctx.state.dev {
-                let name_str = ctx.b.alloc_str(&names[0]);
-                ctx.b
-                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
-            } else {
-                derived
+enum ConstTagsMode {
+    Sync,
+    Async,
+}
+
+/// Per-tag snapshot the emit path consumes.
+///
+/// `bindings` / `is_destructured` are derived up front by walking the
+/// tag's `BindingPattern` via the shared `walk_bindings` helper — the
+/// block_semantics payload intentionally does not cache them
+/// (SEMANTIC_LAYER_ARCHITECTURE.md: "No binding-pattern repack").
+struct ConstTagItem {
+    id: NodeId,
+    bindings: Vec<SymbolId>,
+    is_destructured: bool,
+    async_kind: ConstTagAsyncKind,
+}
+
+impl ConstTagsPlan {
+    fn build(ctx: &Ctx<'_>, ids: &[NodeId]) -> Self {
+        let mut items: Vec<ConstTagItem> = Vec::with_capacity(ids.len());
+        for &id in ids {
+            let sem: ConstTagBlockSemantics = match ctx.query.analysis.block_semantics(id) {
+                BlockSemantics::ConstTag(s) => s.clone(),
+                _ => continue,
             };
+            let (bindings, is_destructured) = pattern_facts(ctx, sem.decl_node_id);
+            items.push(ConstTagItem {
+                id,
+                bindings,
+                is_destructured,
+                async_kind: sem.async_kind.clone(),
+            });
+        }
+        let mode = if ctx.state.experimental_async
+            && items
+                .iter()
+                .any(|it| matches!(it.async_kind, ConstTagAsyncKind::Async { .. }))
+        {
+            ConstTagsMode::Async
+        } else {
+            ConstTagsMode::Sync
+        };
+        Self { items, mode }
+    }
+}
 
-            stmts.push(ctx.b.const_stmt(&names[0], final_expr));
+/// Resolve the declaration the payload points at, then flatten the
+/// binding pattern via the shared walker. Consumers never cache
+/// per-leaf symbol lists on semantic payloads — the AST is the single
+/// source (see SEMANTIC_LAYER_ARCHITECTURE.md "No binding-pattern repack").
+fn pattern_facts(ctx: &Ctx<'_>, decl_node_id: OxcNodeId) -> (Vec<SymbolId>, bool) {
+    let Some(AstKind::VariableDeclaration(decl)) = ctx.query.view.scoping().js_kind(decl_node_id)
+    else {
+        return (Vec::new(), false);
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return (Vec::new(), false);
+    };
+    let is_destructured = !matches!(declarator.id, BindingPattern::BindingIdentifier(_));
+    let mut bindings: Vec<SymbolId> = Vec::new();
+    walk_bindings(&declarator.id, |v| bindings.push(v.symbol));
+    (bindings, is_destructured)
+}
 
-            if ctx.state.dev {
-                let name_str = ctx.b.alloc_str(&names[0]);
-                stmts.push(ctx.b.call_stmt("$.get", [Arg::Ident(name_str)]));
-            }
-        } else if names.len() > 1 {
-            emit_destructured_const_sync(ctx, id, &names, init_expr, stmts);
+// -- Sync emission ------------------------------------------------------
+
+fn emit_sync<'a>(ctx: &mut Ctx<'a>, plan: &ConstTagsPlan, stmts: &mut Vec<Statement<'a>>) {
+    for item in &plan.items {
+        let init_expr = take_init(ctx, item.id);
+        if item.is_destructured {
+            build_sync_destructured(ctx, item, init_expr, stmts);
+        } else {
+            build_sync_simple(ctx, item, init_expr, stmts);
         }
     }
 }
 
-/// Async path: `let name;` + `var promises = $.run([blocker_thunks..., main_thunks...])`.
-/// Once any const tag in a fragment triggers async, ALL const tags in that fragment
-/// go through the async path (matching reference compiler behavior).
-fn gen_const_tags_async<'a>(
+fn build_sync_simple<'a>(
     ctx: &mut Ctx<'a>,
-    _key: FragmentKey,
-    ids: &[svelte_ast::NodeId],
+    item: &ConstTagItem,
+    init_expr: Expression<'a>,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let name = binding_name(ctx, item.bindings[0]);
+    let thunk = ctx.b.thunk(init_expr);
+    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+
+    let final_expr = if ctx.state.dev {
+        let name_str = ctx.b.alloc_str(&name);
+        ctx.b
+            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
+    } else {
+        derived
+    };
+
+    stmts.push(ctx.b.const_stmt(&name, final_expr));
+
+    if ctx.state.dev {
+        let name_str = ctx.b.alloc_str(&name);
+        stmts.push(ctx.b.call_stmt("$.get", [Arg::Ident(name_str)]));
+    }
+}
+
+fn build_sync_destructured<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &ConstTagItem,
+    init_expr: Expression<'a>,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let tmp_name = tmp_name(ctx, item.id);
+    let names = binding_names(ctx, &item.bindings);
+    let tmp_ref: &str = ctx.b.alloc_str(&tmp_name);
+
+    let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
+    let props: Vec<ObjProp<'a>> = names
+        .iter()
+        .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
+        .collect();
+    let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
+    let thunk = ctx
+        .b
+        .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+
+    let final_expr = if ctx.state.dev {
+        ctx.b
+            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
+    } else {
+        derived
+    };
+
+    stmts.push(ctx.b.const_stmt(tmp_ref, final_expr));
+}
+
+// -- Async emission -----------------------------------------------------
+
+fn emit_async<'a>(
+    ctx: &mut Ctx<'a>,
+    plan: &ConstTagsPlan,
     stmts: &mut Vec<Statement<'a>>,
 ) -> Option<Statement<'a>> {
     let promises_name = ctx.gen_ident("promises");
     let mut thunks: Vec<Expression<'a>> = Vec::new();
 
-    for &id in ids {
-        let names = ctx.const_tag_names(id).cloned().unwrap_or_default();
-        let syms = ctx
-            .const_tag_syms(id)
-            .map(|syms| syms.to_vec())
-            .unwrap_or_default();
-        let has_await = ctx.expr_has_await(id);
-        let blockers = ctx.query.expression_blockers(id);
-        let init_expr = extract_const_init(ctx, id);
+    for item in &plan.items {
+        let (has_await, blockers_slice) = match &item.async_kind {
+            ConstTagAsyncKind::Async {
+                has_await,
+                blockers,
+            } => (*has_await, blockers.as_slice()),
+            // Sync-items inside an async fragment still go through the
+            // `$.run([...])` pack — mirror the legacy behaviour where
+            // async mode pulls every tag into the same pipeline.
+            ConstTagAsyncKind::Sync => (false, &[][..]),
+        };
 
-        if names.len() == 1 {
-            stmts.push(ctx.b.let_stmt(&names[0]));
-            emit_blocker_thunks(ctx, &blockers, &mut thunks);
+        let init_expr = take_init(ctx, item.id);
 
-            let derived = create_derived(ctx, init_expr, has_await);
-            let final_derived = if ctx.state.dev {
-                let name_str = ctx.b.alloc_str(&names[0]);
-                ctx.b
-                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
-            } else {
-                derived
-            };
-
-            let lhs = AssignLeft::Ident(names[0].clone());
-            let assignment = ctx.b.assign_expr(lhs, final_derived);
-
-            let body = if ctx.state.dev {
-                let name_str = ctx.b.alloc_str(&names[0]);
-                let get_call = ctx.b.call_stmt("$.get", [Arg::Ident(name_str)]);
-                let assign_stmt = ctx.b.expr_stmt(assignment);
-                let stmts = vec![assign_stmt, get_call];
-                if has_await {
-                    ctx.b.async_thunk_block(stmts)
-                } else {
-                    ctx.b.thunk_block(stmts)
-                }
-            } else if has_await {
-                ctx.b.async_thunk(assignment)
-            } else {
-                ctx.b.thunk(assignment)
-            };
-            thunks.push(body);
-
-            let thunk_idx = thunks.len() - 1;
-            if let Some(&sym_id) = syms.first() {
-                ctx.const_tag_blockers
-                    .insert(sym_id, (promises_name.clone(), thunk_idx));
-            }
-        } else if names.len() > 1 {
-            let tmp_name = ctx
-                .transform_data
-                .const_tag_tmp_names
-                .get(&id)
-                .expect("destructured const tag must have tmp_name from transform")
-                .clone();
-
-            stmts.push(ctx.b.let_stmt(&tmp_name));
-            emit_blocker_thunks(ctx, &blockers, &mut thunks);
-            let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
-            let props: Vec<ObjProp<'a>> = names
-                .iter()
-                .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
-                .collect();
-            let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
-            let block_arrow = ctx
-                .b
-                .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
-            let derived = create_derived(ctx, block_arrow, has_await);
-
-            let final_derived = if ctx.state.dev {
-                ctx.b
-                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
-            } else {
-                derived
-            };
-
-            let lhs = AssignLeft::Ident(tmp_name.clone());
-            let assignment = ctx.b.assign_expr(lhs, final_derived);
-
-            let body = if has_await {
-                ctx.b.async_thunk(assignment)
-            } else {
-                ctx.b.thunk(assignment)
-            };
-            thunks.push(body);
-
-            let thunk_idx = thunks.len() - 1;
-            for sym_id in syms {
-                ctx.const_tag_blockers
-                    .insert(sym_id, (promises_name.clone(), thunk_idx));
-            }
+        if item.is_destructured {
+            build_async_destructured(
+                ctx,
+                item,
+                init_expr,
+                has_await,
+                blockers_slice,
+                &promises_name,
+                &mut thunks,
+                stmts,
+            );
+        } else {
+            build_async_simple(
+                ctx,
+                item,
+                init_expr,
+                has_await,
+                blockers_slice,
+                &promises_name,
+                &mut thunks,
+                stmts,
+            );
         }
     }
 
     if thunks.is_empty() {
         return None;
     }
-
-    // var promises = $.run([...thunks])
     let thunks_array = ctx.b.array_expr(thunks);
     let run_call = ctx.b.call_expr("$.run", [Arg::Expr(thunks_array)]);
     Some(ctx.b.var_stmt(&promises_name, run_call))
 }
 
-/// Emit blocker thunks for upstream script-level dependencies.
-/// For 1 blocker: `() => $$promises[N].promise`
-/// For N blockers: `() => $.wait([$$promises[N], ...])`
-fn emit_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
+#[allow(clippy::too_many_arguments)]
+fn build_async_simple<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &ConstTagItem,
+    init_expr: Expression<'a>,
+    has_await: bool,
+    blockers: &[u32],
+    promises_name: &str,
+    thunks: &mut Vec<Expression<'a>>,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let name = binding_name(ctx, item.bindings[0]);
+    stmts.push(ctx.b.let_stmt(&name));
+    build_blocker_thunks(ctx, blockers, thunks);
+
+    let derived = create_derived(ctx, init_expr, has_await);
+    let final_derived = if ctx.state.dev {
+        let name_str = ctx.b.alloc_str(&name);
+        ctx.b
+            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
+    } else {
+        derived
+    };
+
+    let lhs = AssignLeft::Ident(name.clone());
+    let assignment = ctx.b.assign_expr(lhs, final_derived);
+    let body = if ctx.state.dev {
+        let name_str = ctx.b.alloc_str(&name);
+        let get_call = ctx.b.call_stmt("$.get", [Arg::Ident(name_str)]);
+        let assign_stmt = ctx.b.expr_stmt(assignment);
+        let body_stmts = vec![assign_stmt, get_call];
+        if has_await {
+            ctx.b.async_thunk_block(body_stmts)
+        } else {
+            ctx.b.thunk_block(body_stmts)
+        }
+    } else if has_await {
+        ctx.b.async_thunk(assignment)
+    } else {
+        ctx.b.thunk(assignment)
+    };
+    thunks.push(body);
+
+    let thunk_idx = thunks.len() - 1;
+    if let Some(&sym_id) = item.bindings.first() {
+        ctx.const_tag_blockers
+            .insert(sym_id, (promises_name.to_string(), thunk_idx));
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_async_destructured<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &ConstTagItem,
+    init_expr: Expression<'a>,
+    has_await: bool,
+    blockers: &[u32],
+    promises_name: &str,
+    thunks: &mut Vec<Expression<'a>>,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let tmp_name = tmp_name(ctx, item.id);
+    let names = binding_names(ctx, &item.bindings);
+
+    stmts.push(ctx.b.let_stmt(&tmp_name));
+    build_blocker_thunks(ctx, blockers, thunks);
+
+    let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
+    let props: Vec<ObjProp<'a>> = names
+        .iter()
+        .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
+        .collect();
+    let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
+    let block_arrow = ctx
+        .b
+        .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+    let derived = create_derived(ctx, block_arrow, has_await);
+
+    let final_derived = if ctx.state.dev {
+        ctx.b
+            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
+    } else {
+        derived
+    };
+
+    let lhs = AssignLeft::Ident(tmp_name.clone());
+    let assignment = ctx.b.assign_expr(lhs, final_derived);
+    let body = if has_await {
+        ctx.b.async_thunk(assignment)
+    } else {
+        ctx.b.thunk(assignment)
+    };
+    thunks.push(body);
+
+    let thunk_idx = thunks.len() - 1;
+    for &sym_id in &item.bindings {
+        ctx.const_tag_blockers
+            .insert(sym_id, (promises_name.to_string(), thunk_idx));
+    }
+}
+
+// -- Shared helpers -----------------------------------------------------
+
+/// `() => $$promises[N].promise` / `() => $.wait([$$promises[i], ...])`.
+fn build_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
     if blockers.is_empty() {
         return;
     }
@@ -209,43 +373,6 @@ fn emit_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec
     }
 }
 
-/// Destructured const tag sync path helper.
-fn emit_destructured_const_sync<'a>(
-    ctx: &mut Ctx<'a>,
-    id: svelte_ast::NodeId,
-    names: &[String],
-    init_expr: Expression<'a>,
-    stmts: &mut Vec<Statement<'a>>,
-) {
-    let tmp_name = ctx
-        .transform_data
-        .const_tag_tmp_names
-        .get(&id)
-        .expect("destructured const tag must have tmp_name from transform");
-    let tmp_name: &str = ctx.b.alloc_str(tmp_name);
-
-    let destruct_stmt = ctx.b.const_object_destruct_stmt(names, init_expr);
-    let props: Vec<ObjProp<'a>> = names
-        .iter()
-        .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
-        .collect();
-    let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
-    let thunk = ctx
-        .b
-        .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
-    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-
-    let final_expr = if ctx.state.dev {
-        ctx.b
-            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
-    } else {
-        derived
-    };
-
-    stmts.push(ctx.b.const_stmt(tmp_name, final_expr));
-}
-
-/// `$.derived(() => init)` or `$.async_derived(async () => init)` depending on has_await.
 fn create_derived<'a>(ctx: &mut Ctx<'a>, init: Expression<'a>, has_await: bool) -> Expression<'a> {
     if has_await {
         let thunk = ctx.b.async_thunk(init);
@@ -256,16 +383,25 @@ fn create_derived<'a>(ctx: &mut Ctx<'a>, init: Expression<'a>, has_await: bool) 
     }
 }
 
-/// Extract the init expression from a pre-parsed const tag Statement.
-fn extract_const_init<'a>(ctx: &mut Ctx<'a>, id: svelte_ast::NodeId) -> Expression<'a> {
+/// Take the init expression out of the pre-parsed statement.
+///
+/// The `StmtHandle` lives on the analyze-side `snippet_stmt_handles` /
+/// `const_tag_stmt_handles` tables and is looked up by tag `NodeId`
+/// here rather than stored on the block_semantics payload (handles do
+/// not cross into cluster answers — see SEMANTIC_LAYER_ARCHITECTURE.md
+/// "Parser-handle ban"). After `take_stmt` the handle is consumed —
+/// only the emit path is allowed to call this.
+fn take_init<'a>(ctx: &mut Ctx<'a>, id: NodeId) -> Expression<'a> {
+    let handle = ctx
+        .query
+        .view
+        .const_tag_stmt_handle(id)
+        .unwrap_or_else(|| panic!("const tag stmt handle missing for {id:?}"));
     let stmt = ctx
         .state
         .parsed
-        .take_stmt(
-            ctx.const_tag_stmt_handle(id)
-                .unwrap_or_else(|| panic!("const tag stmt handle missing for {:?}", id)),
-        )
-        .expect("const tag stmt missing from parsed.stmts");
+        .take_stmt(handle)
+        .unwrap_or_else(|| panic!("const tag stmt missing for {id:?}"));
     let Statement::VariableDeclaration(mut decl) = stmt else {
         unreachable!("const tag stmt must be VariableDeclaration")
     };
@@ -273,5 +409,25 @@ fn extract_const_init<'a>(ctx: &mut Ctx<'a>, id: svelte_ast::NodeId) -> Expressi
         .remove(0)
         .init
         .take()
-        .expect("const tag declarator must have init expression")
+        .expect("const tag declarator must have init")
+}
+
+/// Pull-or-allocate the tmp name for a destructured const tag. The name
+/// is written by `svelte_transform` before codegen starts; reading it
+/// here (rather than calling `gen_ident`) keeps counter ordering
+/// deterministic with transform-time references.
+fn tmp_name(ctx: &Ctx<'_>, id: NodeId) -> String {
+    ctx.transform_data
+        .const_tag_tmp_names
+        .get(&id)
+        .cloned()
+        .unwrap_or_else(|| panic!("destructured const tag missing tmp_name for {id:?}"))
+}
+
+fn binding_name(ctx: &Ctx<'_>, sym: SymbolId) -> String {
+    ctx.query.view.symbol_name(sym).to_string()
+}
+
+fn binding_names(ctx: &Ctx<'_>, syms: &[SymbolId]) -> Vec<String> {
+    syms.iter().map(|&s| binding_name(ctx, s)).collect()
 }

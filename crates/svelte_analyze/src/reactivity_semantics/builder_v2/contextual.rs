@@ -22,10 +22,7 @@ use super::super::data::{
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, FragmentKey, ParserResult, StmtHandle};
-use crate::utils::binding_pattern::collect_binding_names;
-use crate::utils::legacy_slot::{
-    collect_legacy_slot_bindings, legacy_slot_is_destructured, LegacySlotBindingKind,
-};
+use crate::utils::legacy_slot::legacy_slot_pattern;
 use crate::walker::{walk_template, TemplateVisitor, VisitContext};
 
 /// Pending contextual declaration kind, recorded during the template walk.
@@ -139,13 +136,15 @@ struct TemplateDeclarationCollector<'s> {
 
 impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        let syms: Vec<SymbolId> = ctx
-            .data
-            .template
-            .const_tags
-            .syms(tag.id)
-            .cloned()
-            .unwrap_or_default();
+        // Resolve binding leaves locally from the pre-parsed
+        // `{@const <pattern> = ...}` statement — one walk of the
+        // binding pattern plus a `find_binding` per leaf, against the
+        // enclosing fragment scope carried by `ctx.scope`. This used
+        // to read `const_tags.syms(tag.id)` which was populated by a
+        // separate pass; moving the derivation in-line drops that
+        // side-table and lets the ConstTagData cluster shrink to
+        // `by_fragment` only.
+        let syms: Vec<SymbolId> = collect_const_tag_syms(tag, ctx);
 
         // Only destructured const-tags (`{@const { a, b } = ...}`) carry a
         // per-leaf owner — single-identifier const-tags don't need it because
@@ -173,7 +172,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     ) {
         // Take the bindings snapshot first so the parsed borrow is released
         // before we mutate `ctx.data` (carrier synthesis needs `&mut`).
-        let (bindings, is_destructured, stmt_node_id) = {
+        let (syms, is_destructured, stmt_node_id) = {
             let Some(stmt) = ctx
                 .parsed()
                 .and_then(|parsed| parsed.stmt_handle(dir.name_span.start))
@@ -185,11 +184,14 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 Statement::VariableDeclaration(decl) => decl.node_id(),
                 _ => return,
             };
-            (
-                collect_legacy_slot_bindings(stmt),
-                legacy_slot_is_destructured(stmt),
-                stmt_node_id,
-            )
+            let Some(pattern) = legacy_slot_pattern(stmt) else {
+                return;
+            };
+            let is_destructured =
+                !matches!(pattern, oxc_ast::ast::BindingPattern::BindingIdentifier(_));
+            let mut syms: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+            svelte_component_semantics::walk_bindings(pattern, |v| syms.push(v.symbol));
+            (syms, is_destructured, stmt_node_id)
         };
 
         // v2 owns carrier synthesis for destructured `let:` forms: one
@@ -207,24 +209,22 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             None
         };
 
-        for binding in bindings {
-            let Some(sym) = ctx.data.scoping.get_binding(ctx.scope, &binding.name) else {
-                continue;
-            };
+        for sym in syms {
             let node_id = ctx.data.scoping.symbol_declaration(sym);
             ctx.data
                 .reactivity
                 .record_symbol_declaration_root(sym, node_id);
             ctx.data.reactivity.record_contextual_owner_v2(sym, dir.id);
-            match (binding.kind, carrier_sym) {
-                (LegacySlotBindingKind::DestructuredLeaf, Some(carrier)) => {
-                    ctx.data
-                        .reactivity
-                        .record_carrier_alias_declaration_v2(node_id, carrier);
-                }
-                _ => {
-                    self.staging.push(sym, node_id, PendingKind::LetDirective);
-                }
+            if let Some(carrier) = carrier_sym {
+                // Destructured leaf — consumers read the alias relation to
+                // route reads through the synthesized carrier.
+                ctx.data
+                    .reactivity
+                    .record_carrier_alias_declaration_v2(node_id, carrier);
+            } else {
+                // Root `BindingIdentifier` — direct staging as if the
+                // directive bound a single plain name.
+                self.staging.push(sym, node_id, PendingKind::LetDirective);
             }
         }
     }
@@ -291,24 +291,19 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 }
 
 fn scoped_stmt_symbols(
-    data: &AnalysisData,
-    scope: oxc_semantic::ScopeId,
+    _data: &AnalysisData,
+    _scope: oxc_semantic::ScopeId,
     stmt: &Statement<'_>,
 ) -> Vec<SymbolId> {
-    let mut names = Vec::new();
-    collect_stmt_binding_names(stmt, &mut names);
-    names
-        .into_iter()
-        .filter_map(|name| data.scoping.get_binding(scope, &name))
-        .collect()
-}
-
-fn collect_stmt_binding_names(stmt: &Statement<'_>, out: &mut Vec<String>) {
-    if let Statement::VariableDeclaration(decl) = stmt {
-        if let Some(declarator) = decl.declarations.first() {
-            collect_binding_names(&declarator.id, out);
-        }
-    }
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return Vec::new();
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| out.push(v.symbol));
+    out
 }
 
 /// Synthesize (or reuse) the carrier symbol for a destructured `let:`
@@ -632,4 +627,33 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.visit_formal_parameters(&arrow.params);
     }
+}
+
+/// Resolve the leaf `SymbolId`s introduced by a `{@const <pattern> = ...}`
+/// tag. The binding pattern is walked over the pre-parsed statement and
+/// each identifier name is looked up in the enclosing fragment's scope.
+/// Used by `visit_const_tag` to avoid holding a precomputed side-table
+/// (`ConstTagData::syms`) just for this consumer.
+fn collect_const_tag_syms(
+    tag: &svelte_ast::ConstTag,
+    ctx: &mut VisitContext<'_, '_>,
+) -> Vec<SymbolId> {
+    let Some(parsed) = ctx.parsed() else {
+        return Vec::new();
+    };
+    let Some(stmt) = parsed
+        .stmt_handle(tag.expression_span.start)
+        .and_then(|handle| parsed.stmt(handle))
+    else {
+        return Vec::new();
+    };
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return Vec::new();
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| out.push(v.symbol));
+    out
 }

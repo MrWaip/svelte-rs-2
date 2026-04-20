@@ -85,8 +85,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         declarator: &oxc_ast::ast::VariableDeclarator<'a>,
     ) -> Option<RuneKind> {
-        Self::first_binding_identifier(&declarator.id)
-            .and_then(|id| self.rune_for_binding(id))
+        Self::first_binding_symbol(&declarator.id)
+            .and_then(|sym| self.rune_for_symbol(sym))
             .or_else(|| {
                 declarator
                     .init
@@ -109,34 +109,19 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         None
     }
 
-    fn first_binding_identifier<'p>(
-        pattern: &'p oxc_ast::ast::BindingPattern<'a>,
-    ) -> Option<&'p oxc_ast::ast::BindingIdentifier<'a>> {
-        match pattern {
-            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => Some(id),
-            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => obj
-                .properties
-                .iter()
-                .find_map(|prop| Self::first_binding_identifier(&prop.value))
-                .or_else(|| {
-                    obj.rest
-                        .as_ref()
-                        .and_then(|rest| Self::first_binding_identifier(&rest.argument))
-                }),
-            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => arr
-                .elements
-                .iter()
-                .flatten()
-                .find_map(Self::first_binding_identifier)
-                .or_else(|| {
-                    arr.rest
-                        .as_ref()
-                        .and_then(|rest| Self::first_binding_identifier(&rest.argument))
-                }),
-            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                Self::first_binding_identifier(&assign.left)
+    /// First declared leaf of a binding pattern. Used to identify the
+    /// rune attached to a destructured `let { a, b } = $state(...)` via
+    /// any of its leaves — one walker pass, first visit wins.
+    fn first_binding_symbol(
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+    ) -> Option<svelte_component_semantics::SymbolId> {
+        let mut first = None;
+        svelte_component_semantics::walk_bindings(pattern, |v| {
+            if first.is_none() {
+                first = Some(v.symbol);
             }
-        }
+        });
+        first
     }
 
     /// Rewrite destructured `$derived(...)` / `$derived.by(...)` declarations.

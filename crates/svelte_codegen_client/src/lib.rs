@@ -261,9 +261,9 @@ pub fn generate<'a>(
         // Legacy component accessors and custom-element wrappers both expose
         // props through the returned exports object.
         if ctx.query.accessors() || runtime.has_ce_props {
-            if let Some(props_analysis) = ctx.query.props() {
-                for prop in &props_analysis.props {
-                    if prop.is_rest || prop.is_reserved {
+            if let Some(props_decl) = ctx.query.props() {
+                for prop in &props_decl.props {
+                    if prop.is_rest || prop.is_reserved() {
                         continue;
                     }
                     let key: &str = ctx.b.alloc_str(&prop.prop_name);

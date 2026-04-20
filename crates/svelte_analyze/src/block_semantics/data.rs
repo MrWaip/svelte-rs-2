@@ -28,6 +28,8 @@ pub enum BlockSemantics {
     Await(AwaitBlockSemantics),
     /// `{#snippet name(params)}` block.
     Snippet(SnippetBlockSemantics),
+    /// `{@const <pattern> = <init>}` block.
+    ConstTag(ConstTagBlockSemantics),
     // Placeholders for later slices — payload lands when each kind is
     // migrated end-to-end. Keeping them here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
@@ -35,8 +37,6 @@ pub enum BlockSemantics {
     If,
     // TODO(block-semantics): Key payload.
     Key,
-    // TODO(block-semantics): ConstTag payload.
-    ConstTag,
     // TODO(block-semantics): Render payload.
     Render,
 }
@@ -289,6 +289,12 @@ pub struct SnippetBlockSemantics {
 }
 
 /// One parameter of a `{#snippet}` declaration.
+///
+/// Structural information about destructured parameters (form, keys,
+/// indexes, defaults, rest) lives in the OXC `BindingPattern` reached
+/// through `pattern_id`. Codegen walks it directly at emit time and
+/// classifies defaults inline via `is_simple_expression` — there is
+/// deliberately no parallel per-leaf Svelte-side shape here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SnippetParam {
     /// `(name)` — identifier parameter. Lowers to the arrow argument
@@ -299,46 +305,56 @@ pub enum SnippetParam {
     Identifier { sym: SymbolId },
     /// `({ a, b })` / `([x, y])` — destructured parameter. Lowers to a
     /// positional `$$argN` argument plus per-binding `let` declarations
-    /// inside the body.
-    Pattern {
-        kind: SnippetDestructureKind,
-        /// `OxcNodeId` of the outer `BindingPattern`. Consumer walks the
-        /// pattern subtree from here to build member paths and clone
-        /// default expressions.
-        pattern_id: OxcNodeId,
-        bindings: SmallVec<[SnippetPatternBinding; 4]>,
+    /// inside the body. `pattern_id` is the `OxcNodeId` of the outer
+    /// `BindingPattern`; codegen walks that subtree to emit the
+    /// destructuring, including `$.to_array` intermediates for arrays
+    /// (per-level state that doesn't fit a flat leaf model).
+    Pattern { pattern_id: OxcNodeId },
+}
+
+/// `{@const <pattern> = <init>}` — declaration-shape answer.
+///
+/// Per-symbol read strategy for the bindings themselves (how each
+/// introduced name is read inside downstream expressions — `$.get` vs
+/// `$.safe_get` vs plain) lives in
+/// `reactivity_semantics::ConstDeclarationSemantics::ConstTag`. This
+/// payload answers only declaration-shape questions: where the pattern
+/// and init live in the AST and how the init interacts with async.
+///
+/// Pattern bindings / destructure flavour / init expression are read on
+/// demand in the consumer via `ComponentSemantics::js_storage().kind(id)`
+/// + `walk_bindings(&pattern, ...)` — the payload stays minimal per the
+/// Parser-handle ban (no `StmtHandle` / `ExprHandle` in cluster answers).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstTagBlockSemantics {
+    /// `OxcNodeId` of the `VariableDeclaration` backing the tag
+    /// (`const <pattern> = <init>`). Consumers resolve the statement
+    /// through `ComponentSemantics::js_kind(id)` when they need the
+    /// binding pattern or init expression.
+    pub decl_node_id: OxcNodeId,
+    /// Async lowering decision for the init expression.
+    pub async_kind: ConstTagAsyncKind,
+}
+
+/// How a `{@const}` init expression interacts with async.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstTagAsyncKind {
+    /// No `await` and no async-gated symbol references. Codegen emits
+    /// `const X = $.derived(() => init)`.
+    Sync,
+    /// Init contains an `await` literal and/or references async-gated
+    /// symbols (script-level blockers). Codegen emits `let X;` plus a
+    /// thunk pushed into a per-fragment `$.run([...])` pack; when
+    /// `has_await` is true the thunk is wrapped in
+    /// `$.async_derived(async () => ...)`, otherwise in
+    /// `$.derived(() => ...)`.
+    Async {
+        /// Literal `await` appears in the init expression — chooses
+        /// between `$.async_derived` and `$.derived` at emit time.
+        has_await: bool,
+        /// Sorted, de-duplicated blocker indices (from
+        /// `BlockerData::symbol_blockers`) collected across every
+        /// identifier reference in the init expression.
+        blockers: SmallVec<[u32; 2]>,
     },
-}
-
-/// One leaf identifier introduced by a destructured `SnippetParam::Pattern`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SnippetPatternBinding {
-    pub sym: SymbolId,
-    pub default: SnippetDefaultKind,
-    /// `true` — leaf was introduced by `...rest` in an object pattern.
-    pub is_rest: bool,
-}
-
-/// Whether a snippet parameter / pattern leaf carries a user-specified
-/// default, and how the default expression lowers. Classification is
-/// pre-computed: the consumer never re-walks the default expression to
-/// decide simple-vs-computed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnippetDefaultKind {
-    /// No user default. Identifier params get `= $.noop` at emit time;
-    /// pattern leaves fall back to a plain member access.
-    None,
-    /// Default is a simple literal / identifier — inlines directly:
-    /// `$.fallback(access, <value>)`.
-    Constant,
-    /// Default is an arbitrary expression — lowers through a thunk:
-    /// `$.fallback(access, () => <value>, true)`.
-    Computed,
-}
-
-/// Destructure flavor for `SnippetParam::Pattern`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnippetDestructureKind {
-    Object,
-    Array,
 }

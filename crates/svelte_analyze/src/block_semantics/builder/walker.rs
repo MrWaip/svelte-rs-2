@@ -12,7 +12,7 @@ use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{BlockerData, ParserResult};
 
 use super::super::BlockSemanticsStore;
-use super::common::{collect_binding_pattern_symbols, declarator_from_stmt};
+use super::common::declarator_from_stmt;
 
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
@@ -20,7 +20,7 @@ use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, Node, NodeId};
-use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId};
+use svelte_component_semantics::{walk_bindings, ComponentSemantics, ReferenceId, SymbolId};
 
 /// Entry point: run the single cluster-wide template walk.
 pub(super) fn populate(
@@ -195,6 +195,7 @@ impl<'a> Ctx<'_, 'a> {
                 }
             }
             Node::SnippetBlock(block) => super::snippet::populate(self, block),
+            Node::ConstTag(tag) => super::const_tag::populate(self, tag),
             Node::KeyBlock(block) => self.visit_fragment(&block.fragment.nodes),
             Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
             Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),
@@ -209,9 +210,9 @@ impl<'a> Ctx<'_, 'a> {
 
     /// Descend into a fragment's children. Every recursive descent goes
     /// through here (populators for each/await/snippet invoke this to
-    /// recurse into their bodies), so it's the one place that owns the
-    /// root/non-root split: incrementing `non_root_depth` on entry turns
-    /// any further `SnippetBlock` encountered into a non-top-level one.
+    /// recurse into their bodies), so it's the one place that owns
+    /// `non_root_depth` — incrementing on entry turns any further
+    /// `SnippetBlock` encountered into a non-top-level one.
     pub(super) fn visit_fragment(&mut self, nodes: &[NodeId]) {
         self.non_root_depth += 1;
         for &id in nodes {
@@ -263,7 +264,7 @@ impl<'a> Ctx<'_, 'a> {
                 .and_then(|cs| self.parsed.stmt_handle(cs.start))
                 .and_then(|h| declarator_from_stmt(self.parsed.stmt(h)?))
             {
-                collect_binding_pattern_symbols(&decl.id, &mut out);
+                walk_bindings(&decl.id, |v| out.push(v.symbol));
             }
         }
         if let Some(sym) = index_sym {
