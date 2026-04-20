@@ -113,9 +113,6 @@ pub struct BlockAnalysis {
                 readers (validation, reactivity_semantics, bind_semantics) migrate."
     )]
     pub each_context: EachContextIndex,
-    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
-    pub(crate) render_tag_is_chain: NodeBitSet,
-    pub render_tag_plans: NodeTable<RenderTagPlan>,
 }
 
 impl BlockAnalysis {
@@ -123,9 +120,6 @@ impl BlockAnalysis {
         #[allow(deprecated)]
         Self {
             each_context: EachContextIndex::new(node_count),
-            render_tag_callee_sym: NodeTable::new(node_count),
-            render_tag_is_chain: NodeBitSet::new(node_count),
-            render_tag_plans: NodeTable::new(node_count),
         }
     }
 }
@@ -701,9 +695,6 @@ impl<'a> AnalysisData<'a> {
                         .contains(SymbolFlags::Function)
                 })
         })
-    }
-    pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.blocks.render_tag_plans.get(id)
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {

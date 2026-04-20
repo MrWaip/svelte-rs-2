@@ -16,7 +16,7 @@ use super::expression::{parts_are_dynamic, MemoAttr};
 use super::html_tag::gen_html_tag;
 use super::if_block::gen_if_block;
 use super::key_block::gen_key_block;
-use super::render_tag::gen_render_tag;
+use super::render_block_semantics::gen_render_block;
 use super::slot::{emit_slot_call, is_legacy_slot_element};
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
@@ -210,7 +210,13 @@ pub(crate) fn traverse_items<'a>(
                             )
                         }
                         FragmentItem::RenderTag(id) => {
-                            gen_render_tag(ctx, *id, anchor, false, init)
+                            let sem = match ctx.query.analysis.block_semantics(*id) {
+                                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                                other => unreachable!(
+                                    "render tag expected BlockSemantics::Render, got {other:?}"
+                                ),
+                            };
+                            gen_render_block(ctx, *id, &sem, anchor, false, init);
                         }
                         FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, false, init),
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),

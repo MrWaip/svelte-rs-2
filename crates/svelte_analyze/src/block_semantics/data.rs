@@ -30,6 +30,8 @@ pub enum BlockSemantics {
     Snippet(SnippetBlockSemantics),
     /// `{@const <pattern> = <init>}` block.
     ConstTag(ConstTagBlockSemantics),
+    /// `{@render expr(args...)}` tag.
+    Render(RenderTagBlockSemantics),
     // Placeholders for later slices — payload lands when each kind is
     // migrated end-to-end. Keeping them here shapes the public enum so
     // consumers can already switch on it exhaustively once migrated.
@@ -37,8 +39,6 @@ pub enum BlockSemantics {
     If,
     // TODO(block-semantics): Key payload.
     Key,
-    // TODO(block-semantics): Render payload.
-    Render,
 }
 
 /// `{#each items as <item>[, <index>] [(<key>)]}` — the identities of the
@@ -355,6 +355,108 @@ pub enum ConstTagAsyncKind {
         /// Sorted, de-duplicated blocker indices (from
         /// `BlockerData::symbol_blockers`) collected across every
         /// identifier reference in the init expression.
+        blockers: SmallVec<[u32; 2]>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// RenderTag
+// ---------------------------------------------------------------------------
+
+/// `{@render expr(args...)}` — lowering-shape answer.
+///
+/// Identity is the RenderTag block `NodeId`. The inner `CallExpression`
+/// is reached on demand via the tag's expression span through existing
+/// `ComponentSemantics` resolution — no handle is carried here (per the
+/// Parser-handle ban).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderTagBlockSemantics {
+    /// Composite of "reactive callee?" × "optional chain?" — one
+    /// 4-way enum so the consumer dispatches the call shape with a
+    /// single match.
+    pub callee_shape: RenderCalleeShape,
+    /// `Some(sym)` when the callee is a plain `Identifier` resolving
+    /// to a binding; `None` for member / computed / chain-head
+    /// callees. Read by CSS pruning to narrow the set of possible
+    /// snippets this render tag can target without re-resolving the
+    /// callee identifier. Orthogonal to `callee_shape` — shape
+    /// decides lowering, `callee_sym` decides downstream analysis.
+    pub callee_sym: Option<SymbolId>,
+    /// Per-argument lowering answer, in source order. Length matches
+    /// the `CallExpression.arguments` length exactly (spread is
+    /// rejected at analyze time, so every arg is an `Expression`).
+    /// Consumer zips with the CallExpression's argument slice — no
+    /// `OxcNodeId` per element needed.
+    pub args: SmallVec<[RenderArgLowering; 4]>,
+    /// Async wrapper decision for the whole render call. Mirrors
+    /// `AwaitWrapper` / `EachAsyncKind::Async` in shape: either sync
+    /// (direct emission) or wrapped in `$.async(...)`.
+    pub async_kind: RenderAsyncKind,
+}
+
+/// Four non-overlapping lowering shapes of the `{@render}` callee.
+///
+/// "Dynamic" means the callee identifier resolves to a reactive
+/// binding (prop / rune / store / contextual); equivalent to the
+/// reference compiler's `binding?.kind !== 'normal'`. "Chain" means
+/// the tag is written `{@render fn?.(...)}` with an optional call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderCalleeShape {
+    /// Normal binding, non-chain. Lowers to `callee(anchor, ...thunks)`.
+    Static,
+    /// Normal binding, optional chain. Lowers to
+    /// `callee?.(anchor, ...thunks)` (`b.maybe_call`).
+    StaticChain,
+    /// Reactive binding. Lowers to
+    /// `$.snippet(anchor, () => callee, ...thunks)`.
+    Dynamic,
+    /// Reactive binding, optional chain. Lowers to
+    /// `$.snippet(anchor, () => callee ?? $.noop, ...thunks)`.
+    DynamicChain,
+}
+
+/// Composite per-argument lowering. Collapses the reference
+/// compiler's four memoizer cases (prop-source pass-through, sync
+/// memo, async memo, plain thunk) into a single enum so the consumer
+/// never reassembles the decision from `has_call` / `has_await` /
+/// binding-kind facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderArgLowering {
+    /// Argument is a single `Identifier` that resolves to a
+    /// `$props()` source binding. Codegen passes the getter
+    /// identifier directly, with no thunk wrapping — the prop getter
+    /// already has the right shape.
+    PropSource { sym: SymbolId },
+    /// Expression contains a call but no `await`. Codegen wraps the
+    /// argument in a local `$.derived(() => <arg>)` memo and passes
+    /// `() => $.get(memo)` as the thunk. Memo names are synthesised at
+    /// emit time (`$0`, `$1`, ...).
+    MemoSync,
+    /// Expression contains an `await`. The argument becomes an entry
+    /// in the async wrapper's `async_values` array; inside the
+    /// callback it's read as `$.get($$async_id_k)`. The callback
+    /// param order is the source order of `MemoAsync` entries in
+    /// `RenderTagBlockSemantics.args`.
+    MemoAsync,
+    /// Plain `() => <arg>` thunk — no memo, no prop pass-through.
+    Plain,
+}
+
+/// Async wrapper decision for the whole render call. Mirrors
+/// `AwaitWrapper` in shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RenderAsyncKind {
+    /// No argument has `await`, no dependency has a blocker. Emit
+    /// the render statement(s) directly.
+    Sync,
+    /// Wrap the render statement(s) in
+    /// `$.async(anchor, blockers, async_values, (anchor, $$async_id_0, ...) => { ... })`.
+    Async {
+        /// Sorted, de-duplicated blocker indices (from
+        /// `BlockerData::symbol_blockers`) unioned across every
+        /// argument's dependency set. Callee blockers are not
+        /// included — the reference compiler does not route the
+        /// callee expression through the memoizer.
         blockers: SmallVec<[u32; 2]>,
     },
 }

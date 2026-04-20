@@ -25,7 +25,6 @@ mod fragments;
 mod ignore;
 mod pickled_await_offsets;
 mod proxy_state_inits;
-mod render;
 mod rich_content_facts;
 mod runtime;
 mod script_rune_calls;
@@ -65,7 +64,6 @@ pub use fragments::{
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;
-pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
