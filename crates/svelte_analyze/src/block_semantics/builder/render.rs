@@ -16,14 +16,13 @@
 use super::super::{
     BlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape, RenderTagBlockSemantics,
 };
-use super::common::expression_async_facts;
 use super::walker::Ctx;
 use crate::types::data::{DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics};
-use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, Expression};
+use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
 use svelte_ast::RenderTag;
-use svelte_component_semantics::SymbolId;
+use svelte_component_semantics::{ReferenceId, SymbolId};
 
 /// Populate `BlockSemantics::Render` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
@@ -44,9 +43,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     };
 
     let callee_sym = callee_symbol(&call.callee, ctx);
-    let callee_shape = classify_callee_shape(ctx, &call.callee, is_chain, callee_sym);
-    let args = classify_args(ctx, &call.arguments);
-    let async_kind = classify_async_kind(ctx, call);
+    let callee_shape = classify_callee_shape(ctx, is_chain, callee_sym);
+    let (args, async_kind) = classify_args_and_async(ctx, &call.arguments);
 
     ctx.store.set(
         tag.id,
@@ -61,7 +59,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
 
 fn classify_callee_shape(
     ctx: &Ctx<'_, '_>,
-    _callee: &Expression<'_>,
     is_chain: bool,
     callee_sym: Option<SymbolId>,
 ) -> RenderCalleeShape {
@@ -95,34 +92,56 @@ fn is_reactive_symbol(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
     )
 }
 
-fn classify_args<'a>(
+/// Single-pass classification of every argument: one OXC sub-walk per
+/// arg collects `has_call`, `has_await`, and all identifier references
+/// at once. That satisfies the Traversal Budget rule (single-pass per
+/// subtree) — downstream derivation (`RenderArgLowering`, cross-arg
+/// blocker union, top-level `async_kind`) is pure book-keeping over
+/// the collected facts.
+fn classify_args_and_async<'a>(
     ctx: &Ctx<'_, 'a>,
     arguments: &oxc_allocator::Vec<'a, Argument<'a>>,
-) -> SmallVec<[RenderArgLowering; 4]> {
-    let mut out: SmallVec<[RenderArgLowering; 4]> = SmallVec::new();
+) -> (SmallVec<[RenderArgLowering; 4]>, RenderAsyncKind) {
+    let mut args: SmallVec<[RenderArgLowering; 4]> = SmallVec::new();
+    let mut any_await = false;
+    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
+
     for arg in arguments {
+        let Argument::SpreadElement(_) = arg else {
+            let expr = arg.to_expression();
+            // Fast-path: PropSource identifier needs no sub-walk.
+            if let Some(sym) = prop_source_arg(ctx, expr) {
+                args.push(RenderArgLowering::PropSource { sym });
+                continue;
+            }
+
+            // One walk over the arg subtree collects everything we need.
+            let facts = ArgFacts::collect(expr);
+            let arg_blockers_found = union_blockers(ctx, &facts.refs, &mut blockers);
+            any_await |= facts.has_await;
+
+            args.push(match (facts.has_await, facts.has_call) {
+                (true, _) => RenderArgLowering::MemoAsync,
+                (false, true) => RenderArgLowering::MemoSync,
+                (false, false) => RenderArgLowering::Plain,
+            });
+            let _ = arg_blockers_found;
+            continue;
+        };
         // Analyze layer rejects `SpreadElement` in render args via a
         // diagnostic, but defensively classify non-expression arguments
         // as `Plain` so the builder never panics on malformed input.
-        let Argument::SpreadElement(_) = arg else {
-            out.push(classify_arg(ctx, arg.to_expression()));
-            continue;
-        };
-        out.push(RenderArgLowering::Plain);
+        args.push(RenderArgLowering::Plain);
     }
-    out
-}
+    blockers.sort_unstable();
 
-fn classify_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> RenderArgLowering {
-    if let Some(sym) = prop_source_arg(ctx, arg) {
-        return RenderArgLowering::PropSource { sym };
-    }
-    let (has_call, has_await) = arg_syntactic_facts(arg);
-    match (has_await, has_call) {
-        (true, _) => RenderArgLowering::MemoAsync,
-        (false, true) => RenderArgLowering::MemoSync,
-        (false, false) => RenderArgLowering::Plain,
-    }
+    let async_kind = if !any_await && blockers.is_empty() {
+        RenderAsyncKind::Sync
+    } else {
+        RenderAsyncKind::Async { blockers }
+    };
+
+    (args, async_kind)
 }
 
 /// A prop-source argument is a single `Identifier` whose binding is a
@@ -149,24 +168,58 @@ fn prop_source_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> 
     }
 }
 
-/// Whether the expression subtree contains a `CallExpression` and
-/// whether it contains an `AwaitExpression`. Single walk shared
-/// between the two classifications.
-fn arg_syntactic_facts(arg: &Expression<'_>) -> (bool, bool) {
-    let mut collector = SyntaxFacts {
-        has_call: false,
-        has_await: false,
-    };
-    collector.visit_expression(arg);
-    (collector.has_call, collector.has_await)
+/// Resolve each reference to its symbol's script-level blocker index
+/// (if any) and union into the running list. Returns `true` iff at
+/// least one blocker was added — the caller uses this to decide
+/// whether the argument has an async dependency beyond a literal
+/// `await`.
+fn union_blockers(ctx: &Ctx<'_, '_>, refs: &[ReferenceId], out: &mut SmallVec<[u32; 2]>) -> bool {
+    let before = out.len();
+    for ref_id in refs {
+        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
+            continue;
+        };
+        if let Some(idx) = ctx.blockers.symbol_blocker(sym) {
+            if !out.contains(&idx) {
+                out.push(idx);
+            }
+        }
+    }
+    out.len() > before
 }
 
-struct SyntaxFacts {
+/// Every fact Block Semantics needs from one argument subtree, in a
+/// single OXC sub-walk: call present, await present, and the list of
+/// reference ids used downstream to compute blockers.
+struct ArgFacts {
     has_call: bool,
     has_await: bool,
+    refs: SmallVec<[ReferenceId; 4]>,
 }
 
-impl<'a> Visit<'a> for SyntaxFacts {
+impl ArgFacts {
+    fn collect(expr: &Expression<'_>) -> Self {
+        let mut collector = ArgFactsCollector {
+            has_call: false,
+            has_await: false,
+            refs: SmallVec::new(),
+        };
+        collector.visit_expression(expr);
+        Self {
+            has_call: collector.has_call,
+            has_await: collector.has_await,
+            refs: collector.refs,
+        }
+    }
+}
+
+struct ArgFactsCollector {
+    has_call: bool,
+    has_await: bool,
+    refs: SmallVec<[ReferenceId; 4]>,
+}
+
+impl<'a> Visit<'a> for ArgFactsCollector {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         self.has_call = true;
         oxc_ast_visit::walk::walk_call_expression(self, expr);
@@ -175,35 +228,10 @@ impl<'a> Visit<'a> for SyntaxFacts {
         self.has_await = true;
         oxc_ast_visit::walk::walk_await_expression(self, expr);
     }
-}
-
-fn classify_async_kind<'a>(ctx: &Ctx<'_, 'a>, call: &CallExpression<'a>) -> RenderAsyncKind {
-    // Reference compiler routes only the arguments — not the callee
-    // expression — through its memoizer. Mirror that here by unioning
-    // blockers across every argument's reference set, ignoring
-    // identifiers in the callee subtree.
-    let mut has_await = false;
-    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
-    for arg in &call.arguments {
-        let Argument::SpreadElement(_) = arg else {
-            let expr = arg.to_expression();
-            let (arg_has_await, arg_blockers) =
-                expression_async_facts(expr, ctx.semantics, ctx.blockers);
-            has_await |= arg_has_await;
-            for idx in arg_blockers {
-                if !blockers.contains(&idx) {
-                    blockers.push(idx);
-                }
-            }
-            continue;
-        };
-    }
-    blockers.sort_unstable();
-
-    if !has_await && blockers.is_empty() {
-        RenderAsyncKind::Sync
-    } else {
-        RenderAsyncKind::Async { blockers }
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        if let Some(ref_id) = ident.reference_id.get() {
+            self.refs.push(ref_id);
+        }
     }
 }
 
