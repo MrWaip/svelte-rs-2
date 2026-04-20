@@ -17,6 +17,7 @@ pub(crate) mod html_tag;
 pub(crate) mod if_block;
 pub(crate) mod key_block;
 pub(crate) mod prop_object;
+pub(crate) mod render_block_semantics;
 pub(crate) mod render_tag;
 pub(crate) mod slot;
 pub(crate) mod snippet;
@@ -213,7 +214,7 @@ use html::{element_html, fragment_html};
 use html_tag::gen_html_tag;
 use if_block::gen_if_block;
 use key_block::gen_key_block;
-use render_tag::gen_render_tag;
+use render_block_semantics::gen_render_block;
 use slot::emit_slot_template_anchor;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
@@ -716,17 +717,26 @@ fn emit_single_block<'a>(
     match item {
         FragmentItem::RenderTag(id)
             if {
-                #[allow(deprecated)]
-                let plan = ctx
-                    .render_tag_plan(*id)
-                    .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id));
-                !plan.callee_mode.is_dynamic()
+                let sem = ctx.query.analysis.block_semantics(*id);
+                matches!(
+                    sem,
+                    svelte_analyze::BlockSemantics::Render(s)
+                        if matches!(
+                            s.callee_shape,
+                            svelte_analyze::RenderCalleeShape::Static
+                                | svelte_analyze::RenderCalleeShape::StaticChain,
+                        )
+                )
             } =>
         {
             if !is_root {
                 ctx.gen_ident("fragment");
             }
-            gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
+            let sem = match ctx.query.analysis.block_semantics(*id) {
+                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                other => unreachable!("render tag expected Render, got {other:?}"),
+            };
+            gen_render_block(ctx, *id, &sem, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
         FragmentItem::ComponentNode(id)
@@ -806,7 +816,11 @@ fn emit_single_block<'a>(
             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         FragmentItem::RenderTag(id) => {
-            gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
+            let sem = match ctx.query.analysis.block_semantics(*id) {
+                svelte_analyze::BlockSemantics::Render(s) => s.clone(),
+                other => unreachable!("render tag expected Render, got {other:?}"),
+            };
+            gen_render_block(ctx, *id, &sem, ctx.b.rid_expr(&node), false, body);
         }
         FragmentItem::ComponentNode(id) => {
             gen_component(ctx, *id, ctx.b.rid_expr(&node), body, true);
