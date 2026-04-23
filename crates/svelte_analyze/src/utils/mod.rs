@@ -12,5 +12,5 @@ pub use events::{
     is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
     strip_capture_event,
 };
-pub use ident_gen::IdentGen;
+pub use ident_gen::{IdentGen, IdentGenSnapshot};
 pub use simple_expression::is_simple_expression;

@@ -1,7 +1,7 @@
+pub(crate) mod codegen;
 mod context;
 mod custom_element;
 mod script;
-mod template;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
@@ -15,7 +15,6 @@ use svelte_transform::TransformData;
 
 use context::Ctx;
 
-/// Generate JavaScript client-side code for a compiled Svelte component.
 pub fn generate<'a>(
     alloc: &'a Allocator,
     component: &'a Component,
@@ -45,9 +44,6 @@ pub fn generate<'a>(
         experimental_async,
     );
 
-    // -----------------------------------------------------------------------
-    // 1. Script transformation
-    // -----------------------------------------------------------------------
     let script_output = script::gen_script(&mut ctx, dev);
     let script_imports = script_output.imports;
     let script_body = script_output.body;
@@ -74,8 +70,6 @@ pub fn generate<'a>(
             script::transform_component_module_script(alloc, module_source, is_ts)
         };
 
-        // Module script comments need to be preserved in the final top-level program even when
-        // there is no instance script to carry comment/source metadata.
         if script_source_text.is_empty() {
             script_comments = module_output.comments;
             script_source_text = module_output.source_text;
@@ -98,29 +92,20 @@ pub fn generate<'a>(
         }
     }
 
-    // -----------------------------------------------------------------------
-    // 2. Template generation (consumes "root" ident first)
-    //    instance_snippets are generated inside gen_root_fragment for correct numbering
-    // -----------------------------------------------------------------------
-    let (hoisted, template_body, instance_snippets, hoistable_snippets) =
-        template::gen_root_fragment(&mut ctx);
+    let codegen_result = codegen::codegen_root_fragment(&mut ctx).expect("codegen failed");
+    let hoisted = codegen_result.hoisted;
+    let template_body = codegen_result.body;
+    let instance_snippets = codegen_result.instance_snippets;
+    let hoistable_snippets = codegen_result.hoistable_snippets;
 
-    // Layout: module_hoisted (component tpl vars) → root hoisted
-    // hoistable_snippets is kept separate so it can be placed before module_body
-    // in the final program (snippet consts → module exports → template vars).
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
     all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
 
-    // -----------------------------------------------------------------------
-    // 3. Build function body (needs &mut ctx for snippets)
-    // -----------------------------------------------------------------------
     let runtime = ctx.runtime_plan();
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
-    // CSS injection — $.append_styles() must be the very first statement in the function body
-    // so the styles are available before any DOM nodes are created.
     if ctx.query.view.inject_styles() && ctx.state.css_text.is_some() {
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr(
             "$.append_styles",
@@ -128,7 +113,6 @@ pub fn generate<'a>(
         )));
     }
 
-    // $props.id() → must be first statement for hydration correctness
     if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx
@@ -176,9 +160,6 @@ pub fn generate<'a>(
         );
     }
 
-    // Store subscription setup:
-    //   const $count = () => $.store_get(count, "$count", $$stores);
-    //   const [$$stores, $$cleanup] = $.setup_stores();
     if runtime.has_stores {
         let scoping = ctx.query.scoping();
         let mut store_names: Vec<&str> = ctx
@@ -203,8 +184,7 @@ pub fn generate<'a>(
                     Arg::Ident("$$stores"),
                 ],
             );
-            // Dev mode: ($.validate_store(name, "name"), $.store_get(...))
-            // Prod mode: $.store_get(...)
+
             let thunk_body = if ctx.state.dev {
                 let validate = ctx.b.call_expr(
                     "$.validate_store",
@@ -221,7 +201,6 @@ pub fn generate<'a>(
             fn_body.push(ctx.b.const_stmt(dollar_name_str, thunk));
         }
 
-        // const [$$stores, $$cleanup] = $.setup_stores()
         let setup_call = ctx
             .b
             .call_expr("$.setup_stores", std::iter::empty::<Arg<'_, '_>>());
@@ -231,11 +210,8 @@ pub fn generate<'a>(
         );
     }
 
-    // Instance-level snippet declarations (generated during root template for correct numbering)
     fn_body.extend(instance_snippets);
 
-    // Instance body splitting for experimental.async:
-    // Statements after first `await` become async thunks in $.run([...])
     if ctx.state.experimental_async && ctx.query.blocker_data().has_async() {
         let split_body = split_async_instance_body(&ctx.b, script_body, ctx.query.blocker_data());
         fn_body.extend(split_body);
@@ -243,11 +219,9 @@ pub fn generate<'a>(
         fn_body.extend(script_body);
     }
 
-    // var $$exports = { ... }
     if runtime.has_exports || runtime.has_ce_props || ctx.query.accessors() {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
-        // Regular exports (e.g., `export function reset()`)
         for e in ctx.query.exports() {
             let name: &str = ctx.b.alloc_str(&e.name);
             if let Some(alias) = &e.alias {
@@ -258,8 +232,6 @@ pub fn generate<'a>(
             }
         }
 
-        // Legacy component accessors and custom-element wrappers both expose
-        // props through the returned exports object.
         if ctx.query.accessors() || runtime.has_ce_props {
             if let Some(props_decl) = ctx.query.props() {
                 for prop in &props_decl.props {
@@ -269,11 +241,9 @@ pub fn generate<'a>(
                     let key: &str = ctx.b.alloc_str(&prop.prop_name);
                     let local: &str = ctx.b.alloc_str(&prop.local_name);
 
-                    // get name() { return name(); }
                     let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
-                    // set name($$value = default?) { name($$value); $.flush(); }
                     let default_expr = if ctx.query.runes() {
                         prop.default_text
                             .as_deref()
@@ -294,7 +264,6 @@ pub fn generate<'a>(
 
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
     } else if ctx.state.dev && runtime.needs_push {
-        // var $$exports = { ...$.legacy_api() }
         let legacy_call = ctx
             .b
             .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
@@ -312,7 +281,6 @@ pub fn generate<'a>(
 
     if runtime.needs_push {
         if runtime.needs_pop_with_return && runtime.has_stores {
-            // var $$pop = $.pop($$exports); $$cleanup(); return $$pop;
             let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
             fn_body.push(
@@ -330,7 +298,7 @@ pub fn generate<'a>(
                 ctx.b
                     .expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())),
             );
-            // Store cleanup: $$cleanup() — runs after $.pop()
+
             if runtime.has_stores {
                 fn_body.push(
                     ctx.b
@@ -339,16 +307,12 @@ pub fn generate<'a>(
             }
         }
     } else if runtime.has_stores {
-        // No push/pop but still have stores — just cleanup
         fn_body.push(
             ctx.b
                 .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
         );
     }
 
-    // -----------------------------------------------------------------------
-    // 4. Module-level delegate calls
-    // -----------------------------------------------------------------------
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
     if !ctx.state.delegated_events.is_empty() {
         let events: Vec<Arg<'_, '_>> = ctx
@@ -363,14 +327,10 @@ pub fn generate<'a>(
         );
     }
 
-    // -----------------------------------------------------------------------
-    // 5. Assemble the program
-    // -----------------------------------------------------------------------
     let b = &ctx.b;
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    // Bubble events on special elements (on:event with no expression) reference $$props
     let has_bubble_events = component.fragment.nodes.iter().any(|&id| {
         let node = component.store.get(id);
         let attrs = match node {
@@ -400,8 +360,6 @@ pub fn generate<'a>(
         b.params(["$$anchor"])
     };
 
-    // Set body span so OXC Codegen can find trailing comments inside the function.
-    // FunctionBody.gen() looks for comments at span_end - 1.
     let body_span = if script_span_end > 0 {
         Span::new(0, script_span_end + 1)
     } else {
@@ -423,7 +381,6 @@ pub fn generate<'a>(
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
     if ctx.state.dev {
-        // App[$.FILENAME] = "filename"
         let left = AssignLeft::ComputedMember(b.computed_member(
             b.rid_expr(ctx.state.name),
             b.static_member_expr(b.rid_expr("$"), "FILENAME"),
@@ -434,13 +391,11 @@ pub fn generate<'a>(
     program_body.extend(module_imports);
     program_body.push(import_svelte);
     program_body.extend(script_imports);
-    // Order: hoistable snippet consts → module exports → template var allocations
+
     program_body.extend(hoistable_snippets);
     program_body.extend(module_body);
     program_body.extend(all_hoisted);
-    // const $$css = { hash: "svelte-HASH", code: "scoped CSS" } — placed after template
-    // vars so it appears between `var root = ...` and the component function, matching
-    // the reference compiler's output order.
+
     if let Some(code) = ctx.state.css_text {
         let hash: &str = b.alloc_str(ctx.query.view.css_hash());
         let code: &str = b.alloc_str(code);
@@ -453,7 +408,6 @@ pub fn generate<'a>(
     program_body.push(export_default);
     program_body.extend(delegate_stmts);
 
-    // Custom element wrapping: customElements.define(tag, $.create_custom_element(App, ...))
     if let Some(ce_config) = component
         .options
         .as_ref()
@@ -489,12 +443,6 @@ fn shift_comments(comments: &mut [oxc_ast::Comment], offset: u32) {
     }
 }
 
-/// Split instance body into sync prefix + `var $$promises = $.run([thunks])`.
-/// Statements before the first `await` are kept as-is.
-/// Statements after (inclusive) become thunks in the `$.run()` call.
-///
-/// Uses pre-computed `BlockerData` metadata from analyze to determine
-/// `has_await` and `hoist_names` per statement — no AST re-walking.
 fn split_async_instance_body<'a>(
     b: &Builder<'a>,
     body: Vec<Statement<'a>>,
@@ -518,12 +466,10 @@ fn split_async_instance_body<'a>(
         let meta = blocker_data.stmt_meta(i).expect("stmt_meta out of range");
         let has_await = meta.has_await();
 
-        // Collect pre-computed hoist names
         for name in meta.hoist_names() {
             hoisted_names.push(b.alloc_str(name));
         }
 
-        // Unwrap ExportNamedDeclaration to process inner declaration
         let stmt = match stmt {
             Statement::ExportNamedDeclaration(export) => {
                 if let Some(decl) = export.unbox().declaration {
@@ -539,7 +485,6 @@ fn split_async_instance_body<'a>(
             Statement::VariableDeclaration(var_decl) => {
                 let var_decl = var_decl.unbox();
                 for declarator in var_decl.declarations {
-                    // Function-valued init: keep in sync section
                     if matches!(
                         &declarator.init,
                         Some(
@@ -551,8 +496,6 @@ fn split_async_instance_body<'a>(
                         continue;
                     }
 
-                    // Simple identifiers → expression-body thunk: () => x = val
-                    // Complex patterns → block-body thunk preserving var statement
                     if let Some(assign_target) = try_binding_to_assignment(&declarator.id, b) {
                         let init = declarator.init.unwrap_or_else(|| b.void_zero_expr());
                         let assign = b.ast.expression_assignment(
@@ -594,12 +537,10 @@ fn split_async_instance_body<'a>(
         }
     }
 
-    // Emit hoisted `var data, y;`
     if !hoisted_names.is_empty() {
         result.push(b.var_multi_stmt(&hoisted_names));
     }
 
-    // Emit `var $$promises = $.run([thunks])`
     if !thunks.is_empty() {
         let thunk_array = b.array_expr(thunks);
         let run_call = b.call_expr("$.run", [Arg::Expr(thunk_array)]);
@@ -609,9 +550,6 @@ fn split_async_instance_body<'a>(
     result
 }
 
-/// Try to convert a BindingPattern to an AssignmentTarget for expression-body thunks.
-/// Returns `Some(target)` for simple identifiers, `None` for complex patterns
-/// (destructuring is emitted as block-body thunks preserving the original var statement).
 fn try_binding_to_assignment<'a>(
     pat: &oxc_ast::ast::BindingPattern<'a>,
     b: &Builder<'a>,
@@ -626,20 +564,13 @@ fn try_binding_to_assignment<'a>(
     }
 }
 
-/// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
-/// Applies rune transforms but produces a plain ES module (no component wrapping).
-///
-/// The caller supplies the already-parsed `Program` (from `analyze_module`)
-/// so that `ReferenceId`s match what `AnalysisData` recorded. Re-parsing the
-/// source here would produce a disjoint id namespace and break v2 reference
-/// lookups.
 pub fn generate_module<'a>(
     alloc: &'a Allocator,
     program: oxc_ast::ast::Program<'a>,
     analysis: &AnalysisData<'a>,
     dev: bool,
 ) -> String {
-    let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
+    let _ = dev;
     let script_output =
         script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping);
 

@@ -28,6 +28,11 @@ impl Default for IdentGen {
     }
 }
 
+pub struct IdentGenSnapshot {
+    counters: FxHashMap<CompactString, u32>,
+    conflicts: FxHashSet<CompactString>,
+}
+
 impl IdentGen {
     pub fn new() -> Self {
         Self {
@@ -42,6 +47,18 @@ impl IdentGen {
             counters: FxHashMap::default(),
             conflicts,
         }
+    }
+
+    pub fn snapshot(&self) -> IdentGenSnapshot {
+        IdentGenSnapshot {
+            counters: self.counters.clone(),
+            conflicts: self.conflicts.clone(),
+        }
+    }
+
+    pub fn restore(&mut self, snap: IdentGenSnapshot) {
+        self.counters = snap.counters;
+        self.conflicts = snap.conflicts;
     }
 
     pub fn gen(&mut self, prefix: &str) -> String {

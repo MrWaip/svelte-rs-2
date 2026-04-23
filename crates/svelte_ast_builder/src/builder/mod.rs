@@ -23,6 +23,7 @@ mod members;
 mod modules;
 mod objects;
 mod statements;
+mod svelte_patterns;
 mod templates;
 
 pub enum Arg<'a, 'short> {
