@@ -102,9 +102,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     )
 }
 
-/// Transform an already-parsed standalone module `Program`. Used by
-/// `generate_module` so the `ReferenceId` namespace matches the parse that
-/// `analyze_module` built its `AnalysisData` against.
 pub fn transform_module_program<'a, 'b>(
     allocator: &'a Allocator,
     program: Program<'a>,

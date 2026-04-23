@@ -1252,6 +1252,7 @@ dependencies = [
 name = "svelte_codegen_client"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "oxc_allocator",
  "oxc_ast",
  "oxc_codegen",
@@ -1260,6 +1261,7 @@ dependencies = [
  "oxc_span",
  "oxc_syntax",
  "rustc-hash",
+ "smallvec",
  "svelte_analyze",
  "svelte_ast",
  "svelte_ast_builder",

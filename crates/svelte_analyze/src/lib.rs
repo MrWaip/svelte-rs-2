@@ -44,12 +44,12 @@ pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 pub use utils::script_info::BINDABLE_RUNE_NAME;
-pub use utils::IdentGen;
 pub use utils::{
     is_capture_event, is_delegatable_event, is_passive_event, is_regular_dom_property,
     is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
     strip_capture_event,
 };
+pub use utils::{IdentGen, IdentGenSnapshot};
 
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, Severity};

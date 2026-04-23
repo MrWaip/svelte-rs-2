@@ -5,21 +5,18 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
-    AnalysisData, BindTargetSemantics, ClassDirectiveInfo, CodegenView, ComponentPropInfo,
-    ContentStrategy, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen,
-    LoweredFragment, ParserResult, RuntimePlan,
+    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, ContentStrategy,
+    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, ParserResult,
+    RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
-    RenderTag, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    RenderTag, SvelteBoundary, SvelteElement,
 };
 use svelte_transform::TransformData;
 
 use svelte_ast_builder::Builder;
 
-/// Read-only codegen query context.
-///
-/// Owns immutable access to component AST, analysis-derived view and compile metadata.
 pub struct CodegenQuery<'a> {
     pub component: &'a Component,
     pub view: CodegenView<'a, 'a>,
@@ -34,8 +31,6 @@ impl<'a> CodegenQuery<'a> {
             analysis,
         }
     }
-
-    // -- Node lookups (O(1)) --
 
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.component.store.element(id)
@@ -64,31 +59,8 @@ impl<'a> CodegenQuery<'a> {
     pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock {
         self.component.store.await_block(id)
     }
-    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow {
-        self.component.store.svelte_window(id)
-    }
-    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument {
-        self.component.store.svelte_document(id)
-    }
-    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody {
-        self.component.store.svelte_body(id)
-    }
     pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag {
         self.component.store.debug_tag(id)
-    }
-
-    pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
-        self.view
-            .lowered_fragment(key)
-            .unwrap_or_else(|| panic!("lowered fragment {:?} not found", key))
-    }
-
-    pub fn maybe_lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
-        self.view.lowered_fragment(key)
-    }
-
-    pub fn known_value(&self, name: &str) -> Option<&str> {
-        self.view.known_value(name)
     }
 
     #[allow(dead_code)]
@@ -116,7 +88,6 @@ impl<'a> Deref for CodegenQuery<'a> {
     }
 }
 
-/// Mutable runtime/codegen state used during emission.
 pub struct CodegenState<'a> {
     pub b: Builder<'a>,
     pub name: &'a str,
@@ -124,42 +95,27 @@ pub struct CodegenState<'a> {
     pub filename: &'a str,
     pub experimental_async: bool,
     pub dev: bool,
-    /// Data produced by the transform phase (e.g. tmp names for destructured const tags).
+
     pub transform_data: TransformData,
-    /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
+
     pub parsed: &'a mut ParserResult<'a>,
-    /// Shared unique identifier generator.
-    ident_gen: &'a mut IdentGen,
-    /// Template declarations from nested fragments, hoisted to module scope.
+
+    pub ident_gen: &'a mut IdentGen,
+
     pub module_hoisted: Vec<Statement<'a>>,
 
-    // -- Bind group --
     pub needs_binding_group: bool,
-    /// Generated $$index names for each blocks with contains_group_binding
-    /// (populated during each_block codegen, consumed by bind_group codegen).
-    pub group_index_names: FxHashMap<NodeId, String>,
-    /// Set while processing children of a contenteditable element with bind:innerHTML/innerText/textContent.
-    /// Text nodes use `nodeValue=` init instead of `$.set_text()` update.
-    pub bound_contenteditable: bool,
 
-    /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
-    /// Ordered Vec for deterministic output + HashSet for O(1) dedup.
+    pub group_index_names: FxHashMap<NodeId, String>,
+
     pub delegated_events: Vec<String>,
     delegated_events_set: FxHashSet<String>,
 
-    /// Transformed and serialized CSS text for injected mode (`$$css.code`).
-    /// `Some` when `css:"injected"` is active and the stylesheet was successfully transformed.
     pub css_text: Option<&'a str>,
-    /// Whether any $inspect.trace() was found in template expressions (triggers tracing import).
+
     pub has_tracing: bool,
-    /// Const-tag blocker propagation (experimental.async).
-    /// Maps SymbolId of a const-tag binding → (promises_var_name, thunk_index).
-    /// Populated by `emit_const_tags` when `$.run()` mode is used.
-    /// Consumed by template effect emission to add `promises[M]` blockers.
+
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
-    /// Accumulated const-tag blocker expressions from child traversal.
-    /// Collected during text expression codegen, consumed by `emit_template_effect_with_blockers`.
-    pub(crate) pending_const_blockers: Vec<Expression<'a>>,
 }
 
 impl<'a> CodegenState<'a> {
@@ -188,13 +144,11 @@ impl<'a> CodegenState<'a> {
             module_hoisted: Vec::new(),
             needs_binding_group: false,
             group_index_names: FxHashMap::default(),
-            bound_contenteditable: false,
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
             css_text,
             has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
-            pending_const_blockers: Vec::new(),
         }
     }
 
@@ -209,11 +163,6 @@ impl<'a> CodegenState<'a> {
     }
 }
 
-/// Thin orchestration wrapper over immutable query data and mutable codegen state.
-///
-/// `Ctx` is kept for helpers that genuinely combine query access, builder utilities and
-/// mutable emission state. Pure read paths should prefer `ctx.query.*`, and mutable
-/// generation state should live under `ctx.state.*`.
 pub struct Ctx<'a> {
     pub query: CodegenQuery<'a>,
     pub state: CodegenState<'a>,
@@ -270,61 +219,21 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    // -- Node lookups (O(1)) --
-
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.query.element(id)
-    }
-    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
-        self.query.component_node(id)
     }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
     }
-    pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement {
-        self.query.svelte_element(id)
-    }
-    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary {
-        self.query.svelte_boundary(id)
-    }
-    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock {
-        self.query.await_block(id)
-    }
-    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow {
-        self.query.svelte_window(id)
-    }
-    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument {
-        self.query.svelte_document(id)
-    }
-    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody {
-        self.query.svelte_body(id)
-    }
 
-    pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
-        self.query.lowered_fragment(key)
-    }
-
-    // -- Identifiers --
-
-    /// Generate a unique identifier like `root`, `root_1`, `root_2`, …
     pub fn gen_ident(&mut self, prefix: &str) -> String {
         self.state.gen_ident(prefix)
     }
 
-    // -- Analysis shortcuts --
-
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic(id)
     }
-    /// `ReferenceId` of the root identifier in a directive's expression.
-    ///
-    /// After the shorthand rework, all directive expressions (bind, class,
-    /// style, each-collection, attr `{foo}`) are real `Expression::Identifier`
-    /// / `MemberExpression` trees parsed into `ParserResult`. The root
-    /// identifier carries a `ReferenceId` written by `JsSemanticVisitor`
-    /// during the builder pass — this is the single identity the consumer
-    /// needs to ask `reference_semantics(ref_id)` for the operation-level
-    /// answer.
+
     pub fn directive_root_ref_id(
         &self,
         dir_id: NodeId,
@@ -342,9 +251,6 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Convenience helper: `reference_semantics` of a directive's root
-    /// identifier. Returns `NonReactive` when the directive has no resolvable
-    /// root identifier (e.g. function-expression `bind:value={(get,set)}`).
     pub fn directive_root_reference_semantics(
         &self,
         dir_id: NodeId,
@@ -389,11 +295,6 @@ impl<'a> Ctx<'a> {
                 .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
         )
     }
-    pub fn known_value(&self, name: &str) -> Option<&str> {
-        self.query.known_value(name)
-    }
-
-    /// Check if expression for node is analyzer-classified as async.
     pub fn expr_has_await(&self, id: NodeId) -> bool {
         self.query.view.expr_is_async(id)
     }
@@ -402,14 +303,11 @@ impl<'a> Ctx<'a> {
         self.query.runtime_plan()
     }
 
-    /// Check if expression has blockers (references bindings with blocker metadata).
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
         self.expr_deps(ExprSite::Node(id))
             .is_some_and(|deps| deps.has_blockers())
     }
 
-    /// Build `promises_var[index]` expressions for const-tag symbols referenced by a node's expression.
-    /// Returns one expression per referenced const-tag binding that has a blocker.
     pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {
         if self.const_tag_blockers.is_empty() {
             return Vec::new();
@@ -427,22 +325,15 @@ impl<'a> Ctx<'a> {
         result
     }
 
-    // -- Fragment shortcuts --
-
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
         self.query.view.content_type(key)
     }
-    pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
-        self.query.view.fragment_blockers(key)
-    }
-    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
-        self.query.view.has_dynamic_children(key)
-    }
-
-    // -- Element flag shortcuts --
 
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.query.view.has_spread(id)
+    }
+    pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
+        self.query.analysis.has_attribute(id, name)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
         self.query.view.has_class_directives(id)
@@ -465,29 +356,17 @@ impl<'a> Ctx<'a> {
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)
     }
-    pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
-        self.query.view.option_synthetic_value_expr(id)
-    }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.query.view.is_customizable_select(id)
     }
-    pub fn is_selectedcontent(&self, id: NodeId) -> bool {
-        self.query.view.is_selectedcontent(id)
-    }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.query.view.is_svelte_fragment_slot(id)
-    }
-    pub fn is_svelte_self(&self, id: NodeId) -> bool {
-        self.query.view.is_svelte_self(id)
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic_attr(id)
-    }
-    pub fn has_state_attr(&self, id: NodeId) -> bool {
-        self.query.view.has_state_attr(id)
     }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.query.view.static_class(id)
@@ -511,9 +390,6 @@ impl<'a> Ctx<'a> {
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.class_attr_id(id)
     }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
-        self.query.view.class_directive_info(id)
-    }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.query.view.is_expression_shorthand(id)
     }
@@ -522,9 +398,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
         self.query.view.component_binding_sym(id)
-    }
-    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
-        self.query.view.component_css_props(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
         self.query.view.has_component_css_props(id)
@@ -586,27 +459,9 @@ impl<'a> Ctx<'a> {
         self.query.view.symbol_blocker(sym)
     }
 
-    // -- Snippet shortcuts --
-
-    // -- ConstTag shortcuts --
-
-    pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.query.view.const_tags_for_fragment(key)
-    }
-
-    // -- DebugTag shortcuts --
-
     pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag {
         self.query.debug_tag(id)
     }
-    pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.query.view.debug_tags_for_fragment(key)
-    }
-    pub fn title_elements_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.query.view.title_elements_for_fragment(key)
-    }
-
-    // -- Parsed template JS handles --
 
     pub fn node_expr_handle(&self, node_id: NodeId) -> svelte_analyze::ExprHandle {
         self.query.view.node_expr_handle(node_id)
@@ -628,22 +483,14 @@ impl<'a> Ctx<'a> {
         self.query.view.fragment_references_any_symbol(key, syms)
     }
 
-    // -- Delegated events --
-
-    /// Register a delegated event name (deduplicates via O(1) HashSet lookup).
     pub fn add_delegated_event(&mut self, event_name: String) {
         self.state.add_delegated_event(event_name);
     }
 
-    // -- CSS scoping --
-
-    /// Scoping class for this component, e.g. `"svelte-1a7i8ec"`.
-    /// Returns an empty string when no `<style>` block is present.
     pub fn css_hash(&self) -> &str {
         self.query.view.css_hash()
     }
 
-    /// Whether this element should receive the scoped CSS class attribute.
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
         self.query.view.is_css_scoped(id)
     }

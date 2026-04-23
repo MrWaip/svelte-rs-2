@@ -545,6 +545,76 @@ from inside a FragmentItem arm (acceptable transitional form), or
 (b) does not migrate its consumer at all and only lives as an
 analyzer-side contract (preferred when no clean consumer path exists).
 
+## Open: Кто отдаёт семантику для ExpressionTag в шаблонах
+
+Текстовое выражение `{expr}` внутри шаблона (не внутри блока, не внутри
+атрибута, а в теле фрагмента) — пока не закреплено ни за одним кластером.
+
+Пример:
+
+```svelte
+<p>Hello {name}!</p>
+```
+
+`{name}` — это `ExpressionTag`-узел в children параграфа. Что консьюмеру
+(transform / codegen) надо знать про этот узел:
+
+- реактивное значение выражения (→ `reactivity_semantics`, через
+  `ReferenceId` идентификаторов)
+- async-статус выражения: содержит ли `await`, какие script-level
+  блокеры нужно дождаться прежде чем его можно эвалюэйтить
+- роль: читается ли оно как контент текстового узла, как аргумент
+  клсикс-композиции и т. п.
+
+Существующие кластеры не покрывают:
+
+- **Block Semantics** — вне scope по документу (строки 162-163): `{@html}`
+  и `{@debug}` явно out of scope, `ExpressionTag` не упомянут.
+- **Attribute Semantics** — только выражения внутри атрибутов
+  (`class={x}`, `value={x}`, конкатенации). Свободный ExpressionTag в теле
+  фрагмента туда не попадает.
+- **ElementShape Semantics** — про форму элемента, не про его содержимое.
+
+Сейчас эти факты живут в `ExpressionInfo` (per-expression bag-of-facts,
+помеченный как deprecated surface — строки 432-436) плюс в методах вида
+`expression_blockers(node_id)` на `AnalysisData`. Это та самая
+«scattered meaning assembly», от которой Consumer Model должна увести.
+
+Варианты, не выбрано:
+
+1. **Новый кластер InterpolationSemantics** (peer Block / Attribute /
+   ElementShape). Query `interpolation_semantics(NodeId)` возвращает
+   payload с async-фактами, ролью, flags. Плюсы: симметрично остальным
+   кластерам. Минусы: плодит query surface, хотя большая часть фактов
+   уже есть в `reactivity_semantics(reference_id)`.
+
+2. **Расширить Block Semantics** варинтом `ExpressionTag(sem)`. Идёт
+   против строки 166 («`{@html}`, `{@debug}` — direct emission, no
+   block semantics»), но ExpressionTag ведёт себя иначе чем `{@html}` —
+   это основной кирпич реактивного текста, а не escape-hatch.
+
+3. **Всё на reactivity_semantics через `ReferenceId`**. Блокеры и
+   async-статус выводятся из набора references выражения через уже
+   существующий `reference_semantics(reference_id)` + `BlockerData`.
+   Плюсы: ни одного нового кластера. Минусы: consumer должен сам
+   агрегировать per-ref факты в per-expression ответ (те же грабли,
+   что у `ExpressionInfo`).
+
+4. **Deferred до Attribute Semantics.** Сначала закрываем Attribute
+   (там `ExpressionAttribute`-семантика понадобится в любом случае), а
+   потом решаем — переиспользовать ту же форму для ExpressionTag в
+   теле, или ввести отдельный кластер.
+
+Блокер миграции Attribute: attribute-level expressions и text-level
+expressions имеют одинаковую природу (оба ExpressionTag-подобны, оба
+читают тот же `ReferenceId`). Если Attribute получит собственную
+expression-семантику не оглядываясь на текст — придётся либо
+дублировать её для ExpressionTag, либо возвращаться и унифицировать.
+
+Решение: до старта Attribute Semantics миграции — зафиксировать
+контракт «кто владеет семантикой одного ExpressionTag NodeId».
+Варианты выше — стартовая точка, не финал.
+
 ## Open Questions
 
 Intentionally unresolved until per-cluster work starts:
