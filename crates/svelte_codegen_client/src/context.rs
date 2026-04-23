@@ -63,11 +63,6 @@ impl<'a> CodegenQuery<'a> {
         self.component.store.debug_tag(id)
     }
 
-    #[allow(dead_code)]
-    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
-        self.view.expr_has_blockers(id)
-    }
-
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.view.expression(id)
     }
@@ -380,10 +375,6 @@ impl<'a> Ctx<'a> {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.query.view.has_use_directive(id)
     }
-    #[allow(dead_code)]
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.query.view.has_dynamic_class_directives(id)
-    }
     pub fn class_needs_state(&self, id: NodeId) -> bool {
         self.query.view.class_needs_state(id)
     }
@@ -444,13 +435,6 @@ impl<'a> Ctx<'a> {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.query.view.attr_expression(id)
     }
-    #[allow(dead_code)]
-    pub fn attr_expression_blockers(&self, id: NodeId) -> Vec<u32> {
-        self.expr_deps(ExprSite::Attr(id))
-            .map(|deps| deps.blockers.into_iter().collect())
-            .unwrap_or_default()
-    }
-    #[allow(dead_code)]
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expr_deps(ExprSite::Node(id))
             .is_some_and(|deps| deps.needs_memo)
