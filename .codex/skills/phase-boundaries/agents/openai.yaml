@@ -1,6 +1,0 @@
-interface:
-  display_name: "Phase Boundaries"
-  short_description: "Manual-only compiler boundary reference"
-  default_prompt: "Use $phase-boundaries only when explicitly requested."
-policy:
-  allow_implicit_invocation: false

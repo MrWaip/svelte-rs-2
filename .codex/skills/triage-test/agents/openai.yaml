@@ -1,4 +1,0 @@
-interface:
-  display_name: "Triage Test"
-  short_description: "Classify one failing test before fixing"
-  default_prompt: "Use $triage-test to classify this failing compiler test before deciding whether to fix it, slice it, or audit it."

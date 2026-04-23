@@ -4,7 +4,7 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceFlags;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::SymbolId;
-use svelte_ast::FragmentKey;
+use svelte_ast::{FragmentId, NodeId};
 
 use super::js_visitor::JsSemanticVisitor;
 use crate::storage::ComponentSemantics;
@@ -33,11 +33,15 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
         root_scope: ScopeId,
         node_id_offset: u32,
     ) -> Self {
+        // OxcNodeId(0) is reserved as DUMMY sentinel — never use it as a
+        // real id. If the offset would land at 0 (script-less component),
+        // bump to 1 so the first allocation produces a non-DUMMY id.
+        let safe_offset = node_id_offset.max(1);
         Self {
             semantics,
             scope_stack: vec![root_scope],
-            node_id_offset,
-            next_synthetic_node_id: node_id_offset,
+            node_id_offset: safe_offset,
+            next_synthetic_node_id: safe_offset,
         }
     }
 
@@ -57,17 +61,26 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
         child
     }
 
-    /// Create a child scope, register it for a fragment key, and push it.
-    pub fn enter_fragment_scope(&mut self, key: FragmentKey) -> ScopeId {
+    /// Create a child scope, register it for a fragment id, and push it.
+    pub fn enter_fragment_scope_by_id(&mut self, id: FragmentId) -> ScopeId {
         let scope = self.enter_child_scope();
-        self.semantics.set_fragment_scope(key, scope);
+        self.semantics.set_fragment_scope_by_id(id, scope);
         scope
     }
 
-    /// Register the current scope for a fragment key without creating a new one.
-    pub fn register_fragment_scope(&mut self, key: FragmentKey) {
+    /// LEGACY(svelte4): create a child scope, register for a named-slot
+    /// wrapper body, and push it. Slot wrappers have no `FragmentId`.
+    pub fn enter_named_slot_scope(&mut self, component_id: NodeId, wrapper_id: NodeId) -> ScopeId {
+        let scope = self.enter_child_scope();
+        self.semantics
+            .set_named_slot_scope(component_id, wrapper_id, scope);
+        scope
+    }
+
+    /// Register the current scope for a fragment id without creating a new one.
+    pub fn register_fragment_scope_by_id(&mut self, id: FragmentId) {
         let scope = self.current_scope();
-        self.semantics.set_fragment_scope(key, scope);
+        self.semantics.set_fragment_scope_by_id(id, scope);
     }
 
     /// Pop the current scope and return to the parent.
@@ -81,9 +94,13 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
         self.scope_stack.push(scope);
     }
 
-    /// Run the JS semantic visitor on an expression in the current scope.
-    /// References are tagged as template references. NodeIds are offset.
-    pub fn visit_js_expression(&mut self, expr: &Expression<'a>) {
+    /// Run the JS semantic visitor on a template expression. Binds
+    /// `expr_ref.oxc_id` to the visitor's root node id so consumers can later
+    /// look up the expression via `expr_ref.id()`. References are tagged as
+    /// template references.
+    pub fn visit_js_expression(&mut self, expr_ref: &svelte_ast::ExprRef, expr: &Expression<'a>) {
+        let id = OxcNodeId::from_usize(self.next_synthetic_node_id as usize);
+        expr_ref.bind(id);
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(
@@ -101,9 +118,12 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
         }
     }
 
-    /// Run the JS semantic visitor on a statement in the current scope.
-    /// References are tagged as template references. NodeIds are offset.
-    pub fn visit_js_statement(&mut self, stmt: &Statement<'a>) {
+    /// Run the JS semantic visitor on a template statement. Binds
+    /// `stmt_ref.oxc_id` to the visitor's root node id. Same contract as
+    /// `visit_js_expression`.
+    pub fn visit_js_statement(&mut self, stmt_ref: &svelte_ast::StmtRef, stmt: &Statement<'a>) {
+        let id = OxcNodeId::from_usize(self.next_synthetic_node_id as usize);
+        stmt_ref.bind(id);
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(
@@ -121,9 +141,17 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
         }
     }
 
-    /// Run the JS semantic visitor on an expression, with initial reference
-    /// flags (e.g. Write for `bind:value`). References are tagged as template.
-    pub fn visit_js_expression_with_flags(&mut self, expr: &Expression<'a>, flags: ReferenceFlags) {
+    /// Run the JS semantic visitor on a template expression with initial
+    /// reference flags (e.g. Write for `bind:value`). Binds
+    /// `expr_ref.oxc_id`. References are tagged as template references.
+    pub fn visit_js_expression_with_flags(
+        &mut self,
+        expr_ref: &svelte_ast::ExprRef,
+        expr: &Expression<'a>,
+        flags: ReferenceFlags,
+    ) {
+        let id = OxcNodeId::from_usize(self.next_synthetic_node_id as usize);
+        expr_ref.bind(id);
         let scope = self.current_scope();
         let offset = self.next_synthetic_node_id;
         let mut visitor = JsSemanticVisitor::new_with_offset(

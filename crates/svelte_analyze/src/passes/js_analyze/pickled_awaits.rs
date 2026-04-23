@@ -8,45 +8,10 @@ use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 
-use crate::types::data::{AnalysisData, ExprHandle, ParserResult};
+use crate::types::data::{AnalysisData, JsAst};
 
-pub(crate) fn classify_pickled_awaits(parsed: &ParserResult<'_>, data: &mut AnalysisData) {
-    let expr_handles: Vec<_> = data
-        .expressions
-        .iter()
-        .filter_map(|(node_id, _)| {
-            data.template
-                .template_semantics
-                .node_expr_handles
-                .get(node_id)
-                .copied()
-        })
-        .collect();
-    let attr_handles: Vec<_> = data
-        .attr_expressions
-        .iter()
-        .filter_map(|(node_id, _)| {
-            data.template
-                .template_semantics
-                .attr_expr_handles
-                .get(node_id)
-                .copied()
-        })
-        .collect();
-
-    collect_pickled_await_offsets(parsed, data, expr_handles.into_iter());
-    collect_pickled_await_offsets(parsed, data, attr_handles.into_iter());
-}
-
-fn collect_pickled_await_offsets(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    handles: impl Iterator<Item = ExprHandle>,
-) {
-    for handle in handles {
-        let Some(expr) = parsed.expr(handle) else {
-            continue;
-        };
+pub(crate) fn classify_pickled_awaits(parsed: &JsAst<'_>, data: &mut AnalysisData) {
+    for expr in parsed.iter_exprs() {
         let mut collector = PickledAwaitCollector::new();
         collector.visit_expression(expr);
         data.script

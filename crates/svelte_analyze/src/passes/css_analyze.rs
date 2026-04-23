@@ -8,7 +8,7 @@ use svelte_diagnostics::DiagnosticKind;
 use svelte_span::GetSpan;
 
 use svelte_ast::Component as SvelteComponent;
-use svelte_parser::ParserResult;
+use svelte_parser::JsAst;
 
 use crate::css::css_component_hash;
 use crate::types::data::{AnalysisData, CssAnalysis};
@@ -21,7 +21,7 @@ use crate::types::node_table::NodeBitSet;
 pub fn analyze_css_pass(
     component: &SvelteComponent,
     stylesheet: &StyleSheet,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     inject_styles: bool,
     data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,

@@ -4,6 +4,7 @@ pub struct ClassDirectiveInfo {
     pub id: NodeId,
     pub name: String,
     pub has_expression: bool,
+    pub expr_id: oxc_syntax::node::NodeId,
 }
 
 #[derive(Clone)]
@@ -24,6 +25,8 @@ pub enum ComponentPropKind {
     Expression {
         name: String,
         attr_id: NodeId,
+        /// OxcNodeId of the parsed expression — direct lookup into `JsAst.exprs`.
+        expr_id: oxc_syntax::node::NodeId,
         shorthand: bool,
         needs_memo: bool,
     },
@@ -34,10 +37,12 @@ pub enum ComponentPropKind {
     },
     BindThis {
         bind_id: NodeId,
+        expr_id: oxc_syntax::node::NodeId,
     },
     Bind {
         name: String,
         bind_id: NodeId,
+        expr_id: oxc_syntax::node::NodeId,
         mode: ComponentBindMode,
         /// For store-sub binds: the expression identifier (e.g., `"$count"`).
         /// `None` for non-store binds where `name` is used directly.
@@ -45,14 +50,18 @@ pub enum ComponentPropKind {
     },
     Spread {
         attr_id: NodeId,
+        expr_id: oxc_syntax::node::NodeId,
     },
     Attach {
         attr_id: NodeId,
+        expr_id: oxc_syntax::node::NodeId,
     },
     /// LEGACY(svelte4): `on:event` directive on component tags → `$$events`.
     Event {
         name: String,
         attr_id: NodeId,
+        /// OxcNodeId of the handler expression. `None` for `on:click` without value.
+        expr_id: Option<oxc_syntax::node::NodeId>,
         has_expression: bool,
         has_once_modifier: bool,
     },
@@ -96,7 +105,7 @@ pub struct ElementFlags {
     /// `<g>` + `$.css_props(...)` instead of being passed as ordinary props.
     /// Each entry stores the full attribute name (with `--` prefix) and the
     /// attribute NodeId for retrieving the parsed expression.
-    pub(crate) component_css_props: NodeTable<Vec<(String, NodeId)>>,
+    pub(crate) component_css_props: NodeTable<Vec<(String, NodeId, oxc_syntax::node::NodeId)>>,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
     /// `<textarea>` with expression children and no explicit `value` attribute —
     /// codegen emits `$.remove_textarea_child` + `$.set_value` instead of textContent.
@@ -200,7 +209,7 @@ impl ElementFlags {
     pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
         self.component_binding_sym.get(id).copied()
     }
-    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
+    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId, oxc_syntax::node::NodeId)] {
         self.component_css_props
             .get(id)
             .map_or(&[], |v| v.as_slice())

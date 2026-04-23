@@ -1,9 +1,9 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 29/29 use cases
-- **Tests**: 54/54 green
-- Last updated: 2026-04-12
+- **Working**: 30/30 use cases
+- **Tests**: 55/55 green
+- Last updated: 2026-04-24
 
 ## Source
 - `ROADMAP.md` legacy item: `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute`
@@ -69,6 +69,7 @@
 - [x] `let:` invalid-placement diagnostics match the reference owner matrix for default slots, named slots, and slotted child components
   - [x] `let:` on `<svelte:window>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_window`)
   - [x] `let:` on `<svelte:body>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_body`)
+- [x] Components with both default-slot content and a named slot containing a dynamic expression codegen correctly: the default-slot traversal skips children carrying a `slot="..."` attribute so the named-slot arrow still owns their expressions (test: `diagnose_component_default_and_named_slot_expr`)
 
 ## Out of scope
 
@@ -166,3 +167,4 @@
 - [x] slots/svelte_fragment_invalid_attribute_class
 - [x] slots/let_directive_invalid_placement_svelte_window
 - [x] slots/let_directive_invalid_placement_svelte_body
+- [x] diagnose_component_default_and_named_slot_expr

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Add Test"
-  short_description: "Create focused compiler test cases"
-  default_prompt: "Use $add-test to create a focused compiler case before implementation."

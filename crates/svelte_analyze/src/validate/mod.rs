@@ -17,12 +17,12 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::script::RuneKind;
-use crate::{types::data::ParserResult, AnalysisData};
+use crate::{types::data::JsAst, AnalysisData};
 
 pub fn validate(
     component: &Component,
     data: &AnalysisData,
-    parsed: &ParserResult,
+    parsed: &JsAst,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -157,7 +157,7 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
     }
 }
 
-fn validate_module_program(parsed: &ParserResult, diags: &mut Vec<Diagnostic>) {
+fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };
@@ -195,11 +195,7 @@ fn export_specifier_is_default(specifier: &oxc_ast::ast::ExportSpecifier<'_>) ->
 ///
 /// Snippets are template-level constructs; exporting them from a module block is invalid
 /// because they are not accessible as module-scope bindings.
-fn validate_snippet_exports(
-    component: &Component,
-    parsed: &ParserResult,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };

@@ -503,7 +503,8 @@ impl<'a> TemplateWalker<'a> for ExprRefWalker<'a> {
         let parsed = Parser::new(self.alloc, "count", SourceType::mjs())
             .parse_expression()
             .expect("test invariant");
-        ctx.visit_js_expression(&parsed);
+        let expr_ref = svelte_ast::ExprRef::new(svelte_ast::Span::new(0, 0));
+        ctx.visit_js_expression(&expr_ref, &parsed);
     }
 }
 
@@ -547,14 +548,16 @@ impl<'a> TemplateWalker<'a> for ChildScopeWalker<'a> {
         let parsed = Parser::new(self.alloc, "const item = 0;", SourceType::mjs()).parse();
         // Visit the statement to register binding
         for stmt in &parsed.program.body {
-            ctx.visit_js_statement(stmt);
+            let stmt_ref = svelte_ast::StmtRef::new(svelte_ast::Span::new(0, 0));
+            ctx.visit_js_statement(&stmt_ref, stmt);
         }
 
         // Now reference "item" from template
         let expr = Parser::new(self.alloc, "item", SourceType::mjs())
             .parse_expression()
             .expect("test invariant");
-        ctx.visit_js_expression(&expr);
+        let expr_ref = svelte_ast::ExprRef::new(svelte_ast::Span::new(0, 0));
+        ctx.visit_js_expression(&expr_ref, &expr);
 
         ctx.leave_scope();
     }
@@ -651,7 +654,8 @@ impl<'a> TemplateWalker<'a> for UnresolvedExprWalker<'a> {
         let parsed = Parser::new(self.alloc, "console.log(x)", SourceType::mjs())
             .parse_expression()
             .expect("test invariant");
-        ctx.visit_js_expression(&parsed);
+        let expr_ref = svelte_ast::ExprRef::new(svelte_ast::Span::new(0, 0));
+        ctx.visit_js_expression(&expr_ref, &parsed);
     }
 }
 

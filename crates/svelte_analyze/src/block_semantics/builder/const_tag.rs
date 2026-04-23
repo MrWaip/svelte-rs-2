@@ -19,10 +19,7 @@ use svelte_ast::ConstTag;
 
 /// Populate `BlockSemantics::ConstTag` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
-    let Some(stmt_handle) = ctx.parsed.stmt_handle(tag.expression_span.start) else {
-        return;
-    };
-    let Some(stmt) = ctx.parsed.stmt(stmt_handle) else {
+    let Some(stmt) = ctx.parsed.stmt(tag.decl.id()) else {
         return;
     };
     // The declaration node id is the `OxcNodeId` of the backing

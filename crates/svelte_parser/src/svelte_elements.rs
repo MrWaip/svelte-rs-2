@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
                     self.process_svelte_option_string(&sa.name, &value, el.span, &mut options);
                 }
                 Attribute::ExpressionAttribute(ea) => {
-                    let expr_text = ea.expression_span.source_text(self.source).trim();
+                    let expr_text = ea.expression.span.source_text(self.source).trim();
                     match expr_text {
                         "true" => {
                             self.process_svelte_option_bool(&ea.name, true, el.span, &mut options);
@@ -157,7 +157,7 @@ impl<'a> Parser<'a> {
                             // Could be an object expression for customElement
                             if ea.name == "customElement" {
                                 self.process_custom_element_expression(
-                                    ea.expression_span,
+                                    ea.expression.span,
                                     el.span,
                                     &mut options,
                                 );
@@ -316,12 +316,14 @@ impl<'a> Parser<'a> {
             let Node::Element(el) = component.store.take(id) else {
                 unreachable!()
             };
+            let mut fragment = el.fragment;
+            fragment.role = svelte_ast::FragmentRole::SvelteHeadBody;
             component.store.replace(
                 id,
                 Node::SvelteHead(SvelteHead {
                     id: el.id,
                     span: el.span,
-                    fragment: el.fragment,
+                    fragment,
                 }),
             );
         }
@@ -499,15 +501,25 @@ impl<'a> Parser<'a> {
                 };
                 let (tag_span, static_tag) = Self::extract_this_attribute(&mut el.attributes);
                 Self::convert_svelte_element(store, &el.fragment.nodes);
+                let tag = if static_tag {
+                    None
+                } else {
+                    Some(svelte_ast::ExprRef::new(tag_span))
+                };
                 store.replace(
                     id,
                     Node::SvelteElement(svelte_ast::SvelteElement {
                         id: el.id,
                         span: el.span,
                         tag_span,
+                        tag,
                         static_tag,
                         attributes: el.attributes,
-                        fragment: el.fragment,
+                        fragment: {
+                            let mut f = el.fragment;
+                            f.role = svelte_ast::FragmentRole::SvelteElementBody;
+                            f
+                        },
                     }),
                 );
             } else {
@@ -539,7 +551,11 @@ impl<'a> Parser<'a> {
                         id: el.id,
                         span: el.span,
                         attributes: el.attributes,
-                        fragment: el.fragment,
+                        fragment: {
+                            let mut f = el.fragment;
+                            f.role = svelte_ast::FragmentRole::SvelteBoundaryBody;
+                            f
+                        },
                     }),
                 );
             } else {
@@ -558,7 +574,12 @@ fn extend_child_node_ids(node: &Node, buf: &mut Vec<NodeId>) {
     match node {
         Node::Element(el) => buf.extend_from_slice(&el.fragment.nodes),
         Node::SlotElementLegacy(el) => buf.extend_from_slice(&el.fragment.nodes),
-        Node::ComponentNode(cn) => buf.extend_from_slice(&cn.fragment.nodes),
+        Node::ComponentNode(cn) => {
+            buf.extend_from_slice(&cn.fragment.nodes);
+            for slot in &cn.legacy_slots {
+                buf.extend_from_slice(&slot.fragment.nodes);
+            }
+        }
         Node::IfBlock(block) => {
             buf.extend_from_slice(&block.consequent.nodes);
             if let Some(alt) = &block.alternate {

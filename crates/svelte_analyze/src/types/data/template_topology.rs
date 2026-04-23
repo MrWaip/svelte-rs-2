@@ -121,7 +121,7 @@ pub struct ParentRef {
 pub struct TemplateTopology {
     node_parents: NodeTable<ParentRef>,
     expr_parents: NodeTable<ParentRef>,
-    node_fragments: NodeTable<FragmentKey>,
+    node_fragments: NodeTable<svelte_ast::FragmentId>,
 }
 
 impl TemplateTopology {
@@ -149,11 +149,11 @@ impl TemplateTopology {
         self.node_parents.get(id).copied()
     }
 
-    pub fn record_node_fragment(&mut self, id: NodeId, key: FragmentKey) {
-        self.node_fragments.insert(id, key);
+    pub fn record_node_fragment(&mut self, id: NodeId, fragment_id: svelte_ast::FragmentId) {
+        self.node_fragments.insert(id, fragment_id);
     }
 
-    pub fn node_fragment(&self, id: NodeId) -> Option<FragmentKey> {
+    pub fn node_fragment(&self, id: NodeId) -> Option<svelte_ast::FragmentId> {
         self.node_fragments.get(id).copied()
     }
 

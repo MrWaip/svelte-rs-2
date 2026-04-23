@@ -26,10 +26,7 @@ use svelte_component_semantics::{ReferenceId, SymbolId};
 
 /// Populate `BlockSemantics::Render` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
-    let Some(handle) = ctx.parsed.expr_handle(tag.expression_span.start) else {
-        return;
-    };
-    let Some(expr) = ctx.parsed.expr(handle) else {
+    let Some(expr) = ctx.parsed.expr(tag.expression.id()) else {
         return;
     };
 

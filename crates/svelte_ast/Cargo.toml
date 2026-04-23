@@ -11,3 +11,4 @@ doctest = false
 
 [dependencies]
 svelte_span = { path = "../svelte_span" }
+oxc_syntax = { workspace = true }

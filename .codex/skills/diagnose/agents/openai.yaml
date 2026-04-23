@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diagnose"
-  short_description: "Diagnose repros into durable follow-up work"
-  default_prompt: "Use $diagnose to analyze this repro, isolate the root cause, add focused tests, and record the next spec-owned step."

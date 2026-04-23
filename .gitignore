@@ -7,3 +7,4 @@ REVIEW.md
 *.bak
 *.tgz
 *.node
+tasks/quick_check/scratch.svelte

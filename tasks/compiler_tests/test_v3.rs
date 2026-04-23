@@ -3151,3 +3151,8 @@ fn diagnose_svg_city_icon() {
 fn clock_svg_derived_onmount() {
     assert_compiler("clock_svg_derived_onmount");
 }
+
+#[rstest]
+fn diagnose_component_default_and_named_slot_expr() {
+    assert_compiler("diagnose_component_default_and_named_slot_expr");
+}

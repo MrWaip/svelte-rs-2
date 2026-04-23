@@ -31,6 +31,7 @@ svelte_transform = { path = "crates/svelte_transform" }
 svelte_ast_builder = { path = "crates/svelte_ast_builder" }
 svelte_compiler = { path = "crates/svelte_compiler" }
 svelte_component_semantics = { path = "crates/svelte_component_semantics" }
+svelte_types = { path = "crates/svelte_types" }
 svelte_transform_css = { path = "crates/svelte_transform_css" }
 svelte_css = { path = "crates/svelte_css" }
 napi_compiler = { path = "crates/napi_compiler" }

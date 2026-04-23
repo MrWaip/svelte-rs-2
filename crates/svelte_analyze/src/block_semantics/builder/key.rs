@@ -24,11 +24,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
     // blocks (of any migrated kind) populate inside the same walk.
     ctx.visit_fragment(&block.fragment.nodes);
 
-    let (has_await, blockers) = match ctx
-        .parsed
-        .expr_handle(block.expression_span.start)
-        .and_then(|h| ctx.parsed.expr(h))
-    {
+    let (has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
         Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
         None => (false, SmallVec::new()),
     };

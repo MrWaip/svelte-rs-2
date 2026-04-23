@@ -33,7 +33,7 @@ fn assert_script(c: &Component, expected: &str) {
 
 fn assert_if_block(c: &Component, index: usize, expected_test: &str) {
     if let Node::IfBlock(ref ib) = node_at(c, index) {
-        assert_eq!(c.source_text(ib.test_span), expected_test);
+        assert_eq!(c.source_text(ib.test.span), expected_test);
     } else {
         panic!("expected IfBlock at index {index}");
     }
@@ -304,7 +304,7 @@ fn assert_snippet_block(
 ) {
     if let Node::SnippetBlock(ref sb) = node_at(c, index) {
         assert_eq!(sb.name(&c.source), expected_name);
-        assert_eq!(c.source_text(sb.expression_span), expected_expression);
+        assert_eq!(c.source_text(sb.decl.span), expected_expression);
     } else {
         panic!("expected SnippetBlock at index {index}");
     }
@@ -312,7 +312,7 @@ fn assert_snippet_block(
 
 fn assert_render_tag(c: &Component, index: usize, expected_expr: &str) {
     if let Node::RenderTag(ref rt) = node_at(c, index) {
-        assert_eq!(c.source_text(rt.expression_span), expected_expr);
+        assert_eq!(c.source_text(rt.expression.span), expected_expr);
     } else {
         panic!("expected RenderTag at index {index}");
     }
@@ -370,7 +370,7 @@ fn snippet_and_render_together() {
 
 fn assert_html_tag(c: &Component, index: usize, expected_expr: &str) {
     if let Node::HtmlTag(ref ht) = node_at(c, index) {
-        assert_eq!(c.source_text(ht.expression_span), expected_expr);
+        assert_eq!(c.source_text(ht.expression.span), expected_expr);
     } else {
         panic!("expected HtmlTag at index {index}");
     }
@@ -392,7 +392,7 @@ fn html_tag_complex_expression() {
 
 fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_expr: &str) {
     if let Node::ConstTag(ref ct) = frag_node_at(c, fragment, index) {
-        assert_eq!(c.source_text(ct.expression_span), expected_expr);
+        assert_eq!(c.source_text(ct.decl.span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
     }
@@ -422,7 +422,7 @@ fn const_tag_in_if_block() {
 
 fn assert_key_block(c: &Component, index: usize, expected_expr: &str) {
     if let Node::KeyBlock(ref kb) = node_at(c, index) {
-        assert_eq!(c.source_text(kb.expression_span), expected_expr);
+        assert_eq!(c.source_text(kb.expression.span), expected_expr);
     } else {
         panic!("expected KeyBlock at index {index}");
     }
@@ -531,8 +531,8 @@ fn nested_style_tag_inside_block_stays_in_fragment() {
 
 fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {
     if let Node::EachBlock(ref eb) = node_at(c, index) {
-        assert_eq!(c.source_text(eb.expression_span), expected_expr);
-        let actual_key = eb.key_span.map(|s| c.source_text(s));
+        assert_eq!(c.source_text(eb.expression.span), expected_expr);
+        let actual_key = eb.key.as_ref().map(|r| c.source_text(r.span));
         assert_eq!(actual_key, expected_key);
     } else {
         panic!("expected EachBlock at index {index}");
@@ -1091,7 +1091,11 @@ fn svelte_options_preserves_attributes() {
 
 fn assert_debug_tag(c: &Component, fragment: &Fragment, index: usize, expected_ids: &[&str]) {
     if let Node::DebugTag(ref dt) = frag_node_at(c, fragment, index) {
-        let actual: Vec<&str> = dt.identifiers.iter().map(|s| c.source_text(*s)).collect();
+        let actual: Vec<&str> = dt
+            .identifier_refs
+            .iter()
+            .map(|r| c.source_text(r.span))
+            .collect();
         assert_eq!(actual, expected_ids);
     } else {
         panic!("expected DebugTag at index {index}");
@@ -1270,8 +1274,13 @@ fn legacy_svelte_fragment_converts_to_dedicated_node() {
         panic!("expected ComponentNode");
     };
 
+    let slot = component
+        .legacy_slots
+        .iter()
+        .find(|s| s.name == "item")
+        .expect("named slot 'item' must be bucketed");
     assert!(matches!(
-        frag_node_at(&c, &component.fragment, 0),
+        frag_node_at(&c, &slot.fragment, 0),
         Node::SvelteFragmentLegacy(_)
     ));
 }
@@ -1290,8 +1299,10 @@ fn let_directive_legacy_converts_to_dedicated_attribute() {
     assert_eq!(dir.name, "item");
     assert_eq!(dir.name_span.source_text(&c.source), "item");
     assert_eq!(
-        dir.expression_span
+        dir.binding
+            .as_ref()
             .expect("expected expression")
+            .span
             .source_text(&c.source),
         "processed"
     );
@@ -1370,4 +1381,173 @@ fn attribute_duplicate_style_directive() {
         diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
         "expected attribute_duplicate, got {diags:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// LEGACY(svelte4): named slot bucketing on ComponentNode
+// ---------------------------------------------------------------------------
+
+fn component_at(c: &Component, index: usize) -> &svelte_ast::ComponentNode {
+    let Node::ComponentNode(cn) = node_at(c, index) else {
+        panic!("expected ComponentNode at index {index}");
+    };
+    cn
+}
+
+fn slot_names(cn: &svelte_ast::ComponentNode) -> Vec<&str> {
+    cn.legacy_slots.iter().map(|s| s.name.as_str()).collect()
+}
+
+#[test]
+fn no_slot_attrs_means_no_legacy_slots() {
+    let c = parse(r#"<Comp><span>a</span>text</Comp>"#);
+    let cn = component_at(&c, 0);
+    assert!(cn.legacy_slots.is_empty());
+    assert_eq!(cn.fragment.nodes.len(), 2);
+}
+
+#[test]
+fn single_named_slot_moved_into_legacy_slots() {
+    let c = parse(r#"<Comp><div slot="header">H</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["header"]);
+    assert!(cn.fragment.nodes.is_empty());
+    let slot = &cn.legacy_slots[0];
+    assert_eq!(slot.fragment.nodes.len(), 1);
+    let wrapper = c.store.get(slot.fragment.nodes[0]);
+    assert!(matches!(wrapper, Node::Element(el) if el.name == "div"));
+}
+
+#[test]
+fn slot_attr_remains_on_wrapper_after_bucketing() {
+    let c = parse(r#"<Comp><div slot="header">H</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    let wrapper_id = cn.legacy_slots[0].fragment.nodes[0];
+    let Node::Element(el) = c.store.get(wrapper_id) else {
+        panic!("expected element wrapper");
+    };
+    let has_slot_attr = el.attributes.iter().any(|a| {
+        matches!(
+            a,
+            Attribute::StringAttribute(sa) if sa.name == "slot"
+        )
+    });
+    assert!(
+        has_slot_attr,
+        "slot attribute must remain on wrapper for analysis"
+    );
+}
+
+#[test]
+fn multiple_named_slots_preserve_source_order() {
+    let c = parse(r#"<Comp><div slot="header">H</div><p slot="footer">F</p></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["header", "footer"]);
+}
+
+#[test]
+fn default_and_named_children_split_correctly() {
+    let c =
+        parse(r#"<Comp>before<div slot="header">H</div>between<p slot="footer">F</p>after</Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["header", "footer"]);
+    let default = &cn.fragment.nodes;
+    assert_eq!(default.len(), 3, "before/between/after stay in default");
+    assert!(matches!(c.store.get(default[0]), Node::Text(_)));
+    assert!(matches!(c.store.get(default[1]), Node::Text(_)));
+    assert!(matches!(c.store.get(default[2]), Node::Text(_)));
+}
+
+#[test]
+fn duplicate_slot_name_groups_into_single_bucket() {
+    let c = parse(r#"<Comp><div slot="x">A</div><span slot="x">B</span></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["x"]);
+    assert_eq!(cn.legacy_slots[0].fragment.nodes.len(), 2);
+}
+
+#[test]
+fn slot_on_nested_component_child_is_bucketed() {
+    let c = parse(r#"<Outer><Inner slot="body" /></Outer>"#);
+    let outer = component_at(&c, 0);
+    assert_eq!(slot_names(outer), vec!["body"]);
+    let wrapper = c.store.get(outer.legacy_slots[0].fragment.nodes[0]);
+    assert!(matches!(wrapper, Node::ComponentNode(cn) if cn.name == "Inner"));
+}
+
+#[test]
+fn slot_on_svelte_fragment_is_bucketed_before_legacy_conversion() {
+    // <svelte:fragment> still appears as Element at ComponentNode-construction time;
+    // partition reads slot= from its attributes and buckets by name.
+    let c = parse(r#"<Comp><svelte:fragment slot="item">named</svelte:fragment></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["item"]);
+    let wrapper_id = cn.legacy_slots[0].fragment.nodes[0];
+    // After convert_svelte_fragment_legacy ran, wrapper is now SvelteFragmentLegacy.
+    assert!(matches!(
+        c.store.get(wrapper_id),
+        Node::SvelteFragmentLegacy(_)
+    ));
+}
+
+#[test]
+fn dynamic_slot_value_stays_in_default() {
+    // slot={expr} is ExpressionAttribute, not StringAttribute — no static name available.
+    let c = parse(r#"<Comp><div slot={name}>X</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert!(cn.legacy_slots.is_empty(), "dynamic slot stays in default");
+    assert_eq!(cn.fragment.nodes.len(), 1);
+}
+
+#[test]
+fn empty_slot_name_stays_in_default() {
+    let c = parse(r#"<Comp><div slot="">X</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert!(
+        cn.legacy_slots.is_empty(),
+        "empty slot name not a valid bucket"
+    );
+    assert_eq!(cn.fragment.nodes.len(), 1);
+}
+
+#[test]
+fn slot_attr_on_non_component_child_is_ignored_by_partition() {
+    // <div slot="x"> directly in root fragment — not inside a component, no bucketing.
+    let c = parse(r#"<div slot="x">x</div>"#);
+    let Node::Element(el) = node_at(&c, 0) else {
+        panic!("expected element");
+    };
+    let has_slot_attr = el.attributes.iter().any(|a| {
+        matches!(
+            a,
+            Attribute::StringAttribute(sa) if sa.name == "slot"
+        )
+    });
+    assert!(has_slot_attr);
+}
+
+#[test]
+fn self_closing_component_has_empty_legacy_slots() {
+    let c = parse(r#"<Comp />"#);
+    let cn = component_at(&c, 0);
+    assert!(cn.legacy_slots.is_empty());
+    assert!(cn.fragment.nodes.is_empty());
+}
+
+#[test]
+fn each_named_slot_gets_distinct_fragment_id() {
+    let c = parse(r#"<Comp><div slot="a">A</div><div slot="b">B</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    let id_a = cn.legacy_slots[0].fragment.id;
+    let id_b = cn.legacy_slots[1].fragment.id;
+    assert_ne!(id_a, id_b);
+    assert_ne!(cn.fragment.id, id_a);
+    assert_ne!(cn.fragment.id, id_b);
+}
+
+#[test]
+fn named_slot_fragment_role_is_named_slot() {
+    let c = parse(r#"<Comp><div slot="x">A</div></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(cn.legacy_slots[0].fragment.role, FragmentRole::NamedSlot);
 }

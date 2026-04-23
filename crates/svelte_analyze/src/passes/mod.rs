@@ -2,6 +2,7 @@ pub(crate) mod bind_semantics;
 pub(crate) mod build_component_semantics;
 pub(crate) mod bundles;
 pub(crate) mod collect_symbols;
+pub(crate) mod const_tag_fragments;
 pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
@@ -10,8 +11,9 @@ pub(crate) mod dynamism;
 pub(crate) mod element_flags;
 mod executor;
 pub(crate) mod finalize_component_name;
+pub(crate) mod fragment_topology;
+pub(crate) mod html_tag_ns_flags;
 pub(crate) mod js_analyze;
-pub(crate) mod lower;
 pub(crate) mod post_resolve;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
@@ -35,11 +37,11 @@ pub(crate) enum PassKey {
     PostResolve,
     CollectConstTagFragments,
     BuildReactivitySemantics,
-    LowerTemplate,
+    BuildFragmentTopology,
+    CollectHtmlTagNsFlags,
     ReactivityWalk,
     TemplateClassificationWalk,
     BuildBlockSemantics,
-    ClassifyRemainingFragments,
     ValidateTemplate,
     Validate,
 }
@@ -60,10 +62,10 @@ pub(crate) enum DataToken {
     ConstTagFragments,
     ReactivitySemantics,
     BlockSemantics,
-    LoweredTemplate,
+    FragmentTopology,
+    HtmlTagNsFlags,
     Reactivity,
     TemplateClassification,
-    FragmentClassification,
     TemplateValidation,
     Validation,
 }
@@ -146,13 +148,18 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ReactivitySemantics],
     },
     PassDescriptor {
-        key: PassKey::LowerTemplate,
+        key: PassKey::BuildFragmentTopology,
         requires: &[DataToken::ReactivitySemantics, DataToken::ConstTagFragments],
-        produces: &[DataToken::LoweredTemplate],
+        produces: &[DataToken::FragmentTopology],
+    },
+    PassDescriptor {
+        key: PassKey::CollectHtmlTagNsFlags,
+        requires: &[DataToken::TemplateSemantics],
+        produces: &[DataToken::HtmlTagNsFlags],
     },
     PassDescriptor {
         key: PassKey::ReactivityWalk,
-        requires: &[DataToken::LoweredTemplate],
+        requires: &[DataToken::FragmentTopology],
         produces: &[DataToken::Reactivity],
     },
     PassDescriptor {
@@ -169,18 +176,13 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::BlockSemantics],
     },
     PassDescriptor {
-        key: PassKey::ClassifyRemainingFragments,
-        requires: &[DataToken::TemplateClassification],
-        produces: &[DataToken::FragmentClassification],
-    },
-    PassDescriptor {
         key: PassKey::ValidateTemplate,
         requires: &[DataToken::SymbolRefs],
         produces: &[DataToken::TemplateValidation],
     },
     PassDescriptor {
         key: PassKey::Validate,
-        requires: &[DataToken::FragmentClassification],
+        requires: &[DataToken::TemplateClassification],
         produces: &[DataToken::Validation],
     },
 ];
@@ -205,11 +207,11 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
-    PassKey::LowerTemplate,
+    PassKey::BuildFragmentTopology,
+    PassKey::CollectHtmlTagNsFlags,
     PassKey::ReactivityWalk,
     PassKey::TemplateClassificationWalk,
     PassKey::BuildBlockSemantics,
-    PassKey::ClassifyRemainingFragments,
 ];
 
 pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::ValidateTemplate, PassKey::Validate];

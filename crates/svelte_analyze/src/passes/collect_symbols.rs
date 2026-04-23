@@ -39,8 +39,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
     }
 
-    fn visit_expression(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        store_expr_offset(node_id, span, ctx);
+    fn visit_expression(&mut self, _node_id: NodeId, _span: Span, _ctx: &mut VisitContext<'_, '_>) {
     }
 
     fn visit_js_expression(
@@ -70,39 +69,21 @@ impl TemplateVisitor for CollectSymbolsVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        if let Some(handle) = ctx
-            .parsed()
-            .and_then(|p| p.expr_handle(tag.expression_span.start))
-        {
-            ctx.data
-                .template
-                .template_semantics
-                .node_expr_handles
-                .insert(tag.id, handle);
-        }
-        if let Some(handle) = ctx
-            .parsed()
-            .and_then(|p| p.stmt_handle(tag.expression_span.start))
-        {
-            ctx.data
-                .template
-                .template_semantics
-                .const_tag_stmt_handles
-                .insert(tag.id, handle);
-        }
         // Build ExpressionInfo for the @const init expression so that
         // mark_const_tag_bindings can read ref_symbols for derived_deps.
-        let parsed = ctx.parsed;
-        if let Some(init_expr) = parsed
-            .and_then(|p| p.stmt_handle(tag.expression_span.start))
-            .and_then(|handle| parsed.and_then(|p| p.stmt(handle)))
-            .and_then(|stmt| match stmt {
-                oxc_ast::ast::Statement::VariableDeclaration(decl) => {
-                    decl.declarations.first().and_then(|d| d.init.as_ref())
-                }
-                _ => None,
-            })
-        {
+        // Borrow `parsed` directly (the field, not the ctx.parsed() method)
+        // to avoid pinning all of ctx as immutable while we mutate
+        // ctx.data.scoping below.
+        let init_expr =
+            ctx.parsed
+                .and_then(|p| p.stmt(tag.decl.id()))
+                .and_then(|stmt| match stmt {
+                    oxc_ast::ast::Statement::VariableDeclaration(decl) => {
+                        decl.declarations.first().and_then(|d| d.init.as_ref())
+                    }
+                    _ => None,
+                });
+        if let Some(init_expr) = init_expr {
             let info = build_expression_info(init_expr, &mut ctx.data.scoping);
             ctx.data.expressions.insert(tag.id, info);
         }
@@ -160,25 +141,6 @@ fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitC
         ctx.data.attr_expressions.insert(node_id, info);
     } else {
         ctx.data.expressions.insert(node_id, info);
-    }
-}
-
-fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_, '_>) {
-    let Some(handle) = ctx.parsed().and_then(|p| p.expr_handle(span.start)) else {
-        return;
-    };
-    if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
-        ctx.data
-            .template
-            .template_semantics
-            .attr_expr_handles
-            .insert(node_id, handle);
-    } else {
-        ctx.data
-            .template
-            .template_semantics
-            .node_expr_handles
-            .insert(node_id, handle);
     }
 }
 

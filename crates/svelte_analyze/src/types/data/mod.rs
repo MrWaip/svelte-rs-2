@@ -8,7 +8,7 @@ use super::node_table::{NodeBitSet, NodeTable};
 use super::script::{ExportInfo, ScriptInfo};
 use crate::scope::{ComponentScoping, SymbolId};
 
-pub use svelte_parser::{ExprHandle, ParserResult, StmtHandle};
+pub use svelte_parser::JsAst;
 
 mod analysis;
 mod async_data;
@@ -21,6 +21,7 @@ mod element_facts;
 mod elements;
 mod expr;
 mod fragment_facts;
+mod fragment_namespaces;
 mod fragments;
 mod ignore;
 mod pickled_await_offsets;
@@ -57,10 +58,8 @@ pub use elements::{
 };
 pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
-pub use fragments::{
-    ContentStrategy, FragmentData, FragmentItem, FragmentKey, FragmentKeyExt, LoweredFragment,
-    LoweredTextPart,
-};
+pub use fragment_namespaces::FragmentNamespaces;
+pub use fragments::{FragmentLayout, FragmentLayouts};
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;

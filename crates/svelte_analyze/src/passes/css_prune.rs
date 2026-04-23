@@ -2,15 +2,13 @@ use compact_str::CompactString;
 use oxc_ast::ast::{Expression, LogicalOperator, PropertyKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{
-    Attribute, Component as SvelteComponent, ConcatPart, Fragment, FragmentKey, Node, NodeId,
-};
+use svelte_ast::{Attribute, Component as SvelteComponent, ConcatPart, Fragment, Node, NodeId};
 use svelte_css::{
     AtRule, Combinator, CombinatorKind, ComplexSelector, CssNodeId, PseudoClassSelector,
     RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
-use svelte_parser::ParserResult;
+use svelte_parser::JsAst;
 use svelte_span::GetSpan;
 
 use super::css_prune_index::{
@@ -127,7 +125,7 @@ pub(crate) fn prune_and_warn(
     css_source: &str,
     css_offset: u32,
     emit_warnings: bool,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -203,7 +201,7 @@ fn collect_rule<'a>(rule: &'a svelte_css::Rule, rules: &mut FxHashMap<CssNodeId,
 struct PruneVisitor<'a, 'b, 'p, 's> {
     component: &'a SvelteComponent,
     css_source: &'a str,
-    parsed: &'p ParserResult<'p>,
+    parsed: &'p JsAst<'p>,
     template: &'b TemplateAnalysis,
     elements: &'b TemplateElementIndex,
     element_facts: &'b ElementFacts,
@@ -1284,31 +1282,32 @@ fn collect_descendants_from_node(
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
-    match pruner.component.store.get(node_id) {
-        Node::Element(_) => collect_descendants_from_fragment(
+    let store = &pruner.component.store;
+    match store.get(node_id) {
+        Node::Element(el) => collect_descendants_from_fragment(
             pruner,
-            FragmentKey::Element(node_id),
+            el.fragment.id,
             adjacent_only,
             seen_snippets,
             out,
         ),
-        Node::SvelteElement(_) => collect_descendants_from_fragment(
+        Node::SvelteElement(el) => collect_descendants_from_fragment(
             pruner,
-            FragmentKey::SvelteElementBody(node_id),
+            el.fragment.id,
             adjacent_only,
             seen_snippets,
             out,
         ),
-        Node::ComponentNode(_) => collect_descendants_from_fragment(
+        Node::ComponentNode(cn) => collect_descendants_from_fragment(
             pruner,
-            FragmentKey::ComponentNode(node_id),
+            cn.fragment.id,
             adjacent_only,
             seen_snippets,
             out,
         ),
-        Node::SnippetBlock(_) => collect_descendants_from_fragment(
+        Node::SnippetBlock(block) => collect_descendants_from_fragment(
             pruner,
-            FragmentKey::SnippetBody(node_id),
+            block.body.id,
             adjacent_only,
             seen_snippets,
             out,
@@ -1317,9 +1316,13 @@ fn collect_descendants_from_node(
             let snippet_ids = pruner.index.render_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if seen_snippets.insert(snippet_id) {
+                    let body_id = match pruner.component.store.get(snippet_id) {
+                        Node::SnippetBlock(block) => block.body.id,
+                        _ => continue,
+                    };
                     collect_descendants_from_fragment(
                         pruner,
-                        FragmentKey::SnippetBody(snippet_id),
+                        body_id,
                         adjacent_only,
                         seen_snippets,
                         out,
@@ -1333,44 +1336,35 @@ fn collect_descendants_from_node(
 
 fn collect_descendants_from_fragment(
     pruner: &mut PruneVisitor<'_, '_, '_, '_>,
-    key: FragmentKey,
+    fragment_id: svelte_ast::FragmentId,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
-    let Some(lowered) = pruner.template.fragments.lowered(&key) else {
+    let Some(lowered) = pruner.template.fragment_items(fragment_id) else {
         return;
     };
+    let lowered: Vec<NodeId> = lowered.to_vec();
 
-    for item in &lowered.items {
-        match item {
-            crate::types::data::FragmentItem::Element(id)
-            | crate::types::data::FragmentItem::SlotElementLegacy(id)
-            | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
-                out.push(*id);
+    let store = &pruner.component.store;
+    for &id in &lowered {
+        match store.get(id) {
+            Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
+                out.push(id);
                 if !adjacent_only {
-                    collect_descendants_from_node(pruner, *id, false, seen_snippets, out);
+                    collect_descendants_from_node(pruner, id, false, seen_snippets, out);
                 }
             }
-            crate::types::data::FragmentItem::SvelteElement(id) => {
-                out.push(*id);
+            Node::SvelteElement(_) => {
+                out.push(id);
                 if !adjacent_only {
-                    collect_descendants_from_node(pruner, *id, false, seen_snippets, out);
+                    collect_descendants_from_node(pruner, id, false, seen_snippets, out);
                 }
             }
-            crate::types::data::FragmentItem::RenderTag(id) => {
-                collect_descendants_from_node(pruner, *id, adjacent_only, seen_snippets, out);
+            Node::RenderTag(_) | Node::ComponentNode(_) => {
+                collect_descendants_from_node(pruner, id, adjacent_only, seen_snippets, out);
             }
-            crate::types::data::FragmentItem::ComponentNode(id) => {
-                collect_descendants_from_node(pruner, *id, adjacent_only, seen_snippets, out);
-            }
-            crate::types::data::FragmentItem::IfBlock(_)
-            | crate::types::data::FragmentItem::EachBlock(_)
-            | crate::types::data::FragmentItem::HtmlTag(_)
-            | crate::types::data::FragmentItem::KeyBlock(_)
-            | crate::types::data::FragmentItem::SvelteBoundary(_)
-            | crate::types::data::FragmentItem::AwaitBlock(_)
-            | crate::types::data::FragmentItem::TextConcat { .. } => {}
+            _ => {}
         }
     }
 }
@@ -1428,32 +1422,32 @@ fn collect_possible_siblings(
     let mut current_id = node_id;
     let mut current_fragment = pruner.template.template_topology.node_fragment(node_id);
 
-    while let Some(fragment_key) = current_fragment {
-        let Some(lowered) = pruner.template.fragments.lowered(&fragment_key) else {
+    while let Some(fragment_id) = current_fragment {
+        let Some(layout) = pruner.template.fragment_layout(fragment_id) else {
             break;
         };
-        let Some(current_index) = lowered
-            .items
-            .iter()
-            .position(|item| fragment_item_matches_node_id(item, current_id))
-        else {
+        let lowered: Vec<NodeId> = layout.items.clone();
+        let owner_opt = layout.owner;
+        let role = layout.role;
+
+        let Some(current_index) = lowered.iter().position(|&id| id == current_id) else {
             break;
         };
 
         let indices: Box<dyn Iterator<Item = usize>> = match direction {
-            Direction::Forward => Box::new(current_index + 1..lowered.items.len()),
+            Direction::Forward => Box::new(current_index + 1..lowered.len()),
             Direction::Backward => Box::new((0..current_index).rev()),
         };
 
+        let store = &pruner.component.store;
         for index in indices {
-            match &lowered.items[index] {
-                crate::types::data::FragmentItem::Element(id)
-                | crate::types::data::FragmentItem::SlotElementLegacy(id)
-                | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
+            let id = lowered[index];
+            match store.get(id) {
+                Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
-                            id: *id,
+                            id,
                             kind: CandidateKind::Element,
                         },
                         NodeExistsValue::Definitely,
@@ -1462,24 +1456,24 @@ fn collect_possible_siblings(
                         return;
                     }
                 }
-                crate::types::data::FragmentItem::SvelteElement(id) => {
+                Node::SvelteElement(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
-                            id: *id,
+                            id,
                             kind: CandidateKind::SvelteElement,
                         },
                         NodeExistsValue::Probably,
                     );
                 }
-                crate::types::data::FragmentItem::IfBlock(id)
-                | crate::types::data::FragmentItem::EachBlock(id)
-                | crate::types::data::FragmentItem::KeyBlock(id)
-                | crate::types::data::FragmentItem::AwaitBlock(id)
-                | crate::types::data::FragmentItem::SvelteBoundary(id) => {
+                Node::IfBlock(_)
+                | Node::EachBlock(_)
+                | Node::KeyBlock(_)
+                | Node::AwaitBlock(_)
+                | Node::SvelteBoundary(_) => {
                     let nested = get_possible_nested_siblings(
                         pruner,
-                        *id,
+                        id,
                         direction,
                         adjacent_only,
                         seen_snippets,
@@ -1489,34 +1483,34 @@ fn collect_possible_siblings(
                         return;
                     }
                 }
-                crate::types::data::FragmentItem::ComponentNode(id) => {
+                Node::ComponentNode(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
-                            id: *id,
+                            id,
                             kind: CandidateKind::ComponentNode,
                         },
                         NodeExistsValue::Probably,
                     );
                     let nested = get_possible_nested_siblings(
                         pruner,
-                        *id,
+                        id,
                         direction,
                         adjacent_only,
                         seen_snippets,
                     );
                     add_all_candidates(&nested, out);
                 }
-                crate::types::data::FragmentItem::RenderTag(id) => {
+                Node::RenderTag(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
-                            id: *id,
+                            id,
                             kind: CandidateKind::RenderTag,
                         },
                         NodeExistsValue::Probably,
                     );
-                    let snippet_ids = pruner.index.render_possible_snippets(*id).to_vec();
+                    let snippet_ids = pruner.index.render_possible_snippets(id).to_vec();
                     for snippet_id in snippet_ids {
                         let nested = get_possible_nested_siblings(
                             pruner,
@@ -1528,12 +1522,11 @@ fn collect_possible_siblings(
                         add_all_candidates(&nested, out);
                     }
                 }
-                crate::types::data::FragmentItem::HtmlTag(_)
-                | crate::types::data::FragmentItem::TextConcat { .. } => {}
+                _ => {}
             }
         }
 
-        let Some(owner_id) = fragment_key.node_id() else {
+        let Some(owner_id) = owner_opt else {
             break;
         };
         current_id = owner_id;
@@ -1562,7 +1555,7 @@ fn collect_possible_siblings(
                 }
                 break;
             }
-            Node::EachBlock(_) if matches!(fragment_key, FragmentKey::EachBody(_)) => {
+            Node::EachBlock(_) if role == svelte_ast::FragmentRole::EachBody => {
                 let nested = get_possible_nested_siblings(
                     pruner,
                     owner_id,
@@ -1589,59 +1582,65 @@ fn get_possible_nested_siblings(
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
-    let mut fragments = Vec::new();
+    let mut fragments: Vec<svelte_ast::FragmentId> = Vec::new();
     let mut exhaustive = true;
 
     match pruner.component.store.get(node_id) {
-        Node::EachBlock(_) => {
-            fragments.push(FragmentKey::EachBody(node_id));
-            fragments.push(FragmentKey::EachFallback(node_id));
+        Node::EachBlock(block) => {
+            fragments.push(block.body.id);
+            if let Some(fb) = &block.fallback {
+                fragments.push(fb.id);
+            }
         }
-        Node::IfBlock(_) => {
-            fragments.push(FragmentKey::IfConsequent(node_id));
-            fragments.push(FragmentKey::IfAlternate(node_id));
+        Node::IfBlock(block) => {
+            fragments.push(block.consequent.id);
+            if let Some(alt) = &block.alternate {
+                fragments.push(alt.id);
+            }
         }
-        Node::AwaitBlock(_) => {
-            fragments.push(FragmentKey::AwaitPending(node_id));
-            fragments.push(FragmentKey::AwaitThen(node_id));
-            fragments.push(FragmentKey::AwaitCatch(node_id));
+        Node::AwaitBlock(block) => {
+            if let Some(p) = &block.pending {
+                fragments.push(p.id);
+            }
+            if let Some(t) = &block.then {
+                fragments.push(t.id);
+            }
+            if let Some(c) = &block.catch {
+                fragments.push(c.id);
+            }
         }
-        Node::KeyBlock(_) => {
-            fragments.push(FragmentKey::KeyBlockBody(node_id));
+        Node::KeyBlock(block) => {
+            fragments.push(block.fragment.id);
         }
-        Node::SnippetBlock(_) => {
+        Node::SnippetBlock(block) => {
             if !seen_snippets.insert(node_id) {
                 return FxHashMap::default();
             }
             exhaustive = false;
-            fragments.push(FragmentKey::SnippetBody(node_id));
+            fragments.push(block.body.id);
         }
-        Node::ComponentNode(_) => {
-            fragments.push(FragmentKey::ComponentNode(node_id));
+        Node::ComponentNode(cn) => {
+            fragments.push(cn.fragment.id);
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
-                fragments.push(FragmentKey::SnippetBody(snippet_id));
+                if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
+                    fragments.push(block.body.id);
+                }
             }
         }
-        Node::SvelteBoundary(_) => {
-            fragments.push(FragmentKey::SvelteBoundaryBody(node_id));
+        Node::SvelteBoundary(b) => {
+            fragments.push(b.fragment.id);
         }
         _ => return FxHashMap::default(),
     }
 
     let mut result = FxHashMap::default();
-    for fragment_key in fragments {
-        if pruner.template.fragments.lowered(&fragment_key).is_none() {
+    for fragment_id in fragments {
+        if pruner.template.fragment_items(fragment_id).is_none() {
             exhaustive = false;
             continue;
         }
-        let map = loop_child(
-            pruner,
-            fragment_key,
-            direction,
-            adjacent_only,
-            seen_snippets,
-        );
+        let map = loop_child(pruner, fragment_id, direction, adjacent_only, seen_snippets);
         exhaustive &= has_definite_elements(&map);
         add_all_candidates(&map, &mut result);
     }
@@ -1657,30 +1656,31 @@ fn get_possible_nested_siblings(
 
 fn loop_child(
     pruner: &mut PruneVisitor<'_, '_, '_, '_>,
-    fragment_key: FragmentKey,
+    fragment_id: svelte_ast::FragmentId,
     direction: Direction,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
     let mut result = FxHashMap::default();
-    let Some(lowered) = pruner.template.fragments.lowered(&fragment_key) else {
+    let Some(lowered) = pruner.template.fragment_items(fragment_id) else {
         return result;
     };
+    let lowered: Vec<NodeId> = lowered.to_vec();
 
     let indices: Box<dyn Iterator<Item = usize>> = match direction {
-        Direction::Forward => Box::new(0..lowered.items.len()),
-        Direction::Backward => Box::new((0..lowered.items.len()).rev()),
+        Direction::Forward => Box::new(0..lowered.len()),
+        Direction::Backward => Box::new((0..lowered.len()).rev()),
     };
 
+    let store = &pruner.component.store;
     for index in indices {
-        match &lowered.items[index] {
-            crate::types::data::FragmentItem::Element(id)
-            | crate::types::data::FragmentItem::SlotElementLegacy(id)
-            | crate::types::data::FragmentItem::SvelteFragmentLegacy(id) => {
+        let id = lowered[index];
+        match store.get(id) {
+            Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
                 add_candidate(
                     &mut result,
                     CandidateNode {
-                        id: *id,
+                        id,
                         kind: CandidateKind::Element,
                     },
                     NodeExistsValue::Definitely,
@@ -1689,18 +1689,18 @@ fn loop_child(
                     break;
                 }
             }
-            crate::types::data::FragmentItem::SvelteElement(id) => {
+            Node::SvelteElement(_) => {
                 add_candidate(
                     &mut result,
                     CandidateNode {
-                        id: *id,
+                        id,
                         kind: CandidateKind::SvelteElement,
                     },
                     NodeExistsValue::Probably,
                 );
             }
-            crate::types::data::FragmentItem::RenderTag(id) => {
-                let snippet_ids = pruner.index.render_possible_snippets(*id).to_vec();
+            Node::RenderTag(_) => {
+                let snippet_ids = pruner.index.render_possible_snippets(id).to_vec();
                 for snippet_id in snippet_ids {
                     let nested = get_possible_nested_siblings(
                         pruner,
@@ -1712,14 +1712,14 @@ fn loop_child(
                     add_all_candidates(&nested, &mut result);
                 }
             }
-            crate::types::data::FragmentItem::IfBlock(id)
-            | crate::types::data::FragmentItem::EachBlock(id)
-            | crate::types::data::FragmentItem::KeyBlock(id)
-            | crate::types::data::FragmentItem::AwaitBlock(id)
-            | crate::types::data::FragmentItem::SvelteBoundary(id) => {
+            Node::IfBlock(_)
+            | Node::EachBlock(_)
+            | Node::KeyBlock(_)
+            | Node::AwaitBlock(_)
+            | Node::SvelteBoundary(_) => {
                 let nested = get_possible_nested_siblings(
                     pruner,
-                    *id,
+                    id,
                     direction,
                     adjacent_only,
                     seen_snippets,
@@ -1729,9 +1729,7 @@ fn loop_child(
                     break;
                 }
             }
-            crate::types::data::FragmentItem::ComponentNode(_)
-            | crate::types::data::FragmentItem::HtmlTag(_)
-            | crate::types::data::FragmentItem::TextConcat { .. } => {}
+            _ => {}
         }
     }
 
@@ -1777,24 +1775,6 @@ fn sibling_candidates_to_map(
         add_candidate(&mut map, candidate.node, candidate.existence);
     }
     map
-}
-
-fn fragment_item_matches_node_id(item: &crate::types::data::FragmentItem, node_id: NodeId) -> bool {
-    match item {
-        crate::types::data::FragmentItem::Element(id)
-        | crate::types::data::FragmentItem::SlotElementLegacy(id)
-        | crate::types::data::FragmentItem::SvelteFragmentLegacy(id)
-        | crate::types::data::FragmentItem::ComponentNode(id)
-        | crate::types::data::FragmentItem::IfBlock(id)
-        | crate::types::data::FragmentItem::EachBlock(id)
-        | crate::types::data::FragmentItem::RenderTag(id)
-        | crate::types::data::FragmentItem::HtmlTag(id)
-        | crate::types::data::FragmentItem::KeyBlock(id)
-        | crate::types::data::FragmentItem::SvelteElement(id)
-        | crate::types::data::FragmentItem::SvelteBoundary(id)
-        | crate::types::data::FragmentItem::AwaitBlock(id) => *id == node_id,
-        crate::types::data::FragmentItem::TextConcat { .. } => false,
-    }
 }
 
 fn has_definite_elements(map: &FxHashMap<CandidateNode, NodeExistsValue>) -> bool {
@@ -1917,7 +1897,7 @@ fn attribute_matches(
                 if expected_value.is_none() {
                     return true;
                 }
-                let Some(chunks) = attribute_chunks_for_expression_attr(pruner, attr.id) else {
+                let Some(chunks) = attribute_chunks_for_expression_attr(pruner, attr) else {
                     return true;
                 };
                 if match_attribute_chunks(
@@ -1980,15 +1960,9 @@ fn attribute_name_matches_selector(
 
 fn attribute_chunks_for_expression_attr<'a>(
     pruner: &'a PruneVisitor<'_, '_, 'a, '_>,
-    attr_id: NodeId,
+    attr: &svelte_ast::ExpressionAttribute,
 ) -> Option<Vec<AttributeChunk<'a>>> {
-    let handle = pruner
-        .template
-        .template_semantics
-        .attr_expr_handles
-        .get(attr_id)
-        .copied()?;
-    let expr = pruner.parsed.expr(handle)?;
+    let expr = pruner.parsed.expr(attr.expression.id())?;
     Some(vec![AttributeChunk::Expr(expr)])
 }
 
@@ -2000,17 +1974,9 @@ fn attribute_chunks_for_concat<'a>(
     for part in parts {
         match part {
             ConcatPart::Static(text) => chunks.push(AttributeChunk::Text(text)),
-            ConcatPart::Dynamic { id, .. } => {
-                if let Some(handle) = pruner
-                    .template
-                    .template_semantics
-                    .attr_expr_handles
-                    .get(*id)
-                    .copied()
-                {
-                    if let Some(expr) = pruner.parsed.expr(handle) {
-                        chunks.push(AttributeChunk::Expr(expr));
-                    }
+            ConcatPart::Dynamic { expr: expr_ref, .. } => {
+                if let Some(expr) = pruner.parsed.expr(expr_ref.id()) {
+                    chunks.push(AttributeChunk::Expr(expr));
                 }
             }
         }

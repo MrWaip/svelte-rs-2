@@ -1,4 +1,0 @@
-interface:
-  display_name: "Add Diagnostic Test"
-  short_description: "Create focused diagnostic parity cases"
-  default_prompt: "Use $add-diagnostic-test to create a focused diagnostic parity case before implementation."

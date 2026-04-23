@@ -76,8 +76,10 @@ impl ElementAnalysis {
 
 pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
+    pub fragment_namespaces: FragmentNamespaces,
     pub rich_content_facts: RichContentFacts,
-    pub fragments: FragmentData,
+    pub(crate) fragment_layouts: FragmentLayouts,
+    pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
     pub const_tags: ConstTagData,
     pub debug_tags: DebugTagData,
@@ -92,8 +94,10 @@ impl TemplateAnalysis {
     fn new(node_count: u32) -> Self {
         Self {
             fragment_facts: FragmentFacts::new(),
+            fragment_namespaces: FragmentNamespaces::new(),
             rich_content_facts: RichContentFacts::new(),
-            fragments: FragmentData::with_capacity(node_count as usize / 3),
+            fragment_layouts: FragmentLayouts::new(),
+            fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
@@ -103,6 +107,41 @@ impl TemplateAnalysis {
             template_semantics: TemplateSemanticsData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
         }
+    }
+
+    pub fn fragment_layout(&self, id: svelte_ast::FragmentId) -> Option<&FragmentLayout> {
+        self.fragment_layouts.get(id)
+    }
+
+    pub fn fragment_items(&self, id: svelte_ast::FragmentId) -> Option<&[NodeId]> {
+        self.fragment_layouts.items(id)
+    }
+
+    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
+        self.fragment_blockers
+            .get(id.0 as usize)
+            .and_then(|o| o.as_ref())
+            .map_or(&[], |v| v.as_slice())
+    }
+
+    pub(crate) fn insert_fragment_layout(
+        &mut self,
+        id: svelte_ast::FragmentId,
+        layout: FragmentLayout,
+    ) {
+        self.fragment_layouts.insert(id, layout);
+    }
+
+    pub(crate) fn insert_fragment_blockers_by_id(
+        &mut self,
+        id: svelte_ast::FragmentId,
+        blockers: SmallVec<[u32; 2]>,
+    ) {
+        let idx = id.0 as usize;
+        if self.fragment_blockers.len() <= idx {
+            self.fragment_blockers.resize(idx + 1, None);
+        }
+        self.fragment_blockers[idx] = Some(blockers);
     }
 }
 
@@ -296,47 +335,80 @@ impl<'a> AnalysisData<'a> {
     pub fn block_semantics(&self, id: NodeId) -> &crate::block_semantics::BlockSemantics {
         self.block_semantics_store.get(id)
     }
-    pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
-        self.template.fragment_facts.entry(key)
+    pub fn fragment_facts_by_id(&self, id: svelte_ast::FragmentId) -> Option<&FragmentFactsEntry> {
+        self.template.fragment_facts.lookup_by_id(id)
     }
-    pub fn fragment_has_children(&self, key: &FragmentKey) -> bool {
-        self.template.fragment_facts.has_children(key)
+    pub fn fragment_has_children_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_children)
     }
-    pub fn fragment_child_count(&self, key: &FragmentKey) -> u32 {
-        self.template.fragment_facts.child_count(key)
+    pub fn fragment_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .map_or(0, FragmentFactsEntry::child_count)
     }
-    pub fn fragment_single_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.template.fragment_facts.single_child(key)
+    pub fn fragment_single_child_by_id(&self, id: svelte_ast::FragmentId) -> Option<NodeId> {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .and_then(FragmentFactsEntry::single_child)
     }
     pub fn custom_element_slot_names(&self) -> &[String] {
         &self.output.custom_element_slot_names
     }
-    pub fn fragment_non_trivial_child_count(&self, key: &FragmentKey) -> u32 {
-        self.template.fragment_facts.non_trivial_child_count(key)
+    pub fn fragment_non_trivial_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .map_or(0, FragmentFactsEntry::non_trivial_child_count)
     }
-    pub fn fragment_has_non_trivial_children(&self, key: &FragmentKey) -> bool {
-        self.template.fragment_facts.has_non_trivial_children(key)
+    pub fn fragment_has_non_trivial_children_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_non_trivial_children)
     }
-    pub fn fragment_has_expression_child(&self, key: &FragmentKey) -> bool {
-        self.template.fragment_facts.has_expression_child(key)
+    pub fn fragment_has_expression_child_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_expression_child)
     }
-    pub fn fragment_single_expression_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.template.fragment_facts.single_expression_child(key)
-    }
-    pub fn fragment_single_non_trivial_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.template.fragment_facts.single_non_trivial_child(key)
-    }
-    pub fn fragment_has_direct_animate_child(&self, key: &FragmentKey) -> bool {
-        self.template.fragment_facts.has_direct_animate_child(key)
-    }
-    pub fn fragment_has_rich_content(
+    pub fn fragment_single_expression_child_by_id(
         &self,
-        key: &FragmentKey,
+        id: svelte_ast::FragmentId,
+    ) -> Option<NodeId> {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .and_then(FragmentFactsEntry::single_expression_child)
+    }
+    pub fn fragment_single_non_trivial_child_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<NodeId> {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .and_then(FragmentFactsEntry::single_non_trivial_child)
+    }
+    pub fn fragment_has_direct_animate_child_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_direct_animate_child)
+    }
+    pub fn fragment_has_rich_content_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
         parent: RichContentParentKind,
     ) -> bool {
         self.template
             .rich_content_facts
-            .has_rich_content(key, parent)
+            .has_rich_content_by_id(id, parent)
     }
     pub fn element_facts(&self, id: NodeId) -> Option<&ElementFactsEntry> {
         self.elements.facts.entry(id)
@@ -561,49 +633,6 @@ impl<'a> AnalysisData<'a> {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.attr_expressions.get(id)
     }
-    pub fn node_expr_handle(&self, id: NodeId) -> ExprHandle {
-        *self
-            .template
-            .template_semantics
-            .node_expr_handles
-            .get(id)
-            .unwrap_or_else(|| panic!("no expr handle for node {:?}", id))
-    }
-    pub fn attr_expr_handle(&self, id: NodeId) -> ExprHandle {
-        *self
-            .template
-            .template_semantics
-            .attr_expr_handles
-            .get(id)
-            .unwrap_or_else(|| panic!("no expr handle for attr {:?}", id))
-    }
-    pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .const_tag_stmt_handles
-            .get(id)
-            .copied()
-    }
-    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .let_directive_stmt_handles
-            .get(id)
-            .copied()
-    }
-    /// Handle to the pre-parsed `const <name> = (...) => {...}` statement
-    /// backing a `{#snippet}` block. Consumers that need to walk the arrow
-    /// (parameter defaults, body) ask for this handle and resolve it via
-    /// `ParserResult::stmt`. Semantic classification lives in
-    /// `block_semantics::SnippetBlockSemantics`; this accessor only
-    /// exposes the raw AST hook for emission-time AST cloning.
-    pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template
-            .template_semantics
-            .snippet_stmt_handles
-            .get(id)
-            .copied()
-    }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template.template_semantics.node_ref_symbols(id)
     }
@@ -721,179 +750,104 @@ impl<'a> AnalysisData<'a> {
         let sym_id = self.scoping.find_binding(root, name)?;
         self.scoping.known_value_by_sym(sym_id)
     }
-    fn effective_fragment_scope(
+    pub fn effective_fragment_scope(
         &self,
-        key: FragmentKey,
+        fragment_id: svelte_ast::FragmentId,
         parent_scope: oxc_semantic::ScopeId,
     ) -> oxc_semantic::ScopeId {
-        self.scoping.fragment_scope(&key).unwrap_or(parent_scope)
-    }
-    pub fn if_consequent_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::IfConsequent(block_id), parent_scope)
-    }
-    pub fn if_alternate_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::IfAlternate(block_id), parent_scope)
-    }
-    pub fn each_body_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::EachBody(block_id), parent_scope)
-    }
-    pub fn snippet_body_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::SnippetBody(block_id), parent_scope)
-    }
-    pub fn key_block_body_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::KeyBlockBody(block_id), parent_scope)
-    }
-    pub fn svelte_head_body_scope(
-        &self,
-        head_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::SvelteHeadBody(head_id), parent_scope)
-    }
-    pub fn svelte_element_body_scope(
-        &self,
-        el_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::SvelteElementBody(el_id), parent_scope)
-    }
-    pub fn svelte_boundary_body_scope(
-        &self,
-        boundary_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::SvelteBoundaryBody(boundary_id), parent_scope)
-    }
-    pub fn await_pending_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::AwaitPending(block_id), parent_scope)
-    }
-    pub fn await_then_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::AwaitThen(block_id), parent_scope)
-    }
-    pub fn await_catch_scope(
-        &self,
-        block_id: NodeId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
-        self.effective_fragment_scope(FragmentKey::AwaitCatch(block_id), parent_scope)
+        self.scoping
+            .fragment_scope_by_id(fragment_id)
+            .unwrap_or(parent_scope)
     }
     pub fn fragment_references_any_symbol(
         &self,
-        key: &FragmentKey,
+        store: &svelte_ast::AstStore,
+        fragment_id: svelte_ast::FragmentId,
         syms: &FxHashSet<SymbolId>,
     ) -> bool {
         if syms.is_empty() {
             return false;
         }
-        let Some(fragment) = self.template.fragments.lowered(key) else {
+        let Some(lowered) = self.template.fragment_items(fragment_id) else {
             return false;
         };
-        for item in &fragment.items {
-            match item {
-                FragmentItem::TextConcat { parts, .. } => {
-                    for part in parts {
-                        if let LoweredTextPart::Expr(id) = part {
-                            if self.expressions.get(*id).is_some_and(|info| {
-                                info.ref_symbols().iter().any(|s| syms.contains(s))
-                            }) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                FragmentItem::Element(el_id)
-                | FragmentItem::SlotElementLegacy(el_id)
-                | FragmentItem::SvelteFragmentLegacy(el_id) => {
-                    if self.fragment_references_any_symbol(&FragmentKey::Element(*el_id), syms) {
+        for &id in lowered {
+            match store.get(id) {
+                svelte_ast::Node::ExpressionTag(_) => {
+                    if self.node_expr_references_syms(id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::IfBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms)
+                svelte_ast::Node::Element(el) => {
+                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::SlotElementLegacy(el) => {
+                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::SvelteFragmentLegacy(el) => {
+                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::IfBlock(block) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(store, block.consequent.id, syms)
+                        || block.alternate.as_ref().is_some_and(|alt| {
+                            self.fragment_references_any_symbol(store, alt.id, syms)
+                        })
                     {
                         return true;
                     }
                 }
-                FragmentItem::EachBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::EachBody(*id), syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms)
+                svelte_ast::Node::EachBlock(block) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(store, block.body.id, syms)
+                        || block.fallback.as_ref().is_some_and(|fb| {
+                            self.fragment_references_any_symbol(store, fb.id, syms)
+                        })
                     {
                         return true;
                     }
                 }
-                FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) => {
-                    if self.node_expr_references_syms(*id, syms) {
+                svelte_ast::Node::RenderTag(_) | svelte_ast::Node::HtmlTag(_) => {
+                    if self.node_expr_references_syms(id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::KeyBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms)
+                svelte_ast::Node::KeyBlock(block) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(store, block.fragment.id, syms)
                     {
                         return true;
                     }
                 }
-                FragmentItem::SvelteElement(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(
-                            &FragmentKey::SvelteElementBody(*id),
-                            syms,
-                        )
+                svelte_ast::Node::SvelteElement(el) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(store, el.fragment.id, syms)
                     {
                         return true;
                     }
                 }
-                FragmentItem::SvelteBoundary(id) => {
-                    if self
-                        .fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms)
-                    {
+                svelte_ast::Node::SvelteBoundary(b) => {
+                    if self.fragment_references_any_symbol(store, b.fragment.id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::ComponentNode(id) => {
-                    if self.fragment_references_any_symbol(&FragmentKey::ComponentNode(*id), syms) {
+                svelte_ast::Node::ComponentNode(cn) => {
+                    if self.fragment_references_any_symbol(store, cn.fragment.id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::AwaitBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms) {
+                svelte_ast::Node::AwaitBlock(_) => {
+                    if self.node_expr_references_syms(id, syms) {
                         return true;
                     }
                 }
+                _ => {}
             }
         }
         false

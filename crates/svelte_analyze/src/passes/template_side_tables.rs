@@ -17,10 +17,9 @@ use svelte_ast::{
     Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
-use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
+use crate::types::data::NamespaceKind;
 use crate::walker::{TemplateVisitor, VisitContext};
 use crate::ElementFactsEntry;
-use svelte_parser::ParserResult;
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
@@ -87,13 +86,112 @@ fn static_xmlns_namespace(attrs: &[Attribute], source: &str) -> Option<Namespace
     }
 }
 
+pub(crate) fn collect_fragment_namespaces(
+    component: &svelte_ast::Component,
+    data: &mut crate::types::data::AnalysisData,
+) {
+    let root_ns = root_namespace(component).as_namespace();
+    collect_fragment_namespaces_in(&component.fragment, None, root_ns, &component.store, data);
+}
+
+fn collect_fragment_namespaces_in(
+    fragment: &svelte_ast::Fragment,
+    parent_element: Option<svelte_ast::NodeId>,
+    root_ns: svelte_ast::Namespace,
+    store: &svelte_ast::AstStore,
+    data: &mut crate::types::data::AnalysisData,
+) {
+    let fragment_ns = fragment_namespace_for(fragment, parent_element, root_ns, data);
+    data.template
+        .fragment_namespaces
+        .record(fragment.id, fragment_ns);
+
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::Element(el) => {
+                collect_fragment_namespaces_in(&el.fragment, Some(el.id), root_ns, store, data)
+            }
+            Node::ComponentNode(cn) => {
+                collect_fragment_namespaces_in(&cn.fragment, parent_element, root_ns, store, data)
+            }
+            Node::IfBlock(block) => {
+                collect_fragment_namespaces_in(
+                    &block.consequent,
+                    parent_element,
+                    root_ns,
+                    store,
+                    data,
+                );
+                if let Some(alt) = &block.alternate {
+                    collect_fragment_namespaces_in(alt, parent_element, root_ns, store, data);
+                }
+            }
+            Node::EachBlock(block) => {
+                collect_fragment_namespaces_in(&block.body, parent_element, root_ns, store, data);
+                if let Some(fb) = &block.fallback {
+                    collect_fragment_namespaces_in(fb, parent_element, root_ns, store, data);
+                }
+            }
+            Node::SnippetBlock(block) => {
+                collect_fragment_namespaces_in(&block.body, parent_element, root_ns, store, data)
+            }
+            Node::KeyBlock(block) => collect_fragment_namespaces_in(
+                &block.fragment,
+                parent_element,
+                root_ns,
+                store,
+                data,
+            ),
+            Node::SvelteHead(head) => {
+                collect_fragment_namespaces_in(&head.fragment, None, root_ns, store, data)
+            }
+            Node::SvelteElement(el) => {
+                collect_fragment_namespaces_in(&el.fragment, Some(el.id), root_ns, store, data)
+            }
+            Node::SvelteBoundary(b) => {
+                collect_fragment_namespaces_in(&b.fragment, parent_element, root_ns, store, data)
+            }
+            Node::AwaitBlock(block) => {
+                if let Some(p) = &block.pending {
+                    collect_fragment_namespaces_in(p, parent_element, root_ns, store, data);
+                }
+                if let Some(t) = &block.then {
+                    collect_fragment_namespaces_in(t, parent_element, root_ns, store, data);
+                }
+                if let Some(c) = &block.catch {
+                    collect_fragment_namespaces_in(c, parent_element, root_ns, store, data);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn fragment_namespace_for(
+    fragment: &svelte_ast::Fragment,
+    parent_element: Option<svelte_ast::NodeId>,
+    root_ns: svelte_ast::Namespace,
+    data: &crate::types::data::AnalysisData,
+) -> svelte_ast::Namespace {
+    use svelte_ast::FragmentRole;
+    match fragment.role {
+        FragmentRole::Root => root_ns,
+        FragmentRole::SvelteHeadBody
+        | FragmentRole::ComponentChildren
+        | FragmentRole::NamedSlot => svelte_ast::Namespace::Html,
+        _ => parent_element
+            .and_then(|el_id| data.namespace(el_id))
+            .map(NamespaceKind::as_namespace)
+            .unwrap_or(root_ns),
+    }
+}
+
 pub(crate) fn collect_fragment_facts(
     component: &svelte_ast::Component,
     data: &mut crate::types::data::AnalysisData,
 ) {
     collect_fragment_facts_in(
         &component.fragment,
-        FragmentKey::Root,
         &component.store,
         &component.source,
         &mut data.template.fragment_facts,
@@ -106,7 +204,6 @@ pub(crate) fn collect_rich_content_facts(
 ) {
     collect_rich_content_facts_in(
         &component.fragment,
-        FragmentKey::Root,
         &component.store,
         &component.source,
         &mut data.template.rich_content_facts,
@@ -115,130 +212,60 @@ pub(crate) fn collect_rich_content_facts(
 
 fn collect_fragment_facts_in(
     fragment: &svelte_ast::Fragment,
-    key: FragmentKey,
     store: &svelte_ast::AstStore,
     source: &str,
     facts: &mut crate::types::data::FragmentFacts,
 ) {
     facts.record(
-        key,
+        fragment.id,
         crate::types::data::FragmentFactsEntry::from_fragment(fragment, store, source),
     );
 
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::Element(el) => collect_fragment_facts_in(
-                &el.fragment,
-                FragmentKey::Element(el.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::ComponentNode(cn) => collect_fragment_facts_in(
-                &cn.fragment,
-                FragmentKey::ComponentNode(cn.id),
-                store,
-                source,
-                facts,
-            ),
+            Node::Element(el) => collect_fragment_facts_in(&el.fragment, store, source, facts),
+            Node::ComponentNode(cn) => {
+                collect_fragment_facts_in(&cn.fragment, store, source, facts);
+                for slot in &cn.legacy_slots {
+                    collect_fragment_facts_in(&slot.fragment, store, source, facts);
+                }
+            }
             Node::IfBlock(block) => {
-                collect_fragment_facts_in(
-                    &block.consequent,
-                    FragmentKey::IfConsequent(block.id),
-                    store,
-                    source,
-                    facts,
-                );
+                collect_fragment_facts_in(&block.consequent, store, source, facts);
                 if let Some(alt) = &block.alternate {
-                    collect_fragment_facts_in(
-                        alt,
-                        FragmentKey::IfAlternate(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_fragment_facts_in(alt, store, source, facts);
                 }
             }
             Node::EachBlock(block) => {
-                collect_fragment_facts_in(
-                    &block.body,
-                    FragmentKey::EachBody(block.id),
-                    store,
-                    source,
-                    facts,
-                );
+                collect_fragment_facts_in(&block.body, store, source, facts);
                 if let Some(fallback) = &block.fallback {
-                    collect_fragment_facts_in(
-                        fallback,
-                        FragmentKey::EachFallback(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_fragment_facts_in(fallback, store, source, facts);
                 }
             }
-            Node::SnippetBlock(block) => collect_fragment_facts_in(
-                &block.body,
-                FragmentKey::SnippetBody(block.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::KeyBlock(block) => collect_fragment_facts_in(
-                &block.fragment,
-                FragmentKey::KeyBlockBody(block.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteHead(head) => collect_fragment_facts_in(
-                &head.fragment,
-                FragmentKey::SvelteHeadBody(head.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteElement(el) => collect_fragment_facts_in(
-                &el.fragment,
-                FragmentKey::SvelteElementBody(el.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteBoundary(boundary) => collect_fragment_facts_in(
-                &boundary.fragment,
-                FragmentKey::SvelteBoundaryBody(boundary.id),
-                store,
-                source,
-                facts,
-            ),
+            Node::SnippetBlock(block) => {
+                collect_fragment_facts_in(&block.body, store, source, facts)
+            }
+            Node::KeyBlock(block) => {
+                collect_fragment_facts_in(&block.fragment, store, source, facts)
+            }
+            Node::SvelteHead(head) => {
+                collect_fragment_facts_in(&head.fragment, store, source, facts)
+            }
+            Node::SvelteElement(el) => {
+                collect_fragment_facts_in(&el.fragment, store, source, facts)
+            }
+            Node::SvelteBoundary(boundary) => {
+                collect_fragment_facts_in(&boundary.fragment, store, source, facts)
+            }
             Node::AwaitBlock(block) => {
                 if let Some(pending) = &block.pending {
-                    collect_fragment_facts_in(
-                        pending,
-                        FragmentKey::AwaitPending(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_fragment_facts_in(pending, store, source, facts);
                 }
                 if let Some(then) = &block.then {
-                    collect_fragment_facts_in(
-                        then,
-                        FragmentKey::AwaitThen(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_fragment_facts_in(then, store, source, facts);
                 }
                 if let Some(catch) = &block.catch {
-                    collect_fragment_facts_in(
-                        catch,
-                        FragmentKey::AwaitCatch(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_fragment_facts_in(catch, store, source, facts);
                 }
             }
             _ => {}
@@ -248,125 +275,55 @@ fn collect_fragment_facts_in(
 
 fn collect_rich_content_facts_in(
     fragment: &svelte_ast::Fragment,
-    key: FragmentKey,
     store: &svelte_ast::AstStore,
     source: &str,
     facts: &mut crate::types::data::RichContentFacts,
 ) {
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::Element(el) => collect_rich_content_facts_in(
-                &el.fragment,
-                FragmentKey::Element(el.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::ComponentNode(cn) => collect_rich_content_facts_in(
-                &cn.fragment,
-                FragmentKey::ComponentNode(cn.id),
-                store,
-                source,
-                facts,
-            ),
+            Node::Element(el) => collect_rich_content_facts_in(&el.fragment, store, source, facts),
+            Node::ComponentNode(cn) => {
+                collect_rich_content_facts_in(&cn.fragment, store, source, facts);
+                for slot in &cn.legacy_slots {
+                    collect_rich_content_facts_in(&slot.fragment, store, source, facts);
+                }
+            }
             Node::IfBlock(block) => {
-                collect_rich_content_facts_in(
-                    &block.consequent,
-                    FragmentKey::IfConsequent(block.id),
-                    store,
-                    source,
-                    facts,
-                );
+                collect_rich_content_facts_in(&block.consequent, store, source, facts);
                 if let Some(alt) = &block.alternate {
-                    collect_rich_content_facts_in(
-                        alt,
-                        FragmentKey::IfAlternate(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_rich_content_facts_in(alt, store, source, facts);
                 }
             }
             Node::EachBlock(block) => {
-                collect_rich_content_facts_in(
-                    &block.body,
-                    FragmentKey::EachBody(block.id),
-                    store,
-                    source,
-                    facts,
-                );
+                collect_rich_content_facts_in(&block.body, store, source, facts);
                 if let Some(fallback) = &block.fallback {
-                    collect_rich_content_facts_in(
-                        fallback,
-                        FragmentKey::EachFallback(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_rich_content_facts_in(fallback, store, source, facts);
                 }
             }
-            Node::SnippetBlock(block) => collect_rich_content_facts_in(
-                &block.body,
-                FragmentKey::SnippetBody(block.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::KeyBlock(block) => collect_rich_content_facts_in(
-                &block.fragment,
-                FragmentKey::KeyBlockBody(block.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteHead(head) => collect_rich_content_facts_in(
-                &head.fragment,
-                FragmentKey::SvelteHeadBody(head.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteElement(el) => collect_rich_content_facts_in(
-                &el.fragment,
-                FragmentKey::SvelteElementBody(el.id),
-                store,
-                source,
-                facts,
-            ),
-            Node::SvelteBoundary(boundary) => collect_rich_content_facts_in(
-                &boundary.fragment,
-                FragmentKey::SvelteBoundaryBody(boundary.id),
-                store,
-                source,
-                facts,
-            ),
+            Node::SnippetBlock(block) => {
+                collect_rich_content_facts_in(&block.body, store, source, facts)
+            }
+            Node::KeyBlock(block) => {
+                collect_rich_content_facts_in(&block.fragment, store, source, facts)
+            }
+            Node::SvelteHead(head) => {
+                collect_rich_content_facts_in(&head.fragment, store, source, facts)
+            }
+            Node::SvelteElement(el) => {
+                collect_rich_content_facts_in(&el.fragment, store, source, facts)
+            }
+            Node::SvelteBoundary(boundary) => {
+                collect_rich_content_facts_in(&boundary.fragment, store, source, facts)
+            }
             Node::AwaitBlock(block) => {
                 if let Some(pending) = &block.pending {
-                    collect_rich_content_facts_in(
-                        pending,
-                        FragmentKey::AwaitPending(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_rich_content_facts_in(pending, store, source, facts);
                 }
                 if let Some(then) = &block.then {
-                    collect_rich_content_facts_in(
-                        then,
-                        FragmentKey::AwaitThen(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_rich_content_facts_in(then, store, source, facts);
                 }
                 if let Some(catch) = &block.catch {
-                    collect_rich_content_facts_in(
-                        catch,
-                        FragmentKey::AwaitCatch(block.id),
-                        store,
-                        source,
-                        facts,
-                    );
+                    collect_rich_content_facts_in(catch, store, source, facts);
                 }
             }
             _ => {}
@@ -374,7 +331,7 @@ fn collect_rich_content_facts_in(
     }
 
     facts.record(
-        key,
+        fragment.id,
         crate::types::data::RichContentFactsEntry::new(
             fragment_has_rich_content(
                 fragment,
@@ -416,41 +373,49 @@ fn fragment_has_rich_content(
             | Node::ExpressionTag(_)
             | Node::SnippetBlock(_) => {}
             Node::IfBlock(block) => {
-                if facts.has_rich_content(&FragmentKey::IfConsequent(block.id), parent)
-                    || block.alternate.as_ref().is_some_and(|_| {
-                        facts.has_rich_content(&FragmentKey::IfAlternate(block.id), parent)
-                    })
+                if facts.has_rich_content_by_id(block.consequent.id, parent)
+                    || block
+                        .alternate
+                        .as_ref()
+                        .is_some_and(|alt| facts.has_rich_content_by_id(alt.id, parent))
                 {
                     return true;
                 }
             }
             Node::EachBlock(block) => {
-                if facts.has_rich_content(&FragmentKey::EachBody(block.id), parent)
-                    || block.fallback.as_ref().is_some_and(|_| {
-                        facts.has_rich_content(&FragmentKey::EachFallback(block.id), parent)
-                    })
+                if facts.has_rich_content_by_id(block.body.id, parent)
+                    || block
+                        .fallback
+                        .as_ref()
+                        .is_some_and(|fb| facts.has_rich_content_by_id(fb.id, parent))
                 {
                     return true;
                 }
             }
             Node::KeyBlock(block) => {
-                if facts.has_rich_content(&FragmentKey::KeyBlockBody(block.id), parent) {
+                if facts.has_rich_content_by_id(block.fragment.id, parent) {
                     return true;
                 }
             }
             Node::AwaitBlock(block) => {
-                if block.pending.as_ref().is_some_and(|_| {
-                    facts.has_rich_content(&FragmentKey::AwaitPending(block.id), parent)
-                }) || block.then.as_ref().is_some_and(|_| {
-                    facts.has_rich_content(&FragmentKey::AwaitThen(block.id), parent)
-                }) || block.catch.as_ref().is_some_and(|_| {
-                    facts.has_rich_content(&FragmentKey::AwaitCatch(block.id), parent)
-                }) {
+                if block
+                    .pending
+                    .as_ref()
+                    .is_some_and(|p| facts.has_rich_content_by_id(p.id, parent))
+                    || block
+                        .then
+                        .as_ref()
+                        .is_some_and(|t| facts.has_rich_content_by_id(t.id, parent))
+                    || block
+                        .catch
+                        .as_ref()
+                        .is_some_and(|c| facts.has_rich_content_by_id(c.id, parent))
+                {
                     return true;
                 }
             }
             Node::SvelteBoundary(boundary) => {
-                if facts.has_rich_content(&FragmentKey::SvelteBoundaryBody(boundary.id), parent) {
+                if facts.has_rich_content_by_id(boundary.fragment.id, parent) {
                     return true;
                 }
             }
@@ -484,15 +449,12 @@ fn fragment_has_rich_content(
     false
 }
 
-/// Extract the first VariableDeclarator from a parsed statement handle.
-fn get_declarator<'a>(
-    parsed: &'a ParserResult<'a>,
-    handle: StmtHandle,
-) -> Option<&'a VariableDeclarator<'a>> {
-    parsed.stmt(handle).and_then(|stmt| match stmt {
+/// Extract the first VariableDeclarator from a parsed statement.
+fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a VariableDeclarator<'a>> {
+    match stmt {
         Statement::VariableDeclaration(decl) => decl.declarations.first(),
         _ => None,
-    })
+    }
 }
 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
@@ -535,16 +497,17 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template_topology
             .record_node_parent(block.id, ctx.parent());
         let is_destructured = block
-            .context_span
-            .and_then(|cs| parsed.and_then(|p| p.stmt_handle(cs.start)))
-            .and_then(|handle| parsed.and_then(|p| get_declarator(p, handle)))
+            .context
+            .as_ref()
+            .and_then(|r| parsed.and_then(|p| p.stmt(r.id())))
+            .and_then(declarator_from_stmt_local)
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         if is_destructured {
             let child_scope = ctx
                 .data
                 .scoping
-                .fragment_scope(&FragmentKey::EachBody(block.id))
+                .fragment_scope_by_id(block.body.id)
                 .expect("EachBody scope must exist");
             // $$item is synthetic — no OXC AST node for it
             let _ctx_sym = ctx
@@ -568,20 +531,18 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         let child_scope = ctx
             .data
             .scoping
-            .fragment_scope(&FragmentKey::EachBody(block.id))
+            .fragment_scope_by_id(block.body.id)
             .expect("EachBody scope must exist");
 
         // Reactivity marking (each_rest / getter / each_non_reactive for context
         // and index) is owned by `reactivity_semantics/builder_v2/contextual.rs`.
         // This pass only records non-reactivity structural indices.
 
-        if let Some(idx_span) = block.index_span {
+        if let Some(idx_ref) = block.index.as_ref() {
             let idx_name = ctx
                 .parsed()
-                .and_then(|p| {
-                    p.stmt_handle(idx_span.start)
-                        .and_then(|handle| get_declarator(p, handle))
-                })
+                .and_then(|p| p.stmt(idx_ref.id()))
+                .and_then(declarator_from_stmt_local)
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name {
@@ -592,7 +553,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                         .record_index_sym(block.id, idx_sym);
                     // `EACH_INDEX_NON_DYNAMIC` bit stays on `ComponentScoping`
                     // until the dynamism classifier moves out of the scoping layer.
-                    if block.key_span.is_none() {
+                    if block.key.is_none() {
                         ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
                     }
                 }
@@ -602,16 +563,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data.template.snippets.local_snippets.push(block.id);
-        if let Some(handle) = ctx
-            .parsed()
-            .and_then(|p| p.stmt_handle(block.expression_span.start))
-        {
-            ctx.data
-                .template
-                .template_semantics
-                .snippet_stmt_handles
-                .insert(block.id, handle);
-        }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             // `mark_snippet_name` + snippet-param classification are owned by

@@ -5,9 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
-    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, ContentStrategy,
-    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, ParserResult,
-    RuntimePlan,
+    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, EventHandlerMode, ExprDeps,
+    ExprSite, ExpressionInfo, IdentGen, JsAst, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -63,11 +62,6 @@ impl<'a> CodegenQuery<'a> {
         self.component.store.debug_tag(id)
     }
 
-    #[allow(dead_code)]
-    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
-        self.view.expr_has_blockers(id)
-    }
-
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.view.expression(id)
     }
@@ -98,7 +92,7 @@ pub struct CodegenState<'a> {
 
     pub transform_data: TransformData,
 
-    pub parsed: &'a mut ParserResult<'a>,
+    pub parsed: &'a mut JsAst<'a>,
 
     pub ident_gen: &'a mut IdentGen,
 
@@ -126,7 +120,7 @@ impl<'a> CodegenState<'a> {
         filename: &'a str,
         experimental_async: bool,
         dev: bool,
-        parsed: &'a mut ParserResult<'a>,
+        parsed: &'a mut JsAst<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
         css_text: Option<&'a str>,
@@ -183,23 +177,22 @@ impl<'a> DerefMut for Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        allocator: &'a oxc_allocator::Allocator,
-        component: &'a Component,
-        analysis: &'a AnalysisData,
-        parsed: &'a mut ParserResult<'a>,
-        ident_gen: &'a mut IdentGen,
+        compile_ctx: svelte_types::CompileContext<'a, 'a>,
+        options: &svelte_types::CodegenOptions,
         transform_data: TransformData,
         css_text: Option<&str>,
-        name: &str,
-        dev: bool,
-        source: &'a str,
-        filename: &str,
-        experimental_async: bool,
     ) -> Self {
-        let name = allocator.alloc_str(name);
-        let filename = allocator.alloc_str(filename);
+        let allocator = compile_ctx.alloc;
+        let component = compile_ctx.component;
+        let analysis = compile_ctx.analysis;
+        let parsed = compile_ctx.js_arena;
+        let ident_gen = compile_ctx.ident_gen;
+
+        let name = allocator.alloc_str(analysis.component_name());
+        let source = component.source.as_str();
+        let source = allocator.alloc_str(source);
+        let filename = allocator.alloc_str(&options.filename);
         let css_text = css_text.map(|t| allocator.alloc_str(t) as &str);
 
         Self {
@@ -209,8 +202,8 @@ impl<'a> Ctx<'a> {
                 name,
                 source,
                 filename,
-                experimental_async,
-                dev,
+                options.experimental_async,
+                options.dev,
                 parsed,
                 ident_gen,
                 transform_data,
@@ -236,10 +229,25 @@ impl<'a> Ctx<'a> {
 
     pub fn directive_root_ref_id(
         &self,
-        dir_id: NodeId,
+        attr: &svelte_ast::Attribute,
     ) -> Option<oxc_syntax::reference::ReferenceId> {
-        let handle = self.query.view.attr_expr_handle_opt(dir_id)?;
-        let expr = self.state.parsed.expr(handle)?;
+        let expr_ref = match attr {
+            svelte_ast::Attribute::ExpressionAttribute(a) => Some(&a.expression),
+            svelte_ast::Attribute::ClassDirective(a) => Some(&a.expression),
+            svelte_ast::Attribute::StyleDirective(a) => match &a.value {
+                svelte_ast::StyleDirectiveValue::Expression => Some(&a.expression),
+                _ => None,
+            },
+            svelte_ast::Attribute::BindDirective(a) => Some(&a.expression),
+            svelte_ast::Attribute::SpreadAttribute(a) => Some(&a.expression),
+            svelte_ast::Attribute::AttachTag(a) => Some(&a.expression),
+            svelte_ast::Attribute::UseDirective(a) => a.expression.as_ref(),
+            svelte_ast::Attribute::OnDirectiveLegacy(a) => a.expression.as_ref(),
+            svelte_ast::Attribute::TransitionDirective(a) => a.expression.as_ref(),
+            svelte_ast::Attribute::AnimateDirective(a) => a.expression.as_ref(),
+            _ => None,
+        }?;
+        let expr = self.state.parsed.expr(expr_ref.id())?;
         let mut current = expr;
         loop {
             match current {
@@ -253,9 +261,9 @@ impl<'a> Ctx<'a> {
 
     pub fn directive_root_reference_semantics(
         &self,
-        dir_id: NodeId,
+        attr: &svelte_ast::Attribute,
     ) -> svelte_analyze::ReferenceSemantics {
-        match self.directive_root_ref_id(dir_id) {
+        match self.directive_root_ref_id(attr) {
             Some(ref_id) => self.query.view.reference_semantics(ref_id),
             None => svelte_analyze::ReferenceSemantics::NonReactive,
         }
@@ -272,9 +280,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.query.view.is_each_index_sym(sym)
-    }
-    pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
-        self.query.view.nearest_element(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.query.view.attr_is_import(attr_id)
@@ -323,10 +328,6 @@ impl<'a> Ctx<'a> {
             }
         }
         result
-    }
-
-    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.query.view.content_type(key)
     }
 
     pub fn has_spread(&self, id: NodeId) -> bool {
@@ -380,10 +381,6 @@ impl<'a> Ctx<'a> {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.query.view.has_use_directive(id)
     }
-    #[allow(dead_code)]
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.query.view.has_dynamic_class_directives(id)
-    }
     pub fn class_needs_state(&self, id: NodeId) -> bool {
         self.query.view.class_needs_state(id)
     }
@@ -404,9 +401,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.query.view.component_snippets(id)
-    }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
-        self.query.view.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic_component(id)
@@ -444,13 +438,6 @@ impl<'a> Ctx<'a> {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.query.view.attr_expression(id)
     }
-    #[allow(dead_code)]
-    pub fn attr_expression_blockers(&self, id: NodeId) -> Vec<u32> {
-        self.expr_deps(ExprSite::Attr(id))
-            .map(|deps| deps.blockers.into_iter().collect())
-            .unwrap_or_default()
-    }
-    #[allow(dead_code)]
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expr_deps(ExprSite::Node(id))
             .is_some_and(|deps| deps.needs_memo)
@@ -463,24 +450,16 @@ impl<'a> Ctx<'a> {
         self.query.debug_tag(id)
     }
 
-    pub fn node_expr_handle(&self, node_id: NodeId) -> svelte_analyze::ExprHandle {
-        self.query.view.node_expr_handle(node_id)
-    }
-
-    pub fn attr_expr_handle(&self, attr_id: NodeId) -> svelte_analyze::ExprHandle {
-        self.query.view.attr_expr_handle(attr_id)
-    }
-
-    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
-        self.query.view.let_directive_stmt_handle(id)
-    }
-
     pub fn fragment_references_any_symbol(
         &self,
-        key: &FragmentKey,
+        fragment_id: svelte_ast::FragmentId,
         syms: &rustc_hash::FxHashSet<SymbolId>,
     ) -> bool {
-        self.query.view.fragment_references_any_symbol(key, syms)
+        self.query.view.fragment_references_any_symbol(
+            &self.query.component.store,
+            fragment_id,
+            syms,
+        )
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {

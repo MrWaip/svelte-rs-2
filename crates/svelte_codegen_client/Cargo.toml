@@ -15,6 +15,7 @@ svelte_ast_builder = { workspace = true }
 svelte_analyze = { workspace = true }
 svelte_component_semantics = { workspace = true }
 svelte_transform = { workspace = true }
+svelte_types = { workspace = true }
 svelte_parser = { workspace = true }
 svelte_span = { workspace = true }
 oxc_allocator = { workspace = true }

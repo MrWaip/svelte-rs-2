@@ -1,6 +1,4 @@
-use rustc_hash::FxHashMap;
-
-use super::FragmentKey;
+use svelte_ast::FragmentId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RichContentParentKind {
@@ -35,7 +33,7 @@ impl RichContentFactsEntry {
 }
 
 pub struct RichContentFacts {
-    entries: FxHashMap<FragmentKey, RichContentFactsEntry>,
+    entries: Vec<Option<RichContentFactsEntry>>,
 }
 
 impl Default for RichContentFacts {
@@ -47,21 +45,24 @@ impl Default for RichContentFacts {
 impl RichContentFacts {
     pub fn new() -> Self {
         Self {
-            entries: FxHashMap::default(),
+            entries: Vec::new(),
         }
     }
 
-    pub(crate) fn record(&mut self, key: FragmentKey, entry: RichContentFactsEntry) {
-        self.entries.insert(key, entry);
+    pub(crate) fn record(&mut self, id: FragmentId, entry: RichContentFactsEntry) {
+        let idx = id.0 as usize;
+        if self.entries.len() <= idx {
+            self.entries.resize(idx + 1, None);
+        }
+        self.entries[idx] = Some(entry);
     }
 
-    pub fn entry(&self, key: &FragmentKey) -> Option<&RichContentFactsEntry> {
-        self.entries.get(key)
+    pub fn entry_by_id(&self, id: FragmentId) -> Option<&RichContentFactsEntry> {
+        self.entries.get(id.0 as usize)?.as_ref()
     }
 
-    pub fn has_rich_content(&self, key: &FragmentKey, parent: RichContentParentKind) -> bool {
-        self.entries
-            .get(key)
+    pub fn has_rich_content_by_id(&self, id: FragmentId, parent: RichContentParentKind) -> bool {
+        self.entry_by_id(id)
             .is_some_and(|entry| entry.has_rich_content(parent))
     }
 }

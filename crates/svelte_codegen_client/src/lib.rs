@@ -8,41 +8,24 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 use oxc_span::{GetSpanMut, Span};
 
-use svelte_analyze::{AnalysisData, IdentGen, ParserResult};
-use svelte_ast::{Attribute, Component, Node};
+use svelte_analyze::AnalysisData;
+use svelte_ast::{Attribute, Node};
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_transform::TransformData;
 
 use context::Ctx;
 
 pub fn generate<'a>(
-    alloc: &'a Allocator,
-    component: &'a Component,
-    analysis: &'a AnalysisData,
-    parsed: &'a mut ParserResult<'a>,
-    ident_gen: &'a mut IdentGen,
+    compile_ctx: svelte_types::CompileContext<'a, 'a>,
+    options: &svelte_types::CodegenOptions,
     transform_data: TransformData,
     css_text: Option<&str>,
-    name: &str,
-    dev: bool,
-    source: &'a str,
-    filename: &str,
-    experimental_async: bool,
 ) -> String {
-    let mut ctx = Ctx::new(
-        alloc,
-        component,
-        analysis,
-        parsed,
-        ident_gen,
-        transform_data,
-        css_text,
-        name,
-        dev,
-        source,
-        filename,
-        experimental_async,
-    );
+    let alloc = compile_ctx.alloc;
+    let component = compile_ctx.component;
+    let analysis = compile_ctx.analysis;
+    let dev = options.dev;
+    let mut ctx = Ctx::new(compile_ctx, options, transform_data, css_text);
 
     let script_output = script::gen_script(&mut ctx, dev);
     let script_imports = script_output.imports;
@@ -339,9 +322,9 @@ pub fn generate<'a>(
             _ => None,
         };
         attrs.is_some_and(|attrs| {
-            attrs.iter().any(
-                |a| matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression_span.is_none()),
-            )
+            attrs
+                .iter()
+                .any(|a| matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()))
         })
     });
 

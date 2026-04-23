@@ -27,7 +27,7 @@ mod walker;
 
 use super::BlockSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{BlockerData, ParserResult};
+use crate::types::data::{BlockerData, JsAst};
 use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
@@ -47,7 +47,7 @@ use svelte_component_semantics::ComponentSemantics;
 ///   collection-expression async facts into the block's payload.
 pub fn build(
     component: &Component,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,

@@ -1,20 +1,18 @@
 use super::*;
+use svelte_ast::{ExprRef, StmtRef};
 
 #[inline]
 pub(crate) fn dispatch_expr(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
-    span: Span,
+    expr_ref: &ExprRef,
     ctx: &mut VisitContext<'_, '_>,
 ) {
+    let span = expr_ref.span;
     for v in visitors.iter_mut() {
         v.visit_expression(id, span, ctx);
     }
-    let parsed = ctx.parsed;
-    if let Some(expr) = parsed
-        .and_then(|p| p.expr_handle(span.start))
-        .and_then(|h| parsed.and_then(|p| p.expr(h)))
-    {
+    if let Some(expr) = ctx.parsed.and_then(|p| p.expr(expr_ref.id())) {
         for v in visitors.iter_mut() {
             v.visit_js_expression(id, expr, ctx);
         }
@@ -28,11 +26,11 @@ pub(crate) fn dispatch_expr(
 pub(crate) fn dispatch_opt_expr(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
-    span: Option<Span>,
+    expr_ref: Option<&ExprRef>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    if let Some(span) = span {
-        dispatch_expr(visitors, id, span, ctx);
+    if let Some(expr_ref) = expr_ref {
+        dispatch_expr(visitors, id, expr_ref, ctx);
     }
 }
 
@@ -40,17 +38,14 @@ pub(crate) fn dispatch_opt_expr(
 pub(crate) fn dispatch_stmt(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
-    span: Span,
+    stmt_ref: &StmtRef,
     ctx: &mut VisitContext<'_, '_>,
 ) {
+    let span = stmt_ref.span;
     for v in visitors.iter_mut() {
         v.visit_statement(id, span, ctx);
     }
-    let parsed = ctx.parsed;
-    if let Some(stmt) = parsed
-        .and_then(|p| p.stmt_handle(span.start))
-        .and_then(|h| parsed.and_then(|p| p.stmt(h)))
-    {
+    if let Some(stmt) = ctx.parsed.and_then(|p| p.stmt(stmt_ref.id())) {
         for v in visitors.iter_mut() {
             v.visit_js_statement(id, stmt, ctx);
         }
@@ -64,11 +59,11 @@ pub(crate) fn dispatch_stmt(
 pub(crate) fn dispatch_opt_stmt(
     visitors: &mut [&mut dyn TemplateVisitor],
     id: NodeId,
-    span: Option<Span>,
+    stmt_ref: Option<&StmtRef>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    if let Some(span) = span {
-        dispatch_stmt(visitors, id, span, ctx);
+    if let Some(stmt_ref) = stmt_ref {
+        dispatch_stmt(visitors, id, stmt_ref, ctx);
     }
 }
 
@@ -78,8 +73,8 @@ pub(crate) fn dispatch_concat_exprs(
     ctx: &mut VisitContext<'_, '_>,
 ) {
     for part in parts {
-        if let ConcatPart::Dynamic { id, span } = part {
-            dispatch_expr(visitors, *id, *span, ctx);
+        if let ConcatPart::Dynamic { id, expr, .. } = part {
+            dispatch_expr(visitors, *id, expr, ctx);
         }
     }
 }

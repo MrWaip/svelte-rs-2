@@ -4,7 +4,7 @@ use svelte_diagnostics::DiagnosticKind;
 pub(crate) struct VisitContext<'d, 'a> {
     pub scope: ScopeId,
     pub data: &'d mut AnalysisData<'a>,
-    pub(crate) parsed: Option<&'d ParserResult<'a>>,
+    pub(crate) parsed: Option<&'d JsAst<'a>>,
     pub store: &'d svelte_ast::AstStore,
     parents: Vec<ParentRef>,
     element_name: Option<String>,
@@ -48,7 +48,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         scope: ScopeId,
         data: &'d mut AnalysisData<'a>,
         store: &'d svelte_ast::AstStore,
-        parsed: &'d ParserResult<'a>,
+        parsed: &'d JsAst<'a>,
         source: &'d str,
         runes: bool,
         component_name: &'d str,
@@ -71,7 +71,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         }
     }
 
-    pub fn parsed(&self) -> Option<&ParserResult<'a>> {
+    pub fn parsed(&self) -> Option<&JsAst<'a>> {
         self.parsed
     }
 
@@ -107,25 +107,13 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         self.ignore_current = next;
     }
 
-    pub(crate) fn child_scope(&self, key: FragmentKey, parent_scope: ScopeId) -> ScopeId {
-        match key {
-            FragmentKey::IfConsequent(id) => self.data.if_consequent_scope(id, parent_scope),
-            FragmentKey::IfAlternate(id) => self.data.if_alternate_scope(id, parent_scope),
-            FragmentKey::EachBody(id) => self.data.each_body_scope(id, parent_scope),
-            FragmentKey::SnippetBody(id) => self.data.snippet_body_scope(id, parent_scope),
-            FragmentKey::KeyBlockBody(id) => self.data.key_block_body_scope(id, parent_scope),
-            FragmentKey::SvelteHeadBody(id) => self.data.svelte_head_body_scope(id, parent_scope),
-            FragmentKey::SvelteElementBody(id) => {
-                self.data.svelte_element_body_scope(id, parent_scope)
-            }
-            FragmentKey::SvelteBoundaryBody(id) => {
-                self.data.svelte_boundary_body_scope(id, parent_scope)
-            }
-            FragmentKey::AwaitPending(id) => self.data.await_pending_scope(id, parent_scope),
-            FragmentKey::AwaitThen(id) => self.data.await_then_scope(id, parent_scope),
-            FragmentKey::AwaitCatch(id) => self.data.await_catch_scope(id, parent_scope),
-            _ => parent_scope,
-        }
+    pub(crate) fn child_scope_by_id(
+        &self,
+        fragment_id: svelte_ast::FragmentId,
+        parent_scope: ScopeId,
+    ) -> ScopeId {
+        self.data
+            .effective_fragment_scope(fragment_id, parent_scope)
     }
 
     pub fn pop_ignore(&mut self) {

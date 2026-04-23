@@ -1,11 +1,17 @@
 {
   "mcpServers": {
-    "cclsp": {
-      "command": "cclsp",
-      "env": {
-        "CARGO_TARGET_DIR": "target/cclsp",
-        "CCLSP_CONFIG_PATH": "cclsp.json"
-      }
+    "narsil-mcp": {
+      "command": "narsil-mcp",
+      "args": [
+        "--repos",
+        ".",
+        "--git",
+        "--watch",
+        "--lsp",
+        "--persist",
+        "--index-path",
+        ".claude/cache"
+      ]
     }
   }
 }

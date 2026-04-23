@@ -3,7 +3,7 @@ use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 
-use crate::types::data::{AnalysisData, AsyncStmtMeta, ParserResult};
+use crate::types::data::{AnalysisData, AsyncStmtMeta, JsAst};
 
 fn has_await_in_statement(stmt: &Statement<'_>) -> bool {
     struct AwaitCheck {
@@ -42,7 +42,7 @@ fn has_await_in_statement(stmt: &Statement<'_>) -> bool {
     check.found
 }
 
-pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut AnalysisData) {
+pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut AnalysisData) {
     let Some(program) = parsed.program.as_ref() else {
         return;
     };

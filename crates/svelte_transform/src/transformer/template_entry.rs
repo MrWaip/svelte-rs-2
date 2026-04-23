@@ -8,7 +8,9 @@ use oxc_ast::AstBuilder;
 use oxc_span::{SourceType, SPAN};
 use oxc_traverse::ReusableTraverseCtx;
 
-use svelte_analyze::{AnalysisData, ComponentScoping, ExprHandle, ParserResult, StmtHandle};
+use oxc_syntax::node::NodeId as OxcNodeId;
+
+use svelte_analyze::{AnalysisData, ComponentScoping, JsAst};
 use svelte_ast_builder::Builder;
 
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
@@ -18,11 +20,11 @@ pub(crate) fn run_template<'a>(
     alloc: &'a Allocator,
     analysis: &AnalysisData<'a>,
     component_scoping: &ComponentScoping<'a>,
-    expr_handles: Vec<(ExprHandle, Option<svelte_ast::NodeId>)>,
-    stmt_handles: Vec<(StmtHandle, Option<svelte_ast::NodeId>)>,
-    bind_expr_handles: Vec<(ExprHandle, svelte_ast::NodeId)>,
+    expr_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
+    stmt_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
+    bind_expr_handles: Vec<(OxcNodeId, svelte_ast::NodeId)>,
     transform_data: TransformData,
-    parsed: &mut ParserResult<'a>,
+    parsed: &mut JsAst<'a>,
     dev: bool,
 ) -> TransformData {
     let b = Builder::new(alloc);

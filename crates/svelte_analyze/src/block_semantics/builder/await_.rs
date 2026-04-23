@@ -16,7 +16,7 @@ use super::common::{
 use super::walker::Ctx;
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
-use svelte_ast::{AwaitBlock, FragmentKey};
+use svelte_ast::AwaitBlock;
 use svelte_component_semantics::{walk_bindings, SymbolId};
 
 /// Populate `BlockSemantics::Await` for this block and recurse into its
@@ -32,21 +32,17 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
     let then = resolve_branch(
         ctx,
         block.then.is_some(),
-        block.value_span,
-        FragmentKey::AwaitThen(block.id),
+        block.value.as_ref(),
+        block.then.as_ref().map(|t| t.id),
     );
     let catch = resolve_branch(
         ctx,
         block.catch.is_some(),
-        block.error_span,
-        FragmentKey::AwaitCatch(block.id),
+        block.error.as_ref(),
+        block.catch.as_ref().map(|c| c.id),
     );
 
-    let (expression_has_await, blockers) = match ctx
-        .parsed
-        .expr_handle(block.expression_span.start)
-        .and_then(|h| ctx.parsed.expr(h))
-    {
+    let (expression_has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
         Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
         None => (false, SmallVec::new()),
     };
@@ -82,24 +78,26 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
 
 /// Resolve a `{:then}` / `{:catch}` branch. `has_fragment` captures
 /// branch presence; the optional binding pattern is pulled from the
-/// pre-parsed `let <pattern>` statement at `binding_span`.
+/// pre-parsed `let <pattern>` statement referenced by `binding_ref`.
 fn resolve_branch(
     ctx: &Ctx<'_, '_>,
     has_fragment: bool,
-    binding_span: Option<svelte_span::Span>,
-    scope_key: FragmentKey,
+    binding_ref: Option<&svelte_ast::StmtRef>,
+    scope_fragment_id: Option<svelte_ast::FragmentId>,
 ) -> AwaitBranch {
     if !has_fragment {
         return AwaitBranch::Absent;
     }
-    let binding = match binding_span {
+    let Some(fragment_id) = scope_fragment_id else {
+        return AwaitBranch::Absent;
+    };
+    let binding = match binding_ref {
         None => AwaitBinding::None,
-        Some(span) => ctx
+        Some(stmt_ref) => ctx
             .parsed
-            .stmt_handle(span.start)
-            .and_then(|h| ctx.parsed.stmt(h))
+            .stmt(stmt_ref.id())
             .and_then(declarator_from_stmt)
-            .map(|decl| binding_from_pattern(ctx, &decl.id, scope_key))
+            .map(|decl| binding_from_pattern(ctx, &decl.id, fragment_id))
             .unwrap_or(AwaitBinding::None),
     };
     AwaitBranch::Present { binding }
@@ -108,12 +106,12 @@ fn resolve_branch(
 fn binding_from_pattern<'a>(
     ctx: &Ctx<'_, 'a>,
     pattern: &BindingPattern<'a>,
-    scope_key: FragmentKey,
+    fragment_id: svelte_ast::FragmentId,
 ) -> AwaitBinding {
     if let Some(ident) = binding_ident_of(pattern) {
         return ctx
             .semantics
-            .fragment_scope(&scope_key)
+            .fragment_scope_by_id(fragment_id)
             .and_then(|scope| ctx.semantics.find_binding(scope, ident.name.as_str()))
             .map(AwaitBinding::Identifier)
             .unwrap_or(AwaitBinding::None);

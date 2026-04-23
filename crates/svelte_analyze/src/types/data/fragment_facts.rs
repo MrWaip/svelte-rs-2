@@ -1,7 +1,4 @@
-use rustc_hash::FxHashMap;
-use svelte_ast::{AstStore, Attribute, Fragment, Node, NodeId};
-
-use super::FragmentKey;
+use svelte_ast::{AstStore, Attribute, Fragment, FragmentId, Node, NodeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FragmentFactsEntry {
@@ -105,7 +102,7 @@ impl FragmentFactsEntry {
 }
 
 pub struct FragmentFacts {
-    entries: FxHashMap<FragmentKey, FragmentFactsEntry>,
+    entries: Vec<Option<FragmentFactsEntry>>,
 }
 
 impl Default for FragmentFacts {
@@ -117,70 +114,20 @@ impl Default for FragmentFacts {
 impl FragmentFacts {
     pub fn new() -> Self {
         Self {
-            entries: FxHashMap::default(),
+            entries: Vec::new(),
         }
     }
 
-    pub(crate) fn record(&mut self, key: FragmentKey, entry: FragmentFactsEntry) {
-        self.entries.insert(key, entry);
+    pub(crate) fn record(&mut self, id: FragmentId, entry: FragmentFactsEntry) {
+        let idx = id.0 as usize;
+        if self.entries.len() <= idx {
+            self.entries.resize(idx + 1, None);
+        }
+        self.entries[idx] = Some(entry);
     }
 
-    pub fn entry(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
-        self.entries.get(key)
-    }
-
-    pub fn has_children(&self, key: &FragmentKey) -> bool {
-        self.entries
-            .get(key)
-            .is_some_and(FragmentFactsEntry::has_children)
-    }
-
-    pub fn child_count(&self, key: &FragmentKey) -> u32 {
-        self.entries
-            .get(key)
-            .map_or(0, FragmentFactsEntry::child_count)
-    }
-
-    pub fn single_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.entries
-            .get(key)
-            .and_then(FragmentFactsEntry::single_child)
-    }
-
-    pub fn non_trivial_child_count(&self, key: &FragmentKey) -> u32 {
-        self.entries
-            .get(key)
-            .map_or(0, FragmentFactsEntry::non_trivial_child_count)
-    }
-
-    pub fn has_non_trivial_children(&self, key: &FragmentKey) -> bool {
-        self.entries
-            .get(key)
-            .is_some_and(FragmentFactsEntry::has_non_trivial_children)
-    }
-
-    pub fn has_expression_child(&self, key: &FragmentKey) -> bool {
-        self.entries
-            .get(key)
-            .is_some_and(FragmentFactsEntry::has_expression_child)
-    }
-
-    pub fn single_expression_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.entries
-            .get(key)
-            .and_then(FragmentFactsEntry::single_expression_child)
-    }
-
-    pub fn single_non_trivial_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.entries
-            .get(key)
-            .and_then(FragmentFactsEntry::single_non_trivial_child)
-    }
-
-    pub fn has_direct_animate_child(&self, key: &FragmentKey) -> bool {
-        self.entries
-            .get(key)
-            .is_some_and(FragmentFactsEntry::has_direct_animate_child)
+    pub fn lookup_by_id(&self, id: FragmentId) -> Option<&FragmentFactsEntry> {
+        self.entries.get(id.0 as usize)?.as_ref()
     }
 }
 

@@ -23,21 +23,20 @@ pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindTargetSemantics,
     BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo, CodegenView,
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstDeclarationSemantics,
-    ConstTagData, ContentEditableKind, ContentStrategy, ContextualDeclarationSemantics,
-    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DebugTagData, DeclarationSemantics,
+    ConstTagData, ContentEditableKind, ContextualDeclarationSemantics, ContextualReadKind,
+    ContextualReadSemantics, CssAnalysis, DebugTagData, DeclarationSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
     DocumentBindKind, EachContextIndex, EachIndexStrategy, EachItemStrategy, ElementAnalysis,
     ElementFacts, ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode,
-    EventModifier, ExprDeps, ExprHandle, ExprRole, ExprSite, ExpressionInfo, ExpressionKind,
-    FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey, FragmentKeyExt,
-    IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
-    NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef, ParserResult,
+    EventModifier, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts,
+    FragmentFactsEntry, FragmentLayout, FragmentLayouts, IgnoreData, ImageNaturalSizeKind, JsAst,
+    MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
     PickledAwaitOffsets, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
     PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ProxyStateInits,
     ReactivitySemantics, ReferenceSemantics, ResizeObserverKind, RichContentFacts,
     RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
     ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
-    StateDeclarationSemantics, StateKind, StmtHandle, StoreDeclarationSemantics, TemplateAnalysis,
+    StateDeclarationSemantics, StateKind, StoreDeclarationSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
@@ -88,17 +87,17 @@ impl Default for AnalyzeOptions {
 /// Run all analysis passes over a parsed component (default options).
 pub fn analyze<'a>(
     component: &Component,
-    parsed: ParserResult<'a>,
-) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
+    parsed: JsAst<'a>,
+) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
     analyze_with_options(component, parsed, &AnalyzeOptions::default())
 }
 
 /// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
     component: &Component,
-    mut parsed: ParserResult<'a>,
+    mut parsed: JsAst<'a>,
     options: &AnalyzeOptions,
-) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
+) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty(component.node_count());
@@ -161,11 +160,11 @@ pub fn analyze_module<'a>(
     source: &'a str,
     is_ts: bool,
     dev: bool,
-) -> (AnalysisData<'a>, ParserResult<'a>, Vec<Diagnostic>) {
+) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
     let _ = dev;
     let mut diags = Vec::new();
     let mut data = AnalysisData::new_empty(0);
-    let mut parsed = ParserResult::new();
+    let mut parsed = JsAst::new();
 
     match svelte_parser::parse_module(alloc, source, is_ts) {
         Ok((program, _scoping)) => {
@@ -186,14 +185,8 @@ pub fn analyze_module<'a>(
             // Stash program in ParserResult so `build_v2`'s script collector
             // walks the same parse that downstream transforms use.
             parsed.program = Some(program);
-            let stub_component = svelte_ast::Component::new(
-                source.to_string(),
-                svelte_ast::Fragment::empty(),
-                svelte_ast::AstStore::default(),
-                None,
-                None,
-                None,
-            );
+            let stub_component =
+                svelte_ast::Component::dummy_for_standalone_module(source.to_string());
             reactivity_semantics::build_v2(&stub_component, &parsed, &mut data);
         }
         Err(errs) => diags.extend(errs),

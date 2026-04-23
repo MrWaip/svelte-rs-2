@@ -16,7 +16,7 @@ use super::data::{
     StateDeclarationSemantics, StateKind, V2DeclarationFacts, V2ReferenceFacts,
 };
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{AnalysisData, ParserResult};
+use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
@@ -42,11 +42,7 @@ const JS_UNDEFINED_NAME: &str = "undefined";
 /// without the old getter surface. The deprecated v1 builder still runs
 /// afterwards for symbol-centric read/write queries until reference semantics
 /// migration is complete.
-pub(crate) fn build_v2<'a>(
-    component: &Component,
-    parsed: &ParserResult<'a>,
-    data: &mut AnalysisData<'a>,
-) {
+pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut AnalysisData<'a>) {
     data.reactivity.set_uses_runes(data.script.runes);
     build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
     contextual::collect_template_declarations(component, parsed, data);
@@ -56,7 +52,7 @@ pub(crate) fn build_v2<'a>(
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
     references::collect_symbol_semantics(data);
-    compute_const_tag_reactivity(parsed, data);
+    compute_const_tag_reactivity(component, parsed, data);
 }
 
 /// Fix-point-style refinement of `ConstDeclarationSemantics::ConstTag::reactive`.
@@ -66,7 +62,11 @@ pub(crate) fn build_v2<'a>(
 /// expression only references non-reactive symbols. Runs after all script-side
 /// Derived `reactive` flags are computed, so transitive chains (`{@const x = y}`
 /// where `y = $derived(inert)`) fold correctly.
-fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut AnalysisData<'a>) {
+fn compute_const_tag_reactivity<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
     use super::data::{ConstDeclarationSemantics, DeclarationSemantics};
     use svelte_component_semantics::walk_bindings;
     // Snapshot `(scope, tag_id)` pairs up front: the fragment scope for
@@ -86,10 +86,10 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
     }
     for tag_id in tag_ids {
         // Collect ReferenceIds from the const-tag init expression via OXC Visit.
-        let Some(handle) = data.const_tag_stmt_handle(tag_id) else {
+        let svelte_ast::Node::ConstTag(tag) = component.store.get(tag_id) else {
             continue;
         };
-        let Some(stmt) = parsed.stmt(handle) else {
+        let Some(stmt) = parsed.stmt(tag.decl.id()) else {
             continue;
         };
 
@@ -159,7 +159,7 @@ fn compute_const_tag_reactivity<'a>(parsed: &ParserResult<'a>, data: &mut Analys
 }
 
 fn build_script_semantics_v2<'a>(
-    parsed: &ParserResult<'a>,
+    parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
     prop_lowering_mode: PropLoweringMode,
 ) {
