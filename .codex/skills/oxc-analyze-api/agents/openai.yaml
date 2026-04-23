@@ -1,4 +1,0 @@
-interface:
-  display_name: "OXC Analyze API"
-  short_description: "Load OXC analyze visitor references"
-  default_prompt: "Use $oxc-analyze-api to load the exact OXC visitor and semantic APIs before changing analyze code."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Test Pattern"
-  short_description: "Structure Rust tests with clear helpers"
-  default_prompt: "Use $test-pattern to structure these Rust unit tests with reusable setup, finder, and assert helpers."

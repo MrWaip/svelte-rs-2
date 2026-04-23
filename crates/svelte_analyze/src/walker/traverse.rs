@@ -30,7 +30,7 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_expression_tag(tag, ctx);
                 }
-                dispatch_expr(visitors, tag.id, tag.expression_span, ctx);
+                dispatch_expr(visitors, tag.id, &tag.expression, ctx);
             }
             Node::Element(el) => {
                 for v in visitors.iter_mut() {
@@ -68,39 +68,39 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_if_block(block, ctx);
                 }
-                dispatch_expr(visitors, block.id, block.test_span, ctx);
+                dispatch_expr(visitors, block.id, &block.test, ctx);
                 ctx.push(ParentRef {
                     id: block.id,
                     kind: ParentKind::IfBlock,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope(FragmentKey::IfConsequent(block.id), saved);
+                ctx.scope = ctx.child_scope_by_id(block.consequent.id, saved);
                 walk_template(&block.consequent, ctx, visitors);
                 if let Some(alt) = &block.alternate {
-                    ctx.scope = ctx.child_scope(FragmentKey::IfAlternate(block.id), saved);
+                    ctx.scope = ctx.child_scope_by_id(alt.id, saved);
                     walk_template(alt, ctx, visitors);
                 }
                 ctx.scope = saved;
                 ctx.pop();
             }
             Node::EachBlock(block) => {
-                let body_scope = ctx.child_scope(FragmentKey::EachBody(block.id), ctx.scope);
+                let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
                 for v in visitors.iter_mut() {
                     v.visit_each_block(block, ctx);
                 }
-                dispatch_expr(visitors, block.id, block.expression_span, ctx);
+                dispatch_expr(visitors, block.id, &block.expression, ctx);
                 ctx.push(ParentRef {
                     id: block.id,
                     kind: ParentKind::EachBlock,
                 });
                 let saved = ctx.scope;
                 ctx.scope = body_scope;
-                if let Some(ctx_span) = block.context_span {
-                    dispatch_stmt(visitors, block.id, ctx_span, ctx);
+                if let Some(ctx_ref) = block.context.as_ref() {
+                    dispatch_stmt(visitors, block.id, ctx_ref, ctx);
                 }
-                dispatch_opt_stmt(visitors, block.id, block.index_span, ctx);
-                if let (Some(key_id), Some(key_span)) = (block.key_id, block.key_span) {
-                    dispatch_expr(visitors, key_id, key_span, ctx);
+                dispatch_opt_stmt(visitors, block.id, block.index.as_ref(), ctx);
+                if let (Some(key_id), Some(key_ref)) = (block.key_id, block.key.as_ref()) {
+                    dispatch_expr(visitors, key_id, key_ref, ctx);
                 }
                 walk_template(&block.body, ctx, visitors);
                 ctx.scope = saved;
@@ -113,11 +113,11 @@ pub(crate) fn walk_template(
                 }
             }
             Node::SnippetBlock(block) => {
-                let body_scope = ctx.child_scope(FragmentKey::SnippetBody(block.id), ctx.scope);
+                let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
                 for v in visitors.iter_mut() {
                     v.visit_snippet_block(block, ctx);
                 }
-                dispatch_stmt(visitors, block.id, block.expression_span, ctx);
+                dispatch_stmt(visitors, block.id, &block.decl, ctx);
                 ctx.push(ParentRef {
                     id: block.id,
                     kind: ParentKind::SnippetBlock,
@@ -147,7 +147,7 @@ pub(crate) fn walk_template(
                 } else {
                     ctx.data
                         .scoping
-                        .fragment_scope(&FragmentKey::ComponentNode(cn.id))
+                        .fragment_scope_by_id(cn.fragment.id)
                         .unwrap_or(saved)
                 };
 
@@ -162,18 +162,17 @@ pub(crate) fn walk_template(
                     }
                 }
 
-                for &child_id in &cn.fragment.nodes {
-                    let child = ctx.store.get(child_id);
-                    let child_scope = if node_static_slot_name(child, ctx.source).is_some() {
-                        ctx.data
-                            .scoping
-                            .fragment_scope(&FragmentKey::NamedSlot(cn.id, child_id))
-                            .unwrap_or(saved)
-                    } else {
-                        default_scope
-                    };
-                    ctx.scope = child_scope;
-                    walk_template(&svelte_ast::Fragment::new(vec![child_id]), ctx, visitors);
+                ctx.scope = default_scope;
+                walk_template(&cn.fragment, ctx, visitors);
+
+                for slot in &cn.legacy_slots {
+                    let wrapper_id = slot.fragment.nodes[0];
+                    ctx.scope = ctx
+                        .data
+                        .scoping
+                        .named_slot_scope(cn.id, wrapper_id)
+                        .unwrap_or(saved);
+                    walk_template(&slot.fragment, ctx, visitors);
                 }
                 ctx.scope = saved;
                 ctx.pop();
@@ -182,19 +181,19 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_render_tag(tag, ctx);
                 }
-                dispatch_expr(visitors, tag.id, tag.expression_span, ctx);
+                dispatch_expr(visitors, tag.id, &tag.expression, ctx);
             }
             Node::HtmlTag(tag) => {
                 for v in visitors.iter_mut() {
                     v.visit_html_tag(tag, ctx);
                 }
-                dispatch_expr(visitors, tag.id, tag.expression_span, ctx);
+                dispatch_expr(visitors, tag.id, &tag.expression, ctx);
             }
             Node::ConstTag(tag) => {
                 for v in visitors.iter_mut() {
                     v.visit_const_tag(tag, ctx);
                 }
-                dispatch_stmt(visitors, tag.id, tag.expression_span, ctx);
+                dispatch_stmt(visitors, tag.id, &tag.decl, ctx);
             }
             Node::DebugTag(tag) => {
                 for v in visitors.iter_mut() {
@@ -205,13 +204,13 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_key_block(block, ctx);
                 }
-                dispatch_expr(visitors, block.id, block.expression_span, ctx);
+                dispatch_expr(visitors, block.id, &block.expression, ctx);
                 ctx.push(ParentRef {
                     id: block.id,
                     kind: ParentKind::KeyBlock,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope(FragmentKey::KeyBlockBody(block.id), saved);
+                ctx.scope = ctx.child_scope_by_id(block.fragment.id, saved);
                 walk_template(&block.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
@@ -222,7 +221,7 @@ pub(crate) fn walk_template(
                     kind: ParentKind::SvelteHead,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope(FragmentKey::SvelteHeadBody(head.id), saved);
+                ctx.scope = ctx.child_scope_by_id(head.fragment.id, saved);
                 walk_template(&head.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
@@ -250,12 +249,12 @@ pub(crate) fn walk_template(
                     id: el.id,
                     kind: ParentKind::SvelteElement,
                 });
-                if !el.static_tag {
-                    dispatch_expr(visitors, el.id, el.tag_span, ctx);
+                if let Some(tag_ref) = el.tag.as_ref() {
+                    dispatch_expr(visitors, el.id, tag_ref, ctx);
                 }
                 walk_attributes(&el.attributes, ctx, visitors);
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope(FragmentKey::SvelteElementBody(el.id), saved);
+                ctx.scope = ctx.child_scope_by_id(el.fragment.id, saved);
                 walk_template(&el.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
@@ -306,7 +305,7 @@ pub(crate) fn walk_template(
                 });
                 walk_attributes(&b.attributes, ctx, visitors);
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope(FragmentKey::SvelteBoundaryBody(b.id), saved);
+                ctx.scope = ctx.child_scope_by_id(b.fragment.id, saved);
                 walk_template(&b.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
@@ -315,24 +314,24 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_await_block(block, ctx);
                 }
-                dispatch_expr(visitors, block.id, block.expression_span, ctx);
+                dispatch_expr(visitors, block.id, &block.expression, ctx);
                 ctx.push(ParentRef {
                     id: block.id,
                     kind: ParentKind::AwaitBlock,
                 });
                 let saved = ctx.scope;
                 if let Some(ref p) = block.pending {
-                    ctx.scope = ctx.child_scope(FragmentKey::AwaitPending(block.id), saved);
+                    ctx.scope = ctx.child_scope_by_id(p.id, saved);
                     walk_template(p, ctx, visitors);
                 }
                 if let Some(ref t) = block.then {
-                    ctx.scope = ctx.child_scope(FragmentKey::AwaitThen(block.id), saved);
-                    dispatch_opt_stmt(visitors, block.id, block.value_span, ctx);
+                    ctx.scope = ctx.child_scope_by_id(t.id, saved);
+                    dispatch_opt_stmt(visitors, block.id, block.value.as_ref(), ctx);
                     walk_template(t, ctx, visitors);
                 }
                 if let Some(ref c) = block.catch {
-                    ctx.scope = ctx.child_scope(FragmentKey::AwaitCatch(block.id), saved);
-                    dispatch_opt_stmt(visitors, block.id, block.error_span, ctx);
+                    ctx.scope = ctx.child_scope_by_id(c.id, saved);
+                    dispatch_opt_stmt(visitors, block.id, block.error.as_ref(), ctx);
                     walk_template(c, ctx, visitors);
                 }
                 ctx.scope = saved;
@@ -354,15 +353,6 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
         }
         _ => None,
     })
-}
-
-fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
-    match node {
-        Node::Element(el) => attrs_static_slot_name(&el.attributes, source),
-        Node::SvelteFragmentLegacy(el) => attrs_static_slot_name(&el.attributes, source),
-        Node::ComponentNode(cn) => attrs_static_slot_name(&cn.attributes, source),
-        _ => None,
-    }
 }
 
 fn node_id_of(node: &Node) -> NodeId {
@@ -452,7 +442,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::ExpressionAttribute,
                 });
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, &a.expression, ctx);
                 ctx.pop();
             }
             Attribute::ConcatenationAttribute(a) => {
@@ -477,7 +467,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::SpreadAttribute,
                 });
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, &a.expression, ctx);
                 ctx.pop();
             }
             Attribute::ClassDirective(a) => {
@@ -488,10 +478,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::ClassDirective,
                 });
-                // `expression_span` is non-optional after the shorthand parser
-                // rework — shorthand directives now carry a span of `name`
-                // that parses into a synthesized Identifier.
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, &a.expression, ctx);
                 ctx.pop();
             }
             Attribute::StyleDirective(a) => {
@@ -504,7 +491,7 @@ fn walk_attributes(
                 });
                 match &a.value {
                     StyleDirectiveValue::Expression => {
-                        dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                        dispatch_expr(visitors, a.id, &a.expression, ctx);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         dispatch_concat_exprs(visitors, parts, ctx);
@@ -524,7 +511,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::BindDirective,
                 });
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, &a.expression, ctx);
                 ctx.pop();
             }
             Attribute::LetDirectiveLegacy(a) => {
@@ -535,7 +522,10 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::LetDirectiveLegacy,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                // LetDirectiveLegacy carries a binding StmtRef, not an expression.
+                if let Some(stmt_ref) = a.binding.as_ref() {
+                    dispatch_stmt(visitors, a.id, stmt_ref, ctx);
+                }
                 ctx.pop();
             }
             Attribute::UseDirective(a) => {
@@ -546,7 +536,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::UseDirective,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_opt_expr(visitors, a.id, a.expression.as_ref(), ctx);
                 ctx.pop();
             }
             Attribute::OnDirectiveLegacy(a) => {
@@ -557,7 +547,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::OnDirectiveLegacy,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_opt_expr(visitors, a.id, a.expression.as_ref(), ctx);
                 ctx.pop();
             }
             Attribute::TransitionDirective(a) => {
@@ -568,7 +558,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::TransitionDirective,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_opt_expr(visitors, a.id, a.expression.as_ref(), ctx);
                 ctx.pop();
             }
             Attribute::AnimateDirective(a) => {
@@ -579,7 +569,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::AnimateDirective,
                 });
-                dispatch_opt_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_opt_expr(visitors, a.id, a.expression.as_ref(), ctx);
                 ctx.pop();
             }
             Attribute::AttachTag(a) => {
@@ -590,7 +580,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::AttachTag,
                 });
-                dispatch_expr(visitors, a.id, a.expression_span, ctx);
+                dispatch_expr(visitors, a.id, &a.expression, ctx);
                 ctx.pop();
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}

@@ -65,6 +65,11 @@ compare-benchmark file='tasks/benchmark/benches/compiler/big_v6.svelte':
 dump-ast expr:
     cargo run -p svelte_parser --example dump_ast -- '{{expr}}'
 
+# Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte)
+quick-check path:
+    cd tasks/generate_test_cases && npm install --silent
+    cargo run -q -p quick_check -- {{path}}
+
 # Build WASM and serve the playground
 playground:
     wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler

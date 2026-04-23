@@ -84,8 +84,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn find_binding(&self, scope_id: oxc_semantic::ScopeId, name: &str) -> Option<SymbolId> {
         self.data.scoping.find_binding(scope_id, name)
     }
-    pub fn fragment_scope(&self, key: &FragmentKey) -> Option<oxc_semantic::ScopeId> {
-        self.data.scoping.fragment_scope(key)
+    pub fn fragment_scope_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<oxc_semantic::ScopeId> {
+        self.data.scoping.fragment_scope_by_id(id)
     }
     pub fn blocker_data(&self) -> &BlockerData {
         self.data.blocker_data()
@@ -131,31 +134,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
         self.data.attr_is_function(attr_id)
-    }
-    pub fn node_expr_handle(&self, id: NodeId) -> ExprHandle {
-        self.data.node_expr_handle(id)
-    }
-    pub fn attr_expr_handle(&self, id: NodeId) -> ExprHandle {
-        self.data.attr_expr_handle(id)
-    }
-    /// Non-panicking attribute expression handle lookup. Useful for directives
-    /// that may lack an expression in rare cases (e.g. function bindings).
-    pub fn attr_expr_handle_opt(&self, id: NodeId) -> Option<ExprHandle> {
-        self.data
-            .template
-            .template_semantics
-            .attr_expr_handles
-            .get(id)
-            .copied()
-    }
-    pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.const_tag_stmt_handle(id)
-    }
-    pub fn let_directive_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.let_directive_stmt_handle(id)
-    }
-    pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.data.snippet_stmt_handle(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
@@ -208,24 +186,21 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
-    pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
-        self.data.template.fragments.lowered(key)
+    pub fn fragment_items(&self, id: svelte_ast::FragmentId) -> Option<&[NodeId]> {
+        self.data.template.fragment_items(id)
     }
-    pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
-        self.data.template.fragments.fragment_blockers(key)
+
+    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
+        self.data.template.fragment_blockers_by_id(id)
     }
     pub fn fragment_references_any_symbol(
         &self,
-        key: &FragmentKey,
+        store: &svelte_ast::AstStore,
+        fragment_id: svelte_ast::FragmentId,
         syms: &FxHashSet<SymbolId>,
     ) -> bool {
-        self.data.fragment_references_any_symbol(key, syms)
-    }
-    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.data.template.fragments.content_type(key)
-    }
-    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
-        self.data.template.fragments.has_dynamic_children(key)
+        self.data
+            .fragment_references_any_symbol(store, fragment_id, syms)
     }
     pub fn string_attribute<'b>(
         &self,
@@ -243,6 +218,13 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn namespace(&self, id: NodeId) -> Option<NamespaceKind> {
         self.data.namespace(id)
+    }
+    pub fn fragment_namespace(&self, id: svelte_ast::FragmentId) -> svelte_ast::Namespace {
+        self.data
+            .template
+            .fragment_namespaces
+            .get(id)
+            .unwrap_or(svelte_ast::Namespace::Html)
     }
     pub fn creation_namespace(&self, id: NodeId) -> Option<svelte_ast::Namespace> {
         self.data.creation_namespace(id)
@@ -316,7 +298,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
         self.data.elements.flags.component_binding_sym(id)
     }
-    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
+    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId, oxc_syntax::node::NodeId)] {
         self.data.elements.flags.component_css_props(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
@@ -324,9 +306,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.data.template.snippets.component_snippets(id)
-    }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
-        self.data.template.snippets.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_component(id)
@@ -370,14 +349,23 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
-    pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.template.const_tags.by_fragment(key)
+    pub fn const_tags_for_fragment_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<&Vec<NodeId>> {
+        self.data.template.const_tags.by_fragment_id(id)
     }
-    pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.template.debug_tags.by_fragment(key)
+    pub fn debug_tags_for_fragment_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<&Vec<NodeId>> {
+        self.data.template.debug_tags.by_fragment_id(id)
     }
-    pub fn title_elements_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.template.title_elements.by_fragment(key)
+    pub fn title_elements_for_fragment_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<&Vec<NodeId>> {
+        self.data.template.title_elements.by_fragment_id(id)
     }
     #[deprecated(note = "use block_semantics(id)")]
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {

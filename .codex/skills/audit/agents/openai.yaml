@@ -1,4 +1,0 @@
-interface:
-  display_name: "Audit"
-  short_description: "Audit feature completeness and gaps"
-  default_prompt: "Use $audit to compare one Svelte feature against the reference compiler and capture the gaps."

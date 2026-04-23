@@ -1,6 +1,0 @@
-interface:
-  display_name: "QA"
-  short_description: "Review for material code quality findings"
-  default_prompt: "Use $qa to review these changes for material correctness, architecture, and testing issues only."
-policy:
-  allow_implicit_invocation: false

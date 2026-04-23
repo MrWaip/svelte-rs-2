@@ -1,4 +1,0 @@
-interface:
-  display_name: "Bench"
-  short_description: "Run Rust versus JS benchmarks"
-  default_prompt: "Use $bench to run and interpret the current Rust-versus-JS compiler benchmark."

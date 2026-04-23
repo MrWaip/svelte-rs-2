@@ -1,9 +1,9 @@
 use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatPart,
-    ConcatenationAttribute, ExpressionAttribute, LetDirectiveLegacy, OnDirectiveLegacy,
-    SpreadAttribute, StringAttribute, StyleDirective, StyleDirectiveValue, TransitionDirection,
-    TransitionDirective, UseDirective,
+    ConcatenationAttribute, ExprRef, ExpressionAttribute, LetDirectiveLegacy, OnDirectiveLegacy,
+    SpreadAttribute, StmtRef, StringAttribute, StyleDirective, StyleDirectiveValue,
+    TransitionDirection, TransitionDirective, UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::{GetSpan, Span};
@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
                                 id: attr_id,
                                 span: attr_span,
                                 name,
-                                expression_span: expr_tag.expression_span,
+                                expression: ExprRef::new(expr_tag.expression_span),
                                 shorthand: false,
                                 event_name,
                             })
@@ -141,13 +141,14 @@ impl<'a> Parser<'a> {
                         .starts_with("...")
                     {
                         // Skip the "..." prefix so expression_span covers only the spread expression
+                        let span = svelte_span::Span::new(
+                            expr_tag.expression_span.start + 3,
+                            expr_tag.expression_span.end,
+                        );
                         attributes.push(Attribute::SpreadAttribute(SpreadAttribute {
                             id: attr_id,
                             span: attr_span,
-                            expression_span: svelte_span::Span::new(
-                                expr_tag.expression_span.start + 3,
-                                expr_tag.expression_span.end,
-                            ),
+                            expression: ExprRef::new(span),
                         }));
                     } else {
                         // `{foo}` shorthand becomes a regular ExpressionAttribute
@@ -162,7 +163,7 @@ impl<'a> Parser<'a> {
                             id: attr_id,
                             span: attr_span,
                             name,
-                            expression_span: expr_tag.expression_span,
+                            expression: ExprRef::new(expr_tag.expression_span),
                             shorthand: true,
                             event_name: None,
                         }));
@@ -184,7 +185,7 @@ impl<'a> Parser<'a> {
                         id: attr_id,
                         span: attr_span,
                         name: cd_name.to_string(),
-                        expression_span: cd.expression_span,
+                        expression: ExprRef::new(cd.expression_span),
                         shorthand: cd.shorthand,
                     }));
                 }
@@ -240,7 +241,7 @@ impl<'a> Parser<'a> {
                         id: attr_id,
                         span: attr_span,
                         name: sd_name.to_string(),
-                        expression_span,
+                        expression: ExprRef::new(expression_span),
                         shorthand: sd.shorthand,
                         value,
                         important: sd.important,
@@ -264,17 +265,22 @@ impl<'a> Parser<'a> {
                         id: attr_id,
                         span: attr_span,
                         name: bd_name.to_string(),
-                        expression_span: bd.expression_span,
+                        expression: ExprRef::new(bd.expression_span),
                         shorthand: bd.shorthand,
                     }));
                 }
                 token::Attribute::LetDirectiveLegacy(ld) => {
+                    let binding_span = if ld.has_expression {
+                        ld.expression_span
+                    } else {
+                        ld.name_span
+                    };
                     attributes.push(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
                         id: attr_id,
                         span: attr_span,
                         name: ld.name_span.source_text(self.source).to_string(),
                         name_span: ld.name_span,
-                        expression_span: ld.has_expression.then_some(ld.expression_span),
+                        binding: Some(StmtRef::new(binding_span)),
                     }));
                 }
                 token::Attribute::UseDirective(ud) => {
@@ -286,8 +292,8 @@ impl<'a> Parser<'a> {
                     attributes.push(Attribute::UseDirective(UseDirective {
                         id: attr_id,
                         span: attr_span,
-                        name: ud.name_span,
-                        expression_span,
+                        name_ref: ExprRef::new(ud.name_span),
+                        expression: expression_span.map(ExprRef::new),
                     }));
                 }
                 // LEGACY(svelte4): on:directive
@@ -302,7 +308,7 @@ impl<'a> Parser<'a> {
                         span: attr_span,
                         name: od.name_span.source_text(self.source).to_string(),
                         name_span: od.name_span,
-                        expression_span,
+                        expression: expression_span.map(ExprRef::new),
                         modifiers: od
                             .modifiers
                             .iter()
@@ -324,8 +330,8 @@ impl<'a> Parser<'a> {
                     attributes.push(Attribute::TransitionDirective(TransitionDirective {
                         id: attr_id,
                         span: attr_span,
-                        name: td.name_span,
-                        expression_span,
+                        name_ref: ExprRef::new(td.name_span),
+                        expression: expression_span.map(ExprRef::new),
                         modifiers: td
                             .modifiers
                             .iter()
@@ -343,15 +349,15 @@ impl<'a> Parser<'a> {
                     attributes.push(Attribute::AnimateDirective(AnimateDirective {
                         id: attr_id,
                         span: attr_span,
-                        name: ad.name_span,
-                        expression_span,
+                        name_ref: ExprRef::new(ad.name_span),
+                        expression: expression_span.map(ExprRef::new),
                     }));
                 }
                 token::Attribute::AttachTag(at) => {
                     attributes.push(Attribute::AttachTag(svelte_ast::AttachTag {
                         id: attr_id,
                         span: attr_span,
-                        expression_span: at.expression_span,
+                        expression: ExprRef::new(at.expression_span),
                     }));
                 }
             }
@@ -375,7 +381,7 @@ impl<'a> Parser<'a> {
         if let Some(idx) = pos {
             let attr = attributes.remove(idx);
             match attr {
-                svelte_ast::Attribute::ExpressionAttribute(a) => (a.expression_span, false),
+                svelte_ast::Attribute::ExpressionAttribute(a) => (a.expression.span, false),
                 svelte_ast::Attribute::StringAttribute(a) => (a.value_span, true),
                 _ => unreachable!(),
             }
@@ -394,7 +400,7 @@ impl<'a> Parser<'a> {
                 }
                 token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic {
                     id: self.reserve_id(),
-                    span: et.expression_span,
+                    expr: ExprRef::new(et.expression_span),
                 },
             })
             .collect()

@@ -12,28 +12,6 @@ use svelte_span::Span;
 
 use super::*;
 
-fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&key)
-        .unwrap_or_else(|| panic!("no content strategy for {:?}", key));
-    let actual_variant = match actual {
-        ContentStrategy::Empty => "Empty",
-        ContentStrategy::Static(_) => "Static",
-        ContentStrategy::SingleElement(_) => "SingleElement",
-        ContentStrategy::SingleBlock(_) => "SingleBlock",
-        ContentStrategy::DynamicText => "DynamicText",
-        ContentStrategy::Mixed { .. } => "Mixed",
-    };
-    assert_eq!(
-        actual_variant, variant,
-        "expected {:?} to be {}",
-        key, variant
-    );
-}
-
 // -----------------------------------------------------------------------
 // Finders — identify nodes by source text (span-based)
 // -----------------------------------------------------------------------
@@ -42,7 +20,7 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::ExpressionTag(t) if component.source_text(t.expression_span) == target => {
+            Node::ExpressionTag(t) if component.source_text(t.expression.span) == target => {
                 return Some(t.id);
             }
             Node::Element(el) => {
@@ -80,7 +58,7 @@ fn find_render_tag(fragment: &Fragment, component: &Component, target: &str) -> 
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::RenderTag(tag) if component.source_text(tag.expression_span) == target => {
+            Node::RenderTag(tag) if component.source_text(tag.expression.span) == target => {
                 return Some(tag.id);
             }
             Node::Element(el) => {
@@ -207,6 +185,13 @@ fn find_nth_element<'a>(
                     {
                         return Some(found);
                     }
+                    for slot in &node.legacy_slots {
+                        if let Some(found) =
+                            visit(&slot.fragment, component, tag_name, target_index, seen)
+                        {
+                            return Some(found);
+                        }
+                    }
                 }
                 Node::SnippetBlock(block) => {
                     if let Some(found) = visit(&block.body, component, tag_name, target_index, seen)
@@ -308,7 +293,7 @@ fn find_html_tag_id(fragment: &Fragment, component: &Component, expr_text: &str)
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::HtmlTag(tag) if component.source_text(tag.expression_span) == expr_text => {
+            Node::HtmlTag(tag) if component.source_text(tag.expression.span) == expr_text => {
                 return Some(tag.id);
             }
             Node::ComponentNode(node) => {
@@ -564,7 +549,7 @@ fn find_if_block<'a>(
     let store = &component.store;
     for &id in &fragment.nodes {
         if let Node::IfBlock(b) = store.get(id) {
-            if component.source_text(b.test_span) == test_text {
+            if component.source_text(b.test.span) == test_text {
                 return Some(b);
             }
         }
@@ -580,7 +565,7 @@ fn find_each_block<'a>(
     let store = &component.store;
     for &id in &fragment.nodes {
         if let Node::EachBlock(b) = store.get(id) {
-            if component.source_text(b.expression_span) == expr_text {
+            if component.source_text(b.expression.span) == expr_text {
                 return Some(b);
             }
         }
@@ -648,7 +633,7 @@ pub(crate) fn analyze_source(source: &str) -> (Component, AnalysisData<'static>)
 
 fn analyze_source_with_parsed(
     source: &'static str,
-) -> (Component, AnalysisData<'static>, ParserResult<'static>) {
+) -> (Component, AnalysisData<'static>, JsAst<'static>) {
     let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
     assert!(
@@ -729,16 +714,6 @@ fn analyze_source_with_diags(
     );
     let (data, _parsed, diags) = analyze(&component, js_result);
     (component, data, diags)
-}
-
-fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::Root)
-        .expect("no root content type");
-    assert_eq!(*actual, expected);
 }
 
 fn assert_symbol(data: &AnalysisData, name: &str) {
@@ -831,7 +806,7 @@ fn symbol_declaration_semantics(data: &AnalysisData, name: &str) -> DeclarationS
 
 fn script_reference_semantics(
     data: &AnalysisData,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     name: &str,
     expected_read: bool,
     expected_write: bool,
@@ -1001,23 +976,6 @@ fn assert_shorthand_symbol_name(
     );
 }
 
-fn assert_element_content_type(
-    data: &AnalysisData,
-    component: &Component,
-    tag_name: &str,
-    expected: ContentStrategy,
-) {
-    let el = find_element(&component.fragment, component, tag_name)
-        .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::Element(el.id))
-        .unwrap_or_else(|| panic!("no content type for <{tag_name}>"));
-    assert_eq!(*actual, expected);
-}
-
 fn assert_element_needs_ref(
     data: &AnalysisData,
     component: &Component,
@@ -1076,50 +1034,6 @@ fn assert_has_dynamic_class_directives(
         data.elements.flags.has_dynamic_class_directives(el.id),
         expected,
         "unexpected dynamic class-directive state for <{tag_name}>",
-    );
-}
-
-fn assert_consequent_content_type(
-    data: &AnalysisData,
-    component: &Component,
-    test_text: &str,
-    expected: ContentStrategy,
-) {
-    let block = find_if_block(&component.fragment, component, test_text)
-        .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::IfConsequent(block.id))
-        .unwrap_or_else(|| panic!("no consequent content type for IfBlock '{test_text}'"));
-    assert_eq!(*actual, expected);
-}
-
-fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
-    let lf = data
-        .template
-        .fragments
-        .lowered
-        .get(&key)
-        .unwrap_or_else(|| panic!("no lowered fragment for {:?}", key));
-    assert_eq!(
-        lf.items.len(),
-        expected_count,
-        "expected {expected_count} items in lowered fragment"
-    );
-}
-
-fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
-    let lf = data
-        .template
-        .fragments
-        .lowered
-        .get(&key)
-        .expect("no lowered fragment");
-    assert!(
-        matches!(lf.items.get(index), Some(FragmentItem::TextConcat { .. })),
-        "expected item[{index}] to be TextConcat",
     );
 }
 
@@ -1332,43 +1246,6 @@ fn assert_expr_tag_async_query(
 // -----------------------------------------------------------------------
 
 #[test]
-fn empty_component() {
-    let (_c, data) = analyze_source("");
-    assert_root_content_type(&data, ContentStrategy::Empty);
-}
-
-#[test]
-fn static_text_content() {
-    let (_c, data) = analyze_source("Hello world");
-    assert_root_content_type(&data, ContentStrategy::Static("Hello world".to_string()));
-}
-
-#[test]
-fn single_element() {
-    let (_c, data) = analyze_source("<div></div>");
-    assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
-}
-
-#[test]
-fn mixed_content() {
-    let (_c, data) = analyze_source("<div></div><span></span>");
-    assert_root_content_type(
-        &data,
-        ContentStrategy::Mixed {
-            has_elements: true,
-            has_blocks: false,
-            has_text: false,
-        },
-    );
-}
-
-#[test]
-fn dynamic_text_content() {
-    let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_root_content_type(&data, ContentStrategy::DynamicText);
-}
-
-#[test]
 fn dynamic_expr_inside_svelte_element() {
     let (c, data) = analyze_source(
         r#"<script>let { name } = $props();</script><svelte:element this="div">{name}</svelte:element>"#,
@@ -1381,13 +1258,6 @@ fn no_rune_no_dynamic() {
     let (c, data) = analyze_source(r#"<script>let count = 0;</script>{count}"#);
     assert_symbol(&data, "count");
     assert_not_dynamic_tag(&data, &c, "count");
-}
-
-#[test]
-fn lowered_fragment_groups_text_and_expr() {
-    let (_c, data) = analyze_source(r#"<script>let x = $state(1);</script>Hello {x} world"#);
-    assert_lowered_item_count(&data, FragmentKey::Root, 1);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 0);
 }
 
 #[test]
@@ -1438,36 +1308,10 @@ fn component_prop_binding_uses_props_access_ref() {
 // — new tests —
 
 #[test]
-fn whitespace_only_text_trimmed_at_boundaries() {
-    // Leading and trailing whitespace-only text should not appear as items.
-    let (_c, data) = analyze_source("\n  <div></div>\n  ");
-    assert_lowered_item_count(&data, FragmentKey::Root, 1);
-    assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
-}
-
-#[test]
-fn multiple_lowered_groups() {
-    // ExprTag, then Element, then ExprTag → three separate items.
-    let (_c, data) = analyze_source("{a} <div></div> {b}");
-    assert_lowered_item_count(&data, FragmentKey::Root, 3);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 0);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 2);
-    assert_root_content_type(
-        &data,
-        ContentStrategy::Mixed {
-            has_elements: true,
-            has_blocks: false,
-            has_text: true,
-        },
-    );
-}
-
-#[test]
 fn nested_dynamic_tag_in_element() {
     let (c, data) =
         analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
     assert_dynamic_tag(&data, &c, "count");
-    assert_element_content_type(&data, &c, "div", ContentStrategy::DynamicText);
 }
 
 #[test]
@@ -1477,16 +1321,6 @@ fn each_block_dynamic() {
     );
     assert_symbol(&data, "items");
     assert_dynamic_each(&data, &c, "items");
-}
-
-#[test]
-fn if_block_alternate_content_type() {
-    let (c, data) = analyze_source("{#if x}Hello{:else}<span></span>{/if}");
-    assert_consequent_content_type(&data, &c, "x", ContentStrategy::Static("Hello".to_string()));
-    let if_id = find_if_block(&c.fragment, &c, "x")
-        .expect("test invariant")
-        .id;
-    assert_content_strategy_variant(&data, FragmentKey::IfAlternate(if_id), "SingleElement");
 }
 
 #[test]
@@ -1520,7 +1354,7 @@ fn each_block_shadowing() {
     let each_block = find_each_block(&c.fragment, &c, "items").expect("test invariant");
     let each_scope = data
         .scoping
-        .fragment_scope(&FragmentKey::EachBody(each_block.id))
+        .fragment_scope_by_id(each_block.body.id)
         .expect("test invariant");
     let each_sym = data
         .scoping
@@ -2952,9 +2786,7 @@ let b = await fetch('/b');
     let paragraph = find_element(&component.fragment, &component, "p")
         .unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
-        data.template
-            .fragments
-            .fragment_blockers(&FragmentKey::Element(paragraph.id)),
+        data.template.fragment_blockers_by_id(paragraph.fragment.id),
         &[0, 1]
     );
 }
@@ -2973,7 +2805,9 @@ fn debug_tag_ids_collected_for_fragment() {
         })
         .collect();
     assert_eq!(
-        data.template.debug_tags.by_fragment(&FragmentKey::Root),
+        data.template
+            .debug_tags
+            .by_fragment_id(component.fragment.id),
         Some(&expected)
     );
 }
@@ -2985,12 +2819,16 @@ fn title_elements_collected_for_svelte_head_fragment() {
     );
     let head_id = find_svelte_head_id(&component.fragment, &component)
         .unwrap_or_else(|| panic!("no <svelte:head>"));
+    let head_fragment_id = match component.store.get(head_id) {
+        Node::SvelteHead(h) => h.fragment.id,
+        _ => unreachable!(),
+    };
     let title = find_element(&component.fragment, &component, "title")
         .unwrap_or_else(|| panic!("no <title>"));
     assert_eq!(
         data.template
             .title_elements
-            .by_fragment(&FragmentKey::SvelteHeadBody(head_id)),
+            .by_fragment_id(head_fragment_id),
         Some(&vec![title.id])
     );
 }
@@ -3037,39 +2875,36 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
         analyze_source(r#"<Comp><p>default</p><p slot="footer">footer</p></Comp>"#);
     let component_id = find_component_node_id(&component.fragment, &component, "Comp")
         .unwrap_or_else(|| panic!("no <Comp>"));
+    let component_fragment_id = match component.store.get(component_id) {
+        Node::ComponentNode(cn) => cn.fragment.id,
+        _ => unreachable!(),
+    };
     let default_child = find_nth_element(&component.fragment, &component, "p", 0)
         .unwrap_or_else(|| panic!("no default <p>"));
     let slotted_child = find_nth_element(&component.fragment, &component, "p", 1)
         .unwrap_or_else(|| panic!("no slotted <p>"));
 
+    let _ = component_id;
     let default_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::ComponentNode(component_id))
+        .fragment_items(component_fragment_id)
         .unwrap_or_else(|| panic!("no lowered default fragment"));
-    assert!(matches!(
-        default_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == default_child.id
-    ));
+    assert_eq!(default_fragment, &[default_child.id]);
 
-    let named_slots = data.template.snippets.component_named_slots(component_id);
-    assert_eq!(named_slots.len(), 1);
-    let (slot_el_id, slot_key) = named_slots[0];
+    let component_node = match component.store.get(component_id) {
+        Node::ComponentNode(cn) => cn,
+        _ => panic!("expected ComponentNode"),
+    };
+    assert_eq!(component_node.legacy_slots.len(), 1);
+    let slot_el_id = component_node.legacy_slots[0].fragment.nodes[0];
     assert_eq!(slot_el_id, slotted_child.id);
-    assert_eq!(
-        slot_key,
-        FragmentKey::NamedSlot(component_id, slotted_child.id)
-    );
 
+    let slot_fragment_id = component_node.legacy_slots[0].fragment.id;
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .fragment_items(slot_fragment_id)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == slotted_child.id
-    ));
+    assert_eq!(slot_fragment, &[slotted_child.id]);
 }
 
 #[test]
@@ -3088,13 +2923,9 @@ fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
 
     let root_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::Root)
+        .fragment_items(component.fragment.id)
         .unwrap_or_else(|| panic!("no lowered root fragment"));
-    assert!(matches!(
-        root_fragment.items.as_slice(),
-        [FragmentItem::SlotElementLegacy(id)] if *id == slot_id
-    ));
+    assert_eq!(root_fragment, &[slot_id]);
 }
 
 #[test]
@@ -3173,8 +3004,9 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing component node"));
-    let (wrapper_id, wrapped_child_id) = match component.store.get(component_node.fragment.nodes[0])
-    {
+    assert_eq!(component_node.legacy_slots.len(), 1);
+    let slot_wrapper_id = component_node.legacy_slots[0].fragment.nodes[0];
+    let (wrapper_id, wrapped_child_id) = match component.store.get(slot_wrapper_id) {
         Node::SvelteFragmentLegacy(el) => {
             let child_id = match component.store.get(el.fragment.nodes[0]) {
                 Node::Element(child) => child.id,
@@ -3182,29 +3014,25 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
             };
             (el.id, child_id)
         }
-        _ => panic!("expected SvelteFragmentLegacy as first component child"),
+        _ => panic!("expected SvelteFragmentLegacy as slot wrapper"),
     };
 
-    let named_slots = data.template.snippets.component_named_slots(component_id);
-    assert_eq!(named_slots.len(), 1);
-    let (slot_el_id, slot_key) = named_slots[0];
+    assert_eq!(component_node.legacy_slots.len(), 1);
+    let slot_el_id = component_node.legacy_slots[0].fragment.nodes[0];
     assert_eq!(slot_el_id, wrapper_id);
     assert!(data
         .elements
         .flags
         .svelte_fragment_slots
         .contains(&wrapper_id));
-    assert_eq!(slot_key, FragmentKey::NamedSlot(component_id, wrapper_id));
 
+    let _ = (component_id, wrapper_id);
+    let slot_fragment_id = component_node.legacy_slots[0].fragment.id;
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .fragment_items(slot_fragment_id)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == wrapped_child_id
-    ));
+    assert_eq!(slot_fragment, &[wrapped_child_id]);
 }
 
 #[test]
@@ -3222,36 +3050,36 @@ fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
         Node::ComponentNode(node) => node,
         _ => panic!("<Outer> did not lower to ComponentNode"),
     };
-    let inner_id = match outer_node.fragment.nodes.as_slice() {
-        [child_id] => match component.store.get(*child_id) {
+    assert!(
+        outer_node.fragment.nodes.is_empty(),
+        "default slot must be empty"
+    );
+    assert_eq!(outer_node.legacy_slots.len(), 1);
+    let inner_id = match outer_node.legacy_slots[0].fragment.nodes.as_slice() {
+        [wrapper_id] => match component.store.get(*wrapper_id) {
             Node::ComponentNode(node) => node.id,
-            _ => panic!("expected direct child <Inner> component"),
+            _ => panic!("expected <Inner> component as slot wrapper"),
         },
-        _ => panic!("expected exactly one direct child for <Outer>"),
+        _ => panic!("expected exactly one wrapper in 'footer' slot"),
     };
 
+    let _ = outer_id;
     let default_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::ComponentNode(outer_id))
+        .fragment_items(outer_node.fragment.id)
         .unwrap_or_else(|| panic!("no lowered default fragment"));
-    assert!(default_fragment.items.is_empty());
+    assert!(default_fragment.is_empty());
 
-    let named_slots = data.template.snippets.component_named_slots(outer_id);
-    assert_eq!(named_slots.len(), 1);
-    let (slot_el_id, slot_key) = named_slots[0];
+    assert_eq!(outer_node.legacy_slots.len(), 1);
+    let slot_el_id = outer_node.legacy_slots[0].fragment.nodes[0];
     assert_eq!(slot_el_id, inner_id);
-    assert_eq!(slot_key, FragmentKey::NamedSlot(outer_id, inner_id));
 
+    let slot_fragment_id = outer_node.legacy_slots[0].fragment.id;
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .fragment_items(slot_fragment_id)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::ComponentNode(id)] if *id == inner_id
-    ));
+    assert_eq!(slot_fragment, &[inner_id]);
 }
 
 #[test]
@@ -3265,9 +3093,13 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
     );
     let nested_id = find_component_node_id(&component.fragment, &component, "Nested")
         .unwrap_or_else(|| panic!("no <Nested>"));
+    let nested_fragment_id = match component.store.get(nested_id) {
+        Node::ComponentNode(cn) => cn.fragment.id,
+        _ => unreachable!(),
+    };
     let default_scope = data
         .scoping
-        .fragment_scope(&FragmentKey::ComponentNode(nested_id))
+        .fragment_scope_by_id(nested_fragment_id)
         .unwrap_or_else(|| panic!("no default slot scope"));
     let default_count = data
         .scoping
@@ -3280,7 +3112,7 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         .unwrap_or_else(|| panic!("missing named-slot <p>"));
     let named_scope = data
         .scoping
-        .fragment_scope(&FragmentKey::NamedSlot(nested_id, named_p.id))
+        .named_slot_scope(nested_id, named_p.id)
         .unwrap_or_else(|| panic!("no named slot scope"));
 
     assert!(
@@ -3321,11 +3153,13 @@ fn legacy_slot_let_alias_uses_statement_backed_binding() {
     let let_dir = find_let_directive(&list_node.attributes)
         .unwrap_or_else(|| panic!("missing default-slot let directive"));
 
-    let stmt_handle = data
-        .let_directive_stmt_handle(let_dir.id)
-        .unwrap_or_else(|| panic!("missing statement handle for let directive"));
+    let _ = data;
+    let binding_ref = let_dir
+        .binding
+        .as_ref()
+        .unwrap_or_else(|| panic!("missing binding StmtRef for let directive"));
     let stmt = parsed
-        .stmt(stmt_handle)
+        .stmt(binding_ref.id())
         .unwrap_or_else(|| panic!("missing parsed statement for let directive"));
     match stmt {
         Statement::VariableDeclaration(decl) => match &decl.declarations[0].id {
@@ -3337,7 +3171,7 @@ fn legacy_slot_let_alias_uses_statement_backed_binding() {
 
     let default_scope = data
         .scoping
-        .fragment_scope(&FragmentKey::ComponentNode(list_id))
+        .fragment_scope_by_id(list_node.fragment.id)
         .unwrap_or_else(|| panic!("missing default slot scope"));
     assert!(
         data.scoping.get_binding(default_scope, "item").is_none(),
@@ -3359,12 +3193,14 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
         Node::ComponentNode(node) => node,
         _ => panic!("<List> did not lower to ComponentNode"),
     };
-    let wrapper_id = match list_node.fragment.nodes.as_slice() {
-        [child_id] => match component.store.get(*child_id) {
+    assert!(list_node.fragment.nodes.is_empty());
+    assert_eq!(list_node.legacy_slots.len(), 1);
+    let wrapper_id = match list_node.legacy_slots[0].fragment.nodes.as_slice() {
+        [id] => match component.store.get(*id) {
             Node::SvelteFragmentLegacy(node) => node.id,
-            _ => panic!("expected slotted <svelte:fragment> child"),
+            _ => panic!("expected <svelte:fragment> wrapper"),
         },
-        _ => panic!("expected exactly one slotted child"),
+        _ => panic!("expected exactly one slotted wrapper"),
     };
     let wrapper = match component.store.get(wrapper_id) {
         Node::SvelteFragmentLegacy(node) => node,
@@ -3373,11 +3209,13 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
     let let_dir = find_let_directive(&wrapper.attributes)
         .unwrap_or_else(|| panic!("missing named-slot let directive"));
 
-    let stmt_handle = data
-        .let_directive_stmt_handle(let_dir.id)
-        .unwrap_or_else(|| panic!("missing statement handle for destructured let directive"));
+    let _ = data;
+    let binding_ref = let_dir
+        .binding
+        .as_ref()
+        .unwrap_or_else(|| panic!("missing binding StmtRef for destructured let directive"));
     let stmt = parsed
-        .stmt(stmt_handle)
+        .stmt(binding_ref.id())
         .unwrap_or_else(|| panic!("missing parsed statement for destructured let directive"));
     match stmt {
         Statement::VariableDeclaration(decl) => {
@@ -3391,7 +3229,7 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
 
     let named_scope = data
         .scoping
-        .fragment_scope(&FragmentKey::NamedSlot(list_id, wrapper_id))
+        .named_slot_scope(list_id, wrapper_id)
         .unwrap_or_else(|| panic!("missing named slot scope"));
     data.scoping
         .get_binding(named_scope, "text")
@@ -4182,13 +4020,13 @@ fn fragment_facts_capture_single_expression_queries() {
         .expect("expected textarea element");
     let option = find_element(&component.fragment, &component, "option").expect("expected option");
     let textarea_expr = data
-        .fragment_single_expression_child(&FragmentKey::Element(textarea.id))
+        .fragment_single_expression_child_by_id(textarea.fragment.id)
         .expect("expected textarea expression child");
     let option_expr = data
-        .fragment_single_expression_child(&FragmentKey::Element(option.id))
+        .fragment_single_expression_child_by_id(option.fragment.id)
         .expect("expected option expression child");
 
-    assert!(data.fragment_has_expression_child(&FragmentKey::Element(textarea.id)));
+    assert!(data.fragment_has_expression_child_by_id(textarea.fragment.id));
     assert!(matches!(
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
@@ -4198,7 +4036,7 @@ fn fragment_facts_capture_single_expression_queries() {
         .flags
         .needs_textarea_value_lowering(textarea.id));
 
-    assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
+    assert!(data.fragment_has_expression_child_by_id(option.fragment.id));
     assert!(matches!(
         component.store.get(option_expr),
         Node::ExpressionTag(_)
@@ -4243,10 +4081,10 @@ fn fragment_facts_track_each_body_child_shape_and_animate() {
     let div = find_element(&component.fragment, &component, "div").expect("expected div");
 
     assert_eq!(
-        data.fragment_single_non_trivial_child(&FragmentKey::EachBody(each.id)),
+        data.fragment_single_non_trivial_child_by_id(each.body.id),
         Some(div.id)
     );
-    assert!(data.fragment_has_direct_animate_child(&FragmentKey::EachBody(each.id)));
+    assert!(data.fragment_has_direct_animate_child_by_id(each.body.id));
 }
 
 #[test]
@@ -4260,7 +4098,7 @@ fn fragment_facts_track_svelte_element_animate_in_each_body() {
 
     let each = find_each_block(&component.fragment, &component, "items").expect("expected each");
 
-    assert!(data.fragment_has_direct_animate_child(&FragmentKey::EachBody(each.id)));
+    assert!(data.fragment_has_direct_animate_child_by_id(each.body.id));
 }
 
 #[test]
@@ -4269,9 +4107,9 @@ fn fragment_facts_single_child_supports_block_empty() {
     let block = find_if_block(&component.fragment, &component, "ok").expect("expected if block");
 
     let child_id = data
-        .fragment_single_child(&FragmentKey::IfConsequent(block.id))
+        .fragment_single_child_by_id(block.consequent.id)
         .expect("expected single child");
-    assert!(data.fragment_has_children(&FragmentKey::IfConsequent(block.id)));
+    assert!(data.fragment_has_children_by_id(block.consequent.id));
     assert!(matches!(component.store.get(child_id), Node::Text(_)));
 }
 
@@ -4289,14 +4127,23 @@ fn fragment_facts_track_non_trivial_child_counts() {
     );
     let widget_id = find_component_node_id(&component.fragment, &component, "Widget")
         .expect("expected component node");
+    let widget_fragment_id = match component.store.get(widget_id) {
+        Node::ComponentNode(cn) => cn.fragment.id,
+        _ => unreachable!(),
+    };
     let children_snippet =
         find_snippet_block(&component.fragment, &component, "children").expect("expected snippet");
     let span = find_element(&component.fragment, &component, "span").expect("expected span");
-    let key = FragmentKey::ComponentNode(widget_id);
-    assert_eq!(data.fragment_child_count(&key), 7);
-    assert!(data.fragment_has_non_trivial_children(&key));
-    assert_eq!(data.fragment_non_trivial_child_count(&key), 2);
-    assert_eq!(data.fragment_single_non_trivial_child(&key), None);
+    assert_eq!(data.fragment_child_count_by_id(widget_fragment_id), 7);
+    assert!(data.fragment_has_non_trivial_children_by_id(widget_fragment_id));
+    assert_eq!(
+        data.fragment_non_trivial_child_count_by_id(widget_fragment_id),
+        2
+    );
+    assert_eq!(
+        data.fragment_single_non_trivial_child_by_id(widget_fragment_id),
+        None
+    );
     assert!(matches!(
         component.store.get(children_snippet.id),
         Node::SnippetBlock(_)
@@ -4323,22 +4170,14 @@ fn rich_content_facts_drive_customizable_select_detection() {
     let option =
         find_nth_element(&component.fragment, &component, "option", 1).expect("expected option");
 
-    assert!(data.fragment_has_rich_content(
-        &FragmentKey::Element(rich_select.id),
-        RichContentParentKind::Select
-    ));
-    assert!(!data.fragment_has_rich_content(
-        &FragmentKey::Element(plain_select.id),
-        RichContentParentKind::Select
-    ));
-    assert!(data.fragment_has_rich_content(
-        &FragmentKey::Element(optgroup.id),
-        RichContentParentKind::Optgroup
-    ));
-    assert!(data.fragment_has_rich_content(
-        &FragmentKey::Element(option.id),
-        RichContentParentKind::Option
-    ));
+    assert!(data
+        .fragment_has_rich_content_by_id(rich_select.fragment.id, RichContentParentKind::Select));
+    assert!(!data
+        .fragment_has_rich_content_by_id(plain_select.fragment.id, RichContentParentKind::Select));
+    assert!(
+        data.fragment_has_rich_content_by_id(optgroup.fragment.id, RichContentParentKind::Optgroup)
+    );
+    assert!(data.fragment_has_rich_content_by_id(option.fragment.id, RichContentParentKind::Option));
 
     assert!(data.elements.flags.is_customizable_select(rich_select.id));
     assert!(!data.elements.flags.is_customizable_select(plain_select.id));
@@ -5081,22 +4920,15 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
         .unwrap_or_else(|| panic!("expected div element"));
     let lowered = data
         .template
-        .fragments
-        .lowered
-        .get(&FragmentKey::Element(div.id))
+        .fragment_items(div.fragment.id)
         .unwrap_or_else(|| panic!("expected lowered fragment"));
-    let text = lowered
-        .items
+    let rendered: String = lowered
         .iter()
-        .find_map(|item| match item {
-            FragmentItem::TextConcat { parts, .. } => Some(parts),
+        .filter_map(|id| match component.store.get(*id) {
+            Node::Text(t) => Some(t.value(&component.source)),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("expected preserved text concat"));
-    let rendered = text
-        .iter()
-        .filter_map(|part| part.text_value(&component.source))
-        .collect::<String>();
+        .collect();
 
     assert!(rendered.contains("\n\thello\n\t"));
     assert!(data.script.preserve_whitespace);
@@ -5360,6 +5192,41 @@ fn slot_let_destructure_leaf_is_classified_as_carrier_member_read() {
             ..
         }) if carrier_symbol == carrier_expected => {}
         other => panic!("expected CarrierMemberRead with carrier=item, got {other:?}"),
+    }
+}
+
+#[test]
+fn named_slot_let_directive_classifies_item_as_contextual_signal_read() {
+    let (_c, data) = analyze_source(r#"<List><p slot="item" let:item>{item.text}</p></List>"#);
+
+    match first_read_reference_semantics(&data, "item") {
+        ReferenceSemantics::ContextualRead(ContextualReadSemantics {
+            kind: ContextualReadKind::LetDirective,
+            ..
+        }) => {}
+        other => {
+            panic!("expected ContextualRead::LetDirective for named-slot let:item, got {other:?}")
+        }
+    }
+}
+
+#[test]
+fn named_slot_let_destructure_leaf_is_classified_as_carrier_member_read() {
+    let (_c, data) =
+        analyze_source(r#"<List><p slot="item" let:item={{ text }}>{text}</p></List>"#);
+
+    let carrier_expected = data
+        .scoping
+        .find_binding_in_any_scope("item")
+        .expect("carrier symbol");
+    match first_read_reference_semantics(&data, "text") {
+        ReferenceSemantics::CarrierMemberRead(CarrierMemberReadSemantics {
+            carrier_symbol,
+            ..
+        }) if carrier_symbol == carrier_expected => {}
+        other => panic!(
+            "expected CarrierMemberRead with carrier=item for named-slot destructure, got {other:?}"
+        ),
     }
 }
 
@@ -5630,5 +5497,74 @@ mod block_semantics_each_tests {
         );
         let sem = first_each_semantics(&data, &component);
         assert!(!sem.shadows_outer);
+    }
+}
+
+#[cfg(test)]
+mod expr_ref_bind_tests {
+    use super::analyze_source;
+    use svelte_ast::{Attribute, ConcatPart, Node};
+
+    /// After analyze, every ExprRef on a ConcatPart::Dynamic must be bound
+    /// (id != DUMMY). Reproduces the literal-fold panic from
+    /// `attribute_concat_literal_fold`.
+    #[test]
+    fn concat_part_dynamic_expr_ref_is_bound_after_analyze() {
+        let (component, _data) = analyze_source(r#"<div data-count="value: {1231}"></div>"#);
+
+        // Find the div, then its concatenation attribute.
+        let mut bound_count = 0;
+        let mut total = 0;
+        for node in component.store.iter_nodes() {
+            let attrs: &[Attribute] = match node {
+                Node::Element(el) => &el.attributes,
+                _ => continue,
+            };
+            for attr in attrs {
+                let parts = match attr {
+                    Attribute::ConcatenationAttribute(a) => &a.parts,
+                    _ => continue,
+                };
+                for part in parts {
+                    if let ConcatPart::Dynamic { expr, .. } = part {
+                        total += 1;
+                        let id = expr.oxc_id.get();
+                        if id != oxc_syntax::node::NodeId::DUMMY {
+                            bound_count += 1;
+                        } else {
+                            eprintln!("ConcatPart::Dynamic NOT bound; span={:?}", expr.span);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(total > 0, "test fixture must have a ConcatPart::Dynamic");
+        assert_eq!(
+            bound_count, total,
+            "all ConcatPart::Dynamic ExprRefs must be bound after analyze"
+        );
+    }
+
+    /// Element ExpressionAttribute baseline — should always be bound.
+    #[test]
+    fn expression_attribute_expr_ref_is_bound_after_analyze() {
+        let (component, _data) = analyze_source(r#"<div title={x}></div>"#);
+        let mut bound_count = 0;
+        let mut total = 0;
+        for node in component.store.iter_nodes() {
+            let Node::Element(el) = node else { continue };
+            for attr in &el.attributes {
+                let Attribute::ExpressionAttribute(ea) = attr else {
+                    continue;
+                };
+                total += 1;
+                let id = ea.expression.oxc_id.get();
+                if id != oxc_syntax::node::NodeId::DUMMY {
+                    bound_count += 1;
+                }
+            }
+        }
+        assert!(total > 0);
+        assert_eq!(bound_count, total);
     }
 }

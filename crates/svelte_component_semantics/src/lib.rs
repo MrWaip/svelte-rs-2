@@ -26,7 +26,7 @@
 //! - [`ScopeId`], [`SymbolId`], [`ReferenceId`] — semantic identifiers
 //! - [`OxcNodeId`] — JS AST node identity, unified across the component
 //!   (instance ids as-is, module ids offset, template ids continue the counter)
-//! - [`FragmentKey`] — identifies which template fragment owns a scope
+//! - [`FragmentId`] — identifies a template fragment that owns a scope
 //! - [`SymbolOwner`] — which source region declared a symbol
 //!   (`ModuleScript`, `InstanceScript`, `Template`, `Synthetic`)
 //!
@@ -70,7 +70,7 @@
 //! impl TemplateWalker for MyWalker {
 //!     fn walk_template(&self, ctx: &mut TemplateBuildContext<'_>) {
 //!         // Create scope for {#each} block
-//!         let scope = ctx.enter_fragment_scope(FragmentKey::EachBody(node_id));
+//!         let scope = ctx.enter_fragment_scope_by_id(fragment_id);
 //!         // Analyze JS expression inside template
 //!         ctx.visit_js_expression(&expr);
 //!         // Shorthand bind:value → Write reference
@@ -93,7 +93,7 @@ pub use builder::{
 pub use pattern::{walk_bindings, Access, BindingVisit, Step};
 pub use reference::Reference;
 pub use storage::{ComponentSemantics, JsNode, JsStorage};
-pub use svelte_ast::FragmentKey;
+pub use svelte_ast::FragmentId;
 pub use symbol::state as sym_state;
 pub use symbol::SymbolOwner;
 

@@ -9,7 +9,7 @@
 //! functions that take `&mut Ctx`.
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{BlockerData, ParserResult};
+use crate::types::data::{BlockerData, JsAst};
 
 use super::super::BlockSemanticsStore;
 use super::common::declarator_from_stmt;
@@ -25,7 +25,7 @@ use svelte_component_semantics::{walk_bindings, ComponentSemantics, ReferenceId,
 /// Entry point: run the single cluster-wide template walk.
 pub(super) fn populate(
     component: &Component,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
@@ -134,7 +134,7 @@ pub(super) struct SnippetScope {
 
 pub(super) struct Ctx<'c, 'a> {
     pub(super) component: &'c Component,
-    pub(super) parsed: &'c ParserResult<'a>,
+    pub(super) parsed: &'c JsAst<'a>,
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) blockers: &'c BlockerData,
@@ -187,7 +187,12 @@ impl<'a> Ctx<'_, 'a> {
                 self.visit_fragment(&el.fragment.nodes);
             }
             Node::SlotElementLegacy(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::ComponentNode(cn) => self.visit_fragment(&cn.fragment.nodes),
+            Node::ComponentNode(cn) => {
+                self.visit_fragment(&cn.fragment.nodes);
+                for slot in &cn.legacy_slots {
+                    self.visit_fragment(&slot.fragment.nodes);
+                }
+            }
             Node::IfBlock(block) => super::if_::populate(self, block),
             Node::SnippetBlock(block) => super::snippet::populate(self, block),
             Node::ConstTag(tag) => super::const_tag::populate(self, tag),
@@ -256,9 +261,10 @@ impl<'a> Ctx<'_, 'a> {
             out.push(sym);
         } else if pattern_fallback {
             if let Some(decl) = block
-                .context_span
-                .and_then(|cs| self.parsed.stmt_handle(cs.start))
-                .and_then(|h| declarator_from_stmt(self.parsed.stmt(h)?))
+                .context
+                .as_ref()
+                .and_then(|r| self.parsed.stmt(r.id()))
+                .and_then(declarator_from_stmt)
             {
                 walk_bindings(&decl.id, |v| out.push(v.symbol));
             }
@@ -289,11 +295,7 @@ impl<'a> Ctx<'_, 'a> {
     }
 
     fn attribute_bind_group(&mut self, dir: &BindDirective) {
-        let Some(expr) = self
-            .parsed
-            .expr_handle(dir.expression_span.start)
-            .and_then(|h| self.parsed.expr(h))
-        else {
+        let Some(expr) = self.parsed.expr(dir.expression.id()) else {
             return;
         };
         let mut collector = RefCollector { refs: Vec::new() };

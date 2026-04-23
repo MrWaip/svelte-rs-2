@@ -1,9 +1,12 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
+use crate::{validate, walker, AnalysisData, AnalyzeOptions, JsAst};
 
-use super::{bundles, content_types, finalize_component_name, js_analyze, lower, post_resolve};
+use super::{
+    bundles, const_tag_fragments, finalize_component_name, fragment_topology, html_tag_ns_flags,
+    js_analyze, post_resolve,
+};
 
 fn run_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -32,7 +35,7 @@ fn run_template_bundle<'d, 'a, const N: usize>(
 fn run_parsed_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
     data: &'d mut AnalysisData<'a>,
-    parsed: &'d ParserResult<'a>,
+    parsed: &'d JsAst<'a>,
     source: &'d str,
     runes: bool,
     options: &AnalyzeOptions,
@@ -58,7 +61,7 @@ fn run_parsed_template_bundle<'d, 'a, const N: usize>(
 pub(crate) fn execute_pass<'a>(
     key: super::PassKey,
     component: &Component,
-    parsed: &mut ParserResult<'a>,
+    parsed: &mut JsAst<'a>,
     data: &mut AnalysisData<'a>,
     options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
@@ -103,10 +106,7 @@ pub(crate) fn execute_pass<'a>(
                 .as_ref()
                 .and_then(|o| o.custom_element.as_ref())
             {
-                if let Some(expr) = parsed
-                    .expr_handle(span.start)
-                    .and_then(|handle| parsed.expr(handle))
-                {
+                if let Some(expr) = parsed.pending_expr(span.start) {
                     let config =
                         crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
                     data.script.ce_config = Some(config);
@@ -129,6 +129,7 @@ pub(crate) fn execute_pass<'a>(
                 &mut visitors,
             );
             data.template.template_elements.finalize();
+            super::template_side_tables::collect_fragment_namespaces(component, data);
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
@@ -184,7 +185,7 @@ pub(crate) fn execute_pass<'a>(
             }
         }
         super::PassKey::CollectConstTagFragments => {
-            lower::collect_const_tag_fragments(component, data);
+            const_tag_fragments::collect(component, data);
         }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);
@@ -199,8 +200,11 @@ pub(crate) fn execute_pass<'a>(
                 component.node_count(),
             );
         }
-        super::PassKey::LowerTemplate => {
-            lower::lower(component, data);
+        super::PassKey::BuildFragmentTopology => {
+            fragment_topology::build(component, data);
+        }
+        super::PassKey::CollectHtmlTagNsFlags => {
+            html_tag_ns_flags::collect(component, data);
         }
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
@@ -229,9 +233,6 @@ pub(crate) fn execute_pass<'a>(
                 &mut visitors,
             );
             bundle.finish(data);
-        }
-        super::PassKey::ClassifyRemainingFragments => {
-            content_types::classify_remaining_fragments(data, source);
         }
         super::PassKey::ValidateTemplate => {
             let mut bundle = bundles::TemplateValidationBundle::new();

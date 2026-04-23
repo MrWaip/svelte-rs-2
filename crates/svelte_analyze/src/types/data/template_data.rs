@@ -1,22 +1,12 @@
 use super::*;
 
 pub struct TemplateSemanticsData {
-    pub(crate) node_expr_handles: NodeTable<ExprHandle>,
-    pub(crate) attr_expr_handles: NodeTable<ExprHandle>,
-    pub(crate) let_directive_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
-    pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
 }
 
 impl TemplateSemanticsData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            node_expr_handles: NodeTable::new(node_count),
-            attr_expr_handles: NodeTable::new(node_count),
-            let_directive_stmt_handles: NodeTable::new(node_count),
-            const_tag_stmt_handles: NodeTable::new(node_count),
-            snippet_stmt_handles: NodeTable::new(node_count),
             node_ref_symbols: NodeTable::new(node_count),
         }
     }
@@ -28,8 +18,6 @@ impl TemplateSemanticsData {
 
 pub struct SnippetData {
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
-    /// Named slots for component children: maps component NodeId → vec of (slot_element_id, fragment_key).
-    pub(crate) component_named_slots: NodeTable<Vec<(NodeId, FragmentKey)>>,
     pub(crate) local_snippets: Vec<NodeId>,
     pub(crate) snippet_name_symbols: FxHashMap<SymbolId, NodeId>,
 }
@@ -38,7 +26,6 @@ impl SnippetData {
     pub fn new(node_count: u32) -> Self {
         Self {
             component_snippets: NodeTable::new(node_count),
-            component_named_slots: NodeTable::new(node_count),
             local_snippets: Vec::new(),
             snippet_name_symbols: FxHashMap::default(),
         }
@@ -46,11 +33,6 @@ impl SnippetData {
 
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets
-            .get(id)
-            .map_or(&[], |v| v.as_slice())
-    }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
-        self.component_named_slots
             .get(id)
             .map_or(&[], |v| v.as_slice())
     }
@@ -65,27 +47,47 @@ impl SnippetData {
 /// Fragment-level index of `{@const}` tag ids. Per-tag semantic data
 /// (bindings, destructure shape, async lowering) lives in
 /// `block_semantics::ConstTagBlockSemantics`; this struct only answers
-/// "which tags belong to which fragment" so codegen / reactivity passes
-/// can iterate them in emit order. When the Kill-FragmentItem slice
-/// lands this too will collapse into the fragment plan.
+#[derive(Default)]
+pub(crate) struct FragmentNodeList {
+    entries: Vec<Option<Vec<NodeId>>>,
+}
+
+impl FragmentNodeList {
+    pub(crate) fn insert(&mut self, id: svelte_ast::FragmentId, ids: Vec<NodeId>) {
+        let idx = id.0 as usize;
+        if self.entries.len() <= idx {
+            self.entries.resize(idx + 1, None);
+        }
+        self.entries[idx] = Some(ids);
+    }
+
+    pub(crate) fn get_by_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+        self.entries.get(id.0 as usize)?.as_ref()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Vec<NodeId>> {
+        self.entries.iter().filter_map(|slot| slot.as_ref())
+    }
+}
+
 pub struct ConstTagData {
-    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    pub(crate) by_fragment: FragmentNodeList,
 }
 
 impl ConstTagData {
     pub fn new(_node_count: u32) -> Self {
         Self {
-            by_fragment: FxHashMap::default(),
+            by_fragment: FragmentNodeList::default(),
         }
     }
 
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get(key)
+    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get_by_id(id)
     }
 }
 
 pub struct DebugTagData {
-    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    pub(crate) by_fragment: FragmentNodeList,
 }
 
 impl Default for DebugTagData {
@@ -97,17 +99,17 @@ impl Default for DebugTagData {
 impl DebugTagData {
     pub fn new() -> Self {
         Self {
-            by_fragment: FxHashMap::default(),
+            by_fragment: FragmentNodeList::default(),
         }
     }
 
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get(key)
+    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get_by_id(id)
     }
 }
 
 pub struct TitleElementData {
-    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    pub(crate) by_fragment: FragmentNodeList,
 }
 
 impl Default for TitleElementData {
@@ -119,12 +121,12 @@ impl Default for TitleElementData {
 impl TitleElementData {
     pub fn new() -> Self {
         Self {
-            by_fragment: FxHashMap::default(),
+            by_fragment: FragmentNodeList::default(),
         }
     }
 
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get(key)
+    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get_by_id(id)
     }
 }
 

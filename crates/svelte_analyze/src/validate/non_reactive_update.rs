@@ -3,19 +3,16 @@ use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_ast_visit::Visit;
 use oxc_semantic::{ScopeFlags, SymbolId};
 use rustc_hash::FxHashSet;
-use svelte_ast::{
-    Attribute, Component, ConcatPart, ConstTag, EachBlock, Fragment, HtmlTag, IfBlock, KeyBlock,
-    Node, RenderTag, StyleDirectiveValue, SvelteElement,
-};
+use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, StyleDirectiveValue};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::{AnalysisData, ParserResult};
+use crate::{AnalysisData, JsAst};
 
 pub(super) fn validate(
     component: &Component,
     data: &AnalysisData<'_>,
-    parsed: &ParserResult<'_>,
+    parsed: &JsAst<'_>,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -40,7 +37,7 @@ pub(super) fn validate(
 struct TemplateValidator<'a, 'b> {
     component: &'a Component,
     data: &'a AnalysisData<'a>,
-    parsed: &'a ParserResult<'a>,
+    parsed: &'a JsAst<'a>,
     diags: &'b mut Vec<Diagnostic>,
     warned: FxHashSet<SymbolId>,
 }
@@ -51,22 +48,16 @@ impl<'a> TemplateValidator<'a, '_> {
             match self.component.store.get(id) {
                 Node::Text(_) | Node::Comment(_) | Node::DebugTag(_) | Node::Error(_) => {}
                 Node::ExpressionTag(tag) => {
-                    self.visit_expr_span(tag.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
                 }
-                Node::HtmlTag(HtmlTag {
-                    expression_span, ..
-                }) => {
-                    self.visit_expr_span(*expression_span, false, in_dynamic_block);
+                Node::HtmlTag(tag) => {
+                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
                 }
-                Node::RenderTag(RenderTag {
-                    expression_span, ..
-                }) => {
-                    self.visit_expr_span(*expression_span, false, in_dynamic_block);
+                Node::RenderTag(tag) => {
+                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
                 }
-                Node::ConstTag(ConstTag {
-                    expression_span, ..
-                }) => {
-                    self.visit_stmt_span(*expression_span, false, in_dynamic_block);
+                Node::ConstTag(tag) => {
+                    self.visit_stmt_ref(&tag.decl, false, in_dynamic_block);
                 }
                 Node::Element(el) => {
                     self.visit_attributes(&el.attributes, in_dynamic_block);
@@ -80,53 +71,36 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_attributes(&node.attributes, in_dynamic_block);
                     self.visit_fragment(&node.fragment, in_dynamic_block);
                 }
-                Node::IfBlock(IfBlock {
-                    test_span,
-                    consequent,
-                    alternate,
-                    ..
-                }) => {
-                    self.visit_expr_span(*test_span, false, in_dynamic_block);
-                    self.visit_fragment(consequent, true);
-                    if let Some(alt) = alternate {
+                Node::IfBlock(block) => {
+                    self.visit_expr_ref(&block.test, false, in_dynamic_block);
+                    self.visit_fragment(&block.consequent, true);
+                    if let Some(alt) = &block.alternate {
                         self.visit_fragment(alt, true);
                     }
                 }
-                Node::EachBlock(EachBlock {
-                    expression_span,
-                    context_span,
-                    index_span,
-                    key_span,
-                    body,
-                    fallback,
-                    ..
-                }) => {
-                    self.visit_expr_span(*expression_span, false, in_dynamic_block);
-                    if let Some(span) = context_span {
-                        self.visit_stmt_span(*span, false, true);
+                Node::EachBlock(block) => {
+                    self.visit_expr_ref(&block.expression, false, in_dynamic_block);
+                    if let Some(r) = block.context.as_ref() {
+                        self.visit_stmt_ref(r, false, true);
                     }
-                    if let Some(span) = index_span {
-                        self.visit_stmt_span(*span, false, true);
+                    if let Some(r) = block.index.as_ref() {
+                        self.visit_stmt_ref(r, false, true);
                     }
-                    if let Some(span) = key_span {
-                        self.visit_expr_span(*span, false, true);
+                    if let Some(r) = block.key.as_ref() {
+                        self.visit_expr_ref(r, false, true);
                     }
-                    self.visit_fragment(body, true);
-                    if let Some(fragment) = fallback {
+                    self.visit_fragment(&block.body, true);
+                    if let Some(fragment) = &block.fallback {
                         self.visit_fragment(fragment, true);
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    self.visit_stmt_span(block.expression_span, false, in_dynamic_block);
+                    self.visit_stmt_ref(&block.decl, false, in_dynamic_block);
                     self.visit_fragment(&block.body, in_dynamic_block);
                 }
-                Node::KeyBlock(KeyBlock {
-                    expression_span,
-                    fragment,
-                    ..
-                }) => {
-                    self.visit_expr_span(*expression_span, false, in_dynamic_block);
-                    self.visit_fragment(fragment, true);
+                Node::KeyBlock(block) => {
+                    self.visit_expr_ref(&block.expression, false, in_dynamic_block);
+                    self.visit_fragment(&block.fragment, true);
                 }
                 Node::SvelteHead(head) => {
                     self.visit_fragment(&head.fragment, in_dynamic_block);
@@ -135,18 +109,12 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_attributes(&node.attributes, in_dynamic_block);
                     self.visit_fragment(&node.fragment, in_dynamic_block);
                 }
-                Node::SvelteElement(SvelteElement {
-                    tag_span,
-                    static_tag,
-                    attributes,
-                    fragment,
-                    ..
-                }) => {
-                    if !static_tag {
-                        self.visit_expr_span(*tag_span, false, in_dynamic_block);
+                Node::SvelteElement(el) => {
+                    if let Some(tag_ref) = el.tag.as_ref() {
+                        self.visit_expr_ref(tag_ref, false, in_dynamic_block);
                     }
-                    self.visit_attributes(attributes, in_dynamic_block);
-                    self.visit_fragment(fragment, in_dynamic_block);
+                    self.visit_attributes(&el.attributes, in_dynamic_block);
+                    self.visit_fragment(&el.fragment, in_dynamic_block);
                 }
                 Node::SvelteWindow(node) => {
                     self.visit_attributes(&node.attributes, in_dynamic_block);
@@ -162,7 +130,7 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_fragment(&node.fragment, in_dynamic_block);
                 }
                 Node::AwaitBlock(node) => {
-                    self.visit_expr_span(node.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&node.expression, false, in_dynamic_block);
                     if let Some(fragment) = &node.pending {
                         self.visit_fragment(fragment, true);
                     }
@@ -181,30 +149,29 @@ impl<'a> TemplateValidator<'a, '_> {
         for attr in attributes {
             match attr {
                 Attribute::ExpressionAttribute(attr) => {
-                    self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&attr.expression, false, in_dynamic_block);
                 }
                 Attribute::ConcatenationAttribute(attr) => {
                     for part in &attr.parts {
-                        if let ConcatPart::Dynamic { span, .. } = part {
-                            self.visit_expr_span(*span, false, in_dynamic_block);
+                        if let ConcatPart::Dynamic { expr, .. } = part {
+                            self.visit_expr_ref(expr, false, in_dynamic_block);
                         }
                     }
                 }
                 Attribute::SpreadAttribute(attr) => {
-                    self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&attr.expression, false, in_dynamic_block);
                 }
                 Attribute::ClassDirective(attr) => {
-                    // Shorthand & explicit share one expression_span now.
-                    self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&attr.expression, false, in_dynamic_block);
                 }
                 Attribute::StyleDirective(attr) => match &attr.value {
                     StyleDirectiveValue::Expression => {
-                        self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
+                        self.visit_expr_ref(&attr.expression, false, in_dynamic_block);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
-                            if let ConcatPart::Dynamic { span, .. } = part {
-                                self.visit_expr_span(*span, false, in_dynamic_block);
+                            if let ConcatPart::Dynamic { expr, .. } = part {
+                                self.visit_expr_ref(expr, false, in_dynamic_block);
                             }
                         }
                     }
@@ -215,47 +182,48 @@ impl<'a> TemplateValidator<'a, '_> {
                         .data
                         .bind_target_semantics(attr.id)
                         .is_some_and(|semantics| semantics.is_this());
-                    self.visit_expr_span(attr.expression_span, bind_this, in_dynamic_block);
+                    self.visit_expr_ref(&attr.expression, bind_this, in_dynamic_block);
                 }
                 Attribute::LetDirectiveLegacy(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
+                    if let Some(r) = attr.binding.as_ref() {
+                        self.visit_stmt_ref(r, false, in_dynamic_block);
                     }
                 }
                 Attribute::UseDirective(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
+                    if let Some(r) = attr.expression.as_ref() {
+                        self.visit_expr_ref(r, false, in_dynamic_block);
                     }
                 }
                 Attribute::OnDirectiveLegacy(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
+                    if let Some(r) = attr.expression.as_ref() {
+                        self.visit_expr_ref(r, false, in_dynamic_block);
                     }
                 }
                 Attribute::TransitionDirective(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
+                    if let Some(r) = attr.expression.as_ref() {
+                        self.visit_expr_ref(r, false, in_dynamic_block);
                     }
                 }
                 Attribute::AnimateDirective(attr) => {
-                    if let Some(span) = attr.expression_span {
-                        self.visit_expr_span(span, false, in_dynamic_block);
+                    if let Some(r) = attr.expression.as_ref() {
+                        self.visit_expr_ref(r, false, in_dynamic_block);
                     }
                 }
                 Attribute::AttachTag(attr) => {
-                    self.visit_expr_span(attr.expression_span, false, in_dynamic_block);
+                    self.visit_expr_ref(&attr.expression, false, in_dynamic_block);
                 }
                 Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
             }
         }
     }
 
-    fn visit_expr_span(&mut self, span: Span, bind_this: bool, in_dynamic_block: bool) {
-        let Some(expr) = self
-            .parsed
-            .expr_handle(span.start)
-            .and_then(|handle| self.parsed.expr(handle))
-        else {
+    fn visit_expr_ref(
+        &mut self,
+        expr_ref: &svelte_ast::ExprRef,
+        bind_this: bool,
+        in_dynamic_block: bool,
+    ) {
+        let Some(expr) = self.parsed.expr(expr_ref.id()) else {
             return;
         };
 
@@ -270,12 +238,13 @@ impl<'a> TemplateValidator<'a, '_> {
         visitor.visit_expression(expr);
     }
 
-    fn visit_stmt_span(&mut self, span: Span, bind_this: bool, in_dynamic_block: bool) {
-        let Some(stmt) = self
-            .parsed
-            .stmt_handle(span.start)
-            .and_then(|handle| self.parsed.stmt(handle))
-        else {
+    fn visit_stmt_ref(
+        &mut self,
+        stmt_ref: &svelte_ast::StmtRef,
+        bind_this: bool,
+        in_dynamic_block: bool,
+    ) {
+        let Some(stmt) = self.parsed.stmt(stmt_ref.id()) else {
             return;
         };
 

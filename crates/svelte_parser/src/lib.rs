@@ -3,8 +3,8 @@ use svelte_span::Span;
 
 use svelte_ast::{
     AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element, Fragment,
-    HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext, ScriptLanguage, Text,
-    SVELTE_COMPONENT, SVELTE_SELF,
+    FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext,
+    ScriptLanguage, Text, SVELTE_COMPONENT, SVELTE_SELF,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -21,7 +21,7 @@ mod handlers;
 mod svelte_elements;
 
 // Re-export all shared types for convenience
-pub use types::{CePropConfig, CeShadowMode, ExprHandle, ParsedCeConfig, ParserResult, StmtHandle};
+pub use types::{CePropConfig, CeShadowMode, JsAst, ParsedCeConfig};
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.
 ///
@@ -50,11 +50,11 @@ pub fn parse_with_js<'a>(
     source: &str,
 ) -> (
     svelte_ast::Component,
-    crate::types::ParserResult<'a>,
+    crate::types::JsAst<'a>,
     Vec<Diagnostic>,
 ) {
     let (component, mut diagnostics) = Parser::new(source).parse();
-    let mut result = crate::types::ParserResult::new();
+    let mut result = crate::types::JsAst::new();
     walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
 
     (component, result, diagnostics)
@@ -182,6 +182,7 @@ pub struct Parser<'a> {
     source: &'a str,
     store: AstStore,
     diagnostics: Vec<Diagnostic>,
+    next_fragment_id: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -190,6 +191,7 @@ impl<'a> Parser<'a> {
             source,
             store: AstStore::with_capacity(source.len() / 10),
             diagnostics: Vec::new(),
+            next_fragment_id: 0,
         }
     }
 
@@ -205,6 +207,74 @@ impl<'a> Parser<'a> {
     /// Reserve a NodeId slot for a non-node id (attributes, key expressions, etc.).
     fn reserve_id(&mut self) -> NodeId {
         self.store.reserve()
+    }
+
+    /// Allocate a fresh FragmentId and return a Fragment containing the given nodes.
+    pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> Fragment {
+        let id = FragmentId(self.next_fragment_id);
+        self.next_fragment_id += 1;
+        Fragment::new(id, role, nodes)
+    }
+
+    /// Allocate a fresh FragmentId and return an empty Fragment.
+    pub(crate) fn empty_fragment(&mut self, role: FragmentRole) -> Fragment {
+        let id = FragmentId(self.next_fragment_id);
+        self.next_fragment_id += 1;
+        Fragment::empty(id, role)
+    }
+
+    /// Split component children into default-slot bucket and named slot buckets.
+    /// Each child whose `slot="name"` attribute resolves to a non-empty static name
+    /// goes into its own `LegacySlot` fragment; everything else stays in default.
+    /// `slot=` attribute remains on the child node — analysis still validates it.
+    pub(crate) fn partition_component_children(
+        &mut self,
+        children: Vec<NodeId>,
+    ) -> (Vec<NodeId>, Vec<svelte_ast::LegacySlot>) {
+        let mut default = Vec::with_capacity(children.len());
+        let mut slots: Vec<svelte_ast::LegacySlot> = Vec::new();
+
+        for child in children {
+            match self.slot_name_of(child) {
+                Some(name) => {
+                    if let Some(existing) = slots.iter_mut().find(|s| s.name == name) {
+                        existing.fragment.nodes.push(child);
+                    } else {
+                        let mut fragment = self.empty_fragment(FragmentRole::NamedSlot);
+                        fragment.nodes.push(child);
+                        slots.push(svelte_ast::LegacySlot { name, fragment });
+                    }
+                }
+                None => default.push(child),
+            }
+        }
+
+        (default, slots)
+    }
+
+    /// Return the static name from a `slot="name"` attribute on the given child node,
+    /// if present. Returns `None` for nodes without attributes, without `slot=`,
+    /// or when the value isn't a static string (dynamic / concatenation cases stay
+    /// in the default bucket — analysis reports them).
+    fn slot_name_of(&self, child: NodeId) -> Option<String> {
+        let attrs = match self.store.get(child) {
+            Node::Element(el) => &el.attributes,
+            Node::ComponentNode(cn) => &cn.attributes,
+            _ => return None,
+        };
+
+        for attr in attrs {
+            if let Attribute::StringAttribute(sa) = attr {
+                if sa.name == "slot" {
+                    let value = sa.value_span.source_text(self.source);
+                    if value.is_empty() {
+                        return None;
+                    }
+                    return Some(value.to_string());
+                }
+            }
+        }
+        None
     }
 
     pub fn parse(mut self) -> (Component, Vec<Diagnostic>) {
@@ -240,7 +310,7 @@ impl<'a> Parser<'a> {
                     let id = self.push_node(Node::ExpressionTag(svelte_ast::ExpressionTag {
                         id: NodeId(0),
                         span: interpolation.span,
-                        expression_span: interpolation.expression_span,
+                        expression: svelte_ast::ExprRef::new(interpolation.expression_span),
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -250,6 +320,12 @@ impl<'a> Parser<'a> {
                     let attrs = self.convert_attributes(&tag.attributes, is_component);
                     if tag.self_closing {
                         let name = name.to_string();
+                        let role = if is_component {
+                            FragmentRole::ComponentChildren
+                        } else {
+                            FragmentRole::Element
+                        };
+                        let fragment = self.empty_fragment(role);
                         let node = if is_component_name(&name) {
                             Node::ComponentNode(ComponentNode {
                                 id: NodeId(0),
@@ -257,7 +333,8 @@ impl<'a> Parser<'a> {
                                 name,
                                 self_closing: true,
                                 attributes: attrs,
-                                fragment: Fragment::empty(),
+                                fragment,
+                                legacy_slots: Vec::new(),
                             })
                         } else {
                             Node::Element(Element {
@@ -266,7 +343,7 @@ impl<'a> Parser<'a> {
                                 name,
                                 self_closing: true,
                                 attributes: attrs,
-                                fragment: Fragment::empty(),
+                                fragment,
                             })
                         };
                         let id = self.push_node(node);
@@ -373,7 +450,7 @@ impl<'a> Parser<'a> {
                     let id = self.push_node(Node::RenderTag(RenderTag {
                         id: NodeId(0),
                         span: token.span,
-                        expression_span: render_tag.expression_span,
+                        expression: svelte_ast::ExprRef::new(render_tag.expression_span),
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -381,7 +458,7 @@ impl<'a> Parser<'a> {
                     let id = self.push_node(Node::HtmlTag(HtmlTag {
                         id: NodeId(0),
                         span: token.span,
-                        expression_span: html_tag.expression_span,
+                        expression: svelte_ast::ExprRef::new(html_tag.expression_span),
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -389,15 +466,20 @@ impl<'a> Parser<'a> {
                     let id = self.push_node(Node::ConstTag(ConstTag {
                         id: NodeId(0),
                         span: token.span,
-                        expression_span: ct.expression_span,
+                        decl: svelte_ast::StmtRef::new(ct.expression_span),
                     }));
                     push_child(&mut children_stack, id);
                 }
                 TokenType::DebugTag(dt) => {
+                    let identifier_refs = dt
+                        .identifiers
+                        .iter()
+                        .map(|s| svelte_ast::ExprRef::new(*s))
+                        .collect();
                     let id = self.push_node(Node::DebugTag(DebugTag {
                         id: NodeId(0),
                         span: token.span,
-                        identifiers: dt.identifiers,
+                        identifier_refs,
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -483,11 +565,14 @@ impl<'a> Parser<'a> {
             content_span: cd.content_span,
         });
 
+        let root_fragment = self.new_fragment(FragmentRole::Root, roots);
+        let fragment_count = self.next_fragment_id;
         let store = std::mem::take(&mut self.store);
         let mut component = Component::new(
             self.source.to_string(),
-            Fragment::new(roots),
+            root_fragment,
             store,
+            fragment_count,
             instance_script,
             module_script,
             css,

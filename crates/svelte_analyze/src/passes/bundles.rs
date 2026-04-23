@@ -58,7 +58,7 @@ impl ReactivityBundle {
 pub(crate) struct TemplateClassificationBundle<'s> {
     element_flags: element_flags::ElementFlagsVisitor<'s>,
     bind_semantics: bind_semantics::BindSemanticsVisitor<'s>,
-    content_types: content_types::ContentAndVarVisitor<'s>,
+    content_types: content_types::ContentAndVarVisitor,
 }
 
 impl<'s> TemplateClassificationBundle<'s> {
@@ -66,7 +66,7 @@ impl<'s> TemplateClassificationBundle<'s> {
         Self {
             element_flags: element_flags::ElementFlagsVisitor::new(source),
             bind_semantics: bind_semantics::BindSemanticsVisitor::new(source),
-            content_types: content_types::ContentAndVarVisitor { source },
+            content_types: content_types::ContentAndVarVisitor,
         }
     }
 

@@ -6,8 +6,7 @@ use svelte_span::Span;
 
 use crate::types::data::{
     BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo,
-    ComponentPropKind, EventHandlerMode, EventModifier, FragmentKey, ParentKind,
-    RichContentParentKind,
+    ComponentPropKind, EventHandlerMode, EventModifier, ParentKind, RichContentParentKind,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -63,10 +62,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
 
         let has_value_attr = ctx.data.has_attribute(el.id, "value");
-        let fragment_key = FragmentKey::Element(el.id);
+        let fragment_id = el.fragment.id;
 
-        // <textarea>: detect expression children
-        if el.name == "textarea" && ctx.data.fragment_has_expression_child(&fragment_key) {
+        if el.name == "textarea" && ctx.data.fragment_has_expression_child_by_id(fragment_id) {
             if has_value_attr {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::TextareaInvalidContent,
@@ -83,7 +81,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
         // <option>: single ExpressionTag child, no explicit value attribute → synthetic __value
         if el.name == "option" && !has_value_attr {
-            if let Some(child_id) = ctx.data.fragment_single_expression_child(&fragment_key) {
+            if let Some(child_id) = ctx.data.fragment_single_expression_child_by_id(fragment_id) {
                 ctx.data
                     .elements
                     .flags
@@ -99,9 +97,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             "option" => Some(RichContentParentKind::Option),
             _ => None,
         };
-        if rich_content_parent
-            .is_some_and(|parent| ctx.data.fragment_has_rich_content(&fragment_key, parent))
-        {
+        if rich_content_parent.is_some_and(|parent| {
+            ctx.data
+                .fragment_has_rich_content_by_id(fragment_id, parent)
+        }) {
             ctx.data.elements.flags.customizable_select.insert(el.id);
         }
         if el.name == "selectedcontent" {
@@ -143,6 +142,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         id: cd.id,
                         name: cd.name.clone(),
                         has_expression: true,
+                        expr_id: cd.expression.id(),
                     });
             }
             Attribute::StyleDirective(sd) => {
@@ -240,11 +240,19 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = css_prop_name {
-                data.elements
-                    .flags
-                    .component_css_props
-                    .get_or_default(cn.id)
-                    .push((name.to_string(), attr.id()));
+                let expr_id = match attr {
+                    Attribute::ExpressionAttribute(a) => Some(a.expression.id()),
+                    Attribute::ConcatenationAttribute(_) => None,
+                    Attribute::StringAttribute(_) => None,
+                    _ => None,
+                };
+                if let Some(expr_id) = expr_id {
+                    data.elements
+                        .flags
+                        .component_css_props
+                        .get_or_default(cn.id)
+                        .push((name.to_string(), attr.id(), expr_id));
+                }
                 continue;
             }
             let kind = match attr {
@@ -260,6 +268,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ComponentPropKind::Expression {
                         name: a.name.clone(),
                         attr_id: a.id,
+                        expr_id: a.expression.id(),
                         shorthand: a.shorthand,
                         needs_memo,
                     }
@@ -269,7 +278,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     attr_id: a.id,
                     parts: a.parts.clone(),
                 },
-                Attribute::SpreadAttribute(a) => ComponentPropKind::Spread { attr_id: a.id },
+                Attribute::SpreadAttribute(a) => ComponentPropKind::Spread {
+                    attr_id: a.id,
+                    expr_id: a.expression.id(),
+                },
                 Attribute::BindDirective(b) => {
                     let Some(bind_semantics) = BindTargetSemantics::from_parent_kind_and_name(
                         ParentKind::ComponentNode,
@@ -279,7 +291,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     };
 
                     if bind_semantics.is_this() {
-                        ComponentPropKind::BindThis { bind_id: b.id }
+                        ComponentPropKind::BindThis {
+                            bind_id: b.id,
+                            expr_id: b.expression.id(),
+                        }
                     } else {
                         // Store-sub detection: only possible with explicit expression
                         // (`bind:value={$count}`). Shorthand `bind:count` binds to `count`,
@@ -287,7 +302,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         let expr_text = if b.shorthand {
                             None
                         } else {
-                            Some(self.source_text(b.expression_span).to_string())
+                            Some(self.source_text(b.expression.span).to_string())
                         };
 
                         // Store-sub detection on `bind:value={$count}`: resolve
@@ -319,6 +334,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                             ComponentPropKind::Bind {
                                 name: b.name.clone(),
                                 bind_id: b.id,
+                                expr_id: b.expression.id(),
                                 mode: ComponentBindMode::StoreSub,
                                 expr_name: expr_text,
                             }
@@ -350,20 +366,25 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                             ComponentPropKind::Bind {
                                 name: b.name.clone(),
                                 bind_id: b.id,
+                                expr_id: b.expression.id(),
                                 mode,
                                 expr_name: None,
                             }
                         }
                     }
                 }
-                Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },
+                Attribute::AttachTag(a) => ComponentPropKind::Attach {
+                    attr_id: a.id,
+                    expr_id: a.expression.id(),
+                },
                 Attribute::OnDirectiveLegacy(a) => {
                     let flags = Self::modifier_flags(&a.modifiers);
                     data.elements.directive_modifiers.record(a.id, flags);
                     ComponentPropKind::Event {
                         name: a.name.clone(),
                         attr_id: a.id,
-                        has_expression: a.expression_span.is_some(),
+                        expr_id: a.expression.as_ref().map(|r| r.id()),
+                        has_expression: a.expression.is_some(),
                         has_once_modifier: flags.contains(EventModifier::ONCE),
                     }
                 }

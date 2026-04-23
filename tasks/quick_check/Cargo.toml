@@ -1,0 +1,16 @@
+[package]
+name = "quick_check"
+version = "0.1.0"
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+svelte_compiler = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_span = { workspace = true }
+pretty_assertions = { workspace = true }
+serde_json = "1"

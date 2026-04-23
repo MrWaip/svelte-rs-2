@@ -16,11 +16,11 @@ pub use transformer::{
     compute_line_col, sanitize_location, transform_script, IgnoreQuery, TransformScriptOutput,
 };
 
-use oxc_allocator::Allocator;
+use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, ExprHandle, IdentGen, ParserResult, StmtHandle};
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, FragmentKey, Node};
+use svelte_analyze::{AnalysisData, IdentGen, JsAst};
+use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
 
 /// Transform all parsed template expressions and statements in-place.
 ///
@@ -31,13 +31,15 @@ use svelte_ast::{Attribute, Component, ConcatPart, Fragment, FragmentKey, Node};
 ///
 /// Must be called AFTER all analysis passes are complete.
 pub fn transform_component<'a>(
-    alloc: &'a Allocator,
-    component: &Component,
-    analysis: &AnalysisData<'a>,
-    parsed: &mut ParserResult<'a>,
-    ident_gen: &mut IdentGen,
-    dev: bool,
+    ctx: &mut svelte_types::CompileContext<'a, '_>,
+    options: &svelte_types::TransformOptions,
 ) -> TransformData {
+    let alloc = ctx.alloc;
+    let component = ctx.component;
+    let analysis = ctx.analysis;
+    let parsed: &mut JsAst<'a> = ctx.js_arena;
+    let ident_gen: &mut IdentGen = ctx.ident_gen;
+    let dev = options.dev;
     let root_scope = analysis.scoping.root_scope_id();
 
     let mut ctx = TransformCtx {
@@ -88,14 +90,14 @@ struct TransformCtx<'a, 'b> {
     /// (concat parts, directive names). The owner is used by the
     /// template-mode transformer for node-level predicates such as
     /// `is_ignored(node_id, "await_reactivity_loss")`.
-    expr_handles: Vec<(ExprHandle, Option<svelte_ast::NodeId>)>,
-    stmt_handles: Vec<(StmtHandle, Option<svelte_ast::NodeId>)>,
+    expr_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
+    stmt_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
     /// Bind-directive expressions handled by the dedicated bind pass. The
     /// pass clones the original expression into a read-form getter and a
     /// write-form setter, transforms each through the full pipeline, and
     /// repacks them into a `SequenceExpression(getter, setter)` that the
     /// codegen unpacks directly into runtime bind calls.
-    bind_expr_handles: Vec<(ExprHandle, svelte_ast::NodeId)>,
+    bind_expr_handles: Vec<(OxcNodeId, svelte_ast::NodeId)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +108,7 @@ fn walk_fragment<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     fragment: &Fragment,
     component: &Component,
-    parsed: &mut ParserResult<'a>,
+    parsed: &mut JsAst<'a>,
     scope: ScopeId,
 ) {
     for &id in &fragment.nodes {
@@ -119,12 +121,12 @@ fn walk_node<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     node: &Node,
     component: &Component,
-    parsed: &mut ParserResult<'a>,
+    parsed: &mut JsAst<'a>,
     scope: ScopeId,
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            record_expr(ctx, parsed, tag.expression_span.start, Some(tag.id));
+            record_expr(ctx, parsed, &tag.expression, Some(tag.id));
         }
         Node::Element(el) => {
             walk_attrs(ctx, &el.attributes, parsed);
@@ -142,7 +144,7 @@ fn walk_node<'a>(
             } else {
                 ctx.analysis
                     .scoping
-                    .fragment_scope(&FragmentKey::ComponentNode(cn.id))
+                    .fragment_scope_by_id(cn.fragment.id)
                     .unwrap_or(scope)
             };
 
@@ -150,61 +152,50 @@ fn walk_node<'a>(
                 walk_attrs(ctx, std::slice::from_ref(attr), parsed);
             }
 
-            for &child_id in &cn.fragment.nodes {
-                let child = component.store.get(child_id);
-                let child_scope =
-                    if node_static_slot_name(child, component.source.as_str()).is_some() {
-                        ctx.analysis
-                            .scoping
-                            .fragment_scope(&FragmentKey::NamedSlot(cn.id, child_id))
-                            .unwrap_or(scope)
-                    } else {
-                        default_scope
-                    };
-                walk_fragment(
-                    ctx,
-                    &svelte_ast::Fragment::new(vec![child_id]),
-                    component,
-                    parsed,
-                    child_scope,
-                );
+            walk_fragment(ctx, &cn.fragment, component, parsed, default_scope);
+
+            for slot in &cn.legacy_slots {
+                let wrapper_id = slot.fragment.nodes[0];
+                let slot_scope = ctx
+                    .analysis
+                    .scoping
+                    .named_slot_scope(cn.id, wrapper_id)
+                    .unwrap_or(scope);
+                walk_fragment(ctx, &slot.fragment, component, parsed, slot_scope);
             }
         }
         Node::IfBlock(block) => {
-            record_expr(ctx, parsed, block.test_span.start, Some(block.id));
-            let cons_scope = ctx.analysis.if_consequent_scope(block.id, scope);
+            record_expr(ctx, parsed, &block.test, Some(block.id));
+            let cons_scope = ctx
+                .analysis
+                .effective_fragment_scope(block.consequent.id, scope);
             walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
-                let alt_scope = ctx.analysis.if_alternate_scope(block.id, scope);
+                let alt_scope = ctx.analysis.effective_fragment_scope(alt.id, scope);
                 walk_fragment(ctx, alt, component, parsed, alt_scope);
             }
         }
         Node::EachBlock(block) => {
-            record_expr(ctx, parsed, block.expression_span.start, Some(block.id));
-            let body_scope = ctx.analysis.each_body_scope(block.id, scope);
+            record_expr(ctx, parsed, &block.expression, Some(block.id));
+            let body_scope = ctx.analysis.effective_fragment_scope(block.body.id, scope);
             walk_fragment(ctx, &block.body, component, parsed, body_scope);
             if let Some(fb) = &block.fallback {
                 walk_fragment(ctx, fb, component, parsed, scope);
             }
         }
         Node::SnippetBlock(block) => {
-            let snippet_scope = ctx.analysis.snippet_body_scope(block.id, scope);
-            let handle = ctx.analysis.snippet_stmt_handle(block.id);
-            if let Some(handle) = handle {
-                ctx.stmt_handles.push((handle, Some(block.id)));
-            }
+            let snippet_scope = ctx.analysis.effective_fragment_scope(block.body.id, scope);
+            ctx.stmt_handles.push((block.decl.id(), Some(block.id)));
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
-            record_expr(ctx, parsed, tag.expression_span.start, Some(tag.id));
+            record_expr(ctx, parsed, &tag.expression, Some(tag.id));
         }
         Node::HtmlTag(tag) => {
-            record_expr(ctx, parsed, tag.expression_span.start, Some(tag.id));
+            record_expr(ctx, parsed, &tag.expression, Some(tag.id));
         }
         Node::ConstTag(tag) => {
-            if let Some(handle) = parsed.stmt_handle(tag.expression_span.start) {
-                ctx.stmt_handles.push((handle, Some(tag.id)));
-            }
+            ctx.stmt_handles.push((tag.decl.id(), Some(tag.id)));
 
             // Destructured const-tags need a tmp binding for the derived
             // (`computed_const_N`). Resolve the pattern on demand from
@@ -220,14 +211,17 @@ fn walk_node<'a>(
             }
         }
         Node::KeyBlock(block) => {
-            if let Some(handle) = parsed.expr_handle(block.expression_span.start) {
-                ctx.expr_handles.push((handle, Some(block.id)));
-            }
-            let child_scope = ctx.analysis.key_block_body_scope(block.id, scope);
+            ctx.expr_handles
+                .push((block.expression.id(), Some(block.id)));
+            let child_scope = ctx
+                .analysis
+                .effective_fragment_scope(block.fragment.id, scope);
             walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
         }
         Node::SvelteHead(head) => {
-            let child_scope = ctx.analysis.svelte_head_body_scope(head.id, scope);
+            let child_scope = ctx
+                .analysis
+                .effective_fragment_scope(head.fragment.id, scope);
             walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
         }
         Node::SvelteFragmentLegacy(el) => {
@@ -235,11 +229,11 @@ fn walk_node<'a>(
             walk_fragment(ctx, &el.fragment, component, parsed, scope);
         }
         Node::SvelteElement(el) => {
-            if !el.static_tag {
-                record_expr(ctx, parsed, el.tag_span.start, Some(el.id));
+            if let Some(tag_ref) = el.tag.as_ref() {
+                record_expr(ctx, parsed, tag_ref, Some(el.id));
             }
             walk_attrs(ctx, &el.attributes, parsed);
-            let child_scope = ctx.analysis.svelte_element_body_scope(el.id, scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(el.fragment.id, scope);
             walk_fragment(ctx, &el.fragment, component, parsed, child_scope);
         }
         Node::SvelteWindow(w) => walk_attrs(ctx, &w.attributes, parsed),
@@ -247,29 +241,27 @@ fn walk_node<'a>(
         Node::SvelteBody(b) => walk_attrs(ctx, &b.attributes, parsed),
         Node::SvelteBoundary(b) => {
             walk_attrs(ctx, &b.attributes, parsed);
-            let child_scope = ctx.analysis.svelte_boundary_body_scope(b.id, scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(b.fragment.id, scope);
             walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
-            record_expr(ctx, parsed, block.expression_span.start, Some(block.id));
+            record_expr(ctx, parsed, &block.expression, Some(block.id));
             if let Some(ref p) = block.pending {
-                let pending_scope = ctx.analysis.await_pending_scope(block.id, scope);
+                let pending_scope = ctx.analysis.effective_fragment_scope(p.id, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
             }
             if let Some(ref t) = block.then {
-                let then_scope = ctx.analysis.await_then_scope(block.id, scope);
+                let then_scope = ctx.analysis.effective_fragment_scope(t.id, scope);
                 walk_fragment(ctx, t, component, parsed, then_scope);
             }
             if let Some(ref c) = block.catch {
-                let catch_scope = ctx.analysis.await_catch_scope(block.id, scope);
+                let catch_scope = ctx.analysis.effective_fragment_scope(c.id, scope);
                 walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }
         Node::DebugTag(tag) => {
-            for span in &tag.identifiers {
-                if let Some(handle) = parsed.expr_handle(span.start) {
-                    ctx.expr_handles.push((handle, Some(tag.id)));
-                }
+            for ident_ref in &tag.identifier_refs {
+                ctx.expr_handles.push((ident_ref.id(), Some(tag.id)));
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
@@ -278,16 +270,14 @@ fn walk_node<'a>(
 
 fn record_expr<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    parsed: &ParserResult<'a>,
-    offset: u32,
+    _parsed: &JsAst<'a>,
+    expr_ref: &svelte_ast::ExprRef,
     owner: Option<svelte_ast::NodeId>,
 ) {
-    if let Some(handle) = parsed.expr_handle(offset) {
-        ctx.expr_handles.push((handle, owner));
-    }
+    ctx.expr_handles.push((expr_ref.id(), owner));
 }
 
-fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &ParserResult<'a>) {
+fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &JsAst<'a>) {
     for attr in attrs {
         let owner = Some(attr.id());
         // Bind directives route into the bind-specific transform pass which
@@ -301,11 +291,9 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
         //     SequenceExpression literal — run it through the generic read
         //     pass so each sub-expression gets normal rune/prop rewrites.
         if let Attribute::BindDirective(bind) = attr {
-            let Some(handle) = parsed.expr_handle(bind.expression_span.start) else {
-                continue;
-            };
+            let bind_id = bind.expression.id();
             let is_user_sequence = parsed
-                .expr(handle)
+                .expr(bind_id)
                 .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::SequenceExpression(_)));
             if bind.name == "this" {
                 // `bind:this` needs the untouched identifier/member — codegen
@@ -338,7 +326,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             // `($$value) => foo = $$value` setter to synthesize. Skip the
             // bind pass so codegen can detect the prop shape via
             // `directive_root_reference_semantics` and emit the short form.
-            let is_bindable_prop_source = parsed.expr(handle).is_some_and(|expr| {
+            let is_bindable_prop_source = parsed.expr(bind_id).is_some_and(|expr| {
                 let mut current = expr;
                 loop {
                     match current {
@@ -374,16 +362,16 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 // User-written `bind:prop={(g), (s)}`: each branch is a real
                 // read/write arrow that needs the normal per-expression
                 // rewrites. Pass through the generic handles pipeline.
-                ctx.expr_handles.push((handle, owner));
+                ctx.expr_handles.push((bind_id, owner));
             } else {
-                ctx.bind_expr_handles.push((handle, attr.id()));
+                ctx.bind_expr_handles.push((bind_id, attr.id()));
             }
             continue;
         }
-        if let Some(handle) = get_attr_expr_handle(parsed, attr) {
+        if let Some(handle) = get_attr_expr_id(attr) {
             ctx.expr_handles.push((handle, owner));
         }
-        if let Some(handle) = get_directive_name_handle(parsed, attr) {
+        if let Some(handle) = get_directive_name_id(attr) {
             ctx.expr_handles.push((handle, owner));
         }
 
@@ -397,51 +385,47 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
         };
         if let Some(parts) = concat_parts {
             for part in parts {
-                if let ConcatPart::Dynamic { span, .. } = part {
-                    if let Some(handle) = parsed.expr_handle(span.start) {
-                        // Concat parts keep the attribute as their owner so that
-                        // node-level predicates (e.g. is_ignored) resolve on the
-                        // enclosing attribute node.
-                        ctx.expr_handles.push((handle, owner));
-                    }
+                if let ConcatPart::Dynamic { expr, .. } = part {
+                    // Concat parts keep the attribute as their owner so that
+                    // node-level predicates (e.g. is_ignored) resolve on the
+                    // enclosing attribute node.
+                    ctx.expr_handles.push((expr.id(), owner));
                 }
             }
         }
     }
 }
 
-fn get_attr_expr_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<ExprHandle> {
-    let offset = match attr {
-        Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
-        Attribute::ClassDirective(a) => Some(a.expression_span.start),
+fn get_attr_expr_id(attr: &Attribute) -> Option<OxcNodeId> {
+    match attr {
+        Attribute::ExpressionAttribute(a) => Some(a.expression.id()),
+        Attribute::ClassDirective(a) => Some(a.expression.id()),
         Attribute::StyleDirective(a) => match &a.value {
-            svelte_ast::StyleDirectiveValue::Expression => Some(a.expression_span.start),
+            svelte_ast::StyleDirectiveValue::Expression => Some(a.expression.id()),
             _ => None,
         },
         // BindDirective is handled by the bind-specific pass — see walk_attrs.
         Attribute::BindDirective(_) => None,
-        Attribute::LetDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
-        Attribute::SpreadAttribute(a) => Some(a.expression_span.start),
-        Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
-        Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::AttachTag(a) => Some(a.expression_span.start),
+        Attribute::LetDirectiveLegacy(_) => None,
+        Attribute::SpreadAttribute(a) => Some(a.expression.id()),
+        Attribute::UseDirective(a) => a.expression.as_ref().map(|r| r.id()),
+        Attribute::OnDirectiveLegacy(a) => a.expression.as_ref().map(|r| r.id()),
+        Attribute::TransitionDirective(a) => a.expression.as_ref().map(|r| r.id()),
+        Attribute::AnimateDirective(a) => a.expression.as_ref().map(|r| r.id()),
+        Attribute::AttachTag(a) => Some(a.expression.id()),
         Attribute::StringAttribute(_)
         | Attribute::BooleanAttribute(_)
         | Attribute::ConcatenationAttribute(_) => None,
-    }?;
-    parsed.expr_handle(offset)
+    }
 }
 
-fn get_directive_name_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<ExprHandle> {
-    let offset = match attr {
-        Attribute::UseDirective(a) => Some(a.name.start),
-        Attribute::TransitionDirective(a) => Some(a.name.start),
-        Attribute::AnimateDirective(a) => Some(a.name.start),
+fn get_directive_name_id(attr: &Attribute) -> Option<OxcNodeId> {
+    match attr {
+        Attribute::UseDirective(a) => Some(a.name_ref.id()),
+        Attribute::TransitionDirective(a) => Some(a.name_ref.id()),
+        Attribute::AnimateDirective(a) => Some(a.name_ref.id()),
         _ => None,
-    }?;
-    parsed.expr_handle(offset)
+    }
 }
 
 fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
@@ -451,15 +435,6 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
         }
         _ => None,
     })
-}
-
-fn node_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
-    match node {
-        Node::Element(node) => attrs_static_slot_name(&node.attributes, source),
-        Node::SvelteFragmentLegacy(node) => attrs_static_slot_name(&node.attributes, source),
-        Node::ComponentNode(node) => attrs_static_slot_name(&node.attributes, source),
-        _ => None,
-    }
 }
 
 /// `true` if the `{@const}` backed by `decl_node_id` uses a destructure
@@ -546,7 +521,7 @@ mod tests {
         for &id in &fragment.nodes {
             match component.store.get(id) {
                 Node::ExpressionTag(tag)
-                    if component.source_text(tag.expression_span).trim() == needle =>
+                    if component.source_text(tag.expression.span).trim() == needle =>
                 {
                     return Some(tag);
                 }
@@ -586,24 +561,21 @@ mod tests {
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
-        transform_component(
-            &alloc,
-            &component,
-            &analysis,
-            &mut parsed,
-            &mut ident_gen,
-            false,
-        );
+        let mut ctx = svelte_types::CompileContext {
+            alloc: &alloc,
+            component: &component,
+            analysis: &analysis,
+            js_arena: &mut parsed,
+            ident_gen: &mut ident_gen,
+        };
+        transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
         let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
-        let expr = find_expr_tag(&snippet.body, &component, "label")
+        let expr_tag = find_expr_tag(&snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
-        let handle = parsed
-            .expr_handle(expr.expression_span.start)
-            .unwrap_or_else(|| panic!("missing expr handle"));
         let expr = parsed
-            .expr(handle)
+            .expr(expr_tag.expression.id())
             .unwrap_or_else(|| panic!("missing expr"));
         assert!(
             matches!(expr, Expression::CallExpression(_)),
@@ -637,24 +609,21 @@ mod tests {
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
-        transform_component(
-            &alloc,
-            &component,
-            &analysis,
-            &mut parsed,
-            &mut ident_gen,
-            false,
-        );
+        let mut ctx = svelte_types::CompileContext {
+            alloc: &alloc,
+            component: &component,
+            analysis: &analysis,
+            js_arena: &mut parsed,
+            ident_gen: &mut ident_gen,
+        };
+        transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
         let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
-        let expr = find_expr_tag(&snippet.body, &component, "label")
+        let expr_tag = find_expr_tag(&snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
-        let handle = parsed
-            .expr_handle(expr.expression_span.start)
-            .unwrap_or_else(|| panic!("missing expr handle"));
         let expr = parsed
-            .expr(handle)
+            .expr(expr_tag.expression.id())
             .unwrap_or_else(|| panic!("missing expr"));
         assert!(
             matches!(expr, Expression::CallExpression(_)),

@@ -16,31 +16,27 @@ use crate::reactivity_semantics::data::{PropReferenceSemantics, ReferenceSemanti
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, EachBlock, FragmentKey, Node, NodeId};
+use svelte_ast::{Attribute, EachBlock, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, SymbolId};
 
 /// Populate `BlockSemantics::Each` for this block and recurse into its
 /// body / fallback fragments.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     let context_declarator = block
-        .context_span
-        .and_then(|cs| ctx.parsed.stmt_handle(cs.start))
-        .and_then(|h| declarator_from_stmt(ctx.parsed.stmt(h)?));
+        .context
+        .as_ref()
+        .and_then(|r| ctx.parsed.stmt(r.id()))
+        .and_then(declarator_from_stmt);
 
     let index_declarator = block
-        .index_span
-        .and_then(|cs| ctx.parsed.stmt_handle(cs.start))
-        .and_then(|h| declarator_from_stmt(ctx.parsed.stmt(h)?));
+        .index
+        .as_ref()
+        .and_then(|r| ctx.parsed.stmt(r.id()))
+        .and_then(declarator_from_stmt);
 
-    let key_expr = block
-        .key_span
-        .and_then(|ks| ctx.parsed.expr_handle(ks.start))
-        .and_then(|h| ctx.parsed.expr(h));
+    let key_expr = block.key.as_ref().and_then(|r| ctx.parsed.expr(r.id()));
 
-    let collection_expr = ctx
-        .parsed
-        .expr_handle(block.expression_span.start)
-        .and_then(|h| ctx.parsed.expr(h));
+    let collection_expr = ctx.parsed.expr(block.expression.id());
 
     // Item binding
     let (item, item_sym) = match context_declarator {
@@ -49,7 +45,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             BindingPattern::BindingIdentifier(ident) => {
                 let sym = ctx
                     .semantics
-                    .fragment_scope(&FragmentKey::EachBody(block.id))
+                    .fragment_scope_by_id(block.body.id)
                     .and_then(|scope| ctx.semantics.find_binding(scope, ident.name.as_str()));
                 match sym {
                     Some(sym) => (EachItemKind::Identifier(sym), Some(sym)),
@@ -60,9 +56,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         },
     };
 
-    let body_scope = ctx
-        .semantics
-        .fragment_scope(&FragmentKey::EachBody(block.id));
+    let body_scope = ctx.semantics.fragment_scope_by_id(block.body.id);
 
     let index_sym = index_declarator
         .and_then(|d| binding_ident_of(&d.id))

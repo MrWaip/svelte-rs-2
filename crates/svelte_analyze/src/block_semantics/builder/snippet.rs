@@ -19,16 +19,13 @@ use oxc_ast::ast::{
     VariableDeclarator,
 };
 use smallvec::SmallVec;
-use svelte_ast::{FragmentKey, SnippetBlock};
+use svelte_ast::SnippetBlock;
 use svelte_component_semantics::SymbolId;
 
 /// Populate `BlockSemantics::Snippet` for this block and recurse into
 /// its body fragment.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
-    let stmt = ctx
-        .parsed
-        .stmt_handle(block.expression_span.start)
-        .and_then(|h| ctx.parsed.stmt(h));
+    let stmt = ctx.parsed.stmt(block.decl.id());
 
     let declarator = stmt.and_then(declarator_from_stmt);
 
@@ -76,10 +73,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 
     // Register this snippet's body scope so the post-walk hoistable pass
     // can trace references back to the owning snippet.
-    if let Some(body_scope) = ctx
-        .semantics
-        .fragment_scope(&FragmentKey::SnippetBody(block.id))
-    {
+    if let Some(body_scope) = ctx.semantics.fragment_scope_by_id(block.body.id) {
         ctx.snippet_scopes.push(SnippetScope {
             block_id: block.id,
             body_scope,

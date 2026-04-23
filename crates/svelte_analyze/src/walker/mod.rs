@@ -12,7 +12,7 @@ use svelte_ast::{
 use svelte_diagnostics::{extract_svelte_ignore, Diagnostic};
 use svelte_span::Span;
 
-use crate::types::data::{AnalysisData, FragmentKey, ParserResult};
+use crate::types::data::{AnalysisData, JsAst};
 
 mod context;
 mod dispatch;

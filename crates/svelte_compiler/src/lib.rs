@@ -185,27 +185,36 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
         let name = analysis.component_name().to_string();
         let _ = ident_gen.gen(&name);
-        let transform_data = svelte_transform::transform_component(
-            &js_alloc,
-            &component,
-            &analysis,
-            &mut parsed,
-            &mut ident_gen,
-            options.dev,
-        );
+        let transform_data = {
+            let mut compile_ctx = svelte_types::CompileContext {
+                alloc: &js_alloc,
+                component: &component,
+                analysis: &analysis,
+                js_arena: &mut parsed,
+                ident_gen: &mut ident_gen,
+            };
+            svelte_transform::transform_component(
+                &mut compile_ctx,
+                &svelte_types::TransformOptions { dev: options.dev },
+            )
+        };
+        let codegen_options = svelte_types::CodegenOptions {
+            dev: options.dev,
+            experimental_async: options.experimental.async_,
+            filename: options.filename.clone(),
+        };
+        let compile_ctx = svelte_types::CompileContext {
+            alloc: &js_alloc,
+            component: &component,
+            analysis: &analysis,
+            js_arena: &mut parsed,
+            ident_gen: &mut ident_gen,
+        };
         let js = svelte_codegen_client::generate(
-            &js_alloc,
-            &component,
-            &analysis,
-            &mut parsed,
-            &mut ident_gen,
+            compile_ctx,
+            &codegen_options,
             transform_data,
             injected_css_text.as_deref(),
-            &name,
-            options.dev,
-            source,
-            &options.filename,
-            options.experimental.async_,
         );
         (Some(js), css, analyze_diags)
     }));

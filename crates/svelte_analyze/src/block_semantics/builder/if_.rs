@@ -118,11 +118,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
 /// Returns sync facts when the expression is missing from the pre-parsed
 /// store — matches the defensive behaviour of other populators.
 fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32; 2]>) {
-    let Some(expr) = ctx
-        .parsed
-        .expr_handle(block.test_span.start)
-        .and_then(|h| ctx.parsed.expr(h))
-    else {
+    let Some(expr) = ctx.parsed.expr(block.test.id()) else {
         return (false, false, SmallVec::new());
     };
     expression_if_facts(expr, ctx.semantics, ctx.blockers)

@@ -21,7 +21,7 @@ use super::super::data::{
     SnippetParamStrategy, V2DeclarationFacts,
 };
 use crate::scope::SymbolId;
-use crate::types::data::{AnalysisData, FragmentKey, ParserResult, StmtHandle};
+use crate::types::data::{AnalysisData, JsAst};
 use crate::utils::legacy_slot::legacy_slot_pattern;
 use crate::walker::{walk_template, TemplateVisitor, VisitContext};
 
@@ -61,7 +61,7 @@ impl ContextualStaging {
 
 pub(super) fn collect_template_declarations<'a>(
     component: &Component,
-    parsed: &ParserResult<'a>,
+    parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
     let root = data.scoping.root_scope_id();
@@ -173,11 +173,10 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         // Take the bindings snapshot first so the parsed borrow is released
         // before we mutate `ctx.data` (carrier synthesis needs `&mut`).
         let (syms, is_destructured, stmt_node_id) = {
-            let Some(stmt) = ctx
-                .parsed()
-                .and_then(|parsed| parsed.stmt_handle(dir.name_span.start))
-                .and_then(|handle| ctx.parsed().and_then(|parsed| parsed.stmt(handle)))
-            else {
+            let Some(binding_ref) = dir.binding.as_ref() else {
+                return;
+            };
+            let Some(stmt) = ctx.parsed().and_then(|p| p.stmt(binding_ref.id())) else {
                 return;
             };
             let stmt_node_id = match stmt {
@@ -216,21 +215,17 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 .record_symbol_declaration_root(sym, node_id);
             ctx.data.reactivity.record_contextual_owner_v2(sym, dir.id);
             if let Some(carrier) = carrier_sym {
-                // Destructured leaf — consumers read the alias relation to
-                // route reads through the synthesized carrier.
                 ctx.data
                     .reactivity
                     .record_carrier_alias_declaration_v2(node_id, carrier);
             } else {
-                // Root `BindingIdentifier` — direct staging as if the
-                // directive bound a single plain name.
                 self.staging.push(sym, node_id, PendingKind::LetDirective);
             }
         }
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
-        let body_scope = ctx.child_scope(FragmentKey::EachBody(block.id), ctx.scope);
+        let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
         let is_destructured = ctx.data.each_is_destructured(block.id);
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
@@ -239,8 +234,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         // the context symbol itself (`{#each items as item (item)}`) —
         // the each binding is not reactive: reads go through plain lookup.
         if !is_destructured {
-            if let Some(key_span) = block.key_span {
-                mark_key_is_item_each_binding(block, body_scope, key_span, ctx, self.staging);
+            if let Some(key_ref) = block.key.as_ref() {
+                mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
             }
         }
 
@@ -252,12 +247,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     }
 
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
-        let then_scope = ctx.child_scope(FragmentKey::AwaitThen(block.id), ctx.scope);
-        if let Some(stmt) = block.value_span.and_then(|span| {
-            ctx.parsed()
-                .and_then(|parsed| parsed.stmt_handle(span.start))
-                .and_then(|handle| ctx.parsed().and_then(|parsed| parsed.stmt(handle)))
-        }) {
+        let then_scope = match &block.then {
+            Some(t) => ctx.child_scope_by_id(t.id, ctx.scope),
+            None => ctx.scope,
+        };
+        if let Some(stmt) = block
+            .value
+            .as_ref()
+            .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
+        {
             for sym in scoped_stmt_symbols(ctx.data, then_scope, stmt) {
                 let node_id = ctx.data.scoping.symbol_declaration(sym);
                 ctx.data
@@ -270,12 +268,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             }
         }
 
-        let catch_scope = ctx.child_scope(FragmentKey::AwaitCatch(block.id), ctx.scope);
-        if let Some(stmt) = block.error_span.and_then(|span| {
-            ctx.parsed()
-                .and_then(|parsed| parsed.stmt_handle(span.start))
-                .and_then(|handle| ctx.parsed().and_then(|parsed| parsed.stmt(handle)))
-        }) {
+        let catch_scope = match &block.catch {
+            Some(c) => ctx.child_scope_by_id(c.id, ctx.scope),
+            None => ctx.scope,
+        };
+        if let Some(stmt) = block
+            .error
+            .as_ref()
+            .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
+        {
             for sym in scoped_stmt_symbols(ctx.data, catch_scope, stmt) {
                 let node_id = ctx.data.scoping.symbol_declaration(sym);
                 ctx.data
@@ -389,11 +390,7 @@ fn run_each_context_marker<'a>(
     is_destructured: bool,
 ) {
     let Some(parsed) = ctx.parsed else { return };
-    let Some(stmt) = block
-        .context_span
-        .and_then(|span| parsed.stmt_handle(span.start))
-        .and_then(|handle| parsed.stmt(handle))
-    else {
+    let Some(stmt) = block.context.as_ref().and_then(|r| parsed.stmt(r.id())) else {
         return;
     };
     let mut marker = EachContextMarker {
@@ -412,18 +409,14 @@ fn run_each_index_marker<'a>(
     staging: &mut ContextualStaging,
 ) {
     let Some(parsed) = ctx.parsed else { return };
-    let Some(stmt) = block
-        .index_span
-        .and_then(|span| parsed.stmt_handle(span.start))
-        .and_then(|handle| parsed.stmt(handle))
-    else {
+    let Some(stmt) = block.index.as_ref().and_then(|r| parsed.stmt(r.id())) else {
         return;
     };
     let mut marker = EachIndexMarker {
         data: ctx.data,
         staging,
         owner_node: block.id,
-        mark_non_reactive: block.key_span.is_none(),
+        mark_non_reactive: block.key.is_none(),
     };
     marker.visit_statement(stmt);
 }
@@ -434,10 +427,7 @@ fn run_snippet_param_marker<'a>(
     staging: &mut ContextualStaging,
 ) {
     let Some(parsed) = ctx.parsed else { return };
-    let Some(stmt) = parsed
-        .stmt_handle(block.expression_span.start)
-        .and_then(|handle| parsed.stmt(handle))
-    else {
+    let Some(stmt) = parsed.stmt(block.decl.id()) else {
         return;
     };
     let mut marker = SnippetParamMarker {
@@ -452,15 +442,16 @@ fn run_snippet_param_marker<'a>(
 fn mark_key_is_item_each_binding(
     block: &EachBlock,
     body_scope: oxc_semantic::ScopeId,
-    key_span: svelte_span::Span,
+    _key_span: svelte_span::Span,
     ctx: &mut VisitContext<'_, '_>,
     staging: &mut ContextualStaging,
 ) {
     let Some(parsed) = ctx.parsed else { return };
     let Some(declarator) = block
-        .context_span
-        .and_then(|span| parsed.stmt_handle(span.start))
-        .and_then(|h| get_declarator(parsed, h))
+        .context
+        .as_ref()
+        .and_then(|r| parsed.stmt(r.id()))
+        .and_then(declarator_from_stmt_local)
     else {
         return;
     };
@@ -474,9 +465,11 @@ fn mark_key_is_item_each_binding(
     let Some(ctx_sym) = ctx.data.scoping.get_binding(body_scope, ident_name) else {
         return;
     };
+    let Some(key_ref) = block.key.as_ref() else {
+        return;
+    };
     let key_resolves_to_ctx = parsed
-        .expr_handle(key_span.start)
-        .and_then(|h| parsed.expr(h))
+        .expr(key_ref.id())
         .and_then(|expr| match expr {
             oxc_ast::ast::Expression::Identifier(ident) => ident.reference_id.get(),
             _ => None,
@@ -488,14 +481,11 @@ fn mark_key_is_item_each_binding(
     }
 }
 
-fn get_declarator<'a>(
-    parsed: &'a ParserResult<'a>,
-    handle: StmtHandle,
-) -> Option<&'a VariableDeclarator<'a>> {
-    parsed.stmt(handle).and_then(|stmt| match stmt {
+fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a VariableDeclarator<'a>> {
+    match stmt {
         Statement::VariableDeclaration(decl) => decl.declarations.first(),
         _ => None,
-    })
+    }
 }
 
 struct EachContextMarker<'d, 's, 'a> {
@@ -641,10 +631,7 @@ fn collect_const_tag_syms(
     let Some(parsed) = ctx.parsed() else {
         return Vec::new();
     };
-    let Some(stmt) = parsed
-        .stmt_handle(tag.expression_span.start)
-        .and_then(|handle| parsed.stmt(handle))
-    else {
+    let Some(stmt) = parsed.stmt(tag.decl.id()) else {
         return Vec::new();
     };
     let Statement::VariableDeclaration(decl) = stmt else {

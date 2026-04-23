@@ -1,6 +1,9 @@
 use svelte_span::GetSpan;
 pub use svelte_span::Span;
 
+mod expr_ref;
+pub use expr_ref::{ExprRef, OxcNodeId, StmtRef};
+
 const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link",
     "meta", "param", "source", "track", "wbr",
@@ -177,57 +180,9 @@ pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
 
-/// Identifies which fragment within a template block owns a scope.
-///
-/// A single AST node (e.g. `IfBlock`) may produce multiple fragments
-/// (consequent + alternate), so the key includes the fragment role.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FragmentKey {
-    Root,
-    Element(NodeId),
-    ComponentNode(NodeId),
-    /// Named slot within a component: (component_id, slot_element_id).
-    NamedSlot(NodeId, NodeId),
-    IfConsequent(NodeId),
-    IfAlternate(NodeId),
-    EachBody(NodeId),
-    EachFallback(NodeId),
-    SnippetBody(NodeId),
-    KeyBlockBody(NodeId),
-    SvelteHeadBody(NodeId),
-    SvelteElementBody(NodeId),
-    SvelteBoundaryBody(NodeId),
-    AwaitPending(NodeId),
-    AwaitThen(NodeId),
-    AwaitCatch(NodeId),
-}
-
-impl FragmentKey {
-    pub fn is_each_body(&self) -> bool {
-        matches!(self, Self::EachBody(_))
-    }
-
-    pub fn node_id(&self) -> Option<NodeId> {
-        match self {
-            Self::Root => None,
-            Self::Element(id)
-            | Self::ComponentNode(id)
-            | Self::NamedSlot(id, _)
-            | Self::IfConsequent(id)
-            | Self::IfAlternate(id)
-            | Self::EachBody(id)
-            | Self::EachFallback(id)
-            | Self::SnippetBody(id)
-            | Self::KeyBlockBody(id)
-            | Self::SvelteHeadBody(id)
-            | Self::SvelteElementBody(id)
-            | Self::SvelteBoundaryBody(id)
-            | Self::AwaitPending(id)
-            | Self::AwaitThen(id)
-            | Self::AwaitCatch(id) => Some(*id),
-        }
-    }
-}
+/// Unique fragment identifier, assigned during parsing.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct FragmentId(pub u32);
 
 // ---------------------------------------------------------------------------
 // Root
@@ -236,6 +191,8 @@ impl FragmentKey {
 pub struct Component {
     pub fragment: Fragment,
     pub store: AstStore,
+    /// Total number of FragmentId slots allocated during parsing.
+    pub fragment_count: u32,
     /// Instance-level `<script>` block (runs once per component instance).
     pub instance_script: Option<Script>,
     /// Module-level `<script module>` block (runs once when the module loads).
@@ -251,6 +208,7 @@ impl Component {
         source: String,
         fragment: Fragment,
         store: AstStore,
+        fragment_count: u32,
         instance_script: Option<Script>,
         module_script: Option<Script>,
         css: Option<RawBlock>,
@@ -258,9 +216,29 @@ impl Component {
         Self {
             fragment,
             store,
+            fragment_count,
             instance_script,
             module_script,
             css,
+            options: None,
+            source,
+        }
+    }
+
+    /// Dummy `Component` for standalone `.svelte.js` modules (no template).
+    /// Used only to satisfy analysis APIs that expect `&Component`.
+    pub fn dummy_for_standalone_module(source: String) -> Self {
+        Self {
+            fragment: Fragment {
+                id: FragmentId(0),
+                role: FragmentRole::Root,
+                nodes: vec![],
+            },
+            store: AstStore::default(),
+            fragment_count: 1,
+            instance_script: None,
+            module_script: None,
+            css: None,
             options: None,
             source,
         }
@@ -281,17 +259,48 @@ impl Component {
 // Fragment
 // ---------------------------------------------------------------------------
 
+/// Role of a fragment in the template — what parent construct owns it.
+///
+/// A single AST node (e.g. `IfBlock`) may produce multiple fragments
+/// (consequent + alternate), so the role disambiguates them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FragmentRole {
+    Root,
+    Element,
+    ComponentChildren,
+    /// LEGACY(svelte4): named slot body within a component.
+    NamedSlot,
+    IfConsequent,
+    IfAlternate,
+    EachBody,
+    EachFallback,
+    SnippetBody,
+    KeyBlockBody,
+    SvelteHeadBody,
+    SvelteElementBody,
+    SvelteBoundaryBody,
+    AwaitPending,
+    AwaitThen,
+    AwaitCatch,
+}
+
 pub struct Fragment {
+    pub id: FragmentId,
+    pub role: FragmentRole,
     pub nodes: Vec<NodeId>,
 }
 
 impl Fragment {
-    pub fn new(nodes: Vec<NodeId>) -> Self {
-        Self { nodes }
+    pub fn new(id: FragmentId, role: FragmentRole, nodes: Vec<NodeId>) -> Self {
+        Self { id, role, nodes }
     }
 
-    pub fn empty() -> Self {
-        Self { nodes: vec![] }
+    pub fn empty(id: FragmentId, role: FragmentRole) -> Self {
+        Self {
+            id,
+            role,
+            nodes: vec![],
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -410,21 +419,6 @@ pub struct Element {
     pub fragment: Fragment,
 }
 
-impl Element {
-    /// Clone element metadata without children (fragment set to empty).
-    /// Used when we need owned attribute data while borrowing the AST elsewhere.
-    pub fn clone_without_fragment(&self) -> Element {
-        Element {
-            id: self.id,
-            span: self.span,
-            name: self.name.clone(),
-            self_closing: self.self_closing,
-            attributes: self.attributes.clone(),
-            fragment: Fragment::empty(),
-        }
-    }
-}
-
 /// LEGACY(svelte4): legacy `<slot>` pseudo-element. Deprecated in Svelte 5, remove in Svelte 6.
 pub struct SlotElementLegacy {
     pub id: NodeId,
@@ -443,6 +437,12 @@ pub struct ComponentNode {
     pub name: String,
     pub self_closing: bool,
     pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
+    pub legacy_slots: Vec<LegacySlot>,
+}
+
+pub struct LegacySlot {
+    pub name: String,
     pub fragment: Fragment,
 }
 
@@ -469,8 +469,7 @@ pub struct ExpressionTag {
     pub id: NodeId,
     /// Span of the whole `{expr}` including braces.
     pub span: Span,
-    /// Span of just the JS expression inside the braces.
-    pub expression_span: Span,
+    pub expression: ExprRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -480,8 +479,7 @@ pub struct ExpressionTag {
 pub struct IfBlock {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the JS test expression.
-    pub test_span: Span,
+    pub test: ExprRef,
     pub elseif: bool,
     pub consequent: Fragment,
     pub alternate: Option<Fragment>,
@@ -494,14 +492,10 @@ pub struct IfBlock {
 pub struct EachBlock {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the collection expression.
-    pub expression_span: Span,
-    /// Span of the iteration variable (e.g., `item` or `{ value, flag }`). None for `{#each items}` without `as`.
-    pub context_span: Option<Span>,
-    /// Span of the index variable, if any.
-    pub index_span: Option<Span>,
-    /// Span of the key expression, if any.
-    pub key_span: Option<Span>,
+    pub expression: ExprRef,
+    pub context: Option<StmtRef>,
+    pub index: Option<StmtRef>,
+    pub key: Option<ExprRef>,
     /// Unique NodeId for the key expression (separate from block id to avoid NodeId collision).
     pub key_id: Option<NodeId>,
     pub body: Fragment,
@@ -515,15 +509,14 @@ pub struct EachBlock {
 pub struct SnippetBlock {
     pub id: NodeId,
     pub span: Span,
-    /// Span covering `name(params)` or just `name` — the full snippet declaration expression.
-    pub expression_span: Span,
+    pub decl: StmtRef,
     pub body: Fragment,
 }
 
 impl SnippetBlock {
     /// Get the snippet name from source text (everything before '(' or the whole expression).
     pub fn name<'a>(&self, source: &'a str) -> &'a str {
-        let expr = &source[self.expression_span.start as usize..self.expression_span.end as usize];
+        let expr = &source[self.decl.span.start as usize..self.decl.span.end as usize];
         match expr.find('(') {
             Some(pos) => &expr[..pos],
             None => expr,
@@ -538,8 +531,7 @@ impl SnippetBlock {
 pub struct RenderTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the full call expression: "greeting(message)" in `{@render greeting(message)}`.
-    pub expression_span: Span,
+    pub expression: ExprRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -549,8 +541,7 @@ pub struct RenderTag {
 pub struct HtmlTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the JS expression: "content" in `{@html content}`.
-    pub expression_span: Span,
+    pub expression: ExprRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -560,8 +551,7 @@ pub struct HtmlTag {
 pub struct ConstTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the full declaration: `const doubled = item * 2` in `{@const doubled = item * 2}`.
-    pub expression_span: Span,
+    pub decl: StmtRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -571,8 +561,7 @@ pub struct ConstTag {
 pub struct DebugTag {
     pub id: NodeId,
     pub span: Span,
-    /// Spans of the identifier names. Empty vec means `{@debug}` (debug all).
-    pub identifiers: Vec<Span>,
+    pub identifier_refs: Vec<ExprRef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -582,8 +571,7 @@ pub struct DebugTag {
 pub struct KeyBlock {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the JS expression: "count" in `{#key count}`.
-    pub expression_span: Span,
+    pub expression: ExprRef,
     pub fragment: Fragment,
 }
 
@@ -614,6 +602,8 @@ pub struct SvelteElement {
     pub span: Span,
     /// Span of the `this` expression (the dynamic tag).
     pub tag_span: Span,
+    /// JS expression (None when `static_tag`).
+    pub tag: Option<ExprRef>,
     /// True when `this="literal"` (StringAttribute) — tag is a static string, not a JS expression.
     pub static_tag: bool,
     pub attributes: Vec<Attribute>,
@@ -671,17 +661,11 @@ pub struct SvelteBoundary {
 pub struct AwaitBlock {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the promise expression.
-    pub expression_span: Span,
-    /// Span of the then binding pattern (e.g., `value` or `{name, age}`). None if no binding.
-    pub value_span: Option<Span>,
-    /// Span of the catch binding pattern (e.g., `error`). None if no binding.
-    pub error_span: Option<Span>,
-    /// Content shown while promise is pending. None if short form.
+    pub expression: ExprRef,
+    pub value: Option<StmtRef>,
+    pub error: Option<StmtRef>,
     pub pending: Option<Fragment>,
-    /// Content shown when promise resolves.
     pub then: Option<Fragment>,
-    /// Content shown when promise rejects.
     pub catch: Option<Fragment>,
 }
 
@@ -804,8 +788,7 @@ pub struct ExpressionAttribute {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of just the JS expression.
-    pub expression_span: Span,
+    pub expression: ExprRef,
     pub shorthand: bool,
     /// Pre-computed event name (after "on" prefix), if this is an event attribute.
     pub event_name: Option<String>,
@@ -833,7 +816,7 @@ pub enum ConcatPart {
     /// Static text portion.
     Static(String),
     /// Dynamic expression portion with its own NodeId to avoid sharing the parent attribute's id.
-    Dynamic { id: NodeId, span: Span },
+    Dynamic { id: NodeId, expr: ExprRef },
 }
 
 /// {...expr} — spread attribute.
@@ -841,7 +824,7 @@ pub enum ConcatPart {
 pub struct SpreadAttribute {
     pub id: NodeId,
     pub span: Span,
-    pub expression_span: Span,
+    pub expression: ExprRef,
 }
 
 #[derive(Clone)]
@@ -849,11 +832,7 @@ pub struct ClassDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of the JS expression. For shorthand (`class:name`) this equals
-    /// the span of `name` — the parser synthesizes `Expression::Identifier`
-    /// for that range so downstream passes have exactly one path regardless
-    /// of shorthand/explicit form.
-    pub expression_span: Span,
+    pub expression: ExprRef,
     pub shorthand: bool,
 }
 
@@ -862,13 +841,7 @@ pub struct StyleDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of the JS expression for `Expression`-valued directives and
-    /// shorthand (`style:name`) where it equals the span of `name`. For
-    /// `String` / `Concatenation` values (e.g. `style:color="red"`) this
-    /// field is still populated but points at the value region — consumers
-    /// should branch on `value` first and ignore `expression_span` for
-    /// non-expression values.
-    pub expression_span: Span,
+    pub expression: ExprRef,
     /// `true` iff the directive has no explicit value (`style:name`).
     pub shorthand: bool,
     pub value: StyleDirectiveValue,
@@ -892,11 +865,7 @@ pub struct BindDirective {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// Span of the JS expression. For shorthand (`bind:name`) this equals
-    /// the span of `name` — the parser synthesizes `Expression::Identifier`
-    /// for that range so downstream passes have exactly one path regardless
-    /// of shorthand/explicit form.
-    pub expression_span: Span,
+    pub expression: ExprRef,
     pub shorthand: bool,
 }
 
@@ -909,8 +878,7 @@ pub struct LetDirectiveLegacy {
     pub name: String,
     /// Span of the slot-prop key in source.
     pub name_span: Span,
-    /// Optional binding expression span from `={...}`.
-    pub expression_span: Option<Span>,
+    pub binding: Option<StmtRef>,
 }
 
 /// use:name or use:name={expr}
@@ -918,10 +886,8 @@ pub struct LetDirectiveLegacy {
 pub struct UseDirective {
     pub id: NodeId,
     pub span: Span,
-    /// Directive name span (e.g., "tooltip" in `use:tooltip`, "a.b" in `use:a.b`).
-    pub name: Span,
-    /// Span of the argument expression. None if no expression (`use:name`).
-    pub expression_span: Option<Span>,
+    pub name_ref: ExprRef,
+    pub expression: Option<ExprRef>,
 }
 
 /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
@@ -933,8 +899,7 @@ pub struct OnDirectiveLegacy {
     pub name: String,
     /// Span of the event name in source (e.g., "click" span in `on:click`).
     pub name_span: Span,
-    /// Span of the JS expression. None if no expression (bubble event).
-    pub expression_span: Option<Span>,
+    pub expression: Option<ExprRef>,
     /// Modifiers like "preventDefault", "stopPropagation", "capture", etc.
     pub modifiers: Vec<String>,
 }
@@ -1019,10 +984,8 @@ pub enum TransitionDirection {
 pub struct TransitionDirective {
     pub id: NodeId,
     pub span: Span,
-    /// Transition function name span (e.g., "fade", "fly", "custom.fn").
-    pub name: Span,
-    /// Span of the argument expression. None if no expression.
-    pub expression_span: Option<Span>,
+    pub name_ref: ExprRef,
+    pub expression: Option<ExprRef>,
     /// Modifiers like "local", "global".
     pub modifiers: Vec<String>,
     /// Whether this is `transition:`, `in:`, or `out:`.
@@ -1034,10 +997,8 @@ pub struct TransitionDirective {
 pub struct AnimateDirective {
     pub id: NodeId,
     pub span: Span,
-    /// Directive name span (e.g., "flip" in `animate:flip`, "custom.fn" in `animate:custom.fn`).
-    pub name: Span,
-    /// Span of the argument expression. None if no expression (`animate:name`).
-    pub expression_span: Option<Span>,
+    pub name_ref: ExprRef,
+    pub expression: Option<ExprRef>,
 }
 
 /// {@attach expr} — element attachment (Svelte 5.29+).
@@ -1046,8 +1007,7 @@ pub struct AnimateDirective {
 pub struct AttachTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the JS expression inside `{@attach expr}`.
-    pub expression_span: Span,
+    pub expression: ExprRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -1208,6 +1168,11 @@ impl AstStore {
 
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
+    }
+
+    /// Iterate every node in store insertion order.
+    pub fn iter_nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.iter()
     }
 }
 

@@ -66,3 +66,25 @@ This project uses Claude Code with a set of specialized commands and agents.
 ```sh
 wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler
 ```
+
+Or `just playground` to build WASM and serve the playground locally.
+
+## Native Node.js bindings (NAPI)
+
+A native addon for Node.js consumers lives in `crates/napi_compiler` and is published as `svelte-rs2` from `packages/`.
+
+- `just npm-smoke` — debug build + local link + smoke test
+- `just npm-build` — release build + tarballs for platform packages
+
+## Quick check against reference compiler
+
+`just quick-check path/to/component.svelte` — compile a single component and diff against `svelte/compiler` output.
+
+## Useful dev commands
+
+- `just test-compiler` — run all compiler integration tests
+- `just test-case <name>` / `just test-case-verbose <name>` — single test case
+- `just test-diagnostics` / `just test-diagnostic-case <name>` — diagnostic parity tests
+- `just clippy-strict` — clippy with `-D warnings`
+- `just generate` — regenerate reference snapshots
+- `just dump-ast '<expr>'` — dump OXC ESTree JSON for a JS expression

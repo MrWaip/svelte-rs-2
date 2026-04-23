@@ -966,6 +966,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick_check"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_span",
+ "pretty_assertions",
+ "serde_json",
+ "svelte_compiler",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1234,6 +1247,7 @@ dependencies = [
 name = "svelte_ast"
 version = "0.1.0"
 dependencies = [
+ "oxc_syntax",
  "svelte_span",
 ]
 
@@ -1269,6 +1283,7 @@ dependencies = [
  "svelte_parser",
  "svelte_span",
  "svelte_transform",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1286,6 +1301,7 @@ dependencies = [
  "svelte_parser",
  "svelte_transform",
  "svelte_transform_css",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1371,6 +1387,7 @@ dependencies = [
  "svelte_component_semantics",
  "svelte_parser",
  "svelte_span",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1381,6 +1398,15 @@ dependencies = [
  "rustc-hash",
  "svelte_css",
  "svelte_span",
+]
+
+[[package]]
+name = "svelte_types"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "svelte_analyze",
+ "svelte_ast",
 ]
 
 [[package]]

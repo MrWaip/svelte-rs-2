@@ -12,12 +12,12 @@ use crate::parse_js::{
     parse_expression_with_alloc, parse_script_with_alloc, parse_slot_let_decl_with_alloc,
     parse_snippet_decl_with_alloc,
 };
-use crate::types::ParserResult;
+use crate::types::JsAst;
 
 pub(crate) fn parse_js<'a>(
     alloc: &'a Allocator,
     component: &Component,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     // Template expressions use TS parsing if either script is TypeScript.
@@ -85,7 +85,7 @@ fn parse_directive_name_span<'a>(
     component: &Component,
     name_span: svelte_span::Span,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let name = component.source_text(name_span);
@@ -137,7 +137,7 @@ fn parse_span<'a>(
     component: &Component,
     span: svelte_span::Span,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let source = component.source_text(span);
@@ -158,7 +158,7 @@ fn parse_binding_pattern<'a>(
     component: &Component,
     span: svelte_span::Span,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     _diags: &mut Vec<Diagnostic>,
 ) {
     let source = component.source_text(span);
@@ -174,7 +174,7 @@ fn walk_fragment<'a>(
     store: &AstStore,
     component: &Component,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for &id in &fragment.nodes {
@@ -189,7 +189,7 @@ fn walk_node<'a>(
     store: &AstStore,
     component: &Component,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     match node {
@@ -197,7 +197,7 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                tag.expression_span,
+                tag.expression.span,
                 typescript,
                 result,
                 diags,
@@ -238,9 +238,20 @@ fn walk_node<'a>(
                 result,
                 diags,
             );
+            for slot in &cn.legacy_slots {
+                walk_fragment(
+                    alloc,
+                    &slot.fragment,
+                    store,
+                    component,
+                    typescript,
+                    result,
+                    diags,
+                );
+            }
         }
         Node::IfBlock(block) => {
-            parse_span(alloc, component, block.test_span, typescript, result, diags);
+            parse_span(alloc, component, block.test.span, typescript, result, diags);
             walk_fragment(
                 alloc,
                 &block.consequent,
@@ -258,17 +269,17 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                block.expression_span,
+                block.expression.span,
                 typescript,
                 result,
                 diags,
             );
-            if let Some(key_span) = block.key_span {
-                parse_span(alloc, component, key_span, typescript, result, diags);
+            if let Some(r) = block.key.as_ref() {
+                parse_span(alloc, component, r.span, typescript, result, diags);
             }
 
-            // Parse context pattern (simple identifier or destructured) — absent for `{#each items}`
-            if let Some(ctx_span) = block.context_span {
+            if let Some(r) = block.context.as_ref() {
+                let ctx_span = r.span;
                 let ctx_text = component.source_text(ctx_span);
                 let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
                 if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
@@ -276,8 +287,8 @@ fn walk_node<'a>(
                 }
             }
 
-            // Parse index variable
-            if let Some(idx_span) = block.index_span {
+            if let Some(r) = block.index.as_ref() {
+                let idx_span = r.span;
                 let idx_text = component.source_text(idx_span);
                 let arena_idx: &'a str = alloc.alloc_str(idx_text);
                 if let Some(stmt) = parse_each_index_with_alloc(alloc, arena_idx) {
@@ -300,10 +311,10 @@ fn walk_node<'a>(
             }
         }
         Node::SnippetBlock(block) => {
-            let expr_text = component.source_text(block.expression_span);
+            let expr_text = component.source_text(block.decl.span);
             let arena_text: &'a str = alloc.alloc_str(expr_text);
             if let Some(stmt) = parse_snippet_decl_with_alloc(alloc, arena_text, typescript) {
-                result.alloc_stmt(block.expression_span.start, stmt);
+                result.alloc_stmt(block.decl.span.start, stmt);
             }
             walk_fragment(
                 alloc,
@@ -319,7 +330,7 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                tag.expression_span,
+                tag.expression.span,
                 typescript,
                 result,
                 diags,
@@ -329,7 +340,7 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                tag.expression_span,
+                tag.expression.span,
                 typescript,
                 result,
                 diags,
@@ -339,7 +350,7 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                block.expression_span,
+                block.expression.span,
                 typescript,
                 result,
                 diags,
@@ -358,14 +369,17 @@ fn walk_node<'a>(
             parse_span(
                 alloc,
                 component,
-                block.expression_span,
+                block.expression.span,
                 typescript,
                 result,
                 diags,
             );
 
-            for binding_span in [block.value_span, block.error_span].into_iter().flatten() {
-                parse_binding_pattern(alloc, component, binding_span, typescript, result, diags);
+            for r in [block.value.as_ref(), block.error.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                parse_binding_pattern(alloc, component, r.span, typescript, result, diags);
             }
 
             if let Some(ref p) = block.pending {
@@ -382,16 +396,16 @@ fn walk_node<'a>(
             // TS type annotations (e.g. `doubled: number = expr`) require statement-level
             // parsing. Wrap as `const SOURCE;` and store the full Statement.
             // Scope building and codegen extract names / init expression from it directly.
-            let source = component.source_text(tag.expression_span);
+            let source = component.source_text(tag.decl.span);
             let arena_source: &'a str = alloc.alloc_str(source);
             match parse_const_declaration_with_alloc(
                 alloc,
                 arena_source,
-                tag.expression_span.start,
+                tag.decl.span.start,
                 typescript,
             ) {
                 Ok(stmt) => {
-                    result.alloc_stmt(tag.expression_span.start, stmt);
+                    result.alloc_stmt(tag.decl.span.start, stmt);
                 }
                 Err(diag) => diags.push(diag),
             }
@@ -456,8 +470,8 @@ fn walk_node<'a>(
             );
         }
         Node::DebugTag(tag) => {
-            for span in &tag.identifiers {
-                parse_span(alloc, component, *span, typescript, result, diags);
+            for r in &tag.identifier_refs {
+                parse_span(alloc, component, r.span, typescript, result, diags);
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
@@ -470,7 +484,7 @@ fn walk_attrs<'a>(
     attrs: &[Attribute],
     component: &Component,
     typescript: bool,
-    result: &mut ParserResult<'a>,
+    result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {
@@ -479,7 +493,7 @@ fn walk_attrs<'a>(
                 parse_span(
                     alloc,
                     component,
-                    a.expression_span,
+                    a.expression.span,
                     typescript,
                     result,
                     diags,
@@ -487,19 +501,16 @@ fn walk_attrs<'a>(
             }
             Attribute::ConcatenationAttribute(a) => {
                 for part in &a.parts {
-                    if let ConcatPart::Dynamic { span, .. } = part {
-                        parse_span(alloc, component, *span, typescript, result, diags);
+                    if let ConcatPart::Dynamic { expr, .. } = part {
+                        parse_span(alloc, component, expr.span, typescript, result, diags);
                     }
                 }
             }
             Attribute::ClassDirective(a) => {
-                // Shorthand `class:name` has expression_span = span of `name`,
-                // so parse_span synthesizes the `Expression::Identifier` just
-                // like for the explicit `class:name={expr}` form.
                 parse_span(
                     alloc,
                     component,
-                    a.expression_span,
+                    a.expression.span,
                     typescript,
                     result,
                     diags,
@@ -512,7 +523,7 @@ fn walk_attrs<'a>(
                         parse_span(
                             alloc,
                             component,
-                            a.expression_span,
+                            a.expression.span,
                             typescript,
                             result,
                             diags,
@@ -520,8 +531,8 @@ fn walk_attrs<'a>(
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
-                            if let ConcatPart::Dynamic { span, .. } = part {
-                                parse_span(alloc, component, *span, typescript, result, diags);
+                            if let ConcatPart::Dynamic { expr, .. } = part {
+                                parse_span(alloc, component, expr.span, typescript, result, diags);
                             }
                         }
                     }
@@ -529,18 +540,17 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::BindDirective(a) => {
-                // Shorthand `bind:name` has expression_span = span of `name`.
                 parse_span(
                     alloc,
                     component,
-                    a.expression_span,
+                    a.expression.span,
                     typescript,
                     result,
                     diags,
                 );
             }
             Attribute::LetDirectiveLegacy(a) => {
-                let pattern_span = a.expression_span.unwrap_or(a.name_span);
+                let pattern_span = a.binding.as_ref().map(|r| r.span).unwrap_or(a.name_span);
                 let pattern_source = component.source_text(pattern_span);
                 match parse_slot_let_decl_with_alloc(
                     alloc,
@@ -559,44 +569,49 @@ fn walk_attrs<'a>(
                 parse_span(
                     alloc,
                     component,
-                    a.expression_span,
+                    a.expression.span,
                     typescript,
                     result,
                     diags,
                 );
             }
             Attribute::UseDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
+                if let Some(r) = a.expression.as_ref() {
+                    parse_span(alloc, component, r.span, typescript, result, diags);
                 }
-                // Use dedicated helper: directive names may contain hyphens (e.g. `tooltip-extra`)
-                // which are not valid JS identifiers and require bracket notation.
-                parse_directive_name_span(alloc, component, a.name, typescript, result, diags);
+                parse_directive_name_span(
+                    alloc,
+                    component,
+                    a.name_ref.span,
+                    typescript,
+                    result,
+                    diags,
+                );
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
             // LEGACY(svelte4): on:directive — parse expression if present
             Attribute::OnDirectiveLegacy(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
+                if let Some(r) = a.expression.as_ref() {
+                    parse_span(alloc, component, r.span, typescript, result, diags);
                 }
             }
             Attribute::TransitionDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
+                if let Some(r) = a.expression.as_ref() {
+                    parse_span(alloc, component, r.span, typescript, result, diags);
                 }
-                parse_span(alloc, component, a.name, typescript, result, diags);
+                parse_span(alloc, component, a.name_ref.span, typescript, result, diags);
             }
             Attribute::AnimateDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    parse_span(alloc, component, span, typescript, result, diags);
+                if let Some(r) = a.expression.as_ref() {
+                    parse_span(alloc, component, r.span, typescript, result, diags);
                 }
-                parse_span(alloc, component, a.name, typescript, result, diags);
+                parse_span(alloc, component, a.name_ref.span, typescript, result, diags);
             }
             Attribute::AttachTag(a) => {
                 parse_span(
                     alloc,
                     component,
-                    a.expression_span,
+                    a.expression.span,
                     typescript,
                     result,
                     diags,

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fix Simplify"
-  short_description: "Implement a selected simplification fix"
-  default_prompt: "Use $fix-simplify to apply the selected simplification finding without changing behavior."

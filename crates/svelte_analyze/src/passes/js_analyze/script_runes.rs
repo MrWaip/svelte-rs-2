@@ -3,12 +3,9 @@ use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 
-use crate::types::data::{AnalysisData, ParserResult};
+use crate::types::data::{AnalysisData, JsAst};
 
-pub(crate) fn collect_script_rune_call_kinds(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData<'_>,
-) {
+pub(crate) fn collect_script_rune_call_kinds(parsed: &JsAst<'_>, data: &mut AnalysisData<'_>) {
     struct Collector<'d, 'a> {
         data: &'d mut AnalysisData<'a>,
         node_id_offset: u32,
