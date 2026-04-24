@@ -77,7 +77,8 @@ impl ElementAnalysis {
 pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
     pub rich_content_facts: RichContentFacts,
-    pub fragments: FragmentData,
+    pub(crate) lowered_fragments: FxHashMap<FragmentKey, Vec<NodeId>>,
+    pub(crate) fragment_blockers: FxHashMap<FragmentKey, SmallVec<[u32; 2]>>,
     pub snippets: SnippetData,
     pub const_tags: ConstTagData,
     pub debug_tags: DebugTagData,
@@ -90,10 +91,15 @@ pub struct TemplateAnalysis {
 
 impl TemplateAnalysis {
     fn new(node_count: u32) -> Self {
+        let estimated_fragments = node_count as usize / 3;
         Self {
             fragment_facts: FragmentFacts::new(),
             rich_content_facts: RichContentFacts::new(),
-            fragments: FragmentData::with_capacity(node_count as usize / 3),
+            lowered_fragments: FxHashMap::with_capacity_and_hasher(
+                estimated_fragments,
+                Default::default(),
+            ),
+            fragment_blockers: FxHashMap::default(),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
@@ -103,6 +109,16 @@ impl TemplateAnalysis {
             template_semantics: TemplateSemanticsData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
         }
+    }
+
+    pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&[NodeId]> {
+        self.lowered_fragments.get(key).map(|v| v.as_slice())
+    }
+
+    pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
+        self.fragment_blockers
+            .get(key)
+            .map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -807,93 +823,113 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn fragment_references_any_symbol(
         &self,
+        store: &svelte_ast::AstStore,
         key: &FragmentKey,
         syms: &FxHashSet<SymbolId>,
     ) -> bool {
         if syms.is_empty() {
             return false;
         }
-        let Some(fragment) = self.template.fragments.lowered(key) else {
+        let Some(fragment) = self.template.lowered_fragment(key) else {
             return false;
         };
-        for item in &fragment.items {
-            match item {
-                FragmentItem::TextConcat { parts, .. } => {
-                    for part in parts {
-                        if let LoweredTextPart::Expr(id) = part {
-                            if self.expressions.get(*id).is_some_and(|info| {
-                                info.ref_symbols().iter().any(|s| syms.contains(s))
-                            }) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                FragmentItem::Element(el_id)
-                | FragmentItem::SlotElementLegacy(el_id)
-                | FragmentItem::SvelteFragmentLegacy(el_id) => {
-                    if self.fragment_references_any_symbol(&FragmentKey::Element(*el_id), syms) {
+        for &id in fragment {
+            match store.get(id) {
+                svelte_ast::Node::ExpressionTag(_) => {
+                    if self.node_expr_references_syms(id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::IfBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms)
-                    {
+                svelte_ast::Node::Element(_)
+                | svelte_ast::Node::SlotElementLegacy(_)
+                | svelte_ast::Node::SvelteFragmentLegacy(_) => {
+                    if self.fragment_references_any_symbol(store, &FragmentKey::Element(id), syms) {
                         return true;
                     }
                 }
-                FragmentItem::EachBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::EachBody(*id), syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms)
-                    {
-                        return true;
-                    }
-                }
-                FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) => {
-                    if self.node_expr_references_syms(*id, syms) {
-                        return true;
-                    }
-                }
-                FragmentItem::KeyBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms)
-                        || self
-                            .fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms)
-                    {
-                        return true;
-                    }
-                }
-                FragmentItem::SvelteElement(id) => {
-                    if self.node_expr_references_syms(*id, syms)
+                svelte_ast::Node::IfBlock(_) => {
+                    if self.node_expr_references_syms(id, syms)
                         || self.fragment_references_any_symbol(
-                            &FragmentKey::SvelteElementBody(*id),
+                            store,
+                            &FragmentKey::IfConsequent(id),
+                            syms,
+                        )
+                        || self.fragment_references_any_symbol(
+                            store,
+                            &FragmentKey::IfAlternate(id),
                             syms,
                         )
                     {
                         return true;
                     }
                 }
-                FragmentItem::SvelteBoundary(id) => {
-                    if self
-                        .fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms)
+                svelte_ast::Node::EachBlock(_) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(
+                            store,
+                            &FragmentKey::EachBody(id),
+                            syms,
+                        )
+                        || self.fragment_references_any_symbol(
+                            store,
+                            &FragmentKey::EachFallback(id),
+                            syms,
+                        )
                     {
                         return true;
                     }
                 }
-                FragmentItem::ComponentNode(id) => {
-                    if self.fragment_references_any_symbol(&FragmentKey::ComponentNode(*id), syms) {
+                svelte_ast::Node::RenderTag(_) | svelte_ast::Node::HtmlTag(_) => {
+                    if self.node_expr_references_syms(id, syms) {
                         return true;
                     }
                 }
-                FragmentItem::AwaitBlock(id) => {
-                    if self.node_expr_references_syms(*id, syms) {
+                svelte_ast::Node::KeyBlock(_) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(
+                            store,
+                            &FragmentKey::KeyBlockBody(id),
+                            syms,
+                        )
+                    {
                         return true;
                     }
                 }
+                svelte_ast::Node::SvelteElement(_) => {
+                    if self.node_expr_references_syms(id, syms)
+                        || self.fragment_references_any_symbol(
+                            store,
+                            &FragmentKey::SvelteElementBody(id),
+                            syms,
+                        )
+                    {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::SvelteBoundary(_) => {
+                    if self.fragment_references_any_symbol(
+                        store,
+                        &FragmentKey::SvelteBoundaryBody(id),
+                        syms,
+                    ) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::ComponentNode(_) => {
+                    if self.fragment_references_any_symbol(
+                        store,
+                        &FragmentKey::ComponentNode(id),
+                        syms,
+                    ) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::AwaitBlock(_) => {
+                    if self.node_expr_references_syms(id, syms) {
+                        return true;
+                    }
+                }
+                _ => {}
             }
         }
         false

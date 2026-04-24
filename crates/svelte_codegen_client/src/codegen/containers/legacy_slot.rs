@@ -187,9 +187,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
     ) -> Result<Expression<'a>> {
         let key = svelte_analyze::FragmentKey::Element(el_id);
-        if matches!(
-            self.ctx.content_type(&key),
-            svelte_analyze::ContentStrategy::Empty
+        if super::super::fragment::prepare::fragment_is_effectively_empty(
+            &key,
+            self.ctx.query.component,
+            parent_ctx,
         ) {
             return Ok(self.ctx.b.null_expr());
         }

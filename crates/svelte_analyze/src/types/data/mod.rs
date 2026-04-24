@@ -57,10 +57,7 @@ pub use elements::{
 };
 pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
-pub use fragments::{
-    ContentStrategy, FragmentData, FragmentItem, FragmentKey, FragmentKeyExt, LoweredFragment,
-    LoweredTextPart,
-};
+pub use fragments::{FragmentKey, FragmentKeyExt};
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;
