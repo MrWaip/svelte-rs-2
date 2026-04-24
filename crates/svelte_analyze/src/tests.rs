@@ -12,28 +12,6 @@ use svelte_span::Span;
 
 use super::*;
 
-fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&key)
-        .unwrap_or_else(|| panic!("no content strategy for {:?}", key));
-    let actual_variant = match actual {
-        ContentStrategy::Empty => "Empty",
-        ContentStrategy::Static(_) => "Static",
-        ContentStrategy::SingleElement(_) => "SingleElement",
-        ContentStrategy::SingleBlock(_) => "SingleBlock",
-        ContentStrategy::DynamicText => "DynamicText",
-        ContentStrategy::Mixed { .. } => "Mixed",
-    };
-    assert_eq!(
-        actual_variant, variant,
-        "expected {:?} to be {}",
-        key, variant
-    );
-}
-
 // -----------------------------------------------------------------------
 // Finders — identify nodes by source text (span-based)
 // -----------------------------------------------------------------------
@@ -731,16 +709,6 @@ fn analyze_source_with_diags(
     (component, data, diags)
 }
 
-fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::Root)
-        .expect("no root content type");
-    assert_eq!(*actual, expected);
-}
-
 fn assert_symbol(data: &AnalysisData, name: &str) {
     let root = data.scoping.root_scope_id();
     assert!(
@@ -1001,23 +969,6 @@ fn assert_shorthand_symbol_name(
     );
 }
 
-fn assert_element_content_type(
-    data: &AnalysisData,
-    component: &Component,
-    tag_name: &str,
-    expected: ContentStrategy,
-) {
-    let el = find_element(&component.fragment, component, tag_name)
-        .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::Element(el.id))
-        .unwrap_or_else(|| panic!("no content type for <{tag_name}>"));
-    assert_eq!(*actual, expected);
-}
-
 fn assert_element_needs_ref(
     data: &AnalysisData,
     component: &Component,
@@ -1079,47 +1030,15 @@ fn assert_has_dynamic_class_directives(
     );
 }
 
-fn assert_consequent_content_type(
-    data: &AnalysisData,
-    component: &Component,
-    test_text: &str,
-    expected: ContentStrategy,
-) {
-    let block = find_if_block(&component.fragment, component, test_text)
-        .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-    let actual = data
-        .template
-        .fragments
-        .content_types
-        .get(&FragmentKey::IfConsequent(block.id))
-        .unwrap_or_else(|| panic!("no consequent content type for IfBlock '{test_text}'"));
-    assert_eq!(*actual, expected);
-}
-
 fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
     let lf = data
         .template
-        .fragments
-        .lowered
-        .get(&key)
+        .lowered_fragment(&key)
         .unwrap_or_else(|| panic!("no lowered fragment for {:?}", key));
     assert_eq!(
-        lf.items.len(),
+        lf.len(),
         expected_count,
         "expected {expected_count} items in lowered fragment"
-    );
-}
-
-fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
-    let lf = data
-        .template
-        .fragments
-        .lowered
-        .get(&key)
-        .expect("no lowered fragment");
-    assert!(
-        matches!(lf.items.get(index), Some(FragmentItem::TextConcat { .. })),
-        "expected item[{index}] to be TextConcat",
     );
 }
 
@@ -1332,43 +1251,6 @@ fn assert_expr_tag_async_query(
 // -----------------------------------------------------------------------
 
 #[test]
-fn empty_component() {
-    let (_c, data) = analyze_source("");
-    assert_root_content_type(&data, ContentStrategy::Empty);
-}
-
-#[test]
-fn static_text_content() {
-    let (_c, data) = analyze_source("Hello world");
-    assert_root_content_type(&data, ContentStrategy::Static("Hello world".to_string()));
-}
-
-#[test]
-fn single_element() {
-    let (_c, data) = analyze_source("<div></div>");
-    assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
-}
-
-#[test]
-fn mixed_content() {
-    let (_c, data) = analyze_source("<div></div><span></span>");
-    assert_root_content_type(
-        &data,
-        ContentStrategy::Mixed {
-            has_elements: true,
-            has_blocks: false,
-            has_text: false,
-        },
-    );
-}
-
-#[test]
-fn dynamic_text_content() {
-    let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_root_content_type(&data, ContentStrategy::DynamicText);
-}
-
-#[test]
 fn dynamic_expr_inside_svelte_element() {
     let (c, data) = analyze_source(
         r#"<script>let { name } = $props();</script><svelte:element this="div">{name}</svelte:element>"#,
@@ -1381,13 +1263,6 @@ fn no_rune_no_dynamic() {
     let (c, data) = analyze_source(r#"<script>let count = 0;</script>{count}"#);
     assert_symbol(&data, "count");
     assert_not_dynamic_tag(&data, &c, "count");
-}
-
-#[test]
-fn lowered_fragment_groups_text_and_expr() {
-    let (_c, data) = analyze_source(r#"<script>let x = $state(1);</script>Hello {x} world"#);
-    assert_lowered_item_count(&data, FragmentKey::Root, 1);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 0);
 }
 
 #[test]
@@ -1438,36 +1313,10 @@ fn component_prop_binding_uses_props_access_ref() {
 // — new tests —
 
 #[test]
-fn whitespace_only_text_trimmed_at_boundaries() {
-    // Leading and trailing whitespace-only text should not appear as items.
-    let (_c, data) = analyze_source("\n  <div></div>\n  ");
-    assert_lowered_item_count(&data, FragmentKey::Root, 1);
-    assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
-}
-
-#[test]
-fn multiple_lowered_groups() {
-    // ExprTag, then Element, then ExprTag → three separate items.
-    let (_c, data) = analyze_source("{a} <div></div> {b}");
-    assert_lowered_item_count(&data, FragmentKey::Root, 3);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 0);
-    assert_item_is_text_concat(&data, FragmentKey::Root, 2);
-    assert_root_content_type(
-        &data,
-        ContentStrategy::Mixed {
-            has_elements: true,
-            has_blocks: false,
-            has_text: true,
-        },
-    );
-}
-
-#[test]
 fn nested_dynamic_tag_in_element() {
     let (c, data) =
         analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
     assert_dynamic_tag(&data, &c, "count");
-    assert_element_content_type(&data, &c, "div", ContentStrategy::DynamicText);
 }
 
 #[test]
@@ -1477,16 +1326,6 @@ fn each_block_dynamic() {
     );
     assert_symbol(&data, "items");
     assert_dynamic_each(&data, &c, "items");
-}
-
-#[test]
-fn if_block_alternate_content_type() {
-    let (c, data) = analyze_source("{#if x}Hello{:else}<span></span>{/if}");
-    assert_consequent_content_type(&data, &c, "x", ContentStrategy::Static("Hello".to_string()));
-    let if_id = find_if_block(&c.fragment, &c, "x")
-        .expect("test invariant")
-        .id;
-    assert_content_strategy_variant(&data, FragmentKey::IfAlternate(if_id), "SingleElement");
 }
 
 #[test]
@@ -2953,7 +2792,6 @@ let b = await fetch('/b');
         .unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
         data.template
-            .fragments
             .fragment_blockers(&FragmentKey::Element(paragraph.id)),
         &[0, 1]
     );
@@ -3044,13 +2882,9 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
 
     let default_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::ComponentNode(component_id))
+        .lowered_fragment(&FragmentKey::ComponentNode(component_id))
         .unwrap_or_else(|| panic!("no lowered default fragment"));
-    assert!(matches!(
-        default_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == default_child.id
-    ));
+    assert_eq!(default_fragment, &[default_child.id]);
 
     let named_slots = data.template.snippets.component_named_slots(component_id);
     assert_eq!(named_slots.len(), 1);
@@ -3063,13 +2897,9 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
 
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .lowered_fragment(&slot_key)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == slotted_child.id
-    ));
+    assert_eq!(slot_fragment, &[slotted_child.id]);
 }
 
 #[test]
@@ -3088,13 +2918,9 @@ fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
 
     let root_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::Root)
+        .lowered_fragment(&FragmentKey::Root)
         .unwrap_or_else(|| panic!("no lowered root fragment"));
-    assert!(matches!(
-        root_fragment.items.as_slice(),
-        [FragmentItem::SlotElementLegacy(id)] if *id == slot_id
-    ));
+    assert_eq!(root_fragment, &[slot_id]);
 }
 
 #[test]
@@ -3198,13 +3024,9 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
 
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .lowered_fragment(&slot_key)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::Element(id)] if *id == wrapped_child_id
-    ));
+    assert_eq!(slot_fragment, &[wrapped_child_id]);
 }
 
 #[test]
@@ -3232,10 +3054,9 @@ fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
 
     let default_fragment = data
         .template
-        .fragments
-        .lowered(&FragmentKey::ComponentNode(outer_id))
+        .lowered_fragment(&FragmentKey::ComponentNode(outer_id))
         .unwrap_or_else(|| panic!("no lowered default fragment"));
-    assert!(default_fragment.items.is_empty());
+    assert!(default_fragment.is_empty());
 
     let named_slots = data.template.snippets.component_named_slots(outer_id);
     assert_eq!(named_slots.len(), 1);
@@ -3245,13 +3066,9 @@ fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
 
     let slot_fragment = data
         .template
-        .fragments
-        .lowered(&slot_key)
+        .lowered_fragment(&slot_key)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert!(matches!(
-        slot_fragment.items.as_slice(),
-        [FragmentItem::ComponentNode(id)] if *id == inner_id
-    ));
+    assert_eq!(slot_fragment, &[inner_id]);
 }
 
 #[test]
@@ -5081,22 +4898,15 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
         .unwrap_or_else(|| panic!("expected div element"));
     let lowered = data
         .template
-        .fragments
-        .lowered
-        .get(&FragmentKey::Element(div.id))
+        .lowered_fragment(&FragmentKey::Element(div.id))
         .unwrap_or_else(|| panic!("expected lowered fragment"));
-    let text = lowered
-        .items
+    let rendered: String = lowered
         .iter()
-        .find_map(|item| match item {
-            FragmentItem::TextConcat { parts, .. } => Some(parts),
+        .filter_map(|id| match component.store.get(*id) {
+            Node::Text(t) => Some(t.value(&component.source)),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("expected preserved text concat"));
-    let rendered = text
-        .iter()
-        .filter_map(|part| part.text_value(&component.source))
-        .collect::<String>();
+        .collect();
 
     assert!(rendered.contains("\n\thello\n\t"));
     assert!(data.script.preserve_whitespace);

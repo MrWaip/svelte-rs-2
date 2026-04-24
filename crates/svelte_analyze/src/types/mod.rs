@@ -7,12 +7,12 @@ pub use data::{
     AnalysisData, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
     BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData, ContentEditableKind,
-    ContentStrategy, DebugTagData, DocumentBindKind, EachContextIndex, ElementAnalysis,
-    ElementFlags, ElementSizeKind, EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
-    ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey,
-    IgnoreData, ImageNaturalSizeKind, LoweredFragment, LoweredTextPart, MediaBindKind,
-    OutputPlanData, ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
-    TemplateSemanticsData, TitleElementData, WindowBindKind,
+    DebugTagData, DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFlags,
+    ElementSizeKind, EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
+    ExpressionKind, FragmentFacts, FragmentFactsEntry, FragmentKey, IgnoreData,
+    ImageNaturalSizeKind, MediaBindKind, OutputPlanData, ResizeObserverKind, RuntimePlan,
+    ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData, TitleElementData,
+    WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{

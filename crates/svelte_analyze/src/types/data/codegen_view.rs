@@ -208,24 +208,19 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
-    pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
-        self.data.template.fragments.lowered(key)
+    pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&[NodeId]> {
+        self.data.template.lowered_fragment(key)
     }
     pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
-        self.data.template.fragments.fragment_blockers(key)
+        self.data.template.fragment_blockers(key)
     }
     pub fn fragment_references_any_symbol(
         &self,
+        store: &svelte_ast::AstStore,
         key: &FragmentKey,
         syms: &FxHashSet<SymbolId>,
     ) -> bool {
-        self.data.fragment_references_any_symbol(key, syms)
-    }
-    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.data.template.fragments.content_type(key)
-    }
-    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
-        self.data.template.fragments.has_dynamic_children(key)
+        self.data.fragment_references_any_symbol(store, key, syms)
     }
     pub fn string_attribute<'b>(
         &self,

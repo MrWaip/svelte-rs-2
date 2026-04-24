@@ -5,9 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
-    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, ContentStrategy,
-    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, ParserResult,
-    RuntimePlan,
+    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, EventHandlerMode, ExprDeps,
+    ExprSite, ExpressionInfo, FragmentKey, IdentGen, ParserResult, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -320,10 +319,6 @@ impl<'a> Ctx<'a> {
         result
     }
 
-    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.query.view.content_type(key)
-    }
-
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.query.view.has_spread(id)
     }
@@ -464,7 +459,9 @@ impl<'a> Ctx<'a> {
         key: &FragmentKey,
         syms: &rustc_hash::FxHashSet<SymbolId>,
     ) -> bool {
-        self.query.view.fragment_references_any_symbol(key, syms)
+        self.query
+            .view
+            .fragment_references_any_symbol(&self.query.component.store, key, syms)
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {

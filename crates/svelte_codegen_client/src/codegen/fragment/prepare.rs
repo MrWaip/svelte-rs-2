@@ -157,6 +157,69 @@ pub(crate) fn resolve_fragment<'a>(
     }
 }
 
+pub(crate) fn fragment_is_effectively_empty<'a>(
+    key: &FragmentKey,
+    component: &'a Component,
+    ctx: &FragmentCtx<'a>,
+) -> bool {
+    let Some(fragment) = resolve_fragment(key, component) else {
+        // `resolve_fragment` does not handle a `NamedSlot` wrapped by a
+        // ComponentNode (e.g. `<Inner slot="footer" />`). The slot body is
+        // the ComponentNode itself, so the slot is never empty.
+        return !matches!(key, FragmentKey::NamedSlot(_, _));
+    };
+    let store = &component.store;
+    let exclude_slotted = matches!(key, FragmentKey::ComponentNode(_));
+    let mut filtered: SmallVec<[&Node; 8]> = SmallVec::with_capacity(fragment.nodes.len());
+    for &id in &fragment.nodes {
+        let node = store.get(id);
+        if !matches!(hoisted_kind(node, ctx.inside_head), HoistedKind::NotHoisted) {
+            continue;
+        }
+        if exclude_slotted && node_has_slot_attribute(node) {
+            continue;
+        }
+        filtered.push(node);
+    }
+
+    let preserve = ctx.preserve_whitespace || ctx.is_pre || ctx.is_textarea;
+    if preserve {
+        let mut end = filtered.len();
+        while end > 0 {
+            if let Node::Text(t) = filtered[end - 1] {
+                if is_ws_only(t.value(ctx.source)) {
+                    end -= 1;
+                    continue;
+                }
+            }
+            break;
+        }
+        end == 0
+    } else {
+        let mut start = 0;
+        while start < filtered.len() {
+            if let Node::Text(t) = filtered[start] {
+                if is_ws_only(t.value(ctx.source)) {
+                    start += 1;
+                    continue;
+                }
+            }
+            break;
+        }
+        let mut end = filtered.len();
+        while end > start {
+            if let Node::Text(t) = filtered[end - 1] {
+                if is_ws_only(t.value(ctx.source)) {
+                    end -= 1;
+                    continue;
+                }
+            }
+            break;
+        }
+        start >= end
+    }
+}
+
 pub(crate) fn prepare<'a>(
     raw: &[NodeId],
     store: &'a AstStore,
@@ -371,6 +434,19 @@ enum HoistedKind {
     TitleInsideHead,
     Comment,
     Error,
+}
+
+fn node_has_slot_attribute(node: &Node) -> bool {
+    use svelte_ast::Attribute;
+    let attrs: &[Attribute] = match node {
+        Node::Element(el) => &el.attributes,
+        Node::SvelteFragmentLegacy(el) => &el.attributes,
+        Node::ComponentNode(cn) => &cn.attributes,
+        _ => return false,
+    };
+    attrs
+        .iter()
+        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"))
 }
 
 fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {

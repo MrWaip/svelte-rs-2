@@ -3,7 +3,10 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::{validate, walker, AnalysisData, AnalyzeOptions, ParserResult};
 
-use super::{bundles, content_types, finalize_component_name, js_analyze, lower, post_resolve};
+use super::{
+    bundles, const_tag_fragments, finalize_component_name, fragment_topology, html_tag_ns_flags,
+    js_analyze, post_resolve,
+};
 
 fn run_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -184,7 +187,7 @@ pub(crate) fn execute_pass<'a>(
             }
         }
         super::PassKey::CollectConstTagFragments => {
-            lower::collect_const_tag_fragments(component, data);
+            const_tag_fragments::collect(component, data);
         }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);
@@ -199,8 +202,11 @@ pub(crate) fn execute_pass<'a>(
                 component.node_count(),
             );
         }
-        super::PassKey::LowerTemplate => {
-            lower::lower(component, data);
+        super::PassKey::BuildFragmentTopology => {
+            fragment_topology::build(component, data);
+        }
+        super::PassKey::CollectHtmlTagNsFlags => {
+            html_tag_ns_flags::collect(component, data);
         }
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
@@ -229,9 +235,6 @@ pub(crate) fn execute_pass<'a>(
                 &mut visitors,
             );
             bundle.finish(data);
-        }
-        super::PassKey::ClassifyRemainingFragments => {
-            content_types::classify_remaining_fragments(data, source);
         }
         super::PassKey::ValidateTemplate => {
             let mut bundle = bundles::TemplateValidationBundle::new();

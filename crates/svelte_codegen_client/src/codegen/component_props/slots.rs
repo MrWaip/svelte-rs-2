@@ -107,8 +107,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         parent_ctx: &FragmentCtx<'a>,
         key: FragmentKey,
     ) -> Result<Option<Expression<'a>>> {
-        let ct = self.ctx.content_type(&key);
-        if matches!(ct, svelte_analyze::ContentStrategy::Empty) {
+        if super::super::fragment::prepare::fragment_is_effectively_empty(
+            &key,
+            self.ctx.query.component,
+            parent_ctx,
+        ) {
             return Ok(None);
         }
 
@@ -137,8 +140,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         key: FragmentKey,
     ) -> Result<Option<Expression<'a>>> {
-        let ct = self.ctx.content_type(&key);
-        if matches!(ct, svelte_analyze::ContentStrategy::Empty) {
+        if super::super::fragment::prepare::fragment_is_effectively_empty(
+            &key,
+            self.ctx.query.component,
+            parent_ctx,
+        ) {
             return Ok(None);
         }
 

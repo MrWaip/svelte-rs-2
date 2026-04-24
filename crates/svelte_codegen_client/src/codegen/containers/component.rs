@@ -49,8 +49,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             slot_entries.push(ObjProp::KeyValue(key, self.ctx.b.bool_expr(true)));
         }
         for (slot_el_id, frag_key) in named_slots {
-            let slot_ct = self.ctx.content_type(&frag_key);
-            if matches!(slot_ct, svelte_analyze::ContentStrategy::Empty) {
+            if super::super::fragment::prepare::fragment_is_effectively_empty(
+                &frag_key,
+                self.ctx.query.component,
+                ctx,
+            ) {
                 continue;
             }
             let slot_name = self.slot_name_of(slot_el_id)?;
