@@ -1179,6 +1179,11 @@ mod props {
         validate_props_typed_children_snippet_no_diagnostic,
         "props/validate_props_typed_children_snippet_no_diagnostic"
     );
+    diagnostic_case!(
+        validate_export_let_unused,
+        "props/validate_export_let_unused",
+        ignore = "missing: legacy export_let_unused warning for unused legacy props (analyze, quick fix)"
+    );
 }
 
 mod runes {
