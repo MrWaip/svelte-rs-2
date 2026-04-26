@@ -111,6 +111,36 @@ pub fn generate<'a>(
         ));
     }
 
+    // LEGACY(svelte4): emit `const $$sanitized_props = $.legacy_rest_props($$props, [reserved keys])`
+    // and (if `$$restProps` is read) `const $$restProps = $.legacy_rest_props($$sanitized_props, [named keys])`.
+    if ctx.query.needs_sanitized_legacy_props() {
+        let sanitized_excluded: Vec<Arg<'_, '_>> = ["children", "$$slots", "$$events", "$$legacy"]
+            .iter()
+            .map(|s| Arg::Str(s.to_string()))
+            .collect();
+        let arr = ctx.b.array_from_args(sanitized_excluded);
+        fn_body.push(ctx.b.const_stmt(
+            "$$sanitized_props",
+            ctx.b.call_expr(
+                "$.legacy_rest_props",
+                [Arg::Ident("$$props"), Arg::Expr(arr)],
+            ),
+        ));
+    }
+    if ctx.query.needs_legacy_rest_props() {
+        let keys = ctx.query.legacy_bindable_prop_keys();
+        let arr = ctx
+            .b
+            .array_from_args(keys.into_iter().map(Arg::Str).collect::<Vec<_>>());
+        fn_body.push(ctx.b.const_stmt(
+            "$$restProps",
+            ctx.b.call_expr(
+                "$.legacy_rest_props",
+                [Arg::Ident("$$sanitized_props"), Arg::Expr(arr)],
+            ),
+        ));
+    }
+
     if ctx.state.dev {
         fn_body.push(
             ctx.b.expr_stmt(
@@ -256,8 +286,20 @@ pub fn generate<'a>(
         ));
     }
 
-    if !ctx.query.runes() && ctx.query.immutable() {
-        fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]));
+    // LEGACY(svelte4): emit `$.init()` only for the immutable / member-mutated /
+    // $$props/$$restProps codepath; accessors path uses `$$exports` getter/setter
+    // and does not need init. Reference compiler emits `$.init(true)` only when
+    // `analysis.immutable`, `$.init()` for the other gates, and nothing at all
+    // for accessors-only.
+    if !ctx.query.runes()
+        && runtime.needs_push
+        && (ctx.query.immutable() || runtime.has_legacy_runtime_init)
+    {
+        if ctx.query.immutable() {
+            fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]));
+        } else {
+            fn_body.push(ctx.b.call_stmt("$.init", std::iter::empty::<Arg<'_, '_>>()));
+        }
     }
 
     fn_body.extend(template_body);

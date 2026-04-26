@@ -24,6 +24,9 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub events: Vec<EventRaw>,
     pub svelte_component_this: Option<Expression<'a>>,
     pub memo_decls: Vec<Statement<'a>>,
+    /// LEGACY(svelte4): true when the component had at least one `bind:foo` directive.
+    /// Drives the `$$legacy: true` marker added to the props object in legacy mode.
+    pub has_bind_directive: bool,
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -45,6 +48,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             events: Vec::new(),
             svelte_component_this: None,
             memo_decls: Vec::new(),
+            has_bind_directive: false,
         };
         let mut memo_counter: u32 = 0;
 
@@ -108,6 +112,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     ..
                 } => {
                     self.emit_component_prop_bind(el_id, &name, mode, expr_name, &mut out.items)?;
+                    out.has_bind_directive = true;
                 }
                 ComponentPropKind::BindThis { bind_id, .. } => {
                     out.bind_this = Some(bind_id);

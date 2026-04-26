@@ -6,6 +6,13 @@ use oxc_ast::{AstBuilder, NONE};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 
+/// Build a plain identifier expression for the given name.
+/// Used by legacy `$$props` / `$$restProps` rewrites that swap one identifier for another.
+pub fn make_ident<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    ast.expression_identifier(SPAN, ast.atom(name))
+}
+
 /// Build `$.get(name)` call expression.
 pub fn make_rune_get<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
     let ast = AstBuilder::new(alloc);

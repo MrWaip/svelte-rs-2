@@ -47,6 +47,37 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_sanitized_legacy_slots(&self) -> bool {
         self.data.output.needs_sanitized_legacy_slots
     }
+    /// LEGACY(svelte4): consumer should emit `const $$sanitized_props = $.legacy_rest_props($$props, [...])`.
+    pub fn needs_sanitized_legacy_props(&self) -> bool {
+        self.data.output.needs_sanitized_legacy_props
+    }
+    /// LEGACY(svelte4): consumer should emit `const $$restProps = $.legacy_rest_props($$sanitized_props, [...])`.
+    pub fn needs_legacy_rest_props(&self) -> bool {
+        self.data.output.needs_legacy_rest_props
+    }
+    /// LEGACY(svelte4): collect prop keys (alias or local name) of every LegacyBindableProp
+    /// for use in `$.legacy_rest_props($$sanitized_props, [...])` exclusion list.
+    pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
+        let Some(scope_id) = self.data.scoping.instance_scope_id() else {
+            return Vec::new();
+        };
+        let names: Vec<&str> = self.data.scoping.own_binding_names(scope_id).collect();
+        let mut keys = Vec::new();
+        for name in names {
+            let Some(sym) = self.data.scoping.find_binding(scope_id, name) else {
+                continue;
+            };
+            let node = self.data.scoping.symbol_declaration(sym);
+            if matches!(
+                self.data.declaration_semantics(node),
+                crate::types::data::DeclarationSemantics::LegacyBindableProp(_)
+            ) {
+                let key = self.data.scoping.binding_origin_key(sym).unwrap_or(name);
+                keys.push(key.to_string());
+            }
+        }
+        keys
+    }
     pub fn custom_element_slot_names(&self) -> &[String] {
         self.data.custom_element_slot_names()
     }

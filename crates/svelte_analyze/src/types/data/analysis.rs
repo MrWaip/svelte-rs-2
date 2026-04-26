@@ -138,6 +138,10 @@ impl BlockAnalysis {
 pub struct OutputPlanData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
+    /// LEGACY(svelte4): emit `const $$sanitized_props = $.legacy_rest_props($$props, [reserved keys])`.
+    pub needs_sanitized_legacy_props: bool,
+    /// LEGACY(svelte4): emit `const $$restProps = $.legacy_rest_props($$sanitized_props, [named keys])`.
+    pub needs_legacy_rest_props: bool,
     pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
     pub custom_element: bool,
@@ -152,6 +156,8 @@ impl OutputPlanData {
         Self {
             needs_context: false,
             needs_sanitized_legacy_slots: false,
+            needs_sanitized_legacy_props: false,
+            needs_legacy_rest_props: false,
             custom_element_slot_names: Vec::new(),
             component_name: String::new(),
             custom_element: false,

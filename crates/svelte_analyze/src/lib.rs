@@ -154,6 +154,24 @@ pub fn analyze_with_options<'a>(
     {
         data.output.needs_sanitized_legacy_slots = true;
     }
+    // LEGACY(svelte4): `$$sanitized_props` (= `$.legacy_rest_props($$props, [reserved keys])`)
+    // is needed when the script reads `$$props` or `$$restProps`. `$$restProps` is also
+    // emitted as `$.legacy_rest_props($$sanitized_props, [named prop keys])` in that case.
+    let unresolved_for_sanitize = data.scoping.root_unresolved_references();
+    let uses_legacy_props_id = unresolved_for_sanitize
+        .get("$$props")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let uses_legacy_rest_props_id = unresolved_for_sanitize
+        .get("$$restProps")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    if !data.script.runes && (uses_legacy_props_id || uses_legacy_rest_props_id) {
+        data.output.needs_sanitized_legacy_props = true;
+    }
+    if !data.script.runes && uses_legacy_rest_props_id {
+        data.output.needs_legacy_rest_props = true;
+    }
 
     data.output.runtime_plan = build_runtime_plan(&data, options.dev);
 
@@ -231,29 +249,45 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
             .script
             .props_declaration()
             .is_some_and(|d| !d.props.is_empty());
+    // LEGACY(svelte4): aggregate signals from ReactivitySemantics + script flags.
+    // - `has_legacy_bindable_prop`: any binding classified as LegacyBindableProp.
+    // - `has_legacy_member_mutated`: any LegacyBindableProp also marked is_mutated_any.
+    // - `has_legacy_props_read`: any unresolved $$props identifier read site.
+    // - `has_legacy_rest_props_read`: any unresolved $$restProps identifier read site.
+    let mut has_legacy_bindable_prop = false;
+    let mut has_legacy_member_mutated = false;
+    if let Some(scope_id) = data.scoping.instance_scope_id() {
+        let names: Vec<&str> = data.scoping.own_binding_names(scope_id).collect();
+        for name in names {
+            let Some(sym) = data.scoping.find_binding(scope_id, name) else {
+                continue;
+            };
+            let node = data.scoping.symbol_declaration(sym);
+            if matches!(
+                data.declaration_semantics(node),
+                crate::types::data::DeclarationSemantics::LegacyBindableProp(_)
+            ) {
+                has_legacy_bindable_prop = true;
+                if data.scoping.is_member_mutated(sym) {
+                    has_legacy_member_mutated = true;
+                }
+            }
+        }
+    }
+    let unresolved = data.scoping.root_unresolved_references();
+    let has_legacy_props_read = !unresolved
+        .get("$$props")
+        .map(|v| v.is_empty())
+        .unwrap_or(true);
     let needs_push = has_bindable
         || has_exports
         || has_ce_props
         || data.output.needs_context
         || data.script.accessors
         || (!data.uses_runes() && data.script.immutable)
-        || dev;
+        || dev
+        || (!data.uses_runes() && (has_legacy_member_mutated || has_legacy_props_read));
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
-    // LEGACY(svelte4): legacy bindable props need `$$props` parameter regardless of
-    // whether `script_info` discovered them (it misses `var` and multi-decl forms).
-    // Use ReactivitySemantics presence as the source of truth.
-    let has_legacy_bindable_prop = data.scoping.instance_scope_id().is_some_and(|scope_id| {
-        data.scoping.own_binding_names(scope_id).any(|name| {
-            let Some(sym) = data.scoping.find_binding(scope_id, name) else {
-                return false;
-            };
-            let node = data.scoping.symbol_declaration(sym);
-            matches!(
-                data.declaration_semantics(node),
-                crate::types::data::DeclarationSemantics::LegacyBindableProp(_)
-            )
-        })
-    });
     let needs_props_param =
         data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
 
@@ -266,6 +300,8 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         has_ce_props,
         needs_props_param,
         needs_pop_with_return: needs_push && has_component_exports,
+        has_legacy_runtime_init: !data.uses_runes()
+            && (data.script.immutable || has_legacy_member_mutated || has_legacy_props_read),
     }
 }
 

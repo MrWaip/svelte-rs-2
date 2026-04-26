@@ -99,6 +99,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ));
         }
 
+        // LEGACY(svelte4): non-runes mode + at least one `bind:foo` directive on a child
+        // component requires a `$$legacy: true` marker in the props object so the child
+        // knows it was instantiated under the legacy runtime.
+        if !self.ctx.query.runes() && props.has_bind_directive {
+            props
+                .items
+                .push(super::super::component_props::PropOrSpread::Prop(
+                    ObjProp::KeyValue("$$legacy", self.ctx.b.bool_expr(true)),
+                ));
+        }
+
         let props_expr = self.build_props_expr(props.items);
         let span_start = self.ctx.query.component_node(el_id).span.start;
 

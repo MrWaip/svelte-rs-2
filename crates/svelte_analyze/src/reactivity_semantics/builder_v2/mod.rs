@@ -217,6 +217,10 @@ struct ScriptSemanticCollector<'d, 'a> {
     /// embeds a runtime-reactive rune call (`$effect.pending()` etc.) that
     /// doesn't resolve through local `ReferenceId`s.
     eager_reactive_derived: FxHashSet<OxcNodeId>,
+    /// LEGACY(svelte4): ExportNamedDeclaration node ids classified at end-of-walk
+    /// in `finish()`, so member-mutation tracking (`prop_member_updated`) is full
+    /// before flags are computed.
+    legacy_export_node_ids: Vec<OxcNodeId>,
 }
 
 struct PendingPropObjectDeclaration {
@@ -237,10 +241,34 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             rest_prop_excluded: FxHashMap::default(),
             derived_init_refs: FxHashMap::default(),
             eager_reactive_derived: FxHashSet::default(),
+            legacy_export_node_ids: Vec::new(),
         }
     }
 
     fn finish(mut self) {
+        // Persist script-side member-mutation tracking into ComponentSemantics so
+        // downstream queries (`is_member_mutated`, `is_mutated_any`) include script
+        // assignments like `obj.x = …`. Reference compiler's `binding.mutated` covers
+        // the same ground via its single binding state.
+        for &sym in &self.prop_member_updated {
+            self.data
+                .scoping
+                .semantics_mut()
+                .mark_symbol_member_mutated(sym);
+        }
+
+        // LEGACY(svelte4): classify legacy export props after the main walk so
+        // member-mutation tracking is full. Read `prop_member_updated` before its
+        // drain below to compute `PROPS_IS_UPDATED` correctly.
+        if !self.legacy_export_node_ids.is_empty() {
+            let nodes = std::mem::take(&mut self.legacy_export_node_ids);
+            let member_mutated: FxHashSet<SymbolId> =
+                self.prop_member_updated.iter().copied().collect();
+            for node_id in nodes {
+                legacy::classify_export_node(self.data, node_id, &member_mutated);
+            }
+        }
+
         for sym in self.prop_member_updated.drain() {
             let Some(mut prop) = self.data.reactivity.prop_facts(sym) else {
                 continue;
@@ -1028,9 +1056,12 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         &mut self,
         export: &oxc_ast::ast::ExportNamedDeclaration<'a>,
     ) {
-        // LEGACY(svelte4): classify legacy `export let` / `export var` / specifier props
-        // through ReactivitySemantics. Runes mode skipped inside the helper.
-        legacy::classify_export_named_declaration(self.data, export);
+        // LEGACY(svelte4): defer classification until `finish()` so that
+        // member-mutation tracking (`prop_member_updated`) is fully populated
+        // before legacy-prop flags are computed.
+        if !self.data.script.runes {
+            self.legacy_export_node_ids.push(export.node_id());
+        }
         oxc_ast_visit::walk::walk_export_named_declaration(self, export);
     }
 

@@ -24,17 +24,20 @@ use crate::{PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_
 const PROPS_NAME: &str = "$$props";
 const REST_PROPS_NAME: &str = "$$restProps";
 
-/// LEGACY(svelte4): emit `LegacyBindableProp` semantics for every leaf
-/// identifier of `export let` / `export var` declarations seen on the instance
-/// script. Called from the existing `ScriptSemanticCollector::visit_export_named_declaration`
-/// override — no extra AST walk introduced.
-pub(super) fn classify_export_named_declaration<'a>(
+/// LEGACY(svelte4): classify a saved `ExportNamedDeclaration` by its node id.
+/// Called from `ScriptSemanticCollector::finish` so member-mutation tracking
+/// is full before `PROPS_IS_UPDATED` is computed.
+pub(super) fn classify_export_node<'a>(
     data: &mut AnalysisData<'a>,
-    export: &ExportNamedDeclaration<'a>,
+    node_id: OxcNodeId,
+    member_mutated: &rustc_hash::FxHashSet<SymbolId>,
 ) {
     if data.script.runes {
         return;
     }
+    let Some(AstKind::ExportNamedDeclaration(export)) = data.scoping.js_kind(node_id) else {
+        return;
+    };
     if let Some(decl) = &export.declaration {
         let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
             return;
@@ -42,13 +45,17 @@ pub(super) fn classify_export_named_declaration<'a>(
         if !is_let_or_var(var_decl.kind) {
             return;
         }
-        classify_variable_declaration(data, var_decl);
+        classify_variable_declaration(data, var_decl, member_mutated);
     } else {
-        classify_specifiers(data, export);
+        classify_specifiers(data, export, member_mutated);
     }
 }
 
-fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &VariableDeclaration<'a>) {
+fn classify_variable_declaration<'a>(
+    data: &mut AnalysisData<'a>,
+    decl: &VariableDeclaration<'a>,
+    member_mutated: &rustc_hash::FxHashSet<SymbolId>,
+) {
     let immutable = data.script.immutable;
     let accessors = data.script.accessors;
     for declarator in &decl.declarations {
@@ -68,7 +75,8 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
                 (PropDefaultLowering::None, Some(d)) if !pattern_has_outer => d,
                 (leaf, _) => leaf,
             };
-            let updated = data.scoping.is_mutated_any(visit.symbol);
+            let updated =
+                data.scoping.is_mutated_any(visit.symbol) || member_mutated.contains(&visit.symbol);
             let flags = compute_flags(default_lowering, updated, accessors, immutable);
             let semantics = LegacyBindablePropSemantics {
                 default_lowering,
@@ -82,7 +90,11 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
     }
 }
 
-fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDeclaration<'a>) {
+fn classify_specifiers<'a>(
+    data: &mut AnalysisData<'a>,
+    export: &ExportNamedDeclaration<'a>,
+    member_mutated: &rustc_hash::FxHashSet<SymbolId>,
+) {
     let Some(instance_scope) = data.scoping.instance_scope_id() else {
         return;
     };
@@ -106,7 +118,7 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             Some(init_expr) => classify_expression_default(init_expr),
             None => PropDefaultLowering::None,
         };
-        let updated = data.scoping.is_mutated_any(symbol);
+        let updated = data.scoping.is_mutated_any(symbol) || member_mutated.contains(&symbol);
         let flags = compute_flags(
             default_lowering,
             updated,
