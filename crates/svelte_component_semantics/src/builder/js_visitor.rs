@@ -583,6 +583,9 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             self.current_ref_flags = ReferenceFlags::read_write();
         }
         walk::walk_assignment_expression(self, expr);
+        if let Some(sym) = assignment_target_member_root_symbol(self.semantics, &expr.left) {
+            self.semantics.mark_symbol_member_mutated(sym);
+        }
     }
 
     fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
@@ -595,6 +598,11 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         self.current_ref_flags = ReferenceFlags::read_write();
         walk::walk_update_expression(self, expr);
+        if let Some(sym) =
+            simple_assignment_target_member_root_symbol(self.semantics, &expr.argument)
+        {
+            self.semantics.mark_symbol_member_mutated(sym);
+        }
     }
 
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
@@ -611,5 +619,48 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         if let Some(init) = &it.init {
             self.visit_expression(init);
         }
+    }
+}
+
+fn assignment_target_member_root_symbol(
+    semantics: &ComponentSemantics<'_>,
+    target: &AssignmentTarget<'_>,
+) -> Option<oxc_syntax::symbol::SymbolId> {
+    match target {
+        AssignmentTarget::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
+        AssignmentTarget::ComputedMemberExpression(m) => {
+            expression_root_symbol(semantics, &m.object)
+        }
+        _ => None,
+    }
+}
+
+fn simple_assignment_target_member_root_symbol(
+    semantics: &ComponentSemantics<'_>,
+    target: &SimpleAssignmentTarget<'_>,
+) -> Option<oxc_syntax::symbol::SymbolId> {
+    match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            expression_root_symbol(semantics, &m.object)
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            expression_root_symbol(semantics, &m.object)
+        }
+        _ => None,
+    }
+}
+
+fn expression_root_symbol(
+    semantics: &ComponentSemantics<'_>,
+    expr: &Expression<'_>,
+) -> Option<oxc_syntax::symbol::SymbolId> {
+    match expr {
+        Expression::Identifier(id) => id
+            .reference_id
+            .get()
+            .and_then(|ref_id| semantics.get_reference(ref_id).symbol_id()),
+        Expression::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
+        Expression::ComputedMemberExpression(m) => expression_root_symbol(semantics, &m.object),
+        _ => None,
     }
 }

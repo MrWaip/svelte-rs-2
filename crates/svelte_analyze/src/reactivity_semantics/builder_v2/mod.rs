@@ -6,9 +6,8 @@ mod store;
 mod util;
 
 use util::{
-    assignment_target_member_root_reference_id, assignment_target_member_root_symbol,
-    property_key_atom, simple_assignment_target_member_root_reference_id,
-    simple_assignment_target_member_root_symbol,
+    assignment_target_member_root_reference_id, property_key_atom,
+    simple_assignment_target_member_root_reference_id,
 };
 
 use super::data::{
@@ -192,7 +191,6 @@ struct ScriptSemanticCollector<'d, 'a> {
     data: &'d mut AnalysisData<'a>,
     current_decl_kind: Option<VariableDeclarationKind>,
     prop_lowering_mode: PropLoweringMode,
-    prop_member_updated: FxHashSet<SymbolId>,
     /// Set of `ReferenceId`s that are the **root identifier** of a
     /// MemberExpression LHS on an assignment or UpdateExpression argument.
     /// For `foo.x = val` or `foo.x++`, the `ReferenceId` of the `foo`
@@ -235,7 +233,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             data,
             current_decl_kind: None,
             prop_lowering_mode,
-            prop_member_updated: FxHashSet::default(),
             prop_member_mutation_root_refs: FxHashSet::default(),
             pending_prop_objects: Vec::new(),
             rest_prop_excluded: FxHashMap::default(),
@@ -246,30 +243,24 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 
     fn finish(mut self) {
-        // Persist script-side member-mutation tracking into ComponentSemantics so
-        // downstream queries (`is_member_mutated`, `is_mutated_any`) include script
-        // assignments like `obj.x = …`. Reference compiler's `binding.mutated` covers
-        // the same ground via its single binding state.
-        for &sym in &self.prop_member_updated {
-            self.data
-                .scoping
-                .semantics_mut()
-                .mark_symbol_member_mutated(sym);
-        }
-
-        // LEGACY(svelte4): classify legacy export props after the main walk so
-        // member-mutation tracking is full. Read `prop_member_updated` before its
-        // drain below to compute `PROPS_IS_UPDATED` correctly.
+        // LEGACY(svelte4): classify legacy export props after the main walk —
+        // js_visitor has already populated MEMBER_MUTATED on ComponentSemantics
+        // for every script/template assignment, so legacy classify can read it
+        // via `is_mutated_any` directly.
         if !self.legacy_export_node_ids.is_empty() {
             let nodes = std::mem::take(&mut self.legacy_export_node_ids);
-            let member_mutated: FxHashSet<SymbolId> =
-                self.prop_member_updated.iter().copied().collect();
             for node_id in nodes {
-                legacy::classify_export_node(self.data, node_id, &member_mutated);
+                legacy::classify_export_node(self.data, node_id);
             }
         }
 
-        for sym in self.prop_member_updated.drain() {
+        let member_mutated_syms: Vec<SymbolId> = self
+            .data
+            .scoping
+            .semantics()
+            .symbols_with_state(svelte_component_semantics::sym_state::MEMBER_MUTATED)
+            .collect();
+        for sym in member_mutated_syms {
             let Some(mut prop) = self.data.reactivity.prop_facts(sym) else {
                 continue;
             };
@@ -1071,9 +1062,6 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
-        if let Some(sym) = assignment_target_member_root_symbol(self.data, &expr.left) {
-            self.prop_member_updated.insert(sym);
-        }
         if let Some(ref_id) = assignment_target_member_root_reference_id(&expr.left) {
             self.prop_member_mutation_root_refs.insert(ref_id);
         }
@@ -1081,9 +1069,6 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     }
 
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
-        if let Some(sym) = simple_assignment_target_member_root_symbol(self.data, &expr.argument) {
-            self.prop_member_updated.insert(sym);
-        }
         if let Some(ref_id) = simple_assignment_target_member_root_reference_id(&expr.argument) {
             self.prop_member_mutation_root_refs.insert(ref_id);
         }
