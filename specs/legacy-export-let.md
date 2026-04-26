@@ -28,7 +28,8 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 
 ## Use cases
 
-- [ ] Analyzer materializes dedicated legacy-prop entities for `export let` / `export var` / export-specifier / destructured legacy exports instead of rediscovering prop-ness from script/export metadata in multiple passes (test: none yet, needs infrastructure)
+- [ ] `ReactivitySemantics` builder classifies every legacy prop binding (`export let`, `export var`, separate `export { foo }`, alias `export { foo as bar }`, destructured `export let { … }`, `$$props`, `$$restProps`) by extending `PropDeclarationKind` / `PropDeclarationSemantics` (e.g. `LegacySource`, `LegacyRest`, `LegacySanitizedProps`) so that transform/codegen has a single source of truth and never re-derives prop-ness from script/export metadata (test: none yet, needs infrastructure)
+- [ ] Analyzer materializes dedicated legacy-prop entities for `export let` / `export var` / export-specifier / destructured legacy exports through the `ReactivitySemantics` records above, instead of rediscovering prop-ness from script/export metadata in multiple passes (test: none yet, needs infrastructure)
 - [ ] Explicit legacy mode with a defaulted `export let` lowers through the prop pipeline instead of staying a plain export — regressed under v2 codegen, now emits raw `let count = 1` + `p.textContent = count` (test: `svelte_options_runes_false_override`, `#[ignore]`, moderate)
 - [ ] Required legacy props without defaults still lower through `$.prop(...)` and template getter calls rather than reading raw `$$props` (test: `legacy_export_let_required`, `#[ignore]`, moderate)
 - [ ] Typed legacy `export let` declarations preserve their TS annotation shape while still materializing the same dedicated legacy-prop entity and runtime prop lowering as untyped declarations, including unions such as `String | undefined` and `SomeType | null | (() => void)` with `= null` defaults; existing TS-strip cases do not currently exercise legacy `export let`, so this still needs dedicated compiler coverage (test: none yet, needs infrastructure)
@@ -52,7 +53,8 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 
 ## Implementation note
 
-- Legacy prop hooks may stay explicit and legacy-named for containment, but the semantic classification they use should come from the unified `ReactivitySemantics` system rather than a second dedicated legacy-prop semantic layer.
+- **Hard rule**: every legacy prop entity (`export let`, `export var`, separate `export { foo }`, `export { foo as bar }`, destructured `export let { … }`, `$$props`, `$$restProps`) must be classified inside `ReactivitySemantics` (`PropDeclarationSemantics` / `PropDeclarationKind` in `crates/svelte_analyze/src/reactivity_semantics/data.rs`). Implementation is allowed and expected to extend that enum (e.g. add `LegacySource { default, required, bindable, accessor }`, `LegacyRest`, `LegacySanitizedProps`) rather than introduce a parallel legacy-prop classifier. Downstream transform/codegen reads only from `ReactivitySemantics`; no second source of truth.
+- Legacy prop hooks at the codegen layer (e.g. `script/props.rs`) may stay explicit and legacy-named for containment, but their inputs must be the `ReactivitySemantics` records described above.
 
 ## Reference
 
