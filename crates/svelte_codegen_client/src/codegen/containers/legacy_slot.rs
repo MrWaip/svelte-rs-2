@@ -187,9 +187,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
     ) -> Result<Expression<'a>> {
         let el_fragment = match self.ctx.query.component.store.get(el_id) {
-            svelte_ast::Node::Element(el) => &el.fragment,
-            svelte_ast::Node::SlotElementLegacy(el) => &el.fragment,
-            svelte_ast::Node::SvelteFragmentLegacy(el) => &el.fragment,
+            svelte_ast::Node::Element(el) => el.fragment,
+            svelte_ast::Node::SlotElementLegacy(el) => el.fragment,
+            svelte_ast::Node::SvelteFragmentLegacy(el) => el.fragment,
             _ => return Ok(self.ctx.b.null_expr()),
         };
         let inner_ctx = parent_ctx.child_of_block(

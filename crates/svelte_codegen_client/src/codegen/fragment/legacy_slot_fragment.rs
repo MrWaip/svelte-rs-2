@@ -58,7 +58,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             Node::SvelteFragmentLegacy(el) => {
                 inner_state.init.extend(let_stmts);
-                self.emit_fragment(&mut inner_state, &inner_ctx, &el.fragment)?;
+                self.emit_fragment(&mut inner_state, &inner_ctx, el.fragment)?;
             }
             _ => {}
         }
@@ -76,16 +76,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return false;
         }
 
-        let fragment = match self.ctx.query.component.store.get(slot_el_id) {
-            Node::Element(el) => &el.fragment,
-            Node::SvelteFragmentLegacy(el) => &el.fragment,
-            // ComponentNode wrapper: slot body is the component itself; not empty.
+        let fragment_id = match self.ctx.query.component.store.get(slot_el_id) {
+            Node::Element(el) => el.fragment,
+            Node::SvelteFragmentLegacy(el) => el.fragment,
             Node::ComponentNode(_) => return false,
             _ => return true,
         };
         let mut bucket = HoistedBucket::default();
         let (_children, strategy) = prepare(
-            &fragment.nodes,
+            self.ctx.query.component.fragment_nodes(fragment_id),
             &self.ctx.query.component.store,
             ctx,
             &mut bucket,
@@ -117,9 +116,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let el_name = self.emit_element(state, ctx, slot_el_id, None)?;
         state.root_var = Some(el_name);
         let slot_fragment = match self.ctx.query.component.store.get(slot_el_id) {
-            Node::Element(el) => &el.fragment,
-            Node::SlotElementLegacy(el) => &el.fragment,
-            Node::SvelteFragmentLegacy(el) => &el.fragment,
+            Node::Element(el) => el.fragment,
+            Node::SlotElementLegacy(el) => el.fragment,
+            Node::SvelteFragmentLegacy(el) => el.fragment,
             _ => return Ok(()),
         };
         self.finalize_slot_root_template(state, ctx, init_len_before, tpl_name, slot_fragment)?;

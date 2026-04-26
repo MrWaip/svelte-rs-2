@@ -156,7 +156,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 }
 
 pub(crate) fn codegen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> Result<CodegenResult<'a>> {
-    let root_fragment = &ctx.query.component.fragment;
+    let root_fragment = ctx.query.component.root;
     let root_ctx = FragmentCtx::root(ctx, root_fragment);
     let mut cg = Codegen::new(ctx);
     let mut state = EmitState::new();

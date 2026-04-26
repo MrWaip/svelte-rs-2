@@ -15,12 +15,10 @@ use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
 use super::walker::{Ctx, SnippetScope};
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Expression, FormalParameter, Statement,
-    VariableDeclarator,
+    ArrowFunctionExpression, BindingPattern, Expression, FormalParameter, VariableDeclarator,
 };
 use smallvec::SmallVec;
 use svelte_ast::SnippetBlock;
-use svelte_component_semantics::SymbolId;
 
 /// Populate `BlockSemantics::Snippet` for this block and recurse into
 /// its body fragment.
@@ -45,7 +43,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 
     // Recurse into body first so nested blocks are visited inside the
     // same template walk.
-    ctx.visit_fragment(&block.body.nodes);
+    ctx.visit_fragment(block.body);
 
     let Some(name) = name_sym else {
         // Parser invariant: every snippet block has a named declarator.
@@ -73,7 +71,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 
     // Register this snippet's body scope so the post-walk hoistable pass
     // can trace references back to the owning snippet.
-    if let Some(body_scope) = ctx.semantics.fragment_scope_by_id(block.body.id) {
+    if let Some(body_scope) = ctx.semantics.fragment_scope_by_id(block.body) {
         ctx.snippet_scopes.push(SnippetScope {
             block_id: block.id,
             body_scope,
@@ -133,12 +131,6 @@ fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
     }
 }
 
-// Suppress unused warnings from Statement / SymbolId imports when the
-// module's tests module isn't yet populated — referenced via type
-// aliases above.
-#[allow(dead_code)]
-fn _ensure_imports_used(_: &Statement<'_>, _: SymbolId) {}
-
 #[cfg(test)]
 mod tests {
     use crate::tests::analyze_source;
@@ -155,29 +147,35 @@ mod tests {
                 if let Node::SnippetBlock(b) = node {
                     return Some(b);
                 }
-                let children: &[svelte_ast::NodeId] = match node {
-                    Node::Element(el) => &el.fragment.nodes,
+                let child_fragment = match node {
+                    Node::Element(el) => Some(el.fragment),
                     Node::IfBlock(b) => {
-                        if let Some(r) = walk(component, &b.consequent.nodes) {
+                        let cons = component.fragment_nodes(b.consequent).to_vec();
+                        if let Some(r) = walk(component, &cons) {
                             return Some(r);
                         }
-                        if let Some(alt) = &b.alternate {
-                            if let Some(r) = walk(component, &alt.nodes) {
+                        if let Some(alt) = b.alternate {
+                            let alt_nodes = component.fragment_nodes(alt).to_vec();
+                            if let Some(r) = walk(component, &alt_nodes) {
                                 return Some(r);
                             }
                         }
                         continue;
                     }
-                    Node::EachBlock(b) => &b.body.nodes,
+                    Node::EachBlock(b) => Some(b.body),
                     _ => continue,
                 };
-                if let Some(r) = walk(component, children) {
-                    return Some(r);
+                if let Some(fid) = child_fragment {
+                    let nodes = component.fragment_nodes(fid).to_vec();
+                    if let Some(r) = walk(component, &nodes) {
+                        return Some(r);
+                    }
                 }
             }
             None
         }
-        walk(component, &component.fragment.nodes).expect("no snippet block")
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
+        walk(component, &root_nodes).expect("no snippet block")
     }
 
     fn with_snippet<F: FnOnce(&SnippetBlockSemantics)>(source: &str, check: F) {

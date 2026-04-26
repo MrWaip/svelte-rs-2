@@ -1,4 +1,4 @@
-use svelte_ast::{is_svg, is_whitespace_removable_parent, Fragment, FragmentRole, Namespace};
+use svelte_ast::{is_svg, is_whitespace_removable_parent, FragmentRole, Namespace};
 use svelte_span::Span;
 
 use super::concat::ConcatPart;
@@ -20,14 +20,15 @@ pub(crate) struct FragmentCtx<'a> {
 }
 
 impl<'a> FragmentCtx<'a> {
-    pub fn root(ctx: &Ctx<'a>, fragment: &Fragment) -> Self {
+    pub fn root(ctx: &Ctx<'a>, fragment_id: svelte_ast::FragmentId) -> Self {
+        let fragment = ctx.query.component.store.fragment(fragment_id);
         Self {
             preserve_whitespace: ctx.query.view.preserve_whitespace(),
             is_pre: false,
             is_textarea: false,
             can_remove_entirely: false,
             inside_head: false,
-            namespace: ctx.query.view.fragment_namespace(fragment.id),
+            namespace: ctx.query.view.fragment_namespace(fragment_id),
             role: fragment.role,
             source: ctx.state.source,
             anchor: FragmentAnchor::Root,
@@ -35,16 +36,15 @@ impl<'a> FragmentCtx<'a> {
     }
 
     // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-    // Вычисление is_pre / is_textarea / can_remove_entirely по имени тега — это
-    // классификация на имени элемента, должна жить в analyze element_facts.
-    // Codegen должен читать готовые флаги через view.fragment_trim_flags(fragment_id).
     pub fn child_of_element(
         &self,
+        ctx: &Ctx<'a>,
         el_name: &str,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
         new_ns: Namespace,
         new_anchor: FragmentAnchor,
     ) -> Self {
+        let role = ctx.query.component.store.fragment(fragment_id).role;
         let mut next = self.clone();
         match el_name {
             "pre" => next.is_pre = true,
@@ -60,16 +60,17 @@ impl<'a> FragmentCtx<'a> {
         };
         next.inside_head = false;
         next.namespace = new_ns;
-        next.role = fragment.role;
+        next.role = role;
         next.anchor = new_anchor;
         next
     }
 
-    pub fn child_of_svelte_head(&self, fragment: &Fragment) -> Self {
+    pub fn child_of_svelte_head(&self, ctx: &Ctx<'a>, fragment_id: svelte_ast::FragmentId) -> Self {
+        let role = ctx.query.component.store.fragment(fragment_id).role;
         let mut next = self.clone();
         next.inside_head = true;
         next.namespace = Namespace::Html;
-        next.role = fragment.role;
+        next.role = role;
         next.anchor = FragmentAnchor::CallbackParam {
             name: "$$anchor".to_string(),
             append_inside: false,
@@ -80,12 +81,13 @@ impl<'a> FragmentCtx<'a> {
     pub fn child_of_block(
         &self,
         ctx: &Ctx<'a>,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
         new_anchor: FragmentAnchor,
     ) -> Self {
+        let role = ctx.query.component.store.fragment(fragment_id).role;
         let mut next = self.clone();
-        next.namespace = ctx.query.view.fragment_namespace(fragment.id);
-        next.role = fragment.role;
+        next.namespace = ctx.query.view.fragment_namespace(fragment_id);
+        next.role = role;
         next.anchor = new_anchor;
         next
     }

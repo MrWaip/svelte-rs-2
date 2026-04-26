@@ -17,7 +17,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             svelte_ast::Node::Element(el) => el,
             _ => return CodegenError::unexpected_node(id, "title element"),
         };
-        let fragment_nodes = el.fragment.nodes.clone();
+        let fragment_nodes = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(el.fragment)
+            .nodes
+            .clone();
 
         let mut parts: Vec<ConcatPart> = Vec::new();
         for child_id in &fragment_nodes {

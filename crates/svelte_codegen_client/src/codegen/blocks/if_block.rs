@@ -98,7 +98,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut out: Vec<BranchNames> = Vec::with_capacity(sem.branches.len());
         for branch in sem.branches.iter() {
             let consequent = match self.ctx.query.component.store.get(branch.block_id) {
-                svelte_ast::Node::IfBlock(block) => &block.consequent,
+                svelte_ast::Node::IfBlock(block) => block.consequent,
                 _ => return CodegenError::unexpected_node(branch.block_id, "IfBlock"),
             };
             let inner_ctx = parent_ctx.child_of_block(
@@ -155,7 +155,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(None);
         };
         let alternate = match self.ctx.query.component.store.get(last_branch_block_id) {
-            svelte_ast::Node::IfBlock(block) => match &block.alternate {
+            svelte_ast::Node::IfBlock(block) => match block.alternate {
                 Some(alt) => alt,
                 None => return Ok(None),
             },

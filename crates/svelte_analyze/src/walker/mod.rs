@@ -4,8 +4,8 @@ use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
     ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
-    ExpressionAttribute, ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
-    Node, NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy, SnippetBlock, SpreadAttribute,
+    ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy, Node,
+    NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy, SnippetBlock, SpreadAttribute,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
     SvelteFragmentLegacy, SvelteWindow, TransitionDirective, UseDirective,
 };

@@ -248,31 +248,37 @@ mod tests {
                 if let Node::RenderTag(t) = node {
                     return Some(t);
                 }
-                let children: &[NodeId] = match node {
-                    Node::Element(el) => &el.fragment.nodes,
-                    Node::ComponentNode(cn) => &cn.fragment.nodes,
+                let child_fragment = match node {
+                    Node::Element(el) => Some(el.fragment),
+                    Node::ComponentNode(cn) => Some(cn.fragment),
                     Node::IfBlock(b) => {
-                        if let Some(r) = walk(component, &b.consequent.nodes) {
+                        let cons = component.fragment_nodes(b.consequent).to_vec();
+                        if let Some(r) = walk(component, &cons) {
                             return Some(r);
                         }
-                        if let Some(alt) = &b.alternate {
-                            if let Some(r) = walk(component, &alt.nodes) {
+                        if let Some(alt) = b.alternate {
+                            let alt_nodes = component.fragment_nodes(alt).to_vec();
+                            if let Some(r) = walk(component, &alt_nodes) {
                                 return Some(r);
                             }
                         }
                         continue;
                     }
-                    Node::EachBlock(b) => &b.body.nodes,
-                    Node::SnippetBlock(b) => &b.body.nodes,
+                    Node::EachBlock(b) => Some(b.body),
+                    Node::SnippetBlock(b) => Some(b.body),
                     _ => continue,
                 };
-                if let Some(r) = walk(component, children) {
-                    return Some(r);
+                if let Some(fid) = child_fragment {
+                    let nodes = component.fragment_nodes(fid).to_vec();
+                    if let Some(r) = walk(component, &nodes) {
+                        return Some(r);
+                    }
                 }
             }
             None
         }
-        walk(component, &component.fragment.nodes).expect("no render tag")
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
+        walk(component, &root_nodes).expect("no render tag")
     }
 
     fn assert_render<F: FnOnce(&RenderTagBlockSemantics)>(source: &str, check: F) {

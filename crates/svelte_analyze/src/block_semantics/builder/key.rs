@@ -22,7 +22,7 @@ use svelte_ast::KeyBlock;
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
     // Walker owns recursion: descend into the body first so nested
     // blocks (of any migrated kind) populate inside the same walk.
-    ctx.visit_fragment(&block.fragment.nodes);
+    ctx.visit_fragment(block.fragment);
 
     let (has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
         Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
@@ -60,30 +60,36 @@ mod tests {
                 if let Node::KeyBlock(b) = node {
                     return Some(b);
                 }
-                let children: &[svelte_ast::NodeId] = match node {
-                    Node::Element(el) => &el.fragment.nodes,
+                let child_fragment = match node {
+                    Node::Element(el) => Some(el.fragment),
                     Node::IfBlock(b) => {
-                        if let Some(r) = walk(component, &b.consequent.nodes) {
+                        let cons = component.fragment_nodes(b.consequent).to_vec();
+                        if let Some(r) = walk(component, &cons) {
                             return Some(r);
                         }
-                        if let Some(alt) = &b.alternate {
-                            if let Some(r) = walk(component, &alt.nodes) {
+                        if let Some(alt) = b.alternate {
+                            let alt_nodes = component.fragment_nodes(alt).to_vec();
+                            if let Some(r) = walk(component, &alt_nodes) {
                                 return Some(r);
                             }
                         }
                         continue;
                     }
-                    Node::EachBlock(b) => &b.body.nodes,
-                    Node::SnippetBlock(b) => &b.body.nodes,
+                    Node::EachBlock(b) => Some(b.body),
+                    Node::SnippetBlock(b) => Some(b.body),
                     _ => continue,
                 };
-                if let Some(r) = walk(component, children) {
-                    return Some(r);
+                if let Some(fid) = child_fragment {
+                    let nodes = component.fragment_nodes(fid).to_vec();
+                    if let Some(r) = walk(component, &nodes) {
+                        return Some(r);
+                    }
                 }
             }
             None
         }
-        walk(component, &component.fragment.nodes).expect("no key block")
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
+        walk(component, &root_nodes).expect("no key block")
     }
 
     fn assert_key<F: FnOnce(&KeyBlockSemantics)>(source: &str, check: F) {

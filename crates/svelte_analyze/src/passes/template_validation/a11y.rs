@@ -756,7 +756,7 @@ fn check_a11y_element_specific_content_warnings(
                 .is_some_and(|value| value == "true")
                 || inert_is_static;
 
-            if !has_spread && !is_hidden && !is_labelled && !has_content(&el.fragment, ctx) {
+            if !has_spread && !is_hidden && !is_labelled && !has_content(el.fragment, ctx) {
                 ctx.push_warning_if_not_ignored(
                     el.id,
                     DiagnosticKind::A11yConsiderExplicitLabel,
@@ -794,7 +794,7 @@ fn check_a11y_element_specific_content_warnings(
         "label" => {
             if has_spread
                 || ctx.data.has_attribute(el.id, "for")
-                || has_associated_control(&el.fragment, ctx)
+                || has_associated_control(el.fragment, ctx)
             {
                 return;
             }
@@ -857,7 +857,7 @@ fn check_a11y_element_specific_content_warnings(
                 return;
             }
 
-            if !video_has_caption_track(&el.fragment, ctx) {
+            if !video_has_caption_track(el.fragment, ctx) {
                 ctx.push_warning_if_not_ignored(
                     el.id,
                     DiagnosticKind::A11yMediaHasCaption,
@@ -883,7 +883,7 @@ fn check_a11y_element_specific_content_warnings(
             }
         }
         "figure" => {
-            let children = visible_figure_children(&el.fragment, ctx);
+            let children = visible_figure_children(el.fragment, ctx);
             let Some(index) = children.iter().position(|&child_id| {
                 ctx.store
                     .get(child_id)
@@ -908,7 +908,7 @@ fn check_a11y_element_specific_content_warnings(
         && !is_labelled
         && !ctx.data.elements.flags.is_bound_contenteditable(el.id)
         && A11Y_REQUIRED_CONTENT.contains(&el.name.as_str())
-        && !has_content(&el.fragment, ctx)
+        && !has_content(el.fragment, ctx)
     {
         ctx.push_warning_if_not_ignored(
             el.id,
@@ -1038,8 +1038,9 @@ fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
         .collect()
 }
 
-fn has_content(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
-    for &child_id in &fragment.nodes {
+fn has_content(fragment_id: svelte_ast::FragmentId, ctx: &VisitContext<'_, '_>) -> bool {
+    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
+    for child_id in nodes {
         let child = ctx.store.get(child_id);
         match child {
             Node::Text(text) if text.value(ctx.source).trim().is_empty() => continue,
@@ -1061,15 +1062,13 @@ fn has_content(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
                     return true;
                 }
 
-                if !has_content(&child_el.fragment, ctx) {
+                if !has_content(child_el.fragment, ctx) {
                     continue;
                 }
             }
             _ => {}
         }
 
-        // Follow the reference compiler's conservative behavior and treat any
-        // remaining child kind as content once it survives the special cases above.
         return true;
     }
 
@@ -1083,11 +1082,10 @@ fn static_attr_value_text(value: Option<StaticAttributeValue<'_>>) -> Option<&st
     }
 }
 
-fn has_associated_control(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
-    fragment
-        .nodes
-        .iter()
-        .copied()
+fn has_associated_control(fragment_id: svelte_ast::FragmentId, ctx: &VisitContext<'_, '_>) -> bool {
+    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
+    nodes
+        .into_iter()
         .any(|child_id| node_has_associated_control(ctx.store.get(child_id), ctx))
 }
 
@@ -1160,13 +1158,20 @@ fn is_redundant_img_alt(alt: &str) -> bool {
         })
 }
 
-fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> bool {
-    let Some(track) = fragment.nodes.iter().find_map(|&child_id| {
+fn video_has_caption_track(
+    fragment_id: svelte_ast::FragmentId,
+    ctx: &VisitContext<'_, '_>,
+) -> bool {
+    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
+    let Some(track_id) = nodes.iter().copied().find(|&child_id| {
         ctx.store
             .get(child_id)
             .as_element()
-            .filter(|child| child.name == "track")
+            .is_some_and(|child| child.name == "track")
     }) else {
+        return false;
+    };
+    let Node::Element(track) = ctx.store.get(track_id) else {
         return false;
     };
 
@@ -1179,8 +1184,12 @@ fn video_has_caption_track(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> b
     })
 }
 
-fn visible_figure_children(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> Vec<NodeId> {
-    fragment
+fn visible_figure_children(
+    fragment_id: svelte_ast::FragmentId,
+    ctx: &VisitContext<'_, '_>,
+) -> Vec<NodeId> {
+    ctx.store
+        .fragment(fragment_id)
         .nodes
         .iter()
         .copied()
@@ -1199,46 +1208,39 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_, '_>) -> bool 
                 return true;
             }
 
-            has_associated_control(&el.fragment, ctx)
+            has_associated_control(el.fragment, ctx)
         }
         Node::SlotElementLegacy(_) => true,
-        // Match the reference analyzer's conservative behavior for dynamic descendants:
-        // if the label contains a component-like control target, don't warn.
         Node::ComponentNode(_) | Node::RenderTag(_) | Node::SvelteElement(_) => true,
         Node::IfBlock(block) => {
-            has_associated_control(&block.consequent, ctx)
+            has_associated_control(block.consequent, ctx)
                 || block
                     .alternate
-                    .as_ref()
                     .is_some_and(|fragment| has_associated_control(fragment, ctx))
         }
         Node::EachBlock(block) => {
-            has_associated_control(&block.body, ctx)
+            has_associated_control(block.body, ctx)
                 || block
                     .fallback
-                    .as_ref()
                     .is_some_and(|fragment| has_associated_control(fragment, ctx))
         }
-        Node::SnippetBlock(block) => has_associated_control(&block.body, ctx),
-        Node::KeyBlock(block) => has_associated_control(&block.fragment, ctx),
-        Node::SvelteHead(node) => has_associated_control(&node.fragment, ctx),
-        Node::SvelteFragmentLegacy(node) => has_associated_control(&node.fragment, ctx),
-        Node::SvelteWindow(node) => has_associated_control(&node.fragment, ctx),
-        Node::SvelteDocument(node) => has_associated_control(&node.fragment, ctx),
-        Node::SvelteBody(node) => has_associated_control(&node.fragment, ctx),
-        Node::SvelteBoundary(node) => has_associated_control(&node.fragment, ctx),
+        Node::SnippetBlock(block) => has_associated_control(block.body, ctx),
+        Node::KeyBlock(block) => has_associated_control(block.fragment, ctx),
+        Node::SvelteHead(node) => has_associated_control(node.fragment, ctx),
+        Node::SvelteFragmentLegacy(node) => has_associated_control(node.fragment, ctx),
+        Node::SvelteWindow(node) => has_associated_control(node.fragment, ctx),
+        Node::SvelteDocument(node) => has_associated_control(node.fragment, ctx),
+        Node::SvelteBody(node) => has_associated_control(node.fragment, ctx),
+        Node::SvelteBoundary(node) => has_associated_control(node.fragment, ctx),
         Node::AwaitBlock(block) => {
             block
                 .pending
-                .as_ref()
                 .is_some_and(|fragment| has_associated_control(fragment, ctx))
                 || block
                     .then
-                    .as_ref()
                     .is_some_and(|fragment| has_associated_control(fragment, ctx))
                 || block
                     .catch
-                    .as_ref()
                     .is_some_and(|fragment| has_associated_control(fragment, ctx))
         }
         Node::Text(_)

@@ -135,8 +135,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.last_fragment_needs_reset = true;
             } else {
                 let child_ctx = ctx.child_of_element(
+                    self.ctx,
                     &el_name_hint,
-                    &el.fragment,
+                    el.fragment,
                     el_ns,
                     FragmentAnchor::Child {
                         parent_var: el_name.clone(),
@@ -146,7 +147,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 if self.ctx.is_bound_contenteditable(el_id) {
                     state.bound_contenteditable = true;
                 }
-                self.emit_fragment(state, &child_ctx, &el.fragment)?;
+                self.emit_fragment(state, &child_ctx, el.fragment)?;
                 state.bound_contenteditable = prev_bound_ce;
                 let has_var = !is_ghost && (existing_var.is_some() || self.ctx.needs_var(el_id));
                 if state.last_fragment_needs_reset && has_var {
@@ -218,10 +219,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let tpl_name = self.ctx.state.gen_ident(&format!("{el_name}_content"));
 
         let el_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::Element(el) => &el.fragment,
+            Node::Element(el) => el.fragment,
             _ => return CodegenError::unexpected_node(el_id, "Element"),
         };
         let child_ctx = ctx.child_of_element(
+            self.ctx,
             "",
             el_fragment,
             el_ns,
@@ -239,12 +241,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         // чтобы codegen не сканировал fragment.nodes.
         let selectedcontent_child: Option<NodeId> =
             if let Node::Element(parent_el) = self.ctx.query.component.store.get(el_id) {
-                parent_el.fragment.nodes.iter().copied().find(|nid| {
-                    matches!(
-                        self.ctx.query.component.store.get(*nid),
-                        Node::Element(el) if el.name == "selectedcontent"
-                    )
-                })
+                self.ctx
+                    .query
+                    .component
+                    .store
+                    .fragment(parent_el.fragment)
+                    .nodes
+                    .iter()
+                    .copied()
+                    .find(|nid| {
+                        matches!(
+                            self.ctx.query.component.store.get(*nid),
+                            Node::Element(el) if el.name == "selectedcontent"
+                        )
+                    })
             } else {
                 None
             };
@@ -346,7 +356,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
     ) -> Result<()> {
         let el = self.ctx.element(el_id);
-        let child_ids: Vec<NodeId> = el.fragment.nodes.clone();
+        let child_ids: Vec<NodeId> = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(el.fragment)
+            .nodes
+            .clone();
 
         let mut expr_id: Option<NodeId> = None;
         for child_id in &child_ids {

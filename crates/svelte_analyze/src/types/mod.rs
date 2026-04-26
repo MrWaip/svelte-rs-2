@@ -9,10 +9,9 @@ pub use data::{
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData, ContentEditableKind,
     DebugTagData, DocumentBindKind, EachContextIndex, ElementAnalysis, ElementFlags,
     ElementSizeKind, EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo,
-    ExpressionKind, FragmentFacts, FragmentFactsEntry, FragmentLayout, FragmentLayouts, IgnoreData,
-    ImageNaturalSizeKind, MediaBindKind, OutputPlanData, ResizeObserverKind, RuntimePlan,
-    ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData, TitleElementData,
-    WindowBindKind,
+    ExpressionKind, FragmentFacts, FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind,
+    MediaBindKind, OutputPlanData, ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData,
+    TemplateAnalysis, TemplateSemanticsData, TitleElementData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{

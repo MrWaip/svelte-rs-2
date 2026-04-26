@@ -22,7 +22,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let named_slots: Vec<(String, NodeId)> = cn
             .legacy_slots
             .iter()
-            .map(|slot| (slot.name.clone(), slot.fragment.nodes[0]))
+            .map(|slot| {
+                (
+                    slot.name.clone(),
+                    self.ctx.query.component.fragment_nodes(slot.fragment)[0],
+                )
+            })
             .collect();
         let is_dynamic = self.ctx.is_dynamic_component(el_id) || cn_name == SVELTE_COMPONENT;
 
@@ -39,7 +44,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
 
         let cn_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::ComponentNode(cn) => &cn.fragment,
+            Node::ComponentNode(cn) => cn.fragment,
             _ => return CodegenError::unexpected_node(el_id, "ComponentNode"),
         };
         let default_has_let = self.default_slot_has_let_directive_legacy(el_id);

@@ -37,9 +37,9 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
     // every nested block (including non-flattenable elseif IfBlocks that
     // land in the alternate) gets its own populator call. Absorbed
     // elseifs are tombstoned after `ctx.store.set` at the bottom.
-    ctx.visit_fragment(&block.consequent.nodes);
-    if let Some(alt) = &block.alternate {
-        ctx.visit_fragment(&alt.nodes);
+    ctx.visit_fragment(block.consequent);
+    if let Some(alt) = block.alternate {
+        ctx.visit_fragment(alt);
     }
 
     // Root test facts — sole source of truth for the wrapper decision.
@@ -63,7 +63,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
         // Any other alternate shape (plain `{:else}`, or alternate with
         // a non-elseif inner IfBlock) stops the chain with a final
         // alternate fragment the consumer renders as-is.
-        let nested = elseif_child(ctx, alt);
+        let nested = elseif_child(ctx, *alt);
         let Some(nested) = nested else {
             break IfAlternate::Fragment {
                 last_branch_block_id: cur.id,
@@ -127,7 +127,11 @@ fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32;
 /// If `fragment` encodes `{:else if ...}`, return the nested IfBlock.
 /// That is: exactly one AST child, which is an IfBlock with
 /// `elseif == true`. Everything else is a real `{:else}` fragment.
-fn elseif_child<'c>(ctx: &'c Ctx<'_, '_>, fragment: &svelte_ast::Fragment) -> Option<&'c IfBlock> {
+fn elseif_child<'c>(
+    ctx: &'c Ctx<'_, '_>,
+    fragment_id: svelte_ast::FragmentId,
+) -> Option<&'c IfBlock> {
+    let fragment = ctx.component.store.fragment(fragment_id);
     if fragment.nodes.len() != 1 {
         return None;
     }
@@ -170,39 +174,48 @@ mod tests {
                 let node = component.store.get(id);
                 if let Node::IfBlock(b) = node {
                     out.push(id);
-                    walk(component, &b.consequent.nodes, out);
-                    if let Some(alt) = &b.alternate {
-                        walk(component, &alt.nodes, out);
+                    let cons = component.fragment_nodes(b.consequent).to_vec();
+                    walk(component, &cons, out);
+                    if let Some(alt) = b.alternate {
+                        let alt_nodes = component.fragment_nodes(alt).to_vec();
+                        walk(component, &alt_nodes, out);
                     }
                     continue;
                 }
-                let children: &[NodeId] = match node {
-                    Node::Element(el) => &el.fragment.nodes,
-                    Node::ComponentNode(cn) => &cn.fragment.nodes,
-                    Node::EachBlock(b) => &b.body.nodes,
+                let child_fragment: Option<svelte_ast::FragmentId> = match node {
+                    Node::Element(el) => Some(el.fragment),
+                    Node::ComponentNode(cn) => Some(cn.fragment),
+                    Node::EachBlock(b) => Some(b.body),
                     Node::AwaitBlock(b) => {
-                        if let Some(f) = &b.pending {
-                            walk(component, &f.nodes, out);
+                        if let Some(f) = b.pending {
+                            let nodes = component.fragment_nodes(f).to_vec();
+                            walk(component, &nodes, out);
                         }
-                        if let Some(f) = &b.then {
-                            walk(component, &f.nodes, out);
+                        if let Some(f) = b.then {
+                            let nodes = component.fragment_nodes(f).to_vec();
+                            walk(component, &nodes, out);
                         }
-                        if let Some(f) = &b.catch {
-                            walk(component, &f.nodes, out);
+                        if let Some(f) = b.catch {
+                            let nodes = component.fragment_nodes(f).to_vec();
+                            walk(component, &nodes, out);
                         }
                         continue;
                     }
-                    Node::SnippetBlock(b) => &b.body.nodes,
-                    Node::KeyBlock(b) => &b.fragment.nodes,
-                    Node::SvelteElement(el) => &el.fragment.nodes,
-                    Node::SvelteBoundary(el) => &el.fragment.nodes,
-                    _ => continue,
+                    Node::SnippetBlock(b) => Some(b.body),
+                    Node::KeyBlock(b) => Some(b.fragment),
+                    Node::SvelteElement(el) => Some(el.fragment),
+                    Node::SvelteBoundary(el) => Some(el.fragment),
+                    _ => None,
                 };
-                walk(component, children, out);
+                if let Some(fid) = child_fragment {
+                    let nodes = component.fragment_nodes(fid).to_vec();
+                    walk(component, &nodes, out);
+                }
             }
         }
         let mut out = Vec::new();
-        walk(component, &component.fragment.nodes, &mut out);
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
+        walk(component, &root_nodes, &mut out);
         out
     }
 

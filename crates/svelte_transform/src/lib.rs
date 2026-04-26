@@ -20,7 +20,7 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{AnalysisData, IdentGen, JsAst};
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
+use svelte_ast::{Attribute, Component, ConcatPart, Node, NodeId};
 
 /// Transform all parsed template expressions and statements in-place.
 ///
@@ -54,7 +54,7 @@ pub fn transform_component<'a>(
     // Pass 1: structural walk — records (handle) for every template
     // expression/statement and pre-populates const-tag tmp names needed by
     // the `ConstAliasRead` branch.
-    walk_fragment(&mut ctx, &component.fragment, component, parsed, root_scope);
+    walk_fragment(&mut ctx, component.root, component, parsed, root_scope);
 
     let TransformCtx {
         transform_data,
@@ -106,12 +106,13 @@ struct TransformCtx<'a, 'b> {
 
 fn walk_fragment<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    fragment: &Fragment,
+    fragment_id: svelte_ast::FragmentId,
     component: &Component,
     parsed: &mut JsAst<'a>,
     scope: ScopeId,
 ) {
-    for &id in &fragment.nodes {
+    let nodes = component.fragment_nodes(fragment_id).to_vec();
+    for id in nodes {
         let node = component.store.get(id);
         walk_node(ctx, node, component, parsed, scope);
     }
@@ -130,11 +131,11 @@ fn walk_node<'a>(
         }
         Node::Element(el) => {
             walk_attrs(ctx, &el.attributes, parsed);
-            walk_fragment(ctx, &el.fragment, component, parsed, scope);
+            walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
         Node::SlotElementLegacy(el) => {
             walk_attrs(ctx, &el.attributes, parsed);
-            walk_fragment(ctx, &el.fragment, component, parsed, scope);
+            walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
         Node::ComponentNode(cn) => {
             let component_has_slot_attr =
@@ -144,7 +145,7 @@ fn walk_node<'a>(
             } else {
                 ctx.analysis
                     .scoping
-                    .fragment_scope_by_id(cn.fragment.id)
+                    .fragment_scope_by_id(cn.fragment)
                     .unwrap_or(scope)
             };
 
@@ -152,41 +153,46 @@ fn walk_node<'a>(
                 walk_attrs(ctx, std::slice::from_ref(attr), parsed);
             }
 
-            walk_fragment(ctx, &cn.fragment, component, parsed, default_scope);
+            walk_fragment(ctx, cn.fragment, component, parsed, default_scope);
 
-            for slot in &cn.legacy_slots {
-                let wrapper_id = slot.fragment.nodes[0];
+            let slot_pairs: Vec<(svelte_ast::FragmentId, NodeId)> = cn
+                .legacy_slots
+                .iter()
+                .map(|s| (s.fragment, component.fragment_nodes(s.fragment)[0]))
+                .collect();
+            let cn_id = cn.id;
+            for (slot_fid, wrapper_id) in slot_pairs {
                 let slot_scope = ctx
                     .analysis
                     .scoping
-                    .named_slot_scope(cn.id, wrapper_id)
+                    .named_slot_scope(cn_id, wrapper_id)
                     .unwrap_or(scope);
-                walk_fragment(ctx, &slot.fragment, component, parsed, slot_scope);
+                walk_fragment(ctx, slot_fid, component, parsed, slot_scope);
             }
         }
         Node::IfBlock(block) => {
             record_expr(ctx, parsed, &block.test, Some(block.id));
             let cons_scope = ctx
                 .analysis
-                .effective_fragment_scope(block.consequent.id, scope);
-            walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
-            if let Some(alt) = &block.alternate {
-                let alt_scope = ctx.analysis.effective_fragment_scope(alt.id, scope);
+                .effective_fragment_scope(block.consequent, scope);
+            walk_fragment(ctx, block.consequent, component, parsed, cons_scope);
+            if let Some(alt) = block.alternate {
+                let alt_scope = ctx.analysis.effective_fragment_scope(alt, scope);
                 walk_fragment(ctx, alt, component, parsed, alt_scope);
             }
         }
         Node::EachBlock(block) => {
             record_expr(ctx, parsed, &block.expression, Some(block.id));
-            let body_scope = ctx.analysis.effective_fragment_scope(block.body.id, scope);
-            walk_fragment(ctx, &block.body, component, parsed, body_scope);
-            if let Some(fb) = &block.fallback {
+            let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
+            walk_fragment(ctx, block.body, component, parsed, body_scope);
+            if let Some(fb) = block.fallback {
                 walk_fragment(ctx, fb, component, parsed, scope);
             }
         }
         Node::SnippetBlock(block) => {
-            let snippet_scope = ctx.analysis.effective_fragment_scope(block.body.id, scope);
+            let snippet_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             ctx.stmt_handles.push((block.decl.id(), Some(block.id)));
-            walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
+            walk_fragment(ctx, block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
             record_expr(ctx, parsed, &tag.expression, Some(tag.id));
@@ -213,49 +219,45 @@ fn walk_node<'a>(
         Node::KeyBlock(block) => {
             ctx.expr_handles
                 .push((block.expression.id(), Some(block.id)));
-            let child_scope = ctx
-                .analysis
-                .effective_fragment_scope(block.fragment.id, scope);
-            walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(block.fragment, scope);
+            walk_fragment(ctx, block.fragment, component, parsed, child_scope);
         }
         Node::SvelteHead(head) => {
-            let child_scope = ctx
-                .analysis
-                .effective_fragment_scope(head.fragment.id, scope);
-            walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(head.fragment, scope);
+            walk_fragment(ctx, head.fragment, component, parsed, child_scope);
         }
         Node::SvelteFragmentLegacy(el) => {
             walk_attrs(ctx, &el.attributes, parsed);
-            walk_fragment(ctx, &el.fragment, component, parsed, scope);
+            walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
         Node::SvelteElement(el) => {
             if let Some(tag_ref) = el.tag.as_ref() {
                 record_expr(ctx, parsed, tag_ref, Some(el.id));
             }
             walk_attrs(ctx, &el.attributes, parsed);
-            let child_scope = ctx.analysis.effective_fragment_scope(el.fragment.id, scope);
-            walk_fragment(ctx, &el.fragment, component, parsed, child_scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(el.fragment, scope);
+            walk_fragment(ctx, el.fragment, component, parsed, child_scope);
         }
         Node::SvelteWindow(w) => walk_attrs(ctx, &w.attributes, parsed),
         Node::SvelteDocument(d) => walk_attrs(ctx, &d.attributes, parsed),
         Node::SvelteBody(b) => walk_attrs(ctx, &b.attributes, parsed),
         Node::SvelteBoundary(b) => {
             walk_attrs(ctx, &b.attributes, parsed);
-            let child_scope = ctx.analysis.effective_fragment_scope(b.fragment.id, scope);
-            walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
+            let child_scope = ctx.analysis.effective_fragment_scope(b.fragment, scope);
+            walk_fragment(ctx, b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
             record_expr(ctx, parsed, &block.expression, Some(block.id));
-            if let Some(ref p) = block.pending {
-                let pending_scope = ctx.analysis.effective_fragment_scope(p.id, scope);
+            if let Some(p) = block.pending {
+                let pending_scope = ctx.analysis.effective_fragment_scope(p, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
             }
-            if let Some(ref t) = block.then {
-                let then_scope = ctx.analysis.effective_fragment_scope(t.id, scope);
+            if let Some(t) = block.then {
+                let then_scope = ctx.analysis.effective_fragment_scope(t, scope);
                 walk_fragment(ctx, t, component, parsed, then_scope);
             }
-            if let Some(ref c) = block.catch {
-                let catch_scope = ctx.analysis.effective_fragment_scope(c.id, scope);
+            if let Some(c) = block.catch {
+                let catch_scope = ctx.analysis.effective_fragment_scope(c, scope);
                 walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }
@@ -460,50 +462,51 @@ mod tests {
     use oxc_allocator::Allocator;
     use oxc_ast::ast::Expression;
     use svelte_analyze::{analyze, IdentGen};
-    use svelte_ast::{Component, Fragment, Node};
+    use svelte_ast::{Component, Node};
 
     fn find_snippet_block<'a>(
-        fragment: &'a Fragment,
+        fragment_id: svelte_ast::FragmentId,
         component: &'a Component,
         name: &str,
     ) -> Option<&'a svelte_ast::SnippetBlock> {
-        for &id in &fragment.nodes {
+        let nodes = component.fragment_nodes(fragment_id).to_vec();
+        for id in nodes {
             match component.store.get(id) {
                 Node::SnippetBlock(block) if block.name(component.source.as_str()) == name => {
                     return Some(block);
                 }
                 Node::IfBlock(block) => {
-                    if let Some(found) = find_snippet_block(&block.consequent, component, name) {
+                    if let Some(found) = find_snippet_block(block.consequent, component, name) {
                         return Some(found);
                     }
-                    if let Some(alt) = &block.alternate {
+                    if let Some(alt) = block.alternate {
                         if let Some(found) = find_snippet_block(alt, component, name) {
                             return Some(found);
                         }
                     }
                 }
                 Node::EachBlock(block) => {
-                    if let Some(found) = find_snippet_block(&block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, name) {
                         return Some(found);
                     }
-                    if let Some(fallback) = &block.fallback {
+                    if let Some(fallback) = block.fallback {
                         if let Some(found) = find_snippet_block(fallback, component, name) {
                             return Some(found);
                         }
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    if let Some(found) = find_snippet_block(&block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, name) {
                         return Some(found);
                     }
                 }
                 Node::Element(el) => {
-                    if let Some(found) = find_snippet_block(&el.fragment, component, name) {
+                    if let Some(found) = find_snippet_block(el.fragment, component, name) {
                         return Some(found);
                     }
                 }
                 Node::ComponentNode(node) => {
-                    if let Some(found) = find_snippet_block(&node.fragment, component, name) {
+                    if let Some(found) = find_snippet_block(node.fragment, component, name) {
                         return Some(found);
                     }
                 }
@@ -514,11 +517,12 @@ mod tests {
     }
 
     fn find_expr_tag<'a>(
-        fragment: &'a Fragment,
+        fragment_id: svelte_ast::FragmentId,
         component: &'a Component,
         needle: &str,
     ) -> Option<&'a svelte_ast::ExpressionTag> {
-        for &id in &fragment.nodes {
+        let nodes = component.fragment_nodes(fragment_id).to_vec();
+        for id in nodes {
             match component.store.get(id) {
                 Node::ExpressionTag(tag)
                     if component.source_text(tag.expression.span).trim() == needle =>
@@ -526,15 +530,15 @@ mod tests {
                     return Some(tag);
                 }
                 Node::Element(el) => {
-                    if let Some(found) = find_expr_tag(&el.fragment, component, needle) {
+                    if let Some(found) = find_expr_tag(el.fragment, component, needle) {
                         return Some(found);
                     }
                 }
                 Node::IfBlock(block) => {
-                    if let Some(found) = find_expr_tag(&block.consequent, component, needle) {
+                    if let Some(found) = find_expr_tag(block.consequent, component, needle) {
                         return Some(found);
                     }
-                    if let Some(alt) = &block.alternate {
+                    if let Some(alt) = block.alternate {
                         if let Some(found) = find_expr_tag(alt, component, needle) {
                             return Some(found);
                         }
@@ -570,9 +574,9 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
-        let expr_tag = find_expr_tag(&snippet.body, &component, "label")
+        let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
         let expr = parsed
             .expr(expr_tag.expression.id())
@@ -618,9 +622,9 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(&component.fragment, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
-        let expr_tag = find_expr_tag(&snippet.body, &component, "label")
+        let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
         let expr = parsed
             .expr(expr_tag.expression.id())

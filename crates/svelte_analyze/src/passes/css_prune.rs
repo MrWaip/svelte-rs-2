@@ -2,7 +2,7 @@ use compact_str::CompactString;
 use oxc_ast::ast::{Expression, LogicalOperator, PropertyKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, Component as SvelteComponent, ConcatPart, Fragment, Node, NodeId};
+use svelte_ast::{Attribute, Component as SvelteComponent, ConcatPart, Node, NodeId};
 use svelte_css::{
     AtRule, Combinator, CombinatorKind, ComplexSelector, CssNodeId, PseudoClassSelector,
     RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
@@ -273,67 +273,70 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
 
 fn build_css_prune_index(component: &SvelteComponent, data: &AnalysisData) -> CssPruneIndex {
     let mut index = CssPruneIndex::new(component.store.len());
-    collect_css_prune_edges_in_fragment(&component.fragment, component, data, &mut index);
+    collect_css_prune_edges_in_fragment(component.root, component, data, &mut index);
     index
 }
 
 fn collect_css_prune_edges_in_fragment(
-    fragment: &Fragment,
+    fragment_id: svelte_ast::FragmentId,
     component: &SvelteComponent,
     data: &AnalysisData,
     edges: &mut CssPruneIndex,
 ) {
-    for &id in &fragment.nodes {
+    let nodes = component.fragment_nodes(fragment_id).to_vec();
+    for id in nodes {
         match component.store.get(id) {
             Node::Element(el) => {
-                collect_css_prune_edges_in_fragment(&el.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(el.fragment, component, data, edges);
             }
             Node::SlotElementLegacy(el) => {
-                collect_css_prune_edges_in_fragment(&el.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(el.fragment, component, data, edges);
             }
             Node::ComponentNode(node) => {
                 let snippets = component_possible_snippets(node, data);
-                record_possible_snippets(node.id, &snippets, edges, true);
-                collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
+                let node_id = node.id;
+                let f = node.fragment;
+                record_possible_snippets(node_id, &snippets, edges, true);
+                collect_css_prune_edges_in_fragment(f, component, data, edges);
             }
             Node::IfBlock(block) => {
-                collect_css_prune_edges_in_fragment(&block.consequent, component, data, edges);
-                if let Some(alt) = &block.alternate {
+                collect_css_prune_edges_in_fragment(block.consequent, component, data, edges);
+                if let Some(alt) = block.alternate {
                     collect_css_prune_edges_in_fragment(alt, component, data, edges);
                 }
             }
             Node::EachBlock(block) => {
-                collect_css_prune_edges_in_fragment(&block.body, component, data, edges);
-                if let Some(fallback) = &block.fallback {
+                collect_css_prune_edges_in_fragment(block.body, component, data, edges);
+                if let Some(fallback) = block.fallback {
                     collect_css_prune_edges_in_fragment(fallback, component, data, edges);
                 }
             }
             Node::SnippetBlock(block) => {
-                collect_css_prune_edges_in_fragment(&block.body, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.body, component, data, edges);
             }
             Node::KeyBlock(block) => {
-                collect_css_prune_edges_in_fragment(&block.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.fragment, component, data, edges);
             }
             Node::SvelteHead(head) => {
-                collect_css_prune_edges_in_fragment(&head.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(head.fragment, component, data, edges);
             }
             Node::SvelteFragmentLegacy(node) => {
-                collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
             }
             Node::SvelteElement(node) => {
-                collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
             }
             Node::SvelteBoundary(node) => {
-                collect_css_prune_edges_in_fragment(&node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
             }
             Node::AwaitBlock(block) => {
-                if let Some(pending) = &block.pending {
+                if let Some(pending) = block.pending {
                     collect_css_prune_edges_in_fragment(pending, component, data, edges);
                 }
-                if let Some(then) = &block.then {
+                if let Some(then) = block.then {
                     collect_css_prune_edges_in_fragment(then, component, data, edges);
                 }
-                if let Some(catch) = &block.catch {
+                if let Some(catch) = block.catch {
                     collect_css_prune_edges_in_fragment(catch, component, data, edges);
                 }
             }
@@ -1286,38 +1289,34 @@ fn collect_descendants_from_node(
     match store.get(node_id) {
         Node::Element(el) => collect_descendants_from_fragment(
             pruner,
-            el.fragment.id,
+            el.fragment,
             adjacent_only,
             seen_snippets,
             out,
         ),
         Node::SvelteElement(el) => collect_descendants_from_fragment(
             pruner,
-            el.fragment.id,
+            el.fragment,
             adjacent_only,
             seen_snippets,
             out,
         ),
         Node::ComponentNode(cn) => collect_descendants_from_fragment(
             pruner,
-            cn.fragment.id,
+            cn.fragment,
             adjacent_only,
             seen_snippets,
             out,
         ),
-        Node::SnippetBlock(block) => collect_descendants_from_fragment(
-            pruner,
-            block.body.id,
-            adjacent_only,
-            seen_snippets,
-            out,
-        ),
+        Node::SnippetBlock(block) => {
+            collect_descendants_from_fragment(pruner, block.body, adjacent_only, seen_snippets, out)
+        }
         Node::RenderTag(_) => {
             let snippet_ids = pruner.index.render_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if seen_snippets.insert(snippet_id) {
                     let body_id = match pruner.component.store.get(snippet_id) {
-                        Node::SnippetBlock(block) => block.body.id,
+                        Node::SnippetBlock(block) => block.body,
                         _ => continue,
                     };
                     collect_descendants_from_fragment(
@@ -1341,10 +1340,8 @@ fn collect_descendants_from_fragment(
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
-    let Some(lowered) = pruner.template.fragment_items(fragment_id) else {
-        return;
-    };
-    let lowered: Vec<NodeId> = lowered.to_vec();
+    let lowered =
+        crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
 
     let store = &pruner.component.store;
     for &id in &lowered {
@@ -1420,15 +1417,14 @@ fn collect_possible_siblings(
     out: &mut FxHashMap<CandidateNode, NodeExistsValue>,
 ) {
     let mut current_id = node_id;
-    let mut current_fragment = pruner.template.template_topology.node_fragment(node_id);
+    let mut current_fragment = pruner.component.store.node_fragment(node_id);
 
     while let Some(fragment_id) = current_fragment {
-        let Some(layout) = pruner.template.fragment_layout(fragment_id) else {
-            break;
-        };
-        let lowered: Vec<NodeId> = layout.items.clone();
-        let owner_opt = layout.owner;
-        let role = layout.role;
+        let lowered =
+            crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
+        let fragment_meta = pruner.component.store.fragment(fragment_id);
+        let owner_opt = fragment_meta.owner;
+        let role = fragment_meta.role;
 
         let Some(current_index) = lowered.iter().position(|&id| id == current_id) else {
             break;
@@ -1533,7 +1529,7 @@ fn collect_possible_siblings(
 
         match pruner.component.store.get(owner_id) {
             Node::ComponentNode(_) => {
-                current_fragment = pruner.template.template_topology.node_fragment(owner_id);
+                current_fragment = pruner.component.store.node_fragment(owner_id);
                 continue;
             }
             Node::SnippetBlock(_) => {
@@ -1571,7 +1567,7 @@ fn collect_possible_siblings(
         if !is_block_like(pruner.component.store.get(owner_id)) {
             break;
         }
-        current_fragment = pruner.template.template_topology.node_fragment(owner_id);
+        current_fragment = pruner.component.store.node_fragment(owner_id);
     }
 }
 
@@ -1587,59 +1583,55 @@ fn get_possible_nested_siblings(
 
     match pruner.component.store.get(node_id) {
         Node::EachBlock(block) => {
-            fragments.push(block.body.id);
-            if let Some(fb) = &block.fallback {
-                fragments.push(fb.id);
+            fragments.push(block.body);
+            if let Some(fb) = block.fallback {
+                fragments.push(fb);
             }
         }
         Node::IfBlock(block) => {
-            fragments.push(block.consequent.id);
-            if let Some(alt) = &block.alternate {
-                fragments.push(alt.id);
+            fragments.push(block.consequent);
+            if let Some(alt) = block.alternate {
+                fragments.push(alt);
             }
         }
         Node::AwaitBlock(block) => {
-            if let Some(p) = &block.pending {
-                fragments.push(p.id);
+            if let Some(p) = block.pending {
+                fragments.push(p);
             }
-            if let Some(t) = &block.then {
-                fragments.push(t.id);
+            if let Some(t) = block.then {
+                fragments.push(t);
             }
-            if let Some(c) = &block.catch {
-                fragments.push(c.id);
+            if let Some(c) = block.catch {
+                fragments.push(c);
             }
         }
         Node::KeyBlock(block) => {
-            fragments.push(block.fragment.id);
+            fragments.push(block.fragment);
         }
         Node::SnippetBlock(block) => {
             if !seen_snippets.insert(node_id) {
                 return FxHashMap::default();
             }
             exhaustive = false;
-            fragments.push(block.body.id);
+            fragments.push(block.body);
         }
         Node::ComponentNode(cn) => {
-            fragments.push(cn.fragment.id);
+            fragments.push(cn.fragment);
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
-                    fragments.push(block.body.id);
+                    fragments.push(block.body);
                 }
             }
         }
         Node::SvelteBoundary(b) => {
-            fragments.push(b.fragment.id);
+            fragments.push(b.fragment);
         }
         _ => return FxHashMap::default(),
     }
 
     let mut result = FxHashMap::default();
     for fragment_id in fragments {
-        if pruner.template.fragment_items(fragment_id).is_none() {
-            exhaustive = false;
-            continue;
-        }
         let map = loop_child(pruner, fragment_id, direction, adjacent_only, seen_snippets);
         exhaustive &= has_definite_elements(&map);
         add_all_candidates(&map, &mut result);
@@ -1662,10 +1654,8 @@ fn loop_child(
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
     let mut result = FxHashMap::default();
-    let Some(lowered) = pruner.template.fragment_items(fragment_id) else {
-        return result;
-    };
-    let lowered: Vec<NodeId> = lowered.to_vec();
+    let lowered =
+        crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
 
     let indices: Box<dyn Iterator<Item = usize>> = match direction {
         Direction::Forward => Box::new(0..lowered.len()),

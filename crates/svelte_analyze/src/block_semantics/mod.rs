@@ -53,13 +53,6 @@ impl BlockSemanticsStore {
             .unwrap_or(&BlockSemantics::NonSpecial)
     }
 
-    /// Reverse lookup: which each-block declared this symbol as its
-    /// `, <index>` introducer, if any.
-    #[allow(dead_code)]
-    pub fn block_for_each_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
-        self.each_index_sym_to_block.get(&sym).copied()
-    }
-
     pub(crate) fn set(&mut self, id: NodeId, value: BlockSemantics) {
         let idx = id.0 as usize;
         if idx >= self.entries.len() {
