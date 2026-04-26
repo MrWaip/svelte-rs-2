@@ -77,7 +77,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.build_snippet_params_with_patterns(block_id, sem, &parsed_patterns)?;
 
         let body = match self.ctx.query.component.store.get(block_id) {
-            svelte_ast::Node::SnippetBlock(block) => &block.body,
+            svelte_ast::Node::SnippetBlock(block) => block.body,
             _ => return CodegenError::unexpected_node(block_id, "SnippetBlock"),
         };
         let mut inner_ctx = FragmentCtx::root(self.ctx, body);

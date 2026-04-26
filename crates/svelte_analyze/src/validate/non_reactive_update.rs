@@ -3,7 +3,7 @@ use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_ast_visit::Visit;
 use oxc_semantic::{ScopeFlags, SymbolId};
 use rustc_hash::FxHashSet;
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, StyleDirectiveValue};
+use svelte_ast::{Attribute, Component, ConcatPart, FragmentId, Node, StyleDirectiveValue};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -31,7 +31,7 @@ pub(super) fn validate(
         diags,
         warned: FxHashSet::default(),
     };
-    validator.visit_fragment(&component.fragment, false);
+    validator.visit_fragment(component.root, false);
 }
 
 struct TemplateValidator<'a, 'b> {
@@ -43,101 +43,136 @@ struct TemplateValidator<'a, 'b> {
 }
 
 impl<'a> TemplateValidator<'a, '_> {
-    fn visit_fragment(&mut self, fragment: &Fragment, in_dynamic_block: bool) {
-        for &id in &fragment.nodes {
+    fn visit_fragment(&mut self, fragment_id: FragmentId, in_dynamic_block: bool) {
+        let nodes = self.component.fragment_nodes(fragment_id).to_vec();
+        for id in nodes {
             match self.component.store.get(id) {
                 Node::Text(_) | Node::Comment(_) | Node::DebugTag(_) | Node::Error(_) => {}
                 Node::ExpressionTag(tag) => {
-                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
+                    self.visit_expr_ref(&tag.expression.clone(), false, in_dynamic_block);
                 }
                 Node::HtmlTag(tag) => {
-                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
+                    self.visit_expr_ref(&tag.expression.clone(), false, in_dynamic_block);
                 }
                 Node::RenderTag(tag) => {
-                    self.visit_expr_ref(&tag.expression, false, in_dynamic_block);
+                    self.visit_expr_ref(&tag.expression.clone(), false, in_dynamic_block);
                 }
                 Node::ConstTag(tag) => {
-                    self.visit_stmt_ref(&tag.decl, false, in_dynamic_block);
+                    self.visit_stmt_ref(&tag.decl.clone(), false, in_dynamic_block);
                 }
                 Node::Element(el) => {
-                    self.visit_attributes(&el.attributes, in_dynamic_block);
-                    self.visit_fragment(&el.fragment, in_dynamic_block);
+                    let f = el.fragment;
+                    let attrs = el.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SlotElementLegacy(el) => {
-                    self.visit_attributes(&el.attributes, in_dynamic_block);
-                    self.visit_fragment(&el.fragment, in_dynamic_block);
+                    let f = el.fragment;
+                    let attrs = el.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::ComponentNode(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
-                    self.visit_fragment(&node.fragment, in_dynamic_block);
+                    let f = node.fragment;
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::IfBlock(block) => {
-                    self.visit_expr_ref(&block.test, false, in_dynamic_block);
-                    self.visit_fragment(&block.consequent, true);
-                    if let Some(alt) = &block.alternate {
+                    let test = block.test.clone();
+                    let consequent = block.consequent;
+                    let alternate = block.alternate;
+                    self.visit_expr_ref(&test, false, in_dynamic_block);
+                    self.visit_fragment(consequent, true);
+                    if let Some(alt) = alternate {
                         self.visit_fragment(alt, true);
                     }
                 }
                 Node::EachBlock(block) => {
-                    self.visit_expr_ref(&block.expression, false, in_dynamic_block);
-                    if let Some(r) = block.context.as_ref() {
+                    let expr = block.expression.clone();
+                    let context = block.context.clone();
+                    let index = block.index.clone();
+                    let key = block.key.clone();
+                    let body = block.body;
+                    let fallback = block.fallback;
+                    self.visit_expr_ref(&expr, false, in_dynamic_block);
+                    if let Some(r) = context.as_ref() {
                         self.visit_stmt_ref(r, false, true);
                     }
-                    if let Some(r) = block.index.as_ref() {
+                    if let Some(r) = index.as_ref() {
                         self.visit_stmt_ref(r, false, true);
                     }
-                    if let Some(r) = block.key.as_ref() {
+                    if let Some(r) = key.as_ref() {
                         self.visit_expr_ref(r, false, true);
                     }
-                    self.visit_fragment(&block.body, true);
-                    if let Some(fragment) = &block.fallback {
+                    self.visit_fragment(body, true);
+                    if let Some(fragment) = fallback {
                         self.visit_fragment(fragment, true);
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    self.visit_stmt_ref(&block.decl, false, in_dynamic_block);
-                    self.visit_fragment(&block.body, in_dynamic_block);
+                    let decl = block.decl.clone();
+                    let body = block.body;
+                    self.visit_stmt_ref(&decl, false, in_dynamic_block);
+                    self.visit_fragment(body, in_dynamic_block);
                 }
                 Node::KeyBlock(block) => {
-                    self.visit_expr_ref(&block.expression, false, in_dynamic_block);
-                    self.visit_fragment(&block.fragment, true);
+                    let expr = block.expression.clone();
+                    let f = block.fragment;
+                    self.visit_expr_ref(&expr, false, in_dynamic_block);
+                    self.visit_fragment(f, true);
                 }
                 Node::SvelteHead(head) => {
-                    self.visit_fragment(&head.fragment, in_dynamic_block);
+                    let f = head.fragment;
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteFragmentLegacy(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
-                    self.visit_fragment(&node.fragment, in_dynamic_block);
+                    let f = node.fragment;
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteElement(el) => {
-                    if let Some(tag_ref) = el.tag.as_ref() {
+                    let tag = el.tag.clone();
+                    let f = el.fragment;
+                    let attrs = el.attributes.clone();
+                    if let Some(tag_ref) = tag.as_ref() {
                         self.visit_expr_ref(tag_ref, false, in_dynamic_block);
                     }
-                    self.visit_attributes(&el.attributes, in_dynamic_block);
-                    self.visit_fragment(&el.fragment, in_dynamic_block);
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteWindow(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
                 }
                 Node::SvelteDocument(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
                 }
                 Node::SvelteBody(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
                 }
                 Node::SvelteBoundary(node) => {
-                    self.visit_attributes(&node.attributes, in_dynamic_block);
-                    self.visit_fragment(&node.fragment, in_dynamic_block);
+                    let f = node.fragment;
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::AwaitBlock(node) => {
-                    self.visit_expr_ref(&node.expression, false, in_dynamic_block);
-                    if let Some(fragment) = &node.pending {
+                    let expr = node.expression.clone();
+                    let pending = node.pending;
+                    let then = node.then;
+                    let catch = node.catch;
+                    self.visit_expr_ref(&expr, false, in_dynamic_block);
+                    if let Some(fragment) = pending {
                         self.visit_fragment(fragment, true);
                     }
-                    if let Some(fragment) = &node.then {
+                    if let Some(fragment) = then {
                         self.visit_fragment(fragment, true);
                     }
-                    if let Some(fragment) = &node.catch {
+                    if let Some(fragment) = catch {
                         self.visit_fragment(fragment, true);
                     }
                 }

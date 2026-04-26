@@ -96,7 +96,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(self.ctx.b.null_expr());
         }
         let pending_fragment = match self.ctx.query.component.store.get(block_id) {
-            svelte_ast::Node::AwaitBlock(block) => match &block.pending {
+            svelte_ast::Node::AwaitBlock(block) => match block.pending {
                 Some(p) => p,
                 None => return Ok(self.ctx.b.null_expr()),
             },
@@ -130,7 +130,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let has_catch = matches!(catch_branch, AwaitBranch::Present { .. });
         if has_then {
             let then_fragment = match self.ctx.query.component.store.get(block_id) {
-                svelte_ast::Node::AwaitBlock(block) => match &block.then {
+                svelte_ast::Node::AwaitBlock(block) => match block.then {
                     Some(t) => t,
                     None => return Ok(self.ctx.b.null_expr()),
                 },
@@ -152,7 +152,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<Expression<'a>> {
         if matches!(catch_branch, AwaitBranch::Present { .. }) {
             let catch_fragment = match self.ctx.query.component.store.get(block_id) {
-                svelte_ast::Node::AwaitBlock(block) => match &block.catch {
+                svelte_ast::Node::AwaitBlock(block) => match block.catch {
                     Some(c) => c,
                     None => return Ok(self.ctx.b.null_expr()),
                 },
@@ -167,7 +167,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_await_branch_callback(
         &mut self,
         parent_ctx: &FragmentCtx<'a>,
-        fragment: &'a svelte_ast::Fragment,
+        fragment: svelte_ast::FragmentId,
         binding: &AwaitBinding,
     ) -> Result<Expression<'a>> {
         let inner_ctx = parent_ctx.child_of_block(

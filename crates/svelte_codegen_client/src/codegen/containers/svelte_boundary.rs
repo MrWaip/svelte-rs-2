@@ -54,8 +54,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<String> {
         let boundary = self.ctx.query.svelte_boundary(el_id);
 
-        let snippet_children: Vec<(NodeId, String)> = boundary
-            .fragment
+        let snippet_children: Vec<(NodeId, String)> = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(boundary.fragment)
             .nodes
             .iter()
             .filter_map(|&nid| {
@@ -115,15 +119,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let inner_ctx = ctx.child_of_block(
             self.ctx,
-            &boundary.fragment,
+            boundary.fragment,
             FragmentAnchor::CallbackParam {
                 name: "$$anchor".to_string(),
                 append_inside: false,
             },
         );
 
-        let const_tag_ids: Vec<NodeId> = boundary
-            .fragment
+        let const_tag_ids: Vec<NodeId> = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(boundary.fragment)
             .nodes
             .iter()
             .filter(|&&nid| {
@@ -190,7 +198,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
             let snippet_uses_const = if !const_binding_syms.is_empty() {
                 let body_id = match self.ctx.query.component.store.get(*snippet_id) {
-                    Node::SnippetBlock(block) => block.body.id,
+                    Node::SnippetBlock(block) => block.body,
                     _ => continue,
                 };
                 self.ctx
@@ -208,7 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut inner_state = EmitState::new();
         inner_state.skip_snippets = true;
-        self.emit_fragment(&mut inner_state, &inner_ctx, &boundary.fragment)?;
+        self.emit_fragment(&mut inner_state, &inner_ctx, boundary.fragment)?;
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;
         let body_fn = self
             .ctx

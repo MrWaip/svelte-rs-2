@@ -78,7 +78,6 @@ pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
     pub fragment_namespaces: FragmentNamespaces,
     pub rich_content_facts: RichContentFacts,
-    pub(crate) fragment_layouts: FragmentLayouts,
     pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
     pub const_tags: ConstTagData,
@@ -96,7 +95,6 @@ impl TemplateAnalysis {
             fragment_facts: FragmentFacts::new(),
             fragment_namespaces: FragmentNamespaces::new(),
             rich_content_facts: RichContentFacts::new(),
-            fragment_layouts: FragmentLayouts::new(),
             fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
@@ -109,27 +107,11 @@ impl TemplateAnalysis {
         }
     }
 
-    pub fn fragment_layout(&self, id: svelte_ast::FragmentId) -> Option<&FragmentLayout> {
-        self.fragment_layouts.get(id)
-    }
-
-    pub fn fragment_items(&self, id: svelte_ast::FragmentId) -> Option<&[NodeId]> {
-        self.fragment_layouts.items(id)
-    }
-
     pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
         self.fragment_blockers
             .get(id.0 as usize)
             .and_then(|o| o.as_ref())
             .map_or(&[], |v| v.as_slice())
-    }
-
-    pub(crate) fn insert_fragment_layout(
-        &mut self,
-        id: svelte_ast::FragmentId,
-        layout: FragmentLayout,
-    ) {
-        self.fragment_layouts.insert(id, layout);
     }
 
     pub(crate) fn insert_fragment_blockers_by_id(
@@ -768,10 +750,8 @@ impl<'a> AnalysisData<'a> {
         if syms.is_empty() {
             return false;
         }
-        let Some(lowered) = self.template.fragment_items(fragment_id) else {
-            return false;
-        };
-        for &id in lowered {
+        let lowered = crate::passes::fragment_topology::fragment_items(store, fragment_id);
+        for id in lowered {
             match store.get(id) {
                 svelte_ast::Node::ExpressionTag(_) => {
                     if self.node_expr_references_syms(id, syms) {
@@ -779,25 +759,25 @@ impl<'a> AnalysisData<'a> {
                     }
                 }
                 svelte_ast::Node::Element(el) => {
-                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                    if self.fragment_references_any_symbol(store, el.fragment, syms) {
                         return true;
                     }
                 }
                 svelte_ast::Node::SlotElementLegacy(el) => {
-                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                    if self.fragment_references_any_symbol(store, el.fragment, syms) {
                         return true;
                     }
                 }
                 svelte_ast::Node::SvelteFragmentLegacy(el) => {
-                    if self.fragment_references_any_symbol(store, el.fragment.id, syms) {
+                    if self.fragment_references_any_symbol(store, el.fragment, syms) {
                         return true;
                     }
                 }
                 svelte_ast::Node::IfBlock(block) => {
                     if self.node_expr_references_syms(id, syms)
-                        || self.fragment_references_any_symbol(store, block.consequent.id, syms)
-                        || block.alternate.as_ref().is_some_and(|alt| {
-                            self.fragment_references_any_symbol(store, alt.id, syms)
+                        || self.fragment_references_any_symbol(store, block.consequent, syms)
+                        || block.alternate.is_some_and(|alt| {
+                            self.fragment_references_any_symbol(store, alt, syms)
                         })
                     {
                         return true;
@@ -805,10 +785,10 @@ impl<'a> AnalysisData<'a> {
                 }
                 svelte_ast::Node::EachBlock(block) => {
                     if self.node_expr_references_syms(id, syms)
-                        || self.fragment_references_any_symbol(store, block.body.id, syms)
-                        || block.fallback.as_ref().is_some_and(|fb| {
-                            self.fragment_references_any_symbol(store, fb.id, syms)
-                        })
+                        || self.fragment_references_any_symbol(store, block.body, syms)
+                        || block
+                            .fallback
+                            .is_some_and(|fb| self.fragment_references_any_symbol(store, fb, syms))
                     {
                         return true;
                     }
@@ -820,25 +800,25 @@ impl<'a> AnalysisData<'a> {
                 }
                 svelte_ast::Node::KeyBlock(block) => {
                     if self.node_expr_references_syms(id, syms)
-                        || self.fragment_references_any_symbol(store, block.fragment.id, syms)
+                        || self.fragment_references_any_symbol(store, block.fragment, syms)
                     {
                         return true;
                     }
                 }
                 svelte_ast::Node::SvelteElement(el) => {
                     if self.node_expr_references_syms(id, syms)
-                        || self.fragment_references_any_symbol(store, el.fragment.id, syms)
+                        || self.fragment_references_any_symbol(store, el.fragment, syms)
                     {
                         return true;
                     }
                 }
                 svelte_ast::Node::SvelteBoundary(b) => {
-                    if self.fragment_references_any_symbol(store, b.fragment.id, syms) {
+                    if self.fragment_references_any_symbol(store, b.fragment, syms) {
                         return true;
                     }
                 }
                 svelte_ast::Node::ComponentNode(cn) => {
-                    if self.fragment_references_any_symbol(store, cn.fragment.id, syms) {
+                    if self.fragment_references_any_symbol(store, cn.fragment, syms) {
                         return true;
                     }
                 }

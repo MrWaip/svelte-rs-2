@@ -81,7 +81,7 @@ pub(super) fn collect_template_declarations<'a>(
         staging: &mut staging,
     };
     let mut visitors: [&mut dyn TemplateVisitor; 1] = [&mut collector];
-    walk_template(&component.fragment, &mut ctx, &mut visitors);
+    walk_template(component.root, &mut ctx, &mut visitors);
 
     finalize_contextual_declarations(data, staging);
 }
@@ -225,7 +225,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
-        let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
+        let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
         let is_destructured = ctx.data.each_is_destructured(block.id);
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
@@ -247,8 +247,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     }
 
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
-        let then_scope = match &block.then {
-            Some(t) => ctx.child_scope_by_id(t.id, ctx.scope),
+        let then_scope = match block.then {
+            Some(t) => ctx.child_scope_by_id(t, ctx.scope),
             None => ctx.scope,
         };
         if let Some(stmt) = block
@@ -268,8 +268,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             }
         }
 
-        let catch_scope = match &block.catch {
-            Some(c) => ctx.child_scope_by_id(c.id, ctx.scope),
+        let catch_scope = match block.catch {
+            Some(c) => ctx.child_scope_by_id(c, ctx.scope),
             None => ctx.scope,
         };
         if let Some(stmt) = block

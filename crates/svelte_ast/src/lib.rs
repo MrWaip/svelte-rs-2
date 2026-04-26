@@ -189,10 +189,8 @@ pub struct FragmentId(pub u32);
 // ---------------------------------------------------------------------------
 
 pub struct Component {
-    pub fragment: Fragment,
+    pub root: FragmentId,
     pub store: AstStore,
-    /// Total number of FragmentId slots allocated during parsing.
-    pub fragment_count: u32,
     /// Instance-level `<script>` block (runs once per component instance).
     pub instance_script: Option<Script>,
     /// Module-level `<script module>` block (runs once when the module loads).
@@ -206,17 +204,15 @@ pub struct Component {
 impl Component {
     pub fn new(
         source: String,
-        fragment: Fragment,
+        root: FragmentId,
         store: AstStore,
-        fragment_count: u32,
         instance_script: Option<Script>,
         module_script: Option<Script>,
         css: Option<RawBlock>,
     ) -> Self {
         Self {
-            fragment,
+            root,
             store,
-            fragment_count,
             instance_script,
             module_script,
             css,
@@ -228,14 +224,11 @@ impl Component {
     /// Dummy `Component` for standalone `.svelte.js` modules (no template).
     /// Used only to satisfy analysis APIs that expect `&Component`.
     pub fn dummy_for_standalone_module(source: String) -> Self {
+        let mut store = AstStore::default();
+        let root = store.push_fragment(FragmentRole::Root, vec![]);
         Self {
-            fragment: Fragment {
-                id: FragmentId(0),
-                role: FragmentRole::Root,
-                nodes: vec![],
-            },
-            store: AstStore::default(),
-            fragment_count: 1,
+            root,
+            store,
             instance_script: None,
             module_script: None,
             css: None,
@@ -244,9 +237,21 @@ impl Component {
         }
     }
 
+    pub fn root_fragment(&self) -> &Fragment {
+        self.store.fragment(self.root)
+    }
+
+    pub fn fragment_nodes(&self, id: FragmentId) -> &[NodeId] {
+        self.store.fragment_nodes(id)
+    }
+
     /// Total number of NodeId slots allocated during parsing (nodes + attrs + misc).
     pub fn node_count(&self) -> u32 {
         self.store.len()
+    }
+
+    pub fn fragment_count(&self) -> u32 {
+        self.store.fragments_len()
     }
 
     /// Get source text for a span.
@@ -288,11 +293,18 @@ pub struct Fragment {
     pub id: FragmentId,
     pub role: FragmentRole,
     pub nodes: Vec<NodeId>,
+    /// NodeId владельца fragment (Element/IfBlock/...). `None` для корня.
+    pub owner: Option<NodeId>,
 }
 
 impl Fragment {
     pub fn new(id: FragmentId, role: FragmentRole, nodes: Vec<NodeId>) -> Self {
-        Self { id, role, nodes }
+        Self {
+            id,
+            role,
+            nodes,
+            owner: None,
+        }
     }
 
     pub fn empty(id: FragmentId, role: FragmentRole) -> Self {
@@ -300,6 +312,7 @@ impl Fragment {
             id,
             role,
             nodes: vec![],
+            owner: None,
         }
     }
 
@@ -416,7 +429,7 @@ pub struct Element {
     pub name: String,
     pub self_closing: bool,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 /// LEGACY(svelte4): legacy `<slot>` pseudo-element. Deprecated in Svelte 5, remove in Svelte 6.
@@ -424,7 +437,7 @@ pub struct SlotElementLegacy {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -437,13 +450,13 @@ pub struct ComponentNode {
     pub name: String,
     pub self_closing: bool,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
     pub legacy_slots: Vec<LegacySlot>,
 }
 
 pub struct LegacySlot {
     pub name: String,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -481,8 +494,8 @@ pub struct IfBlock {
     pub span: Span,
     pub test: ExprRef,
     pub elseif: bool,
-    pub consequent: Fragment,
-    pub alternate: Option<Fragment>,
+    pub consequent: FragmentId,
+    pub alternate: Option<FragmentId>,
 }
 
 // ---------------------------------------------------------------------------
@@ -498,8 +511,8 @@ pub struct EachBlock {
     pub key: Option<ExprRef>,
     /// Unique NodeId for the key expression (separate from block id to avoid NodeId collision).
     pub key_id: Option<NodeId>,
-    pub body: Fragment,
-    pub fallback: Option<Fragment>,
+    pub body: FragmentId,
+    pub fallback: Option<FragmentId>,
 }
 
 // ---------------------------------------------------------------------------
@@ -510,7 +523,7 @@ pub struct SnippetBlock {
     pub id: NodeId,
     pub span: Span,
     pub decl: StmtRef,
-    pub body: Fragment,
+    pub body: FragmentId,
 }
 
 impl SnippetBlock {
@@ -572,7 +585,7 @@ pub struct KeyBlock {
     pub id: NodeId,
     pub span: Span,
     pub expression: ExprRef,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +595,7 @@ pub struct KeyBlock {
 pub struct SvelteHead {
     pub id: NodeId,
     pub span: Span,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 /// LEGACY(svelte4): transparent named-slot wrapper `<svelte:fragment>`. Remove in Svelte 6.
@@ -590,7 +603,7 @@ pub struct SvelteFragmentLegacy {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +620,7 @@ pub struct SvelteElement {
     /// True when `this="literal"` (StringAttribute) — tag is a static string, not a JS expression.
     pub static_tag: bool,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -618,7 +631,7 @@ pub struct SvelteWindow {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +642,7 @@ pub struct SvelteDocument {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -640,7 +653,7 @@ pub struct SvelteBody {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -651,7 +664,7 @@ pub struct SvelteBoundary {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
-    pub fragment: Fragment,
+    pub fragment: FragmentId,
 }
 
 // ---------------------------------------------------------------------------
@@ -664,9 +677,9 @@ pub struct AwaitBlock {
     pub expression: ExprRef,
     pub value: Option<StmtRef>,
     pub error: Option<StmtRef>,
-    pub pending: Option<Fragment>,
-    pub then: Option<Fragment>,
-    pub catch: Option<Fragment>,
+    pub pending: Option<FragmentId>,
+    pub then: Option<FragmentId>,
+    pub catch: Option<FragmentId>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1097,22 +1110,96 @@ pub enum CustomElementConfig {
 // AstStore — flat arena for all template nodes
 // ---------------------------------------------------------------------------
 
-/// Flat arena storing all template nodes. NodeId is an index into this store.
+/// Flat arena storing all template nodes and fragments.
+/// `NodeId` and `FragmentId` are indices into the respective vectors.
 /// Reserved slots (for attributes, key_id, script) hold placeholder Error nodes.
 pub struct AstStore {
     nodes: Vec<Node>,
+    fragments: Vec<Fragment>,
+    /// Reverse index: NodeId → FragmentId of its containing fragment.
+    /// Empty until `freeze_node_fragments` is called by the parser at the
+    /// end of construction.
+    node_to_fragment: Vec<Option<FragmentId>>,
 }
 
 impl AstStore {
     pub fn new() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            nodes: Vec::new(),
+            fragments: Vec::new(),
+            node_to_fragment: Vec::new(),
+        }
     }
 
     /// Create a store pre-allocated for the expected number of nodes.
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             nodes: Vec::with_capacity(cap),
+            fragments: Vec::new(),
+            node_to_fragment: Vec::new(),
         }
+    }
+
+    pub fn freeze_node_fragments(&mut self) {
+        self.node_to_fragment = vec![None; self.nodes.len()];
+        for fragment in &self.fragments {
+            for &nid in &fragment.nodes {
+                self.node_to_fragment[nid.0 as usize] = Some(fragment.id);
+            }
+        }
+    }
+
+    pub fn node_fragment(&self, node_id: NodeId) -> Option<FragmentId> {
+        self.node_to_fragment
+            .get(node_id.0 as usize)
+            .copied()
+            .flatten()
+    }
+
+    pub fn push_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> FragmentId {
+        let id = FragmentId(self.fragments.len() as u32);
+        self.fragments.push(Fragment {
+            id,
+            role,
+            nodes,
+            owner: None,
+        });
+        id
+    }
+
+    pub fn reserve_fragment(&mut self, role: FragmentRole) -> FragmentId {
+        let id = FragmentId(self.fragments.len() as u32);
+        self.fragments.push(Fragment {
+            id,
+            role,
+            nodes: Vec::new(),
+            owner: None,
+        });
+        id
+    }
+
+    pub fn set_fragment_owner(&mut self, id: FragmentId, owner: NodeId) {
+        self.fragments[id.0 as usize].owner = Some(owner);
+    }
+
+    pub fn fragment(&self, id: FragmentId) -> &Fragment {
+        &self.fragments[id.0 as usize]
+    }
+
+    pub fn fragment_mut(&mut self, id: FragmentId) -> &mut Fragment {
+        &mut self.fragments[id.0 as usize]
+    }
+
+    pub fn fragment_nodes(&self, id: FragmentId) -> &[NodeId] {
+        &self.fragments[id.0 as usize].nodes
+    }
+
+    pub fn fragments_len(&self) -> u32 {
+        self.fragments.len() as u32
+    }
+
+    pub fn iter_fragments(&self) -> impl Iterator<Item = &Fragment> {
+        self.fragments.iter()
     }
 
     /// Push a template node into the store. Sets the node's id to match its index.

@@ -11,12 +11,12 @@ fn parse(source: &str) -> Component {
 
 /// Get a node reference from the component's root fragment by index.
 fn node_at(c: &Component, index: usize) -> &Node {
-    c.store.get(c.fragment.nodes[index])
+    c.store.get(c.store.fragment(c.root).nodes[index])
 }
 
 /// Get a node reference from any fragment by index.
-fn frag_node_at<'a>(c: &'a Component, fragment: &Fragment, index: usize) -> &'a Node {
-    c.store.get(fragment.nodes[index])
+fn frag_node_at(c: &Component, fragment_id: svelte_ast::FragmentId, index: usize) -> &Node {
+    c.store.get(c.store.fragment(fragment_id).nodes[index])
 }
 
 fn assert_node(c: &Component, index: usize, expected: &str) {
@@ -257,10 +257,10 @@ fn unclosed_element_returns_diagnostic() {
         "expected diagnostics for unclosed element"
     );
     // AST should still contain the auto-closed element
-    assert_eq!(component.fragment.nodes.len(), 1);
+    assert_eq!(component.store.fragment(component.root).nodes.len(), 1);
     assert!(component
         .store
-        .get(component.fragment.nodes[0])
+        .get(component.store.fragment(component.root).nodes[0])
         .is_element());
 }
 
@@ -390,8 +390,13 @@ fn html_tag_complex_expression() {
 
 // --- ConstTag tests ---
 
-fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_expr: &str) {
-    if let Node::ConstTag(ref ct) = frag_node_at(c, fragment, index) {
+fn assert_const_tag(
+    c: &Component,
+    fragment_id: svelte_ast::FragmentId,
+    index: usize,
+    expected_expr: &str,
+) {
+    if let Node::ConstTag(ref ct) = frag_node_at(c, fragment_id, index) {
         assert_eq!(c.source_text(ct.decl.span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
@@ -402,7 +407,7 @@ fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_e
 fn const_tag_basic() {
     let c = parse("{#each items as item}{@const doubled = item * 2}<p>{doubled}</p>{/each}");
     if let Node::EachBlock(ref eb) = node_at(&c, 0) {
-        assert_const_tag(&c, &eb.body, 0, "doubled = item * 2");
+        assert_const_tag(&c, eb.body, 0, "doubled = item * 2");
     } else {
         panic!("expected EachBlock at index 0");
     }
@@ -412,7 +417,7 @@ fn const_tag_basic() {
 fn const_tag_in_if_block() {
     let c = parse("{#if show}{@const x = count + 1}<p>{x}</p>{/if}");
     if let Node::IfBlock(ref ib) = node_at(&c, 0) {
-        assert_const_tag(&c, &ib.consequent, 0, "x = count + 1");
+        assert_const_tag(&c, ib.consequent, 0, "x = count + 1");
     } else {
         panic!("expected IfBlock at index 0");
     }
@@ -495,13 +500,13 @@ fn nested_style_tag_is_parsed_as_element_not_component_css() {
     let Node::Element(div) = node_at(&c, 0) else {
         panic!("expected outer div element");
     };
-    let Node::Element(style) = frag_node_at(&c, &div.fragment, 0) else {
+    let Node::Element(style) = frag_node_at(&c, div.fragment, 0) else {
         panic!("expected nested style element");
     };
     assert_eq!(style.name, "style");
-    assert_eq!(style.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(style.fragment).nodes.len(), 1);
     assert_eq!(
-        c.source_text(frag_node_at(&c, &style.fragment, 0).span()),
+        c.source_text(frag_node_at(&c, style.fragment, 0).span()),
         ".foo { color: red; }"
     );
 }
@@ -517,12 +522,12 @@ fn nested_style_tag_inside_block_stays_in_fragment() {
     let Node::IfBlock(if_block) = node_at(&c, 0) else {
         panic!("expected if block");
     };
-    let Node::Element(style) = frag_node_at(&c, &if_block.consequent, 0) else {
+    let Node::Element(style) = frag_node_at(&c, if_block.consequent, 0) else {
         panic!("expected style element in if block");
     };
     assert_eq!(style.name, "style");
     assert_eq!(
-        c.source_text(frag_node_at(&c, &style.fragment, 0).span()),
+        c.source_text(frag_node_at(&c, style.fragment, 0).span()),
         ".foo { color: red; }"
     );
 }
@@ -620,8 +625,8 @@ fn recovery_unclosed_element_with_text() {
     let (c, diags) = parse_with_diagnostics("<div><span>text");
     assert!(!diags.is_empty());
     // Auto-closed: div contains span, span contains text
-    assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.store.get(c.fragment.nodes[0]).is_element());
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
+    assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_element());
 }
 
 #[test]
@@ -629,7 +634,7 @@ fn recovery_mismatched_close_tag() {
     let (c, diags) = parse_with_diagnostics("<div></span></div>");
     assert!(!diags.is_empty());
     // div should still be properly closed
-    assert_eq!(c.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
 #[test]
@@ -637,8 +642,8 @@ fn recovery_unclosed_if_block() {
     let (c, diags) = parse_with_diagnostics("{#if x}hello");
     assert!(!diags.is_empty());
     // Should produce an auto-closed IfBlock
-    assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.store.get(c.fragment.nodes[0]).is_if_block());
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
+    assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_if_block());
 }
 
 #[test]
@@ -650,22 +655,22 @@ fn recovery_multiple_errors() {
         diags.len()
     );
     // Both unclosed elements should be auto-closed
-    assert_eq!(c.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
 #[test]
 fn recovery_empty_input() {
     let (c, diags) = parse_with_diagnostics("");
     assert!(diags.is_empty());
-    assert!(c.fragment.nodes.is_empty());
+    assert!(c.store.fragment(c.root).nodes.is_empty());
 }
 
 #[test]
 fn recovery_text_only() {
     let (c, diags) = parse_with_diagnostics("just text");
     assert!(diags.is_empty());
-    assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.store.get(c.fragment.nodes[0]).is_text());
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
+    assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_text());
 }
 
 #[test]
@@ -673,8 +678,11 @@ fn recovery_close_tag_no_matching_open() {
     let (c, diags) = parse_with_diagnostics("</div>");
     assert!(!diags.is_empty());
     // Error node for the orphan close tag
-    assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(matches!(c.store.get(c.fragment.nodes[0]), Node::Error(_)));
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
+    assert!(matches!(
+        c.store.get(c.store.fragment(c.root).nodes[0]),
+        Node::Error(_)
+    ));
 }
 
 #[test]
@@ -704,8 +712,8 @@ fn recovery_duplicate_script_continues() {
     assert!(!diags.is_empty());
     // First instance script is kept, second is skipped, div is parsed
     assert!(c.instance_script.is_some());
-    assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.store.get(c.fragment.nodes[0]).is_element());
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
+    assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_element());
 }
 
 #[test]
@@ -716,14 +724,14 @@ fn recovery_duplicate_module_script_continues() {
     assert!(!diags.is_empty());
     assert!(c.module_script.is_some());
     assert!(c.instance_script.is_none());
-    assert_eq!(c.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
 #[test]
 fn recovery_unclosed_each_block() {
     let (c, diags) = parse_with_diagnostics("{#each items as item}content");
     assert!(!diags.is_empty());
-    assert_eq!(c.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
 fn assert_element(c: &Component, index: usize, name: &str, self_closing: bool) {
@@ -780,7 +788,7 @@ fn void_element_closing_tag_error() {
 #[test]
 fn void_element_multiple() {
     let c = parse("<input><br><hr>");
-    assert_eq!(c.fragment.nodes.len(), 3);
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 3);
     assert_element(&c, 0, "input", true);
     assert_element(&c, 1, "br", true);
     assert_element(&c, 2, "hr", true);
@@ -837,7 +845,7 @@ fn svelte_options_runes_true() {
     let c = parse("<svelte:options runes={true} />");
     assert_options_runes(&c, true);
     assert!(
-        c.fragment.is_empty(),
+        c.store.fragment(c.root).is_empty(),
         "svelte:options should be removed from fragment"
     );
 }
@@ -917,7 +925,7 @@ fn svelte_options_with_content() {
     let c = parse("<svelte:options runes={true} />\n<p>Hello</p>");
     assert_options_runes(&c, true);
     // <p> should be in the fragment, svelte:options should not
-    assert_eq!(c.fragment.nodes.len(), 2); // newline text + <p>
+    assert_eq!(c.store.fragment(c.root).nodes.len(), 2); // newline text + <p>
 }
 
 #[test]
@@ -925,7 +933,7 @@ fn svelte_options_removed_from_fragment() {
     let c = parse("<svelte:options runes={true} />");
     assert!(c.options.is_some());
     assert!(
-        c.fragment.is_empty(),
+        c.store.fragment(c.root).is_empty(),
         "svelte:options must be removed from fragment"
     );
 }
@@ -1089,8 +1097,13 @@ fn svelte_options_preserves_attributes() {
 
 // --- DebugTag tests ---
 
-fn assert_debug_tag(c: &Component, fragment: &Fragment, index: usize, expected_ids: &[&str]) {
-    if let Node::DebugTag(ref dt) = frag_node_at(c, fragment, index) {
+fn assert_debug_tag(
+    c: &Component,
+    fragment_id: svelte_ast::FragmentId,
+    index: usize,
+    expected_ids: &[&str],
+) {
+    if let Node::DebugTag(ref dt) = frag_node_at(c, fragment_id, index) {
         let actual: Vec<&str> = dt
             .identifier_refs
             .iter()
@@ -1105,19 +1118,19 @@ fn assert_debug_tag(c: &Component, fragment: &Fragment, index: usize, expected_i
 #[test]
 fn debug_tag_empty() {
     let c = parse("{@debug}");
-    assert_debug_tag(&c, &c.fragment, 0, &[]);
+    assert_debug_tag(&c, c.root, 0, &[]);
 }
 
 #[test]
 fn debug_tag_single() {
     let c = parse("{@debug x}");
-    assert_debug_tag(&c, &c.fragment, 0, &["x"]);
+    assert_debug_tag(&c, c.root, 0, &["x"]);
 }
 
 #[test]
 fn debug_tag_multiple() {
     let c = parse("{@debug x, y, z}");
-    assert_debug_tag(&c, &c.fragment, 0, &["x", "y", "z"]);
+    assert_debug_tag(&c, c.root, 0, &["x", "y", "z"]);
 }
 
 #[test]
@@ -1227,8 +1240,8 @@ fn await_branches_convert_svelte_element_and_boundary() {
         panic!("expected AwaitBlock");
     };
 
-    let pending = block.pending.as_ref().expect("expected pending fragment");
-    let then = block.then.as_ref().expect("expected then fragment");
+    let pending = block.pending.expect("expected pending fragment");
+    let then = block.then.expect("expected then fragment");
 
     assert!(matches!(
         frag_node_at(&c, pending, 0),
@@ -1247,11 +1260,11 @@ fn converted_special_nodes_still_recurse_for_nested_special_elements() {
     };
 
     assert!(matches!(
-        frag_node_at(&c, &window.fragment, 0),
+        frag_node_at(&c, window.fragment, 0),
         Node::SvelteElement(_)
     ));
     assert!(matches!(
-        frag_node_at(&c, &window.fragment, 1),
+        frag_node_at(&c, window.fragment, 1),
         Node::SvelteBoundary(_)
     ));
 }
@@ -1264,7 +1277,7 @@ fn legacy_slot_element_converts_to_dedicated_node() {
     };
 
     assert_eq!(slot.attributes.len(), 1);
-    assert!(matches!(frag_node_at(&c, &slot.fragment, 0), Node::Text(_)));
+    assert!(matches!(frag_node_at(&c, slot.fragment, 0), Node::Text(_)));
 }
 
 #[test]
@@ -1280,7 +1293,7 @@ fn legacy_svelte_fragment_converts_to_dedicated_node() {
         .find(|s| s.name == "item")
         .expect("named slot 'item' must be bucketed");
     assert!(matches!(
-        frag_node_at(&c, &slot.fragment, 0),
+        frag_node_at(&c, slot.fragment, 0),
         Node::SvelteFragmentLegacy(_)
     ));
 }
@@ -1403,7 +1416,7 @@ fn no_slot_attrs_means_no_legacy_slots() {
     let c = parse(r#"<Comp><span>a</span>text</Comp>"#);
     let cn = component_at(&c, 0);
     assert!(cn.legacy_slots.is_empty());
-    assert_eq!(cn.fragment.nodes.len(), 2);
+    assert_eq!(c.store.fragment(cn.fragment).nodes.len(), 2);
 }
 
 #[test]
@@ -1411,10 +1424,10 @@ fn single_named_slot_moved_into_legacy_slots() {
     let c = parse(r#"<Comp><div slot="header">H</div></Comp>"#);
     let cn = component_at(&c, 0);
     assert_eq!(slot_names(cn), vec!["header"]);
-    assert!(cn.fragment.nodes.is_empty());
+    assert!(c.store.fragment(cn.fragment).nodes.is_empty());
     let slot = &cn.legacy_slots[0];
-    assert_eq!(slot.fragment.nodes.len(), 1);
-    let wrapper = c.store.get(slot.fragment.nodes[0]);
+    assert_eq!(c.store.fragment(slot.fragment).nodes.len(), 1);
+    let wrapper = c.store.get(c.store.fragment(slot.fragment).nodes[0]);
     assert!(matches!(wrapper, Node::Element(el) if el.name == "div"));
 }
 
@@ -1422,7 +1435,7 @@ fn single_named_slot_moved_into_legacy_slots() {
 fn slot_attr_remains_on_wrapper_after_bucketing() {
     let c = parse(r#"<Comp><div slot="header">H</div></Comp>"#);
     let cn = component_at(&c, 0);
-    let wrapper_id = cn.legacy_slots[0].fragment.nodes[0];
+    let wrapper_id = c.store.fragment(cn.legacy_slots[0].fragment).nodes[0];
     let Node::Element(el) = c.store.get(wrapper_id) else {
         panic!("expected element wrapper");
     };
@@ -1451,7 +1464,7 @@ fn default_and_named_children_split_correctly() {
         parse(r#"<Comp>before<div slot="header">H</div>between<p slot="footer">F</p>after</Comp>"#);
     let cn = component_at(&c, 0);
     assert_eq!(slot_names(cn), vec!["header", "footer"]);
-    let default = &cn.fragment.nodes;
+    let default = &c.store.fragment(cn.fragment).nodes;
     assert_eq!(default.len(), 3, "before/between/after stay in default");
     assert!(matches!(c.store.get(default[0]), Node::Text(_)));
     assert!(matches!(c.store.get(default[1]), Node::Text(_)));
@@ -1463,7 +1476,7 @@ fn duplicate_slot_name_groups_into_single_bucket() {
     let c = parse(r#"<Comp><div slot="x">A</div><span slot="x">B</span></Comp>"#);
     let cn = component_at(&c, 0);
     assert_eq!(slot_names(cn), vec!["x"]);
-    assert_eq!(cn.legacy_slots[0].fragment.nodes.len(), 2);
+    assert_eq!(c.store.fragment(cn.legacy_slots[0].fragment).nodes.len(), 2);
 }
 
 #[test]
@@ -1471,7 +1484,9 @@ fn slot_on_nested_component_child_is_bucketed() {
     let c = parse(r#"<Outer><Inner slot="body" /></Outer>"#);
     let outer = component_at(&c, 0);
     assert_eq!(slot_names(outer), vec!["body"]);
-    let wrapper = c.store.get(outer.legacy_slots[0].fragment.nodes[0]);
+    let wrapper = c
+        .store
+        .get(c.store.fragment(outer.legacy_slots[0].fragment).nodes[0]);
     assert!(matches!(wrapper, Node::ComponentNode(cn) if cn.name == "Inner"));
 }
 
@@ -1482,7 +1497,7 @@ fn slot_on_svelte_fragment_is_bucketed_before_legacy_conversion() {
     let c = parse(r#"<Comp><svelte:fragment slot="item">named</svelte:fragment></Comp>"#);
     let cn = component_at(&c, 0);
     assert_eq!(slot_names(cn), vec!["item"]);
-    let wrapper_id = cn.legacy_slots[0].fragment.nodes[0];
+    let wrapper_id = c.store.fragment(cn.legacy_slots[0].fragment).nodes[0];
     // After convert_svelte_fragment_legacy ran, wrapper is now SvelteFragmentLegacy.
     assert!(matches!(
         c.store.get(wrapper_id),
@@ -1496,7 +1511,7 @@ fn dynamic_slot_value_stays_in_default() {
     let c = parse(r#"<Comp><div slot={name}>X</div></Comp>"#);
     let cn = component_at(&c, 0);
     assert!(cn.legacy_slots.is_empty(), "dynamic slot stays in default");
-    assert_eq!(cn.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(cn.fragment).nodes.len(), 1);
 }
 
 #[test]
@@ -1507,7 +1522,7 @@ fn empty_slot_name_stays_in_default() {
         cn.legacy_slots.is_empty(),
         "empty slot name not a valid bucket"
     );
-    assert_eq!(cn.fragment.nodes.len(), 1);
+    assert_eq!(c.store.fragment(cn.fragment).nodes.len(), 1);
 }
 
 #[test]
@@ -1531,23 +1546,26 @@ fn self_closing_component_has_empty_legacy_slots() {
     let c = parse(r#"<Comp />"#);
     let cn = component_at(&c, 0);
     assert!(cn.legacy_slots.is_empty());
-    assert!(cn.fragment.nodes.is_empty());
+    assert!(c.store.fragment(cn.fragment).nodes.is_empty());
 }
 
 #[test]
 fn each_named_slot_gets_distinct_fragment_id() {
     let c = parse(r#"<Comp><div slot="a">A</div><div slot="b">B</div></Comp>"#);
     let cn = component_at(&c, 0);
-    let id_a = cn.legacy_slots[0].fragment.id;
-    let id_b = cn.legacy_slots[1].fragment.id;
+    let id_a = cn.legacy_slots[0].fragment;
+    let id_b = cn.legacy_slots[1].fragment;
     assert_ne!(id_a, id_b);
-    assert_ne!(cn.fragment.id, id_a);
-    assert_ne!(cn.fragment.id, id_b);
+    assert_ne!(cn.fragment, id_a);
+    assert_ne!(cn.fragment, id_b);
 }
 
 #[test]
 fn named_slot_fragment_role_is_named_slot() {
     let c = parse(r#"<Comp><div slot="x">A</div></Comp>"#);
     let cn = component_at(&c, 0);
-    assert_eq!(cn.legacy_slots[0].fragment.role, FragmentRole::NamedSlot);
+    assert_eq!(
+        c.store.fragment(cn.legacy_slots[0].fragment).role,
+        FragmentRole::NamedSlot
+    );
 }

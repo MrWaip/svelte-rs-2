@@ -14,8 +14,8 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy,
+    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, IfBlock, KeyBlock,
+    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy,
     SnippetBlock, SvelteBody, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow,
     Text, TransitionDirection, TransitionDirective, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
     SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
@@ -761,10 +761,10 @@ impl TemplateValidationVisitor {
         &mut self,
         kind: SpecialElementKind,
         attributes: &[Attribute],
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if let Some(span) = fragment_content_span(fragment, ctx) {
+        if let Some(span) = fragment_content_span(fragment_id, ctx) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::SvelteMetaInvalidContent {
                     name: kind.element_name().to_string(),
@@ -889,7 +889,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // textarea_invalid_content: <textarea> may not have both a value attribute and children.
         if el.name == "textarea"
             && has_value_attr
-            && ctx.data.fragment_has_children_by_id(el.fragment.id)
+            && ctx.data.fragment_has_children_by_id(el.fragment)
         {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::TextareaInvalidContent,
@@ -1115,7 +1115,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.visit_special_element(
             SpecialElementKind::Window,
             &window.attributes,
-            &window.fragment,
+            window.fragment,
             ctx,
         );
     }
@@ -1124,7 +1124,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.visit_special_element(
             SpecialElementKind::Document,
             &document.attributes,
-            &document.fragment,
+            document.fragment,
             ctx,
         );
     }
@@ -1133,7 +1133,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.visit_special_element(
             SpecialElementKind::Body,
             &body.attributes,
-            &body.fragment,
+            body.fragment,
             ctx,
         );
     }
@@ -1435,7 +1435,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: block_empty, block_unexpected_character
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
-        check_empty_fragment(&block.fragment, ctx);
+        check_empty_fragment(block.fragment, ctx);
 
         // block_unexpected_character: runes mode only — char after `{` must be `#`
         if ctx.runes {
@@ -1453,8 +1453,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: block_empty (consequent + alternate), block_unexpected_character
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_, '_>) {
-        check_empty_fragment(&block.consequent, ctx);
-        if let Some(alt) = &block.alternate {
+        check_empty_fragment(block.consequent, ctx);
+        if let Some(alt) = block.alternate {
             check_empty_fragment(alt, ctx);
         }
 
@@ -1563,7 +1563,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         let _ = each_id;
                         let only_child = ctx
                             .data
-                            .fragment_single_non_trivial_child_by_id(each_block.body.id);
+                            .fragment_single_non_trivial_child_by_id(each_block.body);
                         if only_child != parent.map(|p| p.id) {
                             Some(DiagnosticKind::AnimationInvalidPlacement)
                         } else {
@@ -2060,7 +2060,7 @@ fn bind_targets_each_context(
             let Some(block) = ctx.store.get(parent.id).as_each_block() else {
                 return false;
             };
-            ctx.data.effective_fragment_scope(block.body.id, ctx.scope) == sym_scope
+            ctx.data.effective_fragment_scope(block.body, ctx.scope) == sym_scope
         })
 }
 
@@ -2171,9 +2171,13 @@ impl SpecialElementKind {
     }
 }
 
-fn fragment_content_span(fragment: &Fragment, ctx: &VisitContext<'_, '_>) -> Option<Span> {
-    let first = fragment.nodes.first()?;
-    let last = fragment.nodes.last()?;
+fn fragment_content_span(
+    fragment_id: svelte_ast::FragmentId,
+    ctx: &VisitContext<'_, '_>,
+) -> Option<Span> {
+    let nodes = &ctx.store.fragment_nodes(fragment_id);
+    let first = nodes.first()?;
+    let last = nodes.last()?;
     Some(
         ctx.store
             .get(*first)
@@ -2294,8 +2298,8 @@ fn validate_component_slot_conflicts(
 
 /// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
 /// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
-fn check_empty_fragment(fragment: &Fragment, ctx: &mut VisitContext<'_, '_>) {
-    if let Some(node_id) = ctx.data.fragment_single_child_by_id(fragment.id) {
+fn check_empty_fragment(fragment_id: svelte_ast::FragmentId, ctx: &mut VisitContext<'_, '_>) {
+    if let Some(node_id) = ctx.data.fragment_single_child_by_id(fragment_id) {
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {
                 ctx.warnings_mut()
@@ -2477,7 +2481,7 @@ fn maybe_const_tag_invalid_reference(
                 let Node::ComponentNode(cn) = ctx.store.get(parent.id) else {
                     break;
                 };
-                let component_scope = ctx.data.scoping.fragment_scope_by_id(cn.fragment.id);
+                let component_scope = ctx.data.scoping.fragment_scope_by_id(cn.fragment);
                 if component_scope == Some(binding_scope) {
                     return Some(Diagnostic::error(
                         DiagnosticKind::ConstTagInvalidReference {
@@ -2495,7 +2499,7 @@ fn maybe_const_tag_invalid_reference(
                 let Node::SvelteBoundary(b) = ctx.store.get(parent.id) else {
                     break;
                 };
-                let boundary_scope = ctx.data.scoping.fragment_scope_by_id(b.fragment.id);
+                let boundary_scope = ctx.data.scoping.fragment_scope_by_id(b.fragment);
                 if boundary_scope == Some(binding_scope) {
                     return Some(Diagnostic::error(
                         DiagnosticKind::ConstTagInvalidReference {
@@ -2567,13 +2571,13 @@ fn has_prior_named_slot(
     component: &ComponentNode,
     current_child_id: NodeId,
     slot_name: &str,
-    _ctx: &VisitContext<'_, '_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> bool {
     let Some(slot) = component.legacy_slots.iter().find(|s| s.name == slot_name) else {
         return false;
     };
-    slot.fragment.nodes.first().copied() != Some(current_child_id)
-        && slot.fragment.nodes.contains(&current_child_id)
+    let nodes = &ctx.store.fragment_nodes(slot.fragment);
+    nodes.first().copied() != Some(current_child_id) && nodes.contains(&current_child_id)
 }
 
 fn component_has_implicit_default_children(
@@ -2581,7 +2585,8 @@ fn component_has_implicit_default_children(
     excluded_child_id: Option<NodeId>,
     ctx: &VisitContext<'_, '_>,
 ) -> Option<Span> {
-    for &child_id in &component.fragment.nodes {
+    let cn_fragment_nodes = ctx.store.fragment_nodes(component.fragment).to_vec();
+    for child_id in cn_fragment_nodes {
         if Some(child_id) == excluded_child_id {
             continue;
         }
@@ -2597,7 +2602,8 @@ fn component_has_implicit_default_children(
     }
 
     for slot in &component.legacy_slots {
-        for &wrapper_id in &slot.fragment.nodes {
+        let slot_nodes = ctx.store.fragment_nodes(slot.fragment).to_vec();
+        for wrapper_id in slot_nodes {
             if Some(wrapper_id) == excluded_child_id {
                 continue;
             }

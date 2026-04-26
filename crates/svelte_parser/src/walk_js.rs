@@ -4,7 +4,7 @@
 //! utilities, and populates `ParserResult` with parsed expressions and statements.
 
 use oxc_allocator::Allocator;
-use svelte_ast::{AstStore, Attribute, Component, ConcatPart, Fragment, Node, ScriptLanguage};
+use svelte_ast::{AstStore, Attribute, Component, ConcatPart, FragmentId, Node, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
@@ -56,7 +56,7 @@ pub(crate) fn parse_js<'a>(
 
     walk_fragment(
         alloc,
-        &component.fragment,
+        component.root,
         &component.store,
         component,
         template_typescript,
@@ -170,14 +170,16 @@ fn parse_binding_pattern<'a>(
 
 fn walk_fragment<'a>(
     alloc: &'a Allocator,
-    fragment: &Fragment,
+    fragment_id: FragmentId,
     store: &AstStore,
     component: &Component,
     typescript: bool,
     result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    for &id in &fragment.nodes {
+    let nodes_len = store.fragment_nodes(fragment_id).len();
+    for i in 0..nodes_len {
+        let id = store.fragment_nodes(fragment_id)[i];
         let node = store.get(id);
         walk_node(alloc, node, store, component, typescript, result, diags);
     }
@@ -207,7 +209,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &el.fragment,
+                el.fragment,
                 store,
                 component,
                 typescript,
@@ -219,7 +221,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &el.fragment,
+                el.fragment,
                 store,
                 component,
                 typescript,
@@ -231,7 +233,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &cn.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &cn.fragment,
+                cn.fragment,
                 store,
                 component,
                 typescript,
@@ -241,7 +243,7 @@ fn walk_node<'a>(
             for slot in &cn.legacy_slots {
                 walk_fragment(
                     alloc,
-                    &slot.fragment,
+                    slot.fragment,
                     store,
                     component,
                     typescript,
@@ -254,14 +256,14 @@ fn walk_node<'a>(
             parse_span(alloc, component, block.test.span, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &block.consequent,
+                block.consequent,
                 store,
                 component,
                 typescript,
                 result,
                 diags,
             );
-            if let Some(alt) = &block.alternate {
+            if let Some(alt) = block.alternate {
                 walk_fragment(alloc, alt, store, component, typescript, result, diags);
             }
         }
@@ -297,16 +299,10 @@ fn walk_node<'a>(
             }
 
             walk_fragment(
-                alloc,
-                &block.body,
-                store,
-                component,
-                typescript,
-                result,
-                diags,
+                alloc, block.body, store, component, typescript, result, diags,
             );
 
-            if let Some(fb) = &block.fallback {
+            if let Some(fb) = block.fallback {
                 walk_fragment(alloc, fb, store, component, typescript, result, diags);
             }
         }
@@ -317,13 +313,7 @@ fn walk_node<'a>(
                 result.alloc_stmt(block.decl.span.start, stmt);
             }
             walk_fragment(
-                alloc,
-                &block.body,
-                store,
-                component,
-                typescript,
-                result,
-                diags,
+                alloc, block.body, store, component, typescript, result, diags,
             );
         }
         Node::RenderTag(tag) => {
@@ -357,7 +347,7 @@ fn walk_node<'a>(
             );
             walk_fragment(
                 alloc,
-                &block.fragment,
+                block.fragment,
                 store,
                 component,
                 typescript,
@@ -382,13 +372,13 @@ fn walk_node<'a>(
                 parse_binding_pattern(alloc, component, r.span, typescript, result, diags);
             }
 
-            if let Some(ref p) = block.pending {
+            if let Some(p) = block.pending {
                 walk_fragment(alloc, p, store, component, typescript, result, diags);
             }
-            if let Some(ref t) = block.then {
+            if let Some(t) = block.then {
                 walk_fragment(alloc, t, store, component, typescript, result, diags);
             }
-            if let Some(ref c) = block.catch {
+            if let Some(c) = block.catch {
                 walk_fragment(alloc, c, store, component, typescript, result, diags);
             }
         }
@@ -413,7 +403,7 @@ fn walk_node<'a>(
         Node::SvelteHead(head) => {
             walk_fragment(
                 alloc,
-                &head.fragment,
+                head.fragment,
                 store,
                 component,
                 typescript,
@@ -425,7 +415,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &el.fragment,
+                el.fragment,
                 store,
                 component,
                 typescript,
@@ -440,7 +430,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
-                &el.fragment,
+                el.fragment,
                 store,
                 component,
                 typescript,
@@ -460,13 +450,7 @@ fn walk_node<'a>(
         Node::SvelteBoundary(b) => {
             walk_attrs(alloc, &b.attributes, component, typescript, result, diags);
             walk_fragment(
-                alloc,
-                &b.fragment,
-                store,
-                component,
-                typescript,
-                result,
-                diags,
+                alloc, b.fragment, store, component, typescript, result, diags,
             );
         }
         Node::DebugTag(tag) => {
