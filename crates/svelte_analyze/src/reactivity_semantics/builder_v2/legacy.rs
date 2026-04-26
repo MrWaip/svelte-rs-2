@@ -19,6 +19,7 @@ use crate::types::data::AnalysisData;
 use crate::utils::is_simple_expression;
 
 use super::super::data::{LegacyBindablePropSemantics, PropDefaultLowering, V2ReferenceFacts};
+use crate::{PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_UPDATED};
 
 const PROPS_NAME: &str = "$$props";
 const REST_PROPS_NAME: &str = "$$restProps";
@@ -48,6 +49,8 @@ pub(super) fn classify_export_named_declaration<'a>(
 }
 
 fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &VariableDeclaration<'a>) {
+    let immutable = data.script.immutable;
+    let accessors = data.script.accessors;
     for declarator in &decl.declarations {
         let init_default = declarator
             .init
@@ -65,10 +68,11 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
                 (PropDefaultLowering::None, Some(d)) if !pattern_has_outer => d,
                 (leaf, _) => leaf,
             };
-            let updated = data.scoping.is_mutated(visit.symbol);
+            let updated = data.scoping.is_mutated_any(visit.symbol);
+            let flags = compute_flags(default_lowering, updated, accessors, immutable);
             let semantics = LegacyBindablePropSemantics {
                 default_lowering,
-                updated,
+                flags,
             };
             let node_id = data.scoping.symbol_declaration(visit.symbol);
             let node_id: OxcNodeId = node_id;
@@ -102,17 +106,42 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             Some(init_expr) => classify_expression_default(init_expr),
             None => PropDefaultLowering::None,
         };
-        let updated = data.scoping.is_mutated(symbol);
+        let updated = data.scoping.is_mutated_any(symbol);
+        let flags = compute_flags(
+            default_lowering,
+            updated,
+            data.script.accessors,
+            data.script.immutable,
+        );
         let node_id = data.scoping.symbol_declaration(symbol);
         let node_id: OxcNodeId = node_id;
         data.reactivity.record_legacy_bindable_prop_declaration_v2(
             node_id,
             LegacyBindablePropSemantics {
                 default_lowering,
-                updated,
+                flags,
             },
         );
     }
+}
+
+fn compute_flags(
+    default_lowering: PropDefaultLowering,
+    updated: bool,
+    accessors: bool,
+    immutable: bool,
+) -> u32 {
+    let mut flags = PROPS_IS_BINDABLE;
+    if immutable {
+        flags |= PROPS_IS_IMMUTABLE;
+    }
+    if accessors || updated {
+        flags |= PROPS_IS_UPDATED;
+    }
+    if matches!(default_lowering, PropDefaultLowering::Lazy) {
+        flags |= PROPS_IS_LAZY_INITIAL;
+    }
+    flags
 }
 
 /// LEGACY(svelte4): emit `LegacyPropsIdentifierRead` / `LegacyRestPropsIdentifierRead`

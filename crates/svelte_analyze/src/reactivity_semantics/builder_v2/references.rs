@@ -225,12 +225,21 @@ fn classify_reference_semantics(
                 symbol: sym,
             }))
         }
-        // LEGACY(svelte4): bindable prop binding. Reuses the runes `PropRead(Source { bindable })`
-        // channel so consumers see a single `prop_read` shape. Write-side variants are deferred
-        // until consumer use cases prove the need.
+        // LEGACY(svelte4): bindable prop binding. Reuses the runes `PropRead(Source)` /
+        // `PropMutation` / `PropSourceMemberMutationRoot` channels so consumers see a single
+        // shape. Read site emits the same Source variant runes uses; write/mutation sites
+        // follow the existing prop write flow.
         V2DeclarationFacts::LegacyBindableProp(_) => {
-            if is_write || is_member_mutation_root {
-                None
+            if is_member_mutation_root {
+                Some(V2ReferenceFacts::PropSourceMemberMutationRoot {
+                    bindable: true,
+                    symbol: sym,
+                })
+            } else if is_write {
+                Some(V2ReferenceFacts::PropMutation {
+                    bindable: true,
+                    symbol: sym,
+                })
             } else if is_read {
                 Some(V2ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                     bindable: true,

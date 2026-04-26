@@ -1,12 +1,14 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root = $.from_html(`<p></p>`);
-export default function App($$anchor) {
-	let { x: foo, z: [bar] } = {
+var root = $.from_html(`<p> </p>`);
+export default function App($$anchor, $$props) {
+	let { x: foo = "default-x", z: [bar] } = {
 		x: "a",
 		z: ["b"]
 	};
 	var p = root();
-	p.textContent = `${foo ?? ""}${bar ?? ""}`;
+	var text = $.child(p);
+	$.reset(p);
+	$.template_effect(() => $.set_text(text, `${foo() ?? ""}${bar() ?? ""}`));
 	$.append($$anchor, p);
 }

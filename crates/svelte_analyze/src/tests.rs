@@ -3992,7 +3992,7 @@ fn assert_legacy_bindable_prop(
     data: &AnalysisData<'_>,
     name: &str,
     expected_default: crate::types::data::PropDefaultLowering,
-    expected_updated: bool,
+    expected_flags: u32,
 ) {
     use crate::types::data::DeclarationSemantics;
     let sym = data
@@ -4008,8 +4008,9 @@ fn assert_legacy_bindable_prop(
                 "default_lowering mismatch for '{name}'"
             );
             assert_eq!(
-                legacy.updated, expected_updated,
-                "updated mismatch for '{name}'"
+                legacy.flags, expected_flags,
+                "flags mismatch for '{name}': expected {expected_flags:#b}, got {:#b}",
+                legacy.flags
             );
         }
         other => panic!("expected LegacyBindableProp for '{name}', got {other:?}"),
@@ -4033,7 +4034,7 @@ fn legacy_export_let_classifies_as_legacy_bindable_prop() {
         &data,
         "foo",
         crate::types::data::PropDefaultLowering::None,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4047,7 +4048,7 @@ fn legacy_export_let_with_default_classifies_eager() {
         &data,
         "bar",
         crate::types::data::PropDefaultLowering::Eager,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4061,7 +4062,7 @@ fn legacy_export_let_undefined_default_classifies_eager() {
         &data,
         "foo",
         crate::types::data::PropDefaultLowering::Eager,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4075,7 +4076,7 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
         &data,
         "bar",
         crate::types::data::PropDefaultLowering::Lazy,
-        false,
+        crate::PROPS_IS_BINDABLE | crate::PROPS_IS_LAZY_INITIAL,
     );
 }
 
@@ -4089,7 +4090,7 @@ fn legacy_export_let_reassigned_marks_updated() {
         &data,
         "foo",
         crate::types::data::PropDefaultLowering::None,
-        true,
+        crate::PROPS_IS_BINDABLE | crate::PROPS_IS_UPDATED,
     );
 }
 
@@ -4103,7 +4104,7 @@ fn legacy_export_var_classifies_as_legacy_bindable_prop() {
         &data,
         "count",
         crate::types::data::PropDefaultLowering::Eager,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4117,7 +4118,7 @@ fn legacy_export_specifier_classifies_as_legacy_bindable_prop() {
         &data,
         "foo",
         crate::types::data::PropDefaultLowering::Eager,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4131,7 +4132,7 @@ fn legacy_export_specifier_alias_classification_unchanged() {
         &data,
         "className",
         crate::types::data::PropDefaultLowering::Eager,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4145,13 +4146,13 @@ fn legacy_export_destructure_classifies_each_leaf() {
         &data,
         "foo",
         crate::types::data::PropDefaultLowering::None,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
     assert_legacy_bindable_prop(
         &data,
         "bar",
         crate::types::data::PropDefaultLowering::None,
-        false,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 

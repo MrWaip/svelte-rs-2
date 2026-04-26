@@ -1726,61 +1726,54 @@ fn svelte_options_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: legacy `export let` props lowering through reactivity_semantics v2 (codegen)"]
 fn svelte_options_runes_false_override() {
     assert_compiler("svelte_options_runes_false_override");
 }
 
 #[rstest]
-#[ignore = "missing: legacy `export let` props lowering through reactivity_semantics v2 (codegen)"]
 fn svelte_options_accessors_legacy() {
     assert_compiler("svelte_options_accessors_legacy");
 }
 
 #[rstest]
-#[ignore = "missing: legacy `export let` props lowering through reactivity_semantics v2 (codegen)"]
+#[ignore = "missing: immutable legacy template-effect lowering needs $.deep_read_state / $.untrack wrappers (codegen)"]
 fn svelte_options_immutable_legacy() {
     assert_compiler("svelte_options_immutable_legacy");
 }
 
 #[rstest]
-#[ignore = "missing: required legacy export let props lower through prop sources (codegen)"]
 fn legacy_export_let_required() {
     assert_compiler("legacy_export_let_required");
 }
 
 #[rstest]
-#[ignore = "missing: legacy export var props become bindable props (analyze/codegen)"]
 fn legacy_export_var_basic() {
     assert_compiler("legacy_export_var_basic");
 }
 
 #[rstest]
-#[ignore = "missing: legacy export specifier props become bindable props (analyze/codegen)"]
 fn legacy_export_specifier() {
     assert_compiler("legacy_export_specifier");
 }
 
 #[rstest]
-#[ignore = "missing: legacy export specifier aliases become prop aliases (analyze/codegen)"]
 fn legacy_export_specifier_alias() {
     assert_compiler("legacy_export_specifier_alias");
 }
 
 #[rstest]
-#[ignore = "missing: destructured legacy export props lower to prop sources (analyze/codegen)"]
+#[ignore = "missing: destructured legacy export props need tmp + derived array + fallback helpers (codegen)"]
 fn legacy_export_destructure() {
     assert_compiler("legacy_export_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: typed legacy export let preserves classification + lowers through prop sources (analyze/codegen)"]
 fn legacy_export_let_typed() {
     assert_compiler("legacy_export_let_typed");
 }
 
 #[rstest]
-#[ignore = "missing: legacy export let member mutation lowering (codegen)"]
+#[ignore = "missing: legacy export let member mutation needs $.push / $.init / immutable template-effect wrappers (codegen)"]
 fn legacy_export_let_member_mutation() {
     assert_compiler("legacy_export_let_member_mutation");
 }

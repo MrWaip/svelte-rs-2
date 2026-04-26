@@ -239,12 +239,15 @@ pub enum PropDeclarationKind {
 }
 
 /// LEGACY(svelte4): reactivity facts for one legacy bindable prop binding.
-/// Mirrors runes `Source` shape — bool/enum only, no strings.
+/// Mirrors runes `Source` shape — bit flags only, no strings.
+/// `flags` is the precomputed `$.prop(...)` flag literal (combination of
+/// `PROPS_IS_BINDABLE` / `PROPS_IS_IMMUTABLE` / `PROPS_IS_UPDATED` /
+/// `PROPS_IS_LAZY_INITIAL`); transform/codegen emit it verbatim.
 /// Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LegacyBindablePropSemantics {
     pub default_lowering: PropDefaultLowering,
-    pub updated: bool,
+    pub flags: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

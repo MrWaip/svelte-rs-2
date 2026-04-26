@@ -29,20 +29,29 @@ pub use types::data::{
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
     ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
     ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts, FragmentFactsEntry,
-    IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind, NamespaceKind, OptimizedRuneSemantics,
-    OutputPlanData, ParentKind, ParentRef, PickledAwaitOffsets, PropDeclarationKind,
-    PropDeclarationSemantics, PropDefaultLowering, PropLoweringMode, PropReferenceSemantics,
-    PropsObjectPropertySemantics, ProxyStateInits, ReactivitySemantics, ReferenceSemantics,
-    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
-    RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls, SignalReferenceKind,
-    SnippetData, SnippetParamStrategy, StateBindingSemantics, StateDeclarationSemantics, StateKind,
-    StoreDeclarationSemantics, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
-    TemplateTopology, WindowBindKind,
+    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, MediaBindKind,
+    NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
+    PickledAwaitOffsets, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
+    PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ProxyStateInits,
+    ReactivitySemantics, ReferenceSemantics, ResizeObserverKind, RichContentFacts,
+    RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
+    ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
+    StateDeclarationSemantics, StateKind, StoreDeclarationSemantics, TemplateAnalysis,
+    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 pub use utils::script_info::BINDABLE_RUNE_NAME;
+
+// Props flag constants (must match svelte/src/constants.js).
+// Derived inside `ReactivitySemantics` so transform/codegen emit `$.prop(...)` flag
+// literals from a single source of truth instead of recomputing component-wide gates.
+pub const PROPS_IS_IMMUTABLE: u32 = 1;
+pub const PROPS_IS_RUNES: u32 = 1 << 1;
+pub const PROPS_IS_UPDATED: u32 = 1 << 2;
+pub const PROPS_IS_BINDABLE: u32 = 1 << 3;
+pub const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 pub use utils::{
     is_capture_event, is_delegatable_event, is_passive_event, is_regular_dom_property,
     is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
@@ -195,7 +204,23 @@ pub fn analyze_module<'a>(
     (data, parsed, diags)
 }
 fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
-    let has_exports = !data.script.exports.is_empty();
+    // LEGACY(svelte4): legacy bindable props (`export let foo`, etc.) are *not* component exports;
+    // they appear in `script.exports` only because `extract_script_info` collects every
+    // ExportNamedDeclaration up-front. Filter them out using `ReactivitySemantics`.
+    // Deprecated in Svelte 5, remove in Svelte 6.
+    let has_exports = data.script.exports.iter().any(|exp| {
+        let Some(instance_scope) = data.scoping.instance_scope_id() else {
+            return true;
+        };
+        let Some(sym) = data.scoping.find_binding(instance_scope, exp.name.as_str()) else {
+            return true;
+        };
+        let node = data.scoping.symbol_declaration(sym);
+        !matches!(
+            data.declaration_semantics(node),
+            crate::types::data::DeclarationSemantics::LegacyBindableProp(_)
+        )
+    });
     let has_bindable = data
         .script
         .props_declaration()
@@ -214,7 +239,23 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         || (!data.uses_runes() && data.script.immutable)
         || dev;
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
-    let needs_props_param = data.script.props_declaration().is_some() || needs_push;
+    // LEGACY(svelte4): legacy bindable props need `$$props` parameter regardless of
+    // whether `script_info` discovered them (it misses `var` and multi-decl forms).
+    // Use ReactivitySemantics presence as the source of truth.
+    let has_legacy_bindable_prop = data.scoping.instance_scope_id().is_some_and(|scope_id| {
+        data.scoping.own_binding_names(scope_id).any(|name| {
+            let Some(sym) = data.scoping.find_binding(scope_id, name) else {
+                return false;
+            };
+            let node = data.scoping.symbol_declaration(sym);
+            matches!(
+                data.declaration_semantics(node),
+                crate::types::data::DeclarationSemantics::LegacyBindableProp(_)
+            )
+        })
+    });
+    let needs_props_param =
+        data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
 
     RuntimePlan {
         needs_push,
