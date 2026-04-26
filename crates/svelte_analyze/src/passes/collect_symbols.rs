@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, EachBlock, NodeId, RenderTag, StyleDirectiveValue};
+use svelte_ast::{Attribute, NodeId, RenderTag, StyleDirectiveValue};
 use svelte_span::Span;
 
 use crate::passes::js_analyze;
@@ -30,15 +30,6 @@ pub(crate) struct CollectSymbolsVisitor {
 // ---------------------------------------------------------------------------
 
 impl TemplateVisitor for CollectSymbolsVisitor {
-    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
-        if let Some(key_id) = block.key_id {
-            ctx.data
-                .blocks
-                .each_context
-                .record_key_node_id(block.id, key_id);
-        }
-    }
-
     fn visit_expression(&mut self, _node_id: NodeId, _span: Span, _ctx: &mut VisitContext<'_, '_>) {
     }
 

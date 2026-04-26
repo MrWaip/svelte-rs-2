@@ -371,9 +371,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> Option<&Vec<NodeId>> {
         self.data.template.title_elements.by_fragment_id(id)
     }
-    #[deprecated(note = "use block_semantics(id)")]
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
-        #[allow(deprecated)]
         self.data
             .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
@@ -381,10 +379,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     /// Returns true when the given symbol is the `index` binding of some
     /// `{#each}` block. Each-block indices are always `number`, so an
     /// interpolation referencing one never needs a `?? ""` fallback.
-    #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym).is_some()")]
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
-        #[allow(deprecated)]
-        self.data.each_block_for_index_sym(sym).is_some()
+        self.data.block_semantics_store.is_each_index_sym(sym)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.data.expression(id)

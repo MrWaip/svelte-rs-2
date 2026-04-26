@@ -106,6 +106,12 @@ impl<'a> JsAst<'a> {
     /// storage. `expr_ids`/`stmt_ids` map source offset → bound OxcNodeId
     /// (filled by `ExprRef.bind` during semantic pass). Called once at the
     /// end of `build_component_semantics::build`.
+    ///
+    /// Post-drain invariant: `pending_exprs` / `pending_stmts` contain only
+    /// entries whose offsets do not appear in `expr_ids` / `stmt_ids`. The
+    /// only intentional residue is `<svelte:options customElement={...}>`
+    /// extend expressions, which never reach the template walker and so
+    /// stay accessible via `take_pending_expr` for codegen.
     pub fn drain_pending(
         &mut self,
         expr_ids: &FxHashMap<u32, OxcNodeId>,
@@ -119,32 +125,28 @@ impl<'a> JsAst<'a> {
         if !stmt_ids.is_empty() {
             self.stmts.resize_with(max_stmt_id + 1, || None);
         }
-        // Drain only entries with bound OxcNodeId. Entries without a binding
-        // (e.g. `<svelte:options customElement={...}>` extend expression that
-        // is never visited by the template walker) stay in pending storage
-        // and remain accessible via `pending_expr` / `pending_stmt`.
-        let mut drained_expr = Vec::with_capacity(expr_ids.len());
-        for offset in expr_ids.keys() {
+        for (offset, id) in expr_ids {
             if let Some(expr) = self.pending_exprs.remove(offset) {
-                drained_expr.push((*offset, expr));
-            }
-        }
-        for (offset, expr) in drained_expr {
-            if let Some(id) = expr_ids.get(&offset) {
                 self.exprs[id.index()] = Some(expr);
             }
         }
-        let mut drained_stmt = Vec::with_capacity(stmt_ids.len());
-        for offset in stmt_ids.keys() {
+        for (offset, id) in stmt_ids {
             if let Some(stmt) = self.pending_stmts.remove(offset) {
-                drained_stmt.push((*offset, stmt));
-            }
-        }
-        for (offset, stmt) in drained_stmt {
-            if let Some(id) = stmt_ids.get(&offset) {
                 self.stmts[id.index()] = Some(stmt);
             }
         }
+        debug_assert!(
+            self.pending_exprs
+                .keys()
+                .all(|offset| !expr_ids.contains_key(offset)),
+            "drain_pending left bound expressions in pending_exprs",
+        );
+        debug_assert!(
+            self.pending_stmts
+                .keys()
+                .all(|offset| !stmt_ids.contains_key(offset)),
+            "drain_pending left bound statements in pending_stmts",
+        );
     }
 
     // -- OxcNodeId-keyed read/mutate API (the only API after drain) --
