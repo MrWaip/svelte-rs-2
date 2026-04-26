@@ -3109,9 +3109,19 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         .unwrap_or_else(|| panic!("missing default-slot <p>"));
     let named_p = find_nth_element(component.root, &component, "p", 1)
         .unwrap_or_else(|| panic!("missing named-slot <p>"));
+    let nested_node = match component.store.get(nested_id) {
+        Node::ComponentNode(cn) => cn,
+        _ => unreachable!(),
+    };
+    let named_slot_fid = nested_node
+        .legacy_slots
+        .iter()
+        .find(|s| s.name == "bar")
+        .unwrap_or_else(|| panic!("no bar slot"))
+        .fragment;
     let named_scope = data
         .scoping
-        .named_slot_scope(nested_id, named_p.id)
+        .fragment_scope_by_id(named_slot_fid)
         .unwrap_or_else(|| panic!("no named slot scope"));
 
     assert!(
@@ -3241,9 +3251,11 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
         _ => panic!("let directive statement must be a variable declaration"),
     }
 
+    let _ = list_id;
+    let _ = wrapper_id;
     let named_scope = data
         .scoping
-        .named_slot_scope(list_id, wrapper_id)
+        .fragment_scope_by_id(list_node.legacy_slots[0].fragment)
         .unwrap_or_else(|| panic!("missing named slot scope"));
     data.scoping
         .get_binding(named_scope, "text")

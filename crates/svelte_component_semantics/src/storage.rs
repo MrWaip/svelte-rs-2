@@ -7,7 +7,6 @@ use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::marker::PhantomData;
-use svelte_ast::NodeId;
 
 use crate::symbol::SymbolOwner;
 
@@ -123,12 +122,11 @@ pub struct ComponentSemantics<'a> {
     template_reference_ids: FxHashSet<ReferenceId>,
     /// Unresolved references at root scope, keyed by name.
     root_unresolved_references: FxHashMap<CompactString, Vec<ReferenceId>>,
-    /// Mainstream fragment scopes indexed by `FragmentId`.
+    /// Fragment scopes indexed by `FragmentId`. Covers all fragments
+    /// including LEGACY(svelte4) named-slot bodies — parser allocates a
+    /// `FragmentId` for each `<Component slot="name">` body via
+    /// `LegacySlot.fragment`.
     fragment_scopes: Vec<Option<ScopeId>>,
-    /// LEGACY(svelte4): named-slot fragment scopes, keyed by
-    /// `(component_id, wrapper_id)`. Slot bodies have no parser-allocated
-    /// `FragmentId`, so they live in a separate map from mainstream storage.
-    slot_fragment_scopes: FxHashMap<(NodeId, NodeId), ScopeId>,
     /// O(1) membership check for template-introduced scopes.
     /// Built by `build_template_scope_set()` after all template scopes are registered.
     template_scope_set: FxHashSet<ScopeId>,
@@ -152,7 +150,6 @@ impl<'a> ComponentSemantics<'a> {
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
             fragment_scopes: Vec::new(),
-            slot_fragment_scopes: FxHashMap::default(),
             template_scope_set: FxHashSet::default(),
             module_scope_id: None,
             instance_scope_id: None,
@@ -568,40 +565,16 @@ impl<'a> ComponentSemantics<'a> {
         self.fragment_scopes[idx] = Some(scope);
     }
 
-    /// LEGACY(svelte4): register a scope for a named-slot wrapper body.
-    /// Slot wrappers have no `FragmentId` — keyed by `(component_id, wrapper_id)`.
-    pub fn set_named_slot_scope(
-        &mut self,
-        component_id: NodeId,
-        wrapper_id: NodeId,
-        scope: ScopeId,
-    ) {
-        self.slot_fragment_scopes
-            .insert((component_id, wrapper_id), scope);
-    }
-
-    /// FragmentId-keyed scope lookup. Does NOT cover NamedSlot.
+    /// FragmentId-keyed scope lookup. Covers all fragments including
+    /// LEGACY(svelte4) named-slot bodies (`LegacySlot.fragment`).
     pub fn fragment_scope_by_id(&self, id: svelte_ast::FragmentId) -> Option<ScopeId> {
         self.fragment_scopes.get(id.0 as usize).copied().flatten()
-    }
-
-    /// LEGACY(svelte4): scope lookup for a named-slot wrapper body.
-    /// Slot wrappers have no `FragmentId` — keyed by `(component_id, wrapper_id)`.
-    pub fn named_slot_scope(&self, component_id: NodeId, wrapper_id: NodeId) -> Option<ScopeId> {
-        self.slot_fragment_scopes
-            .get(&(component_id, wrapper_id))
-            .copied()
     }
 
     /// Build the template_scope_set from fragment_scopes for O(1) `is_expr_local`.
     /// Call after all template scopes are registered.
     pub fn build_template_scope_set(&mut self) {
-        self.template_scope_set = self
-            .fragment_scopes
-            .iter()
-            .filter_map(|s| *s)
-            .chain(self.slot_fragment_scopes.values().copied())
-            .collect();
+        self.template_scope_set = self.fragment_scopes.iter().filter_map(|s| *s).collect();
     }
 
     /// Check if a scope is a template-introduced scope (from fragment_scopes).

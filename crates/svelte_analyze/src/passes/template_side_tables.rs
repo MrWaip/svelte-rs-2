@@ -512,15 +512,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .scoping
                 .fragment_scope_by_id(block.body)
                 .expect("EachBody scope must exist");
-            // $$item is synthetic — no OXC AST node for it
             let _ctx_sym = ctx
                 .data
                 .scoping
                 .add_synthetic_binding(child_scope, "$$item");
-            ctx.data.blocks.each_context.mark_destructured(block.id);
         }
-
-        // Index SymbolId is populated in leave_each_block (after dispatch_stmt creates bindings)
     }
 
     fn visit_if_block(&mut self, block: &svelte_ast::IfBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -537,10 +533,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .fragment_scope_by_id(block.body)
             .expect("EachBody scope must exist");
 
-        // Reactivity marking (each_rest / getter / each_non_reactive for context
-        // and index) is owned by `reactivity_semantics/builder_v2/contextual.rs`.
-        // This pass only records non-reactivity structural indices.
-
         if let Some(idx_ref) = block.index.as_ref() {
             let idx_name = ctx
                 .parsed()
@@ -550,12 +542,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name {
                 if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
-                    ctx.data
-                        .blocks
-                        .each_context
-                        .record_index_sym(block.id, idx_sym);
-                    // `EACH_INDEX_NON_DYNAMIC` bit stays on `ComponentScoping`
-                    // until the dynamism classifier moves out of the scoping layer.
                     if block.key.is_none() {
                         ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
                     }

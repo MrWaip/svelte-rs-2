@@ -166,16 +166,13 @@ pub(crate) fn walk_template(
                 ctx.scope = default_scope;
                 walk_template(cn.fragment, ctx, visitors);
 
-                let slot_pairs: Vec<(svelte_ast::FragmentId, NodeId)> = cn
-                    .legacy_slots
-                    .iter()
-                    .map(|s| (s.fragment, ctx.store.fragment_nodes(s.fragment)[0]))
-                    .collect();
-                for (slot_fid, wrapper_id) in slot_pairs {
+                let slot_frags: Vec<svelte_ast::FragmentId> =
+                    cn.legacy_slots.iter().map(|s| s.fragment).collect();
+                for slot_fid in slot_frags {
                     ctx.scope = ctx
                         .data
                         .scoping
-                        .named_slot_scope(cn.id, wrapper_id)
+                        .fragment_scope_by_id(slot_fid)
                         .unwrap_or(saved);
                     walk_template(slot_fid, ctx, visitors);
                 }
