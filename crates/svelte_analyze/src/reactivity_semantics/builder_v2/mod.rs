@@ -1,4 +1,6 @@
 mod contextual;
+/// LEGACY(svelte4): see `legacy.rs` header. Removable as a unit.
+mod legacy;
 mod references;
 mod store;
 mod util;
@@ -53,6 +55,9 @@ pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut
     data.reactivity.reserve_references(reference_count);
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(component, parsed, data);
+    // LEGACY(svelte4): classify $$props / $$restProps identifier reads from
+    // ComponentSemantics.root_unresolved_references. Runes mode skipped inside.
+    legacy::classify_unresolved_legacy_identifiers(data);
 }
 
 /// Fix-point-style refinement of `ConstDeclarationSemantics::ConstTag::reactive`.
@@ -127,6 +132,7 @@ fn compute_const_tag_reactivity<'a>(
                 match decl {
                     DeclarationSemantics::State(_)
                     | DeclarationSemantics::Prop(_)
+                    | DeclarationSemantics::LegacyBindableProp(_)
                     | DeclarationSemantics::Store(_)
                     | DeclarationSemantics::Contextual(_)
                     | DeclarationSemantics::RuntimeRune { .. } => true,
@@ -359,6 +365,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         match decl {
             DeclarationSemantics::State(_)
             | DeclarationSemantics::Prop(_)
+            | DeclarationSemantics::LegacyBindableProp(_)
             | DeclarationSemantics::Store(_)
             | DeclarationSemantics::Contextual(_)
             | DeclarationSemantics::RuntimeRune { .. } => true,
@@ -1015,6 +1022,16 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         let previous = self.current_decl_kind.replace(decl.kind);
         walk_variable_declaration(self, decl);
         self.current_decl_kind = previous;
+    }
+
+    fn visit_export_named_declaration(
+        &mut self,
+        export: &oxc_ast::ast::ExportNamedDeclaration<'a>,
+    ) {
+        // LEGACY(svelte4): classify legacy `export let` / `export var` / specifier props
+        // through ReactivitySemantics. Runes mode skipped inside the helper.
+        legacy::classify_export_named_declaration(self.data, export);
+        oxc_ast_visit::walk::walk_export_named_declaration(self, export);
     }
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {

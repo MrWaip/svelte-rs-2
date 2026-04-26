@@ -87,6 +87,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | DeclarationSemantics::RuntimeRune { .. }
             | DeclarationSemantics::LetCarrier { .. } => self.ctx.b.rid_expr(symbol_name),
             DeclarationSemantics::Prop(_) => self.ctx.b.rid_expr(symbol_name),
+            // LEGACY(svelte4): consumer wiring for legacy bindable prop reads is owned by
+            // a downstream use case in `specs/legacy-export-let.md`. Until then fall back
+            // to the same plain identifier path used by `Prop(_)` here.
+            // Deprecated in Svelte 5, remove in Svelte 6.
+            DeclarationSemantics::LegacyBindableProp(_) => self.ctx.b.rid_expr(symbol_name),
         };
         Ok(expr)
     }

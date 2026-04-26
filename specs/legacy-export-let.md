@@ -1,10 +1,10 @@
 # Legacy export let props
 
 ## Current state
-- **Working**: 0/16 use cases
-- **Tests**: 0/15 compiler tests green; 2/6 diagnostic tests green (`validate_state_invalid_export_for_reassigned_state_default_export`, `validate_state_invalid_export_no_error_for_default_export_without_reassignment` pass; the rest, including the new `validate_export_let_unused`, are `#[ignore]` and fail when run)
+- **Working**: 1/16 use cases
+- **Tests**: 0/13 e2e compiler tests green (use case 1 publishes classification only; consumer use cases 3–14 turn the e2e cases on); 13 new analyzer unit tests under `crates/svelte_analyze/src/tests.rs` cover the classification surface.
 - Last updated: 2026-04-26
-- Regression: previously passing `svelte_options_runes_false_override`, `svelte_options_accessors_legacy`, `svelte_options_immutable_legacy` now `#[ignore]` after the v2 codegen / `ReactivitySemantics` builder rewrite (commits `24ec4977 setup v2 codegen`, `c4f836e5 codegen`, `f390169b Fragment -> AstStore`); legacy `export let` no longer lowers through `$.prop(...)` and instead emits the raw declaration plus textContent.
+- Use case 1 closed: every legacy bindable prop (`export let`/`export var`/`export { foo }`/`export { foo as bar }`/destructured leaves) is classified as `DeclarationSemantics::LegacyBindableProp(LegacyBindablePropSemantics { default_lowering, updated })`. `$$props` / `$$restProps` identifier read sites carry `ReferenceSemantics::LegacyPropsIdentifierRead` / `LegacyRestPropsIdentifierRead`. Consumers in use cases 2–14 must read only from these records; alias/name/default expression live in the AST.
 - Unified reactivity dependency status: satisfied. Remaining analyzer/materialization work should now build on the landed `ReactivitySemantics` model instead of adding a parallel legacy-prop semantic model.
 
 ## Source
@@ -28,7 +28,7 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 
 ## Use cases
 
-- [ ] `ReactivitySemantics` builder classifies every legacy prop binding (`export let`, `export var`, separate `export { foo }`, alias `export { foo as bar }`, destructured `export let { … }`, `$$props`, `$$restProps`) by extending `PropDeclarationKind` / `PropDeclarationSemantics` (e.g. `LegacySource`, `LegacyRest`, `LegacySanitizedProps`) so that transform/codegen has a single source of truth and never re-derives prop-ness from script/export metadata (test: none yet, needs infrastructure)
+- [x] `ReactivitySemantics` builder classifies every legacy prop binding through `DeclarationSemantics::LegacyBindableProp(LegacyBindablePropSemantics)` (real symbols: `export let` / `export var` / `export { foo }` / `export { foo as bar }` / destructured leaves) and `ReferenceSemantics::LegacyPropsIdentifierRead` / `LegacyRestPropsIdentifierRead` (synthetic `$$props` / `$$restProps` identifier reads keyed by `ReferenceId`). Tests: 13 analyzer unit tests in `crates/svelte_analyze/src/tests.rs` (`legacy_export_let_classifies_as_legacy_bindable_prop` … `legacy_classification_skipped_in_runes_mode`).
 - [ ] Analyzer materializes dedicated legacy-prop entities for `export let` / `export var` / export-specifier / destructured legacy exports through the `ReactivitySemantics` records above, instead of rediscovering prop-ness from script/export metadata in multiple passes (test: none yet, needs infrastructure)
 - [ ] Explicit legacy mode with a defaulted `export let` lowers through the prop pipeline instead of staying a plain export — regressed under v2 codegen, now emits raw `let count = 1` + `p.textContent = count` (test: `svelte_options_runes_false_override`, `#[ignore]`, moderate)
 - [ ] Required legacy props without defaults still lower through `$.prop(...)` and template getter calls rather than reading raw `$$props` (test: `legacy_export_let_required`, `#[ignore]`, moderate)
@@ -102,6 +102,9 @@ Compiler tests (`tasks/compiler_tests/cases2/`):
 - [ ] `legacy_export_destructure`
 - [ ] `legacy_props_basic`
 - [ ] `legacy_rest_props_basic`
+- [ ] `legacy_export_let_typed`
+- [ ] `legacy_export_let_member_mutation`
+- [ ] `legacy_export_let_bind_to_inner`
 
 Diagnostic tests (`tasks/diagnostic_tests/cases/`):
 

@@ -1774,6 +1774,24 @@ fn legacy_export_destructure() {
 }
 
 #[rstest]
+#[ignore = "missing: typed legacy export let preserves classification + lowers through prop sources (analyze/codegen)"]
+fn legacy_export_let_typed() {
+    assert_compiler("legacy_export_let_typed");
+}
+
+#[rstest]
+#[ignore = "missing: legacy export let member mutation lowering (codegen)"]
+fn legacy_export_let_member_mutation() {
+    assert_compiler("legacy_export_let_member_mutation");
+}
+
+#[rstest]
+#[ignore = "missing: legacy bindable export let pass-through bind:value to child component (codegen)"]
+fn legacy_export_let_bind_to_inner() {
+    assert_compiler("legacy_export_let_bind_to_inner");
+}
+
+#[rstest]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
 }
