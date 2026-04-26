@@ -7,11 +7,14 @@
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
     BindingPattern, Declaration, Expression, ModuleExportName, Statement, VariableDeclaration,
-    VariableDeclarationKind,
 };
 use oxc_span::{GetSpan, GetSpanMut};
-use svelte_analyze::{DeclarationSemantics, LegacyBindablePropSemantics, PropDefaultLowering};
+use svelte_analyze::{
+    is_let_or_var, property_key_static_name, AnalysisData, DeclarationSemantics,
+    LegacyBindablePropSemantics, PropDefaultLowering, PropsFlags,
+};
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::OxcNodeId;
 
 use super::derived;
 use super::model::ComponentTransformer;
@@ -28,7 +31,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         // Snapshot the original sequence of statements; mutate in place.
         let mut i = 0;
-        let mut renamed: rustc_hash::FxHashMap<String, (Vec<u8>, /*alias*/ Option<String>)> =
+        let mut renamed: rustc_hash::FxHashMap<String, Option<String>> =
             rustc_hash::FxHashMap::default();
         // First pass: collect specifier exports whose local binding the analyzer classified
         // as `LegacyBindableProp` (so the matching `let foo = …` declaration further up
@@ -73,7 +76,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 } else {
                     None
                 };
-                renamed.insert(local, (Vec::new(), alias));
+                renamed.insert(local, alias);
             }
         }
         // Second pass: rewrite inline-declaration exports + specifier-targeted let/var declarations.
@@ -103,7 +106,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     fn try_rewrite_legacy_stmt(
         &mut self,
         stmt: &mut Statement<'a>,
-        renamed: &rustc_hash::FxHashMap<String, (Vec<u8>, Option<String>)>,
+        renamed: &rustc_hash::FxHashMap<String, Option<String>>,
     ) -> Option<Vec<Statement<'a>>> {
         match stmt {
             Statement::ExportNamedDeclaration(export) => {
@@ -148,14 +151,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let kind = decl.kind;
         let mut declarators: Vec<(&'a str, Expression<'a>)> = Vec::new();
         for declarator in &mut decl.declarations {
-            let leaf_node_ids = collect_leaf_symbol_node_ids(analysis, &declarator.id);
-            if leaf_node_ids.is_empty() {
+            let leaves = collect_destructure_leaves(self.b, analysis, &declarator.id);
+            if leaves.is_empty() {
                 return None;
             }
-            // Confirm every leaf is a LegacyBindableProp; bail if even one isn't.
-            for (_local, _path, node_id) in &leaf_node_ids {
+            for leaf in &leaves {
                 let DeclarationSemantics::LegacyBindableProp(_) =
-                    analysis.declaration_semantics(*node_id)
+                    analysis.declaration_semantics(leaf.node_id)
                 else {
                     return None;
                 };
@@ -166,7 +168,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     let local = id.name.as_str().to_string();
                     let local_alloc = self.b.alloc_str(&local);
                     let DeclarationSemantics::LegacyBindableProp(legacy) =
-                        analysis.declaration_semantics(leaf_node_ids[0].2)
+                        analysis.declaration_semantics(leaves[0].node_id)
                     else {
                         return None;
                     };
@@ -176,9 +178,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     declarators.push((local_alloc, call));
                 }
                 _ => {
-                    // TODO(legacy destructure): emit per-leaf $.prop(...) declarations using
-                    // the AST path; for now bail and let consumer use case handle it.
-                    return None;
+                    let init = declarator.init.as_mut().map(|e| self.b.move_expr(e))?;
+                    let extra = self.lower_destructured_legacy_export(leaves, init)?;
+                    declarators.extend(extra);
                 }
             }
         }
@@ -188,10 +190,104 @@ impl<'a> ComponentTransformer<'_, 'a> {
         Some(vec![self.b.var_decl_multi_stmt(declarators, kind)])
     }
 
+    /// LEGACY(svelte4): emit `tmp = <init>` + per-leaf `$.prop(...)` declarators for a
+    /// destructured legacy export. Array-pattern leaves go through a shared
+    /// `$$array = $.derived(() => $.to_array(tmp.<key>, len))` helper.
+    fn lower_destructured_legacy_export(
+        &mut self,
+        leaves: Vec<DestructureLeafDescriptor<'a>>,
+        init: Expression<'a>,
+    ) -> Option<Vec<(&'a str, Expression<'a>)>> {
+        let analysis = self.analysis?;
+        let tmp_name_owned = self.gen_unique_name("tmp");
+        let tmp_name = self.b.alloc_str(&tmp_name_owned);
+        let mut declarators: Vec<(&'a str, Expression<'a>)> = vec![(tmp_name, init)];
+
+        let mut array_helpers: Vec<ArrayHelper<'a>> = Vec::new();
+        let mut leaf_helpers: Vec<Option<usize>> = Vec::with_capacity(leaves.len());
+        for leaf in &leaves {
+            let Some(idx) = leaf.array_index else {
+                leaf_helpers.push(None);
+                continue;
+            };
+            let pos = match array_helpers
+                .iter_mut()
+                .position(|h| h.object_path == leaf.object_path)
+            {
+                Some(p) => {
+                    array_helpers[p].len = array_helpers[p].len.max(idx + 1);
+                    p
+                }
+                None => {
+                    let helper_owned = self.gen_unique_name("$$array");
+                    let helper = self.b.alloc_str(&helper_owned);
+                    array_helpers.push(ArrayHelper {
+                        object_path: leaf.object_path.clone(),
+                        name: helper,
+                        len: idx + 1,
+                    });
+                    self.ident_counter += 1;
+                    array_helpers.len() - 1
+                }
+            };
+            leaf_helpers.push(Some(pos));
+        }
+        self.ident_counter += 1;
+
+        for helper in &array_helpers {
+            let mut source = self.b.rid_expr(tmp_name);
+            for key in &helper.object_path {
+                source = self.b.static_member_expr(source, key);
+            }
+            let arrow_body = self.b.call_expr(
+                "$.to_array",
+                [Arg::Expr(source), Arg::Num(helper.len as f64)],
+            );
+            let derived_call = self
+                .b
+                .call_expr("$.derived", [Arg::Expr(self.b.thunk(arrow_body))]);
+            declarators.push((helper.name, derived_call));
+        }
+
+        for (leaf_idx, leaf) in leaves.into_iter().enumerate() {
+            let DeclarationSemantics::LegacyBindableProp(legacy) =
+                analysis.declaration_semantics(leaf.node_id)
+            else {
+                continue;
+            };
+            let source = if let Some(idx) = leaf.array_index {
+                let helper_name = array_helpers[leaf_helpers[leaf_idx]
+                    .expect("helper slot allocated above for array-index leaf")]
+                .name;
+                let get_call = self.b.call_expr("$.get", [Arg::Ident(helper_name)]);
+                self.b
+                    .computed_member_expr(get_call, self.b.num_expr(idx as f64))
+            } else {
+                let mut expr = self.b.rid_expr(tmp_name);
+                for key in &leaf.object_path {
+                    expr = self.b.static_member_expr(expr, key);
+                }
+                expr
+            };
+            let leaf_init = if let Some(default) = leaf.default_expr {
+                self.b
+                    .call_expr("$.fallback", [Arg::Expr(source), Arg::Expr(default)])
+            } else {
+                source
+            };
+            let local_alloc = self.b.alloc_str(&leaf.local_name);
+            let call =
+                self.build_prop_call(local_alloc, /*alias=*/ None, legacy, Some(leaf_init));
+            declarators.push((local_alloc, call));
+        }
+
+        Some(declarators)
+    }
+
     fn try_lower_legacy_specifier_declaration(
         &mut self,
         decl: &mut VariableDeclaration<'a>,
-        renamed: &rustc_hash::FxHashMap<String, (Vec<u8>, Option<String>)>,
+        renamed: &rustc_hash::FxHashMap<String, Option<String>>,
     ) -> Option<Vec<Statement<'a>>> {
         let analysis = self.analysis?;
         // Only handle a single-declarator simple identifier pattern; that covers
@@ -204,7 +300,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return None;
         };
         let local_name = id.name.as_str().to_string();
-        let (_, alias) = renamed.get(&local_name)?;
+        let alias = renamed.get(&local_name)?;
         let sym = id.symbol_id.get()?;
         let node_id = analysis.scoping.symbol_declaration(sym);
         let DeclarationSemantics::LegacyBindableProp(legacy) =
@@ -227,21 +323,26 @@ impl<'a> ComponentTransformer<'_, 'a> {
         default_init: Option<Expression<'a>>,
     ) -> Expression<'a> {
         let prop_key = alias.unwrap_or(local).to_string();
+        let mut runtime_flags = legacy.flags;
+        if matches!(legacy.default_lowering, PropDefaultLowering::Lazy) {
+            runtime_flags |= PropsFlags::LAZY_INITIAL;
+        }
+        let flags_bits = runtime_flags.bits();
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Str(prop_key)];
         match legacy.default_lowering {
             PropDefaultLowering::None => {
-                if legacy.flags != 0 {
-                    args.push(Arg::Num(legacy.flags as f64));
+                if !runtime_flags.is_empty() {
+                    args.push(Arg::Num(flags_bits as f64));
                 }
             }
             PropDefaultLowering::Eager => {
-                args.push(Arg::Num(legacy.flags as f64));
+                args.push(Arg::Num(flags_bits as f64));
                 let default_expr = default_init
                     .unwrap_or_else(|| panic!("eager default missing for legacy prop {local}"));
                 args.push(Arg::Expr(default_expr));
             }
             PropDefaultLowering::Lazy => {
-                args.push(Arg::Num(legacy.flags as f64));
+                args.push(Arg::Num(flags_bits as f64));
                 let default_expr = default_init
                     .unwrap_or_else(|| panic!("lazy default missing for legacy prop {local}"));
                 let lazy = derived::wrap_lazy(self.b, default_expr);
@@ -252,26 +353,66 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 }
 
-fn is_let_or_var(kind: VariableDeclarationKind) -> bool {
-    matches!(
-        kind,
-        VariableDeclarationKind::Let | VariableDeclarationKind::Var
-    )
+/// LEGACY(svelte4): one `$$array_n = $.derived(() => $.to_array(tmp.<path>, len))`
+/// helper for sibling array-pattern leaves sharing the same object path.
+/// Deprecated in Svelte 5, remove in Svelte 6.
+struct ArrayHelper<'a> {
+    object_path: Vec<String>,
+    name: &'a str,
+    len: u32,
 }
 
-/// Walks BindingPattern leaves; for each leaf identifier, yields (local_name, path_string, node_id).
-/// node_id == BindingIdentifier OxcNodeId via symbol declaration lookup. Path string unused for
-/// inline declarations.
-fn collect_leaf_symbol_node_ids<'a>(
-    analysis: &svelte_analyze::AnalysisData<'a>,
-    pat: &BindingPattern<'a>,
-) -> Vec<(String, String, svelte_component_semantics::OxcNodeId)> {
-    use svelte_component_semantics::walk_bindings;
-    let mut out = Vec::new();
-    walk_bindings(pat, |visit| {
-        let name = analysis.scoping.symbol_name(visit.symbol).to_string();
-        let node_id = analysis.scoping.symbol_declaration(visit.symbol);
-        out.push((name, String::new(), node_id));
+/// LEGACY(svelte4): per-leaf descriptor used by destructured legacy export lowering.
+/// Captured from the `BindingPattern` once before the matched-borrow ends, so the
+/// emitter can build per-leaf source/default expressions without re-borrowing the
+/// pattern AST.
+/// Deprecated in Svelte 5, remove in Svelte 6.
+struct DestructureLeafDescriptor<'a> {
+    local_name: String,
+    node_id: OxcNodeId,
+    object_path: Vec<String>,
+    array_index: Option<u32>,
+    default_expr: Option<Expression<'a>>,
+}
+
+fn collect_destructure_leaves<'a>(
+    builder: &svelte_ast_builder::Builder<'a>,
+    analysis: &AnalysisData<'a>,
+    pattern: &BindingPattern<'_>,
+) -> Vec<DestructureLeafDescriptor<'a>> {
+    use oxc_allocator::CloneIn;
+    use svelte_component_semantics::{walk_bindings, Access};
+    let allocator = builder.ast.allocator;
+    let mut out: Vec<DestructureLeafDescriptor<'a>> = Vec::new();
+    walk_bindings(pattern, |visit| {
+        let mut object_path: Vec<String> = Vec::new();
+        let mut array_index: Option<u32> = None;
+        let mut default_expr: Option<Expression<'a>> = None;
+        for step in visit.path {
+            if array_index.is_some() {
+                continue;
+            }
+            match step.access {
+                Access::Key { key, .. } => {
+                    if let Some(name) = property_key_static_name(key) {
+                        object_path.push(name.to_string());
+                    }
+                    if let Some(d) = step.default {
+                        default_expr = Some(d.clone_in(allocator));
+                    }
+                }
+                Access::Index(i) => {
+                    array_index = Some(i);
+                }
+            }
+        }
+        out.push(DestructureLeafDescriptor {
+            local_name: analysis.scoping.symbol_name(visit.symbol).to_string(),
+            node_id: analysis.scoping.symbol_declaration(visit.symbol),
+            object_path,
+            array_index,
+            default_expr,
+        });
     });
     out
 }

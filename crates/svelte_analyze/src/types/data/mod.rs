@@ -60,6 +60,7 @@ pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
+pub use runtime::LegacyInit;
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{

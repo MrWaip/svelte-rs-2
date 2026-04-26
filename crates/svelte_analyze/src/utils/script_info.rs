@@ -548,13 +548,7 @@ fn extract_call_arg_literal(expr: &Expression<'_>) -> Option<CompactString> {
 }
 
 fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<CompactString> {
-    match key {
-        oxc_ast::ast::PropertyKey::StaticIdentifier(ident) => {
-            Some(CompactString::from(ident.name.as_str()))
-        }
-        oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(CompactString::from(s.value.as_str())),
-        _ => None,
-    }
+    crate::utils::property_key_static_name(key).map(CompactString::from)
 }
 
 fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<CompactString> {

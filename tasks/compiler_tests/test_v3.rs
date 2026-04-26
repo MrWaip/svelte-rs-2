@@ -894,7 +894,6 @@ fn custom_element_slots() {
 }
 
 #[rstest]
-#[ignore = "missing: direct legacy $$props sanitization and identifier lowering (codegen, moderate)"]
 fn legacy_props_basic() {
     assert_compiler("legacy_props_basic");
 }
@@ -1760,7 +1759,6 @@ fn legacy_export_specifier_alias() {
 }
 
 #[rstest]
-#[ignore = "missing: destructured legacy export props need tmp + derived array + fallback helpers (codegen)"]
 fn legacy_export_destructure() {
     assert_compiler("legacy_export_destructure");
 }

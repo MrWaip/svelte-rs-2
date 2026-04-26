@@ -55,8 +55,10 @@ pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(component, parsed, data);
     // LEGACY(svelte4): classify $$props / $$restProps identifier reads from
-    // ComponentSemantics.root_unresolved_references. Runes mode skipped inside.
+    // ComponentSemantics.root_unresolved_references and finalize aggregates.
+    // Runes mode skipped inside both helpers.
     legacy::classify_unresolved_legacy_identifiers(data);
+    legacy::finalize_legacy_aggregates(data);
 }
 
 /// Fix-point-style refinement of `ConstDeclarationSemantics::ConstTag::reactive`.
@@ -215,10 +217,6 @@ struct ScriptSemanticCollector<'d, 'a> {
     /// embeds a runtime-reactive rune call (`$effect.pending()` etc.) that
     /// doesn't resolve through local `ReferenceId`s.
     eager_reactive_derived: FxHashSet<OxcNodeId>,
-    /// LEGACY(svelte4): ExportNamedDeclaration node ids classified at end-of-walk
-    /// in `finish()`, so member-mutation tracking (`prop_member_updated`) is full
-    /// before flags are computed.
-    legacy_export_node_ids: Vec<OxcNodeId>,
 }
 
 struct PendingPropObjectDeclaration {
@@ -238,22 +236,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             rest_prop_excluded: FxHashMap::default(),
             derived_init_refs: FxHashMap::default(),
             eager_reactive_derived: FxHashSet::default(),
-            legacy_export_node_ids: Vec::new(),
         }
     }
 
     fn finish(mut self) {
-        // LEGACY(svelte4): classify legacy export props after the main walk —
-        // js_visitor has already populated MEMBER_MUTATED on ComponentSemantics
-        // for every script/template assignment, so legacy classify can read it
-        // via `is_mutated_any` directly.
-        if !self.legacy_export_node_ids.is_empty() {
-            let nodes = std::mem::take(&mut self.legacy_export_node_ids);
-            for node_id in nodes {
-                legacy::classify_export_node(self.data, node_id);
-            }
-        }
-
         let member_mutated_syms: Vec<SymbolId> = self
             .data
             .scoping
@@ -1047,12 +1033,10 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         &mut self,
         export: &oxc_ast::ast::ExportNamedDeclaration<'a>,
     ) {
-        // LEGACY(svelte4): defer classification until `finish()` so that
-        // member-mutation tracking (`prop_member_updated`) is fully populated
-        // before legacy-prop flags are computed.
-        if !self.data.script.runes {
-            self.legacy_export_node_ids.push(export.node_id());
-        }
+        // LEGACY(svelte4): classify immediately — js_visitor populates MEMBER_MUTATED
+        // on ComponentSemantics during its walk, which runs strictly before
+        // ReactivitySemantics builder, so `is_member_mutated` is full at this point.
+        legacy::classify_export_named_declaration(self.data, export);
         oxc_ast_visit::walk::walk_export_named_declaration(self, export);
     }
 

@@ -8,9 +8,21 @@ pub struct RuntimePlan {
     pub has_ce_props: bool,
     pub needs_props_param: bool,
     pub needs_pop_with_return: bool,
-    /// LEGACY(svelte4): emit `$.init()` (or `$.init(true)` for immutable) before the
-    /// template body when the legacy runtime needs an init step — i.e. immutable mode,
-    /// member-mutated bindable props, or `$$props` / `$$restProps` reads.
-    /// Accessors-only paths skip init.
-    pub has_legacy_runtime_init: bool,
+    /// LEGACY(svelte4): which `$.init(...)` call (if any) to emit before the
+    /// template body. Codegen matches and emits one statement.
+    pub legacy_init: LegacyInit,
+}
+
+/// LEGACY(svelte4): which `$.init(...)` form the legacy runtime needs.
+/// Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LegacyInit {
+    /// No `$.init(...)` call — runes mode, accessors-only legacy, or no legacy
+    /// runtime gate triggered.
+    #[default]
+    None,
+    /// `$.init()` — legacy member-mutated bindable props or `$$props` reads.
+    Plain,
+    /// `$.init(true)` — `<svelte:options immutable={true} />` legacy mode.
+    Immutable,
 }

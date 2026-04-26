@@ -220,7 +220,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for part in parts {
             match part {
                 svelte_ast::ConcatPart::Static(s) => push_tpl_str(&mut tpl_parts, s.clone()),
-                svelte_ast::ConcatPart::Dynamic { expr: expr_ref, .. } => {
+                svelte_ast::ConcatPart::Dynamic {
+                    id: part_id,
+                    expr: expr_ref,
+                } => {
                     let Some(expr) = self.take_expr_by_ref(expr_ref) else {
                         return CodegenError::missing_expression(attr_id);
                     };
@@ -230,7 +233,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             continue;
                         }
                     }
-                    tpl_parts.push(TemplatePart::Expr(expr, false));
+                    // LEGACY(svelte4): wrap each concat part with `$.deep_read_state` /
+                    // `$.untrack` when it reads `$$props` / `$$restProps`. Identifier
+                    // already rewritten to `$$sanitized_props` by transform.
+                    let info = self
+                        .ctx
+                        .attr_expression(*part_id)
+                        .or_else(|| self.ctx.expression(*part_id))
+                        .cloned();
+                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
+                    tpl_parts.push(TemplatePart::Expr(wrapped, false));
                 }
             }
         }

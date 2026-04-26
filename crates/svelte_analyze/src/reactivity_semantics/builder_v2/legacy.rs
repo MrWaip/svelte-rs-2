@@ -12,29 +12,29 @@ use oxc_ast::{
     },
     AstKind,
 };
-use svelte_component_semantics::{walk_bindings, OxcNodeId, Step};
+use svelte_component_semantics::{walk_bindings, OxcNodeId};
 
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
-use crate::utils::is_simple_expression;
+use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{LegacyBindablePropSemantics, PropDefaultLowering, V2ReferenceFacts};
-use crate::{PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_UPDATED};
+use crate::PropsFlags;
 
 const PROPS_NAME: &str = "$$props";
 const REST_PROPS_NAME: &str = "$$restProps";
 
-/// LEGACY(svelte4): classify a saved `ExportNamedDeclaration` by its node id.
-/// Called from `ScriptSemanticCollector::finish`. Reads MEMBER_MUTATED bit
-/// from `ComponentSemantics` (populated during the JS visitor walk), so it
-/// must run after the main walk completes.
-pub(super) fn classify_export_node<'a>(data: &mut AnalysisData<'a>, node_id: OxcNodeId) {
+/// LEGACY(svelte4): classify an `ExportNamedDeclaration` immediately when the
+/// `ScriptSemanticCollector` visit hits it. Reads MEMBER_MUTATED bit from
+/// `ComponentSemantics` (populated during the JS visitor walk before the
+/// reactivity-semantics builder runs).
+pub(super) fn classify_export_named_declaration<'a>(
+    data: &mut AnalysisData<'a>,
+    export: &ExportNamedDeclaration<'a>,
+) {
     if data.script.runes {
         return;
     }
-    let Some(AstKind::ExportNamedDeclaration(export)) = data.scoping.js_kind(node_id) else {
-        return;
-    };
     if let Some(decl) = &export.declaration {
         let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
             return;
@@ -59,17 +59,21 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
         let pattern_has_outer = is_destructured_pattern(&declarator.id);
 
         walk_bindings(&declarator.id, |visit| {
-            let leaf_default = if pattern_has_outer {
-                leaf_default_lowering(visit.path)
+            // LEGACY(svelte4): destructured leaves always lower through a Lazy thunk
+            // (`() => $.fallback(tmp.x, default)` or `() => $.get($$array)[i]`),
+            // regardless of whether the leaf has its own default.
+            let default_lowering = if pattern_has_outer {
+                PropDefaultLowering::Lazy
             } else {
-                PropDefaultLowering::None
+                init_default.unwrap_or(PropDefaultLowering::None)
             };
-            let default_lowering = match (leaf_default, init_default) {
-                (PropDefaultLowering::None, Some(d)) if !pattern_has_outer => d,
-                (leaf, _) => leaf,
-            };
-            let updated = data.scoping.is_mutated_any(visit.symbol);
-            let flags = compute_flags(default_lowering, updated, accessors, immutable);
+            // Reference compiler `is_prop_source` gate (utils.js:53-108) for non-runes:
+            //   PROPS_IS_UPDATED iff accessors || (immutable ? reassigned : updated_any).
+            // Pure member mutation (`obj.x = v`) under `immutable` does not set the bit.
+            let updated_any = data.scoping.is_mutated_any(visit.symbol);
+            let reassigned = data.scoping.is_mutated(visit.symbol);
+            let updated = if immutable { reassigned } else { updated_any };
+            let flags = compute_flags(updated, accessors, immutable);
             let semantics = LegacyBindablePropSemantics {
                 default_lowering,
                 flags,
@@ -78,6 +82,8 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
             let node_id: OxcNodeId = node_id;
             data.reactivity
                 .record_legacy_bindable_prop_declaration_v2(node_id, semantics);
+            data.reactivity
+                .record_legacy_bindable_prop_symbol(visit.symbol);
         });
     }
 }
@@ -106,13 +112,13 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             Some(init_expr) => classify_expression_default(init_expr),
             None => PropDefaultLowering::None,
         };
-        let updated = data.scoping.is_mutated_any(symbol);
-        let flags = compute_flags(
-            default_lowering,
-            updated,
-            data.script.accessors,
-            data.script.immutable,
-        );
+        // See note in `classify_variable_declaration` for the immutable gate.
+        let updated = if data.script.immutable {
+            data.scoping.is_mutated(symbol)
+        } else {
+            data.scoping.is_mutated_any(symbol)
+        };
+        let flags = compute_flags(updated, data.script.accessors, data.script.immutable);
         let node_id = data.scoping.symbol_declaration(symbol);
         let node_id: OxcNodeId = node_id;
         data.reactivity.record_legacy_bindable_prop_declaration_v2(
@@ -122,24 +128,17 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
                 flags,
             },
         );
+        data.reactivity.record_legacy_bindable_prop_symbol(symbol);
     }
 }
 
-fn compute_flags(
-    default_lowering: PropDefaultLowering,
-    updated: bool,
-    accessors: bool,
-    immutable: bool,
-) -> u32 {
-    let mut flags = PROPS_IS_BINDABLE;
+fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags {
+    let mut flags = PropsFlags::BINDABLE;
     if immutable {
-        flags |= PROPS_IS_IMMUTABLE;
+        flags |= PropsFlags::IMMUTABLE;
     }
     if accessors || updated {
-        flags |= PROPS_IS_UPDATED;
-    }
-    if matches!(default_lowering, PropDefaultLowering::Lazy) {
-        flags |= PROPS_IS_LAZY_INITIAL;
+        flags |= PropsFlags::UPDATED;
     }
     flags
 }
@@ -153,11 +152,13 @@ pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>
         return;
     }
     let unresolved = data.scoping.root_unresolved_references().clone();
+    let mut uses_props = false;
+    let mut uses_rest_props = false;
     for (name, refs) in &unresolved {
-        let fact = if name.as_str() == PROPS_NAME {
-            V2ReferenceFacts::LegacyPropsIdentifierRead
+        let (fact, props_kind) = if name.as_str() == PROPS_NAME {
+            (V2ReferenceFacts::LegacyPropsIdentifierRead, true)
         } else if name.as_str() == REST_PROPS_NAME {
-            V2ReferenceFacts::LegacyRestPropsIdentifierRead
+            (V2ReferenceFacts::LegacyRestPropsIdentifierRead, false)
         } else {
             continue;
         };
@@ -168,15 +169,31 @@ pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>
             }
             data.reactivity
                 .record_reference_semantics_v2(ref_id, fact.clone());
+            if props_kind {
+                uses_props = true;
+            } else {
+                uses_rest_props = true;
+            }
         }
     }
+    data.reactivity
+        .set_legacy_unresolved_usage(uses_props, uses_rest_props);
 }
 
-fn is_let_or_var(kind: VariableDeclarationKind) -> bool {
-    matches!(
-        kind,
-        VariableDeclarationKind::Let | VariableDeclarationKind::Var
-    )
+/// LEGACY(svelte4): finalize the `legacy_has_member_mutated` aggregate by checking
+/// every classified bindable-prop symbol against `is_mutated_any`. Called once at
+/// the end of the v2 pass.
+/// Deprecated in Svelte 5, remove in Svelte 6.
+pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
+    if data.script.runes {
+        return;
+    }
+    let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
+    let has_member_mutated = symbols
+        .iter()
+        .any(|&sym| data.scoping.is_member_mutated(sym));
+    data.reactivity
+        .set_legacy_has_member_mutated(has_member_mutated);
 }
 
 fn is_destructured_pattern(pat: &BindingPattern<'_>) -> bool {
@@ -185,20 +202,6 @@ fn is_destructured_pattern(pat: &BindingPattern<'_>) -> bool {
 
 fn classify_expression_default(init: &Expression<'_>) -> PropDefaultLowering {
     if is_simple_expression(init) {
-        PropDefaultLowering::Eager
-    } else {
-        PropDefaultLowering::Lazy
-    }
-}
-
-fn leaf_default_lowering(path: &[Step<'_>]) -> PropDefaultLowering {
-    let Some(last) = path.last() else {
-        return PropDefaultLowering::None;
-    };
-    let Some(default) = last.default else {
-        return PropDefaultLowering::None;
-    };
-    if is_simple_expression(default) {
         PropDefaultLowering::Eager
     } else {
         PropDefaultLowering::Lazy

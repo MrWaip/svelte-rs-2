@@ -4007,10 +4007,10 @@ fn assert_legacy_bindable_prop(
                 legacy.default_lowering, expected_default,
                 "default_lowering mismatch for '{name}'"
             );
+            let actual_bits = legacy.flags.bits();
             assert_eq!(
-                legacy.flags, expected_flags,
-                "flags mismatch for '{name}': expected {expected_flags:#b}, got {:#b}",
-                legacy.flags
+                actual_bits, expected_flags,
+                "flags mismatch for '{name}': expected {expected_flags:#b}, got {actual_bits:#b}"
             );
         }
         other => panic!("expected LegacyBindableProp for '{name}', got {other:?}"),
@@ -4076,7 +4076,7 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
         &data,
         "bar",
         crate::types::data::PropDefaultLowering::Lazy,
-        crate::PROPS_IS_BINDABLE | crate::PROPS_IS_LAZY_INITIAL,
+        crate::PROPS_IS_BINDABLE,
     );
 }
 
@@ -4145,13 +4145,13 @@ fn legacy_export_destructure_classifies_each_leaf() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        crate::types::data::PropDefaultLowering::None,
+        crate::types::data::PropDefaultLowering::Lazy,
         crate::PROPS_IS_BINDABLE,
     );
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        crate::types::data::PropDefaultLowering::None,
+        crate::types::data::PropDefaultLowering::Lazy,
         crate::PROPS_IS_BINDABLE,
     );
 }

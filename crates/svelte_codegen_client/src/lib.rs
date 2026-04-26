@@ -114,11 +114,13 @@ pub fn generate<'a>(
     // LEGACY(svelte4): emit `const $$sanitized_props = $.legacy_rest_props($$props, [reserved keys])`
     // and (if `$$restProps` is read) `const $$restProps = $.legacy_rest_props($$sanitized_props, [named keys])`.
     if ctx.query.needs_sanitized_legacy_props() {
-        let sanitized_excluded: Vec<Arg<'_, '_>> = ["children", "$$slots", "$$events", "$$legacy"]
-            .iter()
-            .map(|s| Arg::Str(s.to_string()))
-            .collect();
-        let arr = ctx.b.array_from_args(sanitized_excluded);
+        let arr = ctx.b.array_from_args(
+            ctx.query
+                .legacy_sanitized_props_excluded_keys()
+                .iter()
+                .map(|s| Arg::Str((*s).to_string()))
+                .collect::<Vec<_>>(),
+        );
         fn_body.push(ctx.b.const_stmt(
             "$$sanitized_props",
             ctx.b.call_expr(
@@ -286,19 +288,14 @@ pub fn generate<'a>(
         ));
     }
 
-    // LEGACY(svelte4): emit `$.init()` only for the immutable / member-mutated /
-    // $$props/$$restProps codepath; accessors path uses `$$exports` getter/setter
-    // and does not need init. Reference compiler emits `$.init(true)` only when
-    // `analysis.immutable`, `$.init()` for the other gates, and nothing at all
-    // for accessors-only.
-    if !ctx.query.runes()
-        && runtime.needs_push
-        && (ctx.query.immutable() || runtime.has_legacy_runtime_init)
-    {
-        if ctx.query.immutable() {
-            fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]));
-        } else {
-            fn_body.push(ctx.b.call_stmt("$.init", std::iter::empty::<Arg<'_, '_>>()));
+    // LEGACY(svelte4): emit the `$.init(...)` call form decided by the analyzer.
+    match runtime.legacy_init {
+        svelte_analyze::LegacyInit::None => {}
+        svelte_analyze::LegacyInit::Plain => {
+            fn_body.push(ctx.b.call_stmt("$.init", std::iter::empty::<Arg<'_, '_>>()))
+        }
+        svelte_analyze::LegacyInit::Immutable => {
+            fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]))
         }
     }
 

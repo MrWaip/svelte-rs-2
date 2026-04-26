@@ -14,7 +14,7 @@ export default function App($$anchor, $$props) {
 	var button = root();
 	$.attribute_effect(button, () => ({
 		...$$sanitized_props,
-		class: `variant-${variant() ?? ""} ${$$sanitized_props.class ?? "" ?? ""}`
+		class: `variant-${variant() ?? ""} ${($.deep_read_state($$sanitized_props), $.untrack(() => $$sanitized_props.class ?? "")) ?? ""}`
 	}));
 	$.append($$anchor, button);
 	$.pop();

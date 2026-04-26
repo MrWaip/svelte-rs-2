@@ -1256,13 +1256,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-    /// Extract property key name as a string.
+    /// Extract property key name as a string. Delegates to `svelte_analyze::property_key_static_name`.
     pub(crate) fn property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<String> {
-        match key {
-            oxc_ast::ast::PropertyKey::StaticIdentifier(id) => Some(id.name.to_string()),
-            oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(s.value.to_string()),
-            _ => None,
-        }
+        svelte_analyze::property_key_static_name(key).map(str::to_string)
     }
 
     /// Build a member access expression for an object property key.

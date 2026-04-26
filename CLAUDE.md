@@ -10,6 +10,12 @@ Use narsil-mcp whenever you can
 
 Detailed crate API and type reference: `CODEBASE_MAP.md`
 
+# Architecture
+
+Important architecture details and constraints: `ARCHITECTURE.md`
+
+All known debt lives in `debt.md`. Spot problem mid-work, no fix in current task — log there. New section. Describe what + where. Mandatory.
+
 # Comments
 
 Do not write any comments in code.

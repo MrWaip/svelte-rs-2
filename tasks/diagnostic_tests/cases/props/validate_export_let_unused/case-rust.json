@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "warning",
+    "code": "export_let_unused",
+    "start": 54,
+    "end": 57
+  }
+]

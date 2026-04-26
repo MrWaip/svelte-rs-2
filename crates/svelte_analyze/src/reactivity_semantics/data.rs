@@ -240,14 +240,13 @@ pub enum PropDeclarationKind {
 
 /// LEGACY(svelte4): reactivity facts for one legacy bindable prop binding.
 /// Mirrors runes `Source` shape — bit flags only, no strings.
-/// `flags` is the precomputed `$.prop(...)` flag literal (combination of
-/// `PROPS_IS_BINDABLE` / `PROPS_IS_IMMUTABLE` / `PROPS_IS_UPDATED` /
-/// `PROPS_IS_LAZY_INITIAL`); transform/codegen emit it verbatim.
+/// `flags` is the precomputed `$.prop(...)` bitfield; transform/codegen
+/// pass `flags.bits()` through to the runtime.
 /// Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LegacyBindablePropSemantics {
     pub default_lowering: PropDefaultLowering,
-    pub flags: u32,
+    pub flags: crate::PropsFlags,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -673,6 +672,26 @@ pub struct ReactivitySemantics {
     /// here (not on `ComponentSemantics`) because they encode Svelte-specific
     /// template meaning.
     each_rest_symbols: FxHashSet<SymbolId>,
+    /// LEGACY(svelte4): ordered list of symbols for every `LegacyBindableProp`
+    /// binding, in source declaration order. Populated by the
+    /// reactivity_semantics builder during legacy classification; consumers
+    /// (codegen, runtime-plan) iterate without re-walking instance scope.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_bindable_prop_symbols: Vec<SymbolId>,
+    /// LEGACY(svelte4): true when the script reads `$$props` (resolved by the
+    /// JS visitor as an unresolved root identifier). Drives `needs_push`,
+    /// `has_legacy_runtime_init`, and `$$sanitized_props` declaration emission.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_uses_props: bool,
+    /// LEGACY(svelte4): true when the script reads `$$restProps`. Drives
+    /// `$$sanitized_props` + `$$restProps` declaration emission.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_uses_rest_props: bool,
+    /// LEGACY(svelte4): true when at least one `LegacyBindableProp` binding is
+    /// member-mutated (`obj.x = …` / `obj.x++`). Drives `$.push` / `$.init` /
+    /// `$.pop` runtime emission. Computed once at the end of the v2 pass.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_has_member_mutated: bool,
     /// v2-only side-table: destructured `{@const}` leaf symbol → owning
     /// const-tag `NodeId`. Only set for destructured patterns (`{@const {a, b} = ...}`);
     /// single-identifier `{@const NAME = ...}` bindings do not carry a tag owner
@@ -703,6 +722,10 @@ impl ReactivitySemantics {
             contextual_owner_v2: FxHashMap::default(),
             const_alias_owner_v2: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
+            legacy_bindable_prop_symbols: Vec::new(),
+            legacy_uses_props: false,
+            legacy_uses_rest_props: false,
+            legacy_has_member_mutated: false,
             uses_runes: false,
         }
     }
@@ -747,6 +770,57 @@ impl ReactivitySemantics {
     /// wiring block.
     pub fn has_store_declarations(&self) -> bool {
         !self.store_declaration_ids.is_empty()
+    }
+
+    /// LEGACY(svelte4): symbols of every `LegacyBindableProp` binding,
+    /// in source declaration order.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_bindable_prop_symbols(&self) -> &[SymbolId] {
+        &self.legacy_bindable_prop_symbols
+    }
+
+    /// LEGACY(svelte4): true when at least one legacy bindable prop is declared.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn has_legacy_bindable_prop(&self) -> bool {
+        !self.legacy_bindable_prop_symbols.is_empty()
+    }
+
+    /// LEGACY(svelte4): true when the script reads `$$props`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_uses_props(&self) -> bool {
+        self.legacy_uses_props
+    }
+
+    /// LEGACY(svelte4): true when the script reads `$$restProps`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_uses_rest_props(&self) -> bool {
+        self.legacy_uses_rest_props
+    }
+
+    /// LEGACY(svelte4): true when at least one legacy bindable prop is member-mutated.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_has_member_mutated(&self) -> bool {
+        self.legacy_has_member_mutated
+    }
+
+    /// LEGACY(svelte4): builder hook — push a symbol for a newly classified
+    /// `LegacyBindableProp` binding. Order of calls determines codegen iteration order.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn record_legacy_bindable_prop_symbol(&mut self, symbol: SymbolId) {
+        self.legacy_bindable_prop_symbols.push(symbol);
+    }
+
+    /// LEGACY(svelte4): builder hook — set `$$props` / `$$restProps` usage flags.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn set_legacy_unresolved_usage(&mut self, uses_props: bool, uses_rest_props: bool) {
+        self.legacy_uses_props = uses_props;
+        self.legacy_uses_rest_props = uses_rest_props;
+    }
+
+    /// LEGACY(svelte4): builder hook — finalize `legacy_has_member_mutated` flag.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn set_legacy_has_member_mutated(&mut self, value: bool) {
+        self.legacy_has_member_mutated = value;
     }
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {

@@ -99,10 +99,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ));
         }
 
-        // LEGACY(svelte4): non-runes mode + at least one `bind:foo` directive on a child
-        // component requires a `$$legacy: true` marker in the props object so the child
-        // knows it was instantiated under the legacy runtime.
-        if !self.ctx.query.runes() && props.has_bind_directive {
+        // LEGACY(svelte4): inject `$$legacy: true` marker when analyzer flagged this
+        // child component for it (legacy parent + bind: directive).
+        if self.ctx.query.component_needs_legacy_props_marker(el_id) {
             props
                 .items
                 .push(super::super::component_props::PropOrSpread::Prop(

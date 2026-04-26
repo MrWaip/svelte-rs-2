@@ -89,11 +89,11 @@ pub(crate) fn rewrite_identifier_read<'a>(
         // (the latter is a no-op identifier swap because the local declaration carries the
         // same name; we still mark this site as handled so downstream passes don't touch it).
         ReferenceSemantics::LegacyPropsIdentifierRead => {
-            *expr = rune_refs::make_ident(alloc, "$$sanitized_props");
+            *expr = svelte_ast_builder::Builder::new(alloc).rid_expr("$$sanitized_props");
             true
         }
         ReferenceSemantics::LegacyRestPropsIdentifierRead => {
-            *expr = rune_refs::make_ident(alloc, "$$restProps");
+            *expr = svelte_ast_builder::Builder::new(alloc).rid_expr("$$restProps");
             true
         }
         _ => false,
