@@ -1,34 +1,27 @@
 use smallvec::SmallVec;
 
-use svelte_ast::{AstStore, Attribute, Component, Fragment, FragmentRole, Node, NodeId};
+use svelte_ast::{AstStore, Attribute, Component, FragmentRole, Node, NodeId};
 
-use crate::types::data::{AnalysisData, FragmentLayout};
+use crate::types::data::AnalysisData;
 
 pub(crate) fn build(component: &Component, data: &mut AnalysisData) {
-    visit(&component.fragment, None, component, data, &component.store);
+    visit_fragment(component.root, component, data);
 }
 
-fn visit(
-    fragment: &Fragment,
-    owner: Option<NodeId>,
+fn visit_fragment(
+    fragment_id: svelte_ast::FragmentId,
     component: &Component,
     data: &mut AnalysisData,
-    store: &AstStore,
 ) {
-    for &id in &fragment.nodes {
-        data.template
-            .template_topology
-            .record_node_fragment(id, fragment.id);
-    }
-
+    let store = &component.store;
+    let fragment = store.fragment(fragment_id);
     let inside_head = fragment.role == FragmentRole::SvelteHeadBody;
-    let items = build_items(&fragment.nodes, inside_head, store);
 
     if data.script.blocker_data.has_async {
         let mut blockers = SmallVec::<[u32; 2]>::new();
-        for &item_id in &items {
-            if matches!(store.get(item_id), Node::ExpressionTag(_)) {
-                for idx in data.expression_blockers(item_id) {
+        for &id in &fragment.nodes {
+            if matches!(store.get(id), Node::ExpressionTag(_)) {
+                for idx in data.expression_blockers(id) {
                     blockers.push(idx);
                 }
             }
@@ -37,14 +30,15 @@ fn visit(
             blockers.sort_unstable();
             blockers.dedup();
             data.template
-                .insert_fragment_blockers_by_id(fragment.id, blockers);
+                .insert_fragment_blockers_by_id(fragment_id, blockers);
         }
     }
 
     let mut debug_ids: Option<Vec<NodeId>> = None;
     let mut title_ids: Option<Vec<NodeId>> = None;
 
-    for &id in &fragment.nodes {
+    let nodes = fragment.nodes.clone();
+    for id in nodes {
         match store.get(id) {
             Node::DebugTag(tag) => {
                 debug_ids.get_or_insert_with(Vec::new).push(tag.id);
@@ -53,15 +47,15 @@ fn visit(
                 if inside_head && el.name == "title" {
                     title_ids.get_or_insert_with(Vec::new).push(el.id);
                 }
-                visit(&el.fragment, Some(el.id), component, data, store);
+                visit_fragment(el.fragment, component, data);
             }
             Node::SlotElementLegacy(el) => {
                 record_custom_element_slot_name(data, &el.attributes, &component.source);
-                visit(&el.fragment, Some(el.id), component, data, store);
+                visit_fragment(el.fragment, component, data);
             }
             Node::ComponentNode(cn) => {
-                let snippets: Vec<_> = cn
-                    .fragment
+                let snippets: Vec<_> = store
+                    .fragment(cn.fragment)
                     .nodes
                     .iter()
                     .filter_map(|&nid| {
@@ -79,14 +73,24 @@ fn visit(
                         .insert(cn.id, snippets);
                 }
 
-                visit(&cn.fragment, Some(cn.id), component, data, store);
+                let cn_id = cn.id;
+                let cn_fragment = cn.fragment;
+                let legacy_slots: Vec<_> = cn
+                    .legacy_slots
+                    .iter()
+                    .map(|s| {
+                        let wrapper_id = store.fragment_nodes(s.fragment)[0];
+                        (s.fragment, wrapper_id)
+                    })
+                    .collect();
 
-                for slot in &cn.legacy_slots {
-                    let wrapper_id = slot.fragment.nodes[0];
+                visit_fragment(cn_fragment, component, data);
+
+                for (slot_fid, wrapper_id) in legacy_slots {
                     let slot_items: SmallVec<[NodeId; 4]> = match store.get(wrapper_id) {
                         Node::SvelteFragmentLegacy(el) => {
                             data.elements.flags.svelte_fragment_slots.insert(wrapper_id);
-                            el.fragment.nodes.iter().copied().collect()
+                            store.fragment_nodes(el.fragment).iter().copied().collect()
                         }
                         _ => {
                             let mut v = SmallVec::new();
@@ -94,48 +98,48 @@ fn visit(
                             v
                         }
                     };
-                    visit_slot(slot, &slot_items, cn.id, component, data, store);
+                    visit_slot(slot_fid, &slot_items, cn_id, component, data);
                 }
             }
             Node::SvelteFragmentLegacy(el) => {
-                visit(&el.fragment, Some(el.id), component, data, store);
+                visit_fragment(el.fragment, component, data);
             }
             Node::IfBlock(block) => {
-                visit(&block.consequent, Some(block.id), component, data, store);
-                if let Some(alt) = &block.alternate {
-                    visit(alt, Some(block.id), component, data, store);
+                visit_fragment(block.consequent, component, data);
+                if let Some(alt) = block.alternate {
+                    visit_fragment(alt, component, data);
                 }
             }
             Node::EachBlock(block) => {
-                visit(&block.body, Some(block.id), component, data, store);
-                if let Some(fb) = &block.fallback {
-                    visit(fb, Some(block.id), component, data, store);
+                visit_fragment(block.body, component, data);
+                if let Some(fb) = block.fallback {
+                    visit_fragment(fb, component, data);
                 }
             }
             Node::SnippetBlock(block) => {
-                visit(&block.body, Some(block.id), component, data, store);
+                visit_fragment(block.body, component, data);
             }
             Node::KeyBlock(block) => {
-                visit(&block.fragment, Some(block.id), component, data, store);
+                visit_fragment(block.fragment, component, data);
             }
             Node::SvelteHead(head) => {
-                visit(&head.fragment, Some(head.id), component, data, store);
+                visit_fragment(head.fragment, component, data);
             }
             Node::SvelteElement(el) => {
-                visit(&el.fragment, Some(el.id), component, data, store);
+                visit_fragment(el.fragment, component, data);
             }
             Node::SvelteBoundary(b) => {
-                visit(&b.fragment, Some(b.id), component, data, store);
+                visit_fragment(b.fragment, component, data);
             }
             Node::AwaitBlock(block) => {
-                if let Some(p) = &block.pending {
-                    visit(p, Some(block.id), component, data, store);
+                if let Some(p) = block.pending {
+                    visit_fragment(p, component, data);
                 }
-                if let Some(t) = &block.then {
-                    visit(t, Some(block.id), component, data, store);
+                if let Some(t) = block.then {
+                    visit_fragment(t, component, data);
                 }
-                if let Some(c) = &block.catch {
-                    visit(c, Some(block.id), component, data, store);
+                if let Some(c) = block.catch {
+                    visit_fragment(c, component, data);
                 }
             }
             Node::SvelteWindow(_)
@@ -151,50 +155,34 @@ fn visit(
         }
     }
 
-    data.template.insert_fragment_layout(
-        fragment.id,
-        FragmentLayout {
-            items,
-            owner,
-            role: fragment.role,
-        },
-    );
-
     if let Some(ids) = debug_ids {
         data.template
             .debug_tags
             .by_fragment
-            .insert(fragment.id, ids);
+            .insert(fragment_id, ids);
     }
     if let Some(ids) = title_ids {
         data.template
             .title_elements
             .by_fragment
-            .insert(fragment.id, ids);
+            .insert(fragment_id, ids);
     }
 }
 
 fn visit_slot(
-    slot: &svelte_ast::LegacySlot,
+    slot_fid: svelte_ast::FragmentId,
     items: &[NodeId],
     component_id: NodeId,
     component: &Component,
     data: &mut AnalysisData,
-    store: &AstStore,
 ) {
-    for &id in items {
-        data.template
-            .template_topology
-            .record_node_fragment(id, slot.fragment.id);
-    }
-
-    let lowered = build_items(items, false, store);
+    let store = &component.store;
 
     if data.script.blocker_data.has_async {
         let mut blockers = SmallVec::<[u32; 2]>::new();
-        for &item_id in &lowered {
-            if matches!(store.get(item_id), Node::ExpressionTag(_)) {
-                for idx in data.expression_blockers(item_id) {
+        for &id in items {
+            if matches!(store.get(id), Node::ExpressionTag(_)) {
+                for idx in data.expression_blockers(id) {
                     blockers.push(idx);
                 }
             }
@@ -203,7 +191,7 @@ fn visit_slot(
             blockers.sort_unstable();
             blockers.dedup();
             data.template
-                .insert_fragment_blockers_by_id(slot.fragment.id, blockers);
+                .insert_fragment_blockers_by_id(slot_fid, blockers);
         }
     }
 
@@ -214,33 +202,21 @@ fn visit_slot(
             Node::DebugTag(tag) => {
                 debug_ids.get_or_insert_with(Vec::new).push(tag.id);
             }
-            Node::Element(el) => visit(&el.fragment, Some(el.id), component, data, store),
+            Node::Element(el) => visit_fragment(el.fragment, component, data),
             Node::SlotElementLegacy(el) => {
                 record_custom_element_slot_name(data, &el.attributes, &component.source);
-                visit(&el.fragment, Some(el.id), component, data, store);
+                visit_fragment(el.fragment, component, data);
             }
-            Node::ComponentNode(cn) => visit(&cn.fragment, Some(cn.id), component, data, store),
-            Node::SvelteFragmentLegacy(el) => {
-                visit(&el.fragment, Some(el.id), component, data, store)
-            }
+            Node::ComponentNode(cn) => visit_fragment(cn.fragment, component, data),
+            Node::SvelteFragmentLegacy(el) => visit_fragment(el.fragment, component, data),
             _ => {}
         }
     }
 
-    data.template.insert_fragment_layout(
-        slot.fragment.id,
-        FragmentLayout {
-            items: lowered,
-            owner: Some(component_id),
-            role: slot.fragment.role,
-        },
-    );
+    let _ = component_id;
 
     if let Some(ids) = debug_ids {
-        data.template
-            .debug_tags
-            .by_fragment
-            .insert(slot.fragment.id, ids);
+        data.template.debug_tags.by_fragment.insert(slot_fid, ids);
     }
 }
 
@@ -273,15 +249,28 @@ fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute],
         .push(slot_name.to_string());
 }
 
-fn build_items(nodes: &[NodeId], inside_head: bool, store: &AstStore) -> Vec<NodeId> {
-    let mut out = Vec::with_capacity(nodes.len());
-    for &id in nodes {
-        match store.get(id) {
-            Node::SnippetBlock(_) => {}
-            Node::ConstTag(_) | Node::DebugTag(_) => {}
-            Node::Element(el) if inside_head && el.name == "title" => {}
-            _ => out.push(id),
-        }
-    }
-    out
+pub fn fragment_items(store: &AstStore, fragment_id: svelte_ast::FragmentId) -> Vec<NodeId> {
+    let fragment = store.fragment(fragment_id);
+    let inside_head = fragment.role == FragmentRole::SvelteHeadBody;
+    let nodes: &[NodeId] = if fragment.role == FragmentRole::NamedSlot
+        && fragment.nodes.len() == 1
+        && matches!(store.get(fragment.nodes[0]), Node::SvelteFragmentLegacy(_))
+    {
+        let Node::SvelteFragmentLegacy(el) = store.get(fragment.nodes[0]) else {
+            unreachable!()
+        };
+        &store.fragment(el.fragment).nodes
+    } else {
+        &fragment.nodes
+    };
+    nodes
+        .iter()
+        .copied()
+        .filter(|&id| match store.get(id) {
+            Node::SnippetBlock(_) => false,
+            Node::ConstTag(_) | Node::DebugTag(_) => false,
+            Node::Element(el) if inside_head && el.name == "title" => false,
+            _ => true,
+        })
+        .collect()
 }

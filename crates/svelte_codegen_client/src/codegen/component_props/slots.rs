@@ -8,7 +8,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_component_default_children(
         &mut self,
         parent_ctx: &FragmentCtx<'a>,
-        fragment: &'a svelte_ast::Fragment,
+        fragment: svelte_ast::FragmentId,
     ) -> Result<Option<Expression<'a>>> {
         let inner_ctx = parent_ctx.child_of_block(
             self.ctx,
@@ -37,7 +37,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         parent_ctx: &FragmentCtx<'a>,
         el_id: NodeId,
-        fragment: &'a svelte_ast::Fragment,
+        fragment: svelte_ast::FragmentId,
     ) -> Result<Option<Expression<'a>>> {
         let let_stmts = self.emit_let_directive_legacy_stmts(el_id);
 

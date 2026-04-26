@@ -83,7 +83,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let el_name = self.ctx.state.gen_ident("$$element");
 
         let svelte_el_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::SvelteElement(el) => &el.fragment,
+            Node::SvelteElement(el) => el.fragment,
             _ => return CodegenError::unexpected_node(el_id, "SvelteElement"),
         };
         let child_ns = self
@@ -94,6 +94,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .unwrap_or(NamespaceKind::Html)
             .as_namespace();
         let inner_ctx = ctx.child_of_element(
+            self.ctx,
             "",
             svelte_el_fragment,
             child_ns,

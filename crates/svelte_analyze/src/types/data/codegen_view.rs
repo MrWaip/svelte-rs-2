@@ -186,8 +186,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
-    pub fn fragment_items(&self, id: svelte_ast::FragmentId) -> Option<&[NodeId]> {
-        self.data.template.fragment_items(id)
+    pub fn fragment_items(
+        &self,
+        store: &svelte_ast::AstStore,
+        id: svelte_ast::FragmentId,
+    ) -> Vec<NodeId> {
+        crate::passes::fragment_topology::fragment_items(store, id)
     }
 
     pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {

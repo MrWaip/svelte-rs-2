@@ -62,7 +62,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
 
         let has_value_attr = ctx.data.has_attribute(el.id, "value");
-        let fragment_id = el.fragment.id;
+        let fragment_id = el.fragment;
 
         if el.name == "textarea" && ctx.data.fragment_has_expression_child_by_id(fragment_id) {
             if has_value_attr {

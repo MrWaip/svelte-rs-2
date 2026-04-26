@@ -1,4 +1,4 @@
-use svelte_ast::{is_mathml, is_svg, AstStore, Component, Namespace, Node, NodeId};
+use svelte_ast::{is_mathml, is_svg, AstStore, Component, Namespace, Node};
 
 use crate::types::data::AnalysisData;
 
@@ -16,8 +16,8 @@ pub(crate) fn collect(component: &Component, data: &mut AnalysisData) {
         .and_then(|o| o.namespace.as_ref())
         == Some(&Namespace::Mathml);
 
-    walk(
-        &component.fragment.nodes,
+    walk_fragment(
+        component.root,
         &component.store,
         initial_svg,
         initial_mathml,
@@ -25,69 +25,67 @@ pub(crate) fn collect(component: &Component, data: &mut AnalysisData) {
     );
 }
 
-fn walk(
-    nodes: &[NodeId],
+fn walk_fragment(
+    fragment_id: svelte_ast::FragmentId,
     store: &AstStore,
     in_svg_ns: bool,
     in_mathml: bool,
     data: &mut AnalysisData,
 ) {
-    for &id in nodes {
+    let nodes = store.fragment_nodes(fragment_id).to_vec();
+    for id in nodes {
         match store.get(id) {
             Node::Element(el) => {
-                // SVG namespace propagates through all elements except
-                // <foreignObject>. <text> does NOT reset namespace.
                 let child_svg = el.name != "foreignObject" && (is_svg(&el.name) || in_svg_ns);
-                // <annotation-xml> resets from MathML to HTML context.
                 let child_mathml =
                     is_mathml(&el.name) || (in_mathml && el.name != "annotation-xml");
-                walk(&el.fragment.nodes, store, child_svg, child_mathml, data);
+                walk_fragment(el.fragment, store, child_svg, child_mathml, data);
             }
             Node::SlotElementLegacy(el) => {
-                walk(&el.fragment.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(el.fragment, store, in_svg_ns, in_mathml, data);
             }
             Node::SvelteFragmentLegacy(el) => {
-                walk(&el.fragment.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(el.fragment, store, in_svg_ns, in_mathml, data);
             }
             Node::ComponentNode(cn) => {
-                walk(&cn.fragment.nodes, store, false, false, data);
+                walk_fragment(cn.fragment, store, false, false, data);
             }
             Node::IfBlock(block) => {
-                walk(&block.consequent.nodes, store, in_svg_ns, in_mathml, data);
-                if let Some(alt) = &block.alternate {
-                    walk(&alt.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(block.consequent, store, in_svg_ns, in_mathml, data);
+                if let Some(alt) = block.alternate {
+                    walk_fragment(alt, store, in_svg_ns, in_mathml, data);
                 }
             }
             Node::EachBlock(block) => {
-                walk(&block.body.nodes, store, in_svg_ns, in_mathml, data);
-                if let Some(fb) = &block.fallback {
-                    walk(&fb.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(block.body, store, in_svg_ns, in_mathml, data);
+                if let Some(fb) = block.fallback {
+                    walk_fragment(fb, store, in_svg_ns, in_mathml, data);
                 }
             }
             Node::SnippetBlock(block) => {
-                walk(&block.body.nodes, store, false, false, data);
+                walk_fragment(block.body, store, false, false, data);
             }
             Node::KeyBlock(block) => {
-                walk(&block.fragment.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(block.fragment, store, in_svg_ns, in_mathml, data);
             }
             Node::SvelteHead(head) => {
-                walk(&head.fragment.nodes, store, false, false, data);
+                walk_fragment(head.fragment, store, false, false, data);
             }
             Node::SvelteElement(el) => {
-                walk(&el.fragment.nodes, store, in_svg_ns, in_mathml, data);
+                walk_fragment(el.fragment, store, in_svg_ns, in_mathml, data);
             }
             Node::SvelteBoundary(b) => {
-                walk(&b.fragment.nodes, store, false, false, data);
+                walk_fragment(b.fragment, store, false, false, data);
             }
             Node::AwaitBlock(block) => {
-                if let Some(ref p) = block.pending {
-                    walk(&p.nodes, store, in_svg_ns, in_mathml, data);
+                if let Some(p) = block.pending {
+                    walk_fragment(p, store, in_svg_ns, in_mathml, data);
                 }
-                if let Some(ref t) = block.then {
-                    walk(&t.nodes, store, in_svg_ns, in_mathml, data);
+                if let Some(t) = block.then {
+                    walk_fragment(t, store, in_svg_ns, in_mathml, data);
                 }
-                if let Some(ref c) = block.catch {
-                    walk(&c.nodes, store, in_svg_ns, in_mathml, data);
+                if let Some(c) = block.catch {
+                    walk_fragment(c, store, in_svg_ns, in_mathml, data);
                 }
             }
             Node::HtmlTag(tag) => {

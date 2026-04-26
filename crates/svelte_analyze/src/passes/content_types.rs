@@ -46,9 +46,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData, store: &AstStore) -> boo
         return true;
     }
 
-    let Some(lf) = data.template.fragment_items(el.fragment.id) else {
-        return false;
-    };
+    let lf = crate::passes::fragment_topology::fragment_items(store, el.fragment);
     lf.iter()
         .any(|&item_id| item_needs_var(item_id, data, store))
 }
@@ -60,13 +58,10 @@ fn item_needs_var(id: NodeId, data: &AnalysisData, store: &AstStore) -> bool {
         Node::Element(_) => data.elements.flags.needs_var.contains(&id),
         Node::SlotElementLegacy(_) => true,
         Node::SvelteFragmentLegacy(el) => {
-            data.template
-                .fragment_items(el.fragment.id)
-                .is_some_and(|fragment| {
-                    fragment
-                        .iter()
-                        .any(|&inner| item_needs_var(inner, data, store))
-                })
+            let fragment = crate::passes::fragment_topology::fragment_items(store, el.fragment);
+            fragment
+                .iter()
+                .any(|&inner| item_needs_var(inner, data, store))
         }
         Node::ComponentNode(_)
         | Node::IfBlock(_)

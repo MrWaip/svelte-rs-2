@@ -25,7 +25,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let span_start = self.ctx.query.key_block(id).span.start;
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
-        let fragment = &self.ctx.query.key_block(id).fragment;
+        let fragment = self.ctx.query.key_block(id).fragment;
         let inner_ctx = ctx.child_of_block(
             self.ctx,
             fragment,

@@ -5,7 +5,7 @@ use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{
-    Attribute, Component, EachBlock, Element, Fragment, IfBlock, LetDirectiveLegacy, Node, NodeId,
+    Attribute, Component, EachBlock, Element, FragmentId, IfBlock, LetDirectiveLegacy, Node, NodeId,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -16,35 +16,42 @@ use super::*;
 // Finders — identify nodes by source text (span-based)
 // -----------------------------------------------------------------------
 
-fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+fn frag_nodes(component: &Component, fragment: FragmentId) -> Vec<NodeId> {
+    component.store.fragment(fragment).nodes.clone()
+}
+
+fn frag_items(component: &Component, fragment: FragmentId) -> Vec<NodeId> {
+    crate::passes::fragment_topology::fragment_items(&component.store, fragment)
+}
+
+fn find_expr_tag(fragment: FragmentId, component: &Component, target: &str) -> Option<NodeId> {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::ExpressionTag(t) if component.source_text(t.expression.span) == target => {
                 return Some(t.id);
             }
             Node::Element(el) => {
-                if let Some(id) = find_expr_tag(&el.fragment, component, target) {
+                if let Some(id) = find_expr_tag(el.fragment, component, target) {
                     return Some(id);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(id) = find_expr_tag(&b.consequent, component, target) {
+                if let Some(id) = find_expr_tag(b.consequent, component, target) {
                     return Some(id);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(id) = find_expr_tag(alt, component, target) {
                         return Some(id);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(id) = find_expr_tag(&b.body, component, target) {
+                if let Some(id) = find_expr_tag(b.body, component, target) {
                     return Some(id);
                 }
             }
             Node::SvelteElement(el) => {
-                if let Some(id) = find_expr_tag(&el.fragment, component, target) {
+                if let Some(id) = find_expr_tag(el.fragment, component, target) {
                     return Some(id);
                 }
             }
@@ -54,40 +61,39 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
     None
 }
 
-fn find_render_tag(fragment: &Fragment, component: &Component, target: &str) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+fn find_render_tag(fragment: FragmentId, component: &Component, target: &str) -> Option<NodeId> {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::RenderTag(tag) if component.source_text(tag.expression.span) == target => {
                 return Some(tag.id);
             }
             Node::Element(el) => {
-                if let Some(id) = find_render_tag(&el.fragment, component, target) {
+                if let Some(id) = find_render_tag(el.fragment, component, target) {
                     return Some(id);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(id) = find_render_tag(&b.consequent, component, target) {
+                if let Some(id) = find_render_tag(b.consequent, component, target) {
                     return Some(id);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(id) = find_render_tag(alt, component, target) {
                         return Some(id);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(id) = find_render_tag(&b.body, component, target) {
+                if let Some(id) = find_render_tag(b.body, component, target) {
                     return Some(id);
                 }
             }
             Node::SvelteElement(el) => {
-                if let Some(id) = find_render_tag(&el.fragment, component, target) {
+                if let Some(id) = find_render_tag(el.fragment, component, target) {
                     return Some(id);
                 }
             }
             Node::SnippetBlock(block) => {
-                if let Some(id) = find_render_tag(&block.body, component, target) {
+                if let Some(id) = find_render_tag(block.body, component, target) {
                     return Some(id);
                 }
             }
@@ -98,51 +104,50 @@ fn find_render_tag(fragment: &Fragment, component: &Component, target: &str) -> 
 }
 
 fn find_element<'a>(
-    fragment: &'a Fragment,
+    fragment: FragmentId,
     component: &'a Component,
     tag_name: &str,
 ) -> Option<&'a Element> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::Element(el) if el.name == tag_name => return Some(el),
             Node::ComponentNode(node) => {
-                if let Some(found) = find_element(&node.fragment, component, tag_name) {
+                if let Some(found) = find_element(node.fragment, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::SnippetBlock(block) => {
-                if let Some(found) = find_element(&block.body, component, tag_name) {
+                if let Some(found) = find_element(block.body, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::Element(el) => {
-                if let Some(found) = find_element(&el.fragment, component, tag_name) {
+                if let Some(found) = find_element(el.fragment, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_element(&b.consequent, component, tag_name) {
+                if let Some(found) = find_element(b.consequent, component, tag_name) {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_element(alt, component, tag_name) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_element(&b.body, component, tag_name) {
+                if let Some(found) = find_element(b.body, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::SvelteHead(head) => {
-                if let Some(found) = find_element(&head.fragment, component, tag_name) {
+                if let Some(found) = find_element(head.fragment, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::SvelteElement(el) => {
-                if let Some(found) = find_element(&el.fragment, component, tag_name) {
+                if let Some(found) = find_element(el.fragment, component, tag_name) {
                     return Some(found);
                 }
             }
@@ -153,86 +158,82 @@ fn find_element<'a>(
 }
 
 fn find_nth_element<'a>(
-    fragment: &'a Fragment,
+    fragment: FragmentId,
     component: &'a Component,
     tag_name: &str,
     target_index: usize,
 ) -> Option<&'a Element> {
     fn visit<'a>(
-        fragment: &'a Fragment,
+        fragment: FragmentId,
         component: &'a Component,
         tag_name: &str,
         target_index: usize,
         seen: &mut usize,
     ) -> Option<&'a Element> {
-        let store = &component.store;
-        for &id in &fragment.nodes {
-            match store.get(id) {
+        for id in frag_nodes(component, fragment) {
+            match component.store.get(id) {
                 Node::Element(el) if el.name == tag_name => {
                     if *seen == target_index {
                         return Some(el);
                     }
                     *seen += 1;
-                    if let Some(found) =
-                        visit(&el.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) = visit(el.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::ComponentNode(node) => {
                     if let Some(found) =
-                        visit(&node.fragment, component, tag_name, target_index, seen)
+                        visit(node.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                     for slot in &node.legacy_slots {
                         if let Some(found) =
-                            visit(&slot.fragment, component, tag_name, target_index, seen)
+                            visit(slot.fragment, component, tag_name, target_index, seen)
                         {
                             return Some(found);
                         }
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    if let Some(found) = visit(&block.body, component, tag_name, target_index, seen)
+                    if let Some(found) = visit(block.body, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::Element(el) => {
-                    if let Some(found) =
-                        visit(&el.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) = visit(el.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::IfBlock(b) => {
                     if let Some(found) =
-                        visit(&b.consequent, component, tag_name, target_index, seen)
+                        visit(b.consequent, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
-                    if let Some(alt) = &b.alternate {
+                    if let Some(alt) = b.alternate {
                         if let Some(found) = visit(alt, component, tag_name, target_index, seen) {
                             return Some(found);
                         }
                     }
                 }
                 Node::EachBlock(b) => {
-                    if let Some(found) = visit(&b.body, component, tag_name, target_index, seen) {
+                    if let Some(found) = visit(b.body, component, tag_name, target_index, seen) {
                         return Some(found);
                     }
                 }
                 Node::SvelteHead(head) => {
                     if let Some(found) =
-                        visit(&head.fragment, component, tag_name, target_index, seen)
+                        visit(head.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::SvelteElement(el) => {
-                    if let Some(found) =
-                        visit(&el.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) = visit(el.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
@@ -248,31 +249,30 @@ fn find_nth_element<'a>(
 }
 
 fn find_component_node_id(
-    fragment: &Fragment,
+    fragment: FragmentId,
     component: &Component,
     name: &str,
 ) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::ComponentNode(node) if node.name == name => return Some(node.id),
             Node::Element(el) => {
-                if let Some(found) = find_component_node_id(&el.fragment, component, name) {
+                if let Some(found) = find_component_node_id(el.fragment, component, name) {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_component_node_id(&b.consequent, component, name) {
+                if let Some(found) = find_component_node_id(b.consequent, component, name) {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_component_node_id(alt, component, name) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_component_node_id(&b.body, component, name) {
+                if let Some(found) = find_component_node_id(b.body, component, name) {
                     return Some(found);
                 }
             }
@@ -289,45 +289,48 @@ fn find_let_directive(attrs: &[Attribute]) -> Option<&LetDirectiveLegacy> {
     })
 }
 
-fn find_html_tag_id(fragment: &Fragment, component: &Component, expr_text: &str) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+fn find_html_tag_id(
+    fragment: FragmentId,
+    component: &Component,
+    expr_text: &str,
+) -> Option<NodeId> {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::HtmlTag(tag) if component.source_text(tag.expression.span) == expr_text => {
                 return Some(tag.id);
             }
             Node::ComponentNode(node) => {
-                if let Some(found) = find_html_tag_id(&node.fragment, component, expr_text) {
+                if let Some(found) = find_html_tag_id(node.fragment, component, expr_text) {
                     return Some(found);
                 }
             }
             Node::Element(el) => {
-                if let Some(found) = find_html_tag_id(&el.fragment, component, expr_text) {
+                if let Some(found) = find_html_tag_id(el.fragment, component, expr_text) {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_html_tag_id(&b.consequent, component, expr_text) {
+                if let Some(found) = find_html_tag_id(b.consequent, component, expr_text) {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_html_tag_id(alt, component, expr_text) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_html_tag_id(&b.body, component, expr_text) {
+                if let Some(found) = find_html_tag_id(b.body, component, expr_text) {
                     return Some(found);
                 }
             }
             Node::SvelteHead(head) => {
-                if let Some(found) = find_html_tag_id(&head.fragment, component, expr_text) {
+                if let Some(found) = find_html_tag_id(head.fragment, component, expr_text) {
                     return Some(found);
                 }
             }
             Node::SvelteElement(el) => {
-                if let Some(found) = find_html_tag_id(&el.fragment, component, expr_text) {
+                if let Some(found) = find_html_tag_id(el.fragment, component, expr_text) {
                     return Some(found);
                 }
             }
@@ -337,38 +340,37 @@ fn find_html_tag_id(fragment: &Fragment, component: &Component, expr_text: &str)
     None
 }
 
-fn find_svelte_head_id(fragment: &Fragment, component: &Component) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+fn find_svelte_head_id(fragment: FragmentId, component: &Component) -> Option<NodeId> {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::SvelteHead(head) => return Some(head.id),
             Node::ComponentNode(node) => {
-                if let Some(found) = find_svelte_head_id(&node.fragment, component) {
+                if let Some(found) = find_svelte_head_id(node.fragment, component) {
                     return Some(found);
                 }
             }
             Node::Element(el) => {
-                if let Some(found) = find_svelte_head_id(&el.fragment, component) {
+                if let Some(found) = find_svelte_head_id(el.fragment, component) {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_svelte_head_id(&b.consequent, component) {
+                if let Some(found) = find_svelte_head_id(b.consequent, component) {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_svelte_head_id(alt, component) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_svelte_head_id(&b.body, component) {
+                if let Some(found) = find_svelte_head_id(b.body, component) {
                     return Some(found);
                 }
             }
             Node::SvelteElement(el) => {
-                if let Some(found) = find_svelte_head_id(&el.fragment, component) {
+                if let Some(found) = find_svelte_head_id(el.fragment, component) {
                     return Some(found);
                 }
             }
@@ -379,14 +381,13 @@ fn find_svelte_head_id(fragment: &Fragment, component: &Component) -> Option<Nod
 }
 
 fn find_bind_directive_id(
-    fragment: &Fragment,
+    fragment: FragmentId,
     component: &Component,
     tag_name: &str,
     bind_name: &str,
 ) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::Element(el) => {
                 if el.name == tag_name {
                     if let Some(dir_id) = el.attributes.iter().find_map(|attr| match attr {
@@ -399,7 +400,7 @@ fn find_bind_directive_id(
                     }
                 }
                 if let Some(found) =
-                    find_bind_directive_id(&el.fragment, component, tag_name, bind_name)
+                    find_bind_directive_id(el.fragment, component, tag_name, bind_name)
                 {
                     return Some(found);
                 }
@@ -414,18 +415,18 @@ fn find_bind_directive_id(
                     return Some(dir_id);
                 }
                 if let Some(found) =
-                    find_bind_directive_id(&node.fragment, component, tag_name, bind_name)
+                    find_bind_directive_id(node.fragment, component, tag_name, bind_name)
                 {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
                 if let Some(found) =
-                    find_bind_directive_id(&b.consequent, component, tag_name, bind_name)
+                    find_bind_directive_id(b.consequent, component, tag_name, bind_name)
                 {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_bind_directive_id(alt, component, tag_name, bind_name)
                     {
                         return Some(found);
@@ -433,7 +434,7 @@ fn find_bind_directive_id(
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name)
+                if let Some(found) = find_bind_directive_id(b.body, component, tag_name, bind_name)
                 {
                     return Some(found);
                 }
@@ -448,7 +449,7 @@ fn find_bind_directive_id(
                     return Some(dir_id);
                 }
                 if let Some(found) =
-                    find_bind_directive_id(&el.fragment, component, tag_name, bind_name)
+                    find_bind_directive_id(el.fragment, component, tag_name, bind_name)
                 {
                     return Some(found);
                 }
@@ -490,14 +491,13 @@ fn find_bind_directive_id(
 }
 
 fn find_attribute_id(
-    fragment: &Fragment,
+    fragment: FragmentId,
     component: &Component,
     tag_name: &str,
     attr_name: &str,
 ) -> Option<NodeId> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::Element(el) => {
                 if el.name == tag_name {
                     if let Some(attr_id) = el.attributes.iter().find_map(|attr| match attr {
@@ -513,25 +513,24 @@ fn find_attribute_id(
                         return Some(attr_id);
                     }
                 }
-                if let Some(found) = find_attribute_id(&el.fragment, component, tag_name, attr_name)
+                if let Some(found) = find_attribute_id(el.fragment, component, tag_name, attr_name)
                 {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) =
-                    find_attribute_id(&b.consequent, component, tag_name, attr_name)
+                if let Some(found) = find_attribute_id(b.consequent, component, tag_name, attr_name)
                 {
                     return Some(found);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(found) = find_attribute_id(alt, component, tag_name, attr_name) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_attribute_id(&b.body, component, tag_name, attr_name) {
+                if let Some(found) = find_attribute_id(b.body, component, tag_name, attr_name) {
                     return Some(found);
                 }
             }
@@ -542,13 +541,12 @@ fn find_attribute_id(
 }
 
 fn find_if_block<'a>(
-    fragment: &'a Fragment,
+    fragment: FragmentId,
     component: &'a Component,
     test_text: &str,
 ) -> Option<&'a IfBlock> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        if let Node::IfBlock(b) = store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        if let Node::IfBlock(b) = component.store.get(id) {
             if component.source_text(b.test.span) == test_text {
                 return Some(b);
             }
@@ -558,13 +556,12 @@ fn find_if_block<'a>(
 }
 
 fn find_each_block<'a>(
-    fragment: &'a Fragment,
+    fragment: FragmentId,
     component: &'a Component,
     expr_text: &str,
 ) -> Option<&'a EachBlock> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        if let Node::EachBlock(b) = store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        if let Node::EachBlock(b) = component.store.get(id) {
             if component.source_text(b.expression.span) == expr_text {
                 return Some(b);
             }
@@ -574,38 +571,37 @@ fn find_each_block<'a>(
 }
 
 fn find_snippet_block<'a>(
-    fragment: &'a Fragment,
+    fragment: FragmentId,
     component: &'a Component,
     name: &str,
 ) -> Option<&'a svelte_ast::SnippetBlock> {
-    let store = &component.store;
-    for &id in &fragment.nodes {
-        match store.get(id) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
             Node::SnippetBlock(block) if block.name(&component.source) == name => {
                 return Some(block);
             }
             Node::ComponentNode(node) => {
-                if let Some(block) = find_snippet_block(&node.fragment, component, name) {
+                if let Some(block) = find_snippet_block(node.fragment, component, name) {
                     return Some(block);
                 }
             }
             Node::Element(el) => {
-                if let Some(block) = find_snippet_block(&el.fragment, component, name) {
+                if let Some(block) = find_snippet_block(el.fragment, component, name) {
                     return Some(block);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(block) = find_snippet_block(&b.consequent, component, name) {
+                if let Some(block) = find_snippet_block(b.consequent, component, name) {
                     return Some(block);
                 }
-                if let Some(alt) = &b.alternate {
+                if let Some(alt) = b.alternate {
                     if let Some(block) = find_snippet_block(alt, component, name) {
                         return Some(block);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(block) = find_snippet_block(&b.body, component, name) {
+                if let Some(block) = find_snippet_block(b.body, component, name) {
                     return Some(block);
                 }
             }
@@ -725,7 +721,7 @@ fn assert_symbol(data: &AnalysisData, name: &str) {
 }
 
 fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
         data.dynamism.is_dynamic_node(id),
@@ -734,7 +730,7 @@ fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &st
 }
 
 fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
         !data.dynamism.is_dynamic_node(id),
@@ -743,7 +739,7 @@ fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text:
 }
 
 fn assert_dynamic_component(data: &AnalysisData, component: &Component, name: &str) {
-    let id = find_component_node_id(&component.fragment, component, name)
+    let id = find_component_node_id(component.root, component, name)
         .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
     assert!(
         data.dynamism.is_dynamic_component(id),
@@ -757,7 +753,7 @@ fn assert_component_ref_non_source_prop(
     name: &str,
     expected_prop_name: &str,
 ) {
-    let id = find_component_node_id(&component.fragment, component, name)
+    let id = find_component_node_id(component.root, component, name)
         .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
     let sym_id = data
         .elements
@@ -854,7 +850,7 @@ fn script_reference_semantics(
 }
 
 fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text: &str) {
-    let block = find_if_block(&component.fragment, component, test_text)
+    let block = find_if_block(component.root, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
     assert!(
         data.dynamism.is_dynamic_node(block.id),
@@ -863,7 +859,7 @@ fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text
 }
 
 fn assert_dynamic_each(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let block = find_each_block(&component.fragment, component, expr_text)
+    let block = find_each_block(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no EachBlock with expr '{expr_text}'"));
     assert!(
         data.dynamism.is_dynamic_node(block.id),
@@ -878,7 +874,7 @@ fn assert_snippet_hoistable(
     expected: bool,
 ) {
     use crate::BlockSemantics;
-    let block = find_snippet_block(&component.fragment, component, name)
+    let block = find_snippet_block(component.root, component, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     let actual = match data.block_semantics(block.id) {
         BlockSemantics::Snippet(s) => s.hoistable,
@@ -897,7 +893,7 @@ fn assert_bind_target_symbol_name(
     bind_name: &str,
     expected_binding_name: &str,
 ) {
-    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+    let dir_id = find_bind_directive_id(component.root, component, tag_name, bind_name)
         .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
     let sym = data
         .bind_target_symbol(dir_id)
@@ -926,7 +922,7 @@ fn assert_bind_target_semantics(
     expected_property: BindPropertyKind,
     expected_requires_mutable_target: bool,
 ) {
-    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+    let dir_id = find_bind_directive_id(component.root, component, tag_name, bind_name)
         .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
     let semantics = data
         .bind_target_semantics(dir_id)
@@ -955,7 +951,7 @@ fn assert_shorthand_symbol_name(
     attr_name: &str,
     expected_binding_name: &str,
 ) {
-    let el = find_element(&component.fragment, component, tag_name)
+    let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     let attr_id = el
         .attributes
@@ -982,7 +978,7 @@ fn assert_element_needs_ref(
     tag_name: &str,
     expected: bool,
 ) {
-    let el = find_element(&component.fragment, component, tag_name)
+    let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
         data.elements.flags.needs_ref(el.id),
@@ -997,7 +993,7 @@ fn assert_element_needs_var(
     tag_name: &str,
     expected: bool,
 ) {
-    let el = find_element(&component.fragment, component, tag_name)
+    let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
         data.elements.flags.needs_var(el.id),
@@ -1013,7 +1009,7 @@ fn assert_nth_element_needs_input_defaults(
     target_index: usize,
     expected: bool,
 ) {
-    let el = find_nth_element(&component.fragment, component, tag_name, target_index)
+    let el = find_nth_element(component.root, component, tag_name, target_index)
         .unwrap_or_else(|| panic!("no element <{tag_name}> at index {target_index}"));
     assert_eq!(
         data.elements.flags.needs_input_defaults(el.id),
@@ -1028,7 +1024,7 @@ fn assert_has_dynamic_class_directives(
     tag_name: &str,
     expected: bool,
 ) {
-    let el = find_element(&component.fragment, component, tag_name)
+    let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
         data.elements.flags.has_dynamic_class_directives(el.id),
@@ -1137,7 +1133,7 @@ fn find_call_node_id(program: &Program<'_>, source: &str, target: &str) -> Optio
 }
 
 fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     let info = data
         .expression(id)
@@ -1149,7 +1145,7 @@ fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_tex
 }
 
 fn assert_expr_tag_no_call(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     let info = data
         .expression(id)
@@ -1161,7 +1157,7 @@ fn assert_expr_tag_no_call(data: &AnalysisData, component: &Component, expr_text
 }
 
 fn assert_expr_tag_has_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     let info = data
         .expression(id)
@@ -1173,7 +1169,7 @@ fn assert_expr_tag_has_store_ref(data: &AnalysisData, component: &Component, exp
 }
 
 fn assert_expr_tag_no_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     let info = data
         .expression(id)
@@ -1198,7 +1194,7 @@ fn assert_expr_tag_role(
     expr_text: &str,
     expected: ExprRole,
 ) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert_node_expr_role(data, id, expected, &format!("ExpressionTag '{expr_text}'"));
 }
@@ -1209,7 +1205,7 @@ fn assert_render_tag_role(
     expr_text: &str,
     expected: ExprRole,
 ) {
-    let id = find_render_tag(&component.fragment, component, expr_text)
+    let id = find_render_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no RenderTag with source '{expr_text}'"));
     assert_node_expr_role(data, id, expected, &format!("RenderTag '{expr_text}'"));
 }
@@ -1221,7 +1217,7 @@ fn assert_attr_role(
     attr_name: &str,
     expected: ExprRole,
 ) {
-    let id = find_attribute_id(&component.fragment, component, tag_name, attr_name)
+    let id = find_attribute_id(component.root, component, tag_name, attr_name)
         .unwrap_or_else(|| panic!("no attribute '{attr_name}' on <{tag_name}>"));
     assert_node_expr_role(data, id, expected, &format!("<{tag_name}>[{attr_name}]"));
 }
@@ -1232,7 +1228,7 @@ fn assert_expr_tag_async_query(
     expr_text: &str,
     expected: bool,
 ) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert_eq!(
         data.expr_is_async(id),
@@ -1351,10 +1347,10 @@ fn each_block_shadowing() {
         crate::types::data::DeclarationSemantics::State(_)
     ));
 
-    let each_block = find_each_block(&c.fragment, &c, "items").expect("test invariant");
+    let each_block = find_each_block(c.root, &c, "items").expect("test invariant");
     let each_scope = data
         .scoping
-        .fragment_scope_by_id(each_block.body.id)
+        .fragment_scope_by_id(each_block.body)
         .expect("test invariant");
     let each_sym = data
         .scoping
@@ -1403,7 +1399,7 @@ fn element_facts_capture_static_and_runtime_attrs() {
     let (component, data) = analyze_source(
         r#"<script>let value = $state("x"); let spread = {};</script><div id="a" class={value} {...spread}></div>"#,
     );
-    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let el = find_element(component.root, &component, "div").expect("no element <div>");
     let facts = data
         .element_facts(el.id)
         .unwrap_or_else(|| panic!("no element facts for <div>"));
@@ -1420,10 +1416,10 @@ fn template_topology_tracks_attr_and_expr_to_nearest_element() {
     let (component, data) = analyze_source(
         r#"<script>let value = "x"; let el;</script><div class={value} bind:this={el}></div>"#,
     );
-    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    let class_attr_id = find_attribute_id(&component.fragment, &component, "div", "class")
+    let el = find_element(component.root, &component, "div").expect("no element <div>");
+    let class_attr_id = find_attribute_id(component.root, &component, "div", "class")
         .expect("no class attr on <div>");
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "div", "this")
+    let bind_id = find_bind_directive_id(component.root, &component, "div", "this")
         .expect("no bind:this on <div>");
 
     let class_parent = data
@@ -1440,8 +1436,8 @@ fn concatenated_class_attr_is_registered_for_set_class() {
     let (component, data) = analyze_source(
         r#"<script>let value = $state("x");</script><div class="static {value}"></div>"#,
     );
-    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    let class_attr_id = find_attribute_id(&component.fragment, &component, "div", "class")
+    let el = find_element(component.root, &component, "div").expect("no element <div>");
+    let class_attr_id = find_attribute_id(component.root, &component, "div", "class")
         .expect("no class attr on <div>");
 
     assert_eq!(
@@ -1458,9 +1454,9 @@ fn template_element_index_tracks_css_candidates() {
 <span class={dynamic}></span>
 <p {...props}></p>"#,
     );
-    let div = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    let span = find_element(&component.fragment, &component, "span").expect("no element <span>");
-    let p = find_element(&component.fragment, &component, "p").expect("no element <p>");
+    let div = find_element(component.root, &component, "div").expect("no element <div>");
+    let span = find_element(component.root, &component, "span").expect("no element <span>");
+    let p = find_element(component.root, &component, "p").expect("no element <p>");
 
     assert_eq!(data.template_element_tag_name(div.id), Some("div"));
     assert_eq!(data.template_element_static_id(div.id), Some("root"));
@@ -1485,8 +1481,8 @@ fn attribute_presence_selector_scopes_only_matching_elements() {
 <div data-role="banner"></div>
 <span></span>"#,
     );
-    let div = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    let span = find_element(&component.fragment, &component, "span").expect("no element <span>");
+    let div = find_element(component.root, &component, "div").expect("no element <div>");
+    let span = find_element(component.root, &component, "span").expect("no element <span>");
 
     assert!(data.is_css_scoped(div.id));
     assert!(!data.is_css_scoped(span.id));
@@ -1507,11 +1503,11 @@ fn attribute_value_selectors_match_static_attributes() {
 <button type="button" aria-label="run"></button>"#,
     );
 
-    let exact = find_nth_element(&component.fragment, &component, "div", 0).expect("exact div");
+    let exact = find_nth_element(component.root, &component, "div", 0).expect("exact div");
     let insensitive =
-        find_nth_element(&component.fragment, &component, "div", 1).expect("insensitive div");
-    let no_match = find_nth_element(&component.fragment, &component, "div", 2).expect("off div");
-    let button = find_element(&component.fragment, &component, "button").expect("button");
+        find_nth_element(component.root, &component, "div", 1).expect("insensitive div");
+    let no_match = find_nth_element(component.root, &component, "div", 2).expect("off div");
+    let button = find_element(component.root, &component, "button").expect("button");
 
     assert!(data.is_css_scoped(exact.id));
     assert!(data.is_css_scoped(insensitive.id));
@@ -1537,15 +1533,14 @@ fn attribute_matcher_operators_match_static_text_values() {
 <div data-url="http://sample.org"></div>"#,
     );
 
-    let class_match =
-        find_nth_element(&component.fragment, &component, "div", 0).expect("class div");
-    let lang_match = find_nth_element(&component.fragment, &component, "div", 1).expect("lang div");
-    let href_match = find_nth_element(&component.fragment, &component, "div", 2).expect("href div");
-    let class_no_match = find_element(&component.fragment, &component, "span").expect("span");
+    let class_match = find_nth_element(component.root, &component, "div", 0).expect("class div");
+    let lang_match = find_nth_element(component.root, &component, "div", 1).expect("lang div");
+    let href_match = find_nth_element(component.root, &component, "div", 2).expect("href div");
+    let class_no_match = find_element(component.root, &component, "span").expect("span");
     let lang_no_match =
-        find_nth_element(&component.fragment, &component, "div", 3).expect("second lang div");
+        find_nth_element(component.root, &component, "div", 3).expect("second lang div");
     let href_no_match =
-        find_nth_element(&component.fragment, &component, "div", 4).expect("second href div");
+        find_nth_element(component.root, &component, "div", 4).expect("second href div");
 
     assert!(data.is_css_scoped(class_match.id));
     assert!(data.is_css_scoped(lang_match.id));
@@ -1568,9 +1563,9 @@ fn attribute_selector_names_are_casefolded_for_static_matching() {
 <svg viewBox="0 0 10 10"></svg>"#,
     );
 
-    let div = find_element(&component.fragment, &component, "div").expect("div");
-    let button = find_element(&component.fragment, &component, "button").expect("button");
-    let svg = find_element(&component.fragment, &component, "svg").expect("svg");
+    let div = find_element(component.root, &component, "div").expect("div");
+    let button = find_element(component.root, &component, "button").expect("button");
+    let svg = find_element(component.root, &component, "svg").expect("svg");
 
     assert!(data.is_css_scoped(div.id));
     assert!(data.is_css_scoped(button.id));
@@ -1589,9 +1584,9 @@ fn pseudo_is_and_where_standalone_branches_scope_matching_elements() {
 <h1 class="baz">title</h1>"#,
     );
 
-    let p = find_element(&component.fragment, &component, "p").expect("p");
-    let span = find_element(&component.fragment, &component, "span").expect("span");
-    let h1 = find_element(&component.fragment, &component, "h1").expect("h1");
+    let p = find_element(component.root, &component, "p").expect("p");
+    let span = find_element(component.root, &component, "span").expect("span");
+    let h1 = find_element(component.root, &component, "h1").expect("h1");
 
     assert!(data.is_css_scoped(p.id));
     assert!(data.is_css_scoped(span.id));
@@ -1609,8 +1604,8 @@ fn pseudo_compound_is_and_where_branches_stay_conservative() {
 <span class="baz">baz</span>"#,
     );
 
-    let p = find_element(&component.fragment, &component, "p").expect("p");
-    let span = find_element(&component.fragment, &component, "span").expect("span");
+    let p = find_element(component.root, &component, "p").expect("p");
+    let span = find_element(component.root, &component, "span").expect("span");
 
     assert_eq!(css_diags.len(), 2);
     assert!(data.is_css_scoped(p.id));
@@ -1626,7 +1621,7 @@ fn pseudo_where_complex_branches_stay_conservative() {
 <p>hello</p>"#,
     );
 
-    let p = find_element(&component.fragment, &component, "p").expect("p");
+    let p = find_element(component.root, &component, "p").expect("p");
     assert!(data.is_css_scoped(p.id));
 }
 
@@ -1641,11 +1636,11 @@ section:has(.hit) { color: red; }
     );
 
     let section_hit =
-        find_nth_element(&component.fragment, &component, "section", 0).expect("hit section");
+        find_nth_element(component.root, &component, "section", 0).expect("hit section");
     let section_miss =
-        find_nth_element(&component.fragment, &component, "section", 1).expect("miss section");
-    let p_hit = find_nth_element(&component.fragment, &component, "p", 0).expect("hit p");
-    let p_miss = find_nth_element(&component.fragment, &component, "p", 1).expect("miss p");
+        find_nth_element(component.root, &component, "section", 1).expect("miss section");
+    let p_hit = find_nth_element(component.root, &component, "p", 0).expect("hit p");
+    let p_miss = find_nth_element(component.root, &component, "p", 1).expect("miss p");
 
     assert!(data.is_css_scoped(section_hit.id));
     assert!(data.is_css_scoped(p_hit.id));
@@ -1665,9 +1660,9 @@ fn render_tag_sibling_matching_crosses_snippet_boundary() {
 <div>other</div>"#,
     );
 
-    let before = find_element(&component.fragment, &component, "span").expect("before span");
-    let after = find_nth_element(&component.fragment, &component, "div", 0).expect("after div");
-    let other = find_nth_element(&component.fragment, &component, "div", 1).expect("other div");
+    let before = find_element(component.root, &component, "span").expect("before span");
+    let after = find_nth_element(component.root, &component, "div", 0).expect("after div");
+    let other = find_nth_element(component.root, &component, "div", 1).expect("other div");
 
     assert!(data.is_css_scoped(before.id));
     assert!(data.is_css_scoped(after.id));
@@ -1690,10 +1685,9 @@ fn component_snippet_descendant_matching_crosses_component_boundary() {
 <span class="inside">outside</span>"#,
     );
 
-    let host = find_element(&component.fragment, &component, "div").expect("host");
-    let inside = find_nth_element(&component.fragment, &component, "span", 0).expect("inside span");
-    let outside =
-        find_nth_element(&component.fragment, &component, "span", 1).expect("outside span");
+    let host = find_element(component.root, &component, "div").expect("host");
+    let inside = find_nth_element(component.root, &component, "span", 0).expect("inside span");
+    let outside = find_nth_element(component.root, &component, "span", 1).expect("outside span");
 
     assert!(data.is_css_scoped(host.id));
     assert!(data.is_css_scoped(inside.id));
@@ -1712,10 +1706,9 @@ fn nesting_selector_scopes_parent_chain() {
 <h2 class="title">outside</h2>"#,
     );
 
-    let card = find_element(&component.fragment, &component, "div").expect("card");
-    let inside = find_nth_element(&component.fragment, &component, "h2", 0).expect("inside title");
-    let outside =
-        find_nth_element(&component.fragment, &component, "h2", 1).expect("outside title");
+    let card = find_element(component.root, &component, "div").expect("card");
+    let inside = find_nth_element(component.root, &component, "h2", 0).expect("inside title");
+    let outside = find_nth_element(component.root, &component, "h2", 1).expect("outside title");
 
     assert!(data.is_css_scoped(card.id));
     assert!(data.is_css_scoped(inside.id));
@@ -1734,10 +1727,9 @@ fn implicit_nesting_selector_scopes_parent_chain() {
 <h2 class="title">outside</h2>"#,
     );
 
-    let card = find_element(&component.fragment, &component, "div").expect("card");
-    let inside = find_nth_element(&component.fragment, &component, "h2", 0).expect("inside title");
-    let outside =
-        find_nth_element(&component.fragment, &component, "h2", 1).expect("outside title");
+    let card = find_element(component.root, &component, "div").expect("card");
+    let inside = find_nth_element(component.root, &component, "h2", 0).expect("inside title");
+    let outside = find_nth_element(component.root, &component, "h2", 1).expect("outside title");
 
     assert!(data.is_css_scoped(card.id));
     assert!(data.is_css_scoped(inside.id));
@@ -1754,8 +1746,8 @@ fn root_has_scopes_local_selector_branch() {
 <div>outside</div>"#,
     );
 
-    let hit = find_nth_element(&component.fragment, &component, "div", 0).expect("hit div");
-    let outside = find_nth_element(&component.fragment, &component, "div", 1).expect("outside div");
+    let hit = find_nth_element(component.root, &component, "div", 0).expect("hit div");
+    let outside = find_nth_element(component.root, &component, "div", 1).expect("outside div");
 
     assert!(
         css_diags.is_empty(),
@@ -1777,10 +1769,9 @@ fn escaped_selectors_match_static_template_names() {
 <div class="miss"></div>"#,
     );
 
-    let class_match =
-        find_nth_element(&component.fragment, &component, "div", 0).expect("class match");
-    let id_match = find_nth_element(&component.fragment, &component, "div", 1).expect("id match");
-    let miss = find_nth_element(&component.fragment, &component, "div", 2).expect("miss");
+    let class_match = find_nth_element(component.root, &component, "div", 0).expect("class match");
+    let id_match = find_nth_element(component.root, &component, "div", 1).expect("id match");
+    let miss = find_nth_element(component.root, &component, "div", 2).expect("miss");
 
     assert!(
         css_diags.is_empty(),
@@ -1801,8 +1792,8 @@ fn dynamic_attribute_values_expand_known_expression_branches() {
 <span data-state={flag ? "idle" : "off"}></span>"#,
     );
 
-    let div = find_element(&component.fragment, &component, "div").expect("div");
-    let span = find_element(&component.fragment, &component, "span").expect("span");
+    let div = find_element(component.root, &component, "div").expect("div");
+    let span = find_element(component.root, &component, "span").expect("span");
 
     assert!(data.is_css_scoped(div.id));
     assert!(!data.is_css_scoped(span.id));
@@ -1851,10 +1842,10 @@ fn bare_global_tail_only_scopes_local_prefix() {
         "unexpected css analyze diagnostics: {css_pass_diags:?}"
     );
 
-    let div = find_nth_element(&component.fragment, &component, "div", 0).expect("root div");
-    let section = find_element(&component.fragment, &component, "section").expect("section");
-    let strong = find_element(&component.fragment, &component, "strong").expect("strong");
-    let h1 = find_element(&component.fragment, &component, "h1").expect("h1");
+    let div = find_nth_element(component.root, &component, "div", 0).expect("root div");
+    let section = find_element(component.root, &component, "section").expect("section");
+    let strong = find_element(component.root, &component, "strong").expect("strong");
+    let h1 = find_element(component.root, &component, "h1").expect("h1");
 
     assert!(
         data.is_css_scoped(div.id),
@@ -1879,10 +1870,10 @@ fn template_element_index_preserves_parent_element_across_blocks() {
     let (component, data) = analyze_source(
         r#"<div>{#if ok}<section>{#each items as item}<span>{item}</span>{/each}</section>{/if}</div>"#,
     );
-    let div = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let div = find_element(component.root, &component, "div").expect("no element <div>");
     let section =
-        find_element(&component.fragment, &component, "section").expect("no element <section>");
-    let span = find_element(&component.fragment, &component, "span").expect("no element <span>");
+        find_element(component.root, &component, "section").expect("no element <section>");
+    let span = find_element(component.root, &component, "span").expect("no element <span>");
 
     assert_eq!(data.template_element_parent(section.id), Some(div.id));
     assert_eq!(data.template_element_parent(span.id), Some(section.id));
@@ -1894,12 +1885,11 @@ fn template_element_index_tracks_element_siblings() {
         r#"<div></div>{value}<span></span><p></p>
 <section>{#if ok}<em></em>{/if}<strong></strong></section>"#,
     );
-    let div = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    let span = find_element(&component.fragment, &component, "span").expect("no element <span>");
-    let p = find_element(&component.fragment, &component, "p").expect("no element <p>");
-    let em = find_element(&component.fragment, &component, "em").expect("no element <em>");
-    let strong =
-        find_element(&component.fragment, &component, "strong").expect("no element <strong>");
+    let div = find_element(component.root, &component, "div").expect("no element <div>");
+    let span = find_element(component.root, &component, "span").expect("no element <span>");
+    let p = find_element(component.root, &component, "p").expect("no element <p>");
+    let em = find_element(component.root, &component, "em").expect("no element <em>");
+    let strong = find_element(component.root, &component, "strong").expect("no element <strong>");
 
     assert_eq!(data.template_element_previous_sibling(div.id), None);
     assert_eq!(data.template_element_next_sibling(div.id), Some(span.id));
@@ -1935,11 +1925,11 @@ fn bind_group_tracks_matching_ancestor_each_blocks_via_query_layer() {
     {/each}
 {/each}"#,
     );
-    let outer_each = find_each_block(&component.fragment, &component, "items")
+    let outer_each = find_each_block(component.root, &component, "items")
         .expect("no outer each block for items");
-    let inner_each = find_each_block(&outer_each.body, &component, "item.options")
+    let inner_each = find_each_block(outer_each.body, &component, "item.options")
         .expect("no inner each block for item.options");
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+    let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on input");
 
     let parent_each_blocks = data.parent_each_blocks(bind_id);
@@ -1962,7 +1952,7 @@ fn bind_group_without_each_references_does_not_mark_enclosing_each_blocks() {
     {/each}
 {/each}"#,
     );
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+    let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on input");
 
     assert!(data.parent_each_blocks(bind_id).is_empty());
@@ -1981,9 +1971,9 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
     {/each}
 {/each}"#,
     );
-    let outer_each = find_each_block(&component.fragment, &component, "groups")
+    let outer_each = find_each_block(component.root, &component, "groups")
         .expect("no outer each block for groups");
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+    let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on input");
 
     assert_eq!(
@@ -2002,9 +1992,9 @@ fn bind_group_records_expression_value_attr_only() {
 <input type="checkbox" bind:group={selected} value={value} />
 <input type="checkbox" bind:group={selected} value="static" />"#,
     );
-    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+    let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on first input");
-    let value_attr_id = find_attribute_id(&component.fragment, &component, "input", "value")
+    let value_attr_id = find_attribute_id(component.root, &component, "input", "value")
         .expect("no expression value attr on first input");
 
     assert_eq!(
@@ -2036,7 +2026,7 @@ fn static_contenteditable_marks_bound_contenteditable() {
     let (component, data) = analyze_source(
         r#"<script>let html = $state('');</script><div contenteditable bind:innerHTML={html}></div>"#,
     );
-    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let el = find_element(component.root, &component, "div").expect("no element <div>");
     assert!(data.elements.flags.is_bound_contenteditable(el.id));
 }
 
@@ -2050,7 +2040,7 @@ fn dynamic_contenteditable_does_not_mark_bound_contenteditable() {
         "unexpected parse diagnostics: {parse_diags:?}"
     );
     let (data, _parsed, _diags) = analyze(&component, js_result);
-    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let el = find_element(component.root, &component, "div").expect("no element <div>");
     assert!(!data.elements.flags.is_bound_contenteditable(el.id));
 }
 
@@ -2140,7 +2130,7 @@ fn module_rune_kinds_and_cross_script_refs() {
     assert_rune_kind(&data, "doubled", RuneKind::Derived);
     assert_rune_is_mutated(&data, "shared");
 
-    let expr_id = find_expr_tag(&component.fragment, &component, "doubled")
+    let expr_id = find_expr_tag(component.root, &component, "doubled")
         .expect("expected template expression for doubled");
     let root = data.scoping.root_scope_id();
     let doubled_sym = data
@@ -2310,7 +2300,7 @@ fn module_imports_are_visible_from_instance_scope() {
         "instance-script reference should resolve through the module parent scope"
     );
 
-    let expr_id = find_expr_tag(&component.fragment, &component, "shared")
+    let expr_id = find_expr_tag(component.root, &component, "shared")
         .expect("expected template expression for shared");
     let expr = data.expression(expr_id).expect("expected expression info");
     assert!(
@@ -2339,7 +2329,7 @@ fn module_exported_render_tag_callee_stays_direct_with_snippets() {
 {@render row(label(title))}"#;
     let (component, data) = analyze_source(source);
 
-    let render_id = find_render_tag(&component.fragment, &component, "row(label(title))")
+    let render_id = find_render_tag(component.root, &component, "row(label(title))")
         .expect("expected render tag");
     match data.block_semantics(render_id) {
         crate::BlockSemantics::Render(sem) => {
@@ -2705,7 +2695,7 @@ fn assert_stmt_meta_hoist_names(data: &AnalysisData, stmt_index: usize, expected
 }
 
 fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
         data.expr_has_blockers(id),
@@ -2714,7 +2704,7 @@ fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr
 }
 
 fn assert_expr_tag_no_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(&component.fragment, component, expr_text)
+    let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
         !data.expr_has_blockers(id),
@@ -2783,10 +2773,10 @@ let b = await fetch('/b');
 </script>
 <p>{b}{a}{b}</p>"#,
     );
-    let paragraph = find_element(&component.fragment, &component, "p")
-        .unwrap_or_else(|| panic!("no <p> element"));
+    let paragraph =
+        find_element(component.root, &component, "p").unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
-        data.template.fragment_blockers_by_id(paragraph.fragment.id),
+        data.template.fragment_blockers_by_id(paragraph.fragment),
         &[0, 1]
     );
 }
@@ -2796,7 +2786,8 @@ fn debug_tag_ids_collected_for_fragment() {
     let (component, data) =
         analyze_source(r#"<script>let a = 1; let b = 2;</script>{@debug a}{@debug b}"#);
     let expected: Vec<NodeId> = component
-        .fragment
+        .store
+        .fragment(component.root)
         .nodes
         .iter()
         .filter_map(|&id| match component.store.get(id) {
@@ -2805,9 +2796,7 @@ fn debug_tag_ids_collected_for_fragment() {
         })
         .collect();
     assert_eq!(
-        data.template
-            .debug_tags
-            .by_fragment_id(component.fragment.id),
+        data.template.debug_tags.by_fragment_id(component.root),
         Some(&expected)
     );
 }
@@ -2817,14 +2806,14 @@ fn title_elements_collected_for_svelte_head_fragment() {
     let (component, data) = analyze_source(
         r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#,
     );
-    let head_id = find_svelte_head_id(&component.fragment, &component)
+    let head_id = find_svelte_head_id(component.root, &component)
         .unwrap_or_else(|| panic!("no <svelte:head>"));
     let head_fragment_id = match component.store.get(head_id) {
-        Node::SvelteHead(h) => h.fragment.id,
+        Node::SvelteHead(h) => h.fragment,
         _ => unreachable!(),
     };
-    let title = find_element(&component.fragment, &component, "title")
-        .unwrap_or_else(|| panic!("no <title>"));
+    let title =
+        find_element(component.root, &component, "title").unwrap_or_else(|| panic!("no <title>"));
     assert_eq!(
         data.template
             .title_elements
@@ -2838,9 +2827,9 @@ fn html_tag_namespace_flags_preserved() {
     let (component, data) = analyze_source(
         r#"<script>let svgContent = ''; let mathContent = '';</script><svg>{@html svgContent}</svg><math>{@html mathContent}</math>"#,
     );
-    let svg_tag = find_html_tag_id(&component.fragment, &component, "svgContent")
+    let svg_tag = find_html_tag_id(component.root, &component, "svgContent")
         .unwrap_or_else(|| panic!("no svg html tag"));
-    let math_tag = find_html_tag_id(&component.fragment, &component, "mathContent")
+    let math_tag = find_html_tag_id(component.root, &component, "mathContent")
         .unwrap_or_else(|| panic!("no mathml html tag"));
     assert!(data.html_tag_in_svg(svg_tag));
     assert!(!data.html_tag_in_mathml(svg_tag));
@@ -2854,10 +2843,10 @@ fn annotation_xml_resets_child_namespace_to_html() {
         r#"<svelte:options namespace="mathml" />
 <annotation-xml><div></div></annotation-xml>"#,
     );
-    let annotation = find_element(&component.fragment, &component, "annotation-xml")
+    let annotation = find_element(component.root, &component, "annotation-xml")
         .unwrap_or_else(|| panic!("missing <annotation-xml>"));
-    let div = find_element(&component.fragment, &component, "div")
-        .unwrap_or_else(|| panic!("missing <div>"));
+    let div =
+        find_element(component.root, &component, "div").unwrap_or_else(|| panic!("missing <div>"));
 
     assert_eq!(
         data.namespace(annotation.id),
@@ -2871,61 +2860,58 @@ fn annotation_xml_resets_child_namespace_to_html() {
 
 #[test]
 fn component_children_lowering_preserves_default_and_named_slot_fragments() {
-    let (component, data) =
+    let (component, _data) =
         analyze_source(r#"<Comp><p>default</p><p slot="footer">footer</p></Comp>"#);
-    let component_id = find_component_node_id(&component.fragment, &component, "Comp")
+    let component_id = find_component_node_id(component.root, &component, "Comp")
         .unwrap_or_else(|| panic!("no <Comp>"));
     let component_fragment_id = match component.store.get(component_id) {
-        Node::ComponentNode(cn) => cn.fragment.id,
+        Node::ComponentNode(cn) => cn.fragment,
         _ => unreachable!(),
     };
-    let default_child = find_nth_element(&component.fragment, &component, "p", 0)
+    let default_child = find_nth_element(component.root, &component, "p", 0)
         .unwrap_or_else(|| panic!("no default <p>"));
-    let slotted_child = find_nth_element(&component.fragment, &component, "p", 1)
+    let slotted_child = find_nth_element(component.root, &component, "p", 1)
         .unwrap_or_else(|| panic!("no slotted <p>"));
 
     let _ = component_id;
-    let default_fragment = data
-        .template
-        .fragment_items(component_fragment_id)
-        .unwrap_or_else(|| panic!("no lowered default fragment"));
-    assert_eq!(default_fragment, &[default_child.id]);
+    let default_fragment = frag_items(&component, component_fragment_id);
+    assert_eq!(default_fragment, vec![default_child.id]);
 
     let component_node = match component.store.get(component_id) {
         Node::ComponentNode(cn) => cn,
         _ => panic!("expected ComponentNode"),
     };
     assert_eq!(component_node.legacy_slots.len(), 1);
-    let slot_el_id = component_node.legacy_slots[0].fragment.nodes[0];
+    let slot_el_id = component
+        .store
+        .fragment(component_node.legacy_slots[0].fragment)
+        .nodes[0];
     assert_eq!(slot_el_id, slotted_child.id);
 
-    let slot_fragment_id = component_node.legacy_slots[0].fragment.id;
-    let slot_fragment = data
-        .template
-        .fragment_items(slot_fragment_id)
-        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert_eq!(slot_fragment, &[slotted_child.id]);
+    let slot_fragment_id = component_node.legacy_slots[0].fragment;
+    let slot_fragment = frag_items(&component, slot_fragment_id);
+    assert_eq!(slot_fragment, vec![slotted_child.id]);
 }
 
 #[test]
 fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
-    let (component, data) = analyze_source_with_options(
+    let (component, _data) = analyze_source_with_options(
         r#"<slot><p>fallback</p></slot>"#,
         AnalyzeOptions {
             runes: false,
             ..AnalyzeOptions::default()
         },
     );
-    let slot_id = match component.store.get(component.fragment.nodes[0]) {
+    let slot_id = match component
+        .store
+        .get(component.store.fragment(component.root).nodes[0])
+    {
         Node::SlotElementLegacy(el) => el.id,
         _ => panic!("expected SlotElementLegacy at root"),
     };
 
-    let root_fragment = data
-        .template
-        .fragment_items(component.fragment.id)
-        .unwrap_or_else(|| panic!("no lowered root fragment"));
-    assert_eq!(root_fragment, &[slot_id]);
+    let root_fragment = frag_items(&component, component.root);
+    assert_eq!(root_fragment, vec![slot_id]);
 }
 
 #[test]
@@ -2993,10 +2979,11 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
             ..AnalyzeOptions::default()
         },
     );
-    let component_id = find_component_node_id(&component.fragment, &component, "Comp")
+    let component_id = find_component_node_id(component.root, &component, "Comp")
         .unwrap_or_else(|| panic!("no <Comp>"));
     let component_node = component
-        .fragment
+        .store
+        .fragment(component.root)
         .nodes
         .iter()
         .find_map(|id| match component.store.get(*id) {
@@ -3005,10 +2992,16 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
         })
         .unwrap_or_else(|| panic!("missing component node"));
     assert_eq!(component_node.legacy_slots.len(), 1);
-    let slot_wrapper_id = component_node.legacy_slots[0].fragment.nodes[0];
+    let slot_wrapper_id = component
+        .store
+        .fragment(component_node.legacy_slots[0].fragment)
+        .nodes[0];
     let (wrapper_id, wrapped_child_id) = match component.store.get(slot_wrapper_id) {
         Node::SvelteFragmentLegacy(el) => {
-            let child_id = match component.store.get(el.fragment.nodes[0]) {
+            let child_id = match component
+                .store
+                .get(component.store.fragment(el.fragment).nodes[0])
+            {
                 Node::Element(child) => child.id,
                 _ => panic!("expected wrapped child element inside SvelteFragmentLegacy"),
             };
@@ -3018,7 +3011,10 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
     };
 
     assert_eq!(component_node.legacy_slots.len(), 1);
-    let slot_el_id = component_node.legacy_slots[0].fragment.nodes[0];
+    let slot_el_id = component
+        .store
+        .fragment(component_node.legacy_slots[0].fragment)
+        .nodes[0];
     assert_eq!(slot_el_id, wrapper_id);
     assert!(data
         .elements
@@ -3027,35 +3023,41 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
         .contains(&wrapper_id));
 
     let _ = (component_id, wrapper_id);
-    let slot_fragment_id = component_node.legacy_slots[0].fragment.id;
-    let slot_fragment = data
-        .template
-        .fragment_items(slot_fragment_id)
-        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert_eq!(slot_fragment, &[wrapped_child_id]);
+    let slot_fragment_id = component_node.legacy_slots[0].fragment;
+    let slot_fragment = frag_items(&component, slot_fragment_id);
+    assert_eq!(slot_fragment, vec![wrapped_child_id]);
 }
 
 #[test]
 fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
-    let (component, data) = analyze_source_with_options(
+    let (component, _data) = analyze_source_with_options(
         r#"<Outer><Inner slot="footer" /></Outer>"#,
         AnalyzeOptions {
             runes: false,
             ..AnalyzeOptions::default()
         },
     );
-    let outer_id = find_component_node_id(&component.fragment, &component, "Outer")
+    let outer_id = find_component_node_id(component.root, &component, "Outer")
         .unwrap_or_else(|| panic!("no <Outer>"));
     let outer_node = match component.store.get(outer_id) {
         Node::ComponentNode(node) => node,
         _ => panic!("<Outer> did not lower to ComponentNode"),
     };
     assert!(
-        outer_node.fragment.nodes.is_empty(),
+        component
+            .store
+            .fragment(outer_node.fragment)
+            .nodes
+            .is_empty(),
         "default slot must be empty"
     );
     assert_eq!(outer_node.legacy_slots.len(), 1);
-    let inner_id = match outer_node.legacy_slots[0].fragment.nodes.as_slice() {
+    let inner_id = match component
+        .store
+        .fragment(outer_node.legacy_slots[0].fragment)
+        .nodes
+        .as_slice()
+    {
         [wrapper_id] => match component.store.get(*wrapper_id) {
             Node::ComponentNode(node) => node.id,
             _ => panic!("expected <Inner> component as slot wrapper"),
@@ -3064,22 +3066,19 @@ fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
     };
 
     let _ = outer_id;
-    let default_fragment = data
-        .template
-        .fragment_items(outer_node.fragment.id)
-        .unwrap_or_else(|| panic!("no lowered default fragment"));
+    let default_fragment = frag_items(&component, outer_node.fragment);
     assert!(default_fragment.is_empty());
 
     assert_eq!(outer_node.legacy_slots.len(), 1);
-    let slot_el_id = outer_node.legacy_slots[0].fragment.nodes[0];
+    let slot_el_id = component
+        .store
+        .fragment(outer_node.legacy_slots[0].fragment)
+        .nodes[0];
     assert_eq!(slot_el_id, inner_id);
 
-    let slot_fragment_id = outer_node.legacy_slots[0].fragment.id;
-    let slot_fragment = data
-        .template
-        .fragment_items(slot_fragment_id)
-        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
-    assert_eq!(slot_fragment, &[inner_id]);
+    let slot_fragment_id = outer_node.legacy_slots[0].fragment;
+    let slot_fragment = frag_items(&component, slot_fragment_id);
+    assert_eq!(slot_fragment, vec![inner_id]);
 }
 
 #[test]
@@ -3091,10 +3090,10 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
             ..AnalyzeOptions::default()
         },
     );
-    let nested_id = find_component_node_id(&component.fragment, &component, "Nested")
+    let nested_id = find_component_node_id(component.root, &component, "Nested")
         .unwrap_or_else(|| panic!("no <Nested>"));
     let nested_fragment_id = match component.store.get(nested_id) {
-        Node::ComponentNode(cn) => cn.fragment.id,
+        Node::ComponentNode(cn) => cn.fragment,
         _ => unreachable!(),
     };
     let default_scope = data
@@ -3106,9 +3105,9 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         .get_binding(default_scope, "count")
         .unwrap_or_else(|| panic!("no default-slot binding for count"));
 
-    let default_p = find_nth_element(&component.fragment, &component, "p", 0)
+    let default_p = find_nth_element(component.root, &component, "p", 0)
         .unwrap_or_else(|| panic!("missing default-slot <p>"));
-    let named_p = find_nth_element(&component.fragment, &component, "p", 1)
+    let named_p = find_nth_element(component.root, &component, "p", 1)
         .unwrap_or_else(|| panic!("missing named-slot <p>"));
     let named_scope = data
         .scoping
@@ -3120,7 +3119,10 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         "default-slot binding must not resolve in named slot scope"
     );
 
-    let default_expr = match component.store.get(default_p.fragment.nodes[0]) {
+    let default_expr = match component
+        .store
+        .get(component.store.fragment(default_p.fragment).nodes[0])
+    {
         Node::ExpressionTag(tag) => data
             .expression(tag.id)
             .unwrap_or_else(|| panic!("missing expression info for default slot")),
@@ -3128,7 +3130,10 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
     };
     assert!(default_expr.ref_symbols().contains(&default_count));
 
-    let named_expr = match component.store.get(named_p.fragment.nodes[0]) {
+    let named_expr = match component
+        .store
+        .get(component.store.fragment(named_p.fragment).nodes[0])
+    {
         Node::ExpressionTag(tag) => data
             .expression(tag.id)
             .unwrap_or_else(|| panic!("missing expression info for named slot")),
@@ -3144,7 +3149,7 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
 fn legacy_slot_let_alias_uses_statement_backed_binding() {
     let (component, data, parsed) =
         analyze_source_with_parsed(r#"<List let:item={processed}><p>{processed}</p></List>"#);
-    let list_id = find_component_node_id(&component.fragment, &component, "List")
+    let list_id = find_component_node_id(component.root, &component, "List")
         .unwrap_or_else(|| panic!("no <List>"));
     let list_node = match component.store.get(list_id) {
         Node::ComponentNode(node) => node,
@@ -3171,7 +3176,7 @@ fn legacy_slot_let_alias_uses_statement_backed_binding() {
 
     let default_scope = data
         .scoping
-        .fragment_scope_by_id(list_node.fragment.id)
+        .fragment_scope_by_id(list_node.fragment)
         .unwrap_or_else(|| panic!("missing default slot scope"));
     assert!(
         data.scoping.get_binding(default_scope, "item").is_none(),
@@ -3187,15 +3192,24 @@ fn legacy_slot_let_destructure_registers_carrier_binding() {
     let (component, data, parsed) = analyze_source_with_parsed(
         r#"<List><svelte:fragment slot="item" let:item={{ text }}><p>{text}</p></svelte:fragment></List>"#,
     );
-    let list_id = find_component_node_id(&component.fragment, &component, "List")
+    let list_id = find_component_node_id(component.root, &component, "List")
         .unwrap_or_else(|| panic!("no <List>"));
     let list_node = match component.store.get(list_id) {
         Node::ComponentNode(node) => node,
         _ => panic!("<List> did not lower to ComponentNode"),
     };
-    assert!(list_node.fragment.nodes.is_empty());
+    assert!(component
+        .store
+        .fragment(list_node.fragment)
+        .nodes
+        .is_empty());
     assert_eq!(list_node.legacy_slots.len(), 1);
-    let wrapper_id = match list_node.legacy_slots[0].fragment.nodes.as_slice() {
+    let wrapper_id = match component
+        .store
+        .fragment(list_node.legacy_slots[0].fragment)
+        .nodes
+        .as_slice()
+    {
         [id] => match component.store.get(*id) {
             Node::SvelteFragmentLegacy(node) => node.id,
             _ => panic!("expected <svelte:fragment> wrapper"),
@@ -3824,7 +3838,7 @@ let data = await fetch('/api');
 {#if await check(data)}yes{/if}"#,
     );
     let block =
-        find_if_block(&c.fragment, &c, "await check(data)").unwrap_or_else(|| panic!("no IfBlock"));
+        find_if_block(c.root, &c, "await check(data)").unwrap_or_else(|| panic!("no IfBlock"));
     assert!(
         data.needs_expr_memoization(block.id),
         "expression with await + ref_symbols should need memoization"
@@ -4016,17 +4030,17 @@ fn fragment_facts_capture_single_expression_queries() {
 <option>{value}</option>"#,
     );
 
-    let textarea = find_element(&component.fragment, &component, "textarea")
-        .expect("expected textarea element");
-    let option = find_element(&component.fragment, &component, "option").expect("expected option");
+    let textarea =
+        find_element(component.root, &component, "textarea").expect("expected textarea element");
+    let option = find_element(component.root, &component, "option").expect("expected option");
     let textarea_expr = data
-        .fragment_single_expression_child_by_id(textarea.fragment.id)
+        .fragment_single_expression_child_by_id(textarea.fragment)
         .expect("expected textarea expression child");
     let option_expr = data
-        .fragment_single_expression_child_by_id(option.fragment.id)
+        .fragment_single_expression_child_by_id(option.fragment)
         .expect("expected option expression child");
 
-    assert!(data.fragment_has_expression_child_by_id(textarea.fragment.id));
+    assert!(data.fragment_has_expression_child_by_id(textarea.fragment));
     assert!(matches!(
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
@@ -4036,7 +4050,7 @@ fn fragment_facts_capture_single_expression_queries() {
         .flags
         .needs_textarea_value_lowering(textarea.id));
 
-    assert!(data.fragment_has_expression_child_by_id(option.fragment.id));
+    assert!(data.fragment_has_expression_child_by_id(option.fragment));
     assert!(matches!(
         component.store.get(option_expr),
         Node::ExpressionTag(_)
@@ -4077,14 +4091,14 @@ fn fragment_facts_track_each_body_child_shape_and_animate() {
 {/each}"#,
     );
 
-    let each = find_each_block(&component.fragment, &component, "items").expect("expected each");
-    let div = find_element(&component.fragment, &component, "div").expect("expected div");
+    let each = find_each_block(component.root, &component, "items").expect("expected each");
+    let div = find_element(component.root, &component, "div").expect("expected div");
 
     assert_eq!(
-        data.fragment_single_non_trivial_child_by_id(each.body.id),
+        data.fragment_single_non_trivial_child_by_id(each.body),
         Some(div.id)
     );
-    assert!(data.fragment_has_direct_animate_child_by_id(each.body.id));
+    assert!(data.fragment_has_direct_animate_child_by_id(each.body));
 }
 
 #[test]
@@ -4096,20 +4110,20 @@ fn fragment_facts_track_svelte_element_animate_in_each_body() {
 {/each}"#,
     );
 
-    let each = find_each_block(&component.fragment, &component, "items").expect("expected each");
+    let each = find_each_block(component.root, &component, "items").expect("expected each");
 
-    assert!(data.fragment_has_direct_animate_child_by_id(each.body.id));
+    assert!(data.fragment_has_direct_animate_child_by_id(each.body));
 }
 
 #[test]
 fn fragment_facts_single_child_supports_block_empty() {
     let (component, data, _diags) = analyze_source_with_diags("{#if ok} {/if}");
-    let block = find_if_block(&component.fragment, &component, "ok").expect("expected if block");
+    let block = find_if_block(component.root, &component, "ok").expect("expected if block");
 
     let child_id = data
-        .fragment_single_child_by_id(block.consequent.id)
+        .fragment_single_child_by_id(block.consequent)
         .expect("expected single child");
-    assert!(data.fragment_has_children_by_id(block.consequent.id));
+    assert!(data.fragment_has_children_by_id(block.consequent));
     assert!(matches!(component.store.get(child_id), Node::Text(_)));
 }
 
@@ -4125,15 +4139,15 @@ fn fragment_facts_track_non_trivial_child_counts() {
     <span>after</span>
 </Widget>"#,
     );
-    let widget_id = find_component_node_id(&component.fragment, &component, "Widget")
+    let widget_id = find_component_node_id(component.root, &component, "Widget")
         .expect("expected component node");
     let widget_fragment_id = match component.store.get(widget_id) {
-        Node::ComponentNode(cn) => cn.fragment.id,
+        Node::ComponentNode(cn) => cn.fragment,
         _ => unreachable!(),
     };
     let children_snippet =
-        find_snippet_block(&component.fragment, &component, "children").expect("expected snippet");
-    let span = find_element(&component.fragment, &component, "span").expect("expected span");
+        find_snippet_block(component.root, &component, "children").expect("expected snippet");
+    let span = find_element(component.root, &component, "span").expect("expected span");
     assert_eq!(data.fragment_child_count_by_id(widget_fragment_id), 7);
     assert!(data.fragment_has_non_trivial_children_by_id(widget_fragment_id));
     assert_eq!(
@@ -4162,22 +4176,23 @@ fn rich_content_facts_drive_customizable_select_detection() {
     );
 
     let rich_select =
-        find_nth_element(&component.fragment, &component, "select", 0).expect("expected select");
+        find_nth_element(component.root, &component, "select", 0).expect("expected select");
     let plain_select =
-        find_nth_element(&component.fragment, &component, "select", 1).expect("expected select");
-    let optgroup =
-        find_element(&component.fragment, &component, "optgroup").expect("expected optgroup");
+        find_nth_element(component.root, &component, "select", 1).expect("expected select");
+    let optgroup = find_element(component.root, &component, "optgroup").expect("expected optgroup");
     let option =
-        find_nth_element(&component.fragment, &component, "option", 1).expect("expected option");
+        find_nth_element(component.root, &component, "option", 1).expect("expected option");
 
-    assert!(data
-        .fragment_has_rich_content_by_id(rich_select.fragment.id, RichContentParentKind::Select));
-    assert!(!data
-        .fragment_has_rich_content_by_id(plain_select.fragment.id, RichContentParentKind::Select));
     assert!(
-        data.fragment_has_rich_content_by_id(optgroup.fragment.id, RichContentParentKind::Optgroup)
+        data.fragment_has_rich_content_by_id(rich_select.fragment, RichContentParentKind::Select)
     );
-    assert!(data.fragment_has_rich_content_by_id(option.fragment.id, RichContentParentKind::Option));
+    assert!(
+        !data.fragment_has_rich_content_by_id(plain_select.fragment, RichContentParentKind::Select)
+    );
+    assert!(
+        data.fragment_has_rich_content_by_id(optgroup.fragment, RichContentParentKind::Optgroup)
+    );
+    assert!(data.fragment_has_rich_content_by_id(option.fragment, RichContentParentKind::Option));
 
     assert!(data.elements.flags.is_customizable_select(rich_select.id));
     assert!(!data.elements.flags.is_customizable_select(plain_select.id));
@@ -4246,7 +4261,7 @@ fn shorthand_anchor_href_is_indexed_for_a11y_presence_checks() {
 "#;
 
     let (component, data, diags) = analyze_source_with_diags(source);
-    let anchor = find_element(&component.fragment, &component, "a").expect("expected anchor");
+    let anchor = find_element(component.root, &component, "a").expect("expected anchor");
 
     assert!(
         data.has_attribute(anchor.id, "href"),
@@ -4916,12 +4931,9 @@ fn options_preserve_whitespace_keeps_raw_text_nodes() {
         },
     );
 
-    let div = find_element(&component.fragment, &component, "div")
+    let div = find_element(component.root, &component, "div")
         .unwrap_or_else(|| panic!("expected div element"));
-    let lowered = data
-        .template
-        .fragment_items(div.fragment.id)
-        .unwrap_or_else(|| panic!("expected lowered fragment"));
+    let lowered = frag_items(&component, div.fragment);
     let rendered: String = lowered
         .iter()
         .filter_map(|id| match component.store.get(*id) {
@@ -5299,7 +5311,8 @@ mod block_semantics_each_tests {
         component: &'a svelte_ast::Component,
     ) -> &'a crate::block_semantics::EachBlockSemantics {
         let block_id = component
-            .fragment
+            .store
+            .fragment(component.root)
             .nodes
             .iter()
             .find_map(|&id| match component.store.get(id) {
@@ -5407,7 +5420,8 @@ mod block_semantics_each_tests {
     fn each_no_binding() {
         let (component, data) = analyze_source(r#"{#each items}<span>x</span>{/each}"#);
         let block_id = component
-            .fragment
+            .store
+            .fragment(component.root)
             .nodes
             .iter()
             .find_map(|&id| match component.store.get(id) {

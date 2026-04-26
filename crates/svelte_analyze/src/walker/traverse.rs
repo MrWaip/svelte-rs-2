@@ -5,13 +5,14 @@ use super::dispatch::{
 };
 
 pub(crate) fn walk_template(
-    fragment: &Fragment,
+    fragment_id: svelte_ast::FragmentId,
     ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
-    for (idx, &id) in fragment.nodes.iter().enumerate() {
+    let fragment_nodes: Vec<NodeId> = ctx.store.fragment_nodes(fragment_id).to_vec();
+    for (idx, id) in fragment_nodes.iter().copied().enumerate() {
         let node = ctx.store.get(id);
-        let ignore_codes = scan_preceding_ignores(idx, fragment, ctx);
+        let ignore_codes = scan_preceding_ignores(idx, &fragment_nodes, ctx);
         let has_ignores = !ignore_codes.is_empty();
         if has_ignores {
             ctx.push_ignore(ignore_codes);
@@ -42,7 +43,7 @@ pub(crate) fn walk_template(
                     kind: ParentKind::Element,
                 });
                 walk_attributes(&el.attributes, ctx, visitors);
-                walk_template(&el.fragment, ctx, visitors);
+                walk_template(el.fragment, ctx, visitors);
                 ctx.pop();
                 ctx.set_element_name(prev_name);
                 for v in visitors.iter_mut() {
@@ -58,7 +59,7 @@ pub(crate) fn walk_template(
                     kind: ParentKind::SlotElementLegacy,
                 });
                 walk_attributes(&el.attributes, ctx, visitors);
-                walk_template(&el.fragment, ctx, visitors);
+                walk_template(el.fragment, ctx, visitors);
                 ctx.pop();
                 for v in visitors.iter_mut() {
                     v.leave_slot_element_legacy(el, ctx);
@@ -74,17 +75,17 @@ pub(crate) fn walk_template(
                     kind: ParentKind::IfBlock,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope_by_id(block.consequent.id, saved);
-                walk_template(&block.consequent, ctx, visitors);
-                if let Some(alt) = &block.alternate {
-                    ctx.scope = ctx.child_scope_by_id(alt.id, saved);
+                ctx.scope = ctx.child_scope_by_id(block.consequent, saved);
+                walk_template(block.consequent, ctx, visitors);
+                if let Some(alt) = block.alternate {
+                    ctx.scope = ctx.child_scope_by_id(alt, saved);
                     walk_template(alt, ctx, visitors);
                 }
                 ctx.scope = saved;
                 ctx.pop();
             }
             Node::EachBlock(block) => {
-                let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
+                let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
                 for v in visitors.iter_mut() {
                     v.visit_each_block(block, ctx);
                 }
@@ -102,9 +103,9 @@ pub(crate) fn walk_template(
                 if let (Some(key_id), Some(key_ref)) = (block.key_id, block.key.as_ref()) {
                     dispatch_expr(visitors, key_id, key_ref, ctx);
                 }
-                walk_template(&block.body, ctx, visitors);
+                walk_template(block.body, ctx, visitors);
                 ctx.scope = saved;
-                if let Some(fb) = &block.fallback {
+                if let Some(fb) = block.fallback {
                     walk_template(fb, ctx, visitors);
                 }
                 ctx.pop();
@@ -113,7 +114,7 @@ pub(crate) fn walk_template(
                 }
             }
             Node::SnippetBlock(block) => {
-                let body_scope = ctx.child_scope_by_id(block.body.id, ctx.scope);
+                let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
                 for v in visitors.iter_mut() {
                     v.visit_snippet_block(block, ctx);
                 }
@@ -124,7 +125,7 @@ pub(crate) fn walk_template(
                 });
                 let saved = ctx.scope;
                 ctx.scope = body_scope;
-                walk_template(&block.body, ctx, visitors);
+                walk_template(block.body, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
                 for v in visitors.iter_mut() {
@@ -147,7 +148,7 @@ pub(crate) fn walk_template(
                 } else {
                     ctx.data
                         .scoping
-                        .fragment_scope_by_id(cn.fragment.id)
+                        .fragment_scope_by_id(cn.fragment)
                         .unwrap_or(saved)
                 };
 
@@ -163,16 +164,20 @@ pub(crate) fn walk_template(
                 }
 
                 ctx.scope = default_scope;
-                walk_template(&cn.fragment, ctx, visitors);
+                walk_template(cn.fragment, ctx, visitors);
 
-                for slot in &cn.legacy_slots {
-                    let wrapper_id = slot.fragment.nodes[0];
+                let slot_pairs: Vec<(svelte_ast::FragmentId, NodeId)> = cn
+                    .legacy_slots
+                    .iter()
+                    .map(|s| (s.fragment, ctx.store.fragment_nodes(s.fragment)[0]))
+                    .collect();
+                for (slot_fid, wrapper_id) in slot_pairs {
                     ctx.scope = ctx
                         .data
                         .scoping
                         .named_slot_scope(cn.id, wrapper_id)
                         .unwrap_or(saved);
-                    walk_template(&slot.fragment, ctx, visitors);
+                    walk_template(slot_fid, ctx, visitors);
                 }
                 ctx.scope = saved;
                 ctx.pop();
@@ -210,8 +215,8 @@ pub(crate) fn walk_template(
                     kind: ParentKind::KeyBlock,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope_by_id(block.fragment.id, saved);
-                walk_template(&block.fragment, ctx, visitors);
+                ctx.scope = ctx.child_scope_by_id(block.fragment, saved);
+                walk_template(block.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
             }
@@ -221,8 +226,8 @@ pub(crate) fn walk_template(
                     kind: ParentKind::SvelteHead,
                 });
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope_by_id(head.fragment.id, saved);
-                walk_template(&head.fragment, ctx, visitors);
+                ctx.scope = ctx.child_scope_by_id(head.fragment, saved);
+                walk_template(head.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
             }
@@ -235,7 +240,7 @@ pub(crate) fn walk_template(
                     kind: ParentKind::SvelteFragmentLegacy,
                 });
                 walk_attributes(&el.attributes, ctx, visitors);
-                walk_template(&el.fragment, ctx, visitors);
+                walk_template(el.fragment, ctx, visitors);
                 ctx.pop();
                 for v in visitors.iter_mut() {
                     v.leave_svelte_fragment_legacy(el, ctx);
@@ -254,8 +259,8 @@ pub(crate) fn walk_template(
                 }
                 walk_attributes(&el.attributes, ctx, visitors);
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope_by_id(el.fragment.id, saved);
-                walk_template(&el.fragment, ctx, visitors);
+                ctx.scope = ctx.child_scope_by_id(el.fragment, saved);
+                walk_template(el.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
                 for v in visitors.iter_mut() {
@@ -305,8 +310,8 @@ pub(crate) fn walk_template(
                 });
                 walk_attributes(&b.attributes, ctx, visitors);
                 let saved = ctx.scope;
-                ctx.scope = ctx.child_scope_by_id(b.fragment.id, saved);
-                walk_template(&b.fragment, ctx, visitors);
+                ctx.scope = ctx.child_scope_by_id(b.fragment, saved);
+                walk_template(b.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
             }
@@ -320,17 +325,17 @@ pub(crate) fn walk_template(
                     kind: ParentKind::AwaitBlock,
                 });
                 let saved = ctx.scope;
-                if let Some(ref p) = block.pending {
-                    ctx.scope = ctx.child_scope_by_id(p.id, saved);
+                if let Some(p) = block.pending {
+                    ctx.scope = ctx.child_scope_by_id(p, saved);
                     walk_template(p, ctx, visitors);
                 }
-                if let Some(ref t) = block.then {
-                    ctx.scope = ctx.child_scope_by_id(t.id, saved);
+                if let Some(t) = block.then {
+                    ctx.scope = ctx.child_scope_by_id(t, saved);
                     dispatch_opt_stmt(visitors, block.id, block.value.as_ref(), ctx);
                     walk_template(t, ctx, visitors);
                 }
-                if let Some(ref c) = block.catch {
-                    ctx.scope = ctx.child_scope_by_id(c.id, saved);
+                if let Some(c) = block.catch {
+                    ctx.scope = ctx.child_scope_by_id(c, saved);
                     dispatch_opt_stmt(visitors, block.id, block.error.as_ref(), ctx);
                     walk_template(c, ctx, visitors);
                 }
@@ -385,7 +390,7 @@ fn node_id_of(node: &Node) -> NodeId {
 
 fn scan_preceding_ignores(
     idx: usize,
-    fragment: &Fragment,
+    fragment_nodes: &[NodeId],
     ctx: &mut VisitContext<'_, '_>,
 ) -> Vec<String> {
     let mut codes = Vec::new();
@@ -396,7 +401,7 @@ fn scan_preceding_ignores(
     let mut i = idx;
     while i > 0 {
         i -= 1;
-        let prev_node = ctx.store.get(fragment.nodes[i]);
+        let prev_node = ctx.store.get(fragment_nodes[i]);
         match prev_node {
             Node::Comment(comment) => {
                 let span = comment.span;

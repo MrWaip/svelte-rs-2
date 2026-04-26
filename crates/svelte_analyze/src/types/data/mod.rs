@@ -22,7 +22,6 @@ mod elements;
 mod expr;
 mod fragment_facts;
 mod fragment_namespaces;
-mod fragments;
 mod ignore;
 mod pickled_await_offsets;
 mod proxy_state_inits;
@@ -59,7 +58,6 @@ pub use elements::{
 pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;
-pub use fragments::{FragmentLayout, FragmentLayouts};
 pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;

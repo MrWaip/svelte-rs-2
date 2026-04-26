@@ -64,7 +64,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         if attr_name == "defaultValue"
             && (has_static_text_attribute(el, "value")
-                || (tag_name == "textarea" && !el.fragment.nodes.is_empty()))
+                || (tag_name == "textarea"
+                    && !self
+                        .ctx
+                        .query
+                        .component
+                        .store
+                        .fragment(el.fragment)
+                        .nodes
+                        .is_empty()))
         {
             return RegularAttrUpdate::Call {
                 setter_fn: "$.set_default_value",

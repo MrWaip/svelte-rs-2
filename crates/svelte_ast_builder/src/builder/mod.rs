@@ -32,8 +32,6 @@ pub enum Arg<'a, 'short> {
     StrRef(&'short str),
     Num(f64),
     Ident(&'short str),
-    #[allow(dead_code)]
-    IdentRef(IdentifierReference<'a>),
     Expr(Expression<'a>),
     Arrow(ArrowFunctionExpression<'a>),
     Bool(bool),

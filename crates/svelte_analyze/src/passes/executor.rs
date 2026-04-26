@@ -28,7 +28,7 @@ fn run_template_bundle<'d, 'a, const N: usize>(
         &component_name,
         &options.filename_basename,
     );
-    walker::walk_template(&component.fragment, &mut ctx, visitors);
+    walker::walk_template(component.root, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
 }
 
@@ -54,7 +54,7 @@ fn run_parsed_template_bundle<'d, 'a, const N: usize>(
         &component_name,
         &options.filename_basename,
     );
-    walker::walk_template(&component.fragment, &mut ctx, visitors);
+    walker::walk_template(component.root, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
 }
 

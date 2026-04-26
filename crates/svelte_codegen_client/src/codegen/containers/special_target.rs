@@ -299,10 +299,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
     ) -> Result<String> {
         let head_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::SvelteHead(head) => &head.fragment,
+            Node::SvelteHead(head) => head.fragment,
             _ => return CodegenError::unexpected_node(el_id, "SvelteHead"),
         };
-        let inner_ctx = ctx.child_of_svelte_head(head_fragment);
+        let inner_ctx = ctx.child_of_svelte_head(self.ctx, head_fragment);
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, head_fragment)?;
         let body = self.pack_callback_body(inner_state, "$$anchor")?;

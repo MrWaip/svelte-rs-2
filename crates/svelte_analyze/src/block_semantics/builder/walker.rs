@@ -44,9 +44,9 @@ pub(super) fn populate(
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
     };
-    // Root fragment walk: `non_root_depth` stays 0 here, so any
-    // `SnippetBlock` encountered at this level is top-level.
-    for &node_id in &component.fragment.nodes {
+    let root_nodes_len = component.store.fragment_nodes(component.root).len();
+    for i in 0..root_nodes_len {
+        let node_id = component.store.fragment_nodes(component.root)[i];
         ctx.visit_node(node_id);
     }
 
@@ -184,13 +184,14 @@ impl<'a> Ctx<'_, 'a> {
             Node::AwaitBlock(block) => super::await_::populate(self, block),
             Node::Element(el) => {
                 self.check_bind_group_in_attrs(&el.attributes);
-                self.visit_fragment(&el.fragment.nodes);
+                self.visit_fragment(el.fragment);
             }
-            Node::SlotElementLegacy(el) => self.visit_fragment(&el.fragment.nodes),
+            Node::SlotElementLegacy(el) => self.visit_fragment(el.fragment),
             Node::ComponentNode(cn) => {
-                self.visit_fragment(&cn.fragment.nodes);
-                for slot in &cn.legacy_slots {
-                    self.visit_fragment(&slot.fragment.nodes);
+                self.visit_fragment(cn.fragment);
+                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
+                for fid in slot_frags {
+                    self.visit_fragment(fid);
                 }
             }
             Node::IfBlock(block) => super::if_::populate(self, block),
@@ -198,25 +199,23 @@ impl<'a> Ctx<'_, 'a> {
             Node::ConstTag(tag) => super::const_tag::populate(self, tag),
             Node::RenderTag(tag) => super::render::populate(self, tag),
             Node::KeyBlock(block) => super::key::populate(self, block),
-            Node::SvelteHead(el) => self.visit_fragment(&el.fragment.nodes),
-            Node::SvelteFragmentLegacy(el) => self.visit_fragment(&el.fragment.nodes),
+            Node::SvelteHead(el) => self.visit_fragment(el.fragment),
+            Node::SvelteFragmentLegacy(el) => self.visit_fragment(el.fragment),
             Node::SvelteElement(el) => {
                 self.check_bind_group_in_attrs(&el.attributes);
-                self.visit_fragment(&el.fragment.nodes);
+                self.visit_fragment(el.fragment);
             }
-            Node::SvelteBoundary(el) => self.visit_fragment(&el.fragment.nodes),
+            Node::SvelteBoundary(el) => self.visit_fragment(el.fragment),
             _ => {}
         }
     }
 
-    /// Descend into a fragment's children. Every recursive descent goes
-    /// through here (populators for each/await/snippet invoke this to
-    /// recurse into their bodies), so it's the one place that owns
-    /// `non_root_depth` — incrementing on entry turns any further
-    /// `SnippetBlock` encountered into a non-top-level one.
-    pub(super) fn visit_fragment(&mut self, nodes: &[NodeId]) {
+    /// Descend into a fragment's children by FragmentId.
+    pub(super) fn visit_fragment(&mut self, fragment_id: svelte_ast::FragmentId) {
         self.non_root_depth += 1;
-        for &id in nodes {
+        let len = self.component.fragment_nodes(fragment_id).len();
+        for i in 0..len {
+            let id = self.component.fragment_nodes(fragment_id)[i];
             self.visit_node(id);
         }
         self.non_root_depth -= 1;

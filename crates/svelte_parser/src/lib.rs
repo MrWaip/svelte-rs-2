@@ -2,7 +2,7 @@ use scanner::{token::TokenType, Scanner};
 use svelte_span::Span;
 
 use svelte_ast::{
-    AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element, Fragment,
+    AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element,
     FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext,
     ScriptLanguage, Text, SVELTE_COMPONENT, SVELTE_SELF,
 };
@@ -182,7 +182,6 @@ pub struct Parser<'a> {
     source: &'a str,
     store: AstStore,
     diagnostics: Vec<Diagnostic>,
-    next_fragment_id: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -191,7 +190,6 @@ impl<'a> Parser<'a> {
             source,
             store: AstStore::with_capacity(source.len() / 10),
             diagnostics: Vec::new(),
-            next_fragment_id: 0,
         }
     }
 
@@ -209,18 +207,14 @@ impl<'a> Parser<'a> {
         self.store.reserve()
     }
 
-    /// Allocate a fresh FragmentId and return a Fragment containing the given nodes.
-    pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> Fragment {
-        let id = FragmentId(self.next_fragment_id);
-        self.next_fragment_id += 1;
-        Fragment::new(id, role, nodes)
+    /// Allocate a fresh FragmentId in the AstStore arena with the given child nodes.
+    pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> FragmentId {
+        self.store.push_fragment(role, nodes)
     }
 
-    /// Allocate a fresh FragmentId and return an empty Fragment.
-    pub(crate) fn empty_fragment(&mut self, role: FragmentRole) -> Fragment {
-        let id = FragmentId(self.next_fragment_id);
-        self.next_fragment_id += 1;
-        Fragment::empty(id, role)
+    /// Allocate a fresh empty FragmentId in the AstStore arena.
+    pub(crate) fn empty_fragment(&mut self, role: FragmentRole) -> FragmentId {
+        self.store.reserve_fragment(role)
     }
 
     /// Split component children into default-slot bucket and named slot buckets.
@@ -238,10 +232,10 @@ impl<'a> Parser<'a> {
             match self.slot_name_of(child) {
                 Some(name) => {
                     if let Some(existing) = slots.iter_mut().find(|s| s.name == name) {
-                        existing.fragment.nodes.push(child);
+                        self.store.fragment_mut(existing.fragment).nodes.push(child);
                     } else {
-                        let mut fragment = self.empty_fragment(FragmentRole::NamedSlot);
-                        fragment.nodes.push(child);
+                        let fragment = self.empty_fragment(FragmentRole::NamedSlot);
+                        self.store.fragment_mut(fragment).nodes.push(child);
                         slots.push(svelte_ast::LegacySlot { name, fragment });
                     }
                 }
@@ -566,13 +560,11 @@ impl<'a> Parser<'a> {
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
-        let fragment_count = self.next_fragment_id;
         let store = std::mem::take(&mut self.store);
         let mut component = Component::new(
             self.source.to_string(),
             root_fragment,
             store,
-            fragment_count,
             instance_script,
             module_script,
             css,
@@ -596,19 +588,76 @@ impl<'a> Parser<'a> {
         // Convert <svelte:body> elements to SvelteBody nodes
         Self::convert_svelte_body(&mut component);
 
-        // LEGACY(svelte4): convert legacy slot nodes before downstream passes inspect the tree.
-        Self::convert_slot_element_legacy(&mut component.store, &component.fragment.nodes);
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
 
-        // LEGACY(svelte4): convert transparent named-slot wrappers before lowering/codegen.
-        Self::convert_svelte_fragment_legacy(&mut component.store, &component.fragment.nodes);
+        Self::convert_slot_element_legacy(&mut component.store, &root_nodes);
+        Self::convert_svelte_fragment_legacy(&mut component.store, &root_nodes);
+        Self::convert_svelte_element(&mut component.store, &root_nodes);
+        Self::convert_svelte_boundary(&mut component.store, &root_nodes);
 
-        // Convert <svelte:element> elements to SvelteElement nodes
-        Self::convert_svelte_element(&mut component.store, &component.fragment.nodes);
-
-        // Convert <svelte:boundary> elements to SvelteBoundary nodes
-        Self::convert_svelte_boundary(&mut component.store, &component.fragment.nodes);
+        Self::populate_fragment_owners(&mut component.store);
+        component.store.freeze_node_fragments();
 
         (component, self.diagnostics)
+    }
+
+    fn populate_fragment_owners(store: &mut AstStore) {
+        let total = store.fragments_len();
+        for fid_raw in 0..total {
+            let fid = svelte_ast::FragmentId(fid_raw);
+            let nodes_len = store.fragment_nodes(fid).len();
+            for i in 0..nodes_len {
+                let nid = store.fragment_nodes(fid)[i];
+                let mut child_frags: Vec<svelte_ast::FragmentId> = Vec::new();
+                let node = store.get(nid);
+                match node {
+                    Node::Element(el) => child_frags.push(el.fragment),
+                    Node::SlotElementLegacy(el) => child_frags.push(el.fragment),
+                    Node::ComponentNode(cn) => {
+                        child_frags.push(cn.fragment);
+                        for slot in &cn.legacy_slots {
+                            child_frags.push(slot.fragment);
+                        }
+                    }
+                    Node::IfBlock(b) => {
+                        child_frags.push(b.consequent);
+                        if let Some(alt) = b.alternate {
+                            child_frags.push(alt);
+                        }
+                    }
+                    Node::EachBlock(b) => {
+                        child_frags.push(b.body);
+                        if let Some(fb) = b.fallback {
+                            child_frags.push(fb);
+                        }
+                    }
+                    Node::SnippetBlock(b) => child_frags.push(b.body),
+                    Node::KeyBlock(b) => child_frags.push(b.fragment),
+                    Node::SvelteHead(h) => child_frags.push(h.fragment),
+                    Node::SvelteFragmentLegacy(f) => child_frags.push(f.fragment),
+                    Node::SvelteElement(el) => child_frags.push(el.fragment),
+                    Node::SvelteWindow(w) => child_frags.push(w.fragment),
+                    Node::SvelteDocument(d) => child_frags.push(d.fragment),
+                    Node::SvelteBody(b) => child_frags.push(b.fragment),
+                    Node::SvelteBoundary(b) => child_frags.push(b.fragment),
+                    Node::AwaitBlock(b) => {
+                        if let Some(p) = b.pending {
+                            child_frags.push(p);
+                        }
+                        if let Some(t) = b.then {
+                            child_frags.push(t);
+                        }
+                        if let Some(c) = b.catch {
+                            child_frags.push(c);
+                        }
+                    }
+                    _ => {}
+                }
+                for cf in child_frags {
+                    store.set_fragment_owner(cf, nid);
+                }
+            }
+        }
     }
 }
 

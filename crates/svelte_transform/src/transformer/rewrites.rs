@@ -10,8 +10,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 
 use svelte_analyze::{
-    AnalysisData, CarrierMemberReadSemantics, PropReferenceSemantics, ReferenceSemantics,
-    SignalReferenceKind, StateKind,
+    AnalysisData, CarrierMemberReadSemantics, PropReferenceSemantics, ReferenceSemantics, StateKind,
 };
 
 use crate::data::TransformData;
@@ -89,9 +88,6 @@ pub(crate) fn rewrite_identifier_read<'a>(
         _ => false,
     }
 }
-
-#[allow(dead_code)]
-fn _phantom_markers(_: SignalReferenceKind) {}
 
 /// Rewrite `id = rhs` / `id op= rhs` for signal (state / state.raw) and
 /// store identifier targets. Returns `true` when the node was replaced.

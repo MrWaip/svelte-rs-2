@@ -29,17 +29,12 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
     } else {
         AwaitBranch::Absent
     };
-    let then = resolve_branch(
-        ctx,
-        block.then.is_some(),
-        block.value.as_ref(),
-        block.then.as_ref().map(|t| t.id),
-    );
+    let then = resolve_branch(ctx, block.then.is_some(), block.value.as_ref(), block.then);
     let catch = resolve_branch(
         ctx,
         block.catch.is_some(),
         block.error.as_ref(),
-        block.catch.as_ref().map(|c| c.id),
+        block.catch,
     );
 
     let (expression_has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
@@ -54,14 +49,14 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
 
     // Recurse first so nested blocks (of any migrated kind) populate inside
     // the same template walk.
-    if let Some(f) = &block.pending {
-        ctx.visit_fragment(&f.nodes);
+    if let Some(f) = block.pending {
+        ctx.visit_fragment(f);
     }
-    if let Some(f) = &block.then {
-        ctx.visit_fragment(&f.nodes);
+    if let Some(f) = block.then {
+        ctx.visit_fragment(f);
     }
-    if let Some(f) = &block.catch {
-        ctx.visit_fragment(&f.nodes);
+    if let Some(f) = block.catch {
+        ctx.visit_fragment(f);
     }
 
     ctx.store.set(
@@ -149,14 +144,16 @@ mod tests {
                 if let Node::AwaitBlock(b) = node {
                     return Some(b);
                 }
-                let children: &[svelte_ast::NodeId] = match node {
-                    Node::Element(el) => &el.fragment.nodes,
+                let child_fragment = match node {
+                    Node::Element(el) => Some(el.fragment),
                     Node::IfBlock(b) => {
-                        if let Some(r) = walk(component, &b.consequent.nodes) {
+                        let cons = component.fragment_nodes(b.consequent).to_vec();
+                        if let Some(r) = walk(component, &cons) {
                             return Some(r);
                         }
-                        if let Some(alt) = &b.alternate {
-                            if let Some(r) = walk(component, &alt.nodes) {
+                        if let Some(alt) = b.alternate {
+                            let alt_nodes = component.fragment_nodes(alt).to_vec();
+                            if let Some(r) = walk(component, &alt_nodes) {
                                 return Some(r);
                             }
                         }
@@ -164,13 +161,17 @@ mod tests {
                     }
                     _ => continue,
                 };
-                if let Some(r) = walk(component, children) {
-                    return Some(r);
+                if let Some(fid) = child_fragment {
+                    let nodes = component.fragment_nodes(fid).to_vec();
+                    if let Some(r) = walk(component, &nodes) {
+                        return Some(r);
+                    }
                 }
             }
             None
         }
-        walk(component, &component.fragment.nodes).expect("no await block")
+        let root_nodes = component.fragment_nodes(component.root).to_vec();
+        walk(component, &root_nodes).expect("no await block")
     }
 
     fn assert_await<F: FnOnce(&AwaitBlockSemantics)>(source: &str, check: F) {

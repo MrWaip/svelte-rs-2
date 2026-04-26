@@ -3,7 +3,7 @@ mod prepare;
 mod process_children;
 mod types;
 
-use svelte_ast::{Fragment, FragmentRole, NodeId};
+use svelte_ast::{FragmentRole, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use crate::codegen::fragment::prepare::prepare;
@@ -40,11 +40,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
-        fragment: &'a Fragment,
+        fragment_id: svelte_ast::FragmentId,
     ) -> Result<FragmentEmitKind> {
         let mut bucket = HoistedBucket::default();
+        let fragment_nodes: Vec<NodeId> = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(fragment_id)
+            .nodes
+            .clone();
         let (children, raw_strategy) = prepare(
-            &fragment.nodes,
+            &fragment_nodes,
             &self.ctx.query.component.store,
             ctx,
             &mut bucket,
@@ -61,7 +69,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(FragmentEmitKind::Empty);
         }
 
-        let fragment_blockers = self.ctx.query.view.fragment_blockers_by_id(fragment.id);
+        let fragment_blockers = self.ctx.query.view.fragment_blockers_by_id(fragment_id);
         if !fragment_blockers.is_empty() {
             state.script_blockers.extend_from_slice(fragment_blockers);
         }
@@ -173,9 +181,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ctx.anchor,
                 FragmentAnchor::CallbackParam { .. } | FragmentAnchor::Root
             );
-        let emitted_prefix_next = role_needs_text_first_next(fragment.role)
-            && starts_text_for_next
-            && multi_or_root_callback;
+        let emitted_prefix_next =
+            role_needs_text_first_next(self.ctx.query.component.store.fragment(fragment_id).role)
+                && starts_text_for_next
+                && multi_or_root_callback;
         if emitted_prefix_next {
             state.init.push(
                 self.ctx
@@ -294,7 +303,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 strategy_kind,
                 init_len_before,
                 tpl_name,
-                fragment,
+                fragment_id,
             )?;
         }
 
@@ -323,10 +332,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_template_locations(
         &self,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
     ) -> Option<oxc_ast::ast::Expression<'a>> {
         let mut locs: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
-        for &id in &fragment.nodes {
+        let nodes = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(fragment_id)
+            .nodes
+            .clone();
+        for id in nodes {
             self.push_node_locations(id, &mut locs);
         }
         Some(self.ctx.b.array_expr(locs))
@@ -335,10 +352,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn push_node_locations(&self, node_id: NodeId, out: &mut Vec<oxc_ast::ast::Expression<'a>>) {
         match self.ctx.query.component.store.get(node_id) {
             svelte_ast::Node::Element(el) => {
-                out.push(self.build_single_element_loc(el.span.start, &el.fragment));
+                out.push(self.build_single_element_loc(el.span.start, el.fragment));
             }
             svelte_ast::Node::SvelteFragmentLegacy(el) => {
-                for &id in &el.fragment.nodes {
+                let nodes = self
+                    .ctx
+                    .query
+                    .component
+                    .store
+                    .fragment(el.fragment)
+                    .nodes
+                    .clone();
+                for id in nodes {
                     self.push_node_locations(id, out);
                 }
             }
@@ -349,14 +374,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_single_element_loc(
         &self,
         span_start: u32,
-        fragment: &svelte_ast::Fragment,
+        fragment_id: svelte_ast::FragmentId,
     ) -> oxc_ast::ast::Expression<'a> {
         let (line, col) = crate::script::compute_line_col(self.ctx.state.source, span_start);
         let b = &self.ctx.state.b;
         let mut inner: Vec<oxc_ast::ast::Expression<'a>> =
             vec![b.num_expr(line as f64), b.num_expr(col as f64)];
         let mut child_locs: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
-        for &id in &fragment.nodes {
+        let nodes = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(fragment_id)
+            .nodes
+            .clone();
+        for id in nodes {
             self.push_node_locations(id, &mut child_locs);
         }
         if !child_locs.is_empty() {
@@ -568,9 +601,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn template_from_fn(
         &self,
         ctx: &FragmentCtx<'a>,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
         strategy_kind: StrategyKind,
     ) -> &'static str {
+        let fragment = self.ctx.query.component.store.fragment(fragment_id);
         if let StrategyKind::SingleElement = strategy_kind {
             for &id in &fragment.nodes {
                 if matches!(
@@ -611,7 +645,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         init_len_before: usize,
         tpl_name: String,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
     ) -> Result<()> {
         self.finalize_root_template(
             state,
@@ -619,7 +653,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             StrategyKind::SingleElement,
             init_len_before,
             tpl_name,
-            fragment,
+            fragment_id,
         )
     }
 
@@ -630,9 +664,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         strategy_kind: StrategyKind,
         init_len_before: usize,
         tpl_name: String,
-        fragment: &Fragment,
+        fragment_id: svelte_ast::FragmentId,
     ) -> Result<()> {
-        let from_fn = self.template_from_fn(ctx, fragment, strategy_kind);
+        let from_fn = self.template_from_fn(ctx, fragment_id, strategy_kind);
         let html_str = state.template.as_html();
         let needs_import = state.template.needs_import_node;
         let mut from_html = {
@@ -652,7 +686,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         };
         if self.ctx.state.dev {
-            if let Some(locs) = self.build_template_locations(fragment) {
+            if let Some(locs) = self.build_template_locations(fragment_id) {
                 from_html = self.wrap_add_locations(from_html, locs);
             }
         }

@@ -332,7 +332,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         context_pattern: Option<BindingPattern<'a>>,
     ) -> Result<Expression<'a>> {
         let body = match self.ctx.query.component.store.get(block_id) {
-            svelte_ast::Node::EachBlock(block) => &block.body,
+            svelte_ast::Node::EachBlock(block) => block.body,
             _ => return CodegenError::unexpected_node(block_id, "EachBlock"),
         };
         let inner_ctx = parent_ctx.child_of_block(
@@ -487,7 +487,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
     ) -> Result<Expression<'a>> {
         let fallback = match self.ctx.query.component.store.get(block_id) {
-            svelte_ast::Node::EachBlock(block) => match &block.fallback {
+            svelte_ast::Node::EachBlock(block) => match block.fallback {
                 Some(fb) => fb,
                 None => return Ok(self.ctx.b.null_expr()),
             },
