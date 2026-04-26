@@ -16,7 +16,6 @@ pub(crate) mod attr_index;
 mod codegen_view;
 mod css;
 mod directive_modifier_flags;
-mod each_context_index;
 mod element_facts;
 mod elements;
 mod expr;
@@ -49,7 +48,6 @@ pub use attr_index::AttrIndex;
 pub use codegen_view::CodegenView;
 pub use css::CssAnalysis;
 pub use directive_modifier_flags::{DirectiveModifierFlags, EventModifier};
-pub use each_context_index::EachContextIndex;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,

@@ -127,21 +127,11 @@ impl TemplateAnalysis {
     }
 }
 
-pub struct BlockAnalysis {
-    #[deprecated(
-        note = "use AnalysisData::block_semantics(id); this legacy index is still \
-                written by template passes but will be removed once its remaining \
-                readers (validation, reactivity_semantics, bind_semantics) migrate."
-    )]
-    pub each_context: EachContextIndex,
-}
+pub struct BlockAnalysis {}
 
 impl BlockAnalysis {
-    fn new(node_count: u32) -> Self {
-        #[allow(deprecated)]
-        Self {
-            each_context: EachContextIndex::new(node_count),
-        }
+    fn new(_node_count: u32) -> Self {
+        Self {}
     }
 }
 
@@ -558,25 +548,28 @@ impl<'a> AnalysisData<'a> {
     ) -> impl Iterator<Item = NodeId> + '_ {
         self.template.template_elements.previous_siblings(id)
     }
-    #[deprecated(note = "use block_semantics(id); see crates/svelte_analyze/src/block_semantics/")]
+    /// Index symbol declared by an `{#each ... as item, i}` block, or
+    /// `None` if the block has no index introducer.
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
-        #[allow(deprecated)]
-        self.blocks.each_context.index_sym(id)
+        match self.block_semantics_store.get(id) {
+            crate::block_semantics::BlockSemantics::Each(sem) => match sem.index {
+                crate::block_semantics::EachIndexKind::Declared { sym, .. } => Some(sym),
+                crate::block_semantics::EachIndexKind::Absent => None,
+            },
+            _ => None,
+        }
     }
-    #[deprecated(note = "use block_semantics_store.block_for_each_index_sym(sym)")]
+    /// Reverse lookup: `{#each}` block whose index binding is `sym`.
     pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
-        #[allow(deprecated)]
-        self.blocks.each_context.block_for_index_sym(sym)
+        self.block_semantics_store.block_for_each_index_sym(sym)
     }
-    #[deprecated(note = "use block_semantics(id)")]
-    pub fn each_key_node_id(&self, id: NodeId) -> Option<NodeId> {
-        #[allow(deprecated)]
-        self.blocks.each_context.key_node_id(id)
-    }
-    #[deprecated(note = "use block_semantics(id)")]
+    /// True iff the `{#each}` block at `id` introduces a destructured item.
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
-        #[allow(deprecated)]
-        self.blocks.each_context.is_destructured(id)
+        matches!(
+            self.block_semantics_store.get(id),
+            crate::block_semantics::BlockSemantics::Each(sem)
+                if matches!(sem.item, crate::block_semantics::EachItemKind::Pattern(_)),
+        )
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.template.bind_semantics.bind_this_each_context(id)

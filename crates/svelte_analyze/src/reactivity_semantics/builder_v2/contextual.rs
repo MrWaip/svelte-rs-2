@@ -226,7 +226,12 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
-        let is_destructured = ctx.data.each_is_destructured(block.id);
+        let is_destructured = block
+            .context
+            .as_ref()
+            .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
+            .and_then(declarator_from_stmt_local)
+            .is_some_and(|d| !matches!(&d.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_)));
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
 

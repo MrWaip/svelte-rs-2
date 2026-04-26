@@ -20,7 +20,7 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{AnalysisData, IdentGen, JsAst};
-use svelte_ast::{Attribute, Component, ConcatPart, Node, NodeId};
+use svelte_ast::{Attribute, Component, ConcatPart, Node};
 
 /// Transform all parsed template expressions and statements in-place.
 ///
@@ -155,17 +155,13 @@ fn walk_node<'a>(
 
             walk_fragment(ctx, cn.fragment, component, parsed, default_scope);
 
-            let slot_pairs: Vec<(svelte_ast::FragmentId, NodeId)> = cn
-                .legacy_slots
-                .iter()
-                .map(|s| (s.fragment, component.fragment_nodes(s.fragment)[0]))
-                .collect();
-            let cn_id = cn.id;
-            for (slot_fid, wrapper_id) in slot_pairs {
+            let slot_frags: Vec<svelte_ast::FragmentId> =
+                cn.legacy_slots.iter().map(|s| s.fragment).collect();
+            for slot_fid in slot_frags {
                 let slot_scope = ctx
                     .analysis
                     .scoping
-                    .named_slot_scope(cn_id, wrapper_id)
+                    .fragment_scope_by_id(slot_fid)
                     .unwrap_or(scope);
                 walk_fragment(ctx, slot_fid, component, parsed, slot_scope);
             }

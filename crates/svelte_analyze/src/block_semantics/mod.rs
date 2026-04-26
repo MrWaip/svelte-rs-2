@@ -65,6 +65,16 @@ impl BlockSemanticsStore {
         self.each_index_sym_to_block.insert(sym, block);
     }
 
+    /// Reverse lookup: which `{#each}` block declared this index symbol?
+    pub fn block_for_each_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
+        self.each_index_sym_to_block.get(&sym).copied()
+    }
+
+    /// True iff `sym` is the index binding of some `{#each}` block.
+    pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
+        self.each_index_sym_to_block.contains_key(&sym)
+    }
+
     /// Post-populate mutator for the snippet `hoistable` flag. Kept
     /// separate from `set` because hoistable is classified in a second
     /// pass after all snippet references have been collected: the

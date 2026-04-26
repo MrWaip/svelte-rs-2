@@ -389,14 +389,10 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         self.walk_fragment(cn_fragment, ctx);
         ctx.leave_scope();
 
-        let slot_pairs: Vec<(svelte_ast::FragmentId, NodeId)> = node
-            .legacy_slots
-            .iter()
-            .map(|s| (s.fragment, self.store.fragment_nodes(s.fragment)[0]))
-            .collect();
-        let node_id = node.id;
-        for (slot_fid, wrapper_id) in slot_pairs {
-            let scope = ctx.enter_named_slot_scope(node_id, wrapper_id);
+        let slot_frags: Vec<svelte_ast::FragmentId> =
+            node.legacy_slots.iter().map(|s| s.fragment).collect();
+        for slot_fid in slot_frags {
+            let scope = ctx.enter_fragment_scope_by_id(slot_fid);
             debug_assert_eq!(scope, ctx.current_scope());
             self.walk_fragment(slot_fid, ctx);
             ctx.leave_scope();

@@ -4,7 +4,7 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceFlags;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::SymbolId;
-use svelte_ast::{FragmentId, NodeId};
+use svelte_ast::FragmentId;
 
 use super::js_visitor::JsSemanticVisitor;
 use crate::storage::ComponentSemantics;
@@ -65,15 +65,6 @@ impl<'s, 'a> TemplateBuildContext<'s, 'a> {
     pub fn enter_fragment_scope_by_id(&mut self, id: FragmentId) -> ScopeId {
         let scope = self.enter_child_scope();
         self.semantics.set_fragment_scope_by_id(id, scope);
-        scope
-    }
-
-    /// LEGACY(svelte4): create a child scope, register for a named-slot
-    /// wrapper body, and push it. Slot wrappers have no `FragmentId`.
-    pub fn enter_named_slot_scope(&mut self, component_id: NodeId, wrapper_id: NodeId) -> ScopeId {
-        let scope = self.enter_child_scope();
-        self.semantics
-            .set_named_slot_scope(component_id, wrapper_id, scope);
         scope
     }
 
