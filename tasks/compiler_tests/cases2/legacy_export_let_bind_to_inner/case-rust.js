@@ -5,10 +5,11 @@ export default function App($$anchor, $$props) {
 	let value = $.prop($$props, "value", 12, "");
 	Inner($$anchor, {
 		get value() {
-			return value;
+			return value();
 		},
 		set value($$value) {
-			value = $$value;
-		}
+			value($$value);
+		},
+		$$legacy: true
 	});
 }

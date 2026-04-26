@@ -135,6 +135,11 @@ fn build_reactive_dep_expr_legacy<'a>(
             ctx.query.symbol_name(sym),
             std::iter::empty::<Arg<'a, '_>>(),
         )),
+        // LEGACY(svelte4): legacy bindable prop reads as `name()` — same shape as runes Source.
+        DeclarationSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
+            ctx.query.symbol_name(sym),
+            std::iter::empty::<Arg<'a, '_>>(),
+        )),
         DeclarationSemantics::Prop(PropDeclarationSemantics {
             kind: PropDeclarationKind::Rest,
             ..

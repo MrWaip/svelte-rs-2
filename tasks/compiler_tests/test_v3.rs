@@ -960,7 +960,6 @@ fn legacy_reactive_assignment_import_topology() {
 }
 
 #[rstest]
-#[ignore = "missing: direct legacy $$restProps lowering (codegen, moderate)"]
 fn legacy_rest_props_basic() {
     assert_compiler("legacy_rest_props_basic");
 }
@@ -1736,7 +1735,6 @@ fn svelte_options_accessors_legacy() {
 }
 
 #[rstest]
-#[ignore = "missing: immutable legacy template-effect lowering needs $.deep_read_state / $.untrack wrappers (codegen)"]
 fn svelte_options_immutable_legacy() {
     assert_compiler("svelte_options_immutable_legacy");
 }
@@ -1773,13 +1771,11 @@ fn legacy_export_let_typed() {
 }
 
 #[rstest]
-#[ignore = "missing: legacy export let member mutation needs $.push / $.init / immutable template-effect wrappers (codegen)"]
 fn legacy_export_let_member_mutation() {
     assert_compiler("legacy_export_let_member_mutation");
 }
 
 #[rstest]
-#[ignore = "missing: legacy bindable export let pass-through bind:value to child component (codegen)"]
 fn legacy_export_let_bind_to_inner() {
     assert_compiler("legacy_export_let_bind_to_inner");
 }

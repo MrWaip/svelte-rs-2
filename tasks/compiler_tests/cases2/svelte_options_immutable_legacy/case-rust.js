@@ -14,8 +14,8 @@ export default function App($$anchor, $$props) {
 	var text_1 = $.child(p_1, true);
 	$.reset(p_1);
 	$.template_effect(() => {
-		$.set_text(text, items().length);
-		$.set_text(text_1, user().name);
+		$.set_text(text, ($.deep_read_state(items()), $.untrack(() => items().length)));
+		$.set_text(text_1, ($.deep_read_state(user()), $.untrack(() => user().name)));
 	});
 	$.append($$anchor, fragment);
 	$.pop();
