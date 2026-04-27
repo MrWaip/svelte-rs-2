@@ -217,6 +217,7 @@ pub(crate) fn is_symbol_dynamic(
     match decl {
         DeclarationSemantics::State(_)
         | DeclarationSemantics::Prop(_)
+        | DeclarationSemantics::LegacyBindableProp(_)
         | DeclarationSemantics::Store(_)
         | DeclarationSemantics::Contextual(_)
         | DeclarationSemantics::RuntimeRune { .. } => true,

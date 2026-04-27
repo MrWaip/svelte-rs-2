@@ -85,6 +85,17 @@ pub(crate) fn rewrite_identifier_read<'a>(
             *expr = rune_refs::make_member_get(alloc, carrier_name, name);
             true
         }
+        // LEGACY(svelte4): rewrite `$$props` -> `$$sanitized_props` and `$$restProps` -> `$$restProps`
+        // (the latter is a no-op identifier swap because the local declaration carries the
+        // same name; we still mark this site as handled so downstream passes don't touch it).
+        ReferenceSemantics::LegacyPropsIdentifierRead => {
+            *expr = svelte_ast_builder::Builder::new(alloc).rid_expr("$$sanitized_props");
+            true
+        }
+        ReferenceSemantics::LegacyRestPropsIdentifierRead => {
+            *expr = svelte_ast_builder::Builder::new(alloc).rid_expr("$$restProps");
+            true
+        }
         _ => false,
     }
 }

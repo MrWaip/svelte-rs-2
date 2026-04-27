@@ -284,10 +284,10 @@ fn validate_invalid_named_export(
             .any(|sym_id| predicate(data, sym_id));
 
     if has_invalid_export {
-        diags.push(Diagnostic::error(
-            make_kind(),
-            Span::new(export.span.start + offset, export.span.end + offset),
-        ));
+        let span = Span::new(export.span.start + offset, export.span.end + offset);
+        if !crate::validate::span_already_taken(diags, span) {
+            diags.push(Diagnostic::error(make_kind(), span));
+        }
     }
 }
 

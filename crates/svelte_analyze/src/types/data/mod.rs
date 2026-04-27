@@ -34,11 +34,11 @@ pub(crate) mod template_topology;
 pub use crate::reactivity_semantics::data::{
     CarrierMemberReadSemantics, ConstDeclarationSemantics, ContextualDeclarationSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclarationSemantics, DerivedDeclarationSemantics,
-    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy, OptimizedRuneSemantics,
-    PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering, PropLoweringMode,
-    PropReferenceSemantics, PropsObjectPropertySemantics, ReactivitySemantics, ReferenceSemantics,
-    RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy, StateBindingSemantics,
-    StateDeclarationSemantics, StateKind, StoreDeclarationSemantics,
+    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy, LegacyBindablePropSemantics,
+    OptimizedRuneSemantics, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
+    PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ReactivitySemantics,
+    ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
+    StateBindingSemantics, StateDeclarationSemantics, StateKind, StoreDeclarationSemantics,
 };
 pub use analysis::{
     AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis, TemplateAnalysis,
@@ -60,6 +60,7 @@ pub use ignore::IgnoreData;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
+pub use runtime::LegacyInit;
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{

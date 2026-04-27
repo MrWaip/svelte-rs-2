@@ -87,6 +87,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | DeclarationSemantics::RuntimeRune { .. }
             | DeclarationSemantics::LetCarrier { .. } => self.ctx.b.rid_expr(symbol_name),
             DeclarationSemantics::Prop(_) => self.ctx.b.rid_expr(symbol_name),
+            // LEGACY(svelte4): legacy bindable prop reads as `name()` — same shape as runes Source.
+            DeclarationSemantics::LegacyBindableProp(_) => self
+                .ctx
+                .b
+                .call_expr(symbol_name, std::iter::empty::<Arg<'_, '_>>()),
         };
         Ok(expr)
     }

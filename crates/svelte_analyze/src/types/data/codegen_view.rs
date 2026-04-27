@@ -47,6 +47,40 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_sanitized_legacy_slots(&self) -> bool {
         self.data.output.needs_sanitized_legacy_slots
     }
+    /// LEGACY(svelte4): consumer should emit `const $$sanitized_props = $.legacy_rest_props($$props, [...])`.
+    /// Reads `ReactivitySemantics` directly — single source of truth.
+    pub fn needs_sanitized_legacy_props(&self) -> bool {
+        self.data.reactivity.legacy_uses_props() || self.data.reactivity.legacy_uses_rest_props()
+    }
+
+    /// LEGACY(svelte4): keys excluded from `$$sanitized_props`. Mirrors
+    /// reference compiler `transform-client.js:476-493`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_sanitized_props_excluded_keys(&self) -> &'static [&'static str] {
+        &["children", "$$slots", "$$events", "$$legacy"]
+    }
+    /// LEGACY(svelte4): consumer should emit `const $$restProps = $.legacy_rest_props($$sanitized_props, [...])`.
+    /// Reads `ReactivitySemantics` directly — single source of truth.
+    pub fn needs_legacy_rest_props(&self) -> bool {
+        self.data.reactivity.legacy_uses_rest_props()
+    }
+    /// LEGACY(svelte4): prop keys (alias or local name) of every LegacyBindableProp
+    /// in source declaration order. Used by codegen for the
+    /// `$.legacy_rest_props($$sanitized_props, [...])` exclusion list.
+    pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
+        self.data
+            .reactivity
+            .legacy_bindable_prop_symbols()
+            .iter()
+            .map(|&sym| {
+                self.data
+                    .scoping
+                    .binding_origin_key(sym)
+                    .unwrap_or_else(|| self.data.scoping.symbol_name(sym))
+                    .to_string()
+            })
+            .collect()
+    }
     pub fn custom_element_slot_names(&self) -> &[String] {
         self.data.custom_element_slot_names()
     }
@@ -298,6 +332,23 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.data.elements.flags.component_props(id)
+    }
+
+    /// LEGACY(svelte4): true when this child component should receive a
+    /// `$$legacy: true` marker in its props object — i.e. parent is in legacy
+    /// mode AND the call site has at least one `bind:foo` directive.
+    /// Reference compiler: `!analysis.runes && node.attributes.some(BindDirective)`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn component_needs_legacy_props_marker(&self, id: NodeId) -> bool {
+        if self.data.uses_runes() {
+            return false;
+        }
+        self.data
+            .elements
+            .flags
+            .component_props(id)
+            .iter()
+            .any(|p| matches!(p.kind, crate::types::data::ComponentPropKind::Bind { .. }))
     }
     pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
         self.data.elements.flags.component_binding_sym(id)

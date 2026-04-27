@@ -99,6 +99,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ));
         }
 
+        // LEGACY(svelte4): inject `$$legacy: true` marker when analyzer flagged this
+        // child component for it (legacy parent + bind: directive).
+        if self.ctx.query.component_needs_legacy_props_marker(el_id) {
+            props
+                .items
+                .push(super::super::component_props::PropOrSpread::Prop(
+                    ObjProp::KeyValue("$$legacy", self.ctx.b.bool_expr(true)),
+                ));
+        }
+
         let props_expr = self.build_props_expr(props.items);
         let span_start = self.ctx.query.component_node(el_id).span.start;
 
