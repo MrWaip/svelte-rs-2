@@ -1,3 +1,4 @@
+mod legacy;
 mod non_reactive_update;
 mod runes;
 mod stores;
@@ -68,9 +69,14 @@ pub fn validate_program(
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
+    legacy::validate_legacy_diagnostics(data, program, offset, runes, diags);
     runes::validate(data, program, offset, runes, diags);
     stores::validate(data, program, offset, diags);
     validate_perf_class_warnings(program, offset, 1, diags);
+}
+
+pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
+    diags.iter().any(|d| d.span == span)
 }
 
 pub fn validate_standalone_module(

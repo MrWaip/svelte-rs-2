@@ -53,7 +53,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if self.ctx.query.runes() {
             return expr;
         }
-        if !info.needs_legacy_coarse_wrap() {
+        if !info.needs_legacy_coarse_wrap() && !info.uses_legacy_sanitized_props() {
             return expr;
         }
         let mut seq_parts: Vec<Expression<'a>> = Vec::new();
@@ -65,6 +65,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .ctx
                 .b
                 .call_expr("$.deep_read_state", [Arg::Expr(getter)]);
+            seq_parts.push(getter);
+        }
+        // LEGACY(svelte4): also wrap when expression reads unresolved
+        // `$$props` / `$$restProps`. Identifier was rewritten to
+        // `$$sanitized_props` / `$$restProps` const at this point, but the
+        // dep needs deep-read so the immutable runtime tracks member access.
+        if info.uses_legacy_sanitized_props() {
+            let getter = self
+                .ctx
+                .b
+                .call_expr("$.deep_read_state", [Arg::Ident("$$sanitized_props")]);
             seq_parts.push(getter);
         }
         if seq_parts.is_empty() {
@@ -132,6 +143,11 @@ fn build_reactive_dep_expr_legacy<'a>(
             kind: PropDeclarationKind::Source { .. },
             ..
         }) => Some(ctx.b.call_expr(
+            ctx.query.symbol_name(sym),
+            std::iter::empty::<Arg<'a, '_>>(),
+        )),
+        // LEGACY(svelte4): legacy bindable prop reads as `name()` — same shape as runes Source.
+        DeclarationSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
             ctx.query.symbol_name(sym),
             std::iter::empty::<Arg<'a, '_>>(),
         )),

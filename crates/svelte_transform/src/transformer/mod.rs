@@ -5,6 +5,8 @@ mod inspect;
 mod location;
 pub(crate) mod model;
 mod props;
+/// LEGACY(svelte4): see `props_legacy.rs` header. Removable as a unit.
+mod props_legacy;
 mod rewrites;
 mod runes;
 mod state;
@@ -17,12 +19,9 @@ pub use entry::{transform_script, TransformScriptOutput};
 pub use location::{compute_line_col, sanitize_location};
 pub use model::IgnoreQuery;
 
-// Props flag constants (must match svelte/src/constants.js)
-pub(crate) const PROPS_IS_IMMUTABLE: u32 = 1;
-pub(crate) const PROPS_IS_RUNES: u32 = 1 << 1;
-pub(crate) const PROPS_IS_UPDATED: u32 = 1 << 2;
-pub(crate) const PROPS_IS_BINDABLE: u32 = 1 << 3;
-pub(crate) const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
+pub(crate) use svelte_analyze::{
+    PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_RUNES, PROPS_IS_UPDATED,
+};
 
 use oxc_ast::ast::{
     ArrowFunctionExpression, Expression, FunctionBody, Statement, VariableDeclarator,

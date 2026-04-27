@@ -1,12 +1,13 @@
 mod contextual;
+/// LEGACY(svelte4): see `legacy.rs` header. Removable as a unit.
+mod legacy;
 mod references;
 mod store;
 mod util;
 
 use util::{
-    assignment_target_member_root_reference_id, assignment_target_member_root_symbol,
-    property_key_atom, simple_assignment_target_member_root_reference_id,
-    simple_assignment_target_member_root_symbol,
+    assignment_target_member_root_reference_id, property_key_atom,
+    simple_assignment_target_member_root_reference_id,
 };
 
 use super::data::{
@@ -53,6 +54,11 @@ pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut
     data.reactivity.reserve_references(reference_count);
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(component, parsed, data);
+    // LEGACY(svelte4): classify $$props / $$restProps identifier reads from
+    // ComponentSemantics.root_unresolved_references and finalize aggregates.
+    // Runes mode skipped inside both helpers.
+    legacy::classify_unresolved_legacy_identifiers(data);
+    legacy::finalize_legacy_aggregates(data);
 }
 
 /// Fix-point-style refinement of `ConstDeclarationSemantics::ConstTag::reactive`.
@@ -127,6 +133,7 @@ fn compute_const_tag_reactivity<'a>(
                 match decl {
                     DeclarationSemantics::State(_)
                     | DeclarationSemantics::Prop(_)
+                    | DeclarationSemantics::LegacyBindableProp(_)
                     | DeclarationSemantics::Store(_)
                     | DeclarationSemantics::Contextual(_)
                     | DeclarationSemantics::RuntimeRune { .. } => true,
@@ -186,7 +193,6 @@ struct ScriptSemanticCollector<'d, 'a> {
     data: &'d mut AnalysisData<'a>,
     current_decl_kind: Option<VariableDeclarationKind>,
     prop_lowering_mode: PropLoweringMode,
-    prop_member_updated: FxHashSet<SymbolId>,
     /// Set of `ReferenceId`s that are the **root identifier** of a
     /// MemberExpression LHS on an assignment or UpdateExpression argument.
     /// For `foo.x = val` or `foo.x++`, the `ReferenceId` of the `foo`
@@ -225,7 +231,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             data,
             current_decl_kind: None,
             prop_lowering_mode,
-            prop_member_updated: FxHashSet::default(),
             prop_member_mutation_root_refs: FxHashSet::default(),
             pending_prop_objects: Vec::new(),
             rest_prop_excluded: FxHashMap::default(),
@@ -235,7 +240,13 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 
     fn finish(mut self) {
-        for sym in self.prop_member_updated.drain() {
+        let member_mutated_syms: Vec<SymbolId> = self
+            .data
+            .scoping
+            .semantics()
+            .symbols_with_state(svelte_component_semantics::sym_state::MEMBER_MUTATED)
+            .collect();
+        for sym in member_mutated_syms {
             let Some(mut prop) = self.data.reactivity.prop_facts(sym) else {
                 continue;
             };
@@ -359,6 +370,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         match decl {
             DeclarationSemantics::State(_)
             | DeclarationSemantics::Prop(_)
+            | DeclarationSemantics::LegacyBindableProp(_)
             | DeclarationSemantics::Store(_)
             | DeclarationSemantics::Contextual(_)
             | DeclarationSemantics::RuntimeRune { .. } => true,
@@ -1017,15 +1029,23 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         self.current_decl_kind = previous;
     }
 
+    fn visit_export_named_declaration(
+        &mut self,
+        export: &oxc_ast::ast::ExportNamedDeclaration<'a>,
+    ) {
+        // LEGACY(svelte4): classify immediately — js_visitor populates MEMBER_MUTATED
+        // on ComponentSemantics during its walk, which runs strictly before
+        // ReactivitySemantics builder, so `is_member_mutated` is full at this point.
+        legacy::classify_export_named_declaration(self.data, export);
+        oxc_ast_visit::walk::walk_export_named_declaration(self, export);
+    }
+
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         self.record_rune_declarator(declarator);
         walk_variable_declarator(self, declarator);
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
-        if let Some(sym) = assignment_target_member_root_symbol(self.data, &expr.left) {
-            self.prop_member_updated.insert(sym);
-        }
         if let Some(ref_id) = assignment_target_member_root_reference_id(&expr.left) {
             self.prop_member_mutation_root_refs.insert(ref_id);
         }
@@ -1033,9 +1053,6 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     }
 
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
-        if let Some(sym) = simple_assignment_target_member_root_symbol(self.data, &expr.argument) {
-            self.prop_member_updated.insert(sym);
-        }
         if let Some(ref_id) = simple_assignment_target_member_root_reference_id(&expr.argument) {
             self.prop_member_mutation_root_refs.insert(ref_id);
         }

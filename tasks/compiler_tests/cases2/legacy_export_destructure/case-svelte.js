@@ -5,7 +5,7 @@ export default function App($$anchor, $$props) {
 	let tmp = {
 		x: "a",
 		z: ["b"]
-	}, $$array = $.derived(() => $.to_array(tmp.z, 1)), foo = $.prop($$props, "foo", 24, () => tmp.x), bar = $.prop($$props, "bar", 24, () => $.get($$array)[0]);
+	}, $$array = $.derived(() => $.to_array(tmp.z, 1)), foo = $.prop($$props, "foo", 24, () => $.fallback(tmp.x, "default-x")), bar = $.prop($$props, "bar", 24, () => $.get($$array)[0]);
 	var p = root();
 	var text = $.child(p);
 	$.reset(p);

@@ -111,6 +111,38 @@ pub fn generate<'a>(
         ));
     }
 
+    // LEGACY(svelte4): emit `const $$sanitized_props = $.legacy_rest_props($$props, [reserved keys])`
+    // and (if `$$restProps` is read) `const $$restProps = $.legacy_rest_props($$sanitized_props, [named keys])`.
+    if ctx.query.needs_sanitized_legacy_props() {
+        let arr = ctx.b.array_from_args(
+            ctx.query
+                .legacy_sanitized_props_excluded_keys()
+                .iter()
+                .map(|s| Arg::Str((*s).to_string()))
+                .collect::<Vec<_>>(),
+        );
+        fn_body.push(ctx.b.const_stmt(
+            "$$sanitized_props",
+            ctx.b.call_expr(
+                "$.legacy_rest_props",
+                [Arg::Ident("$$props"), Arg::Expr(arr)],
+            ),
+        ));
+    }
+    if ctx.query.needs_legacy_rest_props() {
+        let keys = ctx.query.legacy_bindable_prop_keys();
+        let arr = ctx
+            .b
+            .array_from_args(keys.into_iter().map(Arg::Str).collect::<Vec<_>>());
+        fn_body.push(ctx.b.const_stmt(
+            "$$restProps",
+            ctx.b.call_expr(
+                "$.legacy_rest_props",
+                [Arg::Ident("$$sanitized_props"), Arg::Expr(arr)],
+            ),
+        ));
+    }
+
     if ctx.state.dev {
         fn_body.push(
             ctx.b.expr_stmt(
@@ -256,8 +288,15 @@ pub fn generate<'a>(
         ));
     }
 
-    if !ctx.query.runes() && ctx.query.immutable() {
-        fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]));
+    // LEGACY(svelte4): emit the `$.init(...)` call form decided by the analyzer.
+    match runtime.legacy_init {
+        svelte_analyze::LegacyInit::None => {}
+        svelte_analyze::LegacyInit::Plain => {
+            fn_body.push(ctx.b.call_stmt("$.init", std::iter::empty::<Arg<'_, '_>>()))
+        }
+        svelte_analyze::LegacyInit::Immutable => {
+            fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]))
+        }
     }
 
     fn_body.extend(template_body);

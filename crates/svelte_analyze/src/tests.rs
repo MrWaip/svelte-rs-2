@@ -3983,6 +3983,261 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
     assert!(!plan.has_exports);
 }
 
+// ---------------------------------------------------------------------------
+// LEGACY(svelte4): tests for legacy bindable prop classification through
+// ReactivitySemantics. Removable as a unit when Svelte 4 syntax is dropped.
+// ---------------------------------------------------------------------------
+
+fn assert_legacy_bindable_prop(
+    data: &AnalysisData<'_>,
+    name: &str,
+    expected_default: crate::types::data::PropDefaultLowering,
+    expected_flags: u32,
+) {
+    use crate::types::data::DeclarationSemantics;
+    let sym = data
+        .scoping
+        .find_binding_in_any_scope(name)
+        .unwrap_or_else(|| panic!("no binding '{name}'"));
+    let node_id = data.scoping.symbol_declaration(sym);
+    let decl = data.declaration_semantics(node_id);
+    match decl {
+        DeclarationSemantics::LegacyBindableProp(legacy) => {
+            assert_eq!(
+                legacy.default_lowering, expected_default,
+                "default_lowering mismatch for '{name}'"
+            );
+            let actual_bits = legacy.flags.bits();
+            assert_eq!(
+                actual_bits, expected_flags,
+                "flags mismatch for '{name}': expected {expected_flags:#b}, got {actual_bits:#b}"
+            );
+        }
+        other => panic!("expected LegacyBindableProp for '{name}', got {other:?}"),
+    }
+}
+
+fn legacy_options() -> AnalyzeOptions {
+    AnalyzeOptions {
+        runes: false,
+        ..AnalyzeOptions::default()
+    }
+}
+
+#[test]
+fn legacy_export_let_classifies_as_legacy_bindable_prop() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let foo;</script><p>{foo}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "foo",
+        crate::types::data::PropDefaultLowering::None,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_with_default_classifies_eager() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let bar = 'default';</script><p>{bar}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "bar",
+        crate::types::data::PropDefaultLowering::Eager,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_undefined_default_classifies_eager() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let foo = undefined;</script><p>{foo}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "foo",
+        crate::types::data::PropDefaultLowering::Eager,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_with_complex_default_classifies_lazy() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>function compute() { return 1; } export let bar = compute();</script><p>{bar}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "bar",
+        crate::types::data::PropDefaultLowering::Lazy,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_reassigned_marks_updated() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let foo; foo = 1;</script><p>{foo}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "foo",
+        crate::types::data::PropDefaultLowering::None,
+        crate::PROPS_IS_BINDABLE | crate::PROPS_IS_UPDATED,
+    );
+}
+
+#[test]
+fn legacy_export_var_classifies_as_legacy_bindable_prop() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export var count = 1;</script><p>{count}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "count",
+        crate::types::data::PropDefaultLowering::Eager,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_specifier_classifies_as_legacy_bindable_prop() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>let foo = 1; export { foo };</script><p>{foo}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "foo",
+        crate::types::data::PropDefaultLowering::Eager,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_specifier_alias_classification_unchanged() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>let className = 'btn'; export { className as class };</script><p>{className}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "className",
+        crate::types::data::PropDefaultLowering::Eager,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_destructure_classifies_each_leaf() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let { x: foo, z: [bar] } = { x: 'a', z: ['b'] };</script><p>{foo}{bar}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "foo",
+        crate::types::data::PropDefaultLowering::Lazy,
+        crate::PROPS_IS_BINDABLE,
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "bar",
+        crate::types::data::PropDefaultLowering::Lazy,
+        crate::PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_props_identifier_read_classifies() {
+    use crate::types::data::ReferenceSemantics;
+    let (_c, data) =
+        analyze_source_with_options("<script>console.log($$props);</script>", legacy_options());
+    let unresolved = data.scoping.root_unresolved_references();
+    let refs = unresolved
+        .get("$$props")
+        .unwrap_or_else(|| panic!("expected $$props in unresolved refs"));
+    assert!(!refs.is_empty(), "expected at least one $$props read site");
+    for &ref_id in refs {
+        let sem = data.reference_semantics(ref_id);
+        assert!(
+            matches!(sem, ReferenceSemantics::LegacyPropsIdentifierRead),
+            "expected LegacyPropsIdentifierRead, got {sem:?}"
+        );
+    }
+}
+
+#[test]
+fn legacy_rest_props_identifier_read_classifies() {
+    use crate::types::data::ReferenceSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>console.log($$restProps);</script>",
+        legacy_options(),
+    );
+    let unresolved = data.scoping.root_unresolved_references();
+    let refs = unresolved
+        .get("$$restProps")
+        .unwrap_or_else(|| panic!("expected $$restProps in unresolved refs"));
+    assert!(
+        !refs.is_empty(),
+        "expected at least one $$restProps read site"
+    );
+    for &ref_id in refs {
+        let sem = data.reference_semantics(ref_id);
+        assert!(
+            matches!(sem, ReferenceSemantics::LegacyRestPropsIdentifierRead),
+            "expected LegacyRestPropsIdentifierRead, got {sem:?}"
+        );
+    }
+}
+
+#[test]
+fn legacy_props_member_read_classifies() {
+    use crate::types::data::ReferenceSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>console.log($$props.foo);</script>",
+        legacy_options(),
+    );
+    let unresolved = data.scoping.root_unresolved_references();
+    let refs = unresolved.get("$$props").expect("expected $$props ref");
+    assert!(!refs.is_empty());
+    for &ref_id in refs {
+        let sem = data.reference_semantics(ref_id);
+        assert!(
+            matches!(sem, ReferenceSemantics::LegacyPropsIdentifierRead),
+            "expected LegacyPropsIdentifierRead for member root, got {sem:?}"
+        );
+    }
+}
+
+#[test]
+fn legacy_classification_skipped_in_runes_mode() {
+    use crate::types::data::DeclarationSemantics;
+    // Runes mode is the default — `export let` would be a runes-mode error in real
+    // usage, but the analyzer-level guard must not emit LegacyBindableProp records.
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let source = "<script>let local = 1;</script><p>{local}</p>";
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(parse_diags.is_empty());
+    let (data, _parsed, _diags) = analyze(&component, js_result);
+    let sym = data.scoping.find_binding_in_any_scope("local");
+    if let Some(sym) = sym {
+        let decl = data.declaration_semantics(data.scoping.symbol_declaration(sym));
+        assert!(
+            !matches!(decl, DeclarationSemantics::LegacyBindableProp(_)),
+            "runes mode must not emit LegacyBindableProp"
+        );
+    }
+}
+
 #[test]
 fn runtime_plan_accessors_require_push_and_exports() {
     let (_c, data) = analyze_source_with_options(

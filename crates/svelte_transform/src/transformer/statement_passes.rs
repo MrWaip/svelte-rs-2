@@ -9,6 +9,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
     ) {
         self.strip_ts_specifiers_and_statements(stmts);
+        // LEGACY(svelte4): lower legacy `export let` / `export var` / specifier props
+        // before `strip_export_keywords` because we need the export wrapper as a marker.
+        self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);

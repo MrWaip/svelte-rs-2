@@ -40,6 +40,12 @@ pub enum DeclarationSemantics {
     OptimizedRune(OptimizedRuneSemantics),
     /// Declaration coming from `$props()` destructuring.
     Prop(PropDeclarationSemantics),
+    /// LEGACY(svelte4): bindable prop binding from non-runes script.
+    /// Covers `export let foo`, `export var foo`, `export { foo }`,
+    /// `export { foo as bar }`, and every leaf of `export let { ... } = expr`.
+    /// Name/alias/default expression live in the AST; this struct carries only reactivity facts.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyBindableProp(LegacyBindablePropSemantics),
     /// Symbol-backed `$store` subscription declaration.
     Store(StoreDeclarationSemantics),
     /// Const-style declaration such as `{@const}`.
@@ -230,6 +236,17 @@ pub enum PropDeclarationKind {
     Rest,
     /// Declaration came from `$props()` but is not itself a prop source.
     NonSource,
+}
+
+/// LEGACY(svelte4): reactivity facts for one legacy bindable prop binding.
+/// Mirrors runes `Source` shape — bit flags only, no strings.
+/// `flags` is the precomputed `$.prop(...)` bitfield; transform/codegen
+/// pass `flags.bits()` through to the runtime.
+/// Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LegacyBindablePropSemantics {
+    pub default_lowering: PropDefaultLowering,
+    pub flags: crate::PropsFlags,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -442,6 +459,16 @@ pub enum ReferenceSemantics {
     /// - `rest.foo` → NOT `RestPropMemberRewrite` (sibling `foo` shadows it)
     /// - `rest` standalone → NOT `RestPropMemberRewrite` (falls to existing classification)
     RestPropMemberRewrite,
+    /// LEGACY(svelte4): identifier read of `$$props` (non-runes mode).
+    /// Keyed by `ReferenceId` (no `SymbolId` — `$$props` is unresolved).
+    /// Consumer rewrites to `$$sanitized_props`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyPropsIdentifierRead,
+    /// LEGACY(svelte4): identifier read of `$$restProps` (non-runes mode).
+    /// Keyed by `ReferenceId` (no `SymbolId`).
+    /// Consumer rewrites to local `const $$restProps = $.legacy_rest_props(...)`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyRestPropsIdentifierRead,
     /// Reference is a semantically forbidden write.
     ///
     /// Examples: `$derived(...) = value`, snippet parameter writes.
@@ -527,6 +554,9 @@ pub(crate) enum V2DeclarationFacts {
     Derived(DerivedDeclarationSemantics),
     OptimizedRune(OptimizedRuneSemantics),
     Prop(PropDeclarationSemantics),
+    /// LEGACY(svelte4): mirror of `DeclarationSemantics::LegacyBindableProp`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyBindableProp(LegacyBindablePropSemantics),
     Store(StoreDeclarationSemantics),
     Const(ConstDeclarationSemantics),
     Contextual(ContextualDeclarationSemantics),
@@ -585,6 +615,12 @@ pub(crate) enum V2ReferenceFacts {
     ContextualRead(ContextualReadSemantics),
     CarrierMemberRead(CarrierMemberReadSemantics),
     RestPropMemberRewrite,
+    /// LEGACY(svelte4): mirror of `ReferenceSemantics::LegacyPropsIdentifierRead`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyPropsIdentifierRead,
+    /// LEGACY(svelte4): mirror of `ReferenceSemantics::LegacyRestPropsIdentifierRead`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    LegacyRestPropsIdentifierRead,
     IllegalWrite,
     /// Local reads lower as a plain identifier, but the binding itself
     /// is wrapped in a runtime `$.proxy(...)` — its fields and external
@@ -636,6 +672,26 @@ pub struct ReactivitySemantics {
     /// here (not on `ComponentSemantics`) because they encode Svelte-specific
     /// template meaning.
     each_rest_symbols: FxHashSet<SymbolId>,
+    /// LEGACY(svelte4): ordered list of symbols for every `LegacyBindableProp`
+    /// binding, in source declaration order. Populated by the
+    /// reactivity_semantics builder during legacy classification; consumers
+    /// (codegen, runtime-plan) iterate without re-walking instance scope.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_bindable_prop_symbols: Vec<SymbolId>,
+    /// LEGACY(svelte4): true when the script reads `$$props` (resolved by the
+    /// JS visitor as an unresolved root identifier). Drives `needs_push`,
+    /// `has_legacy_runtime_init`, and `$$sanitized_props` declaration emission.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_uses_props: bool,
+    /// LEGACY(svelte4): true when the script reads `$$restProps`. Drives
+    /// `$$sanitized_props` + `$$restProps` declaration emission.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_uses_rest_props: bool,
+    /// LEGACY(svelte4): true when at least one `LegacyBindableProp` binding is
+    /// member-mutated (`obj.x = …` / `obj.x++`). Drives `$.push` / `$.init` /
+    /// `$.pop` runtime emission. Computed once at the end of the v2 pass.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    legacy_has_member_mutated: bool,
     /// v2-only side-table: destructured `{@const}` leaf symbol → owning
     /// const-tag `NodeId`. Only set for destructured patterns (`{@const {a, b} = ...}`);
     /// single-identifier `{@const NAME = ...}` bindings do not carry a tag owner
@@ -666,6 +722,10 @@ impl ReactivitySemantics {
             contextual_owner_v2: FxHashMap::default(),
             const_alias_owner_v2: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
+            legacy_bindable_prop_symbols: Vec::new(),
+            legacy_uses_props: false,
+            legacy_uses_rest_props: false,
+            legacy_has_member_mutated: false,
             uses_runes: false,
         }
     }
@@ -710,6 +770,57 @@ impl ReactivitySemantics {
     /// wiring block.
     pub fn has_store_declarations(&self) -> bool {
         !self.store_declaration_ids.is_empty()
+    }
+
+    /// LEGACY(svelte4): symbols of every `LegacyBindableProp` binding,
+    /// in source declaration order.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_bindable_prop_symbols(&self) -> &[SymbolId] {
+        &self.legacy_bindable_prop_symbols
+    }
+
+    /// LEGACY(svelte4): true when at least one legacy bindable prop is declared.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn has_legacy_bindable_prop(&self) -> bool {
+        !self.legacy_bindable_prop_symbols.is_empty()
+    }
+
+    /// LEGACY(svelte4): true when the script reads `$$props`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_uses_props(&self) -> bool {
+        self.legacy_uses_props
+    }
+
+    /// LEGACY(svelte4): true when the script reads `$$restProps`.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_uses_rest_props(&self) -> bool {
+        self.legacy_uses_rest_props
+    }
+
+    /// LEGACY(svelte4): true when at least one legacy bindable prop is member-mutated.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn legacy_has_member_mutated(&self) -> bool {
+        self.legacy_has_member_mutated
+    }
+
+    /// LEGACY(svelte4): builder hook — push a symbol for a newly classified
+    /// `LegacyBindableProp` binding. Order of calls determines codegen iteration order.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn record_legacy_bindable_prop_symbol(&mut self, symbol: SymbolId) {
+        self.legacy_bindable_prop_symbols.push(symbol);
+    }
+
+    /// LEGACY(svelte4): builder hook — set `$$props` / `$$restProps` usage flags.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn set_legacy_unresolved_usage(&mut self, uses_props: bool, uses_rest_props: bool) {
+        self.legacy_uses_props = uses_props;
+        self.legacy_uses_rest_props = uses_rest_props;
+    }
+
+    /// LEGACY(svelte4): builder hook — finalize `legacy_has_member_mutated` flag.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn set_legacy_has_member_mutated(&mut self, value: bool) {
+        self.legacy_has_member_mutated = value;
     }
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
@@ -765,6 +876,12 @@ impl ReactivitySemantics {
             }
             Some(V2ReferenceFacts::RestPropMemberRewrite) => {
                 ReferenceSemantics::RestPropMemberRewrite
+            }
+            Some(V2ReferenceFacts::LegacyPropsIdentifierRead) => {
+                ReferenceSemantics::LegacyPropsIdentifierRead
+            }
+            Some(V2ReferenceFacts::LegacyRestPropsIdentifierRead) => {
+                ReferenceSemantics::LegacyRestPropsIdentifierRead
             }
             Some(V2ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(V2ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
@@ -842,6 +959,16 @@ impl ReactivitySemantics {
         semantics: PropDeclarationSemantics,
     ) {
         self.write_declaration(node_id, V2DeclarationFacts::Prop(semantics));
+    }
+
+    /// LEGACY(svelte4): record a legacy bindable prop declaration.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn record_legacy_bindable_prop_declaration_v2(
+        &mut self,
+        node_id: OxcNodeId,
+        semantics: LegacyBindablePropSemantics,
+    ) {
+        self.write_declaration(node_id, V2DeclarationFacts::LegacyBindableProp(semantics));
     }
 
     pub(crate) fn record_store_declaration_v2(
@@ -975,6 +1102,9 @@ impl ReactivitySemantics {
             V2DeclarationFacts::Derived(derived) => DeclarationSemantics::Derived(*derived),
             V2DeclarationFacts::OptimizedRune(opt) => DeclarationSemantics::OptimizedRune(*opt),
             V2DeclarationFacts::Prop(prop) => DeclarationSemantics::Prop(prop.clone()),
+            V2DeclarationFacts::LegacyBindableProp(legacy) => {
+                DeclarationSemantics::LegacyBindableProp(*legacy)
+            }
             V2DeclarationFacts::Store(store) => DeclarationSemantics::Store(*store),
             V2DeclarationFacts::Const(kind) => DeclarationSemantics::Const(*kind),
             V2DeclarationFacts::Contextual(kind) => DeclarationSemantics::Contextual(*kind),

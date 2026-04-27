@@ -10,8 +10,8 @@ use svelte_component_semantics::OxcNodeId;
 
 use super::super::data::{
     ContextualReadSemantics, DerivedKind, PropDeclarationKind, PropDeclarationSemantics,
-    PropDefaultLowering, PropReferenceSemantics, SignalReferenceKind, V2DeclarationFacts,
-    V2ReferenceFacts,
+    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, SignalReferenceKind,
+    V2DeclarationFacts, V2ReferenceFacts,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -224,6 +224,31 @@ fn classify_reference_semantics(
                 owner_node,
                 symbol: sym,
             }))
+        }
+        // LEGACY(svelte4): bindable prop binding. Reuses the runes `PropRead(Source)` /
+        // `PropMutation` / `PropSourceMemberMutationRoot` channels so consumers see a single
+        // shape. Read site emits the same Source variant runes uses; write/mutation sites
+        // follow the existing prop write flow.
+        V2DeclarationFacts::LegacyBindableProp(_) => {
+            if is_member_mutation_root {
+                Some(V2ReferenceFacts::PropSourceMemberMutationRoot {
+                    bindable: true,
+                    symbol: sym,
+                })
+            } else if is_write {
+                Some(V2ReferenceFacts::PropMutation {
+                    bindable: true,
+                    symbol: sym,
+                })
+            } else if is_read {
+                Some(V2ReferenceFacts::PropRead(PropReferenceSemantics::Source {
+                    bindable: true,
+                    lowering_mode: PropLoweringMode::Standard,
+                    symbol: sym,
+                }))
+            } else {
+                None
+            }
         }
         // LetCarrier is the synthesized carrier itself (declared on the
         // destructuring statement). Reference-level reads of its symbol

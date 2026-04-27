@@ -1,12 +1,11 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root = $.from_html(`<p></p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
-	$.push($$props, false);
-	let className = "btn";
-	var $$exports = { class: className };
+	let className = $.prop($$props, "class", 8, "btn");
 	var p = root();
-	p.textContent = className;
+	var text = $.child(p, true);
+	$.reset(p);
+	$.template_effect(() => $.set_text(text, className()));
 	$.append($$anchor, p);
-	return $.pop($$exports);
 }

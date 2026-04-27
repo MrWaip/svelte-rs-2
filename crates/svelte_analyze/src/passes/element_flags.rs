@@ -353,7 +353,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                                 kind: crate::types::data::PropDeclarationKind::Source { .. },
                                                 ..
                                             },
-                                        ) => ComponentBindMode::PropSource,
+                                        )
+                                        | crate::types::data::DeclarationSemantics::LegacyBindableProp(_) => {
+                                            ComponentBindMode::PropSource
+                                        }
                                         crate::types::data::DeclarationSemantics::State(_)
                                         | crate::types::data::DeclarationSemantics::Derived(_)
                                         | crate::types::data::DeclarationSemantics::OptimizedRune(_) => {

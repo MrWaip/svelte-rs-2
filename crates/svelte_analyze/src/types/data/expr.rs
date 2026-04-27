@@ -21,6 +21,11 @@ pub struct ExpressionInfo {
     expr_role: Option<ExprRole>,
     ref_symbols: SmallVec<[SymbolId; 2]>,
     uses_legacy_slots: bool,
+    /// LEGACY(svelte4): true when expression contains a read of unresolved
+    /// `$$props` / `$$restProps`. Codegen consults this to add the
+    /// `$.deep_read_state` / `$.untrack` coarse-wrap around legacy member reads.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    uses_legacy_sanitized_props: bool,
     has_store_ref: bool,
     has_side_effects: bool,
     has_call: bool,
@@ -46,6 +51,7 @@ impl ExpressionInfo {
             expr_role: None,
             ref_symbols: SmallVec::new(),
             uses_legacy_slots: false,
+            uses_legacy_sanitized_props: false,
             has_store_ref: false,
             has_side_effects: false,
             has_call: false,
@@ -54,6 +60,12 @@ impl ExpressionInfo {
             has_store_member_mutation: false,
             needs_context: false,
         }
+    }
+
+    /// LEGACY(svelte4): builder hook — record `$$props` / `$$restProps` usage in this expression.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub(crate) fn set_uses_legacy_sanitized_props(&mut self, value: bool) {
+        self.uses_legacy_sanitized_props = value;
     }
 
     pub(crate) fn set_initial_flags(
@@ -119,6 +131,7 @@ impl ExpressionInfo {
 
     pub(crate) fn merge_in(&mut self, other: &Self) {
         self.uses_legacy_slots |= other.uses_legacy_slots;
+        self.uses_legacy_sanitized_props |= other.uses_legacy_sanitized_props;
         self.has_call |= other.has_call;
         self.has_await |= other.has_await;
         self.has_store_ref |= other.has_store_ref;
@@ -184,6 +197,14 @@ impl ExpressionInfo {
 
     pub fn uses_legacy_slots(&self) -> bool {
         self.uses_legacy_slots
+    }
+
+    /// LEGACY(svelte4): true when expression contains a read of unresolved
+    /// `$$props` / `$$restProps`. Codegen consults this to add the legacy
+    /// coarse-wrap.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    pub fn uses_legacy_sanitized_props(&self) -> bool {
+        self.uses_legacy_sanitized_props
     }
 
     pub fn has_store_ref(&self) -> bool {

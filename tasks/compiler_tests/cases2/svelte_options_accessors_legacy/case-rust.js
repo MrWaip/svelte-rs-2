@@ -4,6 +4,7 @@ var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let count = $.prop($$props, "count", 12, 1);
+	count(count() + 5);
 	var $$exports = {
 		get count() {
 			return count();

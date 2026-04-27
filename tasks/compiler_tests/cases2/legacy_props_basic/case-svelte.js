@@ -9,11 +9,12 @@ export default function App($$anchor, $$props) {
 		"$$legacy"
 	]);
 	$.push($$props, false);
+	let variant = $.prop($$props, "variant", 8);
 	$.init();
 	var button = root();
 	$.attribute_effect(button, () => ({
 		...$$sanitized_props,
-		class: ($.deep_read_state($$sanitized_props), $.untrack(() => $$sanitized_props.class ?? ""))
+		class: `variant-${variant() ?? ""} ${($.deep_read_state($$sanitized_props), $.untrack(() => $$sanitized_props.class ?? "")) ?? ""}`
 	}));
 	$.append($$anchor, button);
 	$.pop();

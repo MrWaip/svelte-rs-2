@@ -8,12 +8,13 @@ export default function App($$anchor, $$props) {
 		"$$events",
 		"$$legacy"
 	]);
-	const $$restProps = $.legacy_rest_props($$sanitized_props, ["variant"]);
+	const $$restProps = $.legacy_rest_props($$sanitized_props, ["variant", "size"]);
 	let variant = $.prop($$props, "variant", 8, "filled");
+	let size = $.prop($$props, "size", 8, "md");
 	var button = root();
 	$.attribute_effect(button, () => ({
 		...$$restProps,
-		class: `variant-${variant() ?? ""}`
+		class: `variant-${variant() ?? ""} size-${size() ?? ""}`
 	}));
 	$.append($$anchor, button);
 }

@@ -443,6 +443,13 @@ impl<'a> ComponentSemantics<'a> {
                     };
                 }
                 AstKind::BindingRestElement(_) => return None,
+                // Top-level `let foo = …` / `var foo = …` / `const foo = …`: the
+                // prop key is the local identifier name itself. This covers legacy
+                // `export let` / `export var` props where there is no destructuring
+                // and thus no nested key.
+                AstKind::VariableDeclarator(_) => {
+                    return Some(self.symbol_name(sym_id));
+                }
                 other => {
                     debug_assert!(
                         false,

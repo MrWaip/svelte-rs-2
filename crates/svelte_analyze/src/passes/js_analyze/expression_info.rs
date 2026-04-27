@@ -16,6 +16,11 @@ use oxc_semantic::ScopeFlags;
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
     uses_legacy_slots: bool,
+    /// LEGACY(svelte4): true when the expression contains a read of the
+    /// unresolved `$$props` / `$$restProps` identifier. Drives the legacy
+    /// coarse-wrap (`$.deep_read_state` / `$.untrack`) at codegen time.
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    uses_legacy_sanitized_props: bool,
     has_call: bool,
     has_await: bool,
     has_state_rune: bool,
@@ -68,6 +73,9 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
         let name = ident.name.as_str();
         if name == "$$slots" {
             self.uses_legacy_slots = true;
+        }
+        if name == "$$props" || name == "$$restProps" {
+            self.uses_legacy_sanitized_props = true;
         }
         if name.starts_with('$') && name.len() > 1 {
             self.has_store_ref = true;
@@ -155,6 +163,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
         kind: ExpressionKind::Other,
         uses_legacy_slots: false,
+        uses_legacy_sanitized_props: false,
         has_call: false,
         has_await: false,
         has_state_rune: false,
@@ -176,6 +185,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
         analyzer.has_state_rune,
         analyzer.has_store_member_mutation,
     );
+    info.set_uses_legacy_sanitized_props(analyzer.uses_legacy_sanitized_props);
     info
 }
 

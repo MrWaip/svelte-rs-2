@@ -1,7 +1,7 @@
 [
   {
     "severity": "error",
-    "code": "state_invalid_export",
+    "code": "legacy_export_invalid",
     "start": 9,
     "end": 38
   }

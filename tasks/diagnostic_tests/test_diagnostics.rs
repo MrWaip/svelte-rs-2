@@ -1161,14 +1161,11 @@ mod props {
     );
     diagnostic_case!(
         validate_legacy_props_invalid_in_runes_mode,
-        "props/validate_legacy_props_invalid_in_runes_mode",
-        ignore = "missing: runes validation for direct legacy $$props reads (analyze, quick fix)"
+        "props/validate_legacy_props_invalid_in_runes_mode"
     );
     diagnostic_case!(
         validate_legacy_rest_props_invalid_in_runes_mode,
-        "props/validate_legacy_rest_props_invalid_in_runes_mode",
-        ignore =
-            "missing: runes validation for direct legacy $$restProps reads (analyze, quick fix)"
+        "props/validate_legacy_rest_props_invalid_in_runes_mode"
     );
     diagnostic_case!(
         validate_props_normal_member_access_no_error,
@@ -1178,6 +1175,10 @@ mod props {
     diagnostic_case!(
         validate_props_typed_children_snippet_no_diagnostic,
         "props/validate_props_typed_children_snippet_no_diagnostic"
+    );
+    diagnostic_case!(
+        validate_export_let_unused,
+        "props/validate_export_let_unused"
     );
 }
 
@@ -1309,18 +1310,15 @@ mod runes {
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state,
-        "runes/validate_state_invalid_export_for_reassigned_state",
-        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports state_invalid_export"
+        "runes/validate_state_invalid_export_for_reassigned_state"
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_raw,
-        "runes/validate_state_invalid_export_for_reassigned_state_raw",
-        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports state_invalid_export"
+        "runes/validate_state_invalid_export_for_reassigned_state_raw"
     );
     diagnostic_case!(
         validate_state_invalid_export_no_error_without_reassignment,
-        "runes/validate_state_invalid_export_no_error_without_reassignment",
-        ignore = "known mismatch: npm svelte/compiler reports legacy_export_invalid while analyzer reports no diagnostic"
+        "runes/validate_state_invalid_export_no_error_without_reassignment"
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_export_specifier,

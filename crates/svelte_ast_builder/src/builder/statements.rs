@@ -100,28 +100,27 @@ impl<'a> Builder<'a> {
     }
 
     pub fn let_multi_stmt(&self, declarators: Vec<(&str, Expression<'a>)>) -> Statement<'a> {
+        self.var_decl_multi_stmt(declarators, VariableDeclarationKind::Let)
+    }
+
+    pub fn var_decl_multi_stmt(
+        &self,
+        declarators: Vec<(&str, Expression<'a>)>,
+        kind: VariableDeclarationKind,
+    ) -> Statement<'a> {
         let decls: Vec<_> = declarators
             .into_iter()
             .map(|(name, init)| {
                 let pattern = self
                     .ast
                     .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
-                self.ast.variable_declarator(
-                    SPAN,
-                    VariableDeclarationKind::Let,
-                    pattern,
-                    NONE,
-                    Some(init),
-                    false,
-                )
+                self.ast
+                    .variable_declarator(SPAN, kind, pattern, NONE, Some(init), false)
             })
             .collect();
-        let declaration = self.ast.variable_declaration(
-            SPAN,
-            VariableDeclarationKind::Let,
-            self.ast.vec_from_iter(decls),
-            false,
-        );
+        let declaration =
+            self.ast
+                .variable_declaration(SPAN, kind, self.ast.vec_from_iter(decls), false);
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 

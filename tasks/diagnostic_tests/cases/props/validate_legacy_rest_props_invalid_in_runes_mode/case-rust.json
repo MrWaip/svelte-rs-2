@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "error",
+    "code": "legacy_rest_props_invalid",
+    "start": 22,
+    "end": 33
+  }
+]
