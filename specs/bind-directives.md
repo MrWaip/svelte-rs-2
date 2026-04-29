@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: 16/18 use cases
-- **Tests**: 60/62 green
-- Last updated: 2026-04-11
+- **Working**: 16/19 use cases
+- **Tests**: 60/63 green
+- Last updated: 2026-04-29
 
 ## Source
 
@@ -39,6 +39,7 @@ ROADMAP.md — Bindings
   Existing tests: `bind_resize_observer`, `bind_resize_observer_border_box_size`, `bind_resize_observer_device_pixel_content_box_size`
 - [x] `bind:this` on elements, components, `<svelte:element>`, and getter/setter sequence form
   Existing tests: `bind_this`, `bind_this_sequence`, `component_bind_this`, `component_bind_this_variants`, `svelte_element_bind`
+- [ ] `bind:this` on a regular element with children and a class/style directive must be emitted after the element's `$.reset(...)` (and after the dynamic-class/style `$.template_effect`), matching the reference visit order; today the call is emitted before the inner `$.child(...)` walk (test: `bind_this_with_children_and_class_directive`)
 - [x] Media read/write bindings
   Existing tests: `bind_media_rw`, `bind_media_ro`, `bind_media_property`, `bind_img`
 - [x] `<svelte:window>` and `<svelte:document>` bindings
@@ -104,6 +105,7 @@ ROADMAP.md — Bindings
 - [x] `bind_textarea_value`
 - [x] `bind_this`
 - [x] `bind_this_sequence`
+- [ ] `bind_this_with_children_and_class_directive`
 - [x] `bind_use_deferral`
 - [x] `component_bind_prop_forward`
 - [x] `component_bind_this`

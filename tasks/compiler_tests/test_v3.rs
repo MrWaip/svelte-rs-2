@@ -343,6 +343,18 @@ fn css_keyframes_scoped() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn css_keyframes_percentage_scopes_all() {
+    assert_compiler("css_keyframes_percentage_scopes_all");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn bind_this_with_children_and_class_directive() {
+    assert_compiler("bind_this_with_children_and_class_directive");
+}
+
+#[rstest]
 fn head_position_with_body() {
     assert_compiler("head_position_with_body");
 }

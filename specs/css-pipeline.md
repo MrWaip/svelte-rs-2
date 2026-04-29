@@ -1,9 +1,9 @@
 # CSS
 
 ## Current state
-- **Working**: 14/14 use cases
-- **Tests**: 95/95 green
-- Last updated: 2026-04-12
+- **Working**: 14/15 use cases
+- **Tests**: 95/96 green
+- Last updated: 2026-04-29
 
 ## Source
 Project CSS pipeline parity work and follow-up diagnostic audit.
@@ -16,6 +16,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] Selector matching covers type, class, id, attribute presence, static attribute matcher/value selectors, and bounded dynamic attribute expansion with reference-conservative behavior where required (tests: `css_scoped_id_selector`, `css_scoped_attr_presence`, `css_scoped_attr_value_selector`, `css_scoped_attr_matcher_operators`, `css_scoped_attr_name_casefolding`, `css_dynamic_attr_selector_match`, `concat_attribute_selector_no_match`)
 - [x] `:global(...)`, bare `:global`, `:global { ... }`, and `:global(...)` inside `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)` match the reference transform/analyze behavior for valid CSS (tests: `css_global_basic`, `css_global_compound`, `css_global_block`, `css_global_in_pseudo`)
 - [x] Scoped keyframes and `-global-` escapes are rewritten correctly (test: `css_keyframes_scoped`)
+- [ ] `@keyframes` containing percentage selectors (`0%`, `50%`, `100%`) marks every component element as scoped, matching the reference compiler's parse-keyframe-bodies-as-rules quirk; `from`/`to` keyword keyframes do not (test: `css_keyframes_percentage_scopes_all`)
 - [x] Unused selector warnings and emitted-CSS pruning work for descendant/child/sibling combinators, pseudo selectors, nesting selectors, escaped class/id selectors, and snippet/component boundaries (tests: `css_unused_external`, `css_unused_injected`, `css_pseudo_compound_unused_but_scoped`, `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`, `css_escaped_selector_scoped`, `css_snippet_descendant_scope_boundary`, `css_snippet_sibling_boundary`, `css_component_snippet_descendant_boundary`)
 - [x] Diagnostic parity for CSS pruning covers `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, escaped selectors, attribute concatenation, and conservative no-match cases where the reference compiler reports `css_unused_selector` (tests: `is_selector_match`, `is_selector_no_match`, `is_selector_compound_no_match`, `where_selector_match`, `where_selector_complex_branch_conservative`, `implicit_nesting_match`, `root_has_match`, `escaped_selector_match`, `concat_attribute_selector_no_match`, `type_selector_no_match`, `class_selector_no_match`, `id_selector_no_match`, `descendant_combinator_no_match`, `child_combinator_indirect_no_match`, `adjacent_sibling_combinator_no_match`, `general_sibling_combinator_no_match`, `multiple_selectors_mixed`, `media_query_unused_selector`, `no_elements_all_unused`)
 - [x] CSS serializer specificity matches the reference for nested selectors and pseudo selector lists, including implicit nesting and `:root:has(...)` handling (tests: `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`)
@@ -79,6 +80,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_global_block`
 - [x] `css_global_in_pseudo`
 - [x] `css_keyframes_scoped`
+- [ ] `css_keyframes_percentage_scopes_all`
 - [x] `css_unused_external`
 - [x] `css_unused_injected`
 - [x] `css_pseudo_compound_unused_but_scoped`
