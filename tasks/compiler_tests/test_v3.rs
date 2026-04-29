@@ -1769,6 +1769,24 @@ fn legacy_export_let_bind_to_inner() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn legacy_export_let_compound_assign_prop() {
+    assert_compiler("legacy_export_let_compound_assign_prop");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn legacy_export_let_update_prop_in_template() {
+    assert_compiler("legacy_export_let_update_prop_in_template");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn text_expression_binary_no_nullish_fallback() {
+    assert_compiler("text_expression_binary_no_nullish_fallback");
+}
+
+#[rstest]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
 }

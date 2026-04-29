@@ -1,9 +1,9 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 7/7 use cases
-- **Tests**: 16/16 green
-- Last updated: 2026-04-07
+- **Working**: 7/8 use cases
+- **Tests**: 16/17 green
+- Last updated: 2026-04-29
 
 ## Source
 
@@ -28,6 +28,7 @@
 - [x] Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
 - [x] Template validation rejects invalid text / expression placement with `node_invalid_placement`
 - [x] Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
+- [ ] Concat-context expression interpolations whose value is statically known to be non-nullish must skip the `?? ""` fallback (reference compiler omits it for `BinaryExpression` operators like `+`). `is_node_expr_definitely_defined` in `crates/svelte_codegen_client/src/codegen/mod.rs` only matches each-index symbols, so `${a() + b()}` inside a `set_text` template literal incorrectly emits `${a() + b() ?? ""}` (test: `text_expression_binary_no_nullish_fallback`).
 
 ## Out of scope
 
@@ -74,3 +75,4 @@
 - [x] `validate_expression_tag_invalid_placement` (analyzer)
 - [x] `validate_text_bidirectional_control_warning` (analyzer)
 - [x] `validate_text_bidirectional_control_warning_ignored` (analyzer)
+- [ ] `text_expression_binary_no_nullish_fallback`
