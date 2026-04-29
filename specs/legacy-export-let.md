@@ -1,9 +1,9 @@
 # Legacy export let props
 
 ## Current state
-- **Working**: 13/16 use cases (analyzer + transform + codegen)
-- **Tests**: 13/13 e2e compiler tests green; analyzer unit tests cover the classification surface.
-- Last updated: 2026-04-26
+- **Working**: 13/18 use cases (analyzer + transform + codegen)
+- **Tests**: 13/15 e2e compiler tests green; analyzer unit tests cover the classification surface.
+- Last updated: 2026-04-29
 - Architecture: every legacy bindable prop is classified as `DeclarationSemantics::LegacyBindableProp(LegacyBindablePropSemantics { default_lowering, flags })`. `flags` is the precomputed `$.prop(...)` bitfield, with `PROPS_IS_LAZY_INITIAL` always set for destructured leaves. `$$props` / `$$restProps` reads carry `ReferenceSemantics::LegacyPropsIdentifierRead` / `LegacyRestPropsIdentifierRead`. Read/write/member-mutation sites reuse the runes `PropRead(Source)` / `PropMutation` / `PropSourceMemberMutationRoot` channels. Aggregates (`legacy_bindable_prop_symbols`, `legacy_uses_props`, `legacy_uses_rest_props`, `legacy_has_member_mutated`) live on `ReactivitySemantics`; `RuntimePlan` carries a precomputed `LegacyInit` enum + `has_legacy_runtime_init` summary; codegen reads dumb. `ExpressionInfo.uses_legacy_sanitized_props` drives the `$.deep_read_state` / `$.untrack` coarse-wrap around member reads of `$$sanitized_props`. Transform `process_legacy_export_props` lowers inline + specifier + destructured forms to `let foo = $.prop(...)` (destructure: `tmp = init` + `$$array = $.derived(() => $.to_array(tmp.<key>, len))` helpers + per-leaf `$.prop($$props, "<name>", flags, () => $.fallback(tmp.<key>, default))`).
 - Unified reactivity dependency status: satisfied.
 
@@ -45,6 +45,8 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 - [x] Runes mode rejects direct `$$restProps` usage with `legacy_rest_props_invalid` (test: `validate_legacy_rest_props_invalid_in_runes_mode`).
 - [x] Runes-mode `export let` reports `legacy_export_invalid` before state-export diagnostics; `state_invalid_export` skips legacy `let` declarators in runes mode (tests: `validate_state_invalid_export_for_reassigned_state`, `validate_state_invalid_export_for_reassigned_state_raw`, `validate_state_invalid_export_no_error_without_reassignment`).
 - [x] Unused legacy props warn with `export_let_unused` (test: `validate_export_let_unused`).
+- [ ] Compound assignments to a legacy `export let` prop must expand the original value: `count -= 7` should lower to `count(count() - 7)`, not `count(7)`. The transform `transform_assignment` `PropMutation` branch in `crates/svelte_transform/src/transformer/assignments.rs` ignores `assign.operator` and drops the prior read, corrupting compound-op writes for every legacy prop (test: `legacy_export_let_compound_assign_prop`).
+- [ ] `++` / `--` on a legacy `export let` prop inside template expressions must wrap as `($.deep_read_state(<prop>()), $.untrack(() => $.update_prop(<prop>)))`. `template_rewrites::rewrite_template_enter` in `crates/svelte_transform/src/transformer/template_rewrites.rs` only dispatches signal/store/deep-store update rewrites and skips the `PropMutation` rewrite, so `{count++}` is emitted raw and breaks reactivity tracking + untracked-update parity (test: `legacy_export_let_update_prop_in_template`).
 
 ## Out of scope
 
@@ -105,6 +107,8 @@ Compiler tests (`tasks/compiler_tests/cases2/`):
 - [x] `legacy_export_let_typed`
 - [x] `legacy_export_let_member_mutation`
 - [x] `legacy_export_let_bind_to_inner`
+- [ ] `legacy_export_let_compound_assign_prop`
+- [ ] `legacy_export_let_update_prop_in_template`
 
 Diagnostic tests (`tasks/diagnostic_tests/cases/`):
 
