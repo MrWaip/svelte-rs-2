@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "store_rune_conflict",
+    "start": 47,
+    "end": 53
+  }
+]
