@@ -61,7 +61,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 - [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
-- [ ] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
+- [x] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
 - [ ] `$host` — [spec](specs/host-rune.md)
@@ -71,8 +71,8 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 ## Template
 
-- [ ] Element — [spec](specs/element.md)
-- [ ] `<Component>` / component — [spec](specs/component-node.md)
+- [x] Element — [spec](specs/element.md)
+- [x] `<Component>` / component — [spec](specs/component-node.md)
 - [x] `{#if}` / `{:else}` — [spec](specs/if-block.md)
 - [ ] `{#each}` — [spec](specs/each-block.md)
 - [x] `{#await}` — [spec](specs/await-block.md)
@@ -82,7 +82,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [x] `{@const}` — [spec](specs/const-tag.md)
 - [x] `{@debug}` — [spec](specs/debug-tag.md)
 - [x] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
-- [ ] Experimental async — [spec](specs/experimental-async.md)
+- [x] Experimental async — [spec](specs/experimental-async.md)
 
 ## Attributes & Spreads
 
@@ -99,7 +99,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [x] Svelte 5 event attributes — [spec](specs/events.md)
 - [x] Event delegation — [spec](specs/events.md)
 - [x] Event modifiers (capture, passive) — [spec](specs/events.md)
-- [ ] `on:event` legacy — [spec](specs/events.md)
+- [x] `on:event` legacy — [spec](specs/events.md)
 
 ## Bindings
 
@@ -120,11 +120,11 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 ## Special Elements
 
-- [ ] [`<svelte:options>`](specs/svelte-options.md)
+- [x] [`<svelte:options>`](specs/svelte-options.md)
 - [ ] `<svelte:head>` / `<title>` — [spec](specs/svelte-head-title.md)
-- [ ] `<svelte:window>` / `<svelte:document>` / `<svelte:body>` — [spec](specs/svelte-window-document-body.md)
+- [x] `<svelte:window>` / `<svelte:document>` / `<svelte:body>` — [spec](specs/svelte-window-document-body.md)
 - [ ] `<svelte:element>` — [spec](specs/svelte-element.md)
-- [ ] `<svelte:boundary>` ([spec](./specs/svelte-boundary.md))
+- [x] `<svelte:boundary>` ([spec](./specs/svelte-boundary.md))
 
 ## CSS
 
@@ -162,6 +162,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 ## Compiler Infrastructure
 
 - [x] Filename-derived component naming — [spec](specs/filename-derived-component-name.md)
+- [x] TypeScript script stripping — [spec](specs/typescript-script-stripping.md)
 - [ ] `discloseVersion` option
 - [ ] `preserveComments` option
 - [ ] HMR
@@ -177,5 +178,5 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [ ] `<svelte:self>` — [spec](specs/svelte-self.md)
 - [ ] `<svelte:component>` — [spec](specs/svelte-component.md)
 - [ ] `export let` props / `$$props` / `$$restProps` — [spec](specs/legacy-export-let.md)
-- [ ] `$:` reactive assignments — [spec](specs/legacy-reactive-assignments.md)
+- [x] `$:` reactive assignments — [spec](specs/legacy-reactive-assignments.md)
 - [ ] `beforeUpdate` / `afterUpdate` — [spec](specs/before-update-after-update.md)
