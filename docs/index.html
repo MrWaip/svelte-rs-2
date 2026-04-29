@@ -140,10 +140,22 @@
                 <div class="preset-bar">
                     <span class="preset-label">Preset</span>
                     <div class="preset-chips" role="tablist">
-                        <button class="preset-chip" data-preset="default" role="tab">Default</button>
-                        <button class="preset-chip" data-preset="legacy" role="tab">Legacy</button>
-                        <button class="preset-chip" data-preset="ssr" role="tab">SSR</button>
-                        <button class="preset-chip" data-preset="custom" data-readonly role="tab">Custom</button>
+                        <button class="preset-chip" data-preset="default" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Default
+                        </button>
+                        <button class="preset-chip" data-preset="legacy" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Legacy
+                        </button>
+                        <button class="preset-chip" data-preset="ssr" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            SSR
+                        </button>
+                        <span class="preset-chip" data-preset="custom" role="tab" aria-disabled="true">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Custom
+                        </span>
                     </div>
                 </div>
                 <div class="drawer-body">

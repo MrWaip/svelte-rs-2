@@ -84,7 +84,10 @@ bindMobileActions(app, {
     onShare: async () => {
         try {
             await navigator.clipboard.writeText(window.location.href);
-        } catch { /* ignore */ }
+            return true;
+        } catch {
+            return false;
+        }
     },
 });
 

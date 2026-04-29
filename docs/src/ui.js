@@ -1,10 +1,5 @@
 import { saveOptions, saveTheme, DEFAULT_OPTIONS } from "./state.js";
 
-const SECTION_KEYS = {
-    output: ["generate", "css", "dev", "hmr", "discloseVersion"],
-    component: ["runes", "customElement", "preserveComments", "preserveWhitespace", "name"],
-};
-
 const PRESETS = {
     default: { ...DEFAULT_OPTIONS },
     legacy: { ...DEFAULT_OPTIONS, runes: false, hmr: false },
@@ -20,6 +15,10 @@ function detectPreset(options) {
 
 function countOverrides(options, keys = Object.keys(DEFAULT_OPTIONS)) {
     return keys.filter((k) => options[k] !== DEFAULT_OPTIONS[k]).length;
+}
+
+function sectionKeys(section) {
+    return Array.from(section.querySelectorAll("[data-opt]")).map((el) => el.dataset.opt);
 }
 
 export function bindModeTabs(app, store) {
@@ -99,7 +98,7 @@ export function bindSettings(app, store) {
         });
 
         sectionEls.forEach((section) => {
-            const keys = SECTION_KEYS[section.dataset.section] ?? [];
+            const keys = sectionKeys(section);
             const mod = countOverrides(options, keys);
             const countEl = section.querySelector("[data-section-count]");
             const modEl = section.querySelector("[data-section-mod]");
@@ -137,7 +136,7 @@ export function bindSettings(app, store) {
     });
 
     presetChips.forEach((chip) => {
-        if (chip.hasAttribute("data-readonly")) return;
+        if (chip.tagName !== "BUTTON") return;
         chip.addEventListener("click", () => {
             const preset = PRESETS[chip.dataset.preset];
             if (!preset) return;
@@ -163,7 +162,13 @@ export function bindMobileActions(app, { onRecompile, onShare }) {
     const recompile = app.querySelector('[data-action="recompile"]');
     const share = app.querySelector('[data-action="share"]');
     if (recompile && onRecompile) recompile.addEventListener("click", onRecompile);
-    if (share && onShare) share.addEventListener("click", onShare);
+    if (share && onShare) {
+        share.addEventListener("click", async () => {
+            const ok = await onShare();
+            share.dataset.state = ok ? "copied" : "error";
+            setTimeout(() => delete share.dataset.state, 1500);
+        });
+    }
 }
 
 export function setRecompileState(app, state) {
