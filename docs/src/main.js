@@ -6,9 +6,9 @@ import {
     setTheme as setEditorTheme,
     publishLintDiagnostics,
 } from "./editor.js";
-import { createDiff, setOriginal, setModified, applyDiffTheme } from "./diff.js";
+import { createDiff, setOriginal, setModified, applyDiffTheme, destroyDiff, isMobileLayout, watchMobileLayout } from "./diff.js";
 import { loadWasmCompiler, isWasmReady, compileRust, compileSvelte, warmup } from "./compilers.js";
-import { normalizeAll, renderPanel, toLintDiagnostics } from "./diagnostics.js";
+import { normalizeAll, renderPanel, toLintDiagnostics, bindDiagnosticsFilters, bindCopyDiagnostics } from "./diagnostics.js";
 import {
     bindModeTabs,
     bindMobileTabs,
@@ -36,7 +36,7 @@ const store = createStore({
     source: example,
 });
 
-app.dataset.theme = store.get().theme;
+document.documentElement.dataset.theme = store.get().theme;
 
 let sourceView = null;
 let diffView = null;
@@ -58,11 +58,27 @@ sourceView = createSourceEditor({
     },
 });
 
+let lastSvelteJs = "";
+let lastRustJs = "";
+
 diffView = createDiff({
     parent: diffEl,
-    original: "",
-    modified: "",
+    original: lastSvelteJs,
+    modified: lastRustJs,
     theme: store.get().theme,
+    layout: isMobileLayout() ? "unified" : "split",
+});
+
+watchMobileLayout(() => {
+    destroyDiff(diffView);
+    diffEl.innerHTML = "";
+    diffView = createDiff({
+        parent: diffEl,
+        original: lastSvelteJs,
+        modified: lastRustJs,
+        theme: store.get().theme,
+        layout: isMobileLayout() ? "unified" : "split",
+    });
 });
 
 bindModeTabs(app, store);
@@ -70,6 +86,8 @@ bindMobileTabs(app, store);
 bindThemeToggle(app, store);
 bindSettings(app, store);
 bindDiagnosticsToggle(app);
+bindDiagnosticsFilters(app.querySelector("[data-filter-group]"));
+bindCopyDiagnostics(app.querySelector('[data-action="copy-diagnostics"]'));
 bindResizer(app);
 bindBenchmark(app, () => {
     const next = store.get().mode === "module" ? moduleExample : benchmarkExample;
@@ -80,7 +98,14 @@ bindBenchmark(app, () => {
     runCompile();
 });
 bindMobileActions(app, {
-    onRecompile: () => runCompile(),
+    onBenchmark: () => {
+        const next = store.get().mode === "module" ? moduleExample : benchmarkExample;
+        sourceView.dispatch({
+            changes: { from: 0, to: sourceView.state.doc.length, insert: next },
+            selection: { anchor: 0 },
+        });
+        runCompile();
+    },
     onShare: async () => {
         try {
             await navigator.clipboard.writeText(window.location.href);
@@ -141,8 +166,10 @@ function runCompile() {
     const rust = isWasmReady() ? compileRust(source, mode, options) : null;
     const svelte = compileSvelte(source, mode, options);
 
-    setOriginal(diffView, svelte.js);
-    setModified(diffView, rust ? rust.js : "// WASM compiler not available");
+    lastSvelteJs = svelte.js;
+    lastRustJs = rust ? rust.js : "// WASM compiler not available";
+    setOriginal(diffView, lastSvelteJs);
+    setModified(diffView, lastRustJs);
 
     setPerf(app, "svelte", svelte.ok ? svelte.ms : null);
     setPerf(app, "rust", rust && rust.ok ? rust.ms : null);
@@ -179,9 +206,11 @@ function runCompile() {
         sourceView,
         mobileBadge: app.querySelector("[data-mobile-diag-count]"),
         panelEl: app.querySelector(".diagnostics-panel"),
-        rustBadge: app.querySelector("[data-rust-count]"),
-        svelteBadge: app.querySelector("[data-svelte-count]"),
+        errorBadge: app.querySelector("[data-error-count]"),
+        warnBadge: app.querySelector("[data-warn-count]"),
         cleanBadge: app.querySelector("[data-clean]"),
+        filterGroup: app.querySelector("[data-filter-group]"),
+        copyBtn: app.querySelector('[data-action="copy-diagnostics"]'),
     });
 }
 
