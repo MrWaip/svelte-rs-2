@@ -164,15 +164,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ))
         };
 
-        if callback.is_some() {
-            if let Some(void_tag) = dev_void_tag_clone {
-                let void_thunk = self.ctx.b.thunk(void_tag);
-                dev_stmts.push(
-                    self.ctx
-                        .b
-                        .call_stmt("$.validate_void_dynamic_element", [Arg::Expr(void_thunk)]),
-                );
-            }
+        if callback.is_some()
+            && let Some(void_tag) = dev_void_tag_clone
+        {
+            let void_thunk = self.ctx.b.thunk(void_tag);
+            dev_stmts.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.validate_void_dynamic_element", [Arg::Expr(void_thunk)]),
+            );
         }
 
         let needs_loc = dev_loc.is_some();

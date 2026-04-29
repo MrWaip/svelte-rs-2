@@ -1,23 +1,11 @@
-//! Reference-level classification: maps each resolved `ReferenceId` to a
-//! `V2ReferenceFacts` operation-level answer.
-//!
-//! Consumers of `reactivity_semantics::reference_semantics(ref_id)` get back
-//! `ReferenceSemantics` which is derived from these facts. The root consumer
-//! entry point is `collect_symbol_semantics` — run once per build, iterating
-//! every symbol and every resolved reference.
-
-use svelte_component_semantics::OxcNodeId;
-
 use super::super::data::{
-    ContextualReadSemantics, DerivedKind, PropDeclarationKind, PropDeclarationSemantics,
-    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, SignalReferenceKind,
-    V2DeclarationFacts, V2ReferenceFacts,
+    BindingFacts, ContextualReadSemantics, DerivedKind, PropBindingKind, PropDefaultLowering,
+    PropLoweringMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 
 use super::contextual;
-use super::prop_binding_kind;
 
 pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
     let symbols: Vec<SymbolId> = data.scoping.symbol_ids().collect();
@@ -50,61 +38,41 @@ pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
 
         for (ref_id, semantics) in ref_facts {
             data.reactivity
-                .record_reference_semantics_v2(ref_id, semantics);
+                .record_reference_semantics(ref_id, semantics);
         }
     }
 }
 
-fn symbol_declaration_facts(data: &AnalysisData, sym: SymbolId) -> Option<V2DeclarationFacts> {
-    // Props lookup by symbol — covers both leaf bindings of destructure
-    // patterns and the `const props = $props()` identifier form. The v2
-    // builder records `prop_facts` per-symbol with the post-`finish()`
-    // `updated` flag already applied, while `declaration_facts_v2` is keyed
-    // by node and may not reflect late-`finish` mutation updates for
-    // non-leaf symbols.
-    if let Some(facts) = data.reactivity.prop_facts(sym) {
-        return Some(V2DeclarationFacts::Prop(PropDeclarationSemantics {
-            lowering_mode: facts.lowering_mode,
-            kind: prop_binding_kind(&facts),
-        }));
-    }
-
-    let node_id: OxcNodeId = data.scoping.symbol_declaration(sym);
-    data.reactivity.declaration_facts_v2(node_id)
+fn symbol_declaration_facts(data: &AnalysisData, sym: SymbolId) -> Option<BindingFacts> {
+    data.reactivity.binding_facts(sym)
 }
 
 fn classify_reference_semantics(
     data: &AnalysisData,
     sym: SymbolId,
-    declaration: &V2DeclarationFacts,
+    declaration: &BindingFacts,
     is_read: bool,
     is_write: bool,
     is_member_mutation_root: bool,
-) -> Option<V2ReferenceFacts> {
+) -> Option<ReferenceFacts> {
     match declaration {
-        // Binding lowers as a plain `let`; reference-level reads are plain
-        // identifiers. For proxy-wrapped inits (`$state({...})`,
-        // `$state([...])`) the runtime wrapper keeps field mutations and
-        // outside reassignment observable — child-passing consumers must
-        // see that reactivity at the reference site. Other OptimizedRune
-        // cases (primitive `$state(0)` never mutated) stay fully inert.
-        V2DeclarationFacts::OptimizedRune(opt) => {
+        BindingFacts::OptimizedRune(opt) => {
             if is_read && opt.proxy_init {
-                Some(V2ReferenceFacts::Proxy)
+                Some(ReferenceFacts::Proxy)
             } else {
                 None
             }
         }
-        V2DeclarationFacts::State(state) => {
+        BindingFacts::State(state) => {
             if is_write && is_read {
-                Some(V2ReferenceFacts::SignalUpdate {
+                Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,
                     safe: state.var_declared,
                 })
             } else if is_write {
-                Some(V2ReferenceFacts::SignalWrite { kind: state.kind })
+                Some(ReferenceFacts::SignalWrite { kind: state.kind })
             } else if is_read && data.scoping.is_mutated(sym) {
-                Some(V2ReferenceFacts::SignalRead {
+                Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::State(state.kind),
                     safe: state.var_declared,
                 })
@@ -112,11 +80,11 @@ fn classify_reference_semantics(
                 None
             }
         }
-        V2DeclarationFacts::Derived(derived) => {
+        BindingFacts::Derived(derived) => {
             if is_write {
-                Some(V2ReferenceFacts::IllegalWrite)
+                Some(ReferenceFacts::IllegalWrite)
             } else if is_read {
-                Some(V2ReferenceFacts::SignalRead {
+                Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::Derived(derived.kind),
                     safe: false,
                 })
@@ -124,24 +92,21 @@ fn classify_reference_semantics(
                 None
             }
         }
-        V2DeclarationFacts::Store(_) => None,
-        V2DeclarationFacts::Prop(prop) => match &prop.kind {
-            PropDeclarationKind::Source {
+        BindingFacts::Store(_) => None,
+        BindingFacts::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source {
                 bindable,
                 updated,
                 default_lowering,
                 ..
             } => {
                 if is_member_mutation_root {
-                    // `foo.x = val` / `foo.x++` where `foo` is a prop source.
-                    // Root identifier carries is_read on OXC side; give consumers
-                    // a direct operation-level answer so they don't re-check AST.
-                    Some(V2ReferenceFacts::PropSourceMemberMutationRoot {
+                    Some(ReferenceFacts::PropSourceMemberMutationRoot {
                         bindable: *bindable,
                         symbol: sym,
                     })
                 } else if is_write {
-                    Some(V2ReferenceFacts::PropMutation {
+                    Some(ReferenceFacts::PropMutation {
                         bindable: *bindable,
                         symbol: sym,
                     })
@@ -150,13 +115,13 @@ fn classify_reference_semantics(
                         || *updated
                         || !matches!(default_lowering, PropDefaultLowering::None);
                     if reads_as_source {
-                        Some(V2ReferenceFacts::PropRead(PropReferenceSemantics::Source {
+                        Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,
                             lowering_mode: prop.lowering_mode,
                             symbol: sym,
                         }))
                     } else {
-                        Some(V2ReferenceFacts::PropRead(
+                        Some(ReferenceFacts::PropRead(
                             PropReferenceSemantics::NonSource { symbol: sym },
                         ))
                     }
@@ -164,44 +129,37 @@ fn classify_reference_semantics(
                     None
                 }
             }
-            PropDeclarationKind::NonSource => {
+            PropBindingKind::NonSource => {
                 if is_member_mutation_root {
-                    Some(V2ReferenceFacts::PropNonSourceMemberMutationRoot { symbol: sym })
+                    Some(ReferenceFacts::PropNonSourceMemberMutationRoot { symbol: sym })
                 } else if is_write {
-                    Some(V2ReferenceFacts::IllegalWrite)
+                    Some(ReferenceFacts::IllegalWrite)
                 } else if is_read {
-                    Some(V2ReferenceFacts::PropRead(
+                    Some(ReferenceFacts::PropRead(
                         PropReferenceSemantics::NonSource { symbol: sym },
                     ))
                 } else {
                     None
                 }
             }
-            PropDeclarationKind::Rest
-            | PropDeclarationKind::Identifier
-            | PropDeclarationKind::Object { .. } => None,
+            PropBindingKind::Rest | PropBindingKind::Identifier => None,
         },
-        // Binding-form runtime runes ($props.id, $effect.tracking, $host,
-        // $effect.pending, $inspect.trace): reads stay as *plain identifier*
-        // accesses at the transform layer — no `$.get(...)` wrap. Dynamism
-        // classification still flags them through `DeclarationSemantics::
-        // RuntimeRune`, independently of reference_semantics. Writes would
-        // target a `const` binding — forbid them.
-        V2DeclarationFacts::RuntimeRune { .. } => {
+
+        BindingFacts::RuntimeRune { .. } => {
             if is_write {
-                Some(V2ReferenceFacts::IllegalWrite)
+                Some(ReferenceFacts::IllegalWrite)
             } else {
                 None
             }
         }
-        V2DeclarationFacts::Const(_) => {
+        BindingFacts::Const(_) => {
             if is_write {
-                Some(V2ReferenceFacts::IllegalWrite)
+                Some(ReferenceFacts::IllegalWrite)
             } else if is_read {
-                if let Some(owner_node) = data.reactivity.const_alias_owner_v2_internal(sym) {
-                    Some(V2ReferenceFacts::ConstAliasRead { owner_node })
+                if let Some(owner_node) = data.reactivity.const_alias_owner_internal(sym) {
+                    Some(ReferenceFacts::ConstAliasRead { owner_node })
                 } else {
-                    Some(V2ReferenceFacts::SignalRead {
+                    Some(ReferenceFacts::SignalRead {
                         kind: SignalReferenceKind::Derived(DerivedKind::Derived),
                         safe: false,
                     })
@@ -210,38 +168,53 @@ fn classify_reference_semantics(
                 None
             }
         }
-        V2DeclarationFacts::Contextual(kind) => {
+        BindingFacts::Contextual(kind) => {
             if is_write {
-                return Some(V2ReferenceFacts::IllegalWrite);
+                return Some(ReferenceFacts::IllegalWrite);
             }
             if !is_read {
                 return None;
             }
-            let owner_node = data.reactivity.contextual_owner_v2(sym)?;
+            let owner_node = data.reactivity.contextual_owner(sym)?;
             let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind);
-            Some(V2ReferenceFacts::ContextualRead(ContextualReadSemantics {
+            Some(ReferenceFacts::ContextualRead(ContextualReadSemantics {
                 kind: read_kind,
                 owner_node,
                 symbol: sym,
             }))
         }
-        // LEGACY(svelte4): bindable prop binding. Reuses the runes `PropRead(Source)` /
-        // `PropMutation` / `PropSourceMemberMutationRoot` channels so consumers see a single
-        // shape. Read site emits the same Source variant runes uses; write/mutation sites
-        // follow the existing prop write flow.
-        V2DeclarationFacts::LegacyBindableProp(_) => {
+
+        BindingFacts::LegacyState(state) => {
             if is_member_mutation_root {
-                Some(V2ReferenceFacts::PropSourceMemberMutationRoot {
+                Some(ReferenceFacts::LegacyStateMemberMutationRoot { symbol: sym })
+            } else if is_write && is_read {
+                Some(ReferenceFacts::LegacyStateUpdate {
+                    safe: state.var_declared,
+                })
+            } else if is_write {
+                Some(ReferenceFacts::LegacyStateWrite)
+            } else if is_read {
+                Some(ReferenceFacts::LegacyStateRead {
+                    safe: state.var_declared,
+                })
+            } else {
+                None
+            }
+        }
+
+        BindingFacts::LegacyBindableProp(_) => {
+            if is_member_mutation_root {
+                Some(ReferenceFacts::PropSourceMemberMutationRoot {
                     bindable: true,
                     symbol: sym,
                 })
             } else if is_write {
-                Some(V2ReferenceFacts::PropMutation {
+                Some(ReferenceFacts::PropMutation {
                     bindable: true,
                     symbol: sym,
                 })
             } else if is_read {
-                Some(V2ReferenceFacts::PropRead(PropReferenceSemantics::Source {
+                Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                     bindable: true,
                     lowering_mode: PropLoweringMode::Standard,
                     symbol: sym,
@@ -250,19 +223,14 @@ fn classify_reference_semantics(
                 None
             }
         }
-        // LetCarrier is the synthesized carrier itself (declared on the
-        // destructuring statement). Reference-level reads of its symbol
-        // don't appear at this identity — leaves carry `CarrierAlias`
-        // below and resolve to `CarrierMemberRead`. Nothing to emit here.
-        V2DeclarationFacts::LetCarrier { .. } => None,
-        V2DeclarationFacts::CarrierAlias { carrier } => {
+        BindingFacts::CarrierAlias { carrier } => {
             if is_write {
-                return Some(V2ReferenceFacts::IllegalWrite);
+                return Some(ReferenceFacts::IllegalWrite);
             }
             if !is_read {
                 return None;
             }
-            Some(V2ReferenceFacts::CarrierMemberRead(
+            Some(ReferenceFacts::CarrierMemberRead(
                 super::super::data::CarrierMemberReadSemantics {
                     carrier_symbol: *carrier,
                     leaf_symbol: sym,

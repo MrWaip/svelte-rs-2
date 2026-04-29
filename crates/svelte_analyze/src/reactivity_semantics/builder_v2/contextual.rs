@@ -1,15 +1,3 @@
-//! Cluster C5: template-contextual declarations (each / snippet / await / let:)
-//! and the reference-read classification rules that follow from them.
-//!
-//! Flow:
-//! 1. Walk template, mark raw facts in builder-local `ContextualStaging`
-//!    (getter / non-reactive / key-is-item / rest / snippet-name / template-decl).
-//! 2. Finalize: convert staged facts into `ContextualDeclarationSemantics`
-//!    variants with strategy payloads, write them to `ReactivitySemantics`.
-//!
-//! Consumers see only the final declaration shape — no `is_getter` /
-//! `is_each_non_reactive` lookups required.
-
 use oxc_ast::ast::{ArrowFunctionExpression, BindingIdentifier, Statement, VariableDeclarator};
 use oxc_ast_visit::Visit;
 use rustc_hash::FxHashSet;
@@ -17,16 +5,14 @@ use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, S
 use svelte_component_semantics::OxcNodeId;
 
 use super::super::data::{
-    ContextualDeclarationSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
-    SnippetParamStrategy, V2DeclarationFacts,
+    ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
+    SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
 use crate::utils::legacy_slot::legacy_slot_pattern;
-use crate::walker::{walk_template, TemplateVisitor, VisitContext};
+use crate::walker::{TemplateVisitor, VisitContext, walk_template};
 
-/// Pending contextual declaration kind, recorded during the template walk.
-/// Final strategy is computed during finalization from `ContextualStaging`.
 #[derive(Clone, Copy)]
 enum PendingKind {
     EachItem,
@@ -37,12 +23,9 @@ enum PendingKind {
     SnippetParam,
 }
 
-/// Builder-local staging: raw classification facts collected during the
-/// template walk. Finalization turns them into `ContextualDeclarationSemantics`
-/// variants with strategy payloads.
 #[derive(Default)]
 struct ContextualStaging {
-    pending: Vec<(SymbolId, OxcNodeId, PendingKind)>,
+    pending: Vec<(SymbolId, PendingKind)>,
     getter_symbols: FxHashSet<SymbolId>,
     each_non_reactive_symbols: FxHashSet<SymbolId>,
 }
@@ -54,8 +37,8 @@ impl ContextualStaging {
     fn mark_each_non_reactive(&mut self, sym: SymbolId) {
         self.each_non_reactive_symbols.insert(sym);
     }
-    fn push(&mut self, sym: SymbolId, node_id: OxcNodeId, kind: PendingKind) {
-        self.pending.push((sym, node_id, kind));
+    fn push(&mut self, sym: SymbolId, kind: PendingKind) {
+        self.pending.push((sym, kind));
     }
 }
 
@@ -92,7 +75,7 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
         getter_symbols,
         each_non_reactive_symbols,
     } = staging;
-    for (sym, node_id, kind) in pending {
+    for (sym, kind) in pending {
         let semantics = match kind {
             PendingKind::EachItem => {
                 let strategy = if getter_symbols.contains(&sym) {
@@ -102,7 +85,7 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
                 } else {
                     EachItemStrategy::Signal
                 };
-                ContextualDeclarationSemantics::EachItem(strategy)
+                ContextualBindingSemantics::EachItem(strategy)
             }
             PendingKind::EachIndex => {
                 let strategy = if each_non_reactive_symbols.contains(&sym) {
@@ -110,23 +93,21 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
                 } else {
                     EachIndexStrategy::Signal
                 };
-                ContextualDeclarationSemantics::EachIndex(strategy)
+                ContextualBindingSemantics::EachIndex(strategy)
             }
-            PendingKind::AwaitValue => ContextualDeclarationSemantics::AwaitValue,
-            PendingKind::AwaitError => ContextualDeclarationSemantics::AwaitError,
-            PendingKind::LetDirective => ContextualDeclarationSemantics::LetDirective,
+            PendingKind::AwaitValue => ContextualBindingSemantics::AwaitValue,
+            PendingKind::AwaitError => ContextualBindingSemantics::AwaitError,
+            PendingKind::LetDirective => ContextualBindingSemantics::LetDirective,
             PendingKind::SnippetParam => {
                 let strategy = if getter_symbols.contains(&sym) {
                     SnippetParamStrategy::Accessor
                 } else {
                     SnippetParamStrategy::Signal
                 };
-                ContextualDeclarationSemantics::SnippetParam(strategy)
+                ContextualBindingSemantics::SnippetParam(strategy)
             }
         };
-        let _ = sym;
-        data.reactivity
-            .record_contextual_declaration_v2(node_id, semantics);
+        data.reactivity.record_contextual_binding(sym, semantics);
     }
 }
 
@@ -136,33 +117,19 @@ struct TemplateDeclarationCollector<'s> {
 
 impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        // Resolve binding leaves locally from the pre-parsed
-        // `{@const <pattern> = ...}` statement — one walk of the
-        // binding pattern plus a `find_binding` per leaf, against the
-        // enclosing fragment scope carried by `ctx.scope`. This used
-        // to read `const_tags.syms(tag.id)` which was populated by a
-        // separate pass; moving the derivation in-line drops that
-        // side-table and lets the ConstTagData cluster shrink to
-        // `by_fragment` only.
         let syms: Vec<SymbolId> = collect_const_tag_syms(tag, ctx);
 
-        // Only destructured const-tags (`{@const { a, b } = ...}`) carry a
-        // per-leaf owner — single-identifier const-tags don't need it because
-        // consumers don't drill into them.
         let is_destructured = syms.len() > 1;
 
-        for sym in syms {
-            let node_id = ctx.data.scoping.symbol_declaration(sym);
+        for sym in syms.iter().copied() {
             ctx.data
                 .reactivity
-                .record_symbol_declaration_root(sym, node_id);
-            ctx.data
-                .reactivity
-                .record_const_declaration_v2(node_id, is_destructured);
+                .record_const_binding(sym, is_destructured);
             if is_destructured {
-                ctx.data.reactivity.record_const_alias_owner_v2(sym, tag.id);
+                ctx.data.reactivity.record_const_alias_owner(sym, tag.id);
             }
         }
+        let _ = syms;
     }
 
     fn visit_let_directive_legacy(
@@ -170,8 +137,6 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         dir: &LetDirectiveLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        // Take the bindings snapshot first so the parsed borrow is released
-        // before we mutate `ctx.data` (carrier synthesis needs `&mut`).
         let (syms, is_destructured, stmt_node_id) = {
             let Some(binding_ref) = dir.binding.as_ref() else {
                 return;
@@ -193,10 +158,6 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             (syms, is_destructured, stmt_node_id)
         };
 
-        // v2 owns carrier synthesis for destructured `let:` forms: one
-        // synthesized symbol per directive, shared by all destructure leaves.
-        // The carrier declaration is keyed by the destructuring statement's
-        // OxcNodeId so consumers query it via `declaration_semantics`.
         let carrier_sym = if is_destructured {
             Some(ensure_slot_let_carrier(
                 ctx.data,
@@ -209,17 +170,13 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         };
 
         for sym in syms {
-            let node_id = ctx.data.scoping.symbol_declaration(sym);
-            ctx.data
-                .reactivity
-                .record_symbol_declaration_root(sym, node_id);
-            ctx.data.reactivity.record_contextual_owner_v2(sym, dir.id);
+            ctx.data.reactivity.record_contextual_owner(sym, dir.id);
             if let Some(carrier) = carrier_sym {
                 ctx.data
                     .reactivity
-                    .record_carrier_alias_declaration_v2(node_id, carrier);
+                    .record_carrier_alias_binding(sym, carrier);
             } else {
-                self.staging.push(sym, node_id, PendingKind::LetDirective);
+                self.staging.push(sym, PendingKind::LetDirective);
             }
         }
     }
@@ -235,13 +192,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
 
-        // Single-identifier context with a key expression that resolves to
-        // the context symbol itself (`{#each items as item (item)}`) —
-        // the each binding is not reactive: reads go through plain lookup.
-        if !is_destructured {
-            if let Some(key_ref) = block.key.as_ref() {
-                mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
-            }
+        if !is_destructured && let Some(key_ref) = block.key.as_ref() {
+            mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
         }
 
         run_each_index_marker(block, ctx, self.staging);
@@ -262,14 +214,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
             for sym in scoped_stmt_symbols(ctx.data, then_scope, stmt) {
-                let node_id = ctx.data.scoping.symbol_declaration(sym);
-                ctx.data
-                    .reactivity
-                    .record_symbol_declaration_root(sym, node_id);
-                ctx.data
-                    .reactivity
-                    .record_contextual_owner_v2(sym, block.id);
-                self.staging.push(sym, node_id, PendingKind::AwaitValue);
+                ctx.data.reactivity.record_contextual_owner(sym, block.id);
+                self.staging.push(sym, PendingKind::AwaitValue);
             }
         }
 
@@ -283,14 +229,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
             for sym in scoped_stmt_symbols(ctx.data, catch_scope, stmt) {
-                let node_id = ctx.data.scoping.symbol_declaration(sym);
-                ctx.data
-                    .reactivity
-                    .record_symbol_declaration_root(sym, node_id);
-                ctx.data
-                    .reactivity
-                    .record_contextual_owner_v2(sym, block.id);
-                self.staging.push(sym, node_id, PendingKind::AwaitError);
+                ctx.data.reactivity.record_contextual_owner(sym, block.id);
+                self.staging.push(sym, PendingKind::AwaitError);
             }
         }
     }
@@ -312,19 +252,15 @@ fn scoped_stmt_symbols(
     out
 }
 
-/// Synthesize (or reuse) the carrier symbol for a destructured `let:`
-/// directive. Shared by all destructure leaves of the same directive.
-/// The carrier is recorded as `DeclarationSemantics::LetCarrier` on the
-/// destructuring statement's `OxcNodeId`, so codegen reads it through the
-/// declaration API.
 fn ensure_slot_let_carrier(
     data: &mut AnalysisData,
     scope: crate::scope::ScopeId,
     stmt_node_id: OxcNodeId,
     preferred_name: &str,
 ) -> SymbolId {
-    if let Some(V2DeclarationFacts::LetCarrier { carrier_symbol }) =
-        data.reactivity.declaration_facts_v2(stmt_node_id)
+    use super::super::data::DeclaratorSemantics;
+    if let DeclaratorSemantics::LetCarrier { carrier_symbol } =
+        data.reactivity.declarator_semantics(stmt_node_id)
     {
         return carrier_symbol;
     }
@@ -332,54 +268,51 @@ fn ensure_slot_let_carrier(
         .scoping
         .add_unique_synthetic_binding(scope, preferred_name);
     data.reactivity
-        .record_let_carrier_declaration_v2(stmt_node_id, sym);
+        .record_let_carrier_binding(stmt_node_id, sym);
     sym
 }
 
-/// Derive the contextual read wrap for one symbol from the finalized
-/// `ContextualDeclarationSemantics` on that symbol's declaration. Used by
-/// the reference classifier to emit `ContextualRead { kind, .. }`.
 pub(super) fn classify_contextual_read_kind(
     data: &AnalysisData,
     sym: SymbolId,
-    kind: ContextualDeclarationSemantics,
+    kind: ContextualBindingSemantics,
 ) -> ContextualReadKind {
     let _ = (data, sym);
     match kind {
-        ContextualDeclarationSemantics::EachItem(EachItemStrategy::Accessor) => {
+        ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor) => {
             ContextualReadKind::EachItem {
                 accessor: true,
                 signal: false,
             }
         }
-        ContextualDeclarationSemantics::EachItem(EachItemStrategy::Direct) => {
+        ContextualBindingSemantics::EachItem(EachItemStrategy::Direct) => {
             ContextualReadKind::EachItem {
                 accessor: false,
                 signal: false,
             }
         }
-        ContextualDeclarationSemantics::EachItem(EachItemStrategy::Signal) => {
+        ContextualBindingSemantics::EachItem(EachItemStrategy::Signal) => {
             ContextualReadKind::EachItem {
                 accessor: false,
                 signal: true,
             }
         }
-        ContextualDeclarationSemantics::EachIndex(EachIndexStrategy::Direct) => {
+        ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct) => {
             ContextualReadKind::EachIndex { signal: false }
         }
-        ContextualDeclarationSemantics::EachIndex(EachIndexStrategy::Signal) => {
+        ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal) => {
             ContextualReadKind::EachIndex { signal: true }
         }
-        ContextualDeclarationSemantics::AwaitValue => ContextualReadKind::AwaitValue,
-        ContextualDeclarationSemantics::AwaitError => ContextualReadKind::AwaitError,
-        ContextualDeclarationSemantics::LetDirective => ContextualReadKind::LetDirective,
-        ContextualDeclarationSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
+        ContextualBindingSemantics::AwaitValue => ContextualReadKind::AwaitValue,
+        ContextualBindingSemantics::AwaitError => ContextualReadKind::AwaitError,
+        ContextualBindingSemantics::LetDirective => ContextualReadKind::LetDirective,
+        ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
             ContextualReadKind::SnippetParam {
                 accessor: true,
                 signal: false,
             }
         }
-        ContextualDeclarationSemantics::SnippetParam(SnippetParamStrategy::Signal) => {
+        ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Signal) => {
             ContextualReadKind::SnippetParam {
                 accessor: false,
                 signal: true,
@@ -503,14 +436,10 @@ struct EachContextMarker<'d, 's, 'a> {
 
 impl<'a> EachContextMarker<'_, '_, 'a> {
     fn record_declaration(&mut self, sym: SymbolId) {
-        let node_id = self.data.scoping.symbol_declaration(sym);
         self.data
             .reactivity
-            .record_symbol_declaration_root(sym, node_id);
-        self.data
-            .reactivity
-            .record_contextual_owner_v2(sym, self.owner_node);
-        self.staging.push(sym, node_id, PendingKind::EachItem);
+            .record_contextual_owner(sym, self.owner_node);
+        self.staging.push(sym, PendingKind::EachItem);
     }
 }
 
@@ -562,14 +491,10 @@ impl<'a> Visit<'a> for EachIndexMarker<'_, '_, 'a> {
         let Some(sym_id) = ident.symbol_id.get() else {
             return;
         };
-        let node_id = self.data.scoping.symbol_declaration(sym_id);
         self.data
             .reactivity
-            .record_symbol_declaration_root(sym_id, node_id);
-        self.data
-            .reactivity
-            .record_contextual_owner_v2(sym_id, self.owner_node);
-        self.staging.push(sym_id, node_id, PendingKind::EachIndex);
+            .record_contextual_owner(sym_id, self.owner_node);
+        self.staging.push(sym_id, PendingKind::EachIndex);
         if self.mark_non_reactive {
             self.staging.mark_each_non_reactive(sym_id);
         }
@@ -592,15 +517,10 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
         let Some(sym_id) = ident.symbol_id.get() else {
             return;
         };
-        let node_id = self.data.scoping.symbol_declaration(sym_id);
         self.data
             .reactivity
-            .record_symbol_declaration_root(sym_id, node_id);
-        self.data
-            .reactivity
-            .record_contextual_owner_v2(sym_id, self.owner_node);
-        self.staging
-            .push(sym_id, node_id, PendingKind::SnippetParam);
+            .record_contextual_owner(sym_id, self.owner_node);
+        self.staging.push(sym_id, PendingKind::SnippetParam);
         if !self.in_default {
             self.staging.mark_getter(sym_id);
         }
@@ -624,11 +544,6 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     }
 }
 
-/// Resolve the leaf `SymbolId`s introduced by a `{@const <pattern> = ...}`
-/// tag. The binding pattern is walked over the pre-parsed statement and
-/// each identifier name is looked up in the enclosing fragment's scope.
-/// Used by `visit_const_tag` to avoid holding a precomputed side-table
-/// (`ConstTagData::syms`) just for this consumer.
 fn collect_const_tag_syms(
     tag: &svelte_ast::ConstTag,
     ctx: &mut VisitContext<'_, '_>,

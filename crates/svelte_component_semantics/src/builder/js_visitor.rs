@@ -1,7 +1,7 @@
 use compact_str::CompactString;
-use oxc_ast::ast::*;
 use oxc_ast::AstKind;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast::ast::*;
+use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceFlags;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
@@ -11,32 +11,24 @@ use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
 use crate::symbol::SymbolOwner;
 
-/// OXC Visit that walks a JS Program and registers scopes, bindings, and
-/// references into `ComponentSemantics`.
-///
-/// Forked from OXC SemanticBuilder (v0.117.0):
-/// - Scope/binding/reference logic: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/builder.rs
-/// - Binding rules per declaration kind: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/binder.rs
-/// - Storage types: https://github.com/oxc-project/oxc/blob/crates_v0.117.0/crates/oxc_semantic/src/scoping.rs
 pub struct JsSemanticVisitor<'s, 'a> {
     semantics: &'s mut ComponentSemantics<'a>,
     scope: ScopeId,
-    /// Flag propagation for assignment targets / update expressions.
+
     current_ref_flags: ReferenceFlags,
-    /// Current binding flags — set by visit_variable_declaration, consumed by
-    /// visit_binding_identifier inside the pattern walk.
+
     binding_flags: Option<(ScopeId, SymbolFlags)>,
-    /// When true, created references are tagged as template references.
+
     template_mode: bool,
-    /// Owner tag for symbols created by this visitor.
+
     owner: SymbolOwner,
-    /// Per-scope-depth stack of unresolved references.
+
     unresolved_stack: Vec<Vec<(CompactString, oxc_syntax::reference::ReferenceId)>>,
-    /// Current canonical JS node for this traversal, matching OXC's builder.
+
     current_node_id: OxcNodeId,
-    /// Next component-wide NodeId allocated by this visitor.
+
     next_node_id: u32,
-    /// Starting component-wide NodeId for this traversal.
+
     start_node_id: u32,
 }
 
@@ -60,9 +52,6 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         }
     }
 
-    /// Create a visitor that allocates component-wide NodeIds starting from
-    /// `next_node_id`. Used for module script so its NodeIds don't collide
-    /// with instance script.
     pub fn new_with_offset(
         semantics: &'s mut ComponentSemantics<'a>,
         scope: ScopeId,
@@ -83,8 +72,6 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         }
     }
 
-    /// Create a visitor in template mode — all created references will be
-    /// tagged as template references. Symbols get `Template` owner.
     pub fn new_template(semantics: &'s mut ComponentSemantics<'a>, scope: ScopeId) -> Self {
         Self {
             semantics,
@@ -100,15 +87,12 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         }
     }
 
-    /// Allocate the next canonical component-wide NodeId.
     fn alloc_node_id(&mut self) -> OxcNodeId {
         let node_id = OxcNodeId::from_usize(self.next_node_id as usize);
         self.next_node_id += 1;
         node_id
     }
 
-    /// The max allocated OxcNodeId during traversal.
-    /// Used by the builder to compute the next component-wide starting id.
     pub(crate) fn max_node_id(&self) -> u32 {
         if self.next_node_id > self.start_node_id {
             self.next_node_id - 1
@@ -117,12 +101,10 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         }
     }
 
-    /// Enable template mode — references will be tagged as template references.
     pub fn set_template_mode(&mut self, template: bool) {
         self.template_mode = template;
     }
 
-    /// Set initial reference flags (e.g. Write for bind:value context).
     pub fn set_reference_flags(&mut self, flags: ReferenceFlags) {
         self.current_ref_flags = flags;
     }
@@ -139,8 +121,6 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         self.scope = parent;
     }
 
-    /// Try to resolve unresolved references in the current scope against its
-    /// bindings. Remaining unresolved refs are pushed to the parent level.
     fn resolve_references_for_current_scope(&mut self) {
         let unresolved = self.unresolved_stack.pop().unwrap_or_default();
         if unresolved.is_empty() {
@@ -162,20 +142,17 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         if let Some(parent_level) = self.unresolved_stack.last_mut() {
             parent_level.extend(remaining);
         } else {
-            // We're at root — dump remaining to root_unresolved
             for (name, ref_id) in remaining {
                 self.semantics.add_root_unresolved_reference(name, ref_id);
             }
         }
     }
 
-    /// Flush any remaining unresolved references at the end of traversal.
-    /// Called automatically when the visitor is dropped or after visit_program.
     pub(crate) fn flush_unresolved(&mut self) {
         while self.unresolved_stack.len() > 1 {
             self.resolve_references_for_current_scope();
         }
-        // Flush root level
+
         if let Some(root_unresolved) = self.unresolved_stack.pop() {
             for (name, ref_id) in root_unresolved {
                 if let Some(sym_id) = self.semantics.scopes.get_binding(self.scope, &name) {
@@ -208,14 +185,12 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         };
         ident.reference_id.set(Some(ref_id));
 
-        // Try immediate resolution via parent-chain walk
         if let Some(sym_id) = self.semantics.find_binding(self.scope, ident.name.as_str()) {
             self.semantics
                 .get_reference_mut(ref_id)
                 .set_symbol_id(sym_id);
             self.semantics.add_resolved_reference(sym_id, ref_id);
         } else {
-            // Defer to scope-exit resolution (handles forward references)
             if let Some(current_level) = self.unresolved_stack.last_mut() {
                 current_level.push((CompactString::from(ident.name.as_str()), ref_id));
             }
@@ -224,6 +199,60 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
 
     fn var_scope(&self) -> ScopeId {
         self.semantics.find_function_scope(self.scope)
+    }
+
+    fn declare_implicit_legacy_reactive_bindings(&mut self, program: &Program<'a>) {
+        for stmt in &program.body {
+            let Statement::LabeledStatement(labeled) = stmt else {
+                continue;
+            };
+            if labeled.label.name != "$" {
+                continue;
+            }
+            let Statement::ExpressionStatement(es) = &labeled.body else {
+                continue;
+            };
+            let Some(assign) = unwrap_assignment_expression(&es.expression) else {
+                continue;
+            };
+            if !matches!(assign.operator, AssignmentOperator::Assign) {
+                continue;
+            }
+            match &assign.left {
+                AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                    self.declare_implicit_target_ident(id.as_ref());
+                }
+                AssignmentTarget::ObjectAssignmentTarget(obj) => {
+                    for prop in &obj.properties {
+                        if let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
+                            shorthand,
+                        ) = prop
+                        {
+                            self.declare_implicit_target_ident(&shorthand.binding);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn declare_implicit_target_ident(&mut self, id: &IdentifierReference<'a>) {
+        let name = id.name.as_str();
+        if name.starts_with('$') {
+            return;
+        }
+        if self.semantics.find_binding(self.scope, name).is_some() {
+            return;
+        }
+        self.semantics.add_binding(
+            self.scope,
+            name,
+            id.span,
+            SymbolFlags::empty(),
+            id.node_id.get(),
+            SymbolOwner::Synthetic,
+        );
     }
 }
 
@@ -244,37 +273,30 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             .unwrap_or(OxcNodeId::DUMMY);
     }
 
-    // =========================================================
-    // Program — flush unresolved after traversal
-    // =========================================================
-
     fn visit_program(&mut self, program: &Program<'a>) {
         walk::walk_program(self, program);
+        if matches!(self.owner, SymbolOwner::InstanceScript) {
+            self.declare_implicit_legacy_reactive_bindings(program);
+        }
         self.flush_unresolved();
     }
 
-    // =========================================================
-    // Scopes
-    // =========================================================
-
     fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
-        // Function declaration: bind name in current (parent) scope
-        if func.is_declaration() {
-            if let Some(ident) = &func.id {
-                self.binding_flags = Some((self.scope, SymbolFlags::Function));
-                self.visit_binding_identifier(ident);
-            }
+        if func.is_declaration()
+            && let Some(ident) = &func.id
+        {
+            self.binding_flags = Some((self.scope, SymbolFlags::Function));
+            self.visit_binding_identifier(ident);
         }
 
         let parent = self.enter_scope(flags | ScopeFlags::Function);
         func.set_scope_id(self.scope);
 
-        // Function expression: bind name in own scope (for recursion)
-        if func.is_expression() {
-            if let Some(ident) = &func.id {
-                self.binding_flags = Some((self.scope, SymbolFlags::Function));
-                self.visit_binding_identifier(ident);
-            }
+        if func.is_expression()
+            && let Some(ident) = &func.id
+        {
+            self.binding_flags = Some((self.scope, SymbolFlags::Function));
+            self.visit_binding_identifier(ident);
         }
 
         walk::walk_function(self, func, flags);
@@ -289,24 +311,21 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     }
 
     fn visit_class(&mut self, class: &Class<'a>) {
-        // Class declaration: bind name in current scope
-        if class.is_declaration() {
-            if let Some(ident) = &class.id {
-                self.binding_flags = Some((self.scope, SymbolFlags::Class));
-                self.visit_binding_identifier(ident);
-            }
+        if class.is_declaration()
+            && let Some(ident) = &class.id
+        {
+            self.binding_flags = Some((self.scope, SymbolFlags::Class));
+            self.visit_binding_identifier(ident);
         }
 
-        // Class body gets its own StrictMode scope
         let parent = self.enter_scope(ScopeFlags::StrictMode);
         class.scope_id.set(Some(self.scope));
 
-        // Class expression: bind name in own scope
-        if class.is_expression() {
-            if let Some(ident) = &class.id {
-                self.binding_flags = Some((self.scope, SymbolFlags::Class));
-                self.visit_binding_identifier(ident);
-            }
+        if class.is_expression()
+            && let Some(ident) = &class.id
+        {
+            self.binding_flags = Some((self.scope, SymbolFlags::Class));
+            self.visit_binding_identifier(ident);
         }
 
         walk::walk_class(self, class);
@@ -476,10 +495,6 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         self.leave_scope(parent);
     }
 
-    // =========================================================
-    // Bindings
-    // =========================================================
-
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
         let (scope, flags) = match decl.kind {
             VariableDeclarationKind::Var => (self.var_scope(), SymbolFlags::FunctionScopedVariable),
@@ -538,7 +553,6 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         self.binding_flags = None;
     }
 
-    /// The leaf binding visitor — all binding patterns eventually reach here.
     fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
         let kind = AstKind::BindingIdentifier(self.alloc(ident));
         self.enter_node(kind);
@@ -562,10 +576,6 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         self.leave_node(kind);
     }
 
-    // =========================================================
-    // References
-    // =========================================================
-
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let kind = AstKind::IdentifierReference(self.alloc(ident));
         self.enter_node(kind);
@@ -573,10 +583,6 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         self.visit_span(&ident.span);
         self.leave_node(kind);
     }
-
-    // =========================================================
-    // Flag propagation
-    // =========================================================
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
         if !expr.operator.is_assign() {
@@ -647,6 +653,19 @@ fn simple_assignment_target_member_root_symbol(
             expression_root_symbol(semantics, &m.object)
         }
         _ => None,
+    }
+}
+
+fn unwrap_assignment_expression<'r, 'a>(
+    expr: &'r Expression<'a>,
+) -> Option<&'r AssignmentExpression<'a>> {
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::AssignmentExpression(assign) => return Some(assign),
+            Expression::ParenthesizedExpression(p) => current = &p.expression,
+            _ => return None,
+        }
     }
 }
 

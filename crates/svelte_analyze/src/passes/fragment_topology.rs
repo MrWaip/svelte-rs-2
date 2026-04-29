@@ -222,10 +222,10 @@ fn visit_slot(
 
 fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {
     for attr in attrs {
-        if let Attribute::StringAttribute(attr) = attr {
-            if attr.name == "name" {
-                return attr.value_span.source_text(source);
-            }
+        if let Attribute::StringAttribute(attr) = attr
+            && attr.name == "name"
+        {
+            return attr.value_span.source_text(source);
         }
     }
     "default"

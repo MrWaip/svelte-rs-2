@@ -143,8 +143,7 @@ fn start_tag_attributes() {
 
 #[test]
 fn attribute_tokens_capture_full_source_spans() {
-    let source =
-        "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
+    let source = "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
     let TokenType::StartTag(start_tag) = &tokens[0].token_type else {

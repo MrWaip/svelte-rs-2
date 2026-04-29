@@ -8,23 +8,22 @@ use super::model::ComponentTransformer;
 pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
     match expr {
         Expression::CallExpression(call) => {
-            if let Expression::Identifier(id) = &call.callee {
-                if id.name.as_str() == "$inspect" {
-                    return true;
-                }
+            if let Expression::Identifier(id) = &call.callee
+                && id.name.as_str() == "$inspect"
+            {
+                return true;
             }
             if let Expression::StaticMemberExpression(member) = &call.callee {
-                if member.property.name.as_str() == "with" {
-                    if let Expression::CallExpression(inner) = &member.object {
-                        if let Expression::Identifier(id) = &inner.callee {
-                            return id.name.as_str() == "$inspect";
-                        }
-                    }
+                if member.property.name.as_str() == "with"
+                    && let Expression::CallExpression(inner) = &member.object
+                    && let Expression::Identifier(id) = &inner.callee
+                {
+                    return id.name.as_str() == "$inspect";
                 }
-                if member.property.name.as_str() == "trace" {
-                    if let Expression::Identifier(id) = &member.object {
-                        return id.name.as_str() == "$inspect";
-                    }
+                if member.property.name.as_str() == "trace"
+                    && let Expression::Identifier(id) = &member.object
+                {
+                    return id.name.as_str() == "$inspect";
                 }
             }
             false
@@ -34,14 +33,12 @@ pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
 }
 
 pub(crate) fn is_inspect_trace_call(expr: &Expression) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        if let Expression::StaticMemberExpression(member) = &call.callee {
-            if member.property.name.as_str() == "trace" {
-                if let Expression::Identifier(id) = &member.object {
-                    return id.name.as_str() == "$inspect";
-                }
-            }
-        }
+    if let Expression::CallExpression(call) = expr
+        && let Expression::StaticMemberExpression(member) = &call.callee
+        && member.property.name.as_str() == "trace"
+        && let Expression::Identifier(id) = &member.object
+    {
+        return id.name.as_str() == "$inspect";
     }
     false
 }
@@ -113,78 +110,73 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return None;
         };
 
-        if let Expression::StaticMemberExpression(member) = &outer_call.callee {
-            if member.property.name.as_str() == "with" {
-                if let Expression::CallExpression(inner_call) = &member.object {
-                    if let Expression::Identifier(id) = &inner_call.callee {
-                        if matches!(id.name.as_str(), "$inspect" | "$.inspect") {
-                            let Expression::CallExpression(outer_call) = node else {
-                                unreachable!()
-                            };
+        if let Expression::StaticMemberExpression(member) = &outer_call.callee
+            && member.property.name.as_str() == "with"
+            && let Expression::CallExpression(inner_call) = &member.object
+            && let Expression::Identifier(id) = &inner_call.callee
+            && matches!(id.name.as_str(), "$inspect" | "$.inspect")
+        {
+            let Expression::CallExpression(outer_call) = node else {
+                unreachable!()
+            };
 
-                            let cb = if outer_call.arguments.is_empty() {
-                                self.b.rid_expr("undefined")
-                            } else {
-                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                                std::mem::swap(&mut outer_call.arguments[0], &mut dummy);
-                                dummy.into_expression()
-                            };
+            let cb = if outer_call.arguments.is_empty() {
+                self.b.rid_expr("undefined")
+            } else {
+                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                std::mem::swap(&mut outer_call.arguments[0], &mut dummy);
+                dummy.into_expression()
+            };
 
-                            let Expression::StaticMemberExpression(member) =
-                                self.b.move_expr(&mut outer_call.callee)
-                            else {
-                                unreachable!()
-                            };
-                            let member = member.unbox();
-                            let Expression::CallExpression(inner_call) = member.object else {
-                                unreachable!()
-                            };
-                            let mut inner_call = inner_call.unbox();
+            let Expression::StaticMemberExpression(member) =
+                self.b.move_expr(&mut outer_call.callee)
+            else {
+                unreachable!()
+            };
+            let member = member.unbox();
+            let Expression::CallExpression(inner_call) = member.object else {
+                unreachable!()
+            };
+            let mut inner_call = inner_call.unbox();
 
-                            let thunk = {
-                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                                std::mem::swap(&mut inner_call.arguments[0], &mut dummy);
-                                dummy.into_expression()
-                            };
+            let thunk = {
+                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                std::mem::swap(&mut inner_call.arguments[0], &mut dummy);
+                dummy.into_expression()
+            };
 
-                            let inspector = self.build_inspect_arrow(cb);
-                            return Some(
-                                self.b.call_expr(
-                                    "$.inspect",
-                                    [Arg::Expr(thunk), Arg::Expr(inspector)],
-                                ),
-                            );
-                        }
-                    }
-                }
-            }
+            let inspector = self.build_inspect_arrow(cb);
+            return Some(
+                self.b
+                    .call_expr("$.inspect", [Arg::Expr(thunk), Arg::Expr(inspector)]),
+            );
         }
 
-        if let Expression::Identifier(id) = &outer_call.callee {
-            if id.name.as_str() == "$inspect" {
-                let Expression::CallExpression(call) = node else {
-                    unreachable!()
-                };
-                let inspect_args: Vec<Expression<'a>> = call
-                    .arguments
-                    .drain(..)
-                    .map(|a| a.into_expression())
-                    .collect();
+        if let Expression::Identifier(id) = &outer_call.callee
+            && id.name.as_str() == "$inspect"
+        {
+            let Expression::CallExpression(call) = node else {
+                unreachable!()
+            };
+            let inspect_args: Vec<Expression<'a>> = call
+                .arguments
+                .drain(..)
+                .map(|a| a.into_expression())
+                .collect();
 
-                let thunk = self.build_inspect_thunk(inspect_args);
-                let console_log = self.b.static_member_expr(self.b.rid_expr("console"), "log");
-                let log_call = self
-                    .b
-                    .call_expr_callee(console_log, [Arg::Spread(self.b.rid_expr("$$args"))]);
-                let inspector = self
-                    .b
-                    .arrow_expr(self.b.rest_params("$$args"), [self.b.expr_stmt(log_call)]);
+            let thunk = self.build_inspect_thunk(inspect_args);
+            let console_log = self.b.static_member_expr(self.b.rid_expr("console"), "log");
+            let log_call = self
+                .b
+                .call_expr_callee(console_log, [Arg::Spread(self.b.rid_expr("$$args"))]);
+            let inspector = self
+                .b
+                .arrow_expr(self.b.rest_params("$$args"), [self.b.expr_stmt(log_call)]);
 
-                return Some(self.b.call_expr(
-                    "$.inspect",
-                    [Arg::Expr(thunk), Arg::Expr(inspector), Arg::Bool(true)],
-                ));
-            }
+            return Some(self.b.call_expr(
+                "$.inspect",
+                [Arg::Expr(thunk), Arg::Expr(inspector), Arg::Bool(true)],
+            ));
         }
 
         None
@@ -239,7 +231,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return None;
         }
-        // Wrap only when at least one arg might contain state (not a trivially-static literal)
+
         let has_potential_state = call.arguments.iter().any(|arg| {
             !matches!(
                 arg,
@@ -252,7 +244,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if !has_potential_state {
             return None;
         }
-        // Rewrite: console.log(...$.log_if_contains_state("method", ...original_args))
+
         let method_str = method_name.to_string();
         let Expression::CallExpression(call) = node else {
             unreachable!()

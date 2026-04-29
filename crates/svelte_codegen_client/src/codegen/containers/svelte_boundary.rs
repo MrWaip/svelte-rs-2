@@ -12,8 +12,8 @@ fn const_tag_bindings(
     ctx: &crate::context::Ctx<'_>,
     sem: &ConstTagBlockSemantics,
 ) -> (Vec<oxc_semantic::SymbolId>, bool) {
-    use oxc_ast::ast::BindingPattern;
     use oxc_ast::AstKind;
+    use oxc_ast::ast::BindingPattern;
     let Some(AstKind::VariableDeclaration(decl)) =
         ctx.query.view.scoping().js_kind(sem.decl_node_id)
     else {
@@ -173,12 +173,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     if let Some(Statement::VariableDeclaration(decl)) =
                         self.ctx.state.parsed.stmt(const_tag.decl.id())
+                        && let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref())
                     {
-                        if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref())
-                        {
-                            let cloned = self.ctx.b.clone_expr(init);
-                            set.push((names.clone(), cloned));
-                        }
+                        let cloned = self.ctx.b.clone_expr(init);
+                        set.push((names.clone(), cloned));
                     }
                 }
                 cloned_exprs_per_snippet.push(set);

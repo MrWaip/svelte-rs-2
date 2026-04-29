@@ -1,27 +1,12 @@
-//! Dynamism classification — single source of truth for «should a template
-//! fragment / attribute / component be wrapped in reactive code at codegen
-//! time?». Reads `ReactivitySemantics` per-reference and does not depend on
-//! cached flags on `ExpressionInfo`; `ExprRole` on `ExpressionInfo` is
-//! re-synthesised from this storage by `populate_expr_roles`.
-//!
-//! Four disjoint BitSets because the consumer questions are semantically
-//! different even when they touch the same NodeId:
-//! - `is_dynamic_node(id)` — fragment item needs `$.template_effect(...)` wrap.
-//! - `is_dynamic_attr(id)` — element attribute needs per-attr effect wrap.
-//! - `is_dynamic_component(id)` — component call site needs `$.component(...)`.
-//! - `has_state_attr(id)` — attribute references anything non-plain; used by
-//!   legacy slot prop getter insertion and component props that care about
-//!   "any state" rather than just "dynamic".
-
 use svelte_ast::{
-    Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SlotElementLegacy, SVELTE_COMPONENT,
+    Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SVELTE_COMPONENT, SlotElementLegacy,
 };
 use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
-    AnalysisData, DeclarationSemantics, ExpressionInfo, ExpressionKind, ParentKind,
-    PropDeclarationKind, PropDeclarationSemantics, ReactivitySemantics,
+    AnalysisData, BindingSemantics, ExpressionInfo, ExpressionKind, ParentKind, PropBindingKind,
+    PropBindingSemantics, ReactivitySemantics,
 };
 use crate::types::node_table::NodeBitSet;
 use crate::walker::{TemplateVisitor, VisitContext};
@@ -108,10 +93,10 @@ impl TemplateVisitor for DynamismVisitor {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
-        if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
-            if let Some(el_id) = ctx.data.nearest_element(attr.id()) {
-                ctx.data.elements.flags.needs_ref.insert(el_id);
-            }
+        if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref())
+            && let Some(el_id) = ctx.data.nearest_element(attr.id())
+        {
+            ctx.data.elements.flags.needs_ref.insert(el_id);
         }
     }
 
@@ -119,10 +104,11 @@ impl TemplateVisitor for DynamismVisitor {
         let data = &*ctx.data;
         let uses_runes = data.uses_runes();
         let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
-        if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
-            if uses_runes && is_reactive_component_binding(data, sym_id) {
-                ctx.data.dynamism.mark_dynamic_component(cn.id);
-            }
+        if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name)
+            && uses_runes
+            && is_reactive_component_binding(data, sym_id)
+        {
+            ctx.data.dynamism.mark_dynamic_component(cn.id);
         }
         if uses_runes && cn.name.contains('.') {
             ctx.data.dynamism.mark_dynamic_component(cn.id);
@@ -162,16 +148,14 @@ impl TemplateVisitor for DynamismVisitor {
 
             if classified_dynamic {
                 ctx.data.dynamism.mark_dynamic_attr(attr_id);
-                if !in_component {
-                    if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
-                        ctx.data.elements.flags.needs_ref.insert(el_id);
-                        if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
-                            ctx.data
-                                .elements
-                                .flags
-                                .has_dynamic_class_directives
-                                .insert(el_id);
-                        }
+                if !in_component && let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
+                    ctx.data.elements.flags.needs_ref.insert(el_id);
+                    if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
+                        ctx.data
+                            .elements
+                            .flags
+                            .has_dynamic_class_directives
+                            .insert(el_id);
                     }
                 }
             }
@@ -201,35 +185,30 @@ fn classify_template_info(info: &ExpressionInfo, data: &AnalysisData<'_>) -> boo
     )
 }
 
-/// A symbol is "dynamic" when a template-level read of it may observe different
-/// values across evaluations (so the surrounding expression must be wrapped in
-/// reactive code).
 pub(crate) fn is_symbol_dynamic(
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
     sym_id: SymbolId,
 ) -> bool {
-    use crate::types::data::ConstDeclarationSemantics;
+    use crate::types::data::ConstBindingSemantics;
     if scoping.is_each_index_non_dynamic(sym_id) {
         return false;
     }
-    let decl = reactivity.declaration_semantics(scoping.symbol_declaration(sym_id));
+    let decl = reactivity.binding_semantics(sym_id);
     match decl {
-        DeclarationSemantics::State(_)
-        | DeclarationSemantics::Prop(_)
-        | DeclarationSemantics::LegacyBindableProp(_)
-        | DeclarationSemantics::Store(_)
-        | DeclarationSemantics::Contextual(_)
-        | DeclarationSemantics::RuntimeRune { .. } => true,
-        DeclarationSemantics::Derived(d) => d.reactive,
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag { reactive, .. }) => {
-            reactive
-        }
-        DeclarationSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        DeclarationSemantics::NonReactive
-        | DeclarationSemantics::Unresolved
-        | DeclarationSemantics::OptimizedRune(_)
-        | DeclarationSemantics::LetCarrier { .. } => !scoping.is_component_top_level_symbol(sym_id),
+        BindingSemantics::State(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. } => true,
+        BindingSemantics::Derived(d) => d.reactive,
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
+        BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
+        BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved
+        | BindingSemantics::OptimizedRune(_) => !scoping.is_component_top_level_symbol(sym_id),
     }
 }
 
@@ -285,9 +264,9 @@ fn is_dynamic_element_attr(
     }
     attr_symbols(info, scoping).any(|sym_id| {
         matches!(
-            reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
-            DeclarationSemantics::Prop(PropDeclarationSemantics {
-                kind: PropDeclarationKind::NonSource,
+            reactivity.binding_semantics(sym_id),
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::NonSource,
                 ..
             })
         ) || is_symbol_dynamic(scoping, reactivity, sym_id)
@@ -322,41 +301,37 @@ fn attr_symbols<'a>(
 }
 
 fn is_unified_prop_source(
-    scoping: &ComponentScoping,
+    _scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
     sym_id: SymbolId,
 ) -> bool {
     matches!(
-        reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
-        DeclarationSemantics::Prop(PropDeclarationSemantics {
-            kind: PropDeclarationKind::Source { .. },
+        reactivity.binding_semantics(sym_id),
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. },
             ..
         })
     )
 }
 
 fn is_unified_plain_symbol(
-    scoping: &ComponentScoping,
+    _scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
     sym_id: SymbolId,
 ) -> bool {
     matches!(
-        reactivity.declaration_semantics(scoping.symbol_declaration(sym_id)),
-        DeclarationSemantics::NonReactive | DeclarationSemantics::Const(_)
+        reactivity.binding_semantics(sym_id),
+        BindingSemantics::NonReactive | BindingSemantics::Const(_)
     )
 }
 
 fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool {
     !matches!(
-        data.declaration_semantics(data.scoping.symbol_declaration(sym)),
-        DeclarationSemantics::NonReactive | DeclarationSemantics::Unresolved,
+        data.binding_semantics(sym),
+        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
     )
 }
 
-/// After the template walker populated `DynamismData`, apply the async-blocker
-/// rule and re-derive `ExprRole` on `ExpressionInfo` from the bitsets. Runs
-/// once per analyze and replaces the v1 `classify_expression_dynamicity` +
-/// `mark_blocked_expressions_dynamic` pair.
 pub(crate) fn populate_expr_roles(data: &mut AnalysisData<'_>) {
     if data.script.blocker_data.has_async {
         let blocked_node_ids: Vec<NodeId> = data

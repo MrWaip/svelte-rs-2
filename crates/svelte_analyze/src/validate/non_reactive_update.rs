@@ -1,6 +1,6 @@
 use oxc_ast::ast::{ArrowFunctionExpression, Function};
-use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_semantic::{ScopeFlags, SymbolId};
 use rustc_hash::FxHashSet;
 use svelte_ast::{Attribute, Component, ConcatPart, FragmentId, Node, StyleDirectiveValue};
@@ -318,10 +318,7 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
         if self.warned.contains(&sym_id) {
             return;
         }
-        // `is_mutated_any` catches both JS-side writes (`x = ...`) and
-        // template-side member mutations (`bind:value={x.y}` → `x` is
-        // member_mutated). Both are legitimate triggers for the
-        // non-reactive-update warning when the declaration is plain.
+
         if !self.data.scoping.is_component_top_level_symbol(sym_id)
             || is_reactive_binding(self.data, sym_id)
             || !self.data.scoping.is_mutated_any(sym_id)
@@ -358,13 +355,10 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
     }
 }
 
-/// True when `sym` refers to any reactive source (including runes that
-/// have been optimized to a plain `let` — they're still reassignable from
-/// the outside, so mutating them isn't a non-reactive-update mistake).
 fn is_reactive_binding(data: &AnalysisData<'_>, sym: crate::scope::SymbolId) -> bool {
-    use crate::types::data::DeclarationSemantics;
+    use crate::types::data::BindingSemantics;
     !matches!(
-        data.declaration_semantics(data.scoping.symbol_declaration(sym)),
-        DeclarationSemantics::NonReactive | DeclarationSemantics::Unresolved,
+        data.binding_semantics(sym),
+        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
     )
 }

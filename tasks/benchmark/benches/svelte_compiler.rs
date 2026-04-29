@@ -1,6 +1,6 @@
 use std::fs::read_to_string;
 
-use benchmark::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use benchmark::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glob::glob;
 
 fn bench_svelte_compiler(criterion: &mut Criterion) {

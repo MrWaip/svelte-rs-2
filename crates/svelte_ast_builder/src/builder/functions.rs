@@ -121,16 +121,14 @@ impl<'a> Builder<'a> {
     }
 
     pub fn thunk(&self, expr: Expression<'a>) -> Expression<'a> {
-        if let Expression::CallExpression(call) = &expr {
-            if call.arguments.is_empty()
-                && !call.optional
-                && matches!(&call.callee, Expression::Identifier(_))
-            {
-                if let Expression::CallExpression(call) = expr {
-                    let call = call.unbox();
-                    return call.callee;
-                }
-            }
+        if let Expression::CallExpression(call) = &expr
+            && call.arguments.is_empty()
+            && !call.optional
+            && matches!(&call.callee, Expression::Identifier(_))
+            && let Expression::CallExpression(call) = expr
+        {
+            let call = call.unbox();
+            return call.callee;
         }
         self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
     }

@@ -1,11 +1,6 @@
-//! Extract `ParsedCeConfig` from an already-parsed OXC ObjectExpression AST node.
-
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
 use svelte_span::Span;
 
-/// Extract a `ParsedCeConfig` from an already-parsed ObjectExpression AST node.
-/// `offset` is the source offset where the expression was parsed, used to
-/// adjust OXC-relative spans to absolute source positions.
 pub(crate) fn extract_ce_config_from_expr(
     expr: &Expression<'_>,
     offset: u32,
@@ -37,10 +32,10 @@ pub(crate) fn extract_ce_config_from_expr(
                 }
             }
             "shadow" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    if lit.value.as_str() == "none" {
-                        config.shadow = svelte_parser::CeShadowMode::None;
-                    }
+                if let Expression::StringLiteral(lit) = &prop.value
+                    && lit.value.as_str() == "none"
+                {
+                    config.shadow = svelte_parser::CeShadowMode::None;
                 }
             }
             "props" => {

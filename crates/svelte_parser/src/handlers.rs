@@ -9,7 +9,7 @@ use svelte_span::Span;
 
 use crate::scanner::{self, token};
 use crate::{
-    is_component_name, pop_children, push_child, AwaitPhase, IfBlockEntry, Parser, StackEntry,
+    AwaitPhase, IfBlockEntry, Parser, StackEntry, is_component_name, pop_children, push_child,
 };
 
 impl<'a> Parser<'a> {
@@ -22,7 +22,6 @@ impl<'a> Parser<'a> {
     ) {
         let tag_name = tag.name_span.source_text(self.source);
 
-        // Void elements cannot have closing tags
         if scanner::is_void(tag_name) {
             self.recover(Diagnostic::void_element_invalid_content(span));
             let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
@@ -33,14 +32,12 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        // Try to find a matching element in the stack
         let match_idx = entry_stack
             .iter()
             .rposition(|e| matches!(e, StackEntry::Element(el) if el.name == tag_name));
 
         match match_idx {
             None => {
-                // No matching open tag — emit error node
                 self.recover(Diagnostic::no_element_to_close(span));
                 let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
                     id: NodeId(0),
@@ -49,7 +46,6 @@ impl<'a> Parser<'a> {
                 push_child(children_stack, id);
             }
             Some(idx) => {
-                // Auto-close any intervening entries
                 let entries_to_close = entry_stack.len() - 1 - idx;
                 for _ in 0..entries_to_close {
                     let entry = entry_stack
@@ -58,7 +54,6 @@ impl<'a> Parser<'a> {
                     self.auto_close_entry(entry, children_stack);
                 }
 
-                // Now close the matching element
                 let entry = entry_stack
                     .pop()
                     .expect("matching element at idx guarantees stack is non-empty");
@@ -111,7 +106,6 @@ impl<'a> Parser<'a> {
         let consequent_children = pop_children(children_stack);
 
         if else_tag.elseif {
-            // {:else if expr}
             let valid = entry_stack
                 .last()
                 .is_some_and(|e| matches!(e, StackEntry::IfBlock(_)));
@@ -123,7 +117,7 @@ impl<'a> Parser<'a> {
             let entry = entry_stack
                 .last_mut()
                 .expect("valid check above guarantees non-empty stack");
-            let StackEntry::IfBlock(ref mut ib) = entry else {
+            let StackEntry::IfBlock(ib) = entry else {
                 unreachable!()
             };
             ib.consequent = Some(consequent_children);
@@ -143,15 +137,14 @@ impl<'a> Parser<'a> {
             }));
             children_stack.push(vec![]);
         } else {
-            // {:else} — can appear in IfBlock or EachBlock
             match entry_stack.last_mut() {
-                Some(StackEntry::IfBlock(ref mut ib)) => {
+                Some(StackEntry::IfBlock(ib)) => {
                     ib.consequent = Some(consequent_children);
                     ib.in_alternate = true;
                     ib.span = ib.span.merge(&span);
                     children_stack.push(vec![]);
                 }
-                Some(StackEntry::EachBlock(ref mut eb)) => {
+                Some(StackEntry::EachBlock(eb)) => {
                     eb.body_children = Some(consequent_children);
                     eb.in_fallback = true;
                     children_stack.push(vec![]);
@@ -183,7 +176,6 @@ impl<'a> Parser<'a> {
         let last_children = pop_children(children_stack);
         let merged_span = eb.span.merge(&span);
 
-        // If {:else} was encountered, body_children were saved and last_children are fallback
         let (body_children, fallback) = if eb.in_fallback {
             let body = eb.body_children.unwrap_or_default();
             let fb = self.new_fragment(FragmentRole::EachFallback, last_children);
@@ -283,9 +275,6 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        // Detect duplicate clauses before touching the children stack.
-        // Duplicate :then = a then clause was already started or completed.
-        // Duplicate :catch = a catch clause was already started.
         let is_dup = match clause_tag.clause {
             token::AwaitClause::Then => {
                 matches!(ab.phase, AwaitPhase::Then) || ab.then_children.is_some()
@@ -306,7 +295,6 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        // Save current children to the appropriate phase bucket.
         let current_children = pop_children(children_stack);
         match ab.phase {
             AwaitPhase::Pending => {
@@ -315,8 +303,7 @@ impl<'a> Parser<'a> {
             AwaitPhase::Then => {
                 ab.then_children = Some(current_children);
             }
-            // {:then} after {:catch} with no prior {:then} — out-of-order clauses.
-            // Save the catch content so handle_end_await_tag can still produce a catch fragment.
+
             AwaitPhase::Catch => {
                 ab.catch_children = Some(current_children);
             }
@@ -333,7 +320,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Push new children list for the next phase.
         children_stack.push(vec![]);
     }
 
@@ -353,7 +339,6 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        // Save current children to the appropriate phase
         let current_children = pop_children(children_stack);
         let merged_span = ab.span.merge(&span);
 
@@ -367,7 +352,7 @@ impl<'a> Parser<'a> {
                     .pending_children
                     .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
                 let then = self.new_fragment(FragmentRole::AwaitThen, current_children);
-                // catch_children is Some when {:catch} preceded {:then} (out-of-order).
+
                 let catch = ab
                     .catch_children
                     .map(|c| self.new_fragment(FragmentRole::AwaitCatch, c));
@@ -399,7 +384,6 @@ impl<'a> Parser<'a> {
         push_child(children_stack, id);
     }
 
-    /// Auto-close all remaining open entries at EOF.
     pub(crate) fn auto_close_entries(
         &mut self,
         entry_stack: &mut Vec<StackEntry>,
@@ -410,7 +394,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Auto-close a single entry, producing a node with span extended to end of source.
     pub(crate) fn auto_close_entry(
         &mut self,
         entry: StackEntry,
@@ -477,12 +460,7 @@ impl<'a> Parser<'a> {
                     alternate,
                 }));
 
-                if ib.elseif {
-                    push_child(children_stack, id);
-                    // Continue unwinding parent if-blocks
-                } else {
-                    push_child(children_stack, id);
-                }
+                push_child(children_stack, id);
             }
             StackEntry::EachBlock(eb) => {
                 self.recover(Diagnostic::unclosed_node(eb.span));
@@ -591,14 +569,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Close the if-block chain. Handles nested else-if blocks.
     pub(crate) fn close_if_chain(
         &mut self,
         end_span: Span,
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<NodeId>>,
     ) {
-        // Process from innermost to outermost if-block
         loop {
             let Some(entry) = entry_stack.pop() else {
                 self.recover(Diagnostic::no_if_block_to_close(end_span));
@@ -614,11 +590,9 @@ impl<'a> Parser<'a> {
             let last_children = pop_children(children_stack);
 
             let (consequent, alternate) = if let Some(cons) = ib.consequent {
-                // We had {:else} or {:else if}, so cons = consequent, last_children = alternate
                 let alt = self.new_fragment(FragmentRole::IfAlternate, last_children);
                 (cons, Some(alt))
             } else {
-                // No else branch, last_children = consequent
                 (last_children, None)
             };
 
@@ -635,10 +609,8 @@ impl<'a> Parser<'a> {
             }));
 
             if ib.elseif {
-                // This is an else-if: it becomes the alternate of the parent if-block.
                 push_child(children_stack, id);
 
-                // Check if parent entry is also an IfBlock — if so, continue the loop.
                 if entry_stack
                     .last()
                     .is_some_and(|e| matches!(e, StackEntry::IfBlock(_)))
@@ -648,7 +620,6 @@ impl<'a> Parser<'a> {
                     break;
                 }
             } else {
-                // This is the outermost {#if}
                 push_child(children_stack, id);
                 break;
             }

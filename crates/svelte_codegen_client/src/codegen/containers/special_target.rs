@@ -37,14 +37,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-    // analyze/passes/element_flags.rs настраивает event_handler_mode только для
-    // обычных Element. Для svelte:body/window/document эта таблица не заполнена,
-    // поэтому emit_event_attribute через emit_dom_attributes просто выходит в
-    // early-return. Legacy template/svelte_body.rs вычисляет (capture/passive)
-    // локально из имени события — повторяем здесь как временный мост.
-    // Долг: добавить visit_svelte_body/window/document в analyze element_flags
-    // и убрать спец-эмиттер в пользу единого emit_dom_attributes.
     fn emit_special_target_with_owner(
         &mut self,
         state: &mut EmitState<'a>,
@@ -93,11 +85,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(String::new())
     }
 
-    // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-    // Дублирует legacy gen_window_binding/gen_document_binding потому что
-    // общие helpers (build_binding_getter/setter, gen_bind_property_stmt) живут
-    // только в template/bind.rs. Перенос helpers в codegen/attributes/bind_directive
-    // — отдельная задача (чтобы использовать emit_bind_directive-машинерию).
     fn emit_special_target_bind(
         &mut self,
         state: &mut EmitState<'a>,
@@ -241,9 +228,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )
     }
 
-    // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-    // Дублирует логику emit_event_attribute для случая, когда
-    // analyze::event_handler_mode(attr_id) отсутствует (special-target).
     fn emit_special_target_event_attr(
         &mut self,
         state: &mut EmitState<'a>,

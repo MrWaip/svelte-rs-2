@@ -1,11 +1,3 @@
-//! `{#each}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `EachBlock` — record its
-//! `BlockSemantics::Each(...)` payload — then recurse into body /
-//! fallback fragments through the same walker so nested blocks of every
-//! migrated kind are visited inside a single template walk.
-
 use super::super::{
     BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
     EachIndexKind, EachItemKind, EachKeyKind,
@@ -19,8 +11,6 @@ use smallvec::SmallVec;
 use svelte_ast::{Attribute, EachBlock, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, SymbolId};
 
-/// Populate `BlockSemantics::Each` for this block and recurse into its
-/// body / fallback fragments.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     let context_declarator = block
         .context
@@ -38,7 +28,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
 
     let collection_expr = ctx.parsed.expr(block.expression.id());
 
-    // Item binding
     let (item, item_sym) = match context_declarator {
         None => (EachItemKind::NoBinding, None),
         Some(d) => match &d.id {
@@ -83,7 +72,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     let introduced =
         ctx.collect_each_introduced_symbols(block, item_sym, pattern_fallback, index_sym);
 
-    // Index-usage split.
     let index = match index_sym {
         Some(sym) => {
             ctx.store.record_each_index_sym(sym, block.id);
@@ -162,8 +150,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         each_flags |= EachFlags::ANIMATED;
     }
 
-    // Recurse through body/fallback while this each sits on the walker's
-    // bind:group stack, so a nested `bind:group` attributes back to us.
     ctx.push_each_frame(block.id, introduced);
     ctx.visit_fragment(block.body);
     if let Some(fb) = block.fallback {
@@ -192,9 +178,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     );
 }
 
-/// Walk the collection expression to its root identifier through member
-/// accesses and parentheses, then ask reactivity whether the root is a
-/// prop-source getter. Non-identifier roots → `Regular`.
 fn collection_kind_of<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> EachCollectionKind {
     let mut current = expr;
     loop {
@@ -218,24 +201,11 @@ fn collection_kind_of<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> EachColle
     }
 }
 
-/// Collection expression facts gathered in a single walk:
-///
-/// - `has_external` — some reference resolves to a symbol declared in a
-///   function scope shallower than the each-body scope.
-/// - `uses_store` — some reference is classified as a store op by
-///   `reactivity_semantics`.
-/// - `has_await` — an `await` literal appears in the expression.
-/// - `blockers` — sorted, de-duplicated blocker indices from
-///   `BlockerData::symbol_blockers` for every ref.
 fn collection_expression_facts<'a>(
     ctx: &Ctx<'_, 'a>,
     expr: &Expression<'a>,
     body_scope: oxc_syntax::scope::ScopeId,
 ) -> CollectionExprFacts {
-    // Each body lowers as an arrow callback; its bindings sit one
-    // function level deeper than `body_scope` at analyze time. Mirror
-    // the reference compiler's "external = binding.function_depth <
-    // emit_scope.function_depth" by comparing against body_scope + 1.
     let each_depth = ctx.semantics.function_depth(body_scope) + 1;
     let mut collector = CollectionExprCollector {
         refs: Vec::new(),
@@ -248,9 +218,7 @@ fn collection_expression_facts<'a>(
     let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
     for ref_id in &collector.refs {
         let sem = ctx.reactivity.reference_semantics(*ref_id);
-        // Store reads carry `symbol_id=None` on the Reference itself
-        // but expose the underlying store binding inside the payload;
-        // use that so scope / blocker resolution works uniformly.
+
         let effective_sym = match sem {
             ReferenceSemantics::StoreRead { symbol }
             | ReferenceSemantics::StoreWrite { symbol }
@@ -274,10 +242,10 @@ fn collection_expression_facts<'a>(
                     has_external = true;
                 }
             }
-            if let Some(idx) = ctx.blockers.symbol_blocker(sym) {
-                if !blockers.contains(&idx) {
-                    blockers.push(idx);
-                }
+            if let Some(idx) = ctx.blockers.symbol_blocker(sym)
+                && !blockers.contains(&idx)
+            {
+                blockers.push(idx);
             }
         }
     }
@@ -315,8 +283,6 @@ struct CollectionExprFacts {
     blockers: SmallVec<[u32; 2]>,
 }
 
-/// Collects identifier references plus detects `await` literals over a
-/// single Expression walk.
 struct CollectionExprCollector {
     refs: Vec<ReferenceId>,
     has_await: bool,
@@ -408,10 +374,10 @@ impl<'a> Visit<'a> for IdentRefCounter<'_, 'a> {
         if self.early_exit && self.count > 0 {
             return;
         }
-        if let Some(ref_id) = ident.reference_id.get() {
-            if self.semantics.get_reference(ref_id).symbol_id() == Some(self.target) {
-                self.count += 1;
-            }
+        if let Some(ref_id) = ident.reference_id.get()
+            && self.semantics.get_reference(ref_id).symbol_id() == Some(self.target)
+        {
+            self.count += 1;
         }
     }
 }

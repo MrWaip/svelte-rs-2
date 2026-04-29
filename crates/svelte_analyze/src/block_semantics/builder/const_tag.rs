@@ -1,31 +1,14 @@
-//! `{@const}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `ConstTag` node and record its
-//! `BlockSemantics::ConstTag(...)` payload. `{@const}` does not own a
-//! fragment of its own, so no recursion is required after populate.
-//!
-//! Scope boundary: this module owns **declaration-shape** facts only —
-//! which symbols the tag introduces, whether the pattern is destructured,
-//! how the init expression interacts with async. Per-symbol read-side
-//! classification (`$.get` vs `$.safe_get` for the bindings themselves)
-//! lives in `reactivity_semantics::ConstDeclarationSemantics::ConstTag`.
-
 use super::super::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
 use super::common::{declarator_from_stmt, expression_async_facts};
 use super::walker::Ctx;
 use oxc_ast::ast::Statement;
 use svelte_ast::ConstTag;
 
-/// Populate `BlockSemantics::ConstTag` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     let Some(stmt) = ctx.parsed.stmt(tag.decl.id()) else {
         return;
     };
-    // The declaration node id is the `OxcNodeId` of the backing
-    // `VariableDeclaration` — consumers resolve the pattern and init
-    // on demand through `ComponentSemantics::js_kind(id)` instead of
-    // carrying a parser handle here.
+
     let Statement::VariableDeclaration(decl) = stmt else {
         return;
     };
@@ -59,7 +42,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
 mod tests {
     use crate::tests::analyze_source;
     use crate::{AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
-    use oxc_ast::{ast::BindingPattern, AstKind};
+    use oxc_ast::{AstKind, ast::BindingPattern};
     use svelte_ast::{Component, ConstTag, Node};
     use svelte_component_semantics::walk_bindings;
 
@@ -117,10 +100,6 @@ mod tests {
         }
     }
 
-    /// Resolve the declaration the payload points at and return a short
-    /// summary: number of leaf bindings + `is_destructured` flag. The
-    /// payload itself carries only `decl_node_id` + `async_kind`; pattern
-    /// facts are derived on-site through `ComponentSemantics::js_kind`.
     fn pattern_facts(sem: &ConstTagBlockSemantics, data: &AnalysisData<'_>) -> (usize, bool) {
         let kind = data
             .scoping
@@ -136,11 +115,6 @@ mod tests {
         (count, is_destructured)
     }
 
-    // `{@const}` requires an allowed placement (inside `{#if}`, `{#each}`,
-    // component node, `<svelte:element slot="...">`, etc.) — bare
-    // fragment-root placement emits `ConstTagInvalidPlacement`. Tests
-    // wrap tags in a trivial `{#if true}...{/if}` to satisfy the rule
-    // without adding other structural noise.
     #[test]
     fn const_tag_simple_sync() {
         with_const_tag(r#"{#if true}{@const x = 1}<p>{x}</p>{/if}"#, |sem, data| {
@@ -196,8 +170,6 @@ mod tests {
 
     #[test]
     fn const_tag_multiple_in_fragment() {
-        // First const tag should get a correct payload; the walker must
-        // visit every `{@const}` in a fragment.
         with_const_tag(
             r#"{#if true}
 {@const x = 1}
@@ -212,8 +184,6 @@ mod tests {
 
     #[test]
     fn const_tag_ref_to_state() {
-        // Referencing a `$state` binding stays Sync — `async_kind` only
-        // flips when `await` or script-level blockers are involved.
         with_const_tag(
             r#"<script>let count = $state(0);</script>
 {#if true}{@const doubled = count * 2}<p>{doubled}</p>{/if}"#,

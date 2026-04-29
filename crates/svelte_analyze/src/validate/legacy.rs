@@ -1,21 +1,9 @@
-//! LEGACY(svelte4): instance-script diagnostics for legacy props.
-//!
-//! Four diagnostics, three runes-mode bans + one non-runes warning:
-//! - `legacy_export_invalid` — runes mode forbids `export let` (use `$props()`).
-//! - `legacy_props_invalid` / `legacy_rest_props_invalid` — runes mode forbids
-//!   `$$props` / `$$restProps` identifier reads.
-//! - `export_let_unused` — non-runes warning for legacy bindable prop with no
-//!   read references outside the export specifier.
-//!
-//! Deprecated in Svelte 5, remove in Svelte 6.
-//! Removal recipe: `rg 'LEGACY\(svelte4\):' crates/svelte_analyze/src/validate/`,
-//! drop the matched module, unwire from `validate/mod.rs`.
-
+use oxc_ast::AstKind;
 use oxc_ast::ast::{
     Declaration, IdentifierReference, ModuleExportName, Program, Statement, VariableDeclarationKind,
 };
-use oxc_ast::AstKind;
 use oxc_semantic::ReferenceId;
+use oxc_span::GetSpan;
 use rustc_hash::FxHashSet;
 use svelte_component_semantics::OxcNodeId;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -23,7 +11,6 @@ use svelte_span::Span;
 
 use crate::AnalysisData;
 
-/// LEGACY(svelte4): entry point — runes-mode bans or non-runes unused warning.
 pub(super) fn validate_legacy_diagnostics(
     data: &AnalysisData,
     program: &Program<'_>,
@@ -37,12 +24,177 @@ pub(super) fn validate_legacy_diagnostics(
         validate_legacy_rest_props_invalid(data, offset, diags);
     } else {
         validate_export_let_unused(data, program, offset, diags);
+        validate_reactive_declaration_invalid_placement(program, offset, diags);
+        validate_reactive_declaration_cycle(data, offset, diags);
+        validate_reactive_declaration_module_script_dependency(data, program, offset, diags);
     }
 }
 
-/// LEGACY(svelte4): runes mode rejects `export let foo` at the instance script.
-/// Span = whole `ExportNamedDeclaration`. Companion `state_invalid_export` skips
-/// the same span via the shared `span_already_taken` filter (see `validate/mod.rs`).
+fn validate_reactive_declaration_invalid_placement(
+    program: &Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    use oxc_ast_visit::Visit;
+    struct Visitor<'a> {
+        offset: u32,
+        diags: &'a mut Vec<Diagnostic>,
+        depth: u32,
+    }
+    impl<'v, 'a> Visit<'a> for Visitor<'v> {
+        fn visit_function(
+            &mut self,
+            func: &oxc_ast::ast::Function<'a>,
+            flags: oxc_syntax::scope::ScopeFlags,
+        ) {
+            self.depth += 1;
+            oxc_ast_visit::walk::walk_function(self, func, flags);
+            self.depth -= 1;
+        }
+        fn visit_arrow_function_expression(
+            &mut self,
+            arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        ) {
+            self.depth += 1;
+            oxc_ast_visit::walk::walk_arrow_function_expression(self, arrow);
+            self.depth -= 1;
+        }
+        fn visit_labeled_statement(&mut self, stmt: &oxc_ast::ast::LabeledStatement<'a>) {
+            if self.depth > 0 && stmt.label.name == "$" {
+                self.diags.push(Diagnostic::warning(
+                    DiagnosticKind::ReactiveDeclarationInvalidPlacement,
+                    Span::new(stmt.span.start + self.offset, stmt.span.end + self.offset),
+                ));
+            }
+            oxc_ast_visit::walk::walk_labeled_statement(self, stmt);
+        }
+    }
+    let mut v = Visitor {
+        offset,
+        diags,
+        depth: 0,
+    };
+    v.visit_program(program);
+}
+
+fn validate_reactive_declaration_cycle(
+    data: &AnalysisData,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(cycle) = data.reactivity.legacy_reactive().cycle_path() else {
+        return;
+    };
+    let Some(stmt_node) = cycle.first().copied() else {
+        return;
+    };
+    let labeled_first = match data.scoping.js_kind(stmt_node) {
+        Some(AstKind::LabeledStatement(l)) => l,
+        _ => return,
+    };
+    let span = labeled_first.span();
+    let names: Vec<String> = cycle
+        .iter()
+        .filter_map(|node_id| {
+            let labeled = match data.scoping.js_kind(*node_id)? {
+                AstKind::LabeledStatement(l) => l,
+                _ => return None,
+            };
+            let oxc_ast::ast::Statement::ExpressionStatement(es) = &labeled.body else {
+                return None;
+            };
+            let oxc_ast::ast::Expression::AssignmentExpression(assign) = &es.expression else {
+                return None;
+            };
+            match &assign.left {
+                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                    Some(id.name.as_str().to_string())
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    let cycle_text = if names.is_empty() {
+        "<cycle>".into()
+    } else {
+        format!("{} → {}", names.join(" → "), names[0])
+    };
+    diags.push(Diagnostic::error(
+        DiagnosticKind::ReactiveDeclarationCycle { cycle: cycle_text },
+        Span::new(span.start + offset, span.end + offset),
+    ));
+}
+
+fn validate_reactive_declaration_module_script_dependency(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(module_scope) = data.scoping.module_scope_id() else {
+        return;
+    };
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .map(|s| {
+            (
+                s.stmt_node,
+                s.dependencies.iter().copied().collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    for (stmt_node, deps) in stmts {
+        for dep_sym in deps {
+            if data.scoping.symbol_scope_id(dep_sym) != module_scope {
+                continue;
+            }
+            if !data.scoping.is_mutated_any(dep_sym) {
+                continue;
+            }
+            let dep_name = data.scoping.symbol_name(dep_sym).to_string();
+            let Some(labeled) = (match data.scoping.js_kind(stmt_node) {
+                Some(oxc_ast::AstKind::LabeledStatement(l)) => Some(l),
+                _ => None,
+            }) else {
+                continue;
+            };
+            let body_span = labeled.body.span();
+            let mut found_span: Option<Span> = None;
+            collect_module_dep_ref_span(&labeled.body, &dep_name, &mut found_span);
+            let span = found_span.unwrap_or_else(|| Span::new(body_span.start, body_span.end));
+            diags.push(Diagnostic::warning(
+                DiagnosticKind::ReactiveDeclarationModuleScriptDependency,
+                Span::new(span.start + offset, span.end + offset),
+            ));
+            break;
+        }
+    }
+    let _ = program;
+}
+
+fn collect_module_dep_ref_span(
+    body: &oxc_ast::ast::Statement<'_>,
+    name: &str,
+    out: &mut Option<Span>,
+) {
+    use oxc_ast_visit::Visit;
+    struct Finder<'a> {
+        name: &'a str,
+        out: &'a mut Option<Span>,
+    }
+    impl<'a, 'b> Visit<'b> for Finder<'a> {
+        fn visit_identifier_reference(&mut self, id: &oxc_ast::ast::IdentifierReference<'b>) {
+            if self.out.is_none() && id.name.as_str() == self.name {
+                *self.out = Some(Span::new(id.span.start, id.span.end));
+            }
+        }
+    }
+    let mut f = Finder { name, out };
+    f.visit_statement(body);
+}
+
 fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mut Vec<Diagnostic>) {
     for stmt in &program.body {
         let Statement::ExportNamedDeclaration(export) = stmt else {
@@ -61,7 +213,6 @@ fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mu
     }
 }
 
-/// LEGACY(svelte4): runes mode rejects `$$props` identifier reads.
 fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut Vec<Diagnostic>) {
     emit_first_unresolved_read(
         data,
@@ -72,7 +223,6 @@ fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut V
     );
 }
 
-/// LEGACY(svelte4): runes mode rejects `$$restProps` identifier reads.
 fn validate_legacy_rest_props_invalid(
     data: &AnalysisData,
     offset: u32,
@@ -87,8 +237,6 @@ fn validate_legacy_rest_props_invalid(
     );
 }
 
-/// One diagnostic per component on the first read site, mirroring reference
-/// compiler `e.legacy_props_invalid(props_refs[0].node)` in `2-analyze/index.js`.
 fn emit_first_unresolved_read(
     data: &AnalysisData,
     name: &str,
@@ -120,8 +268,6 @@ fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<
     }
 }
 
-/// LEGACY(svelte4): non-runes warning for legacy bindable prop with no read
-/// references outside the export specifier itself.
 fn validate_export_let_unused(
     data: &AnalysisData,
     program: &Program<'_>,
@@ -158,19 +304,15 @@ fn collect_export_specifier_refs(program: &Program<'_>) -> FxHashSet<ReferenceId
             if let ModuleExportName::IdentifierReference(IdentifierReference {
                 reference_id, ..
             }) = &spec.local
+                && let Some(id) = reference_id.get()
             {
-                if let Some(id) = reference_id.get() {
-                    out.insert(id);
-                }
+                out.insert(id);
             }
         }
     }
     out
 }
 
-/// Svelte store auto-subscription: `$foo` inside the script desugars to
-/// `foo.subscribe(...)`. A `$<name>` binding in the same scope means the legacy
-/// prop *is* used through the store-read sugar even if no direct read exists.
 fn has_companion_store(data: &AnalysisData, sym: oxc_semantic::SymbolId) -> bool {
     let name = data.scoping.symbol_name(sym);
     let companion = format!("${name}");

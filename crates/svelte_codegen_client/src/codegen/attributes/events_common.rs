@@ -196,14 +196,12 @@ fn build_event_apply_wrapper<'a>(
 }
 
 fn is_inspect_trace_call(expr: &Expression) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        if let Expression::StaticMemberExpression(member) = &call.callee {
-            if member.property.name.as_str() == "trace" {
-                if let Expression::Identifier(id) = &member.object {
-                    return id.name.as_str() == "$inspect";
-                }
-            }
-        }
+    if let Expression::CallExpression(call) = expr
+        && let Expression::StaticMemberExpression(member) = &call.callee
+        && member.property.name.as_str() == "trace"
+        && let Expression::Identifier(id) = &member.object
+    {
+        return id.name.as_str() == "$inspect";
     }
     false
 }

@@ -106,14 +106,14 @@ pub(super) fn check_element_warnings(
     missing_attr_diag: Option<Diagnostic>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    if let Some(attr) = ctx.data.attribute(el.id, attrs, "scope") {
-        if el.name != "th" {
-            ctx.push_warning_if_not_ignored(
-                el.id,
-                DiagnosticKind::A11yMisplacedScope,
-                attr_value_span(attr),
-            );
-        }
+    if let Some(attr) = ctx.data.attribute(el.id, attrs, "scope")
+        && el.name != "th"
+    {
+        ctx.push_warning_if_not_ignored(
+            el.id,
+            DiagnosticKind::A11yMisplacedScope,
+            attr_value_span(attr),
+        );
     }
 
     if matches!(el.name.as_str(), "marquee" | "blink") {
@@ -132,17 +132,15 @@ pub(super) fn check_element_warnings(
         ));
     }
 
-    if let Some(attr) = tabindex_attr {
-        if let Some(text) = static_text_attr_value(attr, ctx.source) {
-            if let Ok(n) = text.trim().parse::<i64>() {
-                if n > 0 {
-                    ctx.warnings_mut().push(Diagnostic::warning(
-                        DiagnosticKind::A11yPositiveTabindex,
-                        attr_value_span(attr),
-                    ));
-                }
-            }
-        }
+    if let Some(attr) = tabindex_attr
+        && let Some(text) = static_text_attr_value(attr, ctx.source)
+        && let Ok(n) = text.trim().parse::<i64>()
+        && n > 0
+    {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::A11yPositiveTabindex,
+            attr_value_span(attr),
+        ));
     }
 
     if has_autofocus && el.name != "dialog" && dialog_depth == 0 {
@@ -614,17 +612,18 @@ fn check_a11y_role_attribute_interaction_warnings(
         }
     }
 
-    if let Some(tabindex_attr) = has_tabindex {
-        if !is_interactive && !is_interactive_role(role_static_value) {
-            let should_warn = static_text_attr_value(tabindex_attr, ctx.source)
-                .and_then(|value| value.trim().parse::<f64>().ok())
-                .is_none_or(|value| value >= 0.0);
-            if should_warn {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoNoninteractiveTabindex,
-                    attr_value_span(tabindex_attr),
-                ));
-            }
+    if let Some(tabindex_attr) = has_tabindex
+        && !is_interactive
+        && !is_interactive_role(role_static_value)
+    {
+        let should_warn = static_text_attr_value(tabindex_attr, ctx.source)
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .is_none_or(|value| value >= 0.0);
+        if should_warn {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yNoNoninteractiveTabindex,
+                attr_value_span(tabindex_attr),
+            ));
         }
     }
 
@@ -1258,16 +1257,14 @@ fn is_hidden_from_screen_reader(
     attrs: &[Attribute],
     ctx: &VisitContext<'_, '_>,
 ) -> bool {
-    if el.name == "input" {
-        if let Some(input_type) = ctx
+    if el.name == "input"
+        && let Some(input_type) = ctx
             .data
             .attribute(el.id, attrs, "type")
             .and_then(|attr| static_text_attr_value(attr, ctx.source))
-        {
-            if input_type == "hidden" {
-                return true;
-            }
-        }
+        && input_type == "hidden"
+    {
+        return true;
     }
 
     ctx.data

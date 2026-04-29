@@ -357,10 +357,10 @@ fn build_object_property_access<'a, 'ctx>(
     access: &Expression<'a>,
     prop: &oxc_ast::ast::BindingProperty<'a>,
 ) -> Expression<'a> {
-    if !prop.computed {
-        if let PropertyKey::StaticIdentifier(id) = &prop.key {
-            return build_chain_static_member(cg, access, id.name.as_str());
-        }
+    if !prop.computed
+        && let PropertyKey::StaticIdentifier(id) = &prop.key
+    {
+        return build_chain_static_member(cg, access, id.name.as_str());
     }
     let key_expr = clone_property_key_expr(cg, &prop.key);
     build_chain_computed_member(cg, access, key_expr)

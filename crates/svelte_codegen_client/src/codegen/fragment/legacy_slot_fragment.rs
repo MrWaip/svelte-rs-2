@@ -6,18 +6,12 @@ use crate::codegen::fragment::prepare::prepare;
 use crate::codegen::fragment::types::{ContentStrategy, HoistedBucket};
 use crate::codegen::{Codegen, Result};
 
-/// LEGACY(svelte4): outcome of emitting a slotted child as a `$$slots` arrow.
 pub(in crate::codegen) enum SlotFragmentOutcome<'a> {
     Empty,
     Arrow(Expression<'a>),
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    /// LEGACY(svelte4): single entry point for slotted-child emission
-    /// (`<Comp><div slot="name">...</div></Comp>`).
-    ///
-    /// Caller restriction: ONLY `emit_component` in `containers/component.rs`.
-    /// Goes away with Svelte 6 along with the whole module.
     pub(in crate::codegen) fn emit_slot_fragment_legacy_component_only_dont_use(
         &mut self,
         parent_ctx: &FragmentCtx<'a>,

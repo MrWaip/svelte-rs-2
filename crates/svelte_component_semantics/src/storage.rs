@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use oxc_ast::{ast::IdentifierReference, AstKind};
+use oxc_ast::{AstKind, ast::IdentifierReference};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
@@ -14,20 +14,11 @@ use crate::reference::{Reference, ReferenceTable};
 use crate::scope::ScopeTable;
 use crate::symbol::SymbolTable;
 
-/// Generic JS AST storage keyed by the component-wide remapped `OxcNodeId`.
-///
-/// This stays generic on purpose: it mirrors JS node identity and parentage
-/// without carrying any Svelte-specific meaning.
 pub struct JsStorage<'a> {
     nodes: Vec<Option<JsNode<'a>>>,
     parent_ids: Vec<Option<OxcNodeId>>,
 }
 
-/// JS node metadata stored alongside `ComponentSemantics`.
-///
-/// The canonical node identity is the remapped component `OxcNodeId` used as
-/// the lookup key in `JsStorage`; the embedded `AstKind` still points at the
-/// original OXC AST node.
 #[derive(Clone, Copy)]
 pub struct JsNode<'a> {
     kind: AstKind<'a>,
@@ -68,9 +59,6 @@ impl<'a> JsStorage<'a> {
         }
 
         if let Some(existing) = self.nodes[index] {
-            // The component semantic builder can legitimately re-enter the same
-            // OXC node through custom visitor paths, but it must resolve to the
-            // exact same canonical component node slot every time.
             debug_assert!(
                 std::mem::discriminant(&existing.kind()) == std::mem::discriminant(&kind)
                     && existing.kind().span() == kind.span()
@@ -111,34 +99,27 @@ impl<'a> JsNode<'a> {
     }
 }
 
-/// Component-wide semantic graph — the single source of truth for scopes,
-/// symbols, and references across module script, instance script, and template.
 pub struct ComponentSemantics<'a> {
     pub(crate) scopes: ScopeTable,
     pub(crate) symbols: SymbolTable,
     pub(crate) references: ReferenceTable,
     pub(crate) js: JsStorage<'a>,
-    /// References created from template expressions (not from script AST).
+
     template_reference_ids: FxHashSet<ReferenceId>,
-    /// Unresolved references at root scope, keyed by name.
+
     root_unresolved_references: FxHashMap<CompactString, Vec<ReferenceId>>,
-    /// Fragment scopes indexed by `FragmentId`. Covers all fragments
-    /// including LEGACY(svelte4) named-slot bodies — parser allocates a
-    /// `FragmentId` for each `<Component slot="name">` body via
-    /// `LegacySlot.fragment`.
+
     fragment_scopes: Vec<Option<ScopeId>>,
-    /// O(1) membership check for template-introduced scopes.
-    /// Built by `build_template_scope_set()` after all template scopes are registered.
+
     template_scope_set: FxHashSet<ScopeId>,
-    /// The module script root scope, if present.
+
     module_scope_id: Option<ScopeId>,
-    /// The instance script root scope, if present.
+
     instance_scope_id: Option<ScopeId>,
     ast_lifetime: PhantomData<&'a ()>,
 }
 
 impl<'a> ComponentSemantics<'a> {
-    /// Create an empty semantic graph with a single root scope.
     pub fn new() -> Self {
         let mut scopes = ScopeTable::new();
         scopes.add_scope(None, ScopeFlags::Top | ScopeFlags::Function);
@@ -156,8 +137,6 @@ impl<'a> ComponentSemantics<'a> {
             ast_lifetime: PhantomData,
         }
     }
-
-    // -- Scope queries --
 
     pub fn root_scope_id(&self) -> ScopeId {
         ScopeId::new(0)
@@ -186,8 +165,6 @@ impl<'a> ComponentSemantics<'a> {
     pub fn add_child_scope(&mut self, parent: ScopeId) -> ScopeId {
         self.scopes.add_scope(Some(parent), ScopeFlags::empty())
     }
-
-    // -- Symbol queries --
 
     pub fn find_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
         self.scopes.find_binding(scope, name)
@@ -242,24 +219,20 @@ impl<'a> ComponentSemantics<'a> {
         self.symbols.is_mutated(id)
     }
 
-    /// Check if a symbol has a specific state bit set.
     pub fn has_symbol_state(&self, id: SymbolId, bit: u32) -> bool {
         self.symbols.has_state(id, bit)
     }
 
-    /// Set a state bit on a symbol (bitwise OR).
     pub fn set_symbol_state(&mut self, id: SymbolId, bit: u32) {
         self.symbols.set_state(id, bit);
     }
 
-    /// Iterate symbols that have a given state bit set.
     pub fn symbols_with_state(&self, bit: u32) -> impl Iterator<Item = SymbolId> + '_ {
         self.symbols
             .symbol_ids()
             .filter(move |&id| self.symbols.has_state(id, bit))
     }
 
-    /// True if the symbol has any write reference other than `exclude_ref_id`.
     pub fn has_write_reference_other_than(
         &self,
         sym_id: SymbolId,
@@ -270,8 +243,6 @@ impl<'a> ComponentSemantics<'a> {
             .copied()
             .any(|ref_id| ref_id != exclude_ref_id && self.references.get(ref_id).is_write())
     }
-
-    // -- Reference queries --
 
     pub fn create_reference(&mut self, reference: Reference) -> ReferenceId {
         self.references.create_reference(reference)
@@ -287,11 +258,6 @@ impl<'a> ComponentSemantics<'a> {
         self.references.get(id)
     }
 
-    /// True iff this reference resolves to a symbol declared directly in the
-    /// component's instance scope (`<script>`-level bindings). Symbols
-    /// declared in nested scopes inside the instance script (e.g. function
-    /// locals) return false — consumers interested in "anything under
-    /// instance" should walk the scope chain explicitly.
     pub fn is_instance_reference(&self, id: ReferenceId) -> bool {
         let Some(instance) = self.instance_scope_id else {
             return false;
@@ -302,8 +268,6 @@ impl<'a> ComponentSemantics<'a> {
         self.symbols.symbol_scope_id(sym) == instance
     }
 
-    /// True iff this reference resolves to a symbol declared directly in the
-    /// component's module scope (`<script module>`-level bindings).
     pub fn is_module_reference(&self, id: ReferenceId) -> bool {
         let Some(module) = self.module_scope_id else {
             return false;
@@ -347,25 +311,12 @@ impl<'a> ComponentSemantics<'a> {
         self.template_reference_ids.contains(&id)
     }
 
-    /// Link a reference to a symbol. Sets the symbol's mutated flag if write.
     pub fn add_resolved_reference(&mut self, symbol_id: SymbolId, reference_id: ReferenceId) {
         let is_write = self.references.get(reference_id).is_write();
         self.symbols
             .add_resolved_reference(symbol_id, reference_id, is_write);
     }
 
-    /// Force-mark a symbol as member-mutated.
-    ///
-    /// Template sites (e.g. `bind:value={foo.bar}`) express mutation of a
-    /// symbol through a member chain — OXC reads `foo` as an object-side
-    /// identifier but the template still writes via the member. Mirrors the
-    /// reference compiler behaviour (`phases/scope.js::BindDirective` updates
-    /// → `binding.mutated = true` for the root identifier of a member-
-    /// expression bind target, kept separate from `reassigned`).
-    ///
-    /// Does NOT set the plain `MUTATED` flag — consumers that care about
-    /// reassignment specifically (`$state`-wrapping, for example) stay
-    /// unaffected; the generic "any mutation" query is `is_mutated_any`.
     pub fn mark_symbol_member_mutated(&mut self, symbol_id: SymbolId) {
         self.symbols
             .set_state(symbol_id, crate::symbol::state::MEMBER_MUTATED);
@@ -376,9 +327,6 @@ impl<'a> ComponentSemantics<'a> {
             .has_state(id, crate::symbol::state::MEMBER_MUTATED)
     }
 
-    /// True when `symbol` has either been reassigned (a write reference) or
-    /// member-mutated via a template site. Equivalent to
-    /// reference-compiler's `binding.updated`.
     pub fn is_mutated_any(&self, id: SymbolId) -> bool {
         self.is_mutated(id) || self.is_member_mutated(id)
     }
@@ -386,8 +334,6 @@ impl<'a> ComponentSemantics<'a> {
     pub fn get_resolved_reference_ids(&self, id: SymbolId) -> &[ReferenceId] {
         self.symbols.get_resolved_reference_ids(id)
     }
-
-    // -- JS node queries --
 
     pub fn js_storage(&self) -> &JsStorage<'a> {
         &self.js
@@ -405,13 +351,6 @@ impl<'a> ComponentSemantics<'a> {
         self.js.kind(id)
     }
 
-    /// Static object-pattern key that introduced this binding, if any.
-    ///
-    /// Examples:
-    /// - `localFoo` in `let { foo: localFoo } = obj` -> `Some("foo")`
-    /// - `bar` in `let { bar } = obj` -> `Some("bar")`
-    /// - `rest` in `let { ...rest } = obj` -> `None`
-    /// - `x` in `let x = 1` -> `None`
     pub fn binding_origin_key(&self, sym_id: SymbolId) -> Option<&str> {
         let mut node_id = self.symbol_declaration(sym_id);
         loop {
@@ -443,10 +382,7 @@ impl<'a> ComponentSemantics<'a> {
                     };
                 }
                 AstKind::BindingRestElement(_) => return None,
-                // Top-level `let foo = …` / `var foo = …` / `const foo = …`: the
-                // prop key is the local identifier name itself. This covers legacy
-                // `export let` / `export var` props where there is no destructuring
-                // and thus no nested key.
+
                 AstKind::VariableDeclarator(_) => {
                     return Some(self.symbol_name(sym_id));
                 }
@@ -466,7 +402,6 @@ impl<'a> ComponentSemantics<'a> {
         }
     }
 
-    /// Static object-pattern key for the symbol referenced by `ref_id`, if any.
     pub fn binding_origin_key_for_reference(&self, ref_id: ReferenceId) -> Option<&str> {
         let sym_id = self.symbol_for_reference(ref_id)?;
         self.binding_origin_key(sym_id)
@@ -480,13 +415,10 @@ impl<'a> ComponentSemantics<'a> {
         self.binding_origin_key(sym_id)
     }
 
-    // -- Scope hierarchy helpers --
-
     pub fn find_function_scope(&self, scope: ScopeId) -> ScopeId {
         self.scopes.find_function_scope(scope)
     }
 
-    /// Count function scopes between `scope` and the root (inclusive).
     pub fn function_depth(&self, mut scope: ScopeId) -> u32 {
         let mut depth = 0;
         loop {
@@ -512,27 +444,19 @@ impl<'a> ComponentSemantics<'a> {
         self.symbols.symbol_owner(id)
     }
 
-    /// True if this symbol was declared inside a JS construct in a template
-    /// expression (arrow/function param, for-loop var, block-scoped var, catch param).
-    /// Not top-level, and not a template-introduced scope (each/snippet/etc.).
     pub fn is_expr_local(&self, sym: SymbolId) -> bool {
         let scope = self.symbols.symbol_scope_id(sym);
         !self.is_component_top_level_scope(scope) && !self.template_scope_set.contains(&scope)
     }
 
-    // -- Iterators --
-
-    /// Iterate all symbol IDs.
     pub fn symbol_ids(&self) -> impl Iterator<Item = SymbolId> {
         self.symbols.symbol_ids()
     }
 
-    /// Iterate all symbol names (parallel with symbol_ids).
     pub fn symbol_names(&self) -> impl Iterator<Item = &str> {
         self.symbols.symbol_names()
     }
 
-    /// Collect all import-flagged SymbolIds.
     pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
         self.symbols
             .symbol_ids()
@@ -540,12 +464,10 @@ impl<'a> ComponentSemantics<'a> {
             .collect()
     }
 
-    /// O(1) lookup: find any symbol with this name regardless of scope.
     pub fn find_symbol_by_name(&self, name: &str) -> Option<SymbolId> {
         self.symbols.find_by_name(name)
     }
 
-    /// Collect all symbol names (for IdentGen conflict detection).
     pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbols
             .symbol_names()
@@ -553,7 +475,6 @@ impl<'a> ComponentSemantics<'a> {
             .collect()
     }
 
-    /// Collect names declared in component top-level scopes only.
     pub fn collect_component_top_level_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbol_ids()
             .filter(|&sym| self.is_component_top_level_symbol(sym))
@@ -561,9 +482,6 @@ impl<'a> ComponentSemantics<'a> {
             .collect()
     }
 
-    // -- Fragment scopes --
-
-    /// Register a scope for a template fragment, keyed by FragmentId.
     pub fn set_fragment_scope_by_id(&mut self, id: svelte_ast::FragmentId, scope: ScopeId) {
         let idx = id.0 as usize;
         if self.fragment_scopes.len() <= idx {
@@ -572,26 +490,18 @@ impl<'a> ComponentSemantics<'a> {
         self.fragment_scopes[idx] = Some(scope);
     }
 
-    /// FragmentId-keyed scope lookup. Covers all fragments including
-    /// LEGACY(svelte4) named-slot bodies (`LegacySlot.fragment`).
     pub fn fragment_scope_by_id(&self, id: svelte_ast::FragmentId) -> Option<ScopeId> {
         self.fragment_scopes.get(id.0 as usize).copied().flatten()
     }
 
-    /// Build the template_scope_set from fragment_scopes for O(1) `is_expr_local`.
-    /// Call after all template scopes are registered.
     pub fn build_template_scope_set(&mut self) {
         self.template_scope_set = self.fragment_scopes.iter().filter_map(|s| *s).collect();
     }
 
-    /// Check if a scope is a template-introduced scope (from fragment_scopes).
     pub fn is_template_scope(&self, scope: ScopeId) -> bool {
         self.template_scope_set.contains(&scope)
     }
 
-    // -- Unresolved references --
-
-    /// Record an unresolved reference (name not found in any scope).
     pub(crate) fn add_root_unresolved_reference(
         &mut self,
         name: CompactString,
@@ -603,12 +513,9 @@ impl<'a> ComponentSemantics<'a> {
             .push(reference_id);
     }
 
-    /// Get all unresolved references at root scope.
     pub fn root_unresolved_references(&self) -> &FxHashMap<CompactString, Vec<ReferenceId>> {
         &self.root_unresolved_references
     }
-
-    // -- Builder helpers (pub(crate) for builder module) --
 
     pub(crate) fn set_module_scope_id(&mut self, id: ScopeId) {
         self.module_scope_id = Some(id);
@@ -700,13 +607,11 @@ mod tests {
             SymbolOwner::InstanceScript,
         );
 
-        // Read reference — not mutated
         let read_ref =
             sem.create_reference(Reference::new(OxcNodeId::DUMMY, root, ReferenceFlags::Read));
         sem.add_resolved_reference(sym, read_ref);
         assert!(!sem.is_mutated(sym));
 
-        // Write reference — mutated
         let write_ref = sem.create_reference(Reference::new(
             OxcNodeId::DUMMY,
             root,
@@ -741,13 +646,12 @@ mod tests {
         let fn_scope = sem.add_scope(block, ScopeFlags::Function);
         let inner_block = sem.add_child_scope(fn_scope);
 
-        // root (function) = 1
         assert_eq!(sem.function_depth(root), 1);
-        // block under root — root is function, so 1
+
         assert_eq!(sem.function_depth(block), 1);
-        // fn_scope (function) + root (function) = 2
+
         assert_eq!(sem.function_depth(fn_scope), 2);
-        // inner_block → fn_scope → root = 2
+
         assert_eq!(sem.function_depth(inner_block), 2);
     }
 

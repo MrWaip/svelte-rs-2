@@ -1,4 +1,3 @@
-// Generated from reference/compiler/phases/1-parse/utils/entities.js
 pub(super) static NAMED_ENTITIES: &[(&str, u32)] = &[
     ("AElig;", 198),
     ("AMP;", 38),

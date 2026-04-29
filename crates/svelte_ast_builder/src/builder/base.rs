@@ -35,7 +35,6 @@ impl<'a> Builder<'a> {
         self.ast.expression_null_literal(SPAN)
     }
 
-    /// `void 0` expression — used where `undefined` is needed but `null` is semantically wrong.
     pub fn void_zero_expr(&self) -> Expression<'a> {
         self.ast
             .expression_unary(SPAN, ast::UnaryOperator::Void, self.num_expr(0.0))
@@ -74,7 +73,6 @@ impl<'a> Builder<'a> {
         self.ast.expression_boolean_literal(SPAN, false)
     }
 
-    /// `(a, b, ...)` — sequence (comma) expression. Requires ≥2 expressions.
     pub fn seq_expr(&self, exprs: [Expression<'a>; 2]) -> Expression<'a> {
         self.ast
             .expression_sequence(SPAN, self.ast.vec_from_iter(exprs))

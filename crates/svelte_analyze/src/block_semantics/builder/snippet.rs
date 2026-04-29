@@ -1,16 +1,3 @@
-//! `{#snippet}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `SnippetBlock` — record its
-//! `BlockSemantics::Snippet(...)` payload — then recurse into the body
-//! fragment through the same walker so nested blocks of every migrated
-//! kind are visited inside a single template walk.
-//!
-//! Scope boundary: this module owns **declaration-shape** facts only
-//! (how the `const <name> = ($$anchor, ...) => {...}` is assembled).
-//! Per-symbol **read-side** classification (`name()` vs `$.get(name)`)
-//! lives in `reactivity_semantics::ContextualDeclarationSemantics::SnippetParam`.
-
 use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
 use super::walker::{Ctx, SnippetScope};
@@ -20,8 +7,6 @@ use oxc_ast::ast::{
 use smallvec::SmallVec;
 use svelte_ast::SnippetBlock;
 
-/// Populate `BlockSemantics::Snippet` for this block and recurse into
-/// its body fragment.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
     let stmt = ctx.parsed.stmt(block.decl.id());
 
@@ -35,27 +20,14 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
     let arrow = declarator.and_then(arrow_from_declarator);
     let params = arrow.map(|arrow| collect_params(arrow)).unwrap_or_default();
 
-    // Top-level status is fixed by position in the walk: this snippet
-    // sits at the component fragment root iff the walker hasn't
-    // descended into any container yet. Capture the flag before
-    // recursing into the body — the recursion will bump the counter.
     let top_level = ctx.non_root_depth == 0;
 
-    // Recurse into body first so nested blocks are visited inside the
-    // same template walk.
     ctx.visit_fragment(block.body);
 
     let Some(name) = name_sym else {
-        // Parser invariant: every snippet block has a named declarator.
-        // If the pre-parsed statement is missing or malformed, skip
-        // payload creation — the store keeps the default `NonSpecial`
-        // and consumers will fall through to the legacy path.
         return;
     };
 
-    // Seed `hoistable: false`; finalize in walker::populate flips it to
-    // true for top-level snippets whose body has no instance-scope
-    // references.
     ctx.store.set(
         block.id,
         BlockSemantics::Snippet(SnippetBlockSemantics {
@@ -65,12 +37,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
         }),
     );
 
-    // Track snippet name symbols so finalize can exclude sibling-snippet
-    // calls from the hoistable taint set.
     ctx.snippet_name_syms.insert(name);
 
-    // Register this snippet's body scope so the post-walk hoistable pass
-    // can trace references back to the owning snippet.
     if let Some(body_scope) = ctx.semantics.fragment_scope_by_id(block.body) {
         ctx.snippet_scopes.push(SnippetScope {
             block_id: block.id,
@@ -99,17 +67,7 @@ fn collect_params<'a>(arrow: &ArrowFunctionExpression<'a>) -> SmallVec<[SnippetP
     out
 }
 
-/// Classify one `FormalParameter` into a `SnippetParam`. The outer
-/// wrapper `FormalParameter.pattern` may be an `AssignmentPattern` when
-/// the parameter has a top-level default (`(name = 5)` or
-/// `({ a } = fallback)`); in that case we peel it off once to expose
-/// the inner identifier / destructure shape.
 fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
-    // `FormalParameter.initializer` (OXC's form for `(x = default)`) and
-    // the `AssignmentPattern` wrapper (for `({ a } = fallback)`) are
-    // both peeled here so the match below sees the inner shape. Only
-    // destructured patterns carry their default through — identifier
-    // params drop it at lowering time per the reference compiler.
     let pattern = match &param.pattern {
         BindingPattern::AssignmentPattern(assign) => &assign.left,
         other => other,
@@ -125,8 +83,7 @@ fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
                 pattern_id: binding_pattern_node_id(pattern),
             })
         }
-        // Nested AssignmentPattern inside AssignmentPattern isn't legal
-        // in JS grammar — treat as no-op.
+
         BindingPattern::AssignmentPattern(_) => None,
     }
 }
@@ -196,12 +153,6 @@ mod tests {
             assert!(matches!(sem.params[0], SnippetParam::Identifier { .. }));
         });
     }
-
-    // Structural details of destructured snippet params — form
-    // (Object / Array), key names, defaults, rest — live in the OXC
-    // `BindingPattern` subtree reached via `pattern_id`. They are
-    // verified by snippet codegen tests, not by block-semantics unit
-    // tests. Here we assert only the variant classification.
 
     #[test]
     fn snippet_object_destructure() {

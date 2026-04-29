@@ -14,13 +14,13 @@ use svelte_span::GetSpan;
 use super::css_prune_index::{
     CandidateKind, CandidateNode, CssPruneIndex, NodeExistsValue, SiblingCandidate,
 };
+use crate::AnalysisData;
 use crate::scope::SymbolId;
 use crate::types::data::{
-    DeclarationSemantics, ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind,
+    BindingSemantics, ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind,
     TemplateAnalysis, TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
-use crate::AnalysisData;
 
 const HTML_CASE_INSENSITIVE_ATTRIBUTES: &[&str] = &[
     "accept-charset",
@@ -470,9 +470,8 @@ fn collect_component_attr_snippets(
 fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
     data.scoping.is_import(sym_id)
         || matches!(
-            data.reactivity
-                .declaration_semantics(data.scoping.symbol_declaration(sym_id)),
-            DeclarationSemantics::Prop(_),
+            data.reactivity.binding_semantics(sym_id),
+            BindingSemantics::Prop(_),
         )
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
 }
@@ -925,15 +924,15 @@ fn relative_selector_matches(
 
                     if include_self {
                         let mut including_self = inner.clone();
-                        if let Some(first) = including_self.first_mut() {
-                            if first.combinator.is_some() {
-                                *first = RelativeSelector {
-                                    id: svelte_css::CssNodeId(0),
-                                    combinator: None,
-                                    selectors: first.selectors.clone(),
-                                    span: first.span,
-                                };
-                            }
+                        if let Some(first) = including_self.first_mut()
+                            && first.combinator.is_some()
+                        {
+                            *first = RelativeSelector {
+                                id: svelte_css::CssNodeId(0),
+                                combinator: None,
+                                selectors: first.selectors.clone(),
+                                span: first.span,
+                            };
                         }
                         if apply_selector(
                             pruner,
@@ -1848,15 +1847,15 @@ fn attribute_matches(
         if matches!(attr, Attribute::StyleDirective(_) if name_lower == "style") {
             return true;
         }
-        if let Attribute::ClassDirective(class_directive) = attr {
-            if name_lower == "class" {
-                if operator == "~=" {
-                    if expected_value.is_some_and(|value| class_directive.name == value) {
-                        return true;
-                    }
-                } else {
+        if let Attribute::ClassDirective(class_directive) = attr
+            && name_lower == "class"
+        {
+            if operator == "~=" {
+                if expected_value.is_some_and(|value| class_directive.name == value) {
                     return true;
                 }
+            } else {
+                return true;
             }
         }
 
@@ -1942,8 +1941,6 @@ fn attribute_name_matches_selector(
     attr: &Attribute,
     selector_name: &str,
 ) -> bool {
-    // Shorthand `{name}` is now `ExpressionAttribute { shorthand: true, name }`
-    // — the `name()` branch covers both explicit and shorthand forms uniformly.
     attr.name()
         .is_some_and(|attr_name| attr_name.eq_ignore_ascii_case(selector_name))
 }
@@ -2135,10 +2132,10 @@ fn gather_possible_values(
         },
         Expression::ArrayExpression(array) if is_class => {
             for element in &array.elements {
-                if let Some(expr) = element.as_expression() {
-                    if !gather_possible_values(expr, is_class, values, true) {
-                        return false;
-                    }
+                if let Some(expr) = element.as_expression()
+                    && !gather_possible_values(expr, is_class, values, true)
+                {
+                    return false;
                 }
             }
             true

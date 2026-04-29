@@ -1,18 +1,16 @@
 #!/bin/sh
+#
+# This hook was set by cargo-husky v1.5.0: https://github.com/rhysd/cargo-husky#readme
 set -e
-
 if [ -f "$HOME/.cargo/env" ]; then
     . "$HOME/.cargo/env"
 fi
-
 staged_rs=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
-
 if [ -z "$staged_rs" ]; then
     exit 0
 fi
-
-if ! echo "$staged_rs" | xargs rustfmt --edition 2021 --check >/dev/null 2>&1; then
-    echo "pre-commit: formatting staged Rust files with rustfmt"
-    echo "$staged_rs" | xargs rustfmt --edition 2021
+if ! cargo fmt --all -- --check >/dev/null 2>&1; then
+    echo "pre-commit: formatting Rust files with rustfmt"
+    cargo fmt --all
     echo "$staged_rs" | xargs git add
 fi

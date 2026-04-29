@@ -235,10 +235,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut inner_state = EmitState::new();
         inner_state.suppress_root_finalize = true;
 
-        // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-        // Ищем <selectedcontent> среди children select/option вручную: analyze
-        // должен вернуть `customizable_select_selectedcontent(el_id) -> Option<NodeId>`
-        // чтобы codegen не сканировал fragment.nodes.
         let selectedcontent_child: Option<NodeId> =
             if let Node::Element(parent_el) = self.ctx.query.component.store.get(el_id) {
                 self.ctx
@@ -263,11 +259,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         self.emit_fragment(&mut inner_state, &child_ctx, el_fragment)?;
 
-        // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-        // Сейчас мы инлайним build of customizable_select шаблона руками: берём
-        // отрендеренный html из inner_state.template и эмитим отдельный from_fn.
-        // Это — classification+codegen смешанный: analyze должен вернуть готовую
-        // «option_content»-template запись (hoist bucket), а codegen только эмитить.
         let html_str = inner_state.template.as_html();
         let needs_import = inner_state.template.needs_import_node;
         let from_fn = super::super::namespace::from_namespace(el_ns);

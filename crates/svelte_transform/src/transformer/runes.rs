@@ -1,6 +1,6 @@
 use oxc_traverse::{Ancestor, TraverseCtx};
 
-use svelte_analyze::{DeclarationSemantics, DerivedKind, DerivedLowering, RuneKind, StateKind};
+use svelte_analyze::{BindingSemantics, DerivedKind, RuneKind, RuntimeRuneKind, StateKind};
 
 use super::model::AsyncDerivedMode;
 use svelte_ast_builder::Arg;
@@ -12,277 +12,238 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         node: &mut oxc_ast::ast::VariableDeclarator<'a>,
     ) {
-        let oxc_ast::ast::BindingPattern::BindingIdentifier(binding) = &node.id else {
-            return;
-        };
-        let Some(sym_id) = binding.symbol_id.get() else {
-            return;
-        };
-        if self.analysis.is_some() {
-            let root_node = node.node_id();
-            let Some(init) = node.init.as_mut() else {
+        let (sym_id, binding_name) = {
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(binding) = &node.id else {
                 return;
             };
-            let semantics = self
-                .analysis
-                .map(|analysis| analysis.declaration_semantics(root_node))
-                .unwrap_or(DeclarationSemantics::NonReactive);
-            match semantics {
-                DeclarationSemantics::State(state) if state.kind == StateKind::State => {
+            (
+                binding.symbol_id.get(),
+                self.b.alloc_str(binding.name.as_str()),
+            )
+        };
+        let semantics = match (self.analysis.as_ref(), sym_id) {
+            (Some(analysis), Some(sym)) => Some(analysis.binding_semantics(sym)),
+            _ => None,
+        };
+
+        match semantics {
+            Some(BindingSemantics::LegacyState(state)) => {
+                if let Some(init) = node.init.as_mut() {
                     let init_expr = self.b.move_expr(init);
-                    let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
-                        node.init = Some(init_expr);
-                        return;
-                    };
-
-                    call.callee = self.b.rid_expr("$.state");
-
-                    if call.arguments.is_empty() {
-                        let void_zero = self.b.ast.expression_unary(
-                            oxc_span::SPAN,
-                            oxc_ast::ast::UnaryOperator::Void,
-                            self.b.num_expr(0.0),
-                        );
-                        call.arguments.push(void_zero.into());
-                    } else if state.proxied {
-                        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                        std::mem::swap(&mut call.arguments[0], &mut dummy);
-                        let inner = dummy.into_expression();
-                        let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
-                        call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
-                    }
-
-                    let state_expr = oxc_ast::ast::Expression::CallExpression(call);
-                    node.init = if self.dev {
-                        let var_name = binding.name.as_str();
-                        Some(
-                            self.b
-                                .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(var_name)]),
-                        )
+                    let call = if state.immutable {
+                        self.b
+                            .call_expr("$.mutable_source", [Arg::Expr(init_expr), Arg::Bool(true)])
                     } else {
-                        Some(state_expr)
+                        self.b.call_expr("$.mutable_source", [Arg::Expr(init_expr)])
                     };
-                    return;
+                    node.init = Some(call);
                 }
-                DeclarationSemantics::State(state) if state.kind == StateKind::StateRaw => {
-                    let init_expr = self.b.move_expr(init);
-                    let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
-                        node.init = Some(init_expr);
-                        return;
-                    };
-
-                    call.callee = self.b.rid_expr("$.state");
-
-                    if call.arguments.is_empty() {
-                        let void_zero = self.b.ast.expression_unary(
-                            oxc_span::SPAN,
-                            oxc_ast::ast::UnaryOperator::Void,
-                            self.b.num_expr(0.0),
-                        );
-                        call.arguments.push(void_zero.into());
-                    }
-
-                    let state_expr = oxc_ast::ast::Expression::CallExpression(call);
-                    node.init = if self.dev {
-                        let var_name = binding.name.as_str();
-                        Some(
-                            self.b
-                                .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(var_name)]),
-                        )
-                    } else {
-                        Some(state_expr)
-                    };
+            }
+            Some(BindingSemantics::State(state)) => {
+                self.rewrite_state_binding_init(node, binding_name, state.kind, sym_id);
+            }
+            Some(BindingSemantics::Derived(derived)) => {
+                self.rewrite_derived_binding_init(node, binding_name, derived.kind, sym_id);
+            }
+            Some(BindingSemantics::RuntimeRune {
+                kind: RuntimeRuneKind::EffectPending,
+            }) => {
+                self.rewrite_effect_pending_init(node);
+            }
+            _ => {
+                let Some(init) = node.init.as_mut() else {
                     return;
-                }
-                DeclarationSemantics::Derived(derived) => {
-                    let init_expr = self.b.move_expr(init);
-                    let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
-                        node.init = Some(init_expr);
-                        return;
-                    };
-
-                    call.callee = self.b.rid_expr("$.derived");
-
-                    match derived.kind {
-                        DerivedKind::Derived => {
-                            self.derived_pending.insert(sym_id);
-                            // `wrap_derived_thunks` runs later and needs to know which pending
-                            // `$derived(...)` declarations must lower through `$.async_derived`
-                            // instead of the ordinary thunk-wrapping path.
-                            if matches!(derived.lowering, DerivedLowering::Async) {
-                                let mode =
-                                    if self.strip_exports && self.function_info_stack.len() > 1 {
-                                        AsyncDerivedMode::Save
-                                    } else {
-                                        AsyncDerivedMode::Await
-                                    };
-                                self.async_derived_pending.insert(sym_id, mode);
-                            }
-                            node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
-                        }
-                        DerivedKind::DerivedBy => {
-                            let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
-                            node.init = if self.dev {
-                                let var_name = binding.name.as_str();
-                                Some(self.b.call_expr(
-                                    "$.tag",
-                                    [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
-                                ))
-                            } else {
-                                Some(derived_expr)
-                            };
-                        }
-                    }
+                };
+                let Some(kind) = Self::detect_class_field_rune_kind(init) else {
                     return;
-                }
-                DeclarationSemantics::NonReactive => {}
-                _ => return,
+                };
+                self.rewrite_class_field_rune_init(node, binding_name, kind, sym_id);
             }
         }
+    }
 
+    fn rewrite_state_binding_init(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
+        binding_name: &'a str,
+        kind: StateKind,
+        sym_id: Option<oxc_semantic::SymbolId>,
+    ) {
         let Some(init) = node.init.as_mut() else {
-            return;
-        };
-        let kind = self
-            .rune_for_binding(binding)
-            .or_else(|| Self::detect_class_field_rune_kind(init));
-        let Some(kind) = kind else {
             return;
         };
         let init_expr = self.b.move_expr(init);
 
-        if let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr {
-            match kind {
-                RuneKind::Derived => {
-                    call.callee = self.b.rid_expr("$.derived");
-                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(bid) = &node.id {
-                        if let Some(sym_id) = bid.symbol_id.get() {
-                            self.derived_pending.insert(sym_id);
-                            // Track async derived BEFORE `rewrite_dev_await_tracking` can
-                            // transform the `await` inside to `$.track_reactivity_loss` form.
-                            let is_async_init = call
-                                .arguments
-                                .first()
-                                .and_then(|a| a.as_expression())
-                                .is_some_and(|e| {
-                                    matches!(e, oxc_ast::ast::Expression::AwaitExpression(_))
-                                });
-                            if is_async_init {
-                                let mode =
-                                    if self.strip_exports && self.function_info_stack.len() > 1 {
-                                        AsyncDerivedMode::Save
-                                    } else {
-                                        AsyncDerivedMode::Await
-                                    };
-                                self.async_derived_pending.insert(sym_id, mode);
-                            }
-                        }
-                    }
-                    node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
-                }
-                RuneKind::DerivedBy => {
-                    call.callee = self.b.rid_expr("$.derived");
-                    let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
-                    node.init = if self.dev {
-                        let var_name = match &node.id {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
-                            _ => "",
-                        };
-                        Some(
-                            self.b.call_expr(
-                                "$.tag",
-                                [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
-                            ),
-                        )
-                    } else {
-                        Some(derived_expr)
-                    };
-                }
-                RuneKind::State | RuneKind::StateRaw => {
-                    let mutated = binding
-                        .symbol_id
-                        .get()
-                        .is_some_and(|sym_id| self.component_scoping.is_mutated(sym_id));
-                    if mutated {
-                        call.callee = self.b.rid_expr("$.state");
+        if matches!(kind, StateKind::StateEager) {
+            if let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr {
+                let arg = call.arguments.remove(0).into_expression();
+                node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]));
+            }
+            return;
+        }
 
-                        if call.arguments.is_empty() {
-                            let void_zero = self.b.ast.expression_unary(
-                                oxc_span::SPAN,
-                                oxc_ast::ast::UnaryOperator::Void,
-                                self.b.num_expr(0.0),
-                            );
-                            call.arguments.push(void_zero.into());
-                        } else if kind == RuneKind::State {
-                            let needs_proxy = call.arguments[0]
-                                .as_expression()
-                                .is_some_and(crate::rune_refs::should_proxy);
-                            if needs_proxy {
-                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                                std::mem::swap(&mut call.arguments[0], &mut dummy);
-                                let inner = dummy.into_expression();
-                                let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
-                                call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
-                            }
-                        }
+        let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
+            return;
+        };
+        let mutated = sym_id.is_some_and(|sym| self.component_scoping.is_mutated(sym));
+        if mutated {
+            call.callee = self.b.rid_expr("$.state");
 
-                        let state_expr = oxc_ast::ast::Expression::CallExpression(call);
-                        node.init =
-                            if self.dev {
-                                let var_name = binding.name.as_str();
-                                Some(self.b.call_expr(
-                                    "$.tag",
-                                    [Arg::Expr(state_expr), Arg::StrRef(var_name)],
-                                ))
-                            } else {
-                                Some(state_expr)
-                            };
-                    } else {
-                        let value = if call.arguments.is_empty() {
-                            self.b.ast.expression_unary(
-                                oxc_span::SPAN,
-                                oxc_ast::ast::UnaryOperator::Void,
-                                self.b.num_expr(0.0),
-                            )
-                        } else {
-                            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                            std::mem::swap(&mut call.arguments[0], &mut dummy);
-                            dummy.into_expression()
-                        };
-                        let is_proxy =
-                            kind == RuneKind::State && crate::rune_refs::should_proxy(&value);
-                        let value = if is_proxy {
-                            self.b.call_expr("$.proxy", [Arg::Expr(value)])
-                        } else {
-                            value
-                        };
-                        let value = if self.dev && is_proxy {
-                            let var_name = binding.name.as_str();
-                            self.b
-                                .call_expr("$.tag_proxy", [Arg::Expr(value), Arg::StrRef(var_name)])
-                        } else {
-                            value
-                        };
-                        node.init = Some(value);
-                    }
-                }
-                RuneKind::StateEager => {
-                    let arg = call.arguments.remove(0).into_expression();
-                    node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]));
-                }
-                RuneKind::EffectPending => {
-                    let pending_call = self
-                        .b
-                        .call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
-                    node.init = Some(
-                        self.b
-                            .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),
-                    );
-                }
-                _ => {
-                    node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
+            if call.arguments.is_empty() {
+                let void_zero = self.b.ast.expression_unary(
+                    oxc_span::SPAN,
+                    oxc_ast::ast::UnaryOperator::Void,
+                    self.b.num_expr(0.0),
+                );
+                call.arguments.push(void_zero.into());
+            } else if matches!(kind, StateKind::State) {
+                let needs_proxy = call.arguments[0]
+                    .as_expression()
+                    .is_some_and(crate::rune_refs::should_proxy);
+                if needs_proxy {
+                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                    std::mem::swap(&mut call.arguments[0], &mut dummy);
+                    let inner = dummy.into_expression();
+                    let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
+                    call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
                 }
             }
+
+            let state_expr = oxc_ast::ast::Expression::CallExpression(call);
+            node.init = if self.dev {
+                Some(
+                    self.b
+                        .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(binding_name)]),
+                )
+            } else {
+                Some(state_expr)
+            };
+        } else {
+            let value = if call.arguments.is_empty() {
+                self.b.ast.expression_unary(
+                    oxc_span::SPAN,
+                    oxc_ast::ast::UnaryOperator::Void,
+                    self.b.num_expr(0.0),
+                )
+            } else {
+                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                std::mem::swap(&mut call.arguments[0], &mut dummy);
+                dummy.into_expression()
+            };
+            let is_proxy =
+                matches!(kind, StateKind::State) && crate::rune_refs::should_proxy(&value);
+            let value = if is_proxy {
+                self.b.call_expr("$.proxy", [Arg::Expr(value)])
+            } else {
+                value
+            };
+            let value = if self.dev && is_proxy {
+                self.b
+                    .call_expr("$.tag_proxy", [Arg::Expr(value), Arg::StrRef(binding_name)])
+            } else {
+                value
+            };
+            node.init = Some(value);
+        }
+    }
+
+    fn rewrite_derived_binding_init(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
+        binding_name: &'a str,
+        kind: DerivedKind,
+        sym_id: Option<oxc_semantic::SymbolId>,
+    ) {
+        let Some(init) = node.init.as_mut() else {
+            return;
+        };
+        let init_expr = self.b.move_expr(init);
+        let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
+            return;
+        };
+
+        match kind {
+            DerivedKind::Derived => {
+                call.callee = self.b.rid_expr("$.derived");
+                if let Some(sym) = sym_id {
+                    self.derived_pending.insert(sym);
+
+                    let is_async_init = call
+                        .arguments
+                        .first()
+                        .and_then(|a| a.as_expression())
+                        .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::AwaitExpression(_)));
+                    if is_async_init {
+                        let mode = if self.strip_exports && self.function_info_stack.len() > 1 {
+                            AsyncDerivedMode::Save
+                        } else {
+                            AsyncDerivedMode::Await
+                        };
+                        self.async_derived_pending.insert(sym, mode);
+                    }
+                }
+                node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
+            }
+            DerivedKind::DerivedBy => {
+                call.callee = self.b.rid_expr("$.derived");
+                let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
+                node.init = if self.dev {
+                    Some(self.b.call_expr(
+                        "$.tag",
+                        [Arg::Expr(derived_expr), Arg::StrRef(binding_name)],
+                    ))
+                } else {
+                    Some(derived_expr)
+                };
+            }
+        }
+    }
+
+    fn rewrite_effect_pending_init(&mut self, node: &mut oxc_ast::ast::VariableDeclarator<'a>) {
+        let Some(init) = node.init.as_mut() else {
+            return;
+        };
+        let init_expr = self.b.move_expr(init);
+        let oxc_ast::ast::Expression::CallExpression(_) = init_expr else {
+            return;
+        };
+        let pending_call = self
+            .b
+            .call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+        node.init = Some(
+            self.b
+                .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),
+        );
+    }
+
+    fn rewrite_class_field_rune_init(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
+        binding_name: &'a str,
+        kind: RuneKind,
+        sym_id: Option<oxc_semantic::SymbolId>,
+    ) {
+        match kind {
+            RuneKind::State | RuneKind::StateRaw => {
+                let state_kind = if matches!(kind, RuneKind::State) {
+                    StateKind::State
+                } else {
+                    StateKind::StateRaw
+                };
+                self.rewrite_state_binding_init(node, binding_name, state_kind, sym_id);
+            }
+            RuneKind::Derived => {
+                self.rewrite_derived_binding_init(node, binding_name, DerivedKind::Derived, sym_id);
+            }
+            RuneKind::DerivedBy => {
+                self.rewrite_derived_binding_init(
+                    node,
+                    binding_name,
+                    DerivedKind::DerivedBy,
+                    sym_id,
+                );
+            }
+            _ => {}
         }
     }
 
@@ -291,24 +252,21 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         };
 
-        // Script-only: `$host()` → `$$props.$$host`.
-        if let oxc_ast::ast::Expression::Identifier(id) = &call.callee {
-            if id.name.as_str() == "$host" {
-                *node = self
-                    .b
-                    .static_member_expr(self.b.rid_expr("$$props"), "$$host");
-                return;
-            }
-        }
-
-        // Shared with Template: $state.eager, $state.snapshot, $effect.pending.
-        let dev_snapshot_ignored =
-            self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable");
-        if super::rewrites::rewrite_shared_call(self.b.ast.allocator, node, dev_snapshot_ignored) {
+        if let oxc_ast::ast::Expression::Identifier(id) = &call.callee
+            && id.name.as_str() == "$host"
+        {
+            *node = self
+                .b
+                .static_member_expr(self.b.rid_expr("$$props"), "$$host");
             return;
         }
 
-        // Script-only callee renames: $effect / $effect.pre / $effect.root / $effect.tracking.
+        let dev_snapshot_ignored =
+            self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable");
+        if self.rewrite_shared_call(node, dev_snapshot_ignored) {
+            return;
+        }
+
         let oxc_ast::ast::Expression::CallExpression(call) = &*node else {
             return;
         };
@@ -343,27 +301,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::Expression<'a>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        let Some(analysis) = self.analysis else {
+        if self.analysis.is_none() {
             return;
-        };
+        }
         let is_lhs = matches!(
             ctx.parent(),
             Ancestor::AssignmentExpressionLeft(_) | Ancestor::UpdateExpressionArgument(_)
         );
-        super::rewrites::rewrite_rest_prop_member(analysis, self.b.ast.allocator, node, is_lhs);
+        self.rewrite_rest_prop_member(node, is_lhs);
     }
 
     pub(crate) fn rewrite_identifier_expression(
         &mut self,
         node: &mut oxc_ast::ast::Expression<'a>,
     ) {
-        if let Some(analysis) = self.analysis {
-            if super::rewrites::rewrite_identifier_read(
-                analysis,
-                self.b.ast.allocator,
-                &self.transform_data,
-                node,
-            ) {}
-        }
+        let _ = self.rewrite_identifier_read(node);
     }
 }

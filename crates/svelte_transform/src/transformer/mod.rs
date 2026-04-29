@@ -1,21 +1,25 @@
 mod assignments;
+mod builders;
 mod derived;
 mod entry;
 mod inspect;
+pub(crate) mod legacy_reactive;
 mod location;
 pub(crate) mod model;
 mod props;
-/// LEGACY(svelte4): see `props_legacy.rs` header. Removable as a unit.
+
 mod props_legacy;
 mod rewrites;
 mod runes;
 mod state;
+
+mod state_legacy;
 mod statement_passes;
 pub(crate) mod template_entry;
 mod template_rewrites;
 mod ts_cleanup;
 
-pub use entry::{transform_script, TransformScriptOutput};
+pub use entry::{TransformScriptOutput, transform_script};
 pub use location::{compute_line_col, sanitize_location};
 pub use model::IgnoreQuery;
 
@@ -32,12 +36,6 @@ use oxc_traverse::{Traverse, TraverseCtx};
 use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
-    // NOTE: every enter_/exit_ method below (apart from `enter_expression`
-    // and `exit_expression`, which handle their own Template branch) is
-    // script-only. In Template mode they short-circuit to avoid running
-    // script lowering (TS strip, class state, $inspect, ownership
-    // validation, rune init, etc.) over template AST nodes.
-
     fn enter_class_body(
         &mut self,
         node: &mut oxc_ast::ast::ClassBody<'a>,
@@ -348,6 +346,9 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
 
+        if self.rewrite_legacy_state_destructure_assignment_exit(node) {
+            return;
+        }
         self.rewrite_prop_update_ownership_exit(node);
         if self.rewrite_private_assignment_exit(node) {
             return;

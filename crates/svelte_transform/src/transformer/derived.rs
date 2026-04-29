@@ -7,17 +7,15 @@ use super::model::AsyncDerivedMode;
 use super::model::IgnoreQuery;
 use svelte_ast_builder::{Arg, Builder};
 
-/// Dev-mode context for adding label/location args to `$.async_derived`.
 pub(crate) struct DevContext<'a> {
     pub(crate) component_source: &'a str,
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'a str,
-    /// Svelte-ignore queries for span-based JS comment lookups.
+
     pub(crate) ignore_query: IgnoreQuery<'a, 'a>,
 }
 
 impl DevContext<'_> {
-    /// `script_offset` is relative to the script block start, not the full component source.
     fn locate(&self, script_offset: u32) -> String {
         let full_offset = self.script_content_start + script_offset;
         let (line, col) = compute_line_col(self.component_source, full_offset);
@@ -25,7 +23,6 @@ impl DevContext<'_> {
     }
 }
 
-/// Post-traverse: wrap `$.derived(expr)` → `$.derived(() => expr)` for $derived runes.
 pub(crate) fn wrap_derived_thunks<'a>(
     b: &Builder<'a>,
     program: &mut oxc_ast::ast::Program<'a>,
@@ -60,102 +57,85 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     if !pending.contains(&sym_id) {
                         continue;
                     }
-                    if let Some(Expression::CallExpression(call)) = &mut declarator.init {
-                        if !call.arguments.is_empty() {
-                            let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
-                            std::mem::swap(&mut call.arguments[0], &mut dummy);
-                            let arg_expr = dummy.into_expression();
+                    if let Some(Expression::CallExpression(call)) = &mut declarator.init
+                        && !call.arguments.is_empty()
+                    {
+                        let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
+                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        let arg_expr = dummy.into_expression();
 
-                            // Determine whether this is an async derived.
-                            // We rely on `async_derived_pending` because in dev mode the
-                            // `await` inside `$derived(await expr)` has already been
-                            // transformed to `(await $.track_reactivity_loss(expr))()` by
-                            // `rewrite_dev_await_tracking`, so we can't detect it by
-                            // checking for `AwaitExpression` alone.
-                            let async_mode = async_pending.get(&sym_id).copied();
-                            let is_async = matches!(arg_expr, Expression::AwaitExpression(_))
-                                || async_mode.is_some();
+                        let async_mode = async_pending.get(&sym_id).copied();
+                        let is_async = matches!(arg_expr, Expression::AwaitExpression(_))
+                            || async_mode.is_some();
 
-                            let var_name = match &declarator.id {
-                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                    id.name.to_string()
-                                }
-                                _ => String::new(),
+                        let var_name = match &declarator.id {
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                id.name.to_string()
+                            }
+                            _ => String::new(),
+                        };
+
+                        if is_async {
+                            let init_span_start = call.span.start;
+
+                            let thunk = if let Expression::AwaitExpression(await_expr) = arg_expr {
+                                let inner = await_expr.unbox().argument;
+                                b.thunk(inner)
+                            } else {
+                                b.async_arrow_expr_body(arg_expr)
                             };
 
-                            if is_async {
-                                // Must read span before the mem::swap below invalidates arg positions.
-                                let init_span_start = call.span.start;
+                            let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
+                            if let Some(ctx) = dev_ctx {
+                                extra_args
+                                    .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
 
-                                // Thunk form depends on whether arg is still AwaitExpression
-                                // (non-dev mode) or already transformed (dev mode).
-                                let thunk =
-                                    if let Expression::AwaitExpression(await_expr) = arg_expr {
-                                        // Non-dev: strip the await, create non-async thunk.
-                                        // `async () => await fetch(x)` → optimized to `() => fetch(x)`
-                                        // by the reference's `unthunk`. We match that behavior directly.
-                                        let inner = await_expr.unbox().argument;
-                                        b.thunk(inner)
-                                    } else {
-                                        // Dev mode: arg was already transformed to
-                                        // `(await $.track_reactivity_loss(expr))()` by
-                                        // `rewrite_dev_await_tracking`. Use async_arrow_expr_body
-                                        // to avoid adding an extra `await`.
-                                        b.async_arrow_expr_body(arg_expr)
-                                    };
+                                if !ctx
+                                    .ignore_query
+                                    .is_ignored_at_span(decl_start, "await_waterfall")
+                                {
+                                    let loc = ctx.locate(init_span_start);
+                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                }
+                            }
 
-                                let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
-                                if let Some(ctx) = dev_ctx {
-                                    extra_args
-                                        .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
-                                    // Only pass location if not suppressed by svelte-ignore await_waterfall
-                                    if !ctx
-                                        .ignore_query
-                                        .is_ignored_at_span(decl_start, "await_waterfall")
-                                    {
-                                        let loc = ctx.locate(init_span_start);
-                                        extra_args
-                                            .push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                            for arg in extra_args {
+                                call.arguments.push(arg);
+                            }
+                            call.callee = b.rid_expr("$.async_derived");
+                            let call_expr = b.move_expr(
+                                declarator
+                                    .init
+                                    .as_mut()
+                                    .expect("$derived declarator always has an initializer"),
+                            );
+                            declarator.init =
+                                Some(match async_mode.unwrap_or(AsyncDerivedMode::Await) {
+                                    AsyncDerivedMode::Await => b.await_expr(call_expr),
+                                    AsyncDerivedMode::Save => {
+                                        let saved = b.call_expr("$.save", [Arg::Expr(call_expr)]);
+                                        b.call_expr_callee(
+                                            b.await_expr(saved),
+                                            std::iter::empty::<Arg<'a, '_>>(),
+                                        )
                                     }
-                                }
+                                });
+                        } else {
+                            let thunk = b.thunk(arg_expr);
+                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
 
-                                call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
-                                for arg in extra_args {
-                                    call.arguments.push(arg);
-                                }
-                                call.callee = b.rid_expr("$.async_derived");
-                                let call_expr = b.move_expr(
+                            if dev_ctx.is_some() {
+                                let derived_expr = b.move_expr(
                                     declarator
                                         .init
                                         .as_mut()
                                         .expect("$derived declarator always has an initializer"),
                                 );
-                                declarator.init =
-                                    Some(match async_mode.unwrap_or(AsyncDerivedMode::Await) {
-                                        AsyncDerivedMode::Await => b.await_expr(call_expr),
-                                        AsyncDerivedMode::Save => {
-                                            let saved =
-                                                b.call_expr("$.save", [Arg::Expr(call_expr)]);
-                                            b.call_expr_callee(
-                                                b.await_expr(saved),
-                                                std::iter::empty::<Arg<'a, '_>>(),
-                                            )
-                                        }
-                                    });
-                            } else {
-                                let thunk = b.thunk(arg_expr);
-                                call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
-
-                                if dev_ctx.is_some() {
-                                    let derived_expr =
-                                        b.move_expr(declarator.init.as_mut().expect(
-                                            "$derived declarator always has an initializer",
-                                        ));
-                                    declarator.init = Some(b.call_expr(
-                                        "$.tag",
-                                        [Arg::Expr(derived_expr), Arg::Str(var_name)],
-                                    ));
-                                }
+                                declarator.init = Some(b.call_expr(
+                                    "$.tag",
+                                    [Arg::Expr(derived_expr), Arg::Str(var_name)],
+                                ));
                             }
                         }
                     }
@@ -175,16 +155,15 @@ fn wrap_derived_thunks_in_stmts<'a>(
             Statement::ExportNamedDeclaration(export) => {
                 if let Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) =
                     &mut export.declaration
+                    && let Some(body) = &mut func.body
                 {
-                    if let Some(body) = &mut func.body {
-                        wrap_derived_thunks_in_stmts(
-                            b,
-                            &mut body.statements,
-                            pending,
-                            async_pending,
-                            dev_ctx,
-                        );
-                    }
+                    wrap_derived_thunks_in_stmts(
+                        b,
+                        &mut body.statements,
+                        pending,
+                        async_pending,
+                        dev_ctx,
+                    );
                 }
             }
             _ => {}
@@ -192,14 +171,12 @@ fn wrap_derived_thunks_in_stmts<'a>(
     }
 }
 
-/// Wrap a non-simple default expression for lazy evaluation.
 pub(crate) fn wrap_lazy<'a>(b: &Builder<'a>, expr: Expression<'a>) -> Expression<'a> {
-    if let Expression::CallExpression(call) = &expr {
-        if call.arguments.is_empty() {
-            if let Expression::Identifier(_) = &call.callee {
-                return b.clone_expr(&call.callee);
-            }
-        }
+    if let Expression::CallExpression(call) = &expr
+        && call.arguments.is_empty()
+        && let Expression::Identifier(_) = &call.callee
+    {
+        return b.clone_expr(&call.callee);
     }
     b.arrow_expr(b.no_params(), [b.expr_stmt(expr)])
 }

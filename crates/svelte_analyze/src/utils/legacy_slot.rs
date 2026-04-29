@@ -1,8 +1,3 @@
-//! Helpers for the pre-parsed `const <pattern> = <slot_value>;` statement
-//! that backs a legacy `let:` directive. The structural walk over the
-//! pattern lives in `svelte_component_semantics::walk_bindings` — this
-//! module only locates the declarator / pattern.
-
 use oxc_ast::ast::{BindingPattern, Statement, VariableDeclarationKind, VariableDeclarator};
 
 pub(crate) fn legacy_slot_declarator<'a>(

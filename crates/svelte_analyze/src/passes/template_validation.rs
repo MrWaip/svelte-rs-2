@@ -1,24 +1,15 @@
-//! Template structure validation — structural diagnostics that depend on the resolved
-//! AST shape (key presence, animate placement, each-block assignments).
-//!
-//! Runs after `CollectSymbols` so that reference IDs are resolved.
-//!
-//! OXC expression spans are 0-based relative to the expression text snippet.
-//! `current_expr_offset` tracks the source-absolute start of the current expression
-//! so that sub-expression spans can be reported correctly.
-
 use oxc_ast::ast::{
     AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement,
 };
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, IfBlock, KeyBlock,
-    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy,
-    SnippetBlock, SvelteBody, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow,
-    Text, TransitionDirection, TransitionDirective, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
-    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
+    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, IfBlock, KeyBlock,
+    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT,
+    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock,
+    SvelteBody, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow, Text,
+    TransitionDirection, TransitionDirective, UseDirective, is_svg,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
@@ -640,26 +631,23 @@ impl TransitionDirectiveKind {
     }
 }
 
-/// Per-element validation state for mixed event syntax and directive conflicts.
 #[derive(Default)]
 struct ElementEventState {
     has_s5_events: bool,
     has_animate_directive: bool,
     intro_transition: Option<TransitionDirectiveKind>,
     outro_transition: Option<TransitionDirectiveKind>,
-    /// Span and event name of the first `on:` directive seen on this element.
+
     first_on_directive: Option<(Span, String)>,
 }
 
 pub(crate) struct TemplateValidationVisitor {
-    /// Source-absolute start of the current expression being visited.
-    /// Set by `visit_expression`, used in `visit_js_expression` to offset OXC sub-spans.
     current_expr_offset: u32,
-    /// Stack of per-element event state, pushed on `visit_element` and popped on `leave_element`.
+
     element_event_state: Vec<ElementEventState>,
-    /// Nesting depth of `<dialog>` elements; used to suppress `a11y_autofocus` inside dialogs.
+
     dialog_depth: u32,
-    /// First non-custom-element legacy slot seen in this component for slot/render conflicts.
+
     first_legacy_slot_span: Option<Span>,
     saw_render_tag: bool,
     emitted_slot_snippet_conflict: bool,
@@ -685,15 +673,14 @@ impl TemplateValidationVisitor {
     }
 
     fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_, '_>) {
-        if let Some(state) = self.element_event_state.pop() {
-            if state.has_s5_events {
-                if let Some((span, name)) = state.first_on_directive {
-                    ctx.warnings_mut().push(Diagnostic::error(
-                        DiagnosticKind::MixedEventHandlerSyntaxes { name },
-                        span,
-                    ));
-                }
-            }
+        if let Some(state) = self.element_event_state.pop()
+            && state.has_s5_events
+            && let Some((span, name)) = state.first_on_directive
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::MixedEventHandlerSyntaxes { name },
+                span,
+            ));
         }
     }
 
@@ -805,24 +792,17 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        // const_tag_invalid_expression: an unparenthesized sequence expression in the init
-        // (e.g. `{@const a = b, c = d}`) produces two declarators when OXC parses the
-        // wrapped `const a = b, c = d;` form. Parenthesised sequences are fine.
-        if let Some(parsed) = ctx.parsed() {
-            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
+        if let Some(parsed) = ctx.parsed()
+            && let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
                 parsed.stmt(tag.decl.id())
-            {
-                if decl.declarations.len() > 1 {
-                    ctx.warnings_mut().push(Diagnostic::error(
-                        DiagnosticKind::ConstTagInvalidExpression,
-                        tag.span,
-                    ));
-                }
-            }
+            && decl.declarations.len() > 1
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::ConstTagInvalidExpression,
+                tag.span,
+            ));
         }
 
-        // const_tag_invalid_placement: {@const} must be a direct child of an allowed block.
-        // TemplateTopology preserves the same direct-parent relationship the walker stack exposed.
         let is_valid_parent = ctx.data.parent(tag.id).is_some_and(|p| {
             matches!(
                 p.kind,
@@ -848,18 +828,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.element_event_state.push(ElementEventState::default());
         self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);
 
-        // Track dialog nesting for a11y_autofocus suppression.
         if el.name == "dialog" {
             self.dialog_depth += 1;
         }
 
-        // Copy source before borrowing ctx.data so the &str is available after
-        // the idx borrow is released (needed by check_a11y_missing_attribute).
         let source = ctx.source;
 
-        // Pre-compute all attribute-based flags and refs inside a block so that
-        // the ctx.data borrow through `idx` is released before ctx.warnings_mut().
-        // &Attribute results borrow `el`, not `ctx`, so they outlive the block.
         let (
             has_slot,
             has_spread,
@@ -886,7 +860,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
             )
         };
 
-        // textarea_invalid_content: <textarea> may not have both a value attribute and children.
         if el.name == "textarea"
             && has_value_attr
             && ctx.data.fragment_has_children_by_id(el.fragment)
@@ -897,9 +870,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        // slot_attribute_invalid_placement / slot_attribute_invalid:
-        // - placement error when the element is NOT a direct child of a component.
-        // - value error when it IS a direct child but slot value is not a plain string.
         if has_slot
             && !ctx
                 .data
@@ -910,16 +880,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 DiagnosticKind::SlotAttributeInvalidPlacement,
                 el.span,
             ));
-        } else if has_slot {
-            if let Some(attr) = slot_attr {
-                if !matches!(attr, Attribute::StringAttribute(_)) {
-                    ctx.warnings_mut().push(Diagnostic::error(
-                        DiagnosticKind::SlotAttributeInvalid,
-                        attr_value_span(attr),
-                    ));
-                } else {
-                    validate_component_slot_conflicts(el, attr, ctx);
-                }
+        } else if has_slot && let Some(attr) = slot_attr {
+            if !matches!(attr, Attribute::StringAttribute(_)) {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SlotAttributeInvalid,
+                    attr_value_span(attr),
+                ));
+            } else {
+                validate_component_slot_conflicts(el, attr, ctx);
             }
         }
 
@@ -938,13 +906,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
 
-        // attribute_quoted: custom elements (names containing '-') get the same warning
-        // as component attributes for quoted single-expression attrs in runes mode.
         if el.name.contains('-') {
             check_attribute_quoted(&el.attributes, ctx);
         }
 
-        let _ = has_spread; // used only in pre-computation above
+        let _ = has_spread;
     }
 
     fn visit_slot_element_legacy(
@@ -1147,31 +1113,28 @@ impl TemplateVisitor for TemplateValidationVisitor {
         attr: &ExpressionAttribute,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if attr.event_name.is_some() {
-            if let Some(Expression::Identifier(ident)) =
+        if attr.event_name.is_some()
+            && let Some(Expression::Identifier(ident)) =
                 ctx.parsed().and_then(|p| p.expr(attr.expression.id()))
-            {
-                if ident.name.as_str() == attr.name.as_str()
-                    && ctx
-                        .data
-                        .scoping
-                        .find_binding(ctx.scope, ident.name.as_str())
-                        .is_none()
-                {
-                    ctx.warnings_mut().push(Diagnostic::warning(
-                        DiagnosticKind::AttributeGlobalEventReference {
-                            name: attr.name.clone(),
-                        },
-                        attr.expression.span,
-                    ));
-                }
-            }
+            && ident.name.as_str() == attr.name.as_str()
+            && ctx
+                .data
+                .scoping
+                .find_binding(ctx.scope, ident.name.as_str())
+                .is_none()
+        {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::AttributeGlobalEventReference {
+                    name: attr.name.clone(),
+                },
+                attr.expression.span,
+            ));
         }
 
-        if attr.event_name.is_some() {
-            if let Some(state) = self.element_event_state.last_mut() {
-                state.has_s5_events = true;
-            }
+        if attr.event_name.is_some()
+            && let Some(state) = self.element_event_state.last_mut()
+        {
+            state.has_s5_events = true;
         }
     }
 
@@ -1304,22 +1267,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span) {
-            if ctx
+        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span)
+            && ctx
                 .data
                 .attr_expression(dir.id)
                 .is_some_and(|info| info.has_await())
-            {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::IllegalAwaitExpression,
-                    expression_span,
-                ));
-            }
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::IllegalAwaitExpression,
+                expression_span,
+            ));
         }
     }
 
-    // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
-    // event_directive_deprecated, mixed_event_handler_syntaxes
     fn visit_on_directive_legacy(
         &mut self,
         dir: &OnDirectiveLegacy,
@@ -1331,7 +1291,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
             .is_some_and(|p| p.kind == ParentKind::ComponentNode);
 
         if !is_component {
-            // Invalid modifier check
             let list = EVENT_MODIFIERS.join(", ");
             for modifier in &dir.modifiers {
                 if !EVENT_MODIFIERS.contains(&modifier.as_str()) {
@@ -1342,7 +1301,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 }
             }
 
-            // passive + nonpassive conflict
             let flags = ctx.data.event_modifiers(dir.id);
             let has_passive = flags.contains(EventModifier::PASSIVE);
             let has_nonpassive = flags.contains(EventModifier::NONPASSIVE);
@@ -1357,7 +1315,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        // Runes-mode deprecation — all non-component on: directives
         if ctx.runes && !is_component {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::EventDirectiveDeprecated {
@@ -1367,26 +1324,23 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        // Record first on: directive for mixed-syntax check (DOM elements only)
-        if !is_component {
-            if let Some(state) = self.element_event_state.last_mut() {
-                state
-                    .first_on_directive
-                    .get_or_insert((dir.name_span, dir.name.clone()));
-            }
+        if !is_component && let Some(state) = self.element_event_state.last_mut() {
+            state
+                .first_on_directive
+                .get_or_insert((dir.name_span, dir.name.clone()));
         }
     }
 
     fn visit_text(&mut self, text: &Text, ctx: &mut VisitContext<'_, '_>) {
         let value = text.value(ctx.source);
 
-        if contains_non_whitespace_text(value) {
-            if let Some(message) = invalid_text_parent_message(text.id, ctx) {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::NodeInvalidPlacement { message },
-                    text.span,
-                ));
-            }
+        if contains_non_whitespace_text(value)
+            && let Some(message) = invalid_text_parent_message(text.id, ctx)
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::NodeInvalidPlacement { message },
+                text.span,
+            ));
         }
 
         for (offset, ch) in value.char_indices() {
@@ -1418,7 +1372,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Use case: block_unexpected_character — runes mode only, char after `{` must be `@`
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
         if ctx.runes {
             let start = tag.span.start as usize;
@@ -1433,11 +1386,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Use cases: block_empty, block_unexpected_character
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
         check_empty_fragment(block.fragment, ctx);
 
-        // block_unexpected_character: runes mode only — char after `{` must be `#`
         if ctx.runes {
             let start = block.span.start as usize;
             if ctx.source.as_bytes().get(start + 1) != Some(&b'#') {
@@ -1451,14 +1402,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Use cases: block_empty (consequent + alternate), block_unexpected_character
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_, '_>) {
         check_empty_fragment(block.consequent, ctx);
         if let Some(alt) = block.alternate {
             check_empty_fragment(alt, ctx);
         }
 
-        // block_unexpected_character: runes mode only — `{#if` needs `#`, `{:else if` needs `:`
         if ctx.runes {
             let expected: u8 = if block.elseif { b':' } else { b'#' };
             let start = block.span.start as usize;
@@ -1473,7 +1422,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Use case: block_unexpected_character for {:then val} / {:catch err} with whitespace before `:`
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
         if !ctx.runes {
             return;
@@ -1498,19 +1446,17 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Use case 2: each_key_without_as
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
-        if let Some(key_ref) = block.key.as_ref() {
-            if block.context.is_none() {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::EachKeyWithoutAs,
-                    key_ref.span,
-                ));
-            }
+        if let Some(key_ref) = block.key.as_ref()
+            && block.context.is_none()
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::EachKeyWithoutAs,
+                key_ref.span,
+            ));
         }
     }
 
-    // Use cases 3 & 4: animation_missing_key, animation_invalid_placement
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_, '_>) {
         if let Some(state) = self.element_event_state.last_mut() {
             if state.has_animate_directive {
@@ -1523,55 +1469,48 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span) {
-            if ctx
+        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span)
+            && ctx
                 .data
                 .attr_expression(dir.id)
                 .is_some_and(|info| info.has_await())
-            {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::IllegalAwaitExpression,
-                    expression_span,
-                ));
-            }
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::IllegalAwaitExpression,
+                expression_span,
+            ));
         }
 
-        // Collect grandparent info in a block so the ancestors iterator is dropped
-        // before we borrow ctx.store or ctx.warnings_mut().
         let (parent, grandparent) = {
             let parent = ctx.data.parent(dir.id);
             let mut ancestors = ctx.data.ancestors(dir.id);
-            ancestors.next(); // skip Element (direct attr parent)
+            ancestors.next();
             (parent, ancestors.next())
         };
 
         let diag_kind = match grandparent.map(|p| p.kind) {
             Some(ParentKind::EachBlock) => {
-                // Scope the store borrow so it ends before warnings_mut() is called.
-                let diag = {
-                    let each_id = grandparent
-                        .expect("EachBlock parent implies grandparent is the each block")
-                        .id;
-                    let each_block = ctx
-                        .store
-                        .get(each_id)
-                        .as_each_block()
-                        .expect("grandparent id resolved from ParentKind::EachBlock");
-                    if each_block.key.is_none() {
-                        Some(DiagnosticKind::AnimationMissingKey)
+                let each_id = grandparent
+                    .expect("EachBlock parent implies grandparent is the each block")
+                    .id;
+                let each_block = ctx
+                    .store
+                    .get(each_id)
+                    .as_each_block()
+                    .expect("grandparent id resolved from ParentKind::EachBlock");
+                if each_block.key.is_none() {
+                    Some(DiagnosticKind::AnimationMissingKey)
+                } else {
+                    let _ = each_id;
+                    let only_child = ctx
+                        .data
+                        .fragment_single_non_trivial_child_by_id(each_block.body);
+                    if only_child != parent.map(|p| p.id) {
+                        Some(DiagnosticKind::AnimationInvalidPlacement)
                     } else {
-                        let _ = each_id;
-                        let only_child = ctx
-                            .data
-                            .fragment_single_non_trivial_child_by_id(each_block.body);
-                        if only_child != parent.map(|p| p.id) {
-                            Some(DiagnosticKind::AnimationInvalidPlacement)
-                        } else {
-                            None
-                        }
+                        None
                     }
-                };
-                diag
+                }
             }
             _ => Some(DiagnosticKind::AnimationInvalidPlacement),
         };
@@ -1582,7 +1521,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    // Track current expression offset for sub-span conversion
     fn visit_expression(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_, '_>) {
         self.current_expr_offset = span.start;
     }
@@ -1591,7 +1529,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.current_expr_offset = span.start;
     }
 
-    // Use case 5: each_item_invalid_assignment (runes mode only)
     fn visit_js_expression(
         &mut self,
         id: NodeId,
@@ -1803,14 +1740,15 @@ fn validate_bind_parent_specifics(
 
     if parent.name == "select" && bind_semantics.is_none_or(|semantics| !semantics.is_this()) {
         let multiple = ctx.data.attribute(parent.id, &parent.attrs, "multiple");
-        if let Some(a) = multiple {
-            if !attr_is_text(a) && !matches!(a, Attribute::BooleanAttribute(_)) {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::AttributeInvalidMultiple,
-                    attr_value_span(a),
-                ));
-                return;
-            }
+        if let Some(a) = multiple
+            && !attr_is_text(a)
+            && !matches!(a, Attribute::BooleanAttribute(_))
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::AttributeInvalidMultiple,
+                attr_value_span(a),
+            ));
+            return;
         }
     }
 
@@ -1962,28 +1900,19 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
         return;
     };
 
-    let decl = ctx
-        .data
-        .reactivity
-        .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id));
+    let decl = ctx.data.reactivity.binding_semantics(sym_id);
     let valid = matches!(
         decl,
-        crate::DeclarationSemantics::State(_)
-            | crate::DeclarationSemantics::Store(_)
-            | crate::DeclarationSemantics::Prop(crate::PropDeclarationSemantics {
-                kind: crate::PropDeclarationKind::Source { .. }
-                    | crate::PropDeclarationKind::NonSource,
+        crate::BindingSemantics::State(_)
+            | crate::BindingSemantics::Store(_)
+            | crate::BindingSemantics::Prop(crate::PropBindingSemantics {
+                kind: crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource,
                 ..
             })
     ) || matches!(
         decl,
-        crate::DeclarationSemantics::Contextual(
-            crate::ContextualDeclarationSemantics::EachItem(_),
-        ),
+        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::EachItem(_),),
     ) && bind_targets_each_context(sym_id, dir.id, ctx)
-        // Plain mutable let/var (no rune) is bindable — the bind directive's setter writes to it.
-        // This matches the reference compiler: any bind target is marked as `binding.updated`
-        // by scope analysis, so the "not updated" guard never fires for plain let/var.
         || {
             let flags = ctx.data.scoping.symbol_flags(sym_id);
             flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
@@ -2009,12 +1938,8 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
     };
 
     if matches!(
-        ctx.data
-            .reactivity
-            .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id)),
-        crate::DeclarationSemantics::Contextual(
-            crate::ContextualDeclarationSemantics::SnippetParam(_),
-        ),
+        ctx.data.reactivity.binding_semantics(sym_id),
+        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::SnippetParam(_),),
     ) {
         emit_bind_error(
             ctx,
@@ -2284,35 +2209,27 @@ fn validate_component_slot_conflicts(
         ));
     }
 
-    if slot_name == "default" {
-        if let Some(conflict_span) =
+    if slot_name == "default"
+        && let Some(conflict_span) =
             component_has_implicit_default_children(component, Some(el.id), ctx)
-        {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::SlotDefaultDuplicate,
-                conflict_span,
-            ));
-        }
+    {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotDefaultDuplicate,
+            conflict_span,
+        ));
     }
 }
 
-/// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
-/// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
 fn check_empty_fragment(fragment_id: svelte_ast::FragmentId, ctx: &mut VisitContext<'_, '_>) {
-    if let Some(node_id) = ctx.data.fragment_single_child_by_id(fragment_id) {
-        if let Node::Text(text) = ctx.store.get(node_id) {
-            if text.value(ctx.source).trim().is_empty() {
-                ctx.warnings_mut()
-                    .push(Diagnostic::warning(DiagnosticKind::BlockEmpty, text.span));
-            }
-        }
+    if let Some(node_id) = ctx.data.fragment_single_child_by_id(fragment_id)
+        && let Node::Text(text) = ctx.store.get(node_id)
+        && text.value(ctx.source).trim().is_empty()
+    {
+        ctx.warnings_mut()
+            .push(Diagnostic::warning(DiagnosticKind::BlockEmpty, text.span));
     }
 }
 
-/// Returns true when `parent` is a `RegularElement` or `SvelteElement` with a `slot="..."` attr.
-///
-/// Used by const_tag_invalid_placement to allow `{@const}` inside slotted elements,
-/// matching the reference compiler's allowed-parent matrix.
 fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_, '_>) -> bool {
     if !matches!(parent.kind, ParentKind::Element | ParentKind::SvelteElement) {
         return false;
@@ -2375,11 +2292,10 @@ fn is_each_block_var_ref(
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
         .is_some_and(|sym| {
             matches!(
-                data.reactivity
-                    .declaration_semantics(data.scoping.symbol_declaration(sym)),
-                crate::DeclarationSemantics::Contextual(
-                    crate::ContextualDeclarationSemantics::EachItem(_)
-                        | crate::ContextualDeclarationSemantics::EachIndex(_),
+                data.reactivity.binding_semantics(sym),
+                crate::BindingSemantics::Contextual(
+                    crate::ContextualBindingSemantics::EachItem(_)
+                        | crate::ContextualBindingSemantics::EachIndex(_),
                 ),
             )
         })
@@ -2395,10 +2311,9 @@ fn is_snippet_param_ref(
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
         .is_some_and(|sym| {
             matches!(
-                data.reactivity
-                    .declaration_semantics(data.scoping.symbol_declaration(sym)),
-                crate::DeclarationSemantics::Contextual(
-                    crate::ContextualDeclarationSemantics::SnippetParam(_),
+                data.reactivity.binding_semantics(sym),
+                crate::BindingSemantics::Contextual(
+                    crate::ContextualBindingSemantics::SnippetParam(_),
                 ),
             )
         })
@@ -2452,10 +2367,9 @@ fn maybe_const_tag_invalid_reference(
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
 
     if !matches!(
-        ctx.data
-            .declaration_semantics(ctx.data.scoping.symbol_declaration(sym_id)),
-        crate::types::data::DeclarationSemantics::Const(
-            crate::types::data::ConstDeclarationSemantics::ConstTag { .. }
+        ctx.data.binding_semantics(sym_id),
+        crate::types::data::BindingSemantics::Const(
+            crate::types::data::ConstBindingSemantics::ConstTag { .. }
         )
     ) {
         return None;
@@ -2825,9 +2739,6 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
     }
 }
 
-/// Returns true when `window` (the source slice just before a binding pattern) contains
-/// whitespace between the opening `{` and the clause keyword (`:then` or `:catch`).
-/// Catches patterns like `{ :then val}` where a space precedes the colon.
 fn has_whitespace_before_clause(window: &str, clause: &str) -> bool {
     if let Some(brace_pos) = window.rfind('{') {
         let between = &window[brace_pos + 1..];
@@ -2845,14 +2756,6 @@ fn contains_invalid_snippet_param_assignment(expr: &Expression<'_>, data: &Analy
     visitor.found
 }
 
-// ---------------------------------------------------------------------------
-// A11y: missing required attributes
-// ---------------------------------------------------------------------------
-
-/// Emit `attribute_avoid_is`, `attribute_illegal_colon`, and
-/// `attribute_invalid_property_name` warnings for plain HTML attributes on a
-/// `RegularElement` or `SvelteElement`.  The borrow of `ctx.data` is confined
-/// to the inner block so `ctx.warnings_mut()` can be called freely afterwards.
 fn check_plain_attr_warnings(
     id: NodeId,
     span: Span,
@@ -3000,21 +2903,19 @@ fn check_component_name_lowercase(el: &Element, ctx: &mut VisitContext<'_, '_>) 
     }
 }
 
-/// `attribute_quoted` warning: fires in runes mode when a component or custom element
-/// receives an attribute whose value is a quoted single expression (e.g. `foo="{expr}"`).
-/// In the AST this appears as a `ConcatenationAttribute` with exactly one `Dynamic` part.
 fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
     if !ctx.runes {
         return;
     }
     for attr in attrs {
-        if let Attribute::ConcatenationAttribute(ca) = attr {
-            if ca.parts.len() == 1 && matches!(ca.parts[0], ConcatPart::Dynamic { .. }) {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::AttributeQuoted,
-                    attr_value_span(attr),
-                ));
-            }
+        if let Attribute::ConcatenationAttribute(ca) = attr
+            && ca.parts.len() == 1
+            && matches!(ca.parts[0], ConcatPart::Dynamic { .. })
+        {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::AttributeQuoted,
+                attr_value_span(attr),
+            ));
         }
     }
 }
@@ -3025,28 +2926,27 @@ fn check_a11y_missing_attribute(
     source: &str,
 ) -> Option<Diagnostic> {
     match el.name.as_str() {
-        // img needs alt
         "img" => (!data.has_attribute(el.id, "alt")).then(|| warn_missing_attr(el, &["alt"])),
-        // area needs alt, aria-label, or aria-labelledby
+
         "area" => (!data.has_attribute(el.id, "alt")
             && !data.has_attribute(el.id, "aria-label")
             && !data.has_attribute(el.id, "aria-labelledby"))
         .then(|| warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"])),
-        // iframe needs title
+
         "iframe" => {
             (!data.has_attribute(el.id, "title")).then(|| warn_missing_attr(el, &["title"]))
         }
-        // object needs title, aria-label, or aria-labelledby
+
         "object" => (!data.has_attribute(el.id, "title")
             && !data.has_attribute(el.id, "aria-label")
             && !data.has_attribute(el.id, "aria-labelledby"))
         .then(|| warn_missing_attr(el, &["title", "aria-label", "aria-labelledby"])),
-        // <a> without href is only valid as a named anchor (id/name) or disabled link
+
         "a" => {
             if data.has_attribute(el.id, "href") || data.has_attribute(el.id, "xlink:href") {
                 return None;
             }
-            // Named anchors and aria-disabled links don't require href.
+
             if data.has_attribute(el.id, "id") || data.has_attribute(el.id, "name") {
                 return None;
             }
@@ -3117,7 +3017,6 @@ mod tests {
 
     #[test]
     fn shorthand_then_form() {
-        // {#await expr then val} — no `{:then` pattern before binding
         assert!(!has_whitespace_before_clause(" expr then ", ":then"));
     }
 }

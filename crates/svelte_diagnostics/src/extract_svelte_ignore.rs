@@ -3,20 +3,13 @@ use svelte_span::Span;
 use crate::codes::{fuzzymatch, is_valid_warning_code, legacy_replacement};
 use crate::{Diagnostic, DiagnosticKind};
 
-/// Result of parsing a `<!-- svelte-ignore ... -->` comment.
 #[derive(Debug, Default)]
 pub struct ExtractResult {
-    /// Valid warning codes extracted from the comment.
     pub codes: Vec<String>,
-    /// Diagnostics emitted during parsing (e.g., LegacyCode, UnknownCode warnings).
+
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Extracts svelte-ignore codes from comment inner text.
-///
-/// `offset` is the byte offset of `text` in the source (for diagnostic spans).
-/// `text` is the content between `<!--` and `-->`, NOT including delimiters.
-/// `runes` selects strict (comma-separated) vs lenient (space-separated) parsing.
 pub fn extract_svelte_ignore(offset: u32, text: &str, runes: bool) -> ExtractResult {
     let prefix = "svelte-ignore";
     let trimmed = text.trim_start();
@@ -26,7 +19,6 @@ pub fn extract_svelte_ignore(offset: u32, text: &str, runes: bool) -> ExtractRes
         return ExtractResult::default();
     }
 
-    // Must have whitespace after "svelte-ignore"
     let after_prefix = &trimmed[prefix.len()..];
     if !after_prefix.starts_with(|c: char| c.is_whitespace()) {
         return ExtractResult::default();
@@ -47,8 +39,6 @@ fn is_code_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '$' || c == '-'
 }
 
-/// Runes mode: comma-separated, strict validation.
-/// Stops at first code without trailing comma (rest is prose).
 fn extract_runes_mode(base_offset: u32, text: &str) -> ExtractResult {
     let mut result = ExtractResult::default();
     let all_codes = DiagnosticKind::all_warning_codes();
@@ -56,7 +46,6 @@ fn extract_runes_mode(base_offset: u32, text: &str) -> ExtractResult {
     let bytes = text.as_bytes();
 
     loop {
-        // Skip whitespace
         while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
             pos += 1;
         }
@@ -64,7 +53,6 @@ fn extract_runes_mode(base_offset: u32, text: &str) -> ExtractResult {
             break;
         }
 
-        // Read a word
         let word_start = pos;
         while pos < bytes.len() && is_code_char(bytes[pos] as char) {
             pos += 1;
@@ -104,12 +92,10 @@ fn extract_runes_mode(base_offset: u32, text: &str) -> ExtractResult {
             }
         }
 
-        // Skip whitespace after word
         while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
             pos += 1;
         }
 
-        // Check for comma — if none, stop (rest is prose)
         if pos < bytes.len() && bytes[pos] == b',' {
             pos += 1;
         } else {
@@ -120,7 +106,6 @@ fn extract_runes_mode(base_offset: u32, text: &str) -> ExtractResult {
     result
 }
 
-/// Legacy mode: space-separated, lenient — accepts all codes.
 fn extract_legacy_mode(_base_offset: u32, text: &str) -> ExtractResult {
     let mut result = ExtractResult::default();
     let mut pos = 0;
@@ -246,7 +231,7 @@ mod tests {
     fn offset_tracking() {
         let r = extract_svelte_ignore(4, " svelte-ignore bad_code ", true);
         assert_eq!(r.warnings.len(), 1);
-        // "bad_code" starts at position 15 in " svelte-ignore bad_code "
+
         assert_eq!(r.warnings[0].span.start, 4 + 15);
     }
 }

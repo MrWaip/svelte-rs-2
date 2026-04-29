@@ -47,26 +47,19 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_sanitized_legacy_slots(&self) -> bool {
         self.data.output.needs_sanitized_legacy_slots
     }
-    /// LEGACY(svelte4): consumer should emit `const $$sanitized_props = $.legacy_rest_props($$props, [...])`.
-    /// Reads `ReactivitySemantics` directly — single source of truth.
+
     pub fn needs_sanitized_legacy_props(&self) -> bool {
         self.data.reactivity.legacy_uses_props() || self.data.reactivity.legacy_uses_rest_props()
     }
 
-    /// LEGACY(svelte4): keys excluded from `$$sanitized_props`. Mirrors
-    /// reference compiler `transform-client.js:476-493`.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
     pub fn legacy_sanitized_props_excluded_keys(&self) -> &'static [&'static str] {
         &["children", "$$slots", "$$events", "$$legacy"]
     }
-    /// LEGACY(svelte4): consumer should emit `const $$restProps = $.legacy_rest_props($$sanitized_props, [...])`.
-    /// Reads `ReactivitySemantics` directly — single source of truth.
+
     pub fn needs_legacy_rest_props(&self) -> bool {
         self.data.reactivity.legacy_uses_rest_props()
     }
-    /// LEGACY(svelte4): prop keys (alias or local name) of every LegacyBindableProp
-    /// in source declaration order. Used by codegen for the
-    /// `$.legacy_rest_props($$sanitized_props, [...])` exclusion list.
+
     pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
         self.data
             .reactivity
@@ -90,15 +83,10 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn scoping(&self) -> &ComponentScoping<'a> {
         &self.data.scoping
     }
-    pub fn iter_store_declarations(
+    pub fn iter_store_bindings(
         &self,
-    ) -> impl Iterator<
-        Item = (
-            svelte_component_semantics::OxcNodeId,
-            StoreDeclarationSemantics,
-        ),
-    > + '_ {
-        self.data.iter_store_declarations()
+    ) -> impl Iterator<Item = (SymbolId, StoreBindingSemantics)> + '_ {
+        self.data.iter_store_bindings()
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.data.script.ce_config.as_ref()
@@ -205,14 +193,14 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> Option<&str> {
         self.data.binding_origin_key_for_identifier_reference(id)
     }
-    pub fn declaration_root(&self, sym: SymbolId) -> Option<svelte_component_semantics::OxcNodeId> {
-        self.data.declaration_root_for_symbol(sym)
+    pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
+        self.data.binding_semantics(sym)
     }
-    pub fn declaration_semantics(
+    pub fn declarator_semantics(
         &self,
-        node_id: svelte_component_semantics::OxcNodeId,
-    ) -> DeclarationSemantics {
-        self.data.declaration_semantics(node_id)
+        decl_node: svelte_component_semantics::OxcNodeId,
+    ) -> crate::types::data::DeclaratorSemantics {
+        self.data.declarator_semantics(decl_node)
     }
     pub fn reference_semantics(
         &self,
@@ -334,11 +322,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.elements.flags.component_props(id)
     }
 
-    /// LEGACY(svelte4): true when this child component should receive a
-    /// `$$legacy: true` marker in its props object — i.e. parent is in legacy
-    /// mode AND the call site has at least one `bind:foo` directive.
-    /// Reference compiler: `!analysis.runes && node.attributes.some(BindDirective)`.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
     pub fn component_needs_legacy_props_marker(&self, id: NodeId) -> bool {
         if self.data.uses_runes() {
             return false;
@@ -427,9 +410,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
     }
-    /// Returns true when the given symbol is the `index` binding of some
-    /// `{#each}` block. Each-block indices are always `number`, so an
-    /// interpolation referencing one never needs a `?? ""` fallback.
+
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.data.block_semantics_store.is_each_index_sym(sym)
     }
@@ -451,16 +432,15 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
         self.data.template_element_parent(id)
     }
-    /// The scoping class for this component, e.g. `"svelte-1a7i8ec"`.
-    /// Returns an empty string when no `<style>` block is present.
+
     pub fn css_hash(&self) -> &str {
         self.data.css_hash()
     }
-    /// Whether the element should receive the scoped CSS class.
+
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
         self.data.is_css_scoped(id)
     }
-    /// Whether CSS should be injected at runtime via `$.append_styles()`.
+
     pub fn inject_styles(&self) -> bool {
         self.data.inject_styles()
     }

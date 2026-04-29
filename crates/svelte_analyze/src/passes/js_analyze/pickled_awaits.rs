@@ -3,8 +3,8 @@ use oxc_ast::ast::{
     ConditionalExpression, Expression, MemberExpression, NewExpression, ObjectExpression,
     SequenceExpression, TaggedTemplateExpression, TemplateLiteral,
 };
-use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_expression, walk_function};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_expression, walk_function};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 
@@ -54,10 +54,11 @@ impl PickledAwaitCollector {
 
 impl<'a> Visit<'a> for PickledAwaitCollector {
     fn visit_expression(&mut self, expr: &Expression<'a>) {
-        if let Expression::AwaitExpression(await_expr) = expr {
-            if self.fn_depth == 0 && !self.current_is_last() {
-                self.offsets.push(await_expr.span.start);
-            }
+        if let Expression::AwaitExpression(await_expr) = expr
+            && self.fn_depth == 0
+            && !self.current_is_last()
+        {
+            self.offsets.push(await_expr.span.start);
         }
         walk_expression(self, expr);
     }

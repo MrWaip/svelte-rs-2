@@ -6,12 +6,6 @@ use svelte_css::{
 };
 use svelte_span::Span;
 
-/// Transform the stylesheet AST: scope selectors and serialize to CSS text.
-///
-/// `hash_class` is the scoping class name (e.g. `"svelte-1a7i8ec"`).
-/// `keyframes` is the list of locally-scoped `@keyframes` names (collected by analyze).
-/// `source` is the original CSS source text (needed by the printer which
-/// resolves `Span`s back to source slices).
 pub fn transform_css(
     hash_class: &str,
     keyframes: &[CompactString],
@@ -65,7 +59,6 @@ impl VisitMut for ScopeSelectors<'_> {
         for child in children {
             match child {
                 StyleSheetChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
-                    // Hoist inner rules unscoped — do NOT visit them with the scoper
                     for block_child in sr.block.children {
                         match block_child {
                             BlockChild::Rule(rule) => {
@@ -94,7 +87,6 @@ impl VisitMut for ScopeSelectors<'_> {
         for child in children {
             match child {
                 BlockChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
-                    // Hoist inner rules unscoped
                     for block_child in sr.block.children {
                         new_children.push(block_child);
                     }
@@ -173,13 +165,11 @@ impl VisitMut for ScopeSelectors<'_> {
                 SimpleSelector::Global {
                     args: Some(args), ..
                 } => {
-                    // Insert scope class before global content if we have a scopable selector
-                    // but haven't inserted the scope class yet.
                     if has_local_scopable && !scope_inserted {
                         new_selectors.push(self.scope_modifier());
                         scope_inserted = true;
                     }
-                    // Expand :global(...) — inline the inner selectors unscoped
+
                     for complex in args.children {
                         for rel in complex.children {
                             new_selectors.extend(rel.selectors);
@@ -187,7 +177,6 @@ impl VisitMut for ScopeSelectors<'_> {
                     }
                 }
                 SimpleSelector::Global { args: None, .. } => {
-                    // Bare `:global` makes the remainder of the complex selector unscoped.
                     unscoped_tail = true;
                     self.after_bare_global = true;
                 }
@@ -199,8 +188,7 @@ impl VisitMut for ScopeSelectors<'_> {
                         has_local_scopable = true;
                     }
                     new_selectors.push(sel);
-                    // Recurse into pseudo-class args (e.g. :not(), :is(), :where(), :has())
-                    // so that :global() inside them is unwrapped and inner selectors are scoped.
+
                     if let Some(last) = new_selectors.last_mut() {
                         let was_specificity_bumped = self.specificity_bumped;
                         if has_prior_selectors
@@ -219,8 +207,6 @@ impl VisitMut for ScopeSelectors<'_> {
         }
 
         if has_local_scopable && !scope_inserted {
-            // Insert scope class before trailing pseudo-class/pseudo-element selectors,
-            // matching the reference compiler which walks backwards to find insertion point.
             let mut insert_pos = new_selectors.len();
             while insert_pos > 0 {
                 match &new_selectors[insert_pos - 1] {
@@ -247,26 +233,20 @@ impl VisitMut for ScopeSelectors<'_> {
         if node.name == "keyframes" {
             let prelude = node.prelude.source_text(self.source).trim();
             if let Some(stripped) = prelude.strip_prefix("-global-") {
-                // `-global-` escape: strip prefix, leave name unscoped
                 node.prelude_override = Some(CompactString::new(stripped));
             } else if self.keyframes.iter().any(|k| k.as_str() == prelude) {
-                // Local keyframe: prefix with component hash
                 node.prelude_override = Some(CompactString::new(format!(
                     "{}-{}",
                     self.hash_class, prelude
                 )));
             }
-            // Do NOT recurse into @keyframes body — keyframe selectors (from/to/%)
-            // are not scoped.
+
             return;
         }
         svelte_css::visit::walk_at_rule_mut(self, node);
     }
 
     fn visit_simple_selector_mut(&mut self, node: &mut SimpleSelector) {
-        // Recurse into :is(), :where(), :has(), :not() arguments so that
-        // :global() inside them is unwrapped and non-global selectors are scoped.
-        // Mirrors reference compiler PseudoClassSelector visitor.
         if let SimpleSelector::PseudoClass(pc) = node {
             match pc.name.as_str() {
                 "is" | "where" | "has" | "not" => {
@@ -276,8 +256,6 @@ impl VisitMut for ScopeSelectors<'_> {
                             .as_ref()
                             .is_some_and(|args| not_args_stay_unscoped(args))
                     {
-                        // Reference transform leaves simple :not(...) branches unscoped even
-                        // though we still need to recurse to unwrap nested :global(...).
                         self.suppress_scoping_depth += 1;
                         svelte_css::visit::walk_simple_selector_args_mut(self, node);
                         self.suppress_scoping_depth -= 1;
@@ -308,10 +286,6 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 }
 
-/// Scan an `animation` or `animation-name` value token by token, replacing
-/// tokens that match a locally-scoped keyframe name with the hash-prefixed form.
-///
-/// Returns `Some(rewritten)` if any replacement was made, `None` otherwise.
 fn rewrite_animation_value(
     value: &str,
     hash_class: &str,
@@ -325,13 +299,13 @@ fn rewrite_animation_value(
 
     while i < len {
         let b = bytes[i];
-        // Accumulate non-name characters (whitespace, commas, semicolons)
+
         if b.is_ascii_whitespace() || b == b',' {
             result.push(b as char);
             i += 1;
             continue;
         }
-        // Accumulate a CSS name token
+
         let start = i;
         while i < len && !bytes[i].is_ascii_whitespace() && bytes[i] != b',' && bytes[i] != b';' {
             i += 1;
@@ -420,7 +394,6 @@ fn not_args_stay_unscoped(args: &SelectorList) -> bool {
         .all(|complex| complex.children.len() == 1)
 }
 
-/// Returns true if the entire complex selector is a single `:global(...)` call.
 fn is_entirely_global(complex: &ComplexSelector) -> bool {
     complex.children.len() == 1
         && complex.children[0].selectors.len() == 1
@@ -430,7 +403,6 @@ fn is_entirely_global(complex: &ComplexSelector) -> bool {
         )
 }
 
-/// Unwrap a `:global(...)` complex selector — replace with its inner selectors.
 fn unwrap_global(complex: &mut ComplexSelector) {
     let sel = complex.children[0].selectors.remove(0);
     if let SimpleSelector::Global {
@@ -445,8 +417,6 @@ fn unwrap_global(complex: &mut ComplexSelector) {
     }
 }
 
-/// Check if a simple selector is something that can be scoped
-/// (type, class, id, attribute, pseudo-element, nesting).
 fn is_scopable(sel: &SimpleSelector) -> bool {
     matches!(
         sel,
@@ -458,9 +428,6 @@ fn is_scopable(sel: &SimpleSelector) -> bool {
     )
 }
 
-/// Compact formatted CSS into a single-line string matching the reference compiler's
-/// injected-mode format: whitespace inside declaration blocks is stripped, whitespace
-/// before `{` is preserved as a single space.
 pub fn compact_css_for_injection(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
     let chars: Vec<char> = css.chars().collect();

@@ -83,9 +83,6 @@ fn take_extend_expr<'a>(
     let config = ctx.ce_config()?;
     config.extend_span?;
 
-    // CE config expression isn't tied to a template AST node — it stays in
-    // the parser-staged storage past the drain (drain only consumes entries
-    // whose ExprRef.oxc_id was bound by build_component_semantics).
     let _ = config;
     let Some(Expression::ObjectExpression(object)) = ctx.state.parsed.take_pending_expr(span.start)
     else {
@@ -98,10 +95,10 @@ fn take_extend_expr<'a>(
             continue;
         };
         let prop = prop.unbox();
-        if let PropertyKey::StaticIdentifier(id) = &prop.key {
-            if id.name.as_str() == "extend" {
-                return Some(prop.value);
-            }
+        if let PropertyKey::StaticIdentifier(id) = &prop.key
+            && id.name.as_str() == "extend"
+        {
+            return Some(prop.value);
         }
     }
 
