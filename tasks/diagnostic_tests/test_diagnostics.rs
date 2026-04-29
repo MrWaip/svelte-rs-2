@@ -1358,6 +1358,18 @@ mod runes {
         "runes/validate_bindable_invalid_location"
     );
     diagnostic_case!(
+        validate_reactive_declaration_invalid_placement,
+        "runes/validate_reactive_declaration_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_reactive_declaration_cycle,
+        "runes/validate_reactive_declaration_cycle"
+    );
+    diagnostic_case!(
+        validate_reactive_declaration_module_script_dependency,
+        "runes/validate_reactive_declaration_module_script_dependency"
+    );
+    diagnostic_case!(
         validate_bindable_invalid_location_inside_arrow,
         "runes/validate_bindable_invalid_location_inside_arrow"
     );

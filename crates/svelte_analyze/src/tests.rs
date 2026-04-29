@@ -4273,6 +4273,335 @@ fn legacy_state_skipped_when_not_mutated() {
 }
 
 #[test]
+fn legacy_reactive_materializes_simple_assignment() {
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveKind;
+    let (_c, data) = analyze_source_with_options(
+        "<script>let count = 0; $: doubled = count * 2; function bump() { count += 1; }</script><button onclick={bump}>{count}-{doubled}</button>",
+        legacy_options(),
+    );
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 1, "expected one $: statement");
+    let s = stmts[0];
+    let LegacyReactiveKind::SimpleAssignment {
+        target_sym,
+        implicit_decl,
+    } = &s.kind
+    else {
+        panic!("expected SimpleAssignment, got {:?}", s.kind);
+    };
+    assert!(*implicit_decl, "doubled is implicitly introduced by $:");
+    let doubled_sym = data
+        .scoping
+        .find_binding_in_any_scope("doubled")
+        .expect("doubled binding");
+    assert_eq!(*target_sym, doubled_sym);
+    assert!(s.assignments.contains(&doubled_sym));
+    let count_sym = data
+        .scoping
+        .find_binding_in_any_scope("count")
+        .expect("count binding");
+    assert!(
+        s.dependencies.contains(&count_sym),
+        "deps must include count"
+    );
+}
+
+#[test]
+fn legacy_reactive_marks_implicit_reactive_local() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>let a = 1; let b = 2; $: sum = a + b;</script><p>{sum}</p>",
+        legacy_options(),
+    );
+    let sum_sym = data
+        .scoping
+        .find_binding_in_any_scope("sum")
+        .expect("sum synthetic binding");
+    assert!(
+        data.reactivity
+            .legacy_reactive()
+            .is_implicit_reactive_local(sum_sym)
+    );
+    assert!(matches!(
+        data.reactivity.binding_semantics(sum_sym),
+        BindingSemantics::LegacyState(_)
+    ));
+}
+
+#[test]
+fn legacy_reactive_skips_implicit_decl_in_nested_iife() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>let a = 1; $: ((p) => { via_iife = p * 2; })(a);</script><p>{a}</p>",
+        legacy_options(),
+    );
+    assert!(
+        data.scoping.find_binding_in_any_scope("via_iife").is_none(),
+        "via_iife must not be promoted to implicit reactive local"
+    );
+}
+
+#[test]
+fn legacy_reactive_dep_filter_includes_bindable_prop() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let label = ''; $: console.log(label);</script><p>{label}</p>",
+        legacy_options(),
+    );
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 1);
+    let label_sym = data
+        .scoping
+        .find_binding_in_any_scope("label")
+        .expect("label binding");
+    assert!(
+        stmts[0].dependencies.contains(&label_sym),
+        "bindable prop must be a dep"
+    );
+}
+
+#[test]
+fn legacy_reactive_dep_filter_excludes_plain_let() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>let a = 1; let b = 2; $: sum = a + b;</script><p>{sum}</p>",
+        legacy_options(),
+    );
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 1);
+    let a_sym = data.scoping.find_binding_in_any_scope("a").expect("a");
+    let b_sym = data.scoping.find_binding_in_any_scope("b").expect("b");
+    assert!(
+        !stmts[0].dependencies.contains(&a_sym),
+        "non-mutated plain let must not be a dep"
+    );
+    assert!(!stmts[0].dependencies.contains(&b_sym));
+}
+
+#[test]
+fn legacy_reactive_topological_order_basic() {
+    let (_c, data) = analyze_source_with_options(
+        r#"<script>
+            export let label = 'sum';
+            let a = 1;
+            let b = 2;
+            $: console.log(`${label}: ${sum}`);
+            $: sum = a + b;
+            $: ((p) => { via_iife = p * 2; })(sum);
+        </script><p>{sum}-{via_iife}</p>"#,
+        legacy_options(),
+    );
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveKind;
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 3);
+    let sum_sym = data
+        .scoping
+        .find_binding_in_any_scope("sum")
+        .expect("sum binding");
+    let LegacyReactiveKind::SimpleAssignment { target_sym, .. } = &stmts[0].kind else {
+        panic!("first statement after topo must be the sum assignment");
+    };
+    assert_eq!(
+        *target_sym, sum_sym,
+        "writer of sum must come first in topo order"
+    );
+}
+
+#[test]
+fn legacy_reactive_indirect_call_does_not_subscribe_to_closure_state() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>let count = 1; function double() { return count * 2; } $: doubled = double();</script><p>{doubled}-{count}</p><button onclick={() => count++}>+</button>",
+        legacy_options(),
+    );
+    let count_sym = data
+        .scoping
+        .find_binding_in_any_scope("count")
+        .expect("count");
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 1);
+    assert!(
+        !stmts[0].dependencies.contains(&count_sym),
+        "$: doubled = double() must not subscribe to closure-captured count (reference docs limitation)"
+    );
+}
+
+#[test]
+fn legacy_reactive_indirect_write_preserves_source_order() {
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveKind;
+    let (_c, data) = analyze_source_with_options(
+        "<script>let x = 1; let y = 2; function setY(v) { y = v; } $: z = y; $: setY(x);</script><p>{z}-{y}</p><button onclick={() => x++}>+</button>",
+        legacy_options(),
+    );
+    let stmts: Vec<_> = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .collect();
+    assert_eq!(stmts.len(), 2);
+    let y_sym = data.scoping.find_binding_in_any_scope("y").expect("y");
+    let LegacyReactiveKind::SimpleAssignment { target_sym, .. } = &stmts[0].kind else {
+        panic!("first statement must be the z = y assignment");
+    };
+    let z_sym = data.scoping.find_binding_in_any_scope("z").expect("z");
+    assert_eq!(*target_sym, z_sym, "source order: z = y comes first");
+    assert!(
+        !stmts[0].assignments.contains(&y_sym),
+        "z = y must not see indirect writes to y inside setY()"
+    );
+}
+
+#[test]
+fn legacy_reactive_collects_mutated_instance_imports() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>import data from './dep.js'; function bump() { data.count += 1; } $: total = data.count;</script><p>{total}</p>",
+        legacy_options(),
+    );
+    let data_sym = data
+        .scoping
+        .find_binding_in_any_scope("data")
+        .expect("data import");
+    assert!(
+        data.reactivity
+            .legacy_reactive()
+            .is_mutated_import(data_sym),
+        "mutated import binding `data` must be in mutated_imports set"
+    );
+}
+
+#[test]
+fn legacy_reactive_excludes_non_mutated_imports() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>import data from './dep.js'; $: total = data.count;</script><p>{total}</p>",
+        legacy_options(),
+    );
+    let data_sym = data
+        .scoping
+        .find_binding_in_any_scope("data")
+        .expect("data import");
+    assert!(
+        !data
+            .reactivity
+            .legacy_reactive()
+            .is_mutated_import(data_sym),
+        "non-mutated import must not be in mutated_imports set"
+    );
+}
+
+#[test]
+fn legacy_export_let_promotes_when_only_read_in_legacy_reactive_block() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let extra = 2; $: total = extra * 2;</script><p>{total}</p>",
+        legacy_options(),
+    );
+    let extra_sym = data
+        .scoping
+        .find_binding_in_any_scope("extra")
+        .expect("extra binding");
+    assert!(
+        matches!(
+            data.reactivity.binding_semantics(extra_sym),
+            BindingSemantics::LegacyBindableProp(_)
+        ),
+        "extra must remain LegacyBindableProp even when only read in $: body, not in template"
+    );
+    assert!(
+        data.reactivity
+            .legacy_bindable_prop_symbols()
+            .contains(&extra_sym),
+        "extra symbol must be present in legacy_bindable_prop_symbols set"
+    );
+}
+
+#[test]
+fn legacy_two_export_let_props_both_promote_with_legacy_reactive_block() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let items = [{value:1}]; export let extra = 2; $: total = items[0].value + extra;</script><p>{total}</p>",
+        legacy_options(),
+    );
+    let items_sym = data
+        .scoping
+        .find_binding_in_any_scope("items")
+        .expect("items");
+    let extra_sym = data
+        .scoping
+        .find_binding_in_any_scope("extra")
+        .expect("extra");
+    assert!(matches!(
+        data.reactivity.binding_semantics(items_sym),
+        BindingSemantics::LegacyBindableProp(_)
+    ));
+    assert!(
+        matches!(
+            data.reactivity.binding_semantics(extra_sym),
+            BindingSemantics::LegacyBindableProp(_)
+        ),
+        "extra must classify as LegacyBindableProp alongside items"
+    );
+    let syms = data.reactivity.legacy_bindable_prop_symbols();
+    assert!(syms.contains(&items_sym), "items in symbols set");
+    assert!(syms.contains(&extra_sym), "extra in symbols set");
+    let runtime = &data.output.runtime_plan;
+    assert!(
+        !runtime.has_exports,
+        "two pure bindable props should not produce $$exports object (got has_exports=true)"
+    );
+}
+
+#[test]
+fn legacy_reactive_object_destructure_creates_synthetic_bindings() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>let source = { left: 3, right: 4 }; $: ({ left, right } = source);</script><p>{left}-{right}</p>",
+        legacy_options(),
+    );
+    let left_sym = data
+        .scoping
+        .find_binding_in_any_scope("left")
+        .expect("left synthetic binding from object destructure shorthand");
+    let right_sym = data
+        .scoping
+        .find_binding_in_any_scope("right")
+        .expect("right synthetic binding from object destructure shorthand");
+    assert!(
+        data.reactivity
+            .legacy_reactive()
+            .is_implicit_reactive_local(left_sym)
+    );
+    assert!(
+        data.reactivity
+            .legacy_reactive()
+            .is_implicit_reactive_local(right_sym)
+    );
+    assert!(matches!(
+        data.reactivity.binding_semantics(left_sym),
+        BindingSemantics::LegacyState(_)
+    ));
+    assert!(matches!(
+        data.reactivity.binding_semantics(right_sym),
+        BindingSemantics::LegacyState(_)
+    ));
+}
+
+#[test]
 fn runtime_plan_accessors_require_push_and_exports() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let count = 1;</script><p>{count}</p>",

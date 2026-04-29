@@ -1,6 +1,7 @@
 mod contextual;
 
 mod legacy;
+mod legacy_reactive;
 mod references;
 mod store;
 mod util;
@@ -39,8 +40,16 @@ const JS_UNDEFINED_NAME: &str = "undefined";
 
 pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut AnalysisData<'a>) {
     data.reactivity.set_uses_runes(data.script.runes);
-    build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
+    let lr_collected =
+        build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
     contextual::collect_template_declarations(component, parsed, data);
+
+    legacy_reactive::build_from_collected(
+        data,
+        lr_collected.labeled_nodes,
+        lr_collected.implicit_names,
+        lr_collected.mutated_imports,
+    );
 
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
@@ -49,6 +58,13 @@ pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut
 
     legacy::classify_unresolved_legacy_identifiers(data);
     legacy::finalize_legacy_aggregates(data);
+    legacy_reactive::classify_mutated_import_references(data);
+}
+
+pub(super) struct LegacyReactiveCollected {
+    pub labeled_nodes: Vec<OxcNodeId>,
+    pub implicit_names: Vec<compact_str::CompactString>,
+    pub mutated_imports: SmallVec<[SymbolId; 2]>,
 }
 
 fn compute_const_tag_reactivity<'a>(
@@ -140,13 +156,13 @@ fn build_script_semantics_v2<'a>(
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
     prop_lowering_mode: PropLoweringMode,
-) {
+) -> LegacyReactiveCollected {
     let mut collector = ScriptSemanticCollector::new(data, prop_lowering_mode);
     if let Some(program) = parsed.program.as_ref() {
-        collector.visit_program(program);
+        collector.visit_instance_program(program);
     }
     if let Some(program) = parsed.module_program.as_ref() {
-        collector.visit_program(program);
+        collector.visit_module_program(program);
     }
 
     for expr in parsed.iter_exprs() {
@@ -155,7 +171,15 @@ fn build_script_semantics_v2<'a>(
     for stmt in parsed.iter_stmts() {
         collector.visit_statement(stmt);
     }
+    let labeled_nodes = std::mem::take(&mut collector.legacy_reactive_labeled_nodes);
+    let implicit_names = std::mem::take(&mut collector.legacy_reactive_implicit_names);
+    let mutated_imports = std::mem::take(&mut collector.legacy_reactive_mutated_imports);
     collector.finish();
+    LegacyReactiveCollected {
+        labeled_nodes,
+        implicit_names,
+        mutated_imports,
+    }
 }
 
 struct ScriptSemanticCollector<'d, 'a> {
@@ -170,6 +194,11 @@ struct ScriptSemanticCollector<'d, 'a> {
     derived_init_refs: FxHashMap<SymbolId, SmallVec<[ReferenceId; 4]>>,
 
     eager_reactive_derived: FxHashSet<SymbolId>,
+
+    is_instance_program: bool,
+    legacy_reactive_labeled_nodes: Vec<OxcNodeId>,
+    legacy_reactive_implicit_names: Vec<compact_str::CompactString>,
+    legacy_reactive_mutated_imports: SmallVec<[SymbolId; 2]>,
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
@@ -182,7 +211,22 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             rest_prop_excluded: FxHashMap::default(),
             derived_init_refs: FxHashMap::default(),
             eager_reactive_derived: FxHashSet::default(),
+            is_instance_program: false,
+            legacy_reactive_labeled_nodes: Vec::new(),
+            legacy_reactive_implicit_names: Vec::new(),
+            legacy_reactive_mutated_imports: SmallVec::new(),
         }
+    }
+
+    fn visit_instance_program(&mut self, program: &oxc_ast::ast::Program<'a>) {
+        self.is_instance_program = true;
+        self.visit_program(program);
+        self.is_instance_program = false;
+    }
+
+    fn visit_module_program(&mut self, program: &oxc_ast::ast::Program<'a>) {
+        debug_assert!(!self.is_instance_program);
+        self.visit_program(program);
     }
 
     fn finish(mut self) {
@@ -412,15 +456,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 continue;
             }
             if !self.data.scoping.is_mutated_any(sym) {
-                continue;
-            }
-            let has_template_ref = self
-                .data
-                .scoping
-                .get_resolved_reference_ids(sym)
-                .iter()
-                .any(|&ref_id| self.data.scoping.is_template_reference(ref_id));
-            if !has_template_ref {
                 continue;
             }
             self.data.reactivity.record_legacy_state_binding(
@@ -825,6 +860,21 @@ fn component_prop_lowering_mode(component: &Component) -> PropLoweringMode {
 }
 
 impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
+    fn visit_program(&mut self, program: &oxc_ast::ast::Program<'a>) {
+        if self.is_instance_program {
+            for stmt in &program.body {
+                legacy_reactive::collect_top_level_meta(
+                    stmt,
+                    self.data,
+                    &mut self.legacy_reactive_labeled_nodes,
+                    &mut self.legacy_reactive_implicit_names,
+                    &mut self.legacy_reactive_mutated_imports,
+                );
+            }
+        }
+        oxc_ast_visit::walk::walk_program(self, program);
+    }
+
     fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
         let previous = self.current_decl_kind.replace(decl.kind);
         walk_variable_declaration(self, decl);

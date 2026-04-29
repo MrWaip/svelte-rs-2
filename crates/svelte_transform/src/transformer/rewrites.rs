@@ -1,5 +1,7 @@
 use oxc_ast::ast::Expression;
+use svelte_ast_builder::Arg;
 
+use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     CarrierMemberReadSemantics, ContextualReadKind, ContextualReadSemantics,
     PropReferenceSemantics, ReferenceSemantics, StateKind,
@@ -85,6 +87,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
             ReferenceSemantics::LegacyStateRead { safe: true } => {
                 *expr = self.make_rune_safe_get(&name);
+                true
+            }
+            ReferenceSemantics::LegacyReactiveImportRead => {
+                let import_name: &str = self
+                    .b
+                    .alloc_str(&legacy_reactive_import_wrapper_name(&name));
+                *expr = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
                 true
             }
             ReferenceSemantics::ContextualRead(ContextualReadSemantics { kind, .. }) => {
@@ -273,6 +282,80 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mutation = std::mem::replace(node, placeholder);
         let untracked = self.make_untrack(&root_name);
         *node = self.make_store_mutate(&base_name, mutation, untracked);
+        true
+    }
+
+    pub(crate) fn rewrite_legacy_reactive_import_member_assignment(
+        &self,
+        node: &mut Expression<'a>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Expression::AssignmentExpression(assign) = node else {
+            return false;
+        };
+        let Some(member) = assign.left.as_member_expression() else {
+            return false;
+        };
+        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+            return false;
+        };
+        let Some(ref_id) = root.reference_id.get() else {
+            return false;
+        };
+        if !matches!(
+            analysis.reference_semantics(ref_id),
+            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+        ) {
+            return false;
+        }
+        let root_name = root.name.as_str().to_string();
+        let import_name: &'a str = self
+            .b
+            .alloc_str(&legacy_reactive_import_wrapper_name(&root_name));
+        let import_call = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
+        rune_refs::replace_expr_root_in_assign_target(&mut assign.left, import_call);
+        let placeholder = self.b.cheap_expr();
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.b.call_expr(import_name, [Arg::Expr(mutation)]);
+        true
+    }
+
+    pub(crate) fn rewrite_legacy_reactive_import_member_update(
+        &self,
+        node: &mut Expression<'a>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Expression::UpdateExpression(upd) = node else {
+            return false;
+        };
+        let Some(member) = upd.argument.as_member_expression() else {
+            return false;
+        };
+        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+            return false;
+        };
+        let Some(ref_id) = root.reference_id.get() else {
+            return false;
+        };
+        if !matches!(
+            analysis.reference_semantics(ref_id),
+            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+        ) {
+            return false;
+        }
+        let root_name = root.name.as_str().to_string();
+        let import_name: &'a str = self
+            .b
+            .alloc_str(&legacy_reactive_import_wrapper_name(&root_name));
+        let import_call = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
+        rune_refs::replace_expr_root_in_simple_target(&mut upd.argument, import_call);
+        let placeholder = self.b.cheap_expr();
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.b.call_expr(import_name, [Arg::Expr(mutation)]);
         true
     }
 

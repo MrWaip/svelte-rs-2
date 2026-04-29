@@ -1,4 +1,4 @@
-use oxc_allocator::Vec as OxcVec;
+use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::ast::{
     AssignmentTarget, BindingPattern, Expression, PropertyKey, Statement, VariableDeclarationKind,
 };
@@ -102,9 +102,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign_box) = node else {
             return false;
         };
-        let AssignmentTarget::ArrayAssignmentTarget(_) = &assign_box.left else {
-            return false;
-        };
+        match &assign_box.left {
+            AssignmentTarget::ArrayAssignmentTarget(_) => {}
+            AssignmentTarget::ObjectAssignmentTarget(_) => {
+                return self.rewrite_legacy_state_object_destructure_exit(node);
+            }
+            _ => return false,
+        }
         let Some(leaves) = collect_array_assign_legacy_state_leaves(analysis, &assign_box.left)
         else {
             return false;
@@ -146,6 +150,75 @@ impl<'a> ComponentTransformer<'_, 'a> {
             false,
         );
         *node = iife;
+        true
+    }
+}
+
+impl<'a> ComponentTransformer<'_, 'a> {
+    fn rewrite_legacy_state_object_destructure_exit(&mut self, node: &mut Expression<'a>) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Expression::AssignmentExpression(assign_box) = &*node else {
+            return false;
+        };
+        let AssignmentTarget::ObjectAssignmentTarget(obj) = &assign_box.left else {
+            return false;
+        };
+        if obj.rest.is_some() {
+            return false;
+        }
+        let mut entries: Vec<(String, String)> = Vec::with_capacity(obj.properties.len());
+        for prop in &obj.properties {
+            match prop {
+                oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
+                    if sh.init.is_some() {
+                        return false;
+                    }
+                    let Some(ref_id) = sh.binding.reference_id.get() else {
+                        return false;
+                    };
+                    if !matches!(
+                        analysis.reference_semantics(ref_id),
+                        svelte_analyze::ReferenceSemantics::LegacyStateWrite
+                            | svelte_analyze::ReferenceSemantics::LegacyStateUpdate { .. }
+                    ) {
+                        return false;
+                    }
+                    let name = sh.binding.name.as_str().to_string();
+                    entries.push((name.clone(), name));
+                }
+                oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(_) => {
+                    return false;
+                }
+            }
+        }
+        if entries.is_empty() {
+            return false;
+        }
+
+        let placeholder = self.b.cheap_expr();
+        let owned = std::mem::replace(node, placeholder);
+        let Expression::AssignmentExpression(assign_box) = owned else {
+            unreachable!();
+        };
+        let assign = assign_box.unbox();
+        let rhs = assign.right;
+
+        let allocator = self.b.ast.allocator;
+        let mut seq: oxc_allocator::Vec<'a, Expression<'a>> =
+            oxc_allocator::Vec::with_capacity_in(entries.len(), allocator);
+        for (key, target) in entries.iter() {
+            let target_alloc: &'a str = self.b.alloc_str(target);
+            let key_alloc: &'a str = self.b.alloc_str(key);
+            let source_expr = rhs.clone_in(allocator);
+            let access = self.b.static_member_expr(source_expr, key_alloc);
+            let set_call = self
+                .b
+                .call_expr("$.set", [Arg::Ident(target_alloc), Arg::Expr(access)]);
+            seq.push(set_call);
+        }
+        *node = self.b.ast.expression_sequence(oxc_span::SPAN, seq);
         true
     }
 }

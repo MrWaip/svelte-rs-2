@@ -3,6 +3,7 @@ mod builders;
 mod derived;
 mod entry;
 mod inspect;
+pub(crate) mod legacy_reactive;
 mod location;
 pub(crate) mod model;
 mod props;

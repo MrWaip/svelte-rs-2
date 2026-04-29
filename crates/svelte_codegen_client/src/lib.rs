@@ -416,6 +416,22 @@ pub fn generate<'a>(
     program_body.push(import_svelte);
     program_body.extend(script_imports);
 
+    for sym in ctx
+        .query
+        .analysis
+        .reactivity
+        .legacy_reactive()
+        .iter_mutated_imports()
+    {
+        let name: &str = b.alloc_str(ctx.query.analysis.scoping.symbol_name(sym));
+        let var_name: &str = b.alloc_str(
+            &svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name(name),
+        );
+        let thunk = b.thunk(b.rid_expr(name));
+        let init = b.call_expr("$.reactive_import", [Arg::Expr(thunk)]);
+        program_body.push(b.var_stmt(var_name, init));
+    }
+
     program_body.extend(hoistable_snippets);
     program_body.extend(module_body);
     program_body.extend(all_hoisted);

@@ -1,7 +1,7 @@
 pub mod block_semantics;
 pub(crate) mod css;
 pub(crate) mod passes;
-pub(crate) mod reactivity_semantics;
+pub mod reactivity_semantics;
 
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
@@ -209,7 +209,12 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
     let has_legacy_bindable_prop = !legacy_symbols.is_empty();
     let has_legacy_member_mutated = data.reactivity.legacy_has_member_mutated();
     let has_legacy_props_read = data.reactivity.legacy_uses_props();
-
+    let has_legacy_reactive_statements = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .next()
+        .is_some();
     let has_exports = data.script.exports.iter().any(|exp| {
         let Some(instance_scope) = data.scoping.instance_scope_id() else {
             return true;
@@ -236,7 +241,10 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         || data.script.accessors
         || (!data.uses_runes() && data.script.immutable)
         || dev
-        || (!data.uses_runes() && (has_legacy_member_mutated || has_legacy_props_read));
+        || (!data.uses_runes()
+            && (has_legacy_member_mutated
+                || has_legacy_props_read
+                || has_legacy_reactive_statements));
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
     let needs_props_param =
         data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
@@ -245,7 +253,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         crate::types::data::LegacyInit::None
     } else if data.script.immutable {
         crate::types::data::LegacyInit::Immutable
-    } else if has_legacy_member_mutated || has_legacy_props_read {
+    } else if has_legacy_member_mutated || has_legacy_props_read || data.output.needs_context {
         crate::types::data::LegacyInit::Plain
     } else {
         crate::types::data::LegacyInit::None

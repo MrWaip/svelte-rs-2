@@ -298,6 +298,12 @@ pub enum ReferenceSemantics {
         symbol: SymbolId,
     },
 
+    LegacyReactiveImportRead,
+
+    LegacyReactiveImportMemberMutationRoot {
+        symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Unresolved,
@@ -425,6 +431,13 @@ pub(crate) enum ReferenceFacts {
     LegacyStateMemberMutationRoot {
         symbol: SymbolId,
     },
+
+    LegacyReactiveImportRead,
+
+    LegacyReactiveImportMemberMutationRoot {
+        symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Proxy,
@@ -457,6 +470,8 @@ pub struct ReactivitySemantics {
     const_alias_owner: FxHashMap<SymbolId, NodeId>,
 
     uses_runes: bool,
+
+    legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics,
 }
 
 impl ReactivitySemantics {
@@ -478,6 +493,7 @@ impl ReactivitySemantics {
             legacy_uses_rest_props: false,
             legacy_has_member_mutated: false,
             uses_runes: false,
+            legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
         }
     }
 
@@ -538,6 +554,16 @@ impl ReactivitySemantics {
 
     pub fn legacy_has_member_mutated(&self) -> bool {
         self.legacy_has_member_mutated
+    }
+
+    pub fn legacy_reactive(&self) -> &super::legacy_reactive::LegacyReactivitySemantics {
+        &self.legacy_reactive
+    }
+
+    pub(crate) fn legacy_reactive_mut(
+        &mut self,
+    ) -> &mut super::legacy_reactive::LegacyReactivitySemantics {
+        &mut self.legacy_reactive
     }
 
     pub(crate) fn record_legacy_bindable_prop_symbol(&mut self, symbol: SymbolId) {
@@ -618,6 +644,12 @@ impl ReactivitySemantics {
             }
             Some(ReferenceFacts::LegacyStateMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyStateMemberMutationRoot { symbol: *symbol }
+            }
+            Some(ReferenceFacts::LegacyReactiveImportRead) => {
+                ReferenceSemantics::LegacyReactiveImportRead
+            }
+            Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
+                ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,

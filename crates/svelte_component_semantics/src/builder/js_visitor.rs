@@ -200,6 +200,60 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
     fn var_scope(&self) -> ScopeId {
         self.semantics.find_function_scope(self.scope)
     }
+
+    fn declare_implicit_legacy_reactive_bindings(&mut self, program: &Program<'a>) {
+        for stmt in &program.body {
+            let Statement::LabeledStatement(labeled) = stmt else {
+                continue;
+            };
+            if labeled.label.name != "$" {
+                continue;
+            }
+            let Statement::ExpressionStatement(es) = &labeled.body else {
+                continue;
+            };
+            let Some(assign) = unwrap_assignment_expression(&es.expression) else {
+                continue;
+            };
+            if !matches!(assign.operator, AssignmentOperator::Assign) {
+                continue;
+            }
+            match &assign.left {
+                AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                    self.declare_implicit_target_ident(id.as_ref());
+                }
+                AssignmentTarget::ObjectAssignmentTarget(obj) => {
+                    for prop in &obj.properties {
+                        if let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
+                            shorthand,
+                        ) = prop
+                        {
+                            self.declare_implicit_target_ident(&shorthand.binding);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn declare_implicit_target_ident(&mut self, id: &IdentifierReference<'a>) {
+        let name = id.name.as_str();
+        if name.starts_with('$') {
+            return;
+        }
+        if self.semantics.find_binding(self.scope, name).is_some() {
+            return;
+        }
+        self.semantics.add_binding(
+            self.scope,
+            name,
+            id.span,
+            SymbolFlags::empty(),
+            id.node_id.get(),
+            SymbolOwner::Synthetic,
+        );
+    }
 }
 
 impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
@@ -221,6 +275,9 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
 
     fn visit_program(&mut self, program: &Program<'a>) {
         walk::walk_program(self, program);
+        if matches!(self.owner, SymbolOwner::InstanceScript) {
+            self.declare_implicit_legacy_reactive_bindings(program);
+        }
         self.flush_unresolved();
     }
 
@@ -596,6 +653,19 @@ fn simple_assignment_target_member_root_symbol(
             expression_root_symbol(semantics, &m.object)
         }
         _ => None,
+    }
+}
+
+fn unwrap_assignment_expression<'r, 'a>(
+    expr: &'r Expression<'a>,
+) -> Option<&'r AssignmentExpression<'a>> {
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::AssignmentExpression(assign) => return Some(assign),
+            Expression::ParenthesizedExpression(p) => current = &p.expression,
+            _ => return None,
+        }
     }
 }
 

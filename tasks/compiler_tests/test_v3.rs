@@ -924,31 +924,26 @@ fn legacy_reactivity_destructure() {
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: statement discovery and client lowering (analyze/codegen, needs infrastructure)"]
 fn legacy_reactive_assignment_basic() {
     assert_compiler("legacy_reactive_assignment_basic");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: dependency capture for declared let/var locals (analyze/codegen, needs infrastructure)"]
 fn legacy_reactive_assignment_declared_dependency() {
     assert_compiler("legacy_reactive_assignment_declared_dependency");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: block bodies and destructuring targets (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_block_destructure() {
     assert_compiler("legacy_reactive_assignment_block_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: coarse dependency reads for props and reserved prop bags (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_coarse_deps() {
     assert_compiler("legacy_reactive_assignment_coarse_deps");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: import dependency wrapping and topological ordering (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_import_topology() {
     assert_compiler("legacy_reactive_assignment_import_topology");
 }

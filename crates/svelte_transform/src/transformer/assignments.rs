@@ -440,6 +440,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return;
             }
 
+            if self.rewrite_legacy_reactive_import_member_assignment(node) {
+                return;
+            }
+
             if self.rewrite_legacy_state_member_assignment(node) {
                 return;
             }
@@ -618,6 +622,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         if self.analysis.is_some() {
             if self.rewrite_deep_store_member_update(node) {
+                return;
+            }
+
+            if self.rewrite_legacy_reactive_import_member_update(node) {
                 return;
             }
 
