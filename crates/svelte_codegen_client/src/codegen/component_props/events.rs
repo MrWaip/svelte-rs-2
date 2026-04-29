@@ -87,10 +87,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     if matches!(&handler, Expression::FunctionExpression(_)) {
                         return ObjProp::Method(key, handler);
                     }
-                    if let Expression::Identifier(id) = &handler {
-                        if id.name.as_str() == name {
-                            return ObjProp::Shorthand(key);
-                        }
+                    if let Expression::Identifier(id) = &handler
+                        && id.name.as_str() == name
+                    {
+                        return ObjProp::Shorthand(key);
                     }
                     ObjProp::KeyValue(key, handler)
                 } else {

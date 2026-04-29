@@ -190,12 +190,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<Expression<'a>> {
         let mut tpl_parts = self.concat_to_tpl_parts(attr_id, parts, true)?;
 
-        if tpl_parts.len() == 1 {
-            if let TemplatePart::Str(s) = &tpl_parts[0] {
-                let expr = self.ctx.b.str_expr(s);
-                tpl_parts.clear();
-                return Ok(expr);
-            }
+        if tpl_parts.len() == 1
+            && let TemplatePart::Str(s) = &tpl_parts[0]
+        {
+            let expr = self.ctx.b.str_expr(s);
+            tpl_parts.clear();
+            return Ok(expr);
         }
 
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
@@ -227,15 +227,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let Some(expr) = self.take_expr_by_ref(expr_ref) else {
                         return CodegenError::missing_expression(attr_id);
                     };
-                    if fold_literals {
-                        if let Some(lit) = literal_value(&expr) {
-                            push_tpl_str(&mut tpl_parts, lit);
-                            continue;
-                        }
+                    if fold_literals && let Some(lit) = literal_value(&expr) {
+                        push_tpl_str(&mut tpl_parts, lit);
+                        continue;
                     }
-                    // LEGACY(svelte4): wrap each concat part with `$.deep_read_state` /
-                    // `$.untrack` when it reads `$$props` / `$$restProps`. Identifier
-                    // already rewritten to `$$sanitized_props` by transform.
+
                     let info = self
                         .ctx
                         .attr_expression(*part_id)

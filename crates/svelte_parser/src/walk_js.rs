@@ -1,8 +1,3 @@
-//! AST walk — fills `ParserResult` by walking the Component tree.
-//!
-//! The top-level `parse_js` function walks the component AST, calls OXC parsing
-//! utilities, and populates `ParserResult` with parsed expressions and statements.
-
 use oxc_allocator::Allocator;
 use svelte_ast::{AstStore, Attribute, Component, ConcatPart, FragmentId, Node, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
@@ -20,7 +15,6 @@ pub(crate) fn parse_js<'a>(
     result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    // Template expressions use TS parsing if either script is TypeScript.
     let template_typescript = component
         .instance_script
         .as_ref()
@@ -64,8 +58,6 @@ pub(crate) fn parse_js<'a>(
         diags,
     );
 
-    // Parse the custom element config expression itself. Property classification
-    // belongs in analyze, where CE object semantics are already interpreted.
     if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
         .options
         .as_ref()
@@ -75,11 +67,6 @@ pub(crate) fn parse_js<'a>(
     }
 }
 
-/// Parse a `use:` directive name like `"actions.tooltip-extra"` into a valid JS expression.
-///
-/// Segments that are not valid JS identifiers (e.g. contain `-`) are emitted as computed
-/// bracket access: `actions["tooltip-extra"]`. This matches the Svelte reference compiler's
-/// `parse_directive_name` utility. Stores the result at `name_span.start`.
 fn parse_directive_name_span<'a>(
     alloc: &'a Allocator,
     component: &Component,
@@ -99,9 +86,6 @@ fn parse_directive_name_span<'a>(
     }
 }
 
-/// Convert a Svelte directive name (e.g. `"actions.tooltip-extra"`) to a valid JS expression
-/// string (e.g. `actions["tooltip-extra"]`), applying bracket notation for segments that are
-/// not valid JS identifiers.
 fn directive_name_to_js(name: &str) -> String {
     let mut parts = name.split('.');
     let mut result = parts.next().unwrap_or("").to_string();
@@ -131,7 +115,6 @@ fn is_valid_js_identifier(s: &str) -> bool {
     }
 }
 
-/// Parse an expression and store it by source offset.
 fn parse_span<'a>(
     alloc: &'a Allocator,
     component: &Component,
@@ -150,9 +133,6 @@ fn parse_span<'a>(
     }
 }
 
-/// Parse a binding pattern (e.g. `value`, `{name, age}`, `[a, b]`) as `let PATTERN = x;`.
-///
-/// Stored in `stmts` so dispatch_opt_stmt fires SemanticCollector, creating proper bindings.
 fn parse_binding_pattern<'a>(
     alloc: &'a Allocator,
     component: &Component,
@@ -383,9 +363,6 @@ fn walk_node<'a>(
             }
         }
         Node::ConstTag(tag) => {
-            // TS type annotations (e.g. `doubled: number = expr`) require statement-level
-            // parsing. Wrap as `const SOURCE;` and store the full Statement.
-            // Scope building and codegen extract names / init expression from it directly.
             let source = component.source_text(tag.decl.span);
             let arena_source: &'a str = alloc.alloc_str(source);
             match parse_const_declaration_with_alloc(
@@ -462,7 +439,6 @@ fn walk_node<'a>(
     }
 }
 
-/// Parse and store attribute expressions by source offset.
 fn walk_attrs<'a>(
     alloc: &'a Allocator,
     attrs: &[Attribute],
@@ -573,7 +549,7 @@ fn walk_attrs<'a>(
                 );
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
-            // LEGACY(svelte4): on:directive — parse expression if present
+
             Attribute::OnDirectiveLegacy(a) => {
                 if let Some(r) = a.expression.as_ref() {
                     parse_span(alloc, component, r.span, typescript, result, diags);

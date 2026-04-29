@@ -4,8 +4,6 @@ use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, ClassDirective, Element, StyleDirective};
 
-/// Pre-computes bind/directive semantics so codegen doesn't re-derive
-/// symbol classifications from source text via string-based lookups.
 pub(crate) struct BindSemanticsVisitor<'s> {
     source: &'s str,
 }
@@ -19,7 +17,6 @@ impl<'s> BindSemanticsVisitor<'s> {
         data.shorthand_symbol(node_id)
     }
 
-    /// Pre-compute each-block variable names referenced in a bind:this expression.
     fn classify_bind_this(dir: &BindDirective, data: &mut AnalysisData) {
         if dir.shorthand
             || !data
@@ -39,10 +36,10 @@ impl<'s> BindSemanticsVisitor<'s> {
             .copied()
             .filter(|&sym| {
                 matches!(
-                    data.declaration_semantics(data.scoping.symbol_declaration(sym)),
-                    crate::DeclarationSemantics::Contextual(
-                        crate::ContextualDeclarationSemantics::EachItem(_)
-                            | crate::ContextualDeclarationSemantics::EachIndex(_),
+                    data.binding_semantics(sym),
+                    crate::BindingSemantics::Contextual(
+                        crate::ContextualBindingSemantics::EachItem(_)
+                            | crate::ContextualBindingSemantics::EachIndex(_),
                     )
                 )
             })
@@ -66,15 +63,14 @@ impl<'s> BindSemanticsVisitor<'s> {
                 .insert(dir.id, semantics);
         }
 
-        if let Some(sym_id) = data.bind_target_symbol(dir.id) {
-            if data.script.blocker_data.has_async {
-                if let Some(idx) = data.script.blocker_data.symbol_blocker(sym_id) {
-                    data.template
-                        .bind_semantics
-                        .bind_blockers
-                        .insert(dir.id, smallvec::smallvec![idx]);
-                }
-            }
+        if let Some(sym_id) = data.bind_target_symbol(dir.id)
+            && data.script.blocker_data.has_async
+            && let Some(idx) = data.script.blocker_data.symbol_blocker(sym_id)
+        {
+            data.template
+                .bind_semantics
+                .bind_blockers
+                .insert(dir.id, smallvec::smallvec![idx]);
         }
     }
 
@@ -131,7 +127,6 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                 .is_some_and(|semantics| semantics.is_contenteditable())
         });
 
-        // Detect bind:group → mark element and find value attribute
         if let Some(bind_group_id) = bind_group_id {
             ctx.data
                 .template

@@ -1,15 +1,10 @@
 use oxc_ast::ast::{Expression, MemberExpression};
-use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::types::data::{
-    AnalysisData, DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics,
-};
+use crate::types::data::{AnalysisData, BindingSemantics, PropBindingKind, PropBindingSemantics};
 use crate::types::script::{RuneKind, ScriptInfo};
 
-/// OXC Visit that walks the entire script AST to detect expressions requiring
-/// component context. Matches reference MemberExpression.js, CallExpression.js,
-/// NewExpression.js + is_safe_identifier.
 pub(crate) struct NeedsContextVisitor<'a> {
     scoping: &'a crate::scope::ComponentScoping<'a>,
     unsafe_prop_syms: rustc_hash::FxHashSet<crate::scope::SymbolId>,
@@ -26,18 +21,18 @@ impl<'a> NeedsContextVisitor<'a> {
         let mut unsafe_prop_syms = rustc_hash::FxHashSet::default();
 
         for d in &script_info.declarations {
-            if d.is_rune == Some(RuneKind::Props) {
-                if let Some(sym) = scoping.find_binding(root, d.name.as_str()) {
-                    unsafe_prop_syms.insert(sym);
-                }
+            if d.is_rune == Some(RuneKind::Props)
+                && let Some(sym) = scoping.find_binding(root, d.name.as_str())
+            {
+                unsafe_prop_syms.insert(sym);
             }
         }
         if let Some(ref decl) = script_info.props_declaration {
             for p in &decl.props {
-                if p.is_rest {
-                    if let Some(sym) = scoping.find_binding(root, p.local_name.as_str()) {
-                        unsafe_prop_syms.insert(sym);
-                    }
+                if p.is_rest
+                    && let Some(sym) = scoping.find_binding(root, p.local_name.as_str())
+                {
+                    unsafe_prop_syms.insert(sym);
                 }
             }
         }
@@ -128,9 +123,9 @@ pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
                     return true;
                 }
                 matches!(
-                    reactivity.declaration_semantics(scoping.symbol_declaration(sym)),
-                    DeclarationSemantics::Prop(PropDeclarationSemantics {
-                        kind: PropDeclarationKind::Source { .. } | PropDeclarationKind::NonSource,
+                    reactivity.binding_semantics(sym),
+                    BindingSemantics::Prop(PropBindingSemantics {
+                        kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
                         ..
                     })
                 )

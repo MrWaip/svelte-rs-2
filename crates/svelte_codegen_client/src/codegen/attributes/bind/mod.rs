@@ -83,16 +83,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None => return Ok(None),
         };
 
-        if !semantics.is_this() {
-            if let Some(stmt) =
+        if !semantics.is_this()
+            && let Some(stmt) =
                 self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
-            {
-                let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
-                if has_use_directive {
-                    return Ok(Some(BindPlacement::Init(stmt)));
-                }
-                return Ok(Some(BindPlacement::AfterUpdate(stmt)));
+        {
+            let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
+            if has_use_directive {
+                return Ok(Some(BindPlacement::Init(stmt)));
             }
+            return Ok(Some(BindPlacement::AfterUpdate(stmt)));
         }
 
         if !matches!(bind_property, BindPropertyKind::This) {

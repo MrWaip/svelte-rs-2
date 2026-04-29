@@ -1,10 +1,5 @@
 use crate::ast::*;
 use rustc_hash::FxHashSet;
-
-/// CSS printer — serializes a [`StyleSheet`] AST back to a CSS string.
-///
-/// Requires access to the original source text because the AST stores
-/// [`Span`]s rather than owned strings.
 pub struct Printer<'a> {
     output: String,
     indent: usize,
@@ -12,8 +7,6 @@ pub struct Printer<'a> {
     used_selectors: Option<&'a FxHashSet<CssNodeId>>,
     remove_unused: bool,
 }
-
-/// Pre-computed indentation strings to avoid per-indent allocation.
 const INDENTS: [&str; 8] = [
     "",
     "  ",
@@ -45,10 +38,7 @@ impl Printer<'_> {
             remove_unused: false,
         }
     }
-
-    /// Convenience: print stylesheet to string.
     pub fn print(stylesheet: &StyleSheet, source: &str) -> String {
-        // Pre-allocate ~same size as source (CSS output is similar length)
         let mut p = Printer {
             output: String::with_capacity(source.len()),
             indent: 0,
@@ -170,8 +160,6 @@ impl Printer<'_> {
                     .is_some_and(|(_, rest)| rest == "keyframes");
 
             if is_keyframes {
-                // Preserve original formatting for @keyframes body — the internal
-                // structure (from/to/percentage stops) is never transformed.
                 self.output.push(' ');
                 self.push_span(block.span, source);
                 self.output.push('\n');
@@ -434,8 +422,6 @@ impl Printer<'_> {
                 .iter()
                 .any(|sel| self.selector_is_used(sel.id))
     }
-
-    // -- output helpers -----------------------------------------------------
 
     #[inline]
     fn push_span(&mut self, span: svelte_span::Span, source: &str) {

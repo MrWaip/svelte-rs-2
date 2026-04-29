@@ -1,11 +1,3 @@
-//! Block Semantics cluster — single source of truth for the meaning of
-//! template control-flow blocks (`{#each}`, `{#if}`, `{#await}`, `{#key}`,
-//! `{#snippet}`, `{@const}`, `{@render}`). See SEMANTIC_LAYER_ARCHITECTURE.md.
-//!
-//! Consumers query one block `NodeId` and receive one [`BlockSemantics`]
-//! variant. Out-of-bounds and non-block nodes return [`BlockSemantics::NonSpecial`] —
-//! the store never leaks `None`.
-
 pub(crate) mod builder;
 pub mod data;
 
@@ -23,13 +15,6 @@ use crate::scope::SymbolId;
 use rustc_hash::FxHashMap;
 use svelte_ast::NodeId;
 
-/// Dense `NodeId`-indexed storage with a total API. Missing slots normalize
-/// to [`BlockSemantics::NonSpecial`] — there is no `Option` on the public
-/// surface.
-///
-/// A side index `index_sym -> each block NodeId` supports reverse lookup
-/// (`is_each_index_sym`, `block_for_index_sym`) without scanning the main
-/// vector.
 #[derive(Debug, Default, Clone)]
 pub struct BlockSemanticsStore {
     entries: Vec<BlockSemantics>,
@@ -46,7 +31,6 @@ impl BlockSemanticsStore {
         }
     }
 
-    /// Total API — returns `&NonSpecial` for any id outside the populated range.
     pub fn get(&self, id: NodeId) -> &BlockSemantics {
         self.entries
             .get(id.0 as usize)
@@ -65,22 +49,14 @@ impl BlockSemanticsStore {
         self.each_index_sym_to_block.insert(sym, block);
     }
 
-    /// Reverse lookup: which `{#each}` block declared this index symbol?
     pub fn block_for_each_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
         self.each_index_sym_to_block.get(&sym).copied()
     }
 
-    /// True iff `sym` is the index binding of some `{#each}` block.
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.each_index_sym_to_block.contains_key(&sym)
     }
 
-    /// Post-populate mutator for the snippet `hoistable` flag. Kept
-    /// separate from `set` because hoistable is classified in a second
-    /// pass after all snippet references have been collected: the
-    /// populator seeds `hoistable: false` and the finalize stage flips
-    /// it for top-level snippets whose body never references an
-    /// instance-scope symbol.
     pub(crate) fn set_snippet_hoistable(&mut self, id: NodeId, value: bool) {
         let idx = id.0 as usize;
         if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(idx) {

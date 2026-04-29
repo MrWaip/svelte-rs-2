@@ -37,7 +37,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let getter = if let Some(val_attr_id) = self.ctx.bind_group_value_attr(bind.id) {
-            // Find the attribute by id and read its expression by ExprRef.
             let val_expr = {
                 let store = &self.ctx.query.component.store;
                 let mut found_id: Option<oxc_syntax::node::NodeId> = None;

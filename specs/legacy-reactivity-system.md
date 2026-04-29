@@ -1,9 +1,9 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 0/5 use cases
-- **Tests**: 0/5 green
-- Last updated: 2026-04-13
+- **Working**: 5/5 use cases
+- **Tests**: 5/5 green
+- Last updated: 2026-04-29
 - Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
 
 ## Source
@@ -51,11 +51,11 @@
 
 ## Use cases
 
-- [ ] Top-level legacy `let` bindings lower through `$.mutable_source(...)`, `$.get(...)`, and `$.set(...)` in legacy mode instead of remaining plain locals; current Rust still emits raw `let count = 0`, raw `count += 1`, and static text output for `{count}` (test: `legacy_reactivity_let_basic`, `#[ignore]`, needs infrastructure)
-- [ ] Top-level legacy `var` bindings use the same legacy-state lowering but preserve `$.safe_get(...)` reads for var-declared sources, matching the reference compiler's legacy `var` semantics (test: `legacy_reactivity_var_basic`, `#[ignore]`, moderate)
-- [ ] Member mutations of top-level legacy locals lower through `$.mutate(...)` and coarse member reads, so `object.x += 1` invalidates template consumers via the legacy runtime instead of mutating a plain object local (test: `legacy_reactivity_member_mutation`, `#[ignore]`, moderate)
-- [ ] Array-method mutation plus explicit self-assignment (`numbers.push(...); numbers = numbers;`) lowers through `$.get(...)` / `$.set(...)` and coarse member reads for dependent expressions like `numbers.length` (test: `legacy_reactivity_array_self_assign`, `#[ignore]`, moderate)
-- [ ] Destructured top-level legacy declarations lower through the legacy-state declarator path so each bound name becomes its own mutable source and destructuring reassignment lowers to `$.set(...)` updates, rather than staying plain destructured locals (test: `legacy_reactivity_destructure`, `#[ignore]`, needs infrastructure)
+- [x] Top-level legacy `let` bindings lower through `$.mutable_source(...)`, `$.get(...)`, and `$.set(...)` in legacy mode instead of remaining plain locals; current Rust still emits raw `let count = 0`, raw `count += 1`, and static text output for `{count}` (test: `legacy_reactivity_let_basic`)
+- [x] Top-level legacy `var` bindings use the same legacy-state lowering but preserve `$.safe_get(...)` reads for var-declared sources, matching the reference compiler's legacy `var` semantics (test: `legacy_reactivity_var_basic`)
+- [x] Member mutations of top-level legacy locals lower through `$.mutate(...)` and coarse member reads, so `object.x += 1` invalidates template consumers via the legacy runtime instead of mutating a plain object local (test: `legacy_reactivity_member_mutation`)
+- [x] Array-method mutation plus explicit self-assignment (`numbers.push(...); numbers = numbers;`) lowers through `$.get(...)` / `$.set(...)` and coarse member reads for dependent expressions like `numbers.length` (test: `legacy_reactivity_array_self_assign`)
+- [x] Destructured top-level legacy declarations lower through the legacy-state declarator path so each bound name becomes its own mutable source and destructuring reassignment lowers to `$.set(...)` updates, rather than staying plain destructured locals (test: `legacy_reactivity_destructure`)
 
 ## Out of scope
 
@@ -84,9 +84,9 @@
 - `crates/svelte_analyze/src/utils/script_info.rs`
 - `crates/svelte_analyze/src/passes/js_analyze/script_body.rs`
 - `crates/svelte_analyze/src/passes/post_resolve.rs`
-- `crates/svelte_analyze/src/passes/reactivity.rs`
+- `crates/svelte_analyze/src/reactivity_semantics/builder_v2/legacy.rs`
 - `crates/svelte_analyze/src/passes/js_analyze/expression_info.rs`
-- `crates/svelte_analyze/src/passes/classify_expression_dynamicity.rs`
+- `crates/svelte_analyze/src/passes/dynamism.rs`
 - `crates/svelte_codegen_client/src/lib.rs`
 - `crates/svelte_codegen_client/src/script/model.rs`
 - `crates/svelte_codegen_client/src/template/expression.rs`
@@ -95,8 +95,8 @@
 
 ## Test cases
 
-- [ ] `legacy_reactivity_let_basic`
-- [ ] `legacy_reactivity_var_basic`
-- [ ] `legacy_reactivity_member_mutation`
-- [ ] `legacy_reactivity_array_self_assign`
-- [ ] `legacy_reactivity_destructure`
+- [x] `legacy_reactivity_let_basic`
+- [x] `legacy_reactivity_var_basic`
+- [x] `legacy_reactivity_member_mutation`
+- [x] `legacy_reactivity_array_self_assign`
+- [x] `legacy_reactivity_destructure`

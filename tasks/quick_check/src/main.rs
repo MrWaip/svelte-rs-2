@@ -10,7 +10,7 @@ use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use pretty_assertions::StrComparison;
-use svelte_compiler::{compile, CompileOptions};
+use svelte_compiler::{CompileOptions, compile};
 
 const USAGE: &str = "usage: quick_check <path-to-.svelte-file>";
 

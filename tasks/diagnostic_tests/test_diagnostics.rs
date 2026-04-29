@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{compile, CompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, Namespace, compile};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -49,10 +49,10 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
                 _ => Namespace::Html,
             };
         }
-        if let Some(exp) = config.get("experimental") {
-            if let Some(async_val) = exp.get("async").and_then(|v| v.as_bool()) {
-                opts.experimental.async_ = async_val;
-            }
+        if let Some(exp) = config.get("experimental")
+            && let Some(async_val) = exp.get("async").and_then(|v| v.as_bool())
+        {
+            opts.experimental.async_ = async_val;
         }
     }
 
@@ -1356,6 +1356,18 @@ mod runes {
     diagnostic_case!(
         validate_bindable_invalid_location,
         "runes/validate_bindable_invalid_location"
+    );
+    diagnostic_case!(
+        validate_reactive_declaration_invalid_placement,
+        "runes/validate_reactive_declaration_invalid_placement"
+    );
+    diagnostic_case!(
+        validate_reactive_declaration_cycle,
+        "runes/validate_reactive_declaration_cycle"
+    );
+    diagnostic_case!(
+        validate_reactive_declaration_module_script_dependency,
+        "runes/validate_reactive_declaration_module_script_dependency"
     );
     diagnostic_case!(
         validate_bindable_invalid_location_inside_arrow,

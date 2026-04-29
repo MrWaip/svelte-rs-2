@@ -3,7 +3,6 @@ use oxc_syntax::reference::{ReferenceFlags, ReferenceId};
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::SymbolId;
 
-/// A reference to an identifier — how and where it's used.
 #[derive(Clone, Debug)]
 pub struct Reference {
     node_id: OxcNodeId,
@@ -55,7 +54,6 @@ impl Reference {
     }
 }
 
-/// Storage for all references in a component.
 pub(crate) struct ReferenceTable {
     references: Vec<Reference>,
 }

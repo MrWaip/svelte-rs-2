@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "reactive_declaration_invalid_placement",
+    "start": 77,
+    "end": 98
+  }
+]

@@ -34,7 +34,7 @@ pub struct ScriptTag {
     pub content_span: Span,
     pub is_typescript: bool,
     pub is_module: bool,
-    /// `true` when `context="module"` was used instead of the modern `module` attribute.
+
     pub context_deprecated: bool,
 }
 
@@ -72,33 +72,32 @@ pub enum Attribute {
     ClassDirective(ClassDirective),
     StyleDirective(StyleDirective),
     BindDirective(BindDirective),
-    /// LEGACY(svelte4): let:directive syntax for slot props. Deprecated in Svelte 5, remove in Svelte 6.
+
     LetDirectiveLegacy(LetDirectiveLegacy),
     UseDirective(UseDirective),
-    /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
+
     OnDirectiveLegacy(OnDirectiveLegacy),
     TransitionDirective(TransitionDirective),
     AnimateDirective(AnimateDirective),
-    /// {@attach expr} — element attachment (Svelte 5.29+)
+
     AttachTag(AttachTagToken),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct AnimateDirective {
     pub span: Span,
-    /// Name after "animate:" (e.g., "flip" in `animate:flip`).
+
     pub name_span: Span,
-    /// Expression span if `={expr}` was provided.
+
     pub expression_span: Span,
-    /// Whether an expression was provided.
+
     pub has_expression: bool,
 }
 
-/// {@attach expr} — element attachment (Svelte 5.29+)
 #[derive(Debug, PartialEq, Eq)]
 pub struct AttachTagToken {
     pub span: Span,
-    /// Span of the JS expression inside `{@attach expr}`.
+
     pub expression_span: Span,
 }
 
@@ -127,7 +126,6 @@ pub struct BindDirective {
     pub expression_span: Span,
 }
 
-/// LEGACY(svelte4): `let:name` or `let:name={expr}` slot-prop directive. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LetDirectiveLegacy {
     pub span: Span,
@@ -144,32 +142,31 @@ pub struct UseDirective {
     pub expression_span: Span,
 }
 
-/// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Debug, PartialEq, Eq)]
 pub struct OnDirectiveLegacy {
     pub span: Span,
-    /// Event name after "on:" (e.g., "click" in `on:click`).
+
     pub name_span: Span,
-    /// Handler expression. Empty if bubble event (no `={...}`).
+
     pub expression_span: Span,
-    /// Modifiers from pipe-separated list (e.g., ["preventDefault", "once"]).
+
     pub modifiers: Vec<Span>,
-    /// Whether an expression was provided (`on:click={handler}` vs `on:click`).
+
     pub has_expression: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TransitionDirective {
     pub span: Span,
-    /// Name after the directive prefix (e.g., "fade" in `transition:fade`).
+
     pub name_span: Span,
-    /// Expression span if `={expr}` was provided.
+
     pub expression_span: Span,
-    /// Modifiers from pipe-separated list (e.g., "local", "global").
+
     pub modifiers: Vec<Span>,
-    /// Whether an expression was provided.
+
     pub has_expression: bool,
-    /// The directive prefix: "transition", "in", or "out".
+
     pub direction_prefix: String,
 }
 
@@ -181,7 +178,6 @@ pub enum AttributeValue {
     Empty,
 }
 
-/// Any expression in curly braces `{ 1 + 1 }` or `{ name }` in the template.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExpressionTag {
     pub span: Span,
@@ -256,7 +252,6 @@ pub struct StyleTag {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct StartSnippetTag {
-    /// Span covering `name(params)` or just `name`.
     pub expression_span: Span,
 }
 
@@ -288,21 +283,20 @@ pub struct StartKeyTag {
 #[derive(Debug, PartialEq, Eq)]
 pub struct StartAwaitTag {
     pub expression_span: Span,
-    /// Then binding span if short form `{#await expr then val}`. None for implicit form.
+
     pub value_span: Option<Span>,
-    /// Catch binding span if short form `{#await expr catch err}`. None for implicit form.
+
     pub error_span: Option<Span>,
-    /// Which fragment to start collecting into.
+
     pub initial_clause: AwaitInitialClause,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AwaitInitialClause {
-    /// Implicit form: `{#await expr}` — pending content follows.
     Pending,
-    /// Short form: `{#await expr then val}` — then content follows.
+
     Then,
-    /// Short form: `{#await expr catch err}` — catch content follows.
+
     Catch,
 }
 
@@ -335,14 +329,14 @@ pub enum AttributeIdentifierType<'a> {
     ClassDirective(Span, &'a str),
     StyleDirective(Span, &'a str),
     BindDirective(Span, &'a str),
-    /// LEGACY(svelte4): let:directive
+
     LetDirectiveLegacy(Span, &'a str),
     UseDirective(Span, &'a str),
-    /// LEGACY(svelte4): on:directive
+
     OnDirectiveLegacy(Span, &'a str),
-    /// transition:, in:, or out: directive
+
     TransitionDirective(Span, &'a str),
-    /// animate: directive
+
     AnimateDirective(Span, &'a str),
     None,
 }
@@ -360,7 +354,6 @@ impl<'a> AttributeIdentifierType<'a> {
         name == "bind"
     }
 
-    /// LEGACY(svelte4): let:directive
     pub fn is_let_directive(name: &str) -> bool {
         name == "let"
     }
@@ -369,7 +362,6 @@ impl<'a> AttributeIdentifierType<'a> {
         name == "use"
     }
 
-    /// LEGACY(svelte4): on:directive
     pub fn is_on_directive(name: &str) -> bool {
         name == "on"
     }

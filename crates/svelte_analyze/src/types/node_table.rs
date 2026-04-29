@@ -1,7 +1,5 @@
 use svelte_ast::NodeId;
 
-/// Dense lookup table indexed by `NodeId`. Replaces `FxHashMap<NodeId, T>`
-/// for tables where keys are sequential node IDs from the parser.
 #[derive(Debug, Clone)]
 pub struct NodeTable<T>(Vec<Option<T>>);
 
@@ -40,7 +38,6 @@ impl<T> NodeTable<T> {
         self.get(id).is_some()
     }
 
-    /// Get-or-insert-default, returns `&mut T`. Replaces `.entry(id).or_default()`.
     pub fn get_or_default(&mut self, id: NodeId) -> &mut T
     where
         T: Default,
@@ -81,7 +78,6 @@ impl<T> NodeTable<T> {
             .filter_map(|(i, slot)| slot.as_mut().map(|v| (NodeId(i as u32), v)))
     }
 
-    /// Drain all populated entries, yielding (NodeId, T) pairs and clearing the table.
     pub fn drain(&mut self) -> impl Iterator<Item = (NodeId, T)> + '_ {
         self.0
             .iter_mut()
@@ -90,8 +86,6 @@ impl<T> NodeTable<T> {
     }
 }
 
-/// Dense bitset indexed by `NodeId`. Uses u64-packed words for 8x less memory
-/// and faster iteration than `Vec<bool>`.
 #[derive(Debug, Clone)]
 pub struct NodeBitSet {
     words: Vec<u64>,
@@ -155,7 +149,6 @@ impl NodeBitSet {
     }
 }
 
-/// Iterator over set bits in a single u64 word.
 struct BitIter {
     word: u64,
     base: u32,
@@ -170,7 +163,7 @@ impl Iterator for BitIter {
             return None;
         }
         let bit = self.word.trailing_zeros();
-        self.word &= self.word - 1; // clear lowest set bit
+        self.word &= self.word - 1;
         Some(NodeId(self.base + bit))
     }
 }

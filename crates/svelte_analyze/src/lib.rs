@@ -1,7 +1,7 @@
 pub mod block_semantics;
 pub(crate) mod css;
 pub(crate) mod passes;
-pub(crate) mod reactivity_semantics;
+pub mod reactivity_semantics;
 
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
@@ -21,22 +21,22 @@ pub use block_semantics::{
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindTargetSemantics,
-    BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo, CodegenView,
-    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstDeclarationSemantics,
-    ConstTagData, ContentEditableKind, ContextualDeclarationSemantics, ContextualReadKind,
-    ContextualReadSemantics, CssAnalysis, DebugTagData, DeclarationSemantics,
+    BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    ConstTagData, ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
+    ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
     ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
     ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
-    PickledAwaitOffsets, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
-    PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ProxyStateInits,
-    ReactivitySemantics, ReferenceSemantics, ResizeObserverKind, RichContentFacts,
-    RichContentFactsEntry, RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
-    ScriptRuneCalls, SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
-    StateDeclarationSemantics, StateKind, StoreDeclarationSemantics, TemplateAnalysis,
+    PickledAwaitOffsets, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
+    PropLoweringMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
+    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
+    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls,
+    SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
@@ -45,9 +45,9 @@ pub use types::script::{
 pub use utils::script_info::BINDABLE_RUNE_NAME;
 
 bitflags::bitflags! {
-    /// Bitfield matching `svelte/src/constants.js` props flags. Derived inside
-    /// `ReactivitySemantics` so transform/codegen emit the integer literal for
-    /// `$.prop(...)` from a single source of truth.
+
+
+
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
     pub struct PropsFlags: u32 {
         const IMMUTABLE    = 1;
@@ -58,23 +58,21 @@ bitflags::bitflags! {
     }
 }
 
-// Backward-compatible aliases used by transform/codegen and existing tests.
 pub const PROPS_IS_IMMUTABLE: u32 = PropsFlags::IMMUTABLE.bits();
 pub const PROPS_IS_RUNES: u32 = PropsFlags::RUNES.bits();
 pub const PROPS_IS_UPDATED: u32 = PropsFlags::UPDATED.bits();
 pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
+pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
     is_capture_event, is_delegatable_event, is_let_or_var, is_passive_event,
     is_regular_dom_property, is_simple_expression, is_simple_identifier,
     normalize_regular_attribute_name, property_key_static_name, strip_capture_event,
 };
-pub use utils::{IdentGen, IdentGenSnapshot};
 
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, Severity};
 
-/// Options controlling analysis behavior.
 pub struct AnalyzeOptions {
     pub custom_element: bool,
     pub experimental_async: bool,
@@ -105,7 +103,6 @@ impl Default for AnalyzeOptions {
     }
 }
 
-/// Run all analysis passes over a parsed component (default options).
 pub fn analyze<'a>(
     component: &Component,
     parsed: JsAst<'a>,
@@ -113,7 +110,6 @@ pub fn analyze<'a>(
     analyze_with_options(component, parsed, &AnalyzeOptions::default())
 }
 
-/// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
     component: &Component,
     mut parsed: JsAst<'a>,
@@ -154,7 +150,6 @@ pub fn analyze_with_options<'a>(
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
 
-    // Apply warning filter if provided
     if let Some(ref filter) = options.warning_filter {
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
     }
@@ -166,19 +161,12 @@ pub fn analyze_with_options<'a>(
     {
         data.output.needs_sanitized_legacy_slots = true;
     }
-    // LEGACY(svelte4): `$$sanitized_props` / `$$restProps` decisions live on
-    // `ReactivitySemantics` (`legacy_uses_props` / `legacy_uses_rest_props`).
-    // Codegen reads them via `CodegenView` accessors — no shadow flags here.
 
     data.output.runtime_plan = build_runtime_plan(&data, options.dev);
 
     (data, parsed, diags)
 }
 
-/// Simplified analysis for standalone `.svelte.js`/`.svelte.ts` modules.
-///
-/// Only parses JS, builds scopes, and detects runes. No template, no props,
-/// no fragment classification — modules are pure JS with rune transforms.
 pub fn analyze_module<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &'a str,
@@ -206,8 +194,6 @@ pub fn analyze_module<'a>(
 
             validate::validate_standalone_module(&data, &program, 0, true, &mut diags);
 
-            // Stash program in ParserResult so `build_v2`'s script collector
-            // walks the same parse that downstream transforms use.
             parsed.program = Some(program);
             let stub_component =
                 svelte_ast::Component::dummy_for_standalone_module(source.to_string());
@@ -219,17 +205,16 @@ pub fn analyze_module<'a>(
     (data, parsed, diags)
 }
 fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
-    // LEGACY(svelte4): legacy bindable prop signals are read from precomputed
-    // ReactivitySemantics aggregates (no scope walks here).
     let legacy_symbols = data.reactivity.legacy_bindable_prop_symbols();
     let has_legacy_bindable_prop = !legacy_symbols.is_empty();
     let has_legacy_member_mutated = data.reactivity.legacy_has_member_mutated();
     let has_legacy_props_read = data.reactivity.legacy_uses_props();
-
-    // LEGACY(svelte4): legacy bindable props show up in `script.exports` because
-    // `extract_script_info` collects every ExportNamedDeclaration up-front. Skip
-    // those exports here; only non-legacy exports (`export const`, `export function`,
-    // `export class`, `export { foo }` of a non-let/var binding) count.
+    let has_legacy_reactive_statements = data
+        .reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .next()
+        .is_some();
     let has_exports = data.script.exports.iter().any(|exp| {
         let Some(instance_scope) = data.scoping.instance_scope_id() else {
             return true;
@@ -243,7 +228,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         .script
         .props_declaration()
         .is_some_and(|d| d.has_bindable());
-    let has_stores = data.reactivity.has_store_declarations();
+    let has_stores = data.reactivity.has_store_bindings();
     let has_ce_props = data.output.custom_element
         && data
             .script
@@ -256,7 +241,10 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         || data.script.accessors
         || (!data.uses_runes() && data.script.immutable)
         || dev
-        || (!data.uses_runes() && (has_legacy_member_mutated || has_legacy_props_read));
+        || (!data.uses_runes()
+            && (has_legacy_member_mutated
+                || has_legacy_props_read
+                || has_legacy_reactive_statements));
     let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
     let needs_props_param =
         data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
@@ -265,7 +253,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         crate::types::data::LegacyInit::None
     } else if data.script.immutable {
         crate::types::data::LegacyInit::Immutable
-    } else if has_legacy_member_mutated || has_legacy_props_read {
+    } else if has_legacy_member_mutated || has_legacy_props_read || data.output.needs_context {
         crate::types::data::LegacyInit::Plain
     } else {
         crate::types::data::LegacyInit::None

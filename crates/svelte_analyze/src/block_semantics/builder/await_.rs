@@ -1,11 +1,3 @@
-//! `{#await}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `AwaitBlock` — record its
-//! `BlockSemantics::Await(...)` payload — then recurse into its child
-//! fragments through the same walker so nested blocks of every migrated
-//! kind get visited inside a single template walk.
-
 use super::super::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics,
@@ -17,10 +9,8 @@ use super::walker::Ctx;
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::AwaitBlock;
-use svelte_component_semantics::{walk_bindings, SymbolId};
+use svelte_component_semantics::{SymbolId, walk_bindings};
 
-/// Populate `BlockSemantics::Await` for this block and recurse into its
-/// pending / then / catch fragments.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
     let pending = if block.pending.is_some() {
         AwaitBranch::Present {
@@ -47,8 +37,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
         AwaitWrapper::AsyncWrap { blockers }
     };
 
-    // Recurse first so nested blocks (of any migrated kind) populate inside
-    // the same template walk.
     if let Some(f) = block.pending {
         ctx.visit_fragment(f);
     }
@@ -71,9 +59,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
     );
 }
 
-/// Resolve a `{:then}` / `{:catch}` branch. `has_fragment` captures
-/// branch presence; the optional binding pattern is pulled from the
-/// pre-parsed `let <pattern>` statement referenced by `binding_ref`.
 fn resolve_branch(
     ctx: &Ctx<'_, '_>,
     has_fragment: bool,

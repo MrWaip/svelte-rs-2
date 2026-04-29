@@ -1,10 +1,10 @@
-use scanner::{token::TokenType, Scanner};
+use scanner::{Scanner, token::TokenType};
 use svelte_span::Span;
 
 use svelte_ast::{
     AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element,
-    FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext,
-    ScriptLanguage, Text, SVELTE_COMPONENT, SVELTE_SELF,
+    FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag, SVELTE_COMPONENT,
+    SVELTE_SELF, Script, ScriptContext, ScriptLanguage, Text,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -20,13 +20,8 @@ mod attr_convert;
 mod handlers;
 mod svelte_elements;
 
-// Re-export all shared types for convenience
 pub use types::{CePropConfig, CeShadowMode, JsAst, ParsedCeConfig};
 
-/// Parse a standalone `.svelte.js`/`.svelte.ts` module.
-///
-/// Returns `(Program, Scoping)` or diagnostics on parse failure.
-/// The caller (svelte_analyze) uses these to build scoping and detect runes.
 pub fn parse_module<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &str,
@@ -41,10 +36,6 @@ pub fn parse_module<'a>(
     Ok((program, scoping))
 }
 
-/// Parse a Svelte source file and all embedded JS expressions.
-///
-/// Returns the parsed component AST, parse results (expression + statement ASTs),
-/// and any diagnostics from both the Svelte parser and JS expression parsing.
 pub fn parse_with_js<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &str,
@@ -60,11 +51,6 @@ pub fn parse_with_js<'a>(
     (component, result, diagnostics)
 }
 
-/// Parse the CSS from a component's top-level `<style>` block.
-///
-/// Returns `None` when the component has no `<style>` block.
-/// CSS parse diagnostics are returned separately and should be merged
-/// into the main diagnostic list by the caller.
 pub fn parse_css_block(
     component: &svelte_ast::Component,
 ) -> Option<(svelte_css::StyleSheet, Vec<svelte_diagnostics::Diagnostic>)> {
@@ -73,10 +59,6 @@ pub fn parse_css_block(
     let (stylesheet, diags) = svelte_css::parse(css_text);
     Some((stylesheet, diags))
 }
-
-// ---------------------------------------------------------------------------
-// Stack entry — stores partial data while we parse nested structures
-// ---------------------------------------------------------------------------
 
 enum StackEntry {
     Element(ElementEntry),
@@ -94,7 +76,7 @@ struct KeyBlockEntry {
 
 struct ElementEntry {
     name: String,
-    span_start: Span, // opening tag span
+    span_start: Span,
     attributes: Vec<Attribute>,
 }
 
@@ -102,10 +84,9 @@ struct IfBlockEntry {
     span: Span,
     test_span: Span,
     elseif: bool,
-    /// Children collected for the consequent branch.
-    /// Once we see {:else}, these are moved out and we start collecting alternate.
+
     consequent: Option<Vec<NodeId>>,
-    /// Whether we are currently collecting alternate children.
+
     in_alternate: bool,
 }
 
@@ -115,7 +96,7 @@ struct EachBlockEntry {
     context_span: Option<Span>,
     index_span: Option<Span>,
     key_span: Option<Span>,
-    /// Body children, set when `{:else}` switches to fallback collection.
+
     body_children: Option<Vec<NodeId>>,
     in_fallback: bool,
 }
@@ -125,7 +106,6 @@ struct SnippetBlockEntry {
     expression_span: Span,
 }
 
-/// Tracks which sub-fragment is currently being collected.
 enum AwaitPhase {
     Pending,
     Then,
@@ -137,22 +117,16 @@ struct AwaitBlockEntry {
     expression_span: Span,
     value_span: Option<Span>,
     error_span: Option<Span>,
-    /// Which phase we are currently collecting children for.
+
     phase: AwaitPhase,
-    /// Pending children (collected before {:then} or {:catch}).
+
     pending_children: Option<Vec<NodeId>>,
-    /// Then children (collected between {:then} and a following {:catch}).
+
     then_children: Option<Vec<NodeId>>,
-    /// Catch children saved when {:then} follows {:catch} (out-of-order clauses).
+
     catch_children: Option<Vec<NodeId>>,
 }
 
-// ---------------------------------------------------------------------------
-// Stack helpers — safe wrappers around children_stack operations
-// ---------------------------------------------------------------------------
-
-/// Push a node id onto the current children list.
-/// Debug-asserts the stack is non-empty; gracefully no-ops in release.
 #[allow(clippy::ptr_arg)]
 fn push_child(children_stack: &mut Vec<Vec<NodeId>>, id: NodeId) {
     debug_assert!(
@@ -164,8 +138,6 @@ fn push_child(children_stack: &mut Vec<Vec<NodeId>>, id: NodeId) {
     }
 }
 
-/// Pop the current children list.
-/// Debug-asserts the stack is non-empty; returns empty vec in release.
 fn pop_children(children_stack: &mut Vec<Vec<NodeId>>) -> Vec<NodeId> {
     debug_assert!(
         !children_stack.is_empty(),
@@ -173,10 +145,6 @@ fn pop_children(children_stack: &mut Vec<Vec<NodeId>>) -> Vec<NodeId> {
     );
     children_stack.pop().unwrap_or_default()
 }
-
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
 
 pub struct Parser<'a> {
     source: &'a str,
@@ -197,30 +165,22 @@ impl<'a> Parser<'a> {
         self.diagnostics.push(diagnostic);
     }
 
-    /// Push a node into the store and return its NodeId.
     fn push_node(&mut self, node: Node) -> NodeId {
         self.store.push(node)
     }
 
-    /// Reserve a NodeId slot for a non-node id (attributes, key expressions, etc.).
     fn reserve_id(&mut self) -> NodeId {
         self.store.reserve()
     }
 
-    /// Allocate a fresh FragmentId in the AstStore arena with the given child nodes.
     pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> FragmentId {
         self.store.push_fragment(role, nodes)
     }
 
-    /// Allocate a fresh empty FragmentId in the AstStore arena.
     pub(crate) fn empty_fragment(&mut self, role: FragmentRole) -> FragmentId {
         self.store.reserve_fragment(role)
     }
 
-    /// Split component children into default-slot bucket and named slot buckets.
-    /// Each child whose `slot="name"` attribute resolves to a non-empty static name
-    /// goes into its own `LegacySlot` fragment; everything else stays in default.
-    /// `slot=` attribute remains on the child node — analysis still validates it.
     pub(crate) fn partition_component_children(
         &mut self,
         children: Vec<NodeId>,
@@ -246,10 +206,6 @@ impl<'a> Parser<'a> {
         (default, slots)
     }
 
-    /// Return the static name from a `slot="name"` attribute on the given child node,
-    /// if present. Returns `None` for nodes without attributes, without `slot=`,
-    /// or when the value isn't a static string (dynamic / concatenation cases stay
-    /// in the default bucket — analysis reports them).
     fn slot_name_of(&self, child: NodeId) -> Option<String> {
         let attrs = match self.store.get(child) {
             Node::Element(el) => &el.attributes,
@@ -258,14 +214,14 @@ impl<'a> Parser<'a> {
         };
 
         for attr in attrs {
-            if let Attribute::StringAttribute(sa) = attr {
-                if sa.name == "slot" {
-                    let value = sa.value_span.source_text(self.source);
-                    if value.is_empty() {
-                        return None;
-                    }
-                    return Some(value.to_string());
+            if let Attribute::StringAttribute(sa) = attr
+                && sa.name == "slot"
+            {
+                let value = sa.value_span.source_text(self.source);
+                if value.is_empty() {
+                    return None;
                 }
+                return Some(value.to_string());
             }
         }
         None
@@ -287,7 +243,7 @@ impl<'a> Parser<'a> {
                 TokenType::Text => {
                     let raw = token.span.source_text(self.source);
                     let id = self.push_node(Node::Text(Text {
-                        id: NodeId(0), // set by store.push
+                        id: NodeId(0),
                         span: token.span,
                         decoded: html::decode_text(raw),
                     }));
@@ -531,7 +487,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Auto-close any remaining open entries
         self.auto_close_entries(&mut entry_stack, &mut children_stack);
 
         let roots = pop_children(&mut children_stack);
@@ -569,23 +524,17 @@ impl<'a> Parser<'a> {
             module_script,
             css,
         );
-        // Extract <svelte:options> from fragment (must be top-level)
+
         self.extract_svelte_options(&mut component);
 
-        // Root-only special elements need parser-owned duplicate / placement validation before
-        // top-level conversion rewrites the valid cases into dedicated AST nodes.
         self.validate_root_only_special_elements(&component);
 
-        // Convert <svelte:head> elements to SvelteHead nodes
         Self::convert_svelte_head(&mut component);
 
-        // Convert <svelte:window> elements to SvelteWindow nodes
         Self::convert_svelte_window(&mut component);
 
-        // Convert <svelte:document> elements to SvelteDocument nodes
         Self::convert_svelte_document(&mut component);
 
-        // Convert <svelte:body> elements to SvelteBody nodes
         Self::convert_svelte_body(&mut component);
 
         let root_nodes = component.fragment_nodes(component.root).to_vec();
@@ -661,7 +610,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-// Custom element tag name validation
 enum TagError {
     Invalid,
     Reserved,
@@ -669,10 +617,9 @@ enum TagError {
 
 fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
     if tag.is_empty() {
-        return None; // Empty tag is allowed (means "no tag")
+        return None;
     }
 
-    // Must start with lowercase letter, contain a hyphen, and only valid chars
     let is_valid = tag.starts_with(|c: char| c.is_ascii_lowercase())
         && tag.contains('-')
         && tag.chars().all(|c| {

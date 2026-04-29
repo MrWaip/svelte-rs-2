@@ -20,8 +20,6 @@ pub(crate) enum FragmentEmitKind {
     Rendered,
 }
 
-/// Roles that require an emitted `$.next()` call before a leading text-like
-/// child when rendering as a callback-anchored fragment.
 fn role_needs_text_first_next(role: FragmentRole) -> bool {
     matches!(
         role,
@@ -264,7 +262,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return CodegenError::unexpected_block_semantics(
                             id,
                             "EachBlock expected Each semantics",
-                        )
+                        );
                     }
                 };
                 self.emit_each_block_controlled(state, ctx, id, sem, parent_name)?;
@@ -461,15 +459,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             _ => {}
         }
-        if let ContentStrategy::SingleBlock(id) = &strategy {
-            if matches!(ctx.anchor, FragmentAnchor::Child { .. })
-                && matches!(
-                    self.ctx.query.component.store.get(*id),
-                    svelte_ast::Node::EachBlock(_)
-                )
-            {
-                return ContentStrategy::ControlledEach(*id);
-            }
+        if let ContentStrategy::SingleBlock(id) = &strategy
+            && matches!(ctx.anchor, FragmentAnchor::Child { .. })
+            && matches!(
+                self.ctx.query.component.store.get(*id),
+                svelte_ast::Node::EachBlock(_)
+            )
+        {
+            return ContentStrategy::ControlledEach(*id);
         }
         strategy
     }
@@ -685,10 +682,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 (StrategyKind::SingleElement, false) => b.call_expr(from_fn, [Arg::Expr(tpl_expr)]),
             }
         };
-        if self.ctx.state.dev {
-            if let Some(locs) = self.build_template_locations(fragment_id) {
-                from_html = self.wrap_add_locations(from_html, locs);
-            }
+        if self.ctx.state.dev
+            && let Some(locs) = self.build_template_locations(fragment_id)
+        {
+            from_html = self.wrap_add_locations(from_html, locs);
         }
         let tpl_stmt = self.ctx.state.b.var_stmt(&tpl_name, from_html);
         self.hoist(tpl_stmt);
@@ -790,20 +787,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             || has_const_tag_blocker;
         let expr = self.take_node_expr(id)?;
 
-        if !is_dyn {
-            if let FragmentAnchor::Child { parent_var } = &ctx.anchor {
-                let final_expr = match self.try_resolve_known_from_expr(&expr) {
-                    Some(s) => self.ctx.state.b.str_expr(&s),
-                    None => expr,
-                };
-                let b = &self.ctx.state.b;
-                let member = b.static_member(b.rid_expr(parent_var), "textContent");
-                state
-                    .init
-                    .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
-                state.last_fragment_needs_reset = false;
-                return Ok(());
-            }
+        if !is_dyn && let FragmentAnchor::Child { parent_var } = &ctx.anchor {
+            let final_expr = match self.try_resolve_known_from_expr(&expr) {
+                Some(s) => self.ctx.state.b.str_expr(&s),
+                None => expr,
+            };
+            let b = &self.ctx.state.b;
+            let member = b.static_member(b.rid_expr(parent_var), "textContent");
+            state
+                .init
+                .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
+            state.last_fragment_needs_reset = false;
+            return Ok(());
         }
 
         let name = self.ctx.state.gen_ident("text");
@@ -925,6 +920,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 } else {
                     let defined = self.is_node_expr_definitely_defined(*id, &expr);
+                    let info = self.ctx.expression(*id).cloned();
+                    let expr = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
                     let effective_expr = if needs_memo {
                         let node_deps_needs_memo = self
                             .ctx
@@ -971,15 +968,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None => b.template_parts_expr(tpl_parts),
         };
 
-        if !is_dyn {
-            if let FragmentAnchor::Child { parent_var } = &ctx.anchor {
-                let member = b.static_member(b.rid_expr(parent_var), "textContent");
-                state
-                    .init
-                    .push(b.assign_stmt(AssignLeft::StaticMember(member), tpl_expr));
-                state.last_fragment_needs_reset = false;
-                return Ok(());
-            }
+        if !is_dyn && let FragmentAnchor::Child { parent_var } = &ctx.anchor {
+            let member = b.static_member(b.rid_expr(parent_var), "textContent");
+            state
+                .init
+                .push(b.assign_stmt(AssignLeft::StaticMember(member), tpl_expr));
+            state.last_fragment_needs_reset = false;
+            return Ok(());
         }
 
         let name = self.ctx.state.gen_ident("text");
@@ -1036,9 +1031,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(tpl_expr)]);
                 let callback = self.ctx.b.arrow_expr(params, [set_text]);
-                // Привет ИИ, так не делай, мы это отрефакторим в analyze —
-                // legacy подход: memo-template_effect должен эмитироваться ПОСЛЕ reset,
-                // поэтому пушим в after_update (pack_body вставляет его после init+template_effect).
+
                 crate::codegen::effect::emit_effect_call_extern(
                     self.ctx,
                     "$.template_effect",

@@ -191,21 +191,18 @@ fn compile_component_name_conflicts_with_module_scope_bindings() {
 
 #[test]
 fn analyze_runs_despite_parse_errors() {
-    // Analyze always runs even when the parser reports errors, so that both
-    // parse-layer and analyze-layer diagnostics surface in one pass.
-    // Codegen is skipped whenever any error diagnostic is present.
     let result = compile(
         r#"<script>
 const id = $props.id();
 const id2 = $props.id();
-</script><div"#, // unclosed tag → parse error; duplicate $props.id() → analyze error
+</script><div"#,
         &CompileOptions::default(),
     );
     assert!(
         result.js.is_none(),
         "codegen must be skipped when errors present"
     );
-    // Both layers contribute diagnostics.
+
     assert!(
         result
             .diagnostics
@@ -372,7 +369,6 @@ function setup() {
 
 #[test]
 fn compile_props_and_props_id_coexist() {
-    // $props() and $props.id() are allowed together — reference compiler permits this.
     let result = compile(
         r#"<script>
 let { a } = $props();
@@ -549,7 +545,6 @@ fn attribute_invalid_name_digit_start() {
 
 #[test]
 fn attribute_invalid_name_dash_start() {
-    // Parser allows '-' in attr names including at start; analyze rejects via the illegal-char regex.
     let result = compile(r#"<div -foo="x"></div>"#, &CompileOptions::default());
     assert!(
         result
@@ -572,7 +567,7 @@ fn css_injected_via_compile_options() {
     let js = result
         .js
         .unwrap_or_else(|| panic!("compile produced no JS"));
-    // inject path: CSS must be absent from CompileResult.css and present in JS output
+
     assert!(result.css.is_none(), "css should be None for injected mode");
     assert!(js.contains("$$css"), "expected $$css const in JS output");
     assert!(

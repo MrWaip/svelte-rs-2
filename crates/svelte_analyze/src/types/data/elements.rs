@@ -25,7 +25,7 @@ pub enum ComponentPropKind {
     Expression {
         name: String,
         attr_id: NodeId,
-        /// OxcNodeId of the parsed expression — direct lookup into `JsAst.exprs`.
+
         expr_id: oxc_syntax::node::NodeId,
         shorthand: bool,
         needs_memo: bool,
@@ -44,8 +44,7 @@ pub enum ComponentPropKind {
         bind_id: NodeId,
         expr_id: oxc_syntax::node::NodeId,
         mode: ComponentBindMode,
-        /// For store-sub binds: the expression identifier (e.g., `"$count"`).
-        /// `None` for non-store binds where `name` is used directly.
+
         expr_name: Option<String>,
     },
     Spread {
@@ -56,11 +55,11 @@ pub enum ComponentPropKind {
         attr_id: NodeId,
         expr_id: oxc_syntax::node::NodeId,
     },
-    /// LEGACY(svelte4): `on:event` directive on component tags → `$$events`.
+
     Event {
         name: String,
         attr_id: NodeId,
-        /// OxcNodeId of the handler expression. `None` for `on:click` without value.
+
         expr_id: Option<oxc_syntax::node::NodeId>,
         has_expression: bool,
         has_once_modifier: bool,
@@ -72,8 +71,7 @@ pub enum ComponentBindMode {
     PropSource,
     Rune,
     Plain,
-    /// Bind expression targets a store subscription (e.g. `bind:value={$count}`).
-    /// Codegen emits `$.mark_store_binding()` in the getter.
+
     StoreSub,
 }
 
@@ -84,8 +82,6 @@ pub enum EventHandlerMode {
 }
 
 pub struct ElementFlags {
-    // Shared normalized attribute facts live in ElementFacts; this table stays limited
-    // to downstream derived flags that are specific to later analyze/codegen consumers.
     pub(crate) class_attr_id: NodeTable<NodeId>,
     pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
     pub(crate) needs_clsx: NodeBitSet,
@@ -101,27 +97,20 @@ pub struct ElementFlags {
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
     pub(crate) component_binding_sym: NodeTable<SymbolId>,
-    /// `--*` attributes on a component — routed through `<svelte-css-wrapper>` /
-    /// `<g>` + `$.css_props(...)` instead of being passed as ordinary props.
-    /// Each entry stores the full attribute name (with `--` prefix) and the
-    /// attribute NodeId for retrieving the parsed expression.
+
     pub(crate) component_css_props: NodeTable<Vec<(String, NodeId, oxc_syntax::node::NodeId)>>,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
-    /// `<textarea>` with expression children and no explicit `value` attribute —
-    /// codegen emits `$.remove_textarea_child` + `$.set_value` instead of textContent.
+
     pub(crate) needs_textarea_value_lowering: NodeBitSet,
-    /// `<option>` with a single ExpressionTag child and no explicit `value` attribute.
-    /// Maps option element NodeId → ExpressionTag NodeId for `__value` synthesis.
+
     pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
-    /// `<select>`, `<optgroup>`, `<option>` elements with rich DOM content requiring `$.customizable_select`.
+
     pub(crate) customizable_select: NodeBitSet,
-    /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
+
     pub(crate) is_selectedcontent: NodeBitSet,
-    /// Named slot elements that are `<svelte:fragment slot="name">` wrappers.
-    /// Keyed by the slot element NodeId. Used in codegen to consume the extra
-    /// `root` identifier that the reference compiler allocates for the wrapper.
+
     pub(crate) svelte_fragment_slots: NodeBitSet,
-    /// `<svelte:self>` component nodes — needs `$.comment()` anchor in non-root context.
+
     pub(crate) is_svelte_self: NodeBitSet,
 }
 
@@ -198,8 +187,7 @@ impl ElementFlags {
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
         self.has_dynamic_class_directives.contains(&id)
     }
-    /// `class_needs_state` moved to `AnalysisData::class_needs_state` because
-    /// it reads from `DynamismData`, which is not owned by `ElementFlags`.
+
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.expression_shorthand.contains(&id)
     }

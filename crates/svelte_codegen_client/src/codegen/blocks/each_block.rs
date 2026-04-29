@@ -347,15 +347,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let mut frag_body = self.pack_callback_body(inner_state, "$$anchor")?;
 
-        if let Some(pattern) = context_pattern {
-            if matches!(
+        if let Some(pattern) = context_pattern
+            && matches!(
                 pattern,
                 BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
-            ) {
-                let mut decls = self.build_each_destructure_decls(pattern, plan.item_reactive)?;
-                decls.append(&mut frag_body);
-                frag_body = decls;
-            }
+            )
+        {
+            let mut decls = self.build_each_destructure_decls(pattern, plan.item_reactive)?;
+            decls.append(&mut frag_body);
+            frag_body = decls;
         }
 
         let arrow = match (&plan.render_index_name, &plan.collection_id_name) {

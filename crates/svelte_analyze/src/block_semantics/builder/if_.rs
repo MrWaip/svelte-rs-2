@@ -1,27 +1,3 @@
-//! `{#if}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `IfBlock` — walk its `{:else if}`
-//! chain to decide which elseifs flatten into the root payload — then
-//! recurse into every branch fragment so nested blocks of every
-//! migrated kind populate within a single template walk.
-//!
-//! Flattening rule mirrors the reference compiler
-//! (`reference/compiler/phases/2-analyze/visitors/IfBlock.js:28-45`):
-//! an `{:else if}` is absorbed into the root chain iff it contains no
-//! `await` **and** its blocker set is a subset of the root's. An elseif
-//! that fails either check stops the chain — it becomes the first (and
-//! only) child of the surviving `alternate` fragment and, because the
-//! walker descends into that fragment too, gets its own
-//! `BlockSemantics::If(...)` payload via a separate `populate` call.
-//!
-//! Tombstone invariant: when a chain flattens, every absorbed elseif
-//! was already visited by the walker before the root wrote its payload
-//! (the walker recurses into the alternate fragment inside
-//! [`populate`]). The populator resets those absorbed-elseif slots to
-//! [`BlockSemantics::NonSpecial`] after writing the root so consumers
-//! dispatching on fragment children never see a duplicate payload.
-
 use super::super::{
     BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
 };
@@ -30,19 +6,12 @@ use super::walker::Ctx;
 use smallvec::SmallVec;
 use svelte_ast::{IfBlock, Node};
 
-/// Populate `BlockSemantics::If` for this block and recurse into its
-/// `consequent` + `alternate` fragments.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
-    // Walker owns recursion: descend into both branch fragments first so
-    // every nested block (including non-flattenable elseif IfBlocks that
-    // land in the alternate) gets its own populator call. Absorbed
-    // elseifs are tombstoned after `ctx.store.set` at the bottom.
     ctx.visit_fragment(block.consequent);
     if let Some(alt) = block.alternate {
         ctx.visit_fragment(alt);
     }
 
-    // Root test facts — sole source of truth for the wrapper decision.
     let (root_has_await, root_memoize, root_blockers) = test_facts(ctx, block);
 
     let mut branches: SmallVec<[IfBranch; 2]> = SmallVec::new();
@@ -58,11 +27,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
             break IfAlternate::None;
         };
 
-        // Reference parser encodes `{:else if expr}` as an alternate
-        // fragment containing exactly one IfBlock with `elseif == true`.
-        // Any other alternate shape (plain `{:else}`, or alternate with
-        // a non-elseif inner IfBlock) stops the chain with a final
-        // alternate fragment the consumer renders as-is.
         let nested = elseif_child(ctx, *alt);
         let Some(nested) = nested else {
             break IfAlternate::Fragment {
@@ -106,17 +70,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
         }),
     );
 
-    // Tombstone absorbed elseifs: the walker already populated them as
-    // their own roots during the alternate fragment recursion above.
-    // Dispatching on them would double-emit, so reset to NonSpecial.
     for id in absorbed {
         ctx.store.set(id, BlockSemantics::NonSpecial);
     }
 }
 
-/// `(has_await, has_call, blockers)` for a branch's test expression.
-/// Returns sync facts when the expression is missing from the pre-parsed
-/// store — matches the defensive behaviour of other populators.
 fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32; 2]>) {
     let Some(expr) = ctx.parsed.expr(block.test.id()) else {
         return (false, false, SmallVec::new());
@@ -124,9 +82,6 @@ fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32;
     expression_if_facts(expr, ctx.semantics, ctx.blockers)
 }
 
-/// If `fragment` encodes `{:else if ...}`, return the nested IfBlock.
-/// That is: exactly one AST child, which is an IfBlock with
-/// `elseif == true`. Everything else is a real `{:else}` fragment.
 fn elseif_child<'c>(
     ctx: &'c Ctx<'_, '_>,
     fragment_id: svelte_ast::FragmentId,
@@ -142,9 +97,6 @@ fn elseif_child<'c>(
     ib.elseif.then_some(ib)
 }
 
-/// `nested_blockers ⊆ root_blockers` (set-wise). Mirrors the reference
-/// compiler's `!has_more_blockers_than(parent)` guard. Both inputs are
-/// sorted and de-duplicated by `expression_if_facts`.
 fn is_blocker_subset(nested: &[u32], root: &[u32]) -> bool {
     nested.iter().all(|b| root.contains(b))
 }
@@ -165,9 +117,6 @@ mod tests {
     use crate::{BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfConditionKind};
     use svelte_ast::{Component, IfBlock, Node, NodeId};
 
-    /// Return every IfBlock node in source order (root fragment → nested
-    /// children), so tests can reason about flattened-vs-nested
-    /// payloads.
     fn all_if_blocks(component: &Component) -> Vec<NodeId> {
         fn walk(component: &Component, nodes: &[NodeId], out: &mut Vec<NodeId>) {
             for &id in nodes {
@@ -337,9 +286,6 @@ mod tests {
 
     #[test]
     fn if_elseif_breaks_flattening_on_own_await() {
-        // The inner elseif has its own await — cannot flatten. Root
-        // ends up with one branch + Fragment-alternate. Inner IfBlock
-        // gets its own payload with AsyncParam + non-elseif-root set.
         let source = r#"<script>
 let { x } = $props();
 let q = Promise.resolve(true);
@@ -381,9 +327,6 @@ let q = Promise.resolve(true);
 
     #[test]
     fn if_nested_real_if_not_absorbed() {
-        // `{:else}{#if y}...{/if}{/if}` — the inner IfBlock sits inside
-        // an `{:else}` fragment, so its `elseif` flag is `false` and it
-        // stays its own root.
         let source = r#"<script>let { x, y } = $props();</script>
 {#if x}<span></span>{:else}{#if y}<span></span>{/if}{/if}"#;
         let (component, data) = analyze_source(source);
@@ -407,9 +350,6 @@ let q = Promise.resolve(true);
 
     #[test]
     fn if_absorbed_elseif_is_nonspecial() {
-        // Root has 2-branch chain (both flattened); querying the
-        // absorbed elseif's own id returns NonSpecial so the consumer
-        // dispatcher never wakes it up.
         let source = r#"<script>let { x, y } = $props();</script>
 {#if x}<span></span>{:else if y}<span></span>{/if}"#;
         let (component, data) = analyze_source(source);

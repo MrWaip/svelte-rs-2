@@ -40,9 +40,6 @@ pub(crate) fn build<'d, 'a>(
         builder.add_template(&mut walker);
     }
 
-    // Drain pending parser-staged expressions/statements into OxcNodeId-keyed
-    // storage. The walker just bound every ExprRef.oxc_id via
-    // TemplateBuildContext::visit_js_expression — collect those mappings here.
     let mut expr_id_map: rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId> =
         rustc_hash::FxHashMap::default();
     let mut stmt_id_map: rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId> =
@@ -61,18 +58,18 @@ pub(crate) fn build<'d, 'a>(
         }
     }
 
-    if let Some(module_program) = parsed.module_program.as_ref() {
-        if let Some(span) = parsed.module_script_content_span {
-            let module_source = component.source_text(span);
-            let mut module_info =
-                script_info::extract_script_info(module_program, span.start, module_source, true);
-            script_info::enrich_from_component_scoping(&scoping, &mut module_info);
-            data.output.needs_context |= crate::passes::js_analyze::needs_context_for_program(
-                module_program,
-                &scoping,
-                &module_info,
-            );
-        }
+    if let Some(module_program) = parsed.module_program.as_ref()
+        && let Some(span) = parsed.module_script_content_span
+    {
+        let module_source = component.source_text(span);
+        let mut module_info =
+            script_info::extract_script_info(module_program, span.start, module_source, true);
+        script_info::enrich_from_component_scoping(&scoping, &mut module_info);
+        data.output.needs_context |= crate::passes::js_analyze::needs_context_for_program(
+            module_program,
+            &scoping,
+            &module_info,
+        );
     }
     data.scoping = scoping;
 }
@@ -224,20 +221,20 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         let body = block.body;
         let fallback = block.fallback;
         ctx.enter_fragment_scope_by_id(body);
-        if let Some(ctx_ref) = block.context.as_ref() {
-            if let Some(stmt) = self.parsed.pending_stmt(ctx_ref.span.start) {
-                ctx.visit_js_statement(ctx_ref, stmt);
-            }
+        if let Some(ctx_ref) = block.context.as_ref()
+            && let Some(stmt) = self.parsed.pending_stmt(ctx_ref.span.start)
+        {
+            ctx.visit_js_statement(ctx_ref, stmt);
         }
-        if let Some(idx_ref) = block.index.as_ref() {
-            if let Some(stmt) = self.parsed.pending_stmt(idx_ref.span.start) {
-                ctx.visit_js_statement(idx_ref, stmt);
-            }
+        if let Some(idx_ref) = block.index.as_ref()
+            && let Some(stmt) = self.parsed.pending_stmt(idx_ref.span.start)
+        {
+            ctx.visit_js_statement(idx_ref, stmt);
         }
-        if let Some(key_ref) = block.key.as_ref() {
-            if let Some(expr) = self.parsed.pending_expr(key_ref.span.start) {
-                ctx.visit_js_expression(key_ref, expr);
-            }
+        if let Some(key_ref) = block.key.as_ref()
+            && let Some(expr) = self.parsed.pending_expr(key_ref.span.start)
+        {
+            ctx.visit_js_expression(key_ref, expr);
         }
         self.walk_fragment(body, ctx);
         ctx.leave_scope();
@@ -259,20 +256,20 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         }
         if let Some(t) = block.then {
             ctx.enter_fragment_scope_by_id(t);
-            if let Some(vr) = block.value.as_ref() {
-                if let Some(stmt) = self.parsed.pending_stmt(vr.span.start) {
-                    ctx.visit_js_statement(vr, stmt);
-                }
+            if let Some(vr) = block.value.as_ref()
+                && let Some(stmt) = self.parsed.pending_stmt(vr.span.start)
+            {
+                ctx.visit_js_statement(vr, stmt);
             }
             self.walk_fragment(t, ctx);
             ctx.leave_scope();
         }
         if let Some(c) = block.catch {
             ctx.enter_fragment_scope_by_id(c);
-            if let Some(er) = block.error.as_ref() {
-                if let Some(stmt) = self.parsed.pending_stmt(er.span.start) {
-                    ctx.visit_js_statement(er, stmt);
-                }
+            if let Some(er) = block.error.as_ref()
+                && let Some(stmt) = self.parsed.pending_stmt(er.span.start)
+            {
+                ctx.visit_js_statement(er, stmt);
             }
             self.walk_fragment(c, ctx);
             ctx.leave_scope();
@@ -346,10 +343,10 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     }
                 }
                 Attribute::OnDirectiveLegacy(dir) => {
-                    if let Some(expr_ref) = dir.expression.as_ref() {
-                        if let Some(expr) = self.parsed.pending_expr(expr_ref.span.start) {
-                            ctx.visit_js_expression(expr_ref, expr);
-                        }
+                    if let Some(expr_ref) = dir.expression.as_ref()
+                        && let Some(expr) = self.parsed.pending_expr(expr_ref.span.start)
+                    {
+                        ctx.visit_js_expression(expr_ref, expr);
                     }
                 }
                 Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
@@ -400,16 +397,6 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
     }
 
     fn walk_bind_directive(&mut self, dir: &BindDirective, ctx: &mut TemplateBuildContext<'_, 'a>) {
-        // `expression_span` is non-optional; shorthand `bind:name` carries the
-        // span of `name` which the parser already parsed as
-        // `Expression::Identifier(name)`. Reference-compiler parity
-        // (phases/scope.js::BindDirective):
-        //   Identifier expression      → root identifier is the write-site
-        //   (`binding.reassigned = true`) — mark as Write so OXC records a
-        //   write reference.
-        //   MemberExpression expression → root identifier reads the object
-        //   (`binding.mutated = true` only) — we mark the symbol mutated
-        //   outside the reference-flag channel via mark_symbol_mutated.
         let Some(expr) = self.parsed.pending_expr(dir.expression.span.start) else {
             return;
         };
@@ -424,9 +411,6 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 }
             }
             _ => {
-                // Reference compiler accepts arbitrary expressions only for
-                // sequence `bind:value={(get, set)}`. Other shapes are
-                // rejected later in validation; we still visit as read.
                 ctx.visit_js_expression(&dir.expression, expr);
             }
         }
@@ -491,10 +475,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             } else {
                 ctx.visit_js_expression_with_flags(expr_ref, expr, flags);
             }
-            // Mirror the root-identifier `SymbolId` into `node_ref_symbols`
-            // so lookups by `dir.id` (shorthand/class/style/bind) keep working
-            // after the synthesized-expression rework. Consumers that need the
-            // operation-level answer should prefer `reference_semantics(ref_id)`.
+
             if let Some(sym_id) = attr_root_symbol(expr, ctx) {
                 self.data
                     .template
@@ -505,8 +486,6 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         }
     }
 
-    /// Thin wrapper for directives that still carry `Option<Span>` and
-    /// `Option<ExprRef>` (use/transition/animate).
     fn walk_optional_expr_attr(
         &mut self,
         node_id: NodeId,
@@ -536,18 +515,14 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         dir: &LetDirectiveLegacy,
         ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
-        if let Some(stmt) = self.parsed.pending_stmt(dir.name_span.start) {
-            if let Some(binding_ref) = dir.binding.as_ref() {
-                ctx.visit_js_statement(binding_ref, stmt);
-            }
+        if let Some(stmt) = self.parsed.pending_stmt(dir.name_span.start)
+            && let Some(binding_ref) = dir.binding.as_ref()
+        {
+            ctx.visit_js_statement(binding_ref, stmt);
         }
     }
 }
 
-/// Drill down `member.object` chain to the root `IdentifierReference` and
-/// resolve its `SymbolId` via the current template scope. Mirrors the
-/// reference compiler's `utils/ast.js::object()` helper used by the
-/// `BindDirective` updates pass in `phases/scope.js`.
 fn bind_member_root_symbol<'a>(
     expr: &Expression<'a>,
     ctx: &TemplateBuildContext<'_, 'a>,
@@ -555,11 +530,6 @@ fn bind_member_root_symbol<'a>(
     attr_root_symbol(expr, ctx)
 }
 
-/// Resolve the root-identifier `SymbolId` of an attribute expression. Works
-/// for any expression that eventually bottoms out in an `Identifier` after
-/// drilling through member chains — the same shape reference compiler's
-/// `utils/ast.js::object()` walks. Returns `None` for call expressions,
-/// literals, or unresolved bindings.
 fn attr_root_symbol<'a>(
     expr: &Expression<'a>,
     ctx: &TemplateBuildContext<'_, 'a>,
@@ -597,11 +567,6 @@ impl<'d, 'a> TemplateWalker<'a> for AnalyzeTemplateWalker<'d, 'a> {
     }
 }
 
-/// Walk the template AST, collecting (span.start → ExprRef.id()) and
-/// (span.start → StmtRef.id()) mappings for every bound ref. The walker
-/// already filled every `ExprRef.oxc_id` Cell during the semantic pass
-/// (`TemplateBuildContext::visit_js_expression`); we just read them back to
-/// drive `JsAst::drain_pending`.
 fn collect_ref_ids(
     component: &Component,
     expr_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,

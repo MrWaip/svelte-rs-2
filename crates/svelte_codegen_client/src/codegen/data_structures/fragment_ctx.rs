@@ -1,4 +1,4 @@
-use svelte_ast::{is_svg, is_whitespace_removable_parent, FragmentRole, Namespace};
+use svelte_ast::{FragmentRole, Namespace, is_svg, is_whitespace_removable_parent};
 use svelte_span::Span;
 
 use super::concat::ConcatPart;
@@ -35,7 +35,6 @@ impl<'a> FragmentCtx<'a> {
         }
     }
 
-    // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
     pub fn child_of_element(
         &self,
         ctx: &Ctx<'a>,
@@ -92,9 +91,6 @@ impl<'a> FragmentCtx<'a> {
         next
     }
 
-    /// LEGACY(svelte4): named-slot bodies do not have a parser-allocated
-    /// `Fragment` — codegen synthesises them from the slot wrapper element.
-    /// `role` is `NamedSlot`, namespace is HTML.
     pub fn child_of_named_slot(&self, new_anchor: FragmentAnchor) -> Self {
         let mut next = self.clone();
         next.namespace = Namespace::Html;

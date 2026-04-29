@@ -44,9 +44,6 @@ impl SnippetData {
     }
 }
 
-/// Fragment-level index of `{@const}` tag ids. Per-tag semantic data
-/// (bindings, destructure shape, async lowering) lives in
-/// `block_semantics::ConstTagBlockSemantics`; this struct only answers
 #[derive(Default)]
 pub(crate) struct FragmentNodeList {
     entries: Vec<Option<Vec<NodeId>>>,

@@ -5,21 +5,18 @@ use oxc_ast::ast::{
     AssignmentTargetPropertyIdentifier, CallExpression, Expression, MemberExpression,
     SimpleAssignmentTarget,
 };
+use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
     walk_expression, walk_function, walk_member_expression, walk_simple_assignment_target,
     walk_update_expression,
 };
-use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
     uses_legacy_slots: bool,
-    /// LEGACY(svelte4): true when the expression contains a read of the
-    /// unresolved `$$props` / `$$restProps` identifier. Drives the legacy
-    /// coarse-wrap (`$.deep_read_state` / `$.untrack`) at codegen time.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
+
     uses_legacy_sanitized_props: bool,
     has_call: bool,
     has_await: bool,
@@ -126,10 +123,10 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if self.fn_depth == 0 {
             self.has_call = true;
-            if let Some(rune) = crate::utils::script_info::detect_rune_from_call(call) {
-                if matches!(rune, RuneKind::EffectPending | RuneKind::StateEager) {
-                    self.has_state_rune = true;
-                }
+            if let Some(rune) = crate::utils::script_info::detect_rune_from_call(call)
+                && matches!(rune, RuneKind::EffectPending | RuneKind::StateEager)
+            {
+                self.has_state_rune = true;
             }
         }
 

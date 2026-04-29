@@ -1,7 +1,7 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::{validate, walker, AnalysisData, AnalyzeOptions, JsAst};
+use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, walker};
 
 use super::{
     bundles, const_tag_fragments, finalize_component_name, fragment_topology, html_tag_ns_flags,
@@ -92,12 +92,12 @@ pub(crate) fn execute_pass<'a>(
             finalize_component_name::run(data);
         }
         super::PassKey::ScanIgnoreComments => {
-            if let Some(program) = &parsed.program {
-                if options.dev {
-                    data.output
-                        .ignore_data
-                        .scan_program_comments(program, runes);
-                }
+            if let Some(program) = &parsed.program
+                && options.dev
+            {
+                data.output
+                    .ignore_data
+                    .scan_program_comments(program, runes);
             }
         }
         super::PassKey::ExtractCeConfig => {
@@ -105,12 +105,10 @@ pub(crate) fn execute_pass<'a>(
                 .options
                 .as_ref()
                 .and_then(|o| o.custom_element.as_ref())
+                && let Some(expr) = parsed.pending_expr(span.start)
             {
-                if let Some(expr) = parsed.pending_expr(span.start) {
-                    let config =
-                        crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
-                    data.script.ce_config = Some(config);
-                }
+                let config = crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
+                data.script.ce_config = Some(config);
             }
         }
         super::PassKey::TemplateSideTables => {
@@ -175,11 +173,6 @@ pub(crate) fn execute_pass<'a>(
                             && info
                                 .ref_symbols()
                                 .iter()
-                                // NOTE: runs inside the `PostResolve` pass, BEFORE
-                                // `BuildReactivitySemantics` populates v2 prop facts.
-                                // Uses `ComponentScoping.is_rest_prop` because
-                                // `post_resolve::handle_props_declaration` (same pass)
-                                // already marked the rest-prop symbol.
                                 .any(|&sym| data.scoping.is_rest_prop(sym))
                     });
             }

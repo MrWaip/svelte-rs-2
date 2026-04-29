@@ -1,25 +1,21 @@
-//! Rune validation — placement, argument count, deprecated/removed runes.
-
 use oxc_ast::ast::{
     AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
     ExportNamedDeclaration, Expression, ExpressionStatement, MemberExpression,
     MethodDefinitionKind, ModuleExportName, PropertyDefinition, VariableDeclarator,
 };
+use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
     walk_expression_statement, walk_function, walk_member_expression, walk_method_definition,
     walk_property_definition,
 };
-use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::{detect_rune, detect_rune_from_call};
-use crate::{types::script::RuneKind, AnalysisData, DeclarationSemantics, StateKind};
+use crate::{AnalysisData, BindingSemantics, StateKind, types::script::RuneKind};
 
-/// Constructor assignments to `this` are valid rune placement targets,
-/// same as variable declarations and class property initializers.
 fn is_this_member_assign(target: &oxc_ast::ast::AssignmentTarget<'_>) -> bool {
     let object = match target {
         oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => &m.object,
@@ -63,28 +59,25 @@ struct RuneValidator<'a> {
     in_var_declarator_init: bool,
     in_class_property_init: bool,
     in_constructor_body: bool,
-    /// RHS of `this.x = ...` inside a constructor — valid rune placement.
+
     in_this_assign_rhs: bool,
-    /// True only when we are visiting the direct expression of an ExpressionStatement.
-    /// Reset to false whenever we descend into a nested call expression.
+
     in_expression_statement_expr: bool,
-    /// Span of the ExpressionStatement currently being visited, if any.
+
     current_expr_stmt_span: Option<oxc_span::Span>,
-    /// Span of the first statement of the nearest enclosing function body.
-    /// None when not inside any function.
+
     fn_body_first_stmt_span: Option<oxc_span::Span>,
-    /// True when currently inside a generator function.
+
     in_generator: bool,
-    /// 0 = top-level scope, incremented inside functions/arrows.
+
     function_depth: u32,
-    /// Duplicate `$props()` detection.
+
     has_props_rune: bool,
-    /// Duplicate `$props.id()` detection.
+
     has_props_id: bool,
-    /// True when visiting the binding pattern of a `$props()` destructure.
-    /// Used for `$bindable()` placement validation.
+
     in_props_destructure: bool,
-    /// True for `<script>`, false for `<script module>`.
+
     is_instance_script: bool,
     custom_element: bool,
 }
@@ -122,8 +115,6 @@ impl RuneValidator<'_> {
         Span::new(oxc.start + self.offset, oxc.end + self.offset)
     }
 
-    /// Validate the binding pattern of a `$props()` declaration.
-    /// Rejects computed keys, `$$`-prefixed names, and nested destructures.
     fn validate_props_pattern(&mut self, pattern: &BindingPattern<'_>) {
         let BindingPattern::ObjectPattern(obj) = pattern else {
             if !matches!(pattern, BindingPattern::BindingIdentifier(_)) {
@@ -144,17 +135,15 @@ impl RuneValidator<'_> {
                 continue;
             }
 
-            // Reject `$$`-prefixed property names.
-            if let oxc_ast::ast::PropertyKey::StaticIdentifier(key) = &prop.key {
-                if key.name.starts_with("$$") {
-                    self.diags.push(Diagnostic::error(
-                        DiagnosticKind::PropsIllegalName,
-                        self.span(prop.span),
-                    ));
-                }
+            if let oxc_ast::ast::PropertyKey::StaticIdentifier(key) = &prop.key
+                && key.name.starts_with("$$")
+            {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsIllegalName,
+                    self.span(prop.span),
+                ));
             }
 
-            // The value (after stripping AssignmentPattern default) must be a plain identifier.
             let value_pattern = match &prop.value {
                 BindingPattern::AssignmentPattern(assign) => &assign.left,
                 other => other,
@@ -168,8 +157,6 @@ impl RuneValidator<'_> {
         }
     }
 
-    /// `detect_rune_from_call` only matches known rune names — deprecated forms like
-    /// `$state.frozen(...)` are not recognized, so they must be intercepted here first.
     fn check_deprecated_rune(&mut self, call: &CallExpression<'_>) -> bool {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             return false;
@@ -218,13 +205,7 @@ fn validate_derived_invalid_export(
         offset,
         diags,
         || DiagnosticKind::DerivedInvalidExport,
-        |data, sym_id| {
-            let node_id = data.scoping.symbol_declaration(sym_id);
-            matches!(
-                data.declaration_semantics(node_id),
-                DeclarationSemantics::Derived(_)
-            )
-        },
+        |data, sym_id| matches!(data.binding_semantics(sym_id), BindingSemantics::Derived(_)),
     );
 }
 
@@ -359,10 +340,9 @@ fn resolve_root_identifier_symbol(
 }
 
 fn is_reassigned_state_export(data: &AnalysisData<'_>, sym_id: oxc_semantic::SymbolId) -> bool {
-    let node_id = data.scoping.symbol_declaration(sym_id);
     matches!(
-        data.declaration_semantics(node_id),
-        DeclarationSemantics::State(crate::StateDeclarationSemantics {
+        data.binding_semantics(sym_id),
+        BindingSemantics::State(crate::StateDeclarationSemantics {
             kind: StateKind::State | StateKind::StateRaw,
             ..
         })
@@ -390,11 +370,9 @@ struct StateRefLocallyValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
     offset: u32,
     diags: &'b mut Vec<Diagnostic>,
-    /// True when currently inside arguments of a `$state`/`$state.raw` call,
-    /// without a function boundary in between. Determines `type_` in the diagnostic.
+
     in_state_rune_arg: bool,
-    /// Incremented when entering call arguments that the reference compiler treats
-    /// as one function-depth deeper for `state_referenced_locally`.
+
     call_depth_offset: u32,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -410,28 +388,22 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         let Some(reference) = self.data.scoping.try_get_reference(ref_id) else {
             return;
         };
-        // Skip if not a read, or if it's a write context (UpdateExpression, compound assignment LHS).
-        // Mirrors reference compiler: only warn for pure reads, not read-write operations.
+
         if !reference.is_read() || reference.is_write() {
             return;
         }
         let Some(sym_id) = reference.symbol_id() else {
             return;
         };
-        let declaration_semantics = self
-            .data
-            .declaration_semantics(self.data.scoping.symbol_declaration(sym_id));
+        let declaration_semantics = self.data.binding_semantics(sym_id);
         let should_warn = match declaration_semantics {
-            DeclarationSemantics::Derived(_) => true,
-            DeclarationSemantics::State(state) if state.kind == StateKind::StateRaw => true,
-            DeclarationSemantics::State(state) if state.kind == StateKind::State => {
+            BindingSemantics::Derived(_) => true,
+            BindingSemantics::State(state) if state.kind == StateKind::StateRaw => true,
+            BindingSemantics::State(state) if state.kind == StateKind::State => {
                 self.data.scoping.is_mutated(sym_id) || !state.proxied
             }
-            // Declarator was a rune call but optimized to a plain `let`.
-            // Warn for raw/primitive state (reference compiler does); skip
-            // for proxy-init state (object/array) — those are still reactive
-            // reads even without observed mutation.
-            DeclarationSemantics::OptimizedRune(opt) => match opt.kind {
+
+            BindingSemantics::OptimizedRune(opt) => match opt.kind {
                 StateKind::StateRaw => true,
                 StateKind::State => !opt.proxy_init,
                 StateKind::StateEager => false,
@@ -445,8 +417,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
             .data
             .scoping
             .function_depth(self.data.scoping.symbol_scope_id(sym_id));
-        // `$derived(...)`, `$derived.by(...)`, and `$inspect(...)` arguments are analyzed
-        // one function-depth deeper by the reference compiler for this warning.
+
         let ref_depth =
             self.data.scoping.function_depth(reference.scope_id()) + self.call_depth_offset;
         if ref_depth != decl_depth {
@@ -531,8 +502,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        // Capture whether this call is the direct expression of an ExpressionStatement,
-        // then reset for children — nested calls are never in statement position.
         let is_expr_stmt = std::mem::replace(&mut self.in_expression_statement_expr, false);
 
         if self.check_deprecated_rune(call) {
@@ -619,7 +588,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             ));
         }
 
-        // --- $inspect validation ---
         if matches!(rune, RuneKind::Inspect) && call.arguments.is_empty() {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::RuneInvalidArgumentsLength {
@@ -651,8 +619,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                 ));
             }
 
-            // Must be first statement of a direct function body block.
-            // Use `is_expr_stmt` (captured before the reset) not `self.in_expression_statement_expr`.
             let is_valid_placement = is_expr_stmt
                 && self
                     .fn_body_first_stmt_span
@@ -673,7 +639,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             }
         }
 
-        // --- $host validation ---
         if matches!(rune, RuneKind::Host) {
             if !call.arguments.is_empty() {
                 self.diags.push(Diagnostic::error(
@@ -690,7 +655,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             }
         }
 
-        // --- $bindable validation ---
         if matches!(rune, RuneKind::Bindable) {
             if call.arguments.len() > 1 {
                 self.diags.push(Diagnostic::error(
@@ -709,7 +673,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             }
         }
 
-        // --- $props validation ---
         if matches!(rune, RuneKind::Props) {
             if self.has_props_rune {
                 self.diags.push(Diagnostic::error(
@@ -739,7 +702,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             }
         }
 
-        // --- $props.id validation ---
         if matches!(rune, RuneKind::PropsId) {
             if self.has_props_id {
                 self.diags.push(Diagnostic::error(
@@ -773,19 +735,17 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
-        if !self.runes {
-            if let Some(Expression::CallExpression(call)) = &it.init {
-                if let Expression::Identifier(ident) = &call.callee {
-                    if ident.name == "$derived" {
-                        self.diags.push(Diagnostic::error(
-                            DiagnosticKind::RuneInvalidUsage {
-                                rune: "$derived".into(),
-                            },
-                            self.span(call.span),
-                        ));
-                    }
-                }
-            }
+        if !self.runes
+            && let Some(Expression::CallExpression(call)) = &it.init
+            && let Expression::Identifier(ident) = &call.callee
+            && ident.name == "$derived"
+        {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneInvalidUsage {
+                    rune: "$derived".into(),
+                },
+                self.span(call.span),
+            ));
         }
 
         let is_props_init = it
@@ -798,7 +758,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             self.validate_props_pattern(&it.id);
         }
 
-        // Set flag so $bindable() calls inside the destructure pattern are valid.
         let prev_props = self.in_props_destructure;
         if is_props_init && matches!(&it.id, BindingPattern::ObjectPattern(_)) {
             self.in_props_destructure = true;
@@ -844,7 +803,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     ) {
         self.function_depth += 1;
         let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
-        // Arrow functions cannot be generators; expression-body arrows have no block.
+
         let first_stmt = if arrow.expression {
             None
         } else {
@@ -897,10 +856,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RestPropAccessValidator — `rest.$$foo` on rest_prop bindings
-// ---------------------------------------------------------------------------
-
 fn validate_rest_prop_illegal_access(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
@@ -925,37 +880,31 @@ struct RestPropAccessValidator<'a, 'b> {
 
 impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-        if let MemberExpression::StaticMemberExpression(member) = expr {
-            if let Expression::Identifier(obj) = &member.object {
-                if member.property.name.starts_with("$$") {
-                    if let Some(sym_id) = obj
-                        .reference_id
-                        .get()
-                        .and_then(|r| self.data.scoping.try_get_reference(r))
-                        .and_then(|reference| reference.symbol_id())
-                    {
-                        if matches!(
-                            self.data.declaration_semantics(
-                                self.data.scoping.symbol_declaration(sym_id),
-                            ),
-                            crate::types::data::DeclarationSemantics::Prop(
-                                crate::types::data::PropDeclarationSemantics {
-                                    kind: crate::types::data::PropDeclarationKind::Rest,
-                                    ..
-                                },
-                            ),
-                        ) {
-                            self.diags.push(Diagnostic::error(
-                                DiagnosticKind::PropsIllegalName,
-                                Span::new(
-                                    member.property.span.start + self.offset,
-                                    member.property.span.end + self.offset,
-                                ),
-                            ));
-                        }
-                    }
-                }
-            }
+        if let MemberExpression::StaticMemberExpression(member) = expr
+            && let Expression::Identifier(obj) = &member.object
+            && member.property.name.starts_with("$$")
+            && let Some(sym_id) = obj
+                .reference_id
+                .get()
+                .and_then(|r| self.data.scoping.try_get_reference(r))
+                .and_then(|reference| reference.symbol_id())
+            && matches!(
+                self.data.binding_semantics(sym_id),
+                crate::types::data::BindingSemantics::Prop(
+                    crate::types::data::PropBindingSemantics {
+                        kind: crate::types::data::PropBindingKind::Rest,
+                        ..
+                    },
+                ),
+            )
+        {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::PropsIllegalName,
+                Span::new(
+                    member.property.span.start + self.offset,
+                    member.property.span.end + self.offset,
+                ),
+            ));
         }
         walk_member_expression(self, expr);
     }

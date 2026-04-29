@@ -1,16 +1,12 @@
 use svelte_span::Span;
 
-// ---------------------------------------------------------------------------
-// CSS whitespace lookup (space, tab, newline, carriage return, form feed)
-// ---------------------------------------------------------------------------
-
 static CSS_WS: [bool; 256] = {
     let mut t = [false; 256];
-    t[0x20] = true; // space
-    t[0x09] = true; // tab
-    t[0x0A] = true; // LF
-    t[0x0D] = true; // CR
-    t[0x0C] = true; // FF
+    t[0x20] = true;
+    t[0x09] = true;
+    t[0x0A] = true;
+    t[0x0D] = true;
+    t[0x0C] = true;
     t
 };
 
@@ -29,7 +25,6 @@ fn is_ident_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b >= 0x80
 }
 
-/// Byte length of a UTF-8 character from its leading byte.
 #[inline(always)]
 fn utf8_char_len(b: u8) -> usize {
     if b < 0x80 {
@@ -43,55 +38,50 @@ fn utf8_char_len(b: u8) -> usize {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Token types
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenKind {
-    /// CSS identifier (e.g. `div`, `color`, `-webkit-`, `--custom`)
     Ident,
-    /// `@` followed by an identifier (e.g. `@media`, `@keyframes`)
+
     AtKeyword,
-    /// `#` followed by ident chars (e.g. `#foo`)
+
     Hash,
-    /// Quoted string: `"..."` or `'...'`
+
     String,
-    /// Numeric literal: `123`, `1.5`
+
     Number,
-    /// Number followed by `%` (e.g. `50%`)
+
     Percentage,
-    /// Number followed by an identifier (e.g. `10px`, `2n`)
+
     Dimension,
-    /// One or more CSS whitespace characters
+
     Whitespace,
-    /// CSS comment `/* ... */`
+
     Comment,
-    /// HTML comment `<!-- ... -->` (consumed as a single token).
+
     Cdo,
-    /// `-->`
+
     Cdc,
-    /// `:`
+
     Colon,
-    /// `;`
+
     Semicolon,
-    /// `,`
+
     Comma,
-    /// `{`
+
     LBrace,
-    /// `}`
+
     RBrace,
-    /// `[`
+
     LBracket,
-    /// `]`
+
     RBracket,
-    /// `(`
+
     LParen,
-    /// `)`
+
     RParen,
-    /// Single-character delimiter not matched by any other token.
+
     Delim(u8),
-    /// End of input (always the last token).
+
     Eof,
 }
 
@@ -111,25 +101,17 @@ impl Token {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Scanner checkpoint (for save/restore backtracking)
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy)]
 pub(crate) struct ScannerCheckpoint {
     pos: usize,
     prev_end: u32,
 }
 
-// ---------------------------------------------------------------------------
-// Scanner
-// ---------------------------------------------------------------------------
-
 pub(crate) struct Scanner<'src> {
     src: &'src str,
     tokens: Vec<Token>,
     pos: usize,
-    /// Byte offset of the end of the last consumed token.
+
     pub(crate) prev_end: u32,
 }
 
@@ -143,8 +125,6 @@ impl<'src> Scanner<'src> {
             prev_end: 0,
         }
     }
-
-    // -- navigation ---------------------------------------------------------
 
     #[inline(always)]
     pub fn peek(&self) -> Token {
@@ -179,8 +159,6 @@ impl<'src> Scanner<'src> {
         self.tokens[self.pos].kind == TokenKind::Eof
     }
 
-    // -- matching -----------------------------------------------------------
-
     #[inline(always)]
     pub fn is_at(&self, kind: TokenKind) -> bool {
         self.tokens[self.pos].kind == kind
@@ -211,16 +189,12 @@ impl<'src> Scanner<'src> {
         }
     }
 
-    // -- whitespace ---------------------------------------------------------
-
-    /// Skip `Whitespace` tokens only.
     pub fn skip_whitespace(&mut self) {
         while self.is_at(TokenKind::Whitespace) {
             self.advance();
         }
     }
 
-    /// Skip `Whitespace`, `Comment`, `Cdo`, and `Cdc` tokens.
     pub fn skip_whitespace_and_comments(&mut self) {
         while let TokenKind::Whitespace | TokenKind::Comment | TokenKind::Cdo | TokenKind::Cdc =
             self.peek().kind
@@ -229,41 +203,32 @@ impl<'src> Scanner<'src> {
         }
     }
 
-    // -- spans & text -------------------------------------------------------
-
-    /// Byte offset of the current token's start.
     #[inline(always)]
     pub fn current_start(&self) -> u32 {
         self.tokens[self.pos].span.start
     }
 
-    /// Zero-width span at the current token's start (for error reporting).
     #[inline(always)]
     pub fn span_at(&self) -> Span {
         let s = self.current_start();
         Span::new(s, s)
     }
 
-    /// Span from `start` byte offset to the end of the last consumed token.
     #[inline(always)]
     pub fn span_from(&self, start: u32) -> Span {
         Span::new(start, self.prev_end)
     }
 
-    /// Source text of an arbitrary span.
     #[inline]
     pub fn source_text(&self, span: Span) -> &'src str {
         &self.src[span.start as usize..span.end as usize]
     }
 
-    /// Source text of the current (not yet consumed) token.
     #[inline]
     pub fn current_text(&self) -> &'src str {
         let sp = self.tokens[self.pos].span;
         &self.src[sp.start as usize..sp.end as usize]
     }
-
-    // -- save / restore -----------------------------------------------------
 
     #[inline(always)]
     pub fn save(&self) -> ScannerCheckpoint {
@@ -280,14 +245,10 @@ impl<'src> Scanner<'src> {
     }
 }
 
-// ===========================================================================
-// Tokenizer
-// ===========================================================================
-
 fn tokenize(src: &str) -> Vec<Token> {
     let bytes = src.as_bytes();
     let len = bytes.len();
-    // Heuristic: average ~4 bytes per token in typical CSS.
+
     let mut tokens = Vec::with_capacity(len / 4 + 1);
     let mut pos: usize = 0;
 
@@ -295,7 +256,6 @@ fn tokenize(src: &str) -> Vec<Token> {
         let start = pos as u32;
         let b = bytes[pos];
 
-        // -- whitespace -----------------------------------------------------
         if is_css_ws(b) {
             pos += 1;
             while pos < len && is_css_ws(bytes[pos]) {
@@ -306,14 +266,12 @@ fn tokenize(src: &str) -> Vec<Token> {
         }
 
         match b {
-            // -- strings ----------------------------------------------------
             b'"' | b'\'' => {
                 pos += 1;
                 scan_string_tail(bytes, &mut pos, b);
                 tokens.push(Token::new(TokenKind::String, start, pos as u32));
             }
 
-            // -- comments or Delim(/) ---------------------------------------
             b'/' => {
                 if pos + 1 < len && bytes[pos + 1] == b'*' {
                     pos += 2;
@@ -325,7 +283,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- HTML comment <!-- ... --> as single token -------------------
             b'<' => {
                 if pos + 3 < len
                     && bytes[pos + 1] == b'!'
@@ -341,7 +298,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- @ → AtKeyword or Delim -------------------------------------
             b'@' => {
                 pos += 1;
                 if pos < len
@@ -354,7 +310,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- # → Hash or Delim ------------------------------------------
             b'#' => {
                 pos += 1;
                 if pos < len && (is_ident_char(bytes[pos]) || bytes[pos] == b'\\') {
@@ -365,14 +320,12 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- numeric starting with digit --------------------------------
             b'0'..=b'9' => {
                 consume_number(bytes, &mut pos);
                 let kind = classify_after_number(bytes, &mut pos);
                 tokens.push(Token::new(kind, start, pos as u32));
             }
 
-            // -- . → numeric (.5) or Delim ----------------------------------
             b'.' => {
                 if pos + 1 < len && bytes[pos + 1].is_ascii_digit() {
                     consume_number(bytes, &mut pos);
@@ -384,7 +337,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- + → numeric or Delim ---------------------------------------
             b'+' => {
                 if starts_number_after_sign(bytes, pos) {
                     consume_number(bytes, &mut pos);
@@ -396,42 +348,32 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- - → CDC, numeric, ident, or Delim --------------------------
             b'-' => {
-                // CDC: -->
                 if pos + 2 < len && bytes[pos + 1] == b'-' && bytes[pos + 2] == b'>' {
                     pos += 3;
                     tokens.push(Token::new(TokenKind::Cdc, start, pos as u32));
-                }
-                // Negative number
-                else if starts_number_after_sign(bytes, pos) {
+                } else if starts_number_after_sign(bytes, pos) {
                     consume_number(bytes, &mut pos);
                     let kind = classify_after_number(bytes, &mut pos);
                     tokens.push(Token::new(kind, start, pos as u32));
-                }
-                // Ident starting with -
-                else if pos + 1 < len
+                } else if pos + 1 < len
                     && (is_ident_start(bytes[pos + 1])
                         || bytes[pos + 1] == b'-'
                         || bytes[pos + 1] == b'\\')
                 {
                     consume_ident(bytes, &mut pos);
                     tokens.push(Token::new(TokenKind::Ident, start, pos as u32));
-                }
-                // Just a delimiter
-                else {
+                } else {
                     pos += 1;
                     tokens.push(Token::new(TokenKind::Delim(b'-'), start, pos as u32));
                 }
             }
 
-            // -- ident-start characters -------------------------------------
             b'a'..=b'z' | b'A'..=b'Z' | b'_' | 0x80..=0xFF => {
                 consume_ident(bytes, &mut pos);
                 tokens.push(Token::new(TokenKind::Ident, start, pos as u32));
             }
 
-            // -- backslash → escaped ident or Delim -------------------------
             b'\\' => {
                 if pos + 1 < len && !is_css_ws(bytes[pos + 1]) {
                     consume_ident(bytes, &mut pos);
@@ -442,7 +384,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 }
             }
 
-            // -- simple punctuation -----------------------------------------
             b':' => {
                 pos += 1;
                 tokens.push(Token::new(TokenKind::Colon, start, pos as u32));
@@ -480,7 +421,6 @@ fn tokenize(src: &str) -> Vec<Token> {
                 tokens.push(Token::new(TokenKind::RParen, start, pos as u32));
             }
 
-            // -- everything else → Delim ------------------------------------
             _ => {
                 pos += 1;
                 tokens.push(Token::new(TokenKind::Delim(b), start, pos as u32));
@@ -492,12 +432,6 @@ fn tokenize(src: &str) -> Vec<Token> {
     tokens
 }
 
-// ---------------------------------------------------------------------------
-// Tokenizer helpers
-// ---------------------------------------------------------------------------
-
-/// Check if `+` or `-` at `pos` starts a number:
-/// sign followed by digit, or sign followed by `.` + digit.
 #[inline]
 fn starts_number_after_sign(bytes: &[u8], pos: usize) -> bool {
     let len = bytes.len();
@@ -511,9 +445,6 @@ fn starts_number_after_sign(bytes: &[u8], pos: usize) -> bool {
     next == b'.' && pos + 2 < len && bytes[pos + 2].is_ascii_digit()
 }
 
-/// Consume a CSS identifier (ident continuation chars + escapes).
-/// Assumes `pos` is at the start of an ident or the first char of an ident
-/// (may be `-`, `_`, letter, non-ASCII, or `\`).
 #[inline]
 fn consume_ident(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
@@ -532,7 +463,6 @@ fn consume_ident(bytes: &[u8], pos: &mut usize) {
     }
 }
 
-/// Consume one CSS escape sequence (after the `\` has been consumed).
 #[inline]
 fn consume_escape(bytes: &[u8], pos: &mut usize) {
     if bytes[*pos].is_ascii_hexdigit() {
@@ -540,38 +470,35 @@ fn consume_escape(bytes: &[u8], pos: &mut usize) {
         while *pos < bytes.len() && *pos - hex_start < 6 && bytes[*pos].is_ascii_hexdigit() {
             *pos += 1;
         }
-        // Optional single whitespace after hex escape.
+
         if *pos < bytes.len() && is_css_ws(bytes[*pos]) {
             *pos += 1;
         }
     } else {
-        // Any other character (multi-byte aware).
         *pos += utf8_char_len(bytes[*pos]);
     }
 }
 
-/// Consume a numeric value: optional sign, digits, optional `.` + digits.
 #[inline]
 fn consume_number(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
-    // Optional sign
+
     if *pos < len && (bytes[*pos] == b'+' || bytes[*pos] == b'-') {
         *pos += 1;
     }
-    // Integer part
+
     while *pos < len && bytes[*pos].is_ascii_digit() {
         *pos += 1;
     }
-    // Decimal part
+
     if *pos < len && bytes[*pos] == b'.' && *pos + 1 < len && bytes[*pos + 1].is_ascii_digit() {
-        *pos += 1; // skip '.'
+        *pos += 1;
         while *pos < len && bytes[*pos].is_ascii_digit() {
             *pos += 1;
         }
     }
 }
 
-/// After consuming a number, classify as Number, Percentage, or Dimension.
 #[inline]
 fn classify_after_number(bytes: &[u8], pos: &mut usize) -> TokenKind {
     let len = bytes.len();
@@ -588,13 +515,12 @@ fn classify_after_number(bytes: &[u8], pos: &mut usize) -> TokenKind {
     }
 }
 
-/// Scan string contents after the opening quote has been consumed.
 fn scan_string_tail(bytes: &[u8], pos: &mut usize, quote: u8) {
     let len = bytes.len();
     while *pos < len {
         let b = bytes[*pos];
         if b == b'\\' && *pos + 1 < len {
-            *pos += 2; // skip escape pair
+            *pos += 2;
         } else if b == quote {
             *pos += 1;
             return;
@@ -602,10 +528,8 @@ fn scan_string_tail(bytes: &[u8], pos: &mut usize, quote: u8) {
             *pos += 1;
         }
     }
-    // Unterminated string — span covers to end of input.
 }
 
-/// Scan HTML comment body after `<!--` has been consumed. Advances past `-->`.
 fn scan_html_comment_tail(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
     while *pos + 2 < len {
@@ -615,11 +539,10 @@ fn scan_html_comment_tail(bytes: &[u8], pos: &mut usize) {
         }
         *pos += 1;
     }
-    // Unterminated — consume to end.
+
     *pos = len;
 }
 
-/// Scan comment body after `/*` has been consumed. Advances past `*/`.
 fn scan_comment_tail(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
     while *pos + 1 < len {
@@ -629,7 +552,7 @@ fn scan_comment_tail(bytes: &[u8], pos: &mut usize) {
         }
         *pos += 1;
     }
-    // Unterminated comment — consume remaining bytes.
+
     if *pos < len {
         *pos += 1;
     }

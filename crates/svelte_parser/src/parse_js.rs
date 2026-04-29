@@ -1,11 +1,3 @@
-//! JS parsing: OXC utilities for parsing individual JS constructs.
-//!
-//! Low-level functions (`parse_expression_with_alloc`, `parse_script_with_alloc`, etc.)
-//! wrap `OxcParser` to parse individual JS constructs.
-//!
-//! Script info extraction lives in `script_info.rs`.
-//! The AST walk that fills `JsParseResult` lives in `walk_js.rs`.
-
 use std::cell::Cell;
 
 use oxc_allocator::Allocator;
@@ -17,14 +9,6 @@ use oxc_syntax::node::NodeId;
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
-// ===========================================================================
-// OXC parsing utilities
-// ===========================================================================
-
-/// Parse a JS expression into a provided allocator, returning only the AST.
-///
-/// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
-/// Expression metadata (ExpressionInfo) is extracted later by analyze.
 pub fn parse_expression_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -46,10 +30,6 @@ pub fn parse_expression_with_alloc<'a>(
     Ok(expr)
 }
 
-/// Parse a `<script>` block once in a caller-provided allocator.
-///
-/// Returns only the `Program<'a>` AST. Script metadata (ScriptInfo, Scoping)
-/// is extracted later by analyze.
 pub fn parse_script_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -77,12 +57,6 @@ pub fn parse_script_with_alloc<'a>(
     Ok(result.program)
 }
 
-/// Parse a `{@const name = expr}` declaration via OXC.
-///
-/// `source` is the assignment text without `const` keyword
-/// (e.g. `"doubled = item * 2"` or `"{a, b}: T = obj"`).
-/// Wraps as `const SOURCE;` for OXC and returns the full Statement.
-/// Scope building and codegen extract binding names / init expression from it directly.
 pub fn parse_const_declaration_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -113,25 +87,17 @@ pub fn parse_const_declaration_with_alloc<'a>(
         Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
     })?;
 
-    // Strip TS type annotations from the init expression so codegen gets plain JS.
-    if typescript {
-        if let oxc_ast::ast::Statement::VariableDeclaration(ref mut var_decl) = stmt {
-            if let Some(declarator) = var_decl.declarations.first_mut() {
-                if let Some(ref mut init) = declarator.init {
-                    strip_ts_expression(init, alloc);
-                }
-            }
-        }
+    if typescript
+        && let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = &mut stmt
+        && let Some(declarator) = var_decl.declarations.first_mut()
+        && let Some(init) = &mut declarator.init
+    {
+        strip_ts_expression(init, alloc);
     }
 
     Ok(stmt)
 }
 
-/// Parse an each-block context pattern via OXC into a caller-provided allocator.
-///
-/// Wraps as `let PATTERN = x;` and returns the full Statement.
-/// Works for both simple identifiers (`item`) and destructured patterns (`{a, b}`).
-/// Returns `None` for parse errors (pattern is invalid).
 pub(crate) fn parse_each_context_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -155,10 +121,6 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
     result.program.body.into_iter().next()
 }
 
-/// Parse an each-block index variable via OXC.
-///
-/// Wraps as `let INDEX;` and returns the full Statement.
-/// Returns `None` for parse errors.
 pub(crate) fn parse_each_index_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -176,10 +138,6 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
     result.program.body.into_iter().next()
 }
 
-/// Parse snippet declaration `name(params)` or `name` into `const name = (params) => {}`.
-///
-/// Returns a VariableDeclaration with an ArrowFunctionExpression initializer.
-/// The ArrowFunction scope can be pre-set by template_scoping before SemanticCollector runs.
 pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -206,10 +164,6 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     result.program.body.into_iter().next()
 }
 
-/// Parse a legacy slot `let:` directive into `const PATTERN = $$slotProps.name;`.
-///
-/// `pattern_source` is either the explicit binding expression (`processed`, `{ y }`, `[a]`)
-/// or the shorthand slot name (`item` for `let:item`).
 pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
     alloc: &'a Allocator,
     pattern_source: &'a str,
@@ -222,9 +176,6 @@ pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
     parse_const_declaration_with_alloc(alloc, source, offset, typescript)
 }
 
-/// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.
-/// Handles: TSAsExpression, TSSatisfiesExpression, TSNonNullExpression,
-///          TSTypeAssertion, TSInstantiationExpression.
 fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
     let dummy = || {
         Expression::NullLiteral(oxc_allocator::Box::new_in(
@@ -235,7 +186,7 @@ fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
             alloc,
         ))
     };
-    // Unwrap top-level TS wrappers (may be nested, e.g. `x as T satisfies U`)
+
     loop {
         let inner = match std::mem::replace(expr, dummy()) {
             Expression::TSAsExpression(ts) => ts.unbox().expression,

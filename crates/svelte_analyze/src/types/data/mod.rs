@@ -32,13 +32,13 @@ mod template_element_index;
 pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
-    CarrierMemberReadSemantics, ConstDeclarationSemantics, ContextualDeclarationSemantics,
-    ContextualReadKind, ContextualReadSemantics, DeclarationSemantics, DerivedDeclarationSemantics,
-    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy, LegacyBindablePropSemantics,
-    OptimizedRuneSemantics, PropDeclarationKind, PropDeclarationSemantics, PropDefaultLowering,
-    PropLoweringMode, PropReferenceSemantics, PropsObjectPropertySemantics, ReactivitySemantics,
+    BindingSemantics, CarrierMemberReadSemantics, ConstBindingSemantics,
+    ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy,
+    LegacyBindablePropSemantics, OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics,
+    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, ReactivitySemantics,
     ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
-    StateBindingSemantics, StateDeclarationSemantics, StateKind, StoreDeclarationSemantics,
+    StateBindingSemantics, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
 };
 pub use analysis::{
     AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis, TemplateAnalysis,

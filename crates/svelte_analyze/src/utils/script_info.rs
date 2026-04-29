@@ -1,8 +1,3 @@
-//! Script info extraction — structural metadata from parsed script Program AST.
-//!
-//! Pure syntax extraction: declarations, exports, rune detection, prop defaults.
-//! No semantic analysis (scoping, store detection, etc.).
-
 use compact_str::CompactString;
 use oxc_ast::ast::{CallExpression, Expression};
 use oxc_ast_visit::Visit;
@@ -25,8 +20,6 @@ pub const BINDABLE_RUNE_NAME: &str = "$bindable";
 pub const INSPECT_RUNE_NAME: &str = "$inspect";
 pub const HOST_RUNE_NAME: &str = "$host";
 
-/// Extract structural metadata from a parsed script Program AST.
-/// Pure syntax extraction — no semantic analysis (scoping, store detection, etc.).
 pub fn extract_script_info(
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
@@ -155,7 +148,6 @@ fn collect_legacy_export_props(
     }
 }
 
-/// Detect which Svelte rune a call expression invokes.
 pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr {
         return detect_rune_from_call(call);
@@ -163,8 +155,6 @@ pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     None
 }
 
-/// Detect which Svelte rune a `CallExpression` invokes, without requiring the
-/// outer `Expression` wrapper. Used by the `ExpressionAnalyzer` visitor.
 pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
@@ -193,13 +183,11 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
                     _ => None,
                 }
             } else if member.property.name == "with" {
-                // `$inspect(...).with(callback)` — callee is `$inspect(...).with`
-                if let Expression::CallExpression(inner) = &member.object {
-                    if let Expression::Identifier(id) = &inner.callee {
-                        if id.name == INSPECT_RUNE_NAME {
-                            return Some(RuneKind::InspectWith);
-                        }
-                    }
+                if let Expression::CallExpression(inner) = &member.object
+                    && let Expression::Identifier(id) = &inner.callee
+                    && id.name == INSPECT_RUNE_NAME
+                {
+                    return Some(RuneKind::InspectWith);
                 }
                 None
             } else {
@@ -210,7 +198,6 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
     }
 }
 
-/// Check if a `$`-prefixed name is a known rune (not a store candidate).
 pub fn is_rune_name(name: &str) -> bool {
     matches!(
         name,
@@ -223,10 +210,6 @@ pub fn is_rune_name(name: &str) -> bool {
             | HOST_RUNE_NAME
     )
 }
-
-// ---------------------------------------------------------------------------
-// Script info helpers
-// ---------------------------------------------------------------------------
 
 fn collect_export_names_from_declaration(
     decl: &oxc_ast::ast::Declaration<'_>,
@@ -339,7 +322,6 @@ fn collect_var_declarations(
                     (None, None, vec![], None)
                 };
 
-                // `const props = $props()` — treat as a single rest prop
                 if is_rune == Some(RuneKind::Props) {
                     *props_declaration = Some(PropsDeclaration {
                         props: vec![PropInfo {
@@ -408,32 +390,31 @@ fn collect_var_declarations(
                         });
                     }
 
-                    if let Some(rest) = &obj_pat.rest {
-                        if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) =
+                    if let Some(rest) = &obj_pat.rest
+                        && let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) =
                             &rest.argument
-                        {
-                            let rest_name = CompactString::from(ident.name.as_str());
-                            let decl_span =
-                                Span::new(ident.span.start + offset, ident.span.end + offset);
-                            declarations.push(DeclarationInfo {
-                                name: rest_name.clone(),
-                                span: decl_span,
-                                kind,
-                                init_span: None,
-                                is_rune: Some(RuneKind::Props),
-                                rune_init_refs: vec![],
-                                init_literal: None,
-                            });
-                            props.push(PropInfo {
-                                local_name: rest_name.clone(),
-                                prop_name: rest_name,
-                                default_span: None,
-                                default_text: None,
-                                is_bindable: false,
-                                is_rest: true,
-                                is_simple_default: true,
-                            });
-                        }
+                    {
+                        let rest_name = CompactString::from(ident.name.as_str());
+                        let decl_span =
+                            Span::new(ident.span.start + offset, ident.span.end + offset);
+                        declarations.push(DeclarationInfo {
+                            name: rest_name.clone(),
+                            span: decl_span,
+                            kind,
+                            init_span: None,
+                            is_rune: Some(RuneKind::Props),
+                            rune_init_refs: vec![],
+                            init_literal: None,
+                        });
+                        props.push(PropInfo {
+                            local_name: rest_name.clone(),
+                            prop_name: rest_name,
+                            default_span: None,
+                            default_text: None,
+                            is_bindable: false,
+                            is_rest: true,
+                            is_simple_default: true,
+                        });
                     }
 
                     *props_declaration = Some(PropsDeclaration {
@@ -482,41 +463,39 @@ fn collect_var_declarations(
             }
             oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
                 let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
-                if let Some(rune_kind) = rune {
-                    if matches!(
+                if let Some(rune_kind) = rune
+                    && matches!(
                         rune_kind,
                         RuneKind::State
                             | RuneKind::StateRaw
                             | RuneKind::Derived
                             | RuneKind::DerivedBy
-                    ) {
-                        let mut names = Vec::new();
-                        collect_binding_names(&declarator.id, &mut names);
-                        let rune_init_refs =
-                            if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy) {
-                                declarator
-                                    .init
-                                    .as_ref()
-                                    .map(collect_derived_refs)
-                                    .unwrap_or_default()
-                            } else {
-                                vec![]
-                            };
-                        for name in names {
-                            let decl_span = Span::new(
-                                declarator.span.start + offset,
-                                declarator.span.end + offset,
-                            );
-                            declarations.push(DeclarationInfo {
-                                name: CompactString::from(&name),
-                                span: decl_span,
-                                kind,
-                                init_span: None,
-                                is_rune: Some(rune_kind),
-                                rune_init_refs: rune_init_refs.clone(),
-                                init_literal: None,
-                            });
-                        }
+                    )
+                {
+                    let mut names = Vec::new();
+                    collect_binding_names(&declarator.id, &mut names);
+                    let rune_init_refs =
+                        if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy) {
+                            declarator
+                                .init
+                                .as_ref()
+                                .map(collect_derived_refs)
+                                .unwrap_or_default()
+                        } else {
+                            vec![]
+                        };
+                    for name in names {
+                        let decl_span =
+                            Span::new(declarator.span.start + offset, declarator.span.end + offset);
+                        declarations.push(DeclarationInfo {
+                            name: CompactString::from(&name),
+                            span: decl_span,
+                            kind,
+                            init_span: None,
+                            is_rune: Some(rune_kind),
+                            rune_init_refs: rune_init_refs.clone(),
+                            init_literal: None,
+                        });
                     }
                 }
             }
@@ -525,7 +504,6 @@ fn collect_var_declarations(
     }
 }
 
-/// Extract a literal value from an OXC expression (string, number, boolean).
 fn extract_literal(expr: &Expression<'_>) -> Option<CompactString> {
     match expr {
         Expression::StringLiteral(s) => Some(CompactString::from(s.value.as_str())),
@@ -537,7 +515,6 @@ fn extract_literal(expr: &Expression<'_>) -> Option<CompactString> {
     }
 }
 
-/// Extract a literal value from the first argument of a call expression (e.g. `$state(42)` → `"42"`).
 fn extract_call_arg_literal(expr: &Expression<'_>) -> Option<CompactString> {
     let Expression::CallExpression(call) = expr else {
         return None;
@@ -564,25 +541,24 @@ fn extract_prop_default(
 ) -> (Option<Span>, Option<String>, bool, bool) {
     if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
         let right = &assign.right;
-        if let Expression::CallExpression(call) = right {
-            if let Expression::Identifier(ident) = &call.callee {
-                if ident.name.as_str() == "$bindable" {
-                    let (default_span, default_text, is_simple) =
-                        if let Some(arg) = call.arguments.first() {
-                            let sp = arg.span();
-                            let text = &source[sp.start as usize..sp.end as usize];
-                            let expr = arg.as_expression().expect("argument should be expression");
-                            (
-                                Some(Span::new(sp.start + offset, sp.end + offset)),
-                                Some(text.to_string()),
-                                is_simple_expression(expr),
-                            )
-                        } else {
-                            (None, None, true)
-                        };
-                    return (default_span, default_text, true, is_simple);
-                }
-            }
+        if let Expression::CallExpression(call) = right
+            && let Expression::Identifier(ident) = &call.callee
+            && ident.name.as_str() == "$bindable"
+        {
+            let (default_span, default_text, is_simple) = if let Some(arg) = call.arguments.first()
+            {
+                let sp = arg.span();
+                let text = &source[sp.start as usize..sp.end as usize];
+                let expr = arg.as_expression().expect("argument should be expression");
+                (
+                    Some(Span::new(sp.start + offset, sp.end + offset)),
+                    Some(text.to_string()),
+                    is_simple_expression(expr),
+                )
+            } else {
+                (None, None, true)
+            };
+            return (default_span, default_text, true, is_simple);
         }
         let sp = right.span();
         let text = &source[sp.start as usize..sp.end as usize];
@@ -598,8 +574,6 @@ fn extract_prop_default(
     }
 }
 
-/// Collect unique non-`$` identifier references from a `$derived`/`$derived.by` call's
-/// first argument. Uses OXC Visit for complete expression traversal.
 fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let Expression::CallExpression(call) = expr else {
         return vec![];
@@ -617,7 +591,6 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     collector.refs
 }
 
-/// Visitor that collects all non-`$`-prefixed identifier references.
 struct IdentCollector {
     refs: Vec<CompactString>,
 }
@@ -631,8 +604,6 @@ impl<'a> Visit<'a> for IdentCollector {
     }
 }
 
-/// Enrich ScriptInfo from OXC's unresolved references.
-/// Detects store candidates (`$count` etc.) from unresolved `$`-prefixed references.
 pub fn enrich_from_unresolved<'a>(
     unresolved: impl Iterator<Item = &'a str>,
     info: &mut ScriptInfo,

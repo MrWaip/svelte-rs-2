@@ -1,5 +1,5 @@
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_ast::AstKind;
+use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
 use svelte_ast::NodeId;

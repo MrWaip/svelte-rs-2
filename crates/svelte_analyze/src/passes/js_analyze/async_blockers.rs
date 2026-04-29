@@ -1,6 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
-use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_semantic::ScopeFlags;
 
 use crate::types::data::{AnalysisData, AsyncStmtMeta, JsAst};
@@ -135,17 +135,17 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
                 async_index += 1;
             }
         } else {
-            if let Statement::ClassDeclaration(class) = stmt_ref {
-                if let Some(ref id) = class.id {
-                    let name = id.name.to_string();
-                    if let Some(sym) = data.scoping.find_binding(root, &name) {
-                        data.script
-                            .blocker_data
-                            .symbol_blockers
-                            .insert(sym, async_index);
-                    }
-                    hoist_names.push(name);
+            if let Statement::ClassDeclaration(class) = stmt_ref
+                && let Some(ref id) = class.id
+            {
+                let name = id.name.to_string();
+                if let Some(sym) = data.scoping.find_binding(root, &name) {
+                    data.script
+                        .blocker_data
+                        .symbol_blockers
+                        .insert(sym, async_index);
                 }
+                hoist_names.push(name);
             }
             async_index += 1;
         }

@@ -5,37 +5,24 @@ use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 
-/// Component-level per-symbol state bits (separate from OXC's `SymbolFlags`).
-///
-/// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
-/// Bits 8+ are available for consumers (svelte_analyze classifications).
 pub mod state {
-    /// Symbol has at least one write-reference in OXC (reassignment or update).
-    /// Set during OXC reference visit. Matches the reference compiler's
-    /// `binding.reassigned` bit.
+
     pub const MUTATED: u32 = 1 << 0;
-    /// Symbol is mutated via a member chain outside regular JS writes —
-    /// currently populated for `bind:value={foo.bar}` bind targets. Matches
-    /// the reference compiler's `binding.mutated` bit. Kept separate from
-    /// `MUTATED` because some lowerings (e.g. `$state` vs `proxy`) look at
-    /// reassigned-only, not at member-mutation.
+
     pub const MEMBER_MUTATED: u32 = 1 << 1;
 }
 
-/// Which source region of a `.svelte` component owns a symbol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolOwner {
-    /// `<script module>` top-level declarations.
     ModuleScript,
-    /// `<script>` (instance) top-level declarations.
+
     InstanceScript,
-    /// Template-introduced bindings (each-block context, snippet params, @const, etc.).
+
     Template,
-    /// Symbols introduced by analysis passes, not present in source.
+
     Synthetic,
 }
 
-/// Struct-of-arrays storage for symbols in a component.
 pub(crate) struct SymbolTable {
     names: Vec<CompactString>,
     spans: Vec<Span>,
@@ -45,7 +32,7 @@ pub(crate) struct SymbolTable {
     resolved_references: Vec<Vec<ReferenceId>>,
     state: Vec<u32>,
     owners: Vec<SymbolOwner>,
-    /// Reverse index: name → first symbol with that name.
+
     name_index: rustc_hash::FxHashMap<CompactString, SymbolId>,
 }
 
@@ -122,7 +109,6 @@ impl SymbolTable {
         self.state[id.index()] |= bit;
     }
 
-    /// Record a resolved reference to this symbol. Sets mutated flag if write.
     pub fn add_resolved_reference(
         &mut self,
         symbol_id: SymbolId,
@@ -139,17 +125,14 @@ impl SymbolTable {
         &self.resolved_references[id.index()]
     }
 
-    /// Iterate all symbol IDs.
     pub fn symbol_ids(&self) -> impl Iterator<Item = SymbolId> {
         (0..self.names.len()).map(SymbolId::from_usize)
     }
 
-    /// Iterate all symbol names (parallel with symbol_ids).
     pub fn symbol_names(&self) -> impl Iterator<Item = &str> {
         self.names.iter().map(|n| n.as_str())
     }
 
-    /// O(1) lookup: find any symbol with this name (first declared wins).
     pub fn find_by_name(&self, name: &str) -> Option<SymbolId> {
         self.name_index.get(name).copied()
     }

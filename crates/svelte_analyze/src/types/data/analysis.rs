@@ -46,9 +46,6 @@ impl ScriptAnalysis {
         }
     }
 
-    /// Pre-semantic `$props()` declaration shape, or `None` when the
-    /// component has no `$props()` call. Consumers read props metadata
-    /// straight from this — no post-semantic copy.
     pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
         self.info.as_ref()?.props_declaration.as_ref()
     }
@@ -143,7 +140,7 @@ pub struct OutputPlanData {
     pub custom_element: bool,
     pub runtime_plan: RuntimePlan,
     pub ignore_data: IgnoreData,
-    /// CSS-scoping metadata: hash, scoped elements, transformed stylesheet.
+
     pub css: CssAnalysis,
 }
 
@@ -270,27 +267,19 @@ impl<'a> AnalysisData<'a> {
     ) -> Option<&str> {
         self.scoping.binding_origin_key_for_identifier_reference(id)
     }
-    pub fn iter_store_declarations(
+    pub fn iter_store_bindings(
         &self,
-    ) -> impl Iterator<
-        Item = (
-            svelte_component_semantics::OxcNodeId,
-            StoreDeclarationSemantics,
-        ),
-    > + '_ {
-        self.reactivity.iter_store_declarations()
+    ) -> impl Iterator<Item = (SymbolId, StoreBindingSemantics)> + '_ {
+        self.reactivity.iter_store_bindings()
     }
-    pub fn declaration_semantics(
-        &self,
-        node_id: svelte_component_semantics::OxcNodeId,
-    ) -> DeclarationSemantics {
-        self.reactivity.declaration_semantics(node_id)
+    pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
+        self.reactivity.binding_semantics(sym)
     }
-    pub(crate) fn declaration_root_for_symbol(
+    pub fn declarator_semantics(
         &self,
-        sym: SymbolId,
-    ) -> Option<svelte_component_semantics::OxcNodeId> {
-        self.reactivity.declaration_root_for_symbol(sym)
+        decl_node: svelte_component_semantics::OxcNodeId,
+    ) -> crate::types::data::DeclaratorSemantics {
+        self.reactivity.declarator_semantics(decl_node)
     }
     pub fn reference_semantics(
         &self,
@@ -301,9 +290,7 @@ impl<'a> AnalysisData<'a> {
     pub fn uses_runes(&self) -> bool {
         self.reactivity.uses_runes()
     }
-    /// Block Semantics query: one answer per block `NodeId`. Returns
-    /// `&BlockSemantics::NonSpecial` for any node that is not a
-    /// control-flow block. See SEMANTIC_LAYER_ARCHITECTURE.md.
+
     pub fn block_semantics(&self, id: NodeId) -> &crate::block_semantics::BlockSemantics {
         self.block_semantics_store.get(id)
     }
@@ -548,8 +535,7 @@ impl<'a> AnalysisData<'a> {
     ) -> impl Iterator<Item = NodeId> + '_ {
         self.template.template_elements.previous_siblings(id)
     }
-    /// Index symbol declared by an `{#each ... as item, i}` block, or
-    /// `None` if the block has no index introducer.
+
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
         match self.block_semantics_store.get(id) {
             crate::block_semantics::BlockSemantics::Each(sem) => match sem.index {
@@ -559,11 +545,11 @@ impl<'a> AnalysisData<'a> {
             _ => None,
         }
     }
-    /// Reverse lookup: `{#each}` block whose index binding is `sym`.
+
     pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
         self.block_semantics_store.block_for_each_index_sym(sym)
     }
-    /// True iff the `{#each}` block at `id` introduces a destructured item.
+
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
         matches!(
             self.block_semantics_store.get(id),
@@ -577,10 +563,7 @@ impl<'a> AnalysisData<'a> {
     pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
         self.template.bind_semantics.bind_target_semantics(id)
     }
-    /// Ancestry-based analysis helper: returns the each-block ancestors of
-    /// `id` that own at least one of the symbols referenced in the expression
-    /// at `id`. Used by bind-semantics passes and bind:group codegen to scope
-    /// collections to the correct each frames.
+
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         let Some(info) = self.attr_expressions.get(id) else {
             return SmallVec::new();
@@ -591,7 +574,7 @@ impl<'a> AnalysisData<'a> {
             .filter_map(|parent| {
                 ref_symbols
                     .iter()
-                    .any(|&sym| self.reactivity.contextual_owner_v2(sym) == Some(parent.id))
+                    .any(|&sym| self.reactivity.contextual_owner(sym) == Some(parent.id))
                     .then_some(parent.id)
             })
             .collect()
@@ -711,10 +694,10 @@ impl<'a> AnalysisData<'a> {
             return result;
         }
         for sym in ref_symbols {
-            if let Some(&idx) = self.script.blocker_data.symbol_blockers.get(sym) {
-                if !result.contains(&idx) {
-                    result.push(idx);
-                }
+            if let Some(&idx) = self.script.blocker_data.symbol_blockers.get(sym)
+                && !result.contains(&idx)
+            {
+                result.push(idx);
             }
         }
         result.sort_unstable();

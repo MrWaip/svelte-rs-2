@@ -1,25 +1,13 @@
-//! Template side tables and symbol marks.
-//!
-//! Scopes and bindings are created by `build_component_semantics` via the
-//! shared `svelte_component_semantics` storage. This pass only populates side
-//! tables (each_blocks, const_tags) and applies symbol marks
-//! (each_block_var, each_non_reactive, snippet_name).
-//!
-//! Only `$$item` (synthetic destructured-context binding) uses `add_binding`
-//! directly because it has no JS AST owner.
-//!
-//! Marks that depend on bindings (find_binding) go in leave_* hooks —
-//! by that time the component semantics pass has already created the bindings.
-
 use oxc_ast::ast::{BindingPattern, Statement, VariableDeclarator};
 use svelte_ast::{
-    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element, Namespace,
-    Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    Attribute, ComponentNode, ConstTag, EachBlock, Element, Namespace, Node, SnippetBlock,
+    SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg,
+    is_void,
 };
 
+use crate::ElementFactsEntry;
 use crate::types::data::NamespaceKind;
 use crate::walker::{TemplateVisitor, VisitContext};
-use crate::ElementFactsEntry;
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
@@ -451,8 +439,6 @@ fn fragment_has_rich_content(
 
     false
 }
-
-/// Extract the first VariableDeclarator from a parsed statement.
 fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a VariableDeclarator<'a>> {
     match stmt {
         Statement::VariableDeclaration(decl) => decl.declarations.first(),
@@ -540,12 +526,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .and_then(declarator_from_stmt_local)
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
-            if let Some(idx_name) = idx_name {
-                if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
-                    if block.key.is_none() {
-                        ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
-                    }
-                }
+            if let Some(idx_name) = idx_name
+                && let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name)
+                && block.key.is_none()
+            {
+                ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
             }
         }
     }
@@ -554,9 +539,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         ctx.data.template.snippets.local_snippets.push(block.id);
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
-            // `mark_snippet_name` + snippet-param classification are owned by
-            // `reactivity_semantics/builder_v2/contextual.rs`. Keep only the
-            // template-side name → block id index here.
             ctx.data
                 .template
                 .snippets
@@ -570,11 +552,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-        // `{@const}` binding names used to be snapshotted here into
-        // `ConstTagData::names`; reactivity / codegen now derive leaves
-        // from the pre-parsed statement on demand (via block_semantics
-        // or a local pattern walk), so no per-tag side-table write is
-        // required anymore.
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
@@ -648,8 +625,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .facts
             .entry(el.id)
             .expect("svelte:element facts recorded before template element index");
-        // Register in TemplateElementIndex with a wildcard tag so the CSS prune pass
-        // can match class/ID selectors against it. Type selectors won't match "*".
         ctx.data
             .template
             .template_elements
@@ -772,7 +747,3 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record_expr_parent(node_id, ctx.parent());
     }
 }
-
-// Reactivity marker visitors (`SnippetParamMarker`, `DestructuredGetterMarker`,
-// `EachRestMarker`) are owned by
-// `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs`.

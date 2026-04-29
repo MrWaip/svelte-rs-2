@@ -8,15 +8,11 @@ use svelte_diagnostics::Diagnostic;
 #[derive(serde::Serialize)]
 pub struct CompileResult {
     pub js: Option<String>,
-    /// Transformed (scoped) CSS text, or `None` when the component has no `<style>` block.
+
     pub css: Option<String>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Merge `CompileOptions.namespace` into the parsed component when no inline
-/// `<svelte:options namespace="..." />` was specified. The reference compiler
-/// performs the same fallback so that JS-API consumers can set the namespace
-/// without modifying the source.
 fn apply_compile_options_to_component(
     component: &mut svelte_ast::Component,
     options: &CompileOptions,
@@ -91,8 +87,6 @@ fn resolved_css_mode(component: &svelte_ast::Component, options: &CompileOptions
     }
 }
 
-/// Compile a Svelte source file to client-side JavaScript.
-/// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let candidate_name = options.component_name();
 
@@ -102,8 +96,6 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);
 
-    // Whether the parser already found errors — captured before the closure so it
-    // can be used inside without borrowing `diagnostics` mutably at the same time.
     let has_parse_errors = diagnostics
         .iter()
         .any(|d| d.severity == svelte_diagnostics::Severity::Error);
@@ -126,9 +118,6 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         warning_filter: None,
     };
 
-    // Analysis and codegen share the same catch_unwind so that arena-allocated
-    // `parsed` (invariant over its lifetime) stays inside the closure.
-    // Analysis always runs; codegen is gated on the absence of error diagnostics.
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let (mut analysis, mut parsed, mut analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
@@ -164,8 +153,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 Some(raw_css)
             };
         }
-        // External CSS is returned in CompileResult.css; injected CSS goes into the JS output.
-        // css_text is passed to codegen only for the injected path — external mode doesn't need it there.
+
         let (css, injected_css_text) = if analysis.output.css.inject_styles {
             (None, css_text)
         } else {
@@ -184,7 +172,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut ident_gen =
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
         let name = analysis.component_name().to_string();
-        let _ = ident_gen.gen(&name);
+        let _ = ident_gen.generate(&name);
         let transform_data = {
             let mut compile_ctx = svelte_types::CompileContext {
                 alloc: &js_alloc,
@@ -246,19 +234,15 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     }
 }
 
-/// Compile a standalone `.svelte.js`/`.svelte.ts` module to client-side JavaScript.
-/// Applies rune transforms ($state, $derived, $effect, etc.) without component wrapping.
 pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileResult {
     let is_ts = options.filename.ends_with(".ts");
     let dev = options.dev;
 
     let js_alloc = oxc_allocator::Allocator::default();
 
-    // Analysis always runs so all diagnostics are surfaced.
     let (analysis, mut parsed, mut diagnostics) =
         svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
 
-    // Codegen is skipped when generate=false or any error diagnostic is present.
     if options.generate == GenerateMode::False
         || diagnostics
             .iter()

@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{
-    ConstDeclarationSemantics, DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics,
+    BindingSemantics, ConstBindingSemantics, PropBindingKind, PropBindingSemantics,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -38,11 +38,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sym_id: SymbolId,
     ) -> Result<Expression<'a>> {
         let symbol_name = self.ctx.symbol_name(sym_id);
-        let decl_node = self.ctx.query.scoping().symbol_declaration(sym_id);
-        let expr = match self.ctx.query.view.declaration_semantics(decl_node) {
-            DeclarationSemantics::Store(_) => self.ctx.b.call_expr(symbol_name, []),
-            DeclarationSemantics::Prop(PropDeclarationSemantics {
-                kind: PropDeclarationKind::NonSource,
+        let expr = match self.ctx.query.view.binding_semantics(sym_id) {
+            BindingSemantics::Store(_) => self.ctx.b.call_expr(symbol_name, []),
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::NonSource,
                 ..
             }) => {
                 let Some(prop_name) = self.ctx.query.view.binding_origin_key(sym_id) else {
@@ -55,21 +54,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .static_member_expr(self.ctx.b.rid_expr("$$props"), prop_name)
             }
-            DeclarationSemantics::Prop(PropDeclarationSemantics {
-                kind: PropDeclarationKind::Source { .. },
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::Source { .. },
                 ..
             }) => self.ctx.b.call_expr(symbol_name, []),
-            DeclarationSemantics::State(state) if state.var_declared => self
+            BindingSemantics::State(state) if state.var_declared => self
                 .ctx
                 .b
                 .call_expr("$.safe_get", [Arg::Ident(symbol_name)]),
-            DeclarationSemantics::State(_) | DeclarationSemantics::Derived(_) => {
+            BindingSemantics::State(_) | BindingSemantics::Derived(_) => {
                 self.ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
             }
-            DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
-                destructured,
-                ..
-            }) => {
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag { destructured, .. }) => {
                 if destructured {
                     self.ctx
                         .b
@@ -78,20 +74,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
                 }
             }
-            DeclarationSemantics::Contextual(_) => {
+            BindingSemantics::Contextual(_) => {
                 self.ctx.b.call_expr("$.get", [Arg::Ident(symbol_name)])
             }
-            DeclarationSemantics::NonReactive
-            | DeclarationSemantics::Unresolved
-            | DeclarationSemantics::OptimizedRune(_)
-            | DeclarationSemantics::RuntimeRune { .. }
-            | DeclarationSemantics::LetCarrier { .. } => self.ctx.b.rid_expr(symbol_name),
-            DeclarationSemantics::Prop(_) => self.ctx.b.rid_expr(symbol_name),
-            // LEGACY(svelte4): legacy bindable prop reads as `name()` — same shape as runes Source.
-            DeclarationSemantics::LegacyBindableProp(_) => self
+            BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. } => self.ctx.b.rid_expr(symbol_name),
+            BindingSemantics::Prop(_) => self.ctx.b.rid_expr(symbol_name),
+
+            BindingSemantics::LegacyBindableProp(_) => self
                 .ctx
                 .b
                 .call_expr(symbol_name, std::iter::empty::<Arg<'_, '_>>()),
+
+            BindingSemantics::LegacyState(state) => {
+                let helper = if state.var_declared {
+                    "$.safe_get"
+                } else {
+                    "$.get"
+                };
+                self.ctx.b.call_expr(helper, [Arg::Ident(symbol_name)])
+            }
         };
         Ok(expr)
     }

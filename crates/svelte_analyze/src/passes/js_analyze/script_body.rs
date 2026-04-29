@@ -68,13 +68,13 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 
         match stmt {
             Statement::ExpressionStatement(es) => {
-                if let Expression::CallExpression(call) = &es.expression {
-                    if matches!(
+                if let Expression::CallExpression(call) = &es.expression
+                    && matches!(
                         detect_rune_from_call(call),
                         Some(RuneKind::Effect | RuneKind::EffectPre)
-                    ) {
-                        self.has_effects = true;
-                    }
+                    )
+                {
+                    self.has_effects = true;
                 }
                 if analyze_expression(&es.expression).has_store_member_mutation() {
                     self.has_store_member_mutations = true;
@@ -103,12 +103,11 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
     }
 
     fn visit_property_definition(&mut self, prop: &oxc_ast::ast::PropertyDefinition<'a>) {
-        if let Some(value) = &prop.value {
-            if let Some(kind) = crate::utils::script_info::detect_rune(value) {
-                if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                    self.has_class_state_fields = true;
-                }
-            }
+        if let Some(value) = &prop.value
+            && let Some(kind) = crate::utils::script_info::detect_rune(value)
+            && matches!(kind, RuneKind::State | RuneKind::StateRaw)
+        {
+            self.has_class_state_fields = true;
         }
     }
 
@@ -120,14 +119,12 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
             return;
         };
         for stmt in &body.statements {
-            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-                if let Expression::AssignmentExpression(assign) = &es.expression {
-                    if let Some(kind) = crate::utils::script_info::detect_rune(&assign.right) {
-                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                            self.has_class_state_fields = true;
-                        }
-                    }
-                }
+            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt
+                && let Expression::AssignmentExpression(assign) = &es.expression
+                && let Some(kind) = crate::utils::script_info::detect_rune(&assign.right)
+                && matches!(kind, RuneKind::State | RuneKind::StateRaw)
+            {
+                self.has_class_state_fields = true;
             }
         }
     }
@@ -183,10 +180,10 @@ fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
     ) {
         return false;
     }
-    if let Expression::Identifier(id) = e {
-        if id.name == "undefined" {
-            return false;
-        }
+    if let Expression::Identifier(id) = e
+        && id.name == "undefined"
+    {
+        return false;
     }
     true
 }

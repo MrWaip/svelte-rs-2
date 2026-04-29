@@ -147,7 +147,7 @@ impl<'a> CodegenState<'a> {
     }
 
     pub fn gen_ident(&mut self, prefix: &str) -> String {
-        self.ident_gen.gen(prefix)
+        self.ident_gen.generate(prefix)
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {

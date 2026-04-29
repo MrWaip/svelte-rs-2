@@ -1,13 +1,13 @@
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Program, Statement};
 use oxc_ast::Comment;
+use oxc_ast::ast::{Program, Statement};
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan, SourceType};
 use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
 use svelte_ast::ScriptLanguage;
 
 use svelte_ast_builder::Builder;
-use svelte_transform::{transform_script, IgnoreQuery};
+use svelte_transform::{IgnoreQuery, transform_script};
 
 use crate::context::Ctx;
 

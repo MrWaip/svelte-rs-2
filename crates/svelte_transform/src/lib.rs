@@ -1,11 +1,3 @@
-//! AST-to-AST transformation pass for Svelte components.
-//!
-//! Template- and script-side rewrites (rune references, prop accesses,
-//! stores, etc.) share a single `ComponentTransformer` in
-//! `transformer/`. The template entry point collects expression/statement
-//! handles during a structural walk of the Svelte tree, then drives the
-//! transformer over a reusable synthetic `Program` via `oxc_traverse`.
-
 mod data;
 pub mod rune_refs;
 pub mod transformer;
@@ -13,7 +5,7 @@ pub mod transformer;
 pub use data::TransformData;
 
 pub use transformer::{
-    compute_line_col, sanitize_location, transform_script, IgnoreQuery, TransformScriptOutput,
+    IgnoreQuery, TransformScriptOutput, compute_line_col, sanitize_location, transform_script,
 };
 
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -22,14 +14,6 @@ use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{AnalysisData, IdentGen, JsAst};
 use svelte_ast::{Attribute, Component, ConcatPart, Node};
 
-/// Transform all parsed template expressions and statements in-place.
-///
-/// Rewrites include: rune references → `$.get/set/update`, prop sources →
-/// thunk calls, prop non-sources → `$$props.name`, each-block context
-/// variables → `$.get(name)`, snippet parameter defaults, destructured
-/// const aliases → `$.get(tmp).prop`.
-///
-/// Must be called AFTER all analysis passes are complete.
 pub fn transform_component<'a>(
     ctx: &mut svelte_types::CompileContext<'a, '_>,
     options: &svelte_types::TransformOptions,
@@ -51,9 +35,6 @@ pub fn transform_component<'a>(
         bind_expr_handles: Vec::new(),
     };
 
-    // Pass 1: structural walk — records (handle) for every template
-    // expression/statement and pre-populates const-tag tmp names needed by
-    // the `ConstAliasRead` branch.
     walk_fragment(&mut ctx, component.root, component, parsed, root_scope);
 
     let TransformCtx {
@@ -64,8 +45,6 @@ pub fn transform_component<'a>(
         ..
     } = ctx;
 
-    // Pass 2: unified ComponentTransformer (Template mode) runs over each
-    // collected handle via a reusable synthetic Program.
     transformer::template_entry::run_template(
         alloc,
         analysis,
@@ -83,26 +62,12 @@ struct TransformCtx<'a, 'b> {
     analysis: &'b AnalysisData<'a>,
     ident_gen: &'b mut IdentGen,
     transform_data: TransformData,
-    /// Pairs of (expression handle, owning template node). Owner is
-    /// `Some` for expressions bound to a specific node (ExpressionTag,
-    /// IfBlock test, EachBlock collection, RenderTag arg, etc.) and
-    /// `None` for expressions that aren't owned by a single node
-    /// (concat parts, directive names). The owner is used by the
-    /// template-mode transformer for node-level predicates such as
-    /// `is_ignored(node_id, "await_reactivity_loss")`.
+
     expr_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
     stmt_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
-    /// Bind-directive expressions handled by the dedicated bind pass. The
-    /// pass clones the original expression into a read-form getter and a
-    /// write-form setter, transforms each through the full pipeline, and
-    /// repacks them into a `SequenceExpression(getter, setter)` that the
-    /// codegen unpacks directly into runtime bind calls.
+
     bind_expr_handles: Vec<(OxcNodeId, svelte_ast::NodeId)>,
 }
-
-// ---------------------------------------------------------------------------
-// Template tree walker: records handles + const-tag tmp names.
-// ---------------------------------------------------------------------------
 
 fn walk_fragment<'a>(
     ctx: &mut TransformCtx<'a, '_>,
@@ -199,17 +164,12 @@ fn walk_node<'a>(
         Node::ConstTag(tag) => {
             ctx.stmt_handles.push((tag.decl.id(), Some(tag.id)));
 
-            // Destructured const-tags need a tmp binding for the derived
-            // (`computed_const_N`). Resolve the pattern on demand from
-            // the payload's `decl_node_id` — block_semantics does not
-            // cache per-leaf data.
             if let svelte_analyze::BlockSemantics::ConstTag(sem) =
                 ctx.analysis.block_semantics(tag.id)
+                && is_destructured_const_tag(ctx.analysis, sem.decl_node_id)
             {
-                if is_destructured_const_tag(ctx.analysis, sem.decl_node_id) {
-                    let tmp = ctx.ident_gen.gen("computed_const");
-                    ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
-                }
+                let tmp = ctx.ident_gen.generate("computed_const");
+                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
             }
         }
         Node::KeyBlock(block) => {
@@ -278,34 +238,16 @@ fn record_expr<'a>(
 fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &JsAst<'a>) {
     for attr in attrs {
         let owner = Some(attr.id());
-        // Bind directives route into the bind-specific transform pass which
-        // clones the expression and builds a `SequenceExpression(getter, setter)`.
-        // Two user-authored forms already carry their own get/set shape and
-        // must skip that pass, otherwise we'd nest their SequenceExpression
-        // inside ours:
-        //   - `bind:this={...}`: reference-only binding; getter/setter form is
-        //     synthesized directly in codegen from the target identifier.
-        //   - `bind:prop={(getter), (setter)}`: user supplied the pair as a
-        //     SequenceExpression literal — run it through the generic read
-        //     pass so each sub-expression gets normal rune/prop rewrites.
+
         if let Attribute::BindDirective(bind) = attr {
             let bind_id = bind.expression.id();
             let is_user_sequence = parsed
                 .expr(bind_id)
                 .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::SequenceExpression(_)));
             if bind.name == "this" {
-                // `bind:this` needs the untouched identifier/member — codegen
-                // synthesizes the get/set pair directly from its
-                // `ReferenceSemantics`. Running the expression through either
-                // the generic read pass or the bind pass would strip that
-                // identity (turning `foo` into `$.get(foo)` or worse).
                 continue;
             }
-            // Window/document bindings produce `$.set(x, $$value, true)` with
-            // the silent flag to break reactivity feedback loops. The bind
-            // pass only knows the two-arg shape, so keep those handles on the
-            // original identifier and let codegen build the silent setter
-            // locally.
+
             let is_window_or_document =
                 ctx.analysis
                     .bind_target_semantics(attr.id())
@@ -319,11 +261,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             if is_window_or_document {
                 continue;
             }
-            // Bindable prop sources lower to `$.bind_*(el, <prop_accessor>)`
-            // — the runtime takes the accessor directly, there is no
-            // `($$value) => foo = $$value` setter to synthesize. Skip the
-            // bind pass so codegen can detect the prop shape via
-            // `directive_root_reference_semantics` and emit the short form.
+
             let is_bindable_prop_source = parsed.expr(bind_id).is_some_and(|expr| {
                 let mut current = expr;
                 loop {
@@ -357,9 +295,6 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 continue;
             }
             if is_user_sequence {
-                // User-written `bind:prop={(g), (s)}`: each branch is a real
-                // read/write arrow that needs the normal per-expression
-                // rewrites. Pass through the generic handles pipeline.
                 ctx.expr_handles.push((bind_id, owner));
             } else {
                 ctx.bind_expr_handles.push((bind_id, attr.id()));
@@ -384,9 +319,6 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
         if let Some(parts) = concat_parts {
             for part in parts {
                 if let ConcatPart::Dynamic { expr, .. } = part {
-                    // Concat parts keep the attribute as their owner so that
-                    // node-level predicates (e.g. is_ignored) resolve on the
-                    // enclosing attribute node.
                     ctx.expr_handles.push((expr.id(), owner));
                 }
             }
@@ -402,7 +334,7 @@ fn get_attr_expr_id(attr: &Attribute) -> Option<OxcNodeId> {
             svelte_ast::StyleDirectiveValue::Expression => Some(a.expression.id()),
             _ => None,
         },
-        // BindDirective is handled by the bind-specific pass — see walk_attrs.
+
         Attribute::BindDirective(_) => None,
         Attribute::LetDirectiveLegacy(_) => None,
         Attribute::SpreadAttribute(a) => Some(a.expression.id()),
@@ -435,14 +367,11 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
     })
 }
 
-/// `true` if the `{@const}` backed by `decl_node_id` uses a destructure
-/// pattern — resolved on demand from the OXC AST so block_semantics
-/// does not have to cache per-tag binding lists.
 fn is_destructured_const_tag(
     analysis: &svelte_analyze::AnalysisData<'_>,
     decl_node_id: svelte_component_semantics::OxcNodeId,
 ) -> bool {
-    use oxc_ast::{ast::BindingPattern, AstKind};
+    use oxc_ast::{AstKind, ast::BindingPattern};
     let Some(AstKind::VariableDeclaration(decl)) = analysis.scoping.js_kind(decl_node_id) else {
         return false;
     };
@@ -457,7 +386,7 @@ mod tests {
     use super::*;
     use oxc_allocator::Allocator;
     use oxc_ast::ast::Expression;
-    use svelte_analyze::{analyze, IdentGen};
+    use svelte_analyze::{IdentGen, analyze};
     use svelte_ast::{Component, Node};
 
     fn find_snippet_block<'a>(
@@ -475,20 +404,20 @@ mod tests {
                     if let Some(found) = find_snippet_block(block.consequent, component, name) {
                         return Some(found);
                     }
-                    if let Some(alt) = block.alternate {
-                        if let Some(found) = find_snippet_block(alt, component, name) {
-                            return Some(found);
-                        }
+                    if let Some(alt) = block.alternate
+                        && let Some(found) = find_snippet_block(alt, component, name)
+                    {
+                        return Some(found);
                     }
                 }
                 Node::EachBlock(block) => {
                     if let Some(found) = find_snippet_block(block.body, component, name) {
                         return Some(found);
                     }
-                    if let Some(fallback) = block.fallback {
-                        if let Some(found) = find_snippet_block(fallback, component, name) {
-                            return Some(found);
-                        }
+                    if let Some(fallback) = block.fallback
+                        && let Some(found) = find_snippet_block(fallback, component, name)
+                    {
+                        return Some(found);
                     }
                 }
                 Node::SnippetBlock(block) => {
@@ -534,10 +463,10 @@ mod tests {
                     if let Some(found) = find_expr_tag(block.consequent, component, needle) {
                         return Some(found);
                     }
-                    if let Some(alt) = block.alternate {
-                        if let Some(found) = find_expr_tag(alt, component, needle) {
-                            return Some(found);
-                        }
+                    if let Some(alt) = block.alternate
+                        && let Some(found) = find_expr_tag(alt, component, needle)
+                    {
+                        return Some(found);
                     }
                 }
                 _ => {}

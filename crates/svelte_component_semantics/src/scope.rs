@@ -3,7 +3,6 @@ use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolId;
 use rustc_hash::FxHashMap;
 
-/// Struct-of-arrays storage for scopes in a component.
 pub(crate) struct ScopeTable {
     parent_ids: Vec<Option<ScopeId>>,
     flags: Vec<ScopeFlags>,
@@ -39,17 +38,14 @@ impl ScopeTable {
         self.flags[id.index()]
     }
 
-    /// Look up a binding in this scope only (no parent walk).
     pub fn get_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
         self.bindings[scope.index()].get(name).copied()
     }
 
-    /// Iterate names declared directly in this scope (no parent walk).
     pub fn own_binding_names(&self, scope: ScopeId) -> impl Iterator<Item = &str> {
         self.bindings[scope.index()].keys().map(|k| k.as_str())
     }
 
-    /// Walk the parent chain to find a binding.
     pub fn find_binding(&self, mut scope: ScopeId, name: &str) -> Option<SymbolId> {
         loop {
             if let Some(sym) = self.bindings[scope.index()].get(name) {
@@ -63,7 +59,6 @@ impl ScopeTable {
         self.bindings[scope.index()].insert(name, symbol);
     }
 
-    /// Find the nearest ancestor scope (inclusive) with the Function flag.
     pub fn find_function_scope(&self, mut scope: ScopeId) -> ScopeId {
         loop {
             if self.flags[scope.index()].is_function() {

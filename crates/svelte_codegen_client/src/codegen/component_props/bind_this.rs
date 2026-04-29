@@ -14,11 +14,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let cn = self.ctx.query.component_node(el_id);
         let Some(bind) = cn.attributes.iter().find_map(|a| {
             if let Attribute::BindDirective(b) = a {
-                if b.id == bind_id {
-                    Some(b)
-                } else {
-                    None
-                }
+                if b.id == bind_id { Some(b) } else { None }
             } else {
                 None
             }

@@ -135,10 +135,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::BuildReactivitySemantics,
-        // ConstTagFragments carries the `{@const}` scope map the
-        // reactivity fix-point now walks patterns against (it used to
-        // receive `ConstTagSyms` from a dedicated pass; the pass was
-        // folded into the fix-point itself).
+
         requires: &[
             DataToken::ConstTagFragments,
             DataToken::SymbolRefs,

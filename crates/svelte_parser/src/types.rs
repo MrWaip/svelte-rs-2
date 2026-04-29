@@ -5,22 +5,16 @@ use rustc_hash::FxHashMap;
 use svelte_span::Span;
 
 pub struct JsAst<'a> {
-    /// Parsed program for the instance `<script>` block.
     pub program: Option<oxc_ast::ast::Program<'a>>,
-    /// Parsed program for the `<script module>` block.
+
     pub module_program: Option<oxc_ast::ast::Program<'a>>,
-    /// Parser staging area: span.start → owned Expression. Drained by
-    /// `svelte_analyze::build_component_semantics` after the semantic pass
-    /// fills each `ExprRef.oxc_id`. Empty after analyze.
+
     pending_exprs: FxHashMap<u32, Expression<'a>>,
-    /// Parser staging area: span.start → owned Statement. Drained alongside
-    /// `pending_exprs`.
+
     pending_stmts: FxHashMap<u32, Statement<'a>>,
-    /// Final storage: `OxcNodeId.index()` → owned Expression. Filled during
-    /// drain. The slot becomes `None` while transform/codegen take/put
-    /// expressions out for traversal.
+
     exprs: Vec<Option<Expression<'a>>>,
-    /// Final storage: `OxcNodeId.index()` → owned Statement.
+
     stmts: Vec<Option<Statement<'a>>>,
     pub script_content_span: Option<Span>,
     pub module_script_content_span: Option<Span>,
@@ -48,22 +42,14 @@ impl<'a> JsAst<'a> {
         }
     }
 
-    // -- Parser staging API (write-only) --
-
-    /// Parser stages an expression by source offset. Drained by analyze.
     pub fn alloc_expr(&mut self, offset: u32, expr: Expression<'a>) {
         self.pending_exprs.insert(offset, expr);
     }
 
-    /// Parser stages a statement by source offset.
     pub fn alloc_stmt(&mut self, offset: u32, stmt: Statement<'a>) {
         self.pending_stmts.insert(offset, stmt);
     }
 
-    // -- Drain bridge (used only by build_component_semantics) --
-
-    /// True iff an expression is staged at this source offset. Used by
-    /// `build_component_semantics` to decide whether to run the visitor.
     pub fn has_pending_expr(&self, offset: u32) -> bool {
         self.pending_exprs.contains_key(&offset)
     }
@@ -72,9 +58,6 @@ impl<'a> JsAst<'a> {
         self.pending_stmts.contains_key(&offset)
     }
 
-    /// Read the staged expression by source offset without consuming it.
-    /// Used by `build_component_semantics::AnalyzeTemplateWalker` to feed
-    /// the JS semantic visitor before drain.
     pub fn pending_expr(&self, offset: u32) -> Option<&Expression<'a>> {
         self.pending_exprs.get(&offset)
     }
@@ -83,17 +66,10 @@ impl<'a> JsAst<'a> {
         self.pending_stmts.get(&offset)
     }
 
-    /// Consume a parser-staged expression by source offset. Used by
-    /// codegen sites whose expression isn't routed through the template
-    /// AST (e.g. `<svelte:options customElement={...}>` extend value).
     pub fn take_pending_expr(&mut self, offset: u32) -> Option<Expression<'a>> {
         self.pending_exprs.remove(&offset)
     }
 
-    /// Span-keyed lookup — works during the parser-staging window (before
-    /// `drain_pending`). Read-only consumers throughout analyze use this
-    /// while the staging map is alive. After drain, these return `None`;
-    /// post-drain callers should use `expr(OxcNodeId)`.
     pub fn expr_at_offset(&self, offset: u32) -> Option<&Expression<'a>> {
         self.pending_exprs.get(&offset)
     }
@@ -102,16 +78,6 @@ impl<'a> JsAst<'a> {
         self.pending_stmts.get(&offset)
     }
 
-    /// Move all staged expressions into the final `OxcNodeId`-indexed
-    /// storage. `expr_ids`/`stmt_ids` map source offset → bound OxcNodeId
-    /// (filled by `ExprRef.bind` during semantic pass). Called once at the
-    /// end of `build_component_semantics::build`.
-    ///
-    /// Post-drain invariant: `pending_exprs` / `pending_stmts` contain only
-    /// entries whose offsets do not appear in `expr_ids` / `stmt_ids`. The
-    /// only intentional residue is `<svelte:options customElement={...}>`
-    /// extend expressions, which never reach the template walker and so
-    /// stay accessible via `take_pending_expr` for codegen.
     pub fn drain_pending(
         &mut self,
         expr_ids: &FxHashMap<u32, OxcNodeId>,
@@ -149,22 +115,14 @@ impl<'a> JsAst<'a> {
         );
     }
 
-    // -- OxcNodeId-keyed read/mutate API (the only API after drain) --
-
-    /// Read the expression for this `OxcNodeId`. Returns `None` if the slot
-    /// was taken by transform/codegen and not yet returned.
     pub fn expr(&self, id: OxcNodeId) -> Option<&Expression<'a>> {
         self.exprs.get(id.index()).and_then(Option::as_ref)
     }
 
-    /// Read the statement for this `OxcNodeId`.
     pub fn stmt(&self, id: OxcNodeId) -> Option<&Statement<'a>> {
         self.stmts.get(id.index()).and_then(Option::as_ref)
     }
 
-    /// Consume the stored expression. The slot is left empty until
-    /// `replace_expr` puts it back. Used by transform's traverse cycle and
-    /// by codegen to splice the pre-transformed expression.
     pub fn take_expr(&mut self, id: OxcNodeId) -> Option<Expression<'a>> {
         self.exprs.get_mut(id.index()).and_then(Option::take)
     }
@@ -173,7 +131,6 @@ impl<'a> JsAst<'a> {
         self.stmts.get_mut(id.index()).and_then(Option::take)
     }
 
-    /// Put a (possibly rewritten) expression back under its id.
     pub fn replace_expr(&mut self, id: OxcNodeId, expr: Expression<'a>) -> Option<Expression<'a>> {
         let idx = id.index();
         if self.exprs.len() <= idx {
@@ -190,30 +147,21 @@ impl<'a> JsAst<'a> {
         self.stmts[idx].replace(stmt)
     }
 
-    /// Iterate all parsed template/attribute expressions in OxcNodeId order.
-    /// Skips empty slots (in-flight take_expr).
     pub fn iter_exprs(&self) -> impl Iterator<Item = &Expression<'a>> {
         self.exprs.iter().filter_map(Option::as_ref)
     }
 
-    /// Iterate all parsed template statements.
     pub fn iter_stmts(&self) -> impl Iterator<Item = &Statement<'a>> {
         self.stmts.iter().filter_map(Option::as_ref)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Custom element config parsing
-// ---------------------------------------------------------------------------
-
-/// Shadow root mode for custom elements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CeShadowMode {
     Open,
     None,
 }
 
-/// Single prop definition within a custom element config.
 #[derive(Debug, Clone)]
 pub struct CePropConfig {
     pub name: String,
@@ -222,13 +170,12 @@ pub struct CePropConfig {
     pub prop_type: Option<String>,
 }
 
-/// Parsed custom element config from `<svelte:options customElement={{ ... }}>`.
 #[derive(Debug, Clone)]
 pub struct ParsedCeConfig {
     pub tag: Option<String>,
     pub shadow: CeShadowMode,
-    /// Ordered list of prop definitions, preserving config order.
+
     pub props: Vec<CePropConfig>,
-    /// Span of the `extend` expression value (absolute, within original source).
+
     pub extend_span: Option<Span>,
 }

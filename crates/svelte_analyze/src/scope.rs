@@ -4,28 +4,11 @@ use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolFlags, Sym
 
 pub use svelte_component_semantics::{ScopeId, SymbolId};
 
-/// Per-symbol classification bits stored in `ComponentSemantics::state`.
-/// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
 mod sym_class {
-    // Bits 8-13 previously held `STORE` (C3), `GETTER` / `SNIPPET_PARAM` /
-    // `SNIPPET_NAME` / `EACH_REST` / `EACH_NON_REACTIVE` (C5) — all moved to
-    // `reactivity_semantics` as v2 side-tables.
+
     pub const EACH_INDEX_NON_DYNAMIC: u32 = 1 << 14;
-    // Bit 15 previously held `VAR_STATE` — `$state` var-declared fact now lives
-    // in `StateDeclarationSemantics::var_declared` inside `ReactivitySemantics`.
-    // Bit 16 previously held `TEMPLATE_DECLARATION` — moved to
-    // `reactivity_semantics` as `template_declaration_symbols` side-table.
 }
 
-/// Svelte component scoping — wraps `ComponentSemantics` with Svelte-specific
-/// classification (runes, props, stores, etc.).
-///
-/// All `ComponentSemantics` methods are available via `Deref`/`DerefMut`.
-///
-/// The Svelte-specific helpers on this wrapper are transitional migration
-/// surface. New semantic ownership belongs in `reactivity_semantics`, and new
-/// builder code should depend on generic `ComponentSemantics` facts plus AST
-/// rather than these Svelte-specific accessors.
 pub struct ComponentScoping<'a> {
     semantics: ComponentSemantics<'a>,
     known_values: FxHashMap<SymbolId, String>,
@@ -70,7 +53,6 @@ impl<'a> ComponentScoping<'a> {
         &mut self.semantics
     }
 
-    /// Synthetic binding helper used by template side-table passes.
     pub fn add_synthetic_binding(&mut self, scope: ScopeId, name: &str) -> SymbolId {
         self.semantics.add_binding(
             scope,
@@ -87,16 +69,6 @@ impl<'a> ComponentScoping<'a> {
             .symbol_flags(sym_id)
             .contains(SymbolFlags::Import)
     }
-
-    // Reactive meaning (rune classification, derived dep-graph, $state proxy
-    // init) now lives exclusively in `reactivity_semantics::ReactivitySemantics`.
-    // All v1 helpers (`mark_rune`, `set_derived_deps`, etc.) have been removed.
-
-    // Removed in cluster C5: `mark_template_declaration`, `is_template_declaration`,
-    // `mark_getter`, `is_getter`, `mark_snippet_param`, `is_snippet_param`,
-    // `mark_snippet_name`, `is_snippet_name`, `mark_each_rest`, `is_each_rest`,
-    // `mark_each_non_reactive`, `is_each_non_reactive` — all moved to
-    // `reactivity_semantics::ReactivitySemantics` as v2 side-tables.
 
     pub(crate) fn set_known_value(&mut self, sym_id: SymbolId, value: String) {
         self.known_values.insert(sym_id, value);
@@ -140,8 +112,6 @@ impl<'a> ComponentScoping<'a> {
         }
         self.add_synthetic_binding(scope, &name)
     }
-
-    // -- Convenience --
 
     pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
         self.semantics.find_symbol_by_name(name)

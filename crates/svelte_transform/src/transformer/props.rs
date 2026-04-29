@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Argument, BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    DeclarationSemantics, PropDeclarationKind, PropDefaultLowering, PropLoweringMode,
-    PropsObjectPropertySemantics, BINDABLE_RUNE_NAME,
+    BINDABLE_RUNE_NAME, BindingSemantics, DeclaratorSemantics, PropBindingKind,
+    PropBindingSemantics, PropDefaultLowering, PropLoweringMode,
 };
 
 use svelte_ast_builder::Arg;
@@ -23,44 +23,40 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
         let declarator = &mut decl.declarations[0];
         let root_node = declarator.node_id();
+        let declarator_sem = analysis.declarator_semantics(root_node);
         match &mut declarator.id {
             BindingPattern::BindingIdentifier(id) => {
-                match analysis.declaration_semantics(root_node) {
-                    DeclarationSemantics::Prop(prop)
-                        if matches!(prop.kind, PropDeclarationKind::Identifier) =>
-                    {
-                        let arr_expr = self.b.array_from_args(
-                            base_rest_excluded(prop.lowering_mode)
-                                .into_iter()
-                                .map(Arg::Str)
-                                .collect::<Vec<_>>(),
-                        );
-                        let init = self.b.call_expr(
-                            "$.rest_props",
-                            [Arg::Ident("$$props"), Arg::Expr(arr_expr)],
-                        );
-                        Some(vec![self.b.const_stmt(id.name.as_str(), init)])
-                    }
-                    _ => None,
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                let DeclarationSemantics::Prop(root_prop) =
-                    analysis.declaration_semantics(root_node)
-                else {
+                let DeclaratorSemantics::PropsIdentifier { sym } = declarator_sem else {
                     return None;
                 };
-                let lowering_mode = root_prop.lowering_mode;
-                let PropDeclarationKind::Object {
-                    properties,
-                    has_rest,
-                } = root_prop.kind
-                else {
+                let BindingSemantics::Prop(prop) = analysis.binding_semantics(sym) else {
+                    return None;
+                };
+                let arr_expr = self.b.array_from_args(
+                    base_rest_excluded(prop.lowering_mode)
+                        .into_iter()
+                        .map(Arg::Str)
+                        .collect::<Vec<_>>(),
+                );
+                let init = self
+                    .b
+                    .call_expr("$.rest_props", [Arg::Ident("$$props"), Arg::Expr(arr_expr)]);
+                Some(vec![self.b.const_stmt(id.name.as_str(), init)])
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                let DeclaratorSemantics::PropsObject { leaves, has_rest } = declarator_sem else {
                     return None;
                 };
 
+                let property_count = if has_rest {
+                    leaves.len().saturating_sub(1)
+                } else {
+                    leaves.len()
+                };
+                let lowering_mode = self.prop_lowering_mode_from_first(analysis, &leaves)?;
+
                 let mut excluded = base_rest_excluded(lowering_mode);
-                if obj.properties.len() != properties.len() || obj.rest.is_some() != has_rest {
+                if obj.properties.len() != property_count || obj.rest.is_some() != has_rest {
                     return None;
                 }
 
@@ -70,9 +66,15 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 }
 
                 let mut declarators = Vec::new();
-                for (prop, property_semantics) in
-                    obj.properties.iter_mut().zip(properties.into_iter())
+                for (prop, leaf_sym) in obj
+                    .properties
+                    .iter_mut()
+                    .zip(leaves.iter().take(property_count).copied())
                 {
+                    let BindingSemantics::Prop(leaf_prop) = analysis.binding_semantics(leaf_sym)
+                    else {
+                        return None;
+                    };
                     let prop_name = static_prop_key_name(&prop.key)?;
 
                     let (local_name, default_expr): (String, Option<Expression<'a>>) =
@@ -92,9 +94,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             _ => return None,
                         };
 
-                    match property_semantics {
-                        PropsObjectPropertySemantics::NonSource => {}
-                        PropsObjectPropertySemantics::Source {
+                    match leaf_prop.kind {
+                        PropBindingKind::NonSource => {}
+                        PropBindingKind::Source {
                             bindable,
                             updated,
                             default_lowering,
@@ -168,6 +170,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 self.b.call_expr("$.prop", args),
                             ));
                         }
+                        PropBindingKind::Identifier | PropBindingKind::Rest => {
+                            return None;
+                        }
                     }
                 }
 
@@ -197,6 +202,20 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
+    fn prop_lowering_mode_from_first(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'a>,
+        leaves: &[svelte_analyze::scope::SymbolId],
+    ) -> Option<PropLoweringMode> {
+        let sym = *leaves.first()?;
+        let BindingSemantics::Prop(PropBindingSemantics { lowering_mode, .. }) =
+            analysis.binding_semantics(sym)
+        else {
+            return None;
+        };
+        Some(lowering_mode)
+    }
+
     pub(crate) fn is_props_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
         decl.declarations.iter().any(|d| {
             let is_props_pattern = matches!(
@@ -204,12 +223,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 oxc_ast::ast::BindingPattern::ObjectPattern(_)
                     | oxc_ast::ast::BindingPattern::BindingIdentifier(_)
             );
-            if is_props_pattern {
-                if let Some(Expression::CallExpression(call)) = &d.init {
-                    if let Expression::Identifier(ident) = &call.callee {
-                        return ident.name.as_str() == "$props";
-                    }
-                }
+            if is_props_pattern
+                && let Some(Expression::CallExpression(call)) = &d.init
+                && let Expression::Identifier(ident) = &call.callee
+            {
+                return ident.name.as_str() == "$props";
             }
             false
         })
@@ -217,15 +235,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
     pub(crate) fn is_props_id_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
         decl.declarations.iter().any(|d| {
-            if let oxc_ast::ast::BindingPattern::BindingIdentifier(_) = &d.id {
-                if let Some(Expression::CallExpression(call)) = &d.init {
-                    if let Expression::StaticMemberExpression(member) = &call.callee {
-                        if let Expression::Identifier(obj) = &member.object {
-                            return obj.name.as_str() == "$props"
-                                && member.property.name.as_str() == "id";
-                        }
-                    }
-                }
+            if let oxc_ast::ast::BindingPattern::BindingIdentifier(_) = &d.id
+                && let Some(Expression::CallExpression(call)) = &d.init
+                && let Expression::StaticMemberExpression(member) = &call.callee
+                && let Expression::Identifier(obj) = &member.object
+            {
+                return obj.name.as_str() == "$props" && member.property.name.as_str() == "id";
             }
             false
         })
@@ -262,11 +277,10 @@ fn prop_assignment_default_expr<'a>(
         return Some(Expression::CallExpression(call));
     }
 
-    let default_expr = call.arguments.drain(..).next().and_then(|arg| match arg {
+    call.arguments.drain(..).next().and_then(|arg| match arg {
         Argument::SpreadElement(_) => None,
         _ => Some(arg.into_expression()),
-    });
-    default_expr
+    })
 }
 
 fn static_prop_key_name<'a>(key: &'a oxc_ast::ast::PropertyKey<'a>) -> Option<&'a str> {

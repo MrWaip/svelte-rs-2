@@ -1,41 +1,8 @@
-//! Shared walker for OXC [`BindingPattern`].
-//!
-//! Every Svelte feature that introduces bindings via a destructuring pattern
-//! (`$props()`, `$state()` / `$derived()` destructures, `{#each ... as pat}`,
-//! `{#await ... then pat}`, `{#snippet name(pat)}`, `{@const pat = ...}`,
-//! `let:foo={pat}`) shares the same structural shape: an object / array tree
-//! with optional defaults and rest elements, yielding a flat set of
-//! `BindingIdentifier` leaves.
-//!
-//! This module provides the single source of traversal. Consumers call
-//! [`walk_bindings`] with a callback and receive each leaf (or rest-target)
-//! with the full access path from root and any defaults encountered along
-//! the way. All references point back into the OXC AST — **no copies**, no
-//! parallel per-feature descriptor types.
-//!
-//! # Invariants
-//! - `BindingIdentifier.symbol_id` is expected to be resolved (semantic
-//!   pass has run); leaves without a resolved symbol are silently
-//!   skipped. This matches the classic helpers the walker replaces —
-//!   they dropped unresolved identifiers rather than panicking, so
-//!   synthetic subtrees introduced mid-transform don't break the walk.
-//! - `path` is empty only for: (a) a plain identifier at the root, or
-//!   (b) an object-rest directly on the root object pattern.
-//! - `excluded` is non-empty only when `is_rest && path.last()` came from an
-//!   `ObjectPattern`. Array-rest has no key exclusion semantics.
-//! - No allocation is performed per leaf; a single scratch vector is reused
-//!   for the whole walk.
-
 use oxc_ast::ast::{BindingPattern, Expression, PropertyKey};
 use smallvec::SmallVec;
 
 use crate::SymbolId;
 
-/// Callback-style traversal of a [`BindingPattern`].
-///
-/// The callback receives a view into the walker's scratch buffers; it must
-/// not outlive the callback invocation. Collect any data into owned storage
-/// inside the callback.
 pub fn walk_bindings<'a, F>(pat: &'a BindingPattern<'a>, mut visit: F)
 where
     F: FnMut(BindingVisit<'a, '_>),
@@ -44,39 +11,30 @@ where
     walk_inner(pat, &mut path, &mut visit);
 }
 
-/// Visit entry yielded by [`walk_bindings`] for each leaf or rest target.
 pub struct BindingVisit<'a, 'p> {
-    /// Resolved symbol of the bound identifier.
     pub symbol: SymbolId,
-    /// Access path from the pattern root to this binding.
-    /// Empty for a root-level identifier or a root-level object rest.
+
     pub path: &'p [Step<'a>],
-    /// `true` when this binding is a rest element (`...rest`).
+
     pub is_rest: bool,
-    /// Sibling keys to exclude at the rest's parent level.
-    /// Non-empty only for object rest; empty for array rest or leaves.
+
     pub excluded: &'p [&'a PropertyKey<'a>],
 }
 
-/// One step in the access path: how to descend from parent to child,
-/// plus any `AssignmentPattern` default that applied at this step.
 #[derive(Clone, Copy)]
 pub struct Step<'a> {
     pub access: Access<'a>,
-    /// `AssignmentPattern.right` that wrapped this slot, if any.
-    /// Semantically: `parent[access] ?? default` before further descent.
+
     pub default: Option<&'a Expression<'a>>,
 }
 
 #[derive(Clone, Copy)]
 pub enum Access<'a> {
-    /// Object property key. `computed` reflects `BindingProperty.computed`
-    /// — `false` for plain `{ a }` / `{ "a": b }`, `true` for `{ [expr]: b }`.
     Key {
         key: &'a PropertyKey<'a>,
         computed: bool,
     },
-    /// Array element position.
+
     Index(u32),
 }
 
@@ -87,9 +45,6 @@ where
     match pat {
         BindingPattern::BindingIdentifier(ident) => {
             let Some(symbol) = ident.symbol_id.get() else {
-                // Skip synthetic identifiers inserted mid-transform that
-                // the semantic pass hasn't annotated. Classic helpers
-                // dropped these silently; we preserve that behaviour.
                 return;
             };
             visit(BindingVisit {
@@ -100,11 +55,6 @@ where
             });
         }
         BindingPattern::AssignmentPattern(assign) => {
-            // Default applies to the slot through which we reached this
-            // pattern. If the caller pushed a Step for that slot, we
-            // annotate it; otherwise (root-level `let { x } = y` is not
-            // an AssignmentPattern — this case only arises under an
-            // object/array property) there is nothing to annotate.
             if let Some(last) = path.last_mut() {
                 last.default = Some(&assign.right);
             }
@@ -123,7 +73,6 @@ where
                 path.pop();
             }
             if let Some(rest) = &obj.rest {
-                // ESTree restricts object rest argument to an identifier.
                 let BindingPattern::BindingIdentifier(ident) = &rest.argument else {
                     return;
                 };
@@ -151,12 +100,6 @@ where
                 path.pop();
             }
             if let Some(rest) = &arr.rest {
-                // Array rest argument is usually an identifier but the
-                // ESTree spec allows nested patterns (rare). Recurse
-                // with the current path; the caller sees any leaves as
-                // non-rest bindings under this slot. For the common
-                // identifier case, we emit a rest visit with empty
-                // excluded list.
                 if let BindingPattern::BindingIdentifier(ident) = &rest.argument {
                     let Some(symbol) = ident.symbol_id.get() else {
                         return;
@@ -183,8 +126,6 @@ mod tests {
     use oxc_parser::Parser;
     use oxc_span::SourceType;
 
-    /// Parse `let <pat> = 0;`, walk the first binding pattern, and
-    /// return a compact textual summary per leaf / rest visit.
     fn summarize(source: &str) -> Vec<String> {
         let alloc = Allocator::default();
         let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
@@ -197,13 +138,7 @@ mod tests {
         summarize_pat(&declarator.id)
     }
 
-    /// Collect a compact textual summary of each visit for snapshot-style
-    /// assertions. Symbol ids are replaced by ordinal numbers so the
-    /// assertions don't depend on id assignment order.
     fn summarize_pat(pat: &BindingPattern<'_>) -> Vec<String> {
-        // Assign a fresh symbol id to each BindingIdentifier so the
-        // walker has something to yield. Tests don't run the semantic
-        // pass; we seed ids manually with a counter.
         seed_symbol_ids(pat);
 
         let mut out: Vec<String> = Vec::new();
@@ -309,7 +244,6 @@ mod tests {
 
     #[test]
     fn aliased_property() {
-        // Origin key is "a"; local binding (symbol) is for `b`.
         assert_eq!(summarize("let { a: b } = 0;"), vec![".a leaf(0)"]);
     }
 
@@ -320,7 +254,6 @@ mod tests {
 
     #[test]
     fn intermediate_default() {
-        // `a` slot has default `{}`; leaf `b` has no leaf-level default.
         assert_eq!(
             summarize("let { a: { b } = {} } = 0;"),
             vec![".a={d}.b leaf(0)"]
@@ -385,8 +318,6 @@ mod tests {
 
     #[test]
     fn array_rest() {
-        // Array rest takes "everything not consumed" — path is the parent
-        // (empty here), not a specific index.
         assert_eq!(
             summarize("let [a, ...rest] = 0;"),
             vec!["[0] leaf(0)", " rest(1) excl=[]"]

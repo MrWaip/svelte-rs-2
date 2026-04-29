@@ -13,9 +13,6 @@ pub enum Severity {
 
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub enum DiagnosticKind {
-    // -----------------------------------------------------------------------
-    // Parser errors
-    // -----------------------------------------------------------------------
     UnexpectedEndOfFile,
     InvalidTagName,
     UnterminatedStartTag,
@@ -33,7 +30,6 @@ pub enum DiagnosticKind {
     NoEachBlockToClose,
     NoKeyBlockToClose,
     VoidElementInvalidContent,
-    // svelte:options errors
     SvelteOptionsUnknownAttribute(String),
     SvelteOptionsInvalidAttributeValue(String),
     SvelteOptionsInvalidCustomElementTag,
@@ -41,16 +37,8 @@ pub enum DiagnosticKind {
     SvelteOptionsNoChildren,
     SvelteOptionsInvalidAttribute,
     SvelteOptionsDuplicate,
-    /// LEGACY(svelte4): `tag` attribute renamed to `customElement`.
     SvelteOptionsDeprecatedTag,
-    // Internal compiler errors
     InternalError(String),
-
-    // -----------------------------------------------------------------------
-    // Semantic errors (emitted during validate/analyze phase)
-    // -----------------------------------------------------------------------
-
-    // --- Options ---
     OptionsInvalidValue {
         details: String,
     },
@@ -60,8 +48,6 @@ pub enum DiagnosticKind {
     OptionsUnrecognised {
         keypath: String,
     },
-
-    // --- Runes & script ---
     BindableInvalidLocation,
     ConstantAssignment {
         thing: String,
@@ -154,8 +140,6 @@ pub enum DiagnosticKind {
     TypescriptInvalidFeature {
         feature: String,
     },
-
-    // --- CSS errors ---
     CssEmptyDeclaration,
     CssExpectedIdentifier,
     CssExpectedToken {
@@ -176,8 +160,6 @@ pub enum DiagnosticKind {
     CssNestingSelectorInvalidPlacement,
     CssSelectorInvalid,
     CssTypeSelectorInvalidPlacement,
-
-    // --- Template / element errors ---
     AnimationDuplicate,
     AnimationInvalidPlacement,
     AnimationMissingKey,
@@ -344,10 +326,6 @@ pub enum DiagnosticKind {
         type_: String,
     },
     UnterminatedStringConstant,
-
-    // -----------------------------------------------------------------------
-    // A11y warnings
-    // -----------------------------------------------------------------------
     A11yAccesskey,
     A11yAriaActivedescendantHasTabindex,
     A11yAriaAttributes {
@@ -465,10 +443,6 @@ pub enum DiagnosticKind {
         role: String,
         suggestion: Option<String>,
     },
-
-    // -----------------------------------------------------------------------
-    // Metadata warnings
-    // -----------------------------------------------------------------------
     BidirectionalControlCharacters,
     LegacyCode {
         code: String,
@@ -478,10 +452,6 @@ pub enum DiagnosticKind {
         code: String,
         suggestion: Option<String>,
     },
-
-    // -----------------------------------------------------------------------
-    // Options warnings
-    // -----------------------------------------------------------------------
     OptionsDeprecatedAccessors,
     OptionsDeprecatedImmutable,
     OptionsMissingCustomElement,
@@ -489,10 +459,6 @@ pub enum DiagnosticKind {
     OptionsRemovedHydratable,
     OptionsRemovedLoopGuardTimeout,
     OptionsRenamedSsrDom,
-
-    // -----------------------------------------------------------------------
-    // Component warnings
-    // -----------------------------------------------------------------------
     CustomElementPropsIdentifier,
     ExportLetUnused {
         name: String,
@@ -512,17 +478,9 @@ pub enum DiagnosticKind {
     StoreRuneConflict {
         name: String,
     },
-
-    // -----------------------------------------------------------------------
-    // CSS warnings
-    // -----------------------------------------------------------------------
     CssUnusedSelector {
         name: String,
     },
-
-    // -----------------------------------------------------------------------
-    // Attribute / element warnings
-    // -----------------------------------------------------------------------
     AttributeAvoidIs,
     AttributeGlobalEventReference {
         name: String,
@@ -565,11 +523,8 @@ pub enum DiagnosticKind {
 }
 
 impl DiagnosticKind {
-    /// Returns the snake_case error/warning code for this diagnostic.
-    /// Matches official Svelte codes.
     pub fn code(&self) -> &'static str {
         match self {
-            // Parser errors
             Self::UnexpectedEndOfFile => "unexpected_eof",
             Self::InvalidTagName => "tag_invalid_name",
             Self::UnterminatedStartTag => "unterminated_start_tag",
@@ -596,8 +551,6 @@ impl DiagnosticKind {
             Self::SvelteOptionsDuplicate => "svelte_options_duplicate",
             Self::SvelteOptionsDeprecatedTag => "svelte_options_deprecated_tag",
             Self::InternalError(_) => "internal_error",
-
-            // Semantic errors
             Self::OptionsInvalidValue { .. } => "options_invalid_value",
             Self::OptionsRemoved { .. } => "options_removed",
             Self::OptionsUnrecognised { .. } => "options_unrecognised",
@@ -771,8 +724,6 @@ impl DiagnosticKind {
             Self::TransitionConflict { .. } => "transition_conflict",
             Self::TransitionDuplicate { .. } => "transition_duplicate",
             Self::UnterminatedStringConstant => "unterminated_string_constant",
-
-            // A11y warnings
             Self::A11yAccesskey => "a11y_accesskey",
             Self::A11yAriaActivedescendantHasTabindex => "a11y_aria_activedescendant_has_tabindex",
             Self::A11yAriaAttributes { .. } => "a11y_aria_attributes",
@@ -837,13 +788,9 @@ impl DiagnosticKind {
             }
             Self::A11yUnknownAriaAttribute { .. } => "a11y_unknown_aria_attribute",
             Self::A11yUnknownRole { .. } => "a11y_unknown_role",
-
-            // Metadata warnings
             Self::BidirectionalControlCharacters => "bidirectional_control_characters",
             Self::LegacyCode { .. } => "legacy_code",
             Self::UnknownCode { .. } => "unknown_code",
-
-            // Options warnings
             Self::OptionsDeprecatedAccessors => "options_deprecated_accessors",
             Self::OptionsDeprecatedImmutable => "options_deprecated_immutable",
             Self::OptionsMissingCustomElement => "options_missing_custom_element",
@@ -851,8 +798,6 @@ impl DiagnosticKind {
             Self::OptionsRemovedHydratable => "options_removed_hydratable",
             Self::OptionsRemovedLoopGuardTimeout => "options_removed_loop_guard_timeout",
             Self::OptionsRenamedSsrDom => "options_renamed_ssr_dom",
-
-            // Component warnings
             Self::CustomElementPropsIdentifier => "custom_element_props_identifier",
             Self::ExportLetUnused { .. } => "export_let_unused",
             Self::LegacyComponentCreation => "legacy_component_creation",
@@ -865,11 +810,7 @@ impl DiagnosticKind {
             }
             Self::StateReferencedLocally { .. } => "state_referenced_locally",
             Self::StoreRuneConflict { .. } => "store_rune_conflict",
-
-            // CSS warnings
             Self::CssUnusedSelector { .. } => "css_unused_selector",
-
-            // Attribute / element warnings
             Self::AttributeAvoidIs => "attribute_avoid_is",
             Self::AttributeGlobalEventReference { .. } => "attribute_global_event_reference",
             Self::AttributeIllegalColon => "attribute_illegal_colon",
@@ -890,11 +831,8 @@ impl DiagnosticKind {
             Self::SvelteSelfDeprecated { .. } => "svelte_self_deprecated",
         }
     }
-
-    /// Returns a human-readable message.
     pub fn message(&self) -> String {
         match self {
-            // Parser errors
             Self::UnexpectedEndOfFile => "Unexpected end of input".into(),
             Self::InvalidTagName => "Expected a valid element or component name".into(),
             Self::UnterminatedStartTag => "Start tag is not terminated".into(),
@@ -921,8 +859,6 @@ impl DiagnosticKind {
             Self::SvelteOptionsDuplicate => "A component can have a single <svelte:options> element".into(),
             Self::SvelteOptionsDeprecatedTag => "\"tag\" option is deprecated \u{2014} use \"customElement\" instead".into(),
             Self::InternalError(msg) => format!("Internal compiler error: {msg}"),
-
-            // Semantic errors
             Self::OptionsInvalidValue { details } => format!("Invalid compiler option: {details}"),
             Self::OptionsRemoved { details } => format!("Invalid compiler option: {details}"),
             Self::OptionsUnrecognised { keypath } => format!("Unrecognised compiler option {keypath}"),
@@ -1093,8 +1029,6 @@ impl DiagnosticKind {
             Self::TransitionConflict { type_, existing } => format!("Cannot use `{type_}:` alongside existing `{existing}:` directive"),
             Self::TransitionDuplicate { type_ } => format!("Cannot use multiple `{type_}:` directives on a single element"),
             Self::UnterminatedStringConstant => "Unterminated string constant".into(),
-
-            // A11y warnings
             Self::A11yAccesskey => "Avoid using accesskey".into(),
             Self::A11yAriaActivedescendantHasTabindex => "An element with an aria-activedescendant attribute should have a tabindex value".into(),
             Self::A11yAriaAttributes { name } => format!("`<{name}>` should not have aria-* attributes"),
@@ -1143,16 +1077,12 @@ impl DiagnosticKind {
                 Some(s) => format!("Unknown role '{role}'. Did you mean '{s}'?"),
                 None => format!("Unknown role '{role}'"),
             },
-
-            // Metadata warnings
             Self::BidirectionalControlCharacters => "A bidirectional control character was detected in your code. These characters can be used to alter the visual direction of your code and could have unintended consequences".into(),
             Self::LegacyCode { code, suggestion } => format!("`{code}` is no longer valid \u{2014} please use `{suggestion}` instead"),
             Self::UnknownCode { code, suggestion } => match suggestion {
                 Some(s) => format!("`{code}` is not a recognised code (did you mean `{s}`?)"),
                 None => format!("`{code}` is not a recognised code"),
             },
-
-            // Options warnings
             Self::OptionsDeprecatedAccessors => "The `accessors` option has been deprecated. It will have no effect in runes mode".into(),
             Self::OptionsDeprecatedImmutable => "The `immutable` option has been deprecated. It will have no effect in runes mode".into(),
             Self::OptionsMissingCustomElement => "The `customElement` option is used when generating a custom element. Did you forget the `customElement: true` compile option?".into(),
@@ -1160,8 +1090,6 @@ impl DiagnosticKind {
             Self::OptionsRemovedHydratable => "The `hydratable` option has been removed. Svelte components are always hydratable now".into(),
             Self::OptionsRemovedLoopGuardTimeout => "The `loopGuardTimeout` option has been removed".into(),
             Self::OptionsRenamedSsrDom => "`generate: \"dom\"` and `generate: \"ssr\"` options have been renamed to \"client\" and \"server\" respectively".into(),
-
-            // Component warnings
             Self::CustomElementPropsIdentifier => "Using a rest element or a non-destructured declaration with `$props()` means that Svelte can't infer what properties to expose when creating a custom element. Consider destructuring all the props or explicitly specifying the `customElement.props` option.".into(),
             Self::ExportLetUnused { name } => format!("Component has unused export property '{name}'. If it is for external reference only, please consider using `export const {name}`"),
             Self::LegacyComponentCreation => "Svelte 5 components are no longer classes. Instantiate them using `mount` or `hydrate` (imported from 'svelte') instead.".into(),
@@ -1172,11 +1100,7 @@ impl DiagnosticKind {
             Self::ReactiveDeclarationModuleScriptDependency => "Reassignments of module-level declarations will not cause reactive statements to update".into(),
             Self::StateReferencedLocally { name, type_ } => format!("This reference only captures the initial value of `{name}`. Did you mean to reference it inside a {type_} instead?"),
             Self::StoreRuneConflict { name } => format!("It looks like you're using the `${name}` rune, but there is a local binding called `{name}`. Referencing a local variable with a `$` prefix will create a store subscription. Please rename `{name}` to avoid the ambiguity"),
-
-            // CSS warnings
             Self::CssUnusedSelector { name } => format!("Unused CSS selector \"{name}\""),
-
-            // Attribute / element warnings
             Self::AttributeAvoidIs => "The \"is\" attribute is not supported cross-browser and should be avoided".into(),
             Self::AttributeGlobalEventReference { name } => format!("You are referencing `globalThis.{name}`. Did you forget to declare a variable with that name?"),
             Self::AttributeIllegalColon => "Attributes should not contain ':' characters to prevent ambiguity with Svelte directives".into(),
@@ -1197,11 +1121,8 @@ impl DiagnosticKind {
             Self::SvelteSelfDeprecated { name, basename } => format!("`<svelte:self>` is deprecated \u{2014} use self-imports (e.g. `import {name} from './{basename}'`) instead"),
         }
     }
-
-    /// Returns the severity for this diagnostic kind.
     pub fn severity(&self) -> Severity {
         match self {
-            // All warning variants
             Self::A11yAccesskey
             | Self::A11yAriaActivedescendantHasTabindex
             | Self::A11yAriaAttributes { .. }
@@ -1284,13 +1205,9 @@ impl DiagnosticKind {
             | Self::SvelteElementInvalidThis
             | Self::SvelteSelfDeprecated { .. }
             | Self::SvelteOptionsDeprecatedTag => Severity::Warning,
-
-            // Everything else is an error
             _ => Severity::Error,
         }
     }
-
-    /// Returns a link to the Svelte documentation for this diagnostic, if one exists.
     pub fn svelte_doc_url(&self) -> Option<String> {
         let code = self.code();
         match self {
@@ -1298,8 +1215,6 @@ impl DiagnosticKind {
             _ => Some(format!("https://svelte.dev/e/{code}")),
         }
     }
-
-    /// Returns the complete list of valid warning codes.
     pub fn all_warning_codes() -> &'static [&'static str] {
         &[
             "a11y_accesskey",
@@ -1544,8 +1459,6 @@ impl Diagnostic {
             severity: Severity::Error,
         }
     }
-
-    /// LEGACY(svelte4): `tag` attribute renamed to `customElement`.
     pub fn svelte_options_deprecated_tag(span: Span) -> Self {
         Diagnostic {
             kind: DiagnosticKind::SvelteOptionsDeprecatedTag,
@@ -1566,9 +1479,6 @@ impl Diagnostic {
         Err(self)
     }
 }
-
-/// Converts byte offset to (line, column) pair.
-/// Lines and columns are 0-based.
 pub struct LineIndex {
     line_starts: Vec<usize>,
 }
@@ -1583,8 +1493,6 @@ impl LineIndex {
         }
         LineIndex { line_starts }
     }
-
-    /// Returns (line, column) for a byte offset. Both 0-based.
     pub fn line_col(&self, offset: usize) -> (usize, usize) {
         let line = self
             .line_starts
@@ -1593,9 +1501,6 @@ impl LineIndex {
         let col = offset - self.line_starts[line];
         (line, col)
     }
-
-    /// Renders a code frame showing ±2 lines of context around the error.
-    /// Returns `None` if the span is out of bounds.
     pub fn code_frame(&self, source: &str, span: Span) -> Option<String> {
         let total_lines = self.line_starts.len();
         if total_lines == 0 {
@@ -1630,7 +1535,6 @@ impl LineIndex {
                     display_line,
                     width = gutter_width
                 ));
-                // Add pointer line
                 let pointer_col = lines[i][..error_col.min(lines[i].len())]
                     .chars()
                     .map(|c| if c == '\t' { 2 } else { 1 })
@@ -1650,8 +1554,6 @@ impl LineIndex {
                 ));
             }
         }
-
-        // Remove trailing newline
         if out.ends_with('\n') {
             out.pop();
         }
@@ -1798,7 +1700,6 @@ mod tests {
 
     #[test]
     fn svelte_doc_urls() {
-        // Has Svelte doc page
         assert_eq!(
             DiagnosticKind::UnexpectedEndOfFile.svelte_doc_url(),
             Some("https://svelte.dev/e/unexpected_eof".into())
@@ -1811,8 +1712,6 @@ mod tests {
             DiagnosticKind::BlockEmpty.svelte_doc_url(),
             Some("https://svelte.dev/e/block_empty".into())
         );
-
-        // No Svelte doc page
         assert_eq!(DiagnosticKind::UnexpectedToken.svelte_doc_url(), None);
         assert_eq!(DiagnosticKind::UnknownDirective.svelte_doc_url(), None);
         assert_eq!(
@@ -1840,7 +1739,6 @@ mod tests {
     fn code_frame_basic() {
         let source = "line1\nline2\nline3\nline4\nline5";
         let idx = LineIndex::new(source);
-        // Error at start of line3 (byte offset 12)
         let frame = idx
             .code_frame(source, Span::new(12, 17))
             .expect("code_frame returns Some for valid spans");
@@ -1866,7 +1764,6 @@ mod tests {
     fn code_frame_last_line() {
         let source = "line1\nline2\nline3\nline4\nerror_here";
         let idx = LineIndex::new(source);
-        // Error at start of line5 (byte offset = 24)
         let frame = idx
             .code_frame(source, Span::new(24, 34))
             .expect("code_frame returns Some for valid spans");
@@ -1882,9 +1779,7 @@ mod tests {
         let frame = idx
             .code_frame(source, Span::new(1, 5))
             .expect("code_frame returns Some for valid spans");
-        // Tab should be replaced with 2 spaces in display
         assert!(frame.contains("  indented"));
-        // Pointer should account for tab width
         assert!(frame.contains("  ^"));
     }
 }

@@ -1,11 +1,3 @@
-//! Shared helpers for per-kind Block Semantics builders.
-//!
-//! Each kind (`each`, `await`, ...) lives in its own submodule and runs its
-//! own template walk. The helpers here are the AST-shape utilities that
-//! multiple kinds need: extracting the first declarator of a
-//! `VariableDeclaration`, resolving a `BindingPattern`'s node id, and
-//! collecting the symbol ids of every leaf identifier inside a pattern.
-
 use oxc_ast::ast::{
     AwaitExpression, BindingPattern, CallExpression, Expression, IdentifierReference, Statement,
     VariableDeclarator,
@@ -16,11 +8,6 @@ use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId};
 
 use crate::types::data::BlockerData;
 
-/// First declarator of a `VariableDeclaration` statement. Template
-/// introducer spans (`{#each ... as <decl>}`, `{:then <decl>}`,
-/// `{:catch <decl>}`) are all pre-parsed as single-declarator
-/// `let <pattern>`-ish statements, so the first declarator is the
-/// binding pattern we care about.
 pub(super) fn declarator_from_stmt<'a>(
     stmt: &'a Statement<'a>,
 ) -> Option<&'a VariableDeclarator<'a>> {
@@ -30,8 +17,6 @@ pub(super) fn declarator_from_stmt<'a>(
     decl.declarations.first()
 }
 
-/// `BindingPattern` → its leaf `BindingIdentifier` if it is a plain
-/// identifier (not a destructured / assignment pattern).
 pub(super) fn binding_ident_of<'a>(
     pattern: &'a BindingPattern<'a>,
 ) -> Option<&'a oxc_ast::ast::BindingIdentifier<'a>> {
@@ -41,9 +26,6 @@ pub(super) fn binding_ident_of<'a>(
     }
 }
 
-/// Node id of a `BindingPattern` regardless of its variant. Used to
-/// carry an AST-identity handle for destructured patterns in the
-/// cluster's payload so the consumer can look the subtree up later.
 pub(super) fn binding_pattern_node_id(pattern: &BindingPattern<'_>) -> OxcNodeId {
     match pattern {
         BindingPattern::BindingIdentifier(p) => p.node_id(),
@@ -53,12 +35,6 @@ pub(super) fn binding_pattern_node_id(pattern: &BindingPattern<'_>) -> OxcNodeId
     }
 }
 
-/// Single-walk classification of an expression for the two async facts
-/// block_semantics payloads need: does the expression contain an `await`,
-/// and which script-level `BlockerData` indices does it transitively
-/// depend on. Shared by `{#await}` (await_.rs) and `{@const}`
-/// (const_tag.rs) — `{#each}` needs additional per-ref facts (store /
-/// external scope) and keeps its own superset collector.
 pub(super) fn expression_async_facts<'a>(
     expr: &Expression<'a>,
     semantics: &ComponentSemantics<'a>,
@@ -75,10 +51,10 @@ pub(super) fn expression_async_facts<'a>(
         let Some(sym) = semantics.get_reference(*ref_id).symbol_id() else {
             continue;
         };
-        if let Some(idx) = blocker_data.symbol_blocker(sym) {
-            if !blockers.contains(&idx) {
-                blockers.push(idx);
-            }
+        if let Some(idx) = blocker_data.symbol_blocker(sym)
+            && !blockers.contains(&idx)
+        {
+            blockers.push(idx);
         }
     }
     blockers.sort_unstable();
@@ -102,24 +78,6 @@ impl<'a> Visit<'a> for AsyncFactsCollector {
     }
 }
 
-/// Single-walk classification for `{#if}` branch conditions. Returns
-/// the three facts the IfBlock builder branches on:
-///
-/// * `has_await` — literal `await` appears anywhere in the expression.
-///   Drives the root-branch `AsyncParam` lowering.
-/// * `memoize` — the expression contains a `CallExpression` **and**
-///   at least one identifier that resolves to a real symbol. Drives
-///   `$.derived` memoization for non-async branches. A call without
-///   any resolved ref (e.g. `$effect.pending()` — `$effect` is a rune
-///   marker, not a binding) doesn't need memoization because nothing
-///   reactive can invalidate the result; mirrors the legacy
-///   `needs_memo = has_call && !ref_symbols.is_empty()` gate.
-/// * `blockers` — sorted, de-duplicated script-level `BlockerData`
-///   indices for every resolved identifier reference.
-///
-/// Separate from [`expression_async_facts`] only to avoid widening
-/// that helper's return type for the other kinds that discard
-/// `has_call`.
 pub(super) fn expression_if_facts<'a>(
     expr: &Expression<'a>,
     semantics: &ComponentSemantics<'a>,
@@ -139,10 +97,10 @@ pub(super) fn expression_if_facts<'a>(
             continue;
         };
         has_resolved_ref = true;
-        if let Some(idx) = blocker_data.symbol_blocker(sym) {
-            if !blockers.contains(&idx) {
-                blockers.push(idx);
-            }
+        if let Some(idx) = blocker_data.symbol_blocker(sym)
+            && !blockers.contains(&idx)
+        {
+            blockers.push(idx);
         }
     }
     blockers.sort_unstable();

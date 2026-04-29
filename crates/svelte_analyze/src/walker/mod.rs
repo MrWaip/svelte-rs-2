@@ -9,7 +9,7 @@ use svelte_ast::{
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
     SvelteFragmentLegacy, SvelteWindow, TransitionDirective, UseDirective,
 };
-use svelte_diagnostics::{extract_svelte_ignore, Diagnostic};
+use svelte_diagnostics::{Diagnostic, extract_svelte_ignore};
 use svelte_span::Span;
 
 use crate::types::data::{AnalysisData, JsAst};

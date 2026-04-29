@@ -9,8 +9,6 @@ use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, ExpressionInfo, ExpressionKind};
 use crate::walker::{TemplateVisitor, VisitContext};
 
-/// Create a CollectSymbolsVisitor for use after TemplateSemanticVisitor.
-/// Consumes `ScopingBuilt` marker to enforce ordering.
 pub(crate) fn make_visitor(_scoping: crate::types::markers::ScopingBuilt) -> CollectSymbolsVisitor {
     CollectSymbolsVisitor {
         pending_render_tag: None,
@@ -24,10 +22,6 @@ pub(crate) struct CollectSymbolsVisitor {
     pending_shorthand: Option<(NodeId, String)>,
     pending_clsx: bool,
 }
-
-// ---------------------------------------------------------------------------
-// TemplateVisitor impl
-// ---------------------------------------------------------------------------
 
 impl TemplateVisitor for CollectSymbolsVisitor {
     fn visit_expression(&mut self, _node_id: NodeId, _span: Span, _ctx: &mut VisitContext<'_, '_>) {
@@ -60,11 +54,6 @@ impl TemplateVisitor for CollectSymbolsVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        // Build ExpressionInfo for the @const init expression so that
-        // mark_const_tag_bindings can read ref_symbols for derived_deps.
-        // Borrow `parsed` directly (the field, not the ctx.parsed() method)
-        // to avoid pinning all of ctx as immutable while we mutate
-        // ctx.data.scoping below.
         let init_expr =
             ctx.parsed
                 .and_then(|p| p.stmt(tag.decl.id()))
@@ -103,11 +92,6 @@ impl TemplateVisitor for CollectSymbolsVisitor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Extracted steps — each is a named function for flat visit_js_expression
-// ---------------------------------------------------------------------------
-
-/// Build a complete ExpressionInfo: analyze flags + collect resolved symbols in one pass.
 pub(crate) fn build_expression_info(
     expr: &Expression<'_>,
     scoping: &mut ComponentScoping,
@@ -117,7 +101,6 @@ pub(crate) fn build_expression_info(
     info
 }
 
-/// Single OXC walk: collect resolved SymbolIds.
 fn collect_ref_symbols(
     expr: &Expression<'_>,
     scoping: &mut ComponentScoping,
@@ -141,12 +124,11 @@ fn classify_shorthand(
     pending: &mut Option<(NodeId, String)>,
     data: &mut AnalysisData,
 ) {
-    if let Some((attr_id, name)) = pending.take() {
-        if let Expression::Identifier(ident) = expr {
-            if ident.name.as_str() == name {
-                data.elements.flags.expression_shorthand.insert(attr_id);
-            }
-        }
+    if let Some((attr_id, name)) = pending.take()
+        && let Expression::Identifier(ident) = expr
+        && ident.name.as_str() == name
+    {
+        data.elements.flags.expression_shorthand.insert(attr_id);
     }
 }
 
@@ -195,10 +177,6 @@ fn set_pending_flags(
             }
         }
         Attribute::ClassDirective(cd) => {
-            // After the shorthand rework `expression_span` is non-optional.
-            // The bitset still tracks "expression text matches attribute name"
-            // which is resolved by `classify_shorthand` further down the
-            // pass against the already-parsed Expression.
             *pending_shorthand = Some((cd.id, cd.name.clone()));
         }
         Attribute::StyleDirective(sd) => {
@@ -210,12 +188,6 @@ fn set_pending_flags(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Merge ExpressionInfo from individual concat part entries into a single entry
-/// for the parent attribute/directive.
 fn merge_concat_expression_info(
     parts: &[svelte_ast::ConcatPart],
     parent_id: NodeId,
@@ -223,15 +195,13 @@ fn merge_concat_expression_info(
 ) {
     let mut merged = ExpressionInfo::new(ExpressionKind::Other);
     for part in parts {
-        if let svelte_ast::ConcatPart::Dynamic { id, .. } = part {
-            if let Some(info) = ctx.data.attr_expressions.get(*id) {
-                merged.merge_in(info);
-            }
+        if let svelte_ast::ConcatPart::Dynamic { id, .. } = part
+            && let Some(info) = ctx.data.attr_expressions.get(*id)
+        {
+            merged.merge_in(info);
         }
     }
-    // Keep the merged parent attr/directive as a separate reverse-reference site:
-    // callers may care about the holder node even when its dynamic parts were
-    // already recorded individually.
+
     ctx.data.attr_expressions.insert(parent_id, merged);
 }
 
@@ -242,12 +212,11 @@ struct ResolvedRefCollector<'s, 'a> {
 
 impl<'a> Visit<'a> for ResolvedRefCollector<'_, '_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(ref_id) = ident.reference_id.get() {
-            if let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() {
-                if !self.symbols.contains(&sym_id) {
-                    self.symbols.push(sym_id);
-                }
-            }
+        if let Some(ref_id) = ident.reference_id.get()
+            && let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id()
+            && !self.symbols.contains(&sym_id)
+        {
+            self.symbols.push(sym_id);
         }
     }
 }

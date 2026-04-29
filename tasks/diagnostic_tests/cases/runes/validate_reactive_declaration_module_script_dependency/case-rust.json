@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "reactive_declaration_module_script_dependency",
+    "start": 148,
+    "end": 154
+  }
+]

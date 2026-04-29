@@ -1,6 +1,6 @@
 use oxc_ast::ast::CallExpression;
-use oxc_ast_visit::walk::walk_call_expression;
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::walk_call_expression;
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 use crate::types::data::{AnalysisData, JsAst};

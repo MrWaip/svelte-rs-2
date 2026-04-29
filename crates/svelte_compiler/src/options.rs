@@ -1,14 +1,10 @@
-/// Experimental compiler options (gated features).
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct ExperimentalOptions {
-    /// Allow `await` in deriveds, template expressions, and top-level of components.
-    /// @since Svelte 5.36
     #[serde(rename = "async")]
     pub async_: bool,
 }
 
-/// Compile options for Svelte component files.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CompileOptions {
@@ -16,22 +12,22 @@ pub struct CompileOptions {
     pub generate: GenerateMode,
     pub filename: String,
     pub root_dir: Option<String>,
-    /// Explicit component name. If `None`, derived from `filename`.
+
     pub name: Option<String>,
     pub custom_element: bool,
     pub namespace: Namespace,
     pub css: CssMode,
-    /// `None` = auto-detect from source; `Some(true/false)` = forced.
+
     pub runes: Option<bool>,
     pub preserve_comments: bool,
     pub preserve_whitespace: bool,
     pub disclose_version: bool,
     pub hmr: bool,
-    /// LEGACY(svelte4): generate accessors for component props.
+
     pub accessors: bool,
-    /// LEGACY(svelte4): treat props as immutable for equality checks.
+
     pub immutable: bool,
-    /// LEGACY(svelte4): component API version (4 or 5). Default: 5.
+
     pub compatibility_component_api: u8,
     pub experimental: ExperimentalOptions,
 }
@@ -61,8 +57,6 @@ impl Default for CompileOptions {
 }
 
 impl CompileOptions {
-    /// Resolve the component function name.
-    /// Priority: explicit `name` → stem of `filename` → `"Component"`.
     pub fn component_name(&self) -> String {
         let candidate = if let Some(ref name) = self.name {
             name.clone()
@@ -82,10 +76,10 @@ impl CompileOptions {
                 .strip_suffix(".svelte")
                 .unwrap_or(basename)
                 .to_string();
-            if name == "index" {
-                if let Some(dir) = last_dir {
-                    name = dir.to_string();
-                }
+            if name == "index"
+                && let Some(dir) = last_dir
+            {
+                name = dir.to_string();
             }
 
             if name.is_empty() {
@@ -127,7 +121,6 @@ impl CompileOptions {
     }
 }
 
-/// Compile options for standalone `.svelte.js`/`.svelte.ts` module files.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ModuleCompileOptions {
@@ -148,7 +141,6 @@ impl Default for ModuleCompileOptions {
     }
 }
 
-/// XML namespace for the component template.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Namespace {
@@ -159,31 +151,23 @@ pub enum Namespace {
     MathMl,
 }
 
-/// How component CSS is emitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CssMode {
-    /// CSS extracted to a separate file (default).
     #[default]
     External,
-    /// CSS injected at runtime via `<style>` tags.
+
     Injected,
 }
 
-/// What kind of output to generate.
-///
-/// In the Svelte JS API this is `'client' | 'server' | false`.
-/// The boolean `false` is deserialized from the string `"false"` here;
-/// WASM bindings use a custom deserializer to also accept the JS boolean.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GenerateMode {
-    /// Generate client-side JavaScript (default).
     #[default]
     Client,
-    /// Generate server-side JavaScript (SSR).
+
     Server,
-    /// Analysis only — no code output.
+
     #[serde(rename = "false")]
     False,
 }

@@ -108,14 +108,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if options.include_class_directives {
-            if let Some(class_obj) = self.build_class_directives_object(owner_id)? {
-                let class_key_expr = self
-                    .ctx
-                    .b
-                    .static_member_expr(self.ctx.b.rid_expr("$"), "CLASS");
-                props.push(ObjProp::Computed(class_key_expr, class_obj));
-            }
+        if options.include_class_directives
+            && let Some(class_obj) = self.build_class_directives_object(owner_id)?
+        {
+            let class_key_expr = self
+                .ctx
+                .b
+                .static_member_expr(self.ctx.b.rid_expr("$"), "CLASS");
+            props.push(ObjProp::Computed(class_key_expr, class_obj));
         }
 
         if self.ctx.has_style_directives(owner_id) {

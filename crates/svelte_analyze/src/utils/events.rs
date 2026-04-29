@@ -1,6 +1,3 @@
-//! Shared utilities for analyze and codegen (event classification, identifier checks).
-
-/// Events that Svelte delegates to the document root.
 pub fn is_delegatable_event(name: &str) -> bool {
     matches!(
         name,
@@ -46,7 +43,6 @@ pub fn is_passive_event(name: &str) -> bool {
     matches!(name, "touchstart" | "touchmove")
 }
 
-/// Check if a string is a simple JS identifier (no member access, no computed access).
 pub fn is_simple_identifier(s: &str) -> bool {
     !s.is_empty()
         && s.chars()

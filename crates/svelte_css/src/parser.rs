@@ -6,21 +6,11 @@ use svelte_span::Span;
 use crate::ast::*;
 use crate::scanner::{Scanner, TokenKind};
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Parse CSS source into a StyleSheet AST.
-/// Always returns an AST (best-effort on errors) plus accumulated diagnostics.
 pub fn parse(source: &str) -> (StyleSheet, Vec<Diagnostic>) {
     let mut parser = Parser::new(source);
     let stylesheet = parser.parse_stylesheet();
     (stylesheet, parser.diagnostics)
 }
-
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
 
 struct Parser<'src> {
     scanner: Scanner<'src>,
@@ -44,16 +34,11 @@ impl<'src> Parser<'src> {
         id
     }
 
-    // -- diagnostics --------------------------------------------------------
-
     #[cold]
     fn recover(&mut self, kind: DiagnosticKind, span: Span) {
         self.diagnostics.push(Diagnostic::error(kind, span));
     }
 
-    // -- ident helpers ------------------------------------------------------
-
-    /// Expect an `Ident` token, emitting a diagnostic on failure.
     fn parse_ident(&mut self) -> Option<Span> {
         if self.scanner.is_at(TokenKind::Ident) {
             let tok = self.scanner.advance();
@@ -67,14 +52,11 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Parse ident and return (span, name) pair.
     fn parse_ident_with_name(&mut self) -> Option<(Span, CompactString)> {
         let span = self.parse_ident()?;
         let name = CompactString::new(self.scanner.source_text(span));
         Some((span, name))
     }
-
-    // -- whitespace & comments with AST nodes -------------------------------
 
     fn skip_whitespace_and_collect_comments<T>(
         &mut self,
@@ -95,11 +77,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // -- value reading ------------------------------------------------------
-
-    /// Read a raw CSS value (e.g. declaration value or at-rule prelude).
-    /// Consumes tokens until `;`, `{`, `}` at paren-depth 0.
-    /// Trailing whitespace is trimmed from the returned span.
     fn read_value(&mut self) -> Span {
         let start = self.scanner.current_start();
         let mut last_non_ws_end = start;
@@ -125,15 +102,13 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Read an attribute value (quoted or unquoted).
     fn read_attribute_value(&mut self) -> Option<Span> {
         if self.scanner.is_at(TokenKind::String) {
             let tok = self.scanner.advance();
-            // Return inner span (without quotes).
+
             return Some(Span::new(tok.span.start + 1, tok.span.end - 1));
         }
 
-        // Unquoted: consume tokens until `]` or whitespace.
         let start = self.scanner.current_start();
         loop {
             match self.scanner.peek().kind {
@@ -156,13 +131,10 @@ impl<'src> Parser<'src> {
         Some(Span::new(start, end))
     }
 
-    // -- nth patterns -------------------------------------------------------
-
     fn try_parse_nth(&mut self) -> Option<Span> {
         let save = self.scanner.save();
         let start = self.scanner.current_start();
 
-        // "even" or "odd"
         if self.scanner.is_at(TokenKind::Ident) {
             let text = self.scanner.current_text();
             if text == "even" || text == "odd" {
@@ -177,15 +149,13 @@ impl<'src> Parser<'src> {
 
         let mut has_n = false;
 
-        // Optional leading sign (as a Delim token)
         if self.scanner.is_at_delim(b'+') || self.scanner.is_at_delim(b'-') {
             self.scanner.advance();
         }
 
         if self.scanner.is_at(TokenKind::Number) {
             self.scanner.advance();
-            // Check if `n` follows immediately (the tokenizer may have
-            // kept them separate when there is whitespace).
+
             if self.scanner.is_at(TokenKind::Ident) {
                 let t = self.scanner.current_text();
                 if t == "n" || t == "N" || t == "-n" || t == "-N" {
@@ -207,17 +177,14 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // Nothing consumed
         if self.scanner.current_start() == start {
             return None;
         }
 
-        // If we have 'n', optionally consume + B
         if has_n {
             let before_b = self.scanner.save();
             self.scanner.skip_whitespace();
 
-            // Signed number as single token: "+1", "-1"
             if self.scanner.is_at(TokenKind::Number) {
                 let text = self.scanner.current_text();
                 if text.starts_with('+') || text.starts_with('-') {
@@ -225,9 +192,7 @@ impl<'src> Parser<'src> {
                 } else {
                     self.scanner.restore(before_b);
                 }
-            }
-            // Or sign + number as separate tokens
-            else if self.scanner.is_at_delim(b'+') || self.scanner.is_at_delim(b'-') {
+            } else if self.scanner.is_at_delim(b'+') || self.scanner.is_at_delim(b'-') {
                 self.scanner.advance();
                 self.scanner.skip_whitespace();
                 if self.scanner.is_at(TokenKind::Number) {
@@ -238,13 +203,11 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // Check for "of" keyword
         let saved = self.scanner.save();
         self.scanner.skip_whitespace();
         if self.scanner.is_at(TokenKind::Ident) && self.scanner.current_text() == "of" {
             self.scanner.advance();
-            // Consume one whitespace token after "of" so the Nth span
-            // covers "2n+1 of " — the selector after it is separate.
+
             if self.scanner.is_at(TokenKind::Whitespace) {
                 self.scanner.advance();
                 return Some(self.scanner.span_from(start));
@@ -268,8 +231,6 @@ impl<'src> Parser<'src> {
         )
     }
 
-    // -- percentage ---------------------------------------------------------
-
     fn try_parse_percentage(&mut self) -> Option<Span> {
         if self.scanner.is_at(TokenKind::Percentage) {
             return Some(self.scanner.advance().span);
@@ -277,13 +238,10 @@ impl<'src> Parser<'src> {
         None
     }
 
-    // -- combinator ---------------------------------------------------------
-
     fn try_parse_combinator(&mut self) -> Option<Combinator> {
         let had_ws_start = self.scanner.current_start();
         let had_ws = self.scanner.eat(TokenKind::Whitespace);
 
-        // ||
         if self.scanner.is_at_delim(b'|') && self.scanner.peek_n(1).kind == TokenKind::Delim(b'|') {
             let comb_start = self.scanner.current_start();
             self.scanner.advance();
@@ -294,7 +252,6 @@ impl<'src> Parser<'src> {
             });
         }
 
-        // > + ~
         let kind = match self.scanner.peek().kind {
             TokenKind::Delim(b'>') => Some(CombinatorKind::Child),
             TokenKind::Delim(b'+') => Some(CombinatorKind::NextSibling),
@@ -310,7 +267,6 @@ impl<'src> Parser<'src> {
             });
         }
 
-        // Descendant (whitespace-only) combinator
         if had_ws {
             return Some(Combinator {
                 span: Span::new(had_ws_start, self.scanner.current_start()),
@@ -321,9 +277,6 @@ impl<'src> Parser<'src> {
         None
     }
 
-    // -- attribute selector helpers -----------------------------------------
-
-    /// Parse a type selector: `ident` or `ident|ident` (namespace).
     fn parse_type_selector(&mut self, start: u32) -> Option<SimpleSelector> {
         let ident_start = self.scanner.current_start();
         self.parse_ident()?;
@@ -368,10 +321,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // =======================================================================
-    // Main parsing methods
-    // =======================================================================
-
     fn parse_stylesheet(&mut self) -> StyleSheet {
         let start = self.scanner.current_start();
         let children = self.parse_stylesheet_body();
@@ -396,7 +345,6 @@ impl<'src> Parser<'src> {
                 if let Some(at) = self.parse_at_rule() {
                     children.push(StyleSheetChild::Rule(Rule::AtRule(at)));
                 } else {
-                    // Ensure forward progress after failed parse
                     if self.scanner.current_start() == start {
                         self.scanner.advance();
                     }
@@ -418,14 +366,12 @@ impl<'src> Parser<'src> {
     fn parse_at_rule(&mut self) -> Option<AtRule> {
         let start = self.scanner.current_start();
 
-        // Consume the AtKeyword token and extract name (skip leading '@').
         let tok = self.scanner.advance();
         let name = CompactString::new(
             self.scanner
                 .source_text(Span::new(tok.span.start + 1, tok.span.end)),
         );
 
-        // Skip whitespace before prelude
         self.scanner.skip_whitespace();
 
         let prelude = self.read_value();
@@ -482,8 +428,6 @@ impl<'src> Parser<'src> {
             block,
         })
     }
-
-    // -- selectors ----------------------------------------------------------
 
     fn parse_selector_list(&mut self, inside_pseudo: bool) -> Option<SelectorList> {
         let mut children = SmallVec::new();
@@ -550,12 +494,11 @@ impl<'src> Parser<'src> {
             let start = self.scanner.current_start();
 
             match self.scanner.peek().kind {
-                // &
                 TokenKind::Delim(b'&') => {
                     let tok = self.scanner.advance();
                     rel.selectors.push(SimpleSelector::Nesting(tok.span));
                 }
-                // * (universal / namespace)
+
                 TokenKind::Delim(b'*') => {
                     self.scanner.advance();
                     let mut name_end = self.scanner.prev_end;
@@ -568,7 +511,7 @@ impl<'src> Parser<'src> {
                         name: CompactString::new(self.scanner.source_text(name_span)),
                     });
                 }
-                // # → id selector (via Hash token)
+
                 TokenKind::Hash => {
                     let tok = self.scanner.advance();
                     rel.selectors.push(SimpleSelector::Id {
@@ -579,7 +522,7 @@ impl<'src> Parser<'src> {
                         ),
                     });
                 }
-                // . → class selector
+
                 TokenKind::Delim(b'.') => {
                     self.scanner.advance();
                     let ident = self.parse_ident()?;
@@ -588,10 +531,10 @@ impl<'src> Parser<'src> {
                         name: CompactString::new(self.scanner.source_text(ident)),
                     });
                 }
-                // : or :: → pseudo-class or pseudo-element
+
                 TokenKind::Colon => {
                     self.scanner.advance();
-                    // Check for ::
+
                     let is_element = self.scanner.eat(TokenKind::Colon);
 
                     let (_, name) = self.parse_ident_with_name()?;
@@ -630,7 +573,7 @@ impl<'src> Parser<'src> {
                             }));
                     }
                 }
-                // [ → attribute selector
+
                 TokenKind::LBracket => {
                     self.scanner.advance();
                     match self.parse_attribute_selector_inner(start) {
@@ -638,7 +581,7 @@ impl<'src> Parser<'src> {
                         None => return None,
                     }
                 }
-                // Other selectors depending on context
+
                 _ => {
                     if inside_pseudo {
                         if let Some(nth) = self.try_parse_nth() {
@@ -656,7 +599,6 @@ impl<'src> Parser<'src> {
                 }
             }
 
-            // Check for selector list terminator
             let index_start = self.scanner.current_start();
             let index_save = self.scanner.save();
 
@@ -679,7 +621,6 @@ impl<'src> Parser<'src> {
                 });
             }
 
-            // Try combinator
             self.scanner.restore(index_save);
             if let Some(combinator) = self.try_parse_combinator() {
                 if !rel.selectors.is_empty() {
@@ -699,7 +640,6 @@ impl<'src> Parser<'src> {
                     return None;
                 }
             } else if self.scanner.current_start() == start {
-                // Nothing matched and pos didn't advance
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
                     self.scanner.span_from(list_start),
@@ -765,8 +705,6 @@ impl<'src> Parser<'src> {
             selectors: SmallVec::new(),
         }
     }
-
-    // -- blocks & declarations ----------------------------------------------
 
     fn parse_block(&mut self) -> Block {
         let start = self.scanner.current_start();
@@ -923,8 +861,6 @@ impl<'src> Parser<'src> {
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.scanner.current_start();
 
-        // Property name: scan tokens until Whitespace, Colon, Semicolon, or braces.
-        // Typically an Ident, but we accept any tokens for robustness.
         let prop_start = self.scanner.current_start();
         loop {
             match self.scanner.peek().kind {
@@ -976,7 +912,6 @@ impl<'src> Parser<'src> {
 
         let end = self.scanner.current_start();
 
-        // Consume trailing semicolon if not at block end
         if !self.scanner.is_at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken { token: ";".into() },

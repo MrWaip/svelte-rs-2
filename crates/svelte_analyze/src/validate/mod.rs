@@ -7,18 +7,18 @@ use oxc_ast::ast::{
     ArrowFunctionExpression, BindingPattern, Declaration, Function, ImportDeclarationSpecifier,
     ModuleExportName, NewExpression, Program, Statement,
 };
+use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_declaration, walk_function, walk_new_expression,
     walk_program,
 };
-use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::script::RuneKind;
-use crate::{types::data::JsAst, AnalysisData};
+use crate::{AnalysisData, types::data::JsAst};
 
 pub fn validate(
     component: &Component,
@@ -46,19 +46,17 @@ pub fn validate(
     validate_script_context(component, runes, diags);
 }
 
-/// Warn when `<script context="module">` is used in runes mode — the modern
-/// equivalent is `<script module>`.
 fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
     if !runes {
         return;
     }
-    if let Some(script) = &component.module_script {
-        if script.context_deprecated {
-            diags.push(Diagnostic::warning(
-                DiagnosticKind::ScriptContextDeprecated,
-                script.span,
-            ));
-        }
+    if let Some(script) = &component.module_script
+        && script.context_deprecated
+    {
+        diags.push(Diagnostic::warning(
+            DiagnosticKind::ScriptContextDeprecated,
+            script.span,
+        ));
     }
 }
 
@@ -137,13 +135,13 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
     }
 
     fn visit_declaration(&mut self, decl: &Declaration<'a>) {
-        if let Declaration::ClassDeclaration(class) = decl {
-            if self.function_depth > self.base_function_depth {
-                self.diags.push(Diagnostic::warning(
-                    DiagnosticKind::PerfAvoidNestedClass,
-                    self.span(class.span),
-                ));
-            }
+        if let Declaration::ClassDeclaration(class) = decl
+            && self.function_depth > self.base_function_depth
+        {
+            self.diags.push(Diagnostic::warning(
+                DiagnosticKind::PerfAvoidNestedClass,
+                self.span(class.span),
+            ));
         }
 
         walk_declaration(self, decl);
@@ -197,16 +195,11 @@ fn export_specifier_is_default(specifier: &oxc_ast::ast::ExportSpecifier<'_>) ->
     }
 }
 
-/// Error when `<script module>` exports a name that is a template snippet.
-///
-/// Snippets are template-level constructs; exporting them from a module block is invalid
-/// because they are not accessible as module-scope bindings.
 fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };
 
-    // Collect all snippet names defined in the component template.
     let snippet_names: Vec<&str> = (0..component.store.len())
         .filter_map(|i| {
             component
@@ -225,7 +218,7 @@ fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut V
         let Statement::ExportNamedDeclaration(export) = stmt else {
             continue;
         };
-        // Only `export { ... }` (re-exports with `source` are skipped).
+
         if export.declaration.is_some() || export.source.is_some() {
             continue;
         }
@@ -235,8 +228,7 @@ fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut V
                 continue;
             };
             let name = ident.name.as_str();
-            // Only fire if the name is NOT declared in module scope (matches reference compiler).
-            // If bound in module scope, it's a valid export of a module-local binding.
+
             if snippet_names.contains(&name) && !is_module_bound(module_program, name) {
                 let span = Span::new(specifier.span.start, specifier.span.end);
                 diags.push(Diagnostic::error(
@@ -248,10 +240,6 @@ fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut V
     }
 }
 
-/// Returns `true` if `name` is declared at the top level of the module program.
-///
-/// Mirrors `analysis.module.scope.get(name)` from the reference compiler: covers variable
-/// declarations, function/class declarations, and imports (including re-exported declarations).
 fn is_module_bound<'a>(program: &Program<'a>, name: &str) -> bool {
     for stmt in &program.body {
         match stmt {
@@ -346,14 +334,11 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
     }
 }
 
-/// Warn when `$props()` uses identifier pattern or rest element in a custom element
-/// without explicit `customElement.props` config.
 fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
     if !data.output.custom_element {
         return;
     }
 
-    // Explicit `customElement.props` config suppresses the warning.
     if data
         .script
         .ce_config
@@ -372,7 +357,6 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
         return;
     }
 
-    // Use the $props() declaration span from script info.
     let span = data
         .script
         .info

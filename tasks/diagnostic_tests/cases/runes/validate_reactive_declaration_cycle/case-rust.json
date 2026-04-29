@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "reactive_declaration_cycle",
+    "start": 67,
+    "end": 76
+  }
+]

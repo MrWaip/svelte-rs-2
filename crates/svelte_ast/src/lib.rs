@@ -13,8 +13,6 @@ pub fn is_void(name: &str) -> bool {
     VOID_ELEMENTS.contains(&name)
 }
 
-/// Elements that belong to the SVG namespace.
-/// Matches the reference Svelte compiler's `SVG_ELEMENTS` list.
 const SVG_ELEMENTS: &[&str] = &[
     "altGlyph",
     "altGlyphDef",
@@ -108,7 +106,6 @@ pub fn is_svg(name: &str) -> bool {
     SVG_ELEMENTS.contains(&name)
 }
 
-/// Elements that belong to the MathML namespace.
 const MATHML_ELEMENTS: &[&str] = &[
     "annotation",
     "annotation-xml",
@@ -146,7 +143,6 @@ pub fn is_mathml(name: &str) -> bool {
     MATHML_ELEMENTS.contains(&name)
 }
 
-/// HTML elements where inter-element whitespace should be removed entirely.
 const WHITESPACE_REMOVABLE_ELEMENTS: &[&str] = &[
     "select", "tr", "table", "tbody", "thead", "tfoot", "colgroup", "datalist",
 ];
@@ -155,49 +151,42 @@ pub fn is_whitespace_removable_parent(name: &str) -> bool {
     WHITESPACE_REMOVABLE_ELEMENTS.contains(&name)
 }
 
-/// Special Svelte pseudo-element names that are handled as components.
 pub const SVELTE_COMPONENT: &str = "svelte:component";
-/// Special Svelte pseudo-element for recursive self-reference.
+
 pub const SVELTE_SELF: &str = "svelte:self";
-/// Transparent wrapper for named slot content (`<svelte:fragment slot="name">`).
+
 pub const SVELTE_FRAGMENT: &str = "svelte:fragment";
-/// Component options tag.
+
 pub const SVELTE_OPTIONS: &str = "svelte:options";
-/// Renders into `<head>` at SSR time; no-op on the client.
+
 pub const SVELTE_HEAD: &str = "svelte:head";
-/// Binds to `window` event listeners and properties.
+
 pub const SVELTE_WINDOW: &str = "svelte:window";
-/// Binds to `document` event listeners and properties.
+
 pub const SVELTE_DOCUMENT: &str = "svelte:document";
-/// Binds to `document.body` event listeners.
+
 pub const SVELTE_BODY: &str = "svelte:body";
-/// Dynamic element tag (`<svelte:element this={tag}>`).
+
 pub const SVELTE_ELEMENT: &str = "svelte:element";
-/// Error boundary (`<svelte:boundary>`).
+
 pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 
-/// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
 
-/// Unique fragment identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FragmentId(pub u32);
-
-// ---------------------------------------------------------------------------
-// Root
-// ---------------------------------------------------------------------------
 
 pub struct Component {
     pub root: FragmentId,
     pub store: AstStore,
-    /// Instance-level `<script>` block (runs once per component instance).
+
     pub instance_script: Option<Script>,
-    /// Module-level `<script module>` block (runs once when the module loads).
+
     pub module_script: Option<Script>,
     pub css: Option<RawBlock>,
     pub options: Option<SvelteOptions>,
-    /// Full source text of the .svelte file.
+
     pub source: String,
 }
 
@@ -221,8 +210,6 @@ impl Component {
         }
     }
 
-    /// Dummy `Component` for standalone `.svelte.js` modules (no template).
-    /// Used only to satisfy analysis APIs that expect `&Component`.
     pub fn dummy_for_standalone_module(source: String) -> Self {
         let mut store = AstStore::default();
         let root = store.push_fragment(FragmentRole::Root, vec![]);
@@ -245,7 +232,6 @@ impl Component {
         self.store.fragment_nodes(id)
     }
 
-    /// Total number of NodeId slots allocated during parsing (nodes + attrs + misc).
     pub fn node_count(&self) -> u32 {
         self.store.len()
     }
@@ -254,26 +240,17 @@ impl Component {
         self.store.fragments_len()
     }
 
-    /// Get source text for a span.
     pub fn source_text(&self, span: Span) -> &str {
         &self.source[span.start as usize..span.end as usize]
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fragment
-// ---------------------------------------------------------------------------
-
-/// Role of a fragment in the template — what parent construct owns it.
-///
-/// A single AST node (e.g. `IfBlock`) may produce multiple fragments
-/// (consequent + alternate), so the role disambiguates them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentRole {
     Root,
     Element,
     ComponentChildren,
-    /// LEGACY(svelte4): named slot body within a component.
+
     NamedSlot,
     IfConsequent,
     IfAlternate,
@@ -293,7 +270,7 @@ pub struct Fragment {
     pub id: FragmentId,
     pub role: FragmentRole,
     pub nodes: Vec<NodeId>,
-    /// NodeId владельца fragment (Element/IfBlock/...). `None` для корня.
+
     pub owner: Option<NodeId>,
 }
 
@@ -325,12 +302,6 @@ impl Fragment {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Nodes
-// ---------------------------------------------------------------------------
-
-/// Generates the `Node` enum plus `node_id()`, `span()`, `is_*()`, and `as_*()` helpers.
-/// Every variant's inner type must have `pub id: NodeId` and `pub span: Span`.
 macro_rules! impl_node_enum {
     ( $( $Variant:ident($Type:ident) => $is:ident / $as:ident ),+ $(,)? ) => {
         pub enum Node {
@@ -346,7 +317,7 @@ macro_rules! impl_node_enum {
                 match self { $( Node::$Variant(n) => n.span, )+ }
             }
 
-            /// Set the NodeId on the inner type (used by AstStore::push).
+
             fn set_id(&mut self, id: NodeId) {
                 match self { $( Node::$Variant(n) => n.id = id, )+ }
             }
@@ -395,10 +366,6 @@ pub struct ErrorNode {
     pub span: Span,
 }
 
-// ---------------------------------------------------------------------------
-// Text
-// ---------------------------------------------------------------------------
-
 pub struct Text {
     pub id: NodeId,
     pub span: Span,
@@ -406,22 +373,16 @@ pub struct Text {
 }
 
 impl Text {
-    /// Returns the original source slice for diagnostics and span-based lookups.
     pub fn raw_value<'a>(&self, source: &'a str) -> &'a str {
         &source[self.span.start as usize..self.span.end as usize]
     }
 
-    /// Returns decoded text content when entities were normalized during parsing.
     pub fn value<'a>(&'a self, source: &'a str) -> &'a str {
         self.decoded
             .as_deref()
             .unwrap_or_else(|| self.raw_value(source))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Element
-// ---------------------------------------------------------------------------
 
 pub struct Element {
     pub id: NodeId,
@@ -432,17 +393,12 @@ pub struct Element {
     pub fragment: FragmentId,
 }
 
-/// LEGACY(svelte4): legacy `<slot>` pseudo-element. Deprecated in Svelte 5, remove in Svelte 6.
 pub struct SlotElementLegacy {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
 }
-
-// ---------------------------------------------------------------------------
-// ComponentNode
-// ---------------------------------------------------------------------------
 
 pub struct ComponentNode {
     pub id: NodeId,
@@ -459,10 +415,6 @@ pub struct LegacySlot {
     pub fragment: FragmentId,
 }
 
-// ---------------------------------------------------------------------------
-// Comment
-// ---------------------------------------------------------------------------
-
 pub struct Comment {
     pub id: NodeId,
     pub span: Span,
@@ -474,20 +426,12 @@ impl Comment {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ExpressionTag — {expr}
-// ---------------------------------------------------------------------------
-
 pub struct ExpressionTag {
     pub id: NodeId,
-    /// Span of the whole `{expr}` including braces.
+
     pub span: Span,
     pub expression: ExprRef,
 }
-
-// ---------------------------------------------------------------------------
-// IfBlock
-// ---------------------------------------------------------------------------
 
 pub struct IfBlock {
     pub id: NodeId,
@@ -498,10 +442,6 @@ pub struct IfBlock {
     pub alternate: Option<FragmentId>,
 }
 
-// ---------------------------------------------------------------------------
-// EachBlock
-// ---------------------------------------------------------------------------
-
 pub struct EachBlock {
     pub id: NodeId,
     pub span: Span,
@@ -509,15 +449,11 @@ pub struct EachBlock {
     pub context: Option<StmtRef>,
     pub index: Option<StmtRef>,
     pub key: Option<ExprRef>,
-    /// Unique NodeId for the key expression (separate from block id to avoid NodeId collision).
+
     pub key_id: Option<NodeId>,
     pub body: FragmentId,
     pub fallback: Option<FragmentId>,
 }
-
-// ---------------------------------------------------------------------------
-// SnippetBlock — {#snippet name(params)}...{/snippet}
-// ---------------------------------------------------------------------------
 
 pub struct SnippetBlock {
     pub id: NodeId,
@@ -527,7 +463,6 @@ pub struct SnippetBlock {
 }
 
 impl SnippetBlock {
-    /// Get the snippet name from source text (everything before '(' or the whole expression).
     pub fn name<'a>(&self, source: &'a str) -> &'a str {
         let expr = &source[self.decl.span.start as usize..self.decl.span.end as usize];
         match expr.find('(') {
@@ -537,19 +472,11 @@ impl SnippetBlock {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RenderTag — {@render snippet(args)}
-// ---------------------------------------------------------------------------
-
 pub struct RenderTag {
     pub id: NodeId,
     pub span: Span,
     pub expression: ExprRef,
 }
-
-// ---------------------------------------------------------------------------
-// HtmlTag — {@html expr}
-// ---------------------------------------------------------------------------
 
 pub struct HtmlTag {
     pub id: NodeId,
@@ -557,29 +484,17 @@ pub struct HtmlTag {
     pub expression: ExprRef,
 }
 
-// ---------------------------------------------------------------------------
-// ConstTag — {@const decl}
-// ---------------------------------------------------------------------------
-
 pub struct ConstTag {
     pub id: NodeId,
     pub span: Span,
     pub decl: StmtRef,
 }
 
-// ---------------------------------------------------------------------------
-// DebugTag — {@debug vars}
-// ---------------------------------------------------------------------------
-
 pub struct DebugTag {
     pub id: NodeId,
     pub span: Span,
     pub identifier_refs: Vec<ExprRef>,
 }
-
-// ---------------------------------------------------------------------------
-// KeyBlock — {#key expr}...{/key}
-// ---------------------------------------------------------------------------
 
 pub struct KeyBlock {
     pub id: NodeId,
@@ -588,17 +503,12 @@ pub struct KeyBlock {
     pub fragment: FragmentId,
 }
 
-// ---------------------------------------------------------------------------
-// SvelteHead — <svelte:head>...</svelte:head>
-// ---------------------------------------------------------------------------
-
 pub struct SvelteHead {
     pub id: NodeId,
     pub span: Span,
     pub fragment: FragmentId,
 }
 
-/// LEGACY(svelte4): transparent named-slot wrapper `<svelte:fragment>`. Remove in Svelte 6.
 pub struct SvelteFragmentLegacy {
     pub id: NodeId,
     pub span: Span,
@@ -606,26 +516,18 @@ pub struct SvelteFragmentLegacy {
     pub fragment: FragmentId,
 }
 
-// ---------------------------------------------------------------------------
-// SvelteElement — <svelte:element this={tag}>...</svelte:element>
-// ---------------------------------------------------------------------------
-
 pub struct SvelteElement {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the `this` expression (the dynamic tag).
+
     pub tag_span: Span,
-    /// JS expression (None when `static_tag`).
+
     pub tag: Option<ExprRef>,
-    /// True when `this="literal"` (StringAttribute) — tag is a static string, not a JS expression.
+
     pub static_tag: bool,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
 }
-
-// ---------------------------------------------------------------------------
-// SvelteWindow — <svelte:window on:event={handler} bind:scrollY />
-// ---------------------------------------------------------------------------
 
 pub struct SvelteWindow {
     pub id: NodeId,
@@ -634,20 +536,12 @@ pub struct SvelteWindow {
     pub fragment: FragmentId,
 }
 
-// ---------------------------------------------------------------------------
-// SvelteDocument — <svelte:document on:event={handler} bind:activeElement />
-// ---------------------------------------------------------------------------
-
 pub struct SvelteDocument {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
 }
-
-// ---------------------------------------------------------------------------
-// SvelteBody — <svelte:body onclick={handler} use:action />
-// ---------------------------------------------------------------------------
 
 pub struct SvelteBody {
     pub id: NodeId,
@@ -656,20 +550,12 @@ pub struct SvelteBody {
     pub fragment: FragmentId,
 }
 
-// ---------------------------------------------------------------------------
-// SvelteBoundary — <svelte:boundary onerror={fn} failed={snippet}>...</svelte:boundary>
-// ---------------------------------------------------------------------------
-
 pub struct SvelteBoundary {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
 }
-
-// ---------------------------------------------------------------------------
-// AwaitBlock — {#await expr}...{:then val}...{:catch err}...{/await}
-// ---------------------------------------------------------------------------
 
 pub struct AwaitBlock {
     pub id: NodeId,
@@ -681,10 +567,6 @@ pub struct AwaitBlock {
     pub then: Option<FragmentId>,
     pub catch: Option<FragmentId>,
 }
-
-// ---------------------------------------------------------------------------
-// Attributes
-// ---------------------------------------------------------------------------
 
 macro_rules! impl_attr_enum {
     ( $( $(#[doc = $doc:expr])* $Variant:ident($Type:ident) ),+ $(,)? ) => {
@@ -711,43 +593,40 @@ macro_rules! impl_attr_enum {
 }
 
 impl_attr_enum! {
-    /// name="string"
+
     StringAttribute(StringAttribute),
-    /// name={expr} or shorthand `{name}` (ExpressionAttribute with `shorthand: true`
-    /// and `name == expression text`). Shorthand is represented by this variant
-    /// rather than a separate one so downstream passes have one expression path.
+
+
+
     ExpressionAttribute(ExpressionAttribute),
-    /// name (boolean, no value)
+
     BooleanAttribute(BooleanAttribute),
-    /// name="text{expr}text"
+
     ConcatenationAttribute(ConcatenationAttribute),
-    /// {...expr} — spread attribute
+
     SpreadAttribute(SpreadAttribute),
-    /// class:name or class:name={expr}
+
     ClassDirective(ClassDirective),
-    /// style:name or style:name={expr} or style:name|important
+
     StyleDirective(StyleDirective),
-    /// bind:name or bind:name={expr}
+
     BindDirective(BindDirective),
-    /// LEGACY(svelte4): let:name or let:name={expr} for slot props. Deprecated in Svelte 5, remove in Svelte 6.
+
     LetDirectiveLegacy(LetDirectiveLegacy),
-    /// use:name or use:name={expr}
+
     UseDirective(UseDirective),
-    /// LEGACY(svelte4): on:event or on:event={handler} or on:event|modifier={handler}
-    /// Deprecated in Svelte 5, remove in Svelte 6.
+
+
     OnDirectiveLegacy(OnDirectiveLegacy),
-    /// transition:name, in:name, or out:name
+
     TransitionDirective(TransitionDirective),
-    /// animate:name or animate:name={expr}
+
     AnimateDirective(AnimateDirective),
-    /// {@attach expr} — element attachment (Svelte 5.29+)
+
     AttachTag(AttachTag),
 }
 
 impl Attribute {
-    /// Returns the attribute name if it is stored as a `String` field.
-    /// Variants with `Span`-based names (`UseDirective`, `TransitionDirective`,
-    /// `AnimateDirective`) and nameless variants return `None`.
     pub fn name(&self) -> Option<&str> {
         match self {
             Attribute::StringAttribute(a) => Some(&a.name),
@@ -767,10 +646,6 @@ impl Attribute {
         }
     }
 
-    /// Name of this attribute if it is a plain HTML attribute (not a Svelte directive).
-    /// Returns `""` for directive and nameless variants — use this when checking raw HTML
-    /// attribute names (e.g. `is`, colon presence, React-style names). The empty string
-    /// never matches any valid attribute name check.
     pub fn html_name(&self) -> &str {
         match self {
             Attribute::StringAttribute(a) => &a.name,
@@ -803,7 +678,7 @@ pub struct ExpressionAttribute {
     pub name: String,
     pub expression: ExprRef,
     pub shorthand: bool,
-    /// Pre-computed event name (after "on" prefix), if this is an event attribute.
+
     pub event_name: Option<String>,
 }
 
@@ -819,20 +694,18 @@ pub struct ConcatenationAttribute {
     pub id: NodeId,
     pub span: Span,
     pub name: String,
-    /// `true` when the source used quotes (`foo="a{b}"`), `false` for unquoted forms (`foo=a{b}`).
+
     pub quoted: bool,
     pub parts: Vec<ConcatPart>,
 }
 
 #[derive(Clone)]
 pub enum ConcatPart {
-    /// Static text portion.
     Static(String),
-    /// Dynamic expression portion with its own NodeId to avoid sharing the parent attribute's id.
+
     Dynamic { id: NodeId, expr: ExprRef },
 }
 
-/// {...expr} — spread attribute.
 #[derive(Clone)]
 pub struct SpreadAttribute {
     pub id: NodeId,
@@ -855,7 +728,7 @@ pub struct StyleDirective {
     pub span: Span,
     pub name: String,
     pub expression: ExprRef,
-    /// `true` iff the directive has no explicit value (`style:name`).
+
     pub shorthand: bool,
     pub value: StyleDirectiveValue,
     pub important: bool,
@@ -863,13 +736,10 @@ pub struct StyleDirective {
 
 #[derive(Clone)]
 pub enum StyleDirectiveValue {
-    /// style:name={expr} — expression in braces, or shorthand `style:name`
-    /// (where the span of `name` acts as the expression). Use the
-    /// `shorthand: bool` on `StyleDirective` to distinguish emission.
     Expression,
-    /// style:name="string" — static string value
+
     String(String),
-    /// style:name="text{expr}text" — concatenation of static and dynamic parts
+
     Concatenation(Vec<ConcatPart>),
 }
 
@@ -882,19 +752,17 @@ pub struct BindDirective {
     pub shorthand: bool,
 }
 
-/// LEGACY(svelte4): `let:` slot-prop binding syntax. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Clone)]
 pub struct LetDirectiveLegacy {
     pub id: NodeId,
     pub span: Span,
-    /// Slot-prop key (e.g. `item` in `let:item` or `let:item={value}`).
+
     pub name: String,
-    /// Span of the slot-prop key in source.
+
     pub name_span: Span,
     pub binding: Option<StmtRef>,
 }
 
-/// use:name or use:name={expr}
 #[derive(Clone)]
 pub struct UseDirective {
     pub id: NodeId,
@@ -903,17 +771,16 @@ pub struct UseDirective {
     pub expression: Option<ExprRef>,
 }
 
-/// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Clone)]
 pub struct OnDirectiveLegacy {
     pub id: NodeId,
     pub span: Span,
-    /// Event name (e.g., "click" in `on:click`).
+
     pub name: String,
-    /// Span of the event name in source (e.g., "click" span in `on:click`).
+
     pub name_span: Span,
     pub expression: Option<ExprRef>,
-    /// Modifiers like "preventDefault", "stopPropagation", "capture", etc.
+
     pub modifiers: Vec<String>,
 }
 
@@ -923,7 +790,6 @@ impl OnDirectiveLegacy {
     }
 }
 
-/// LEGACY(svelte4): Pre-classified modifier flags for on:directive.
 pub struct OnDirectiveModifiers {
     pub stop_propagation: bool,
     pub stop_immediate_propagation: bool,
@@ -932,7 +798,7 @@ pub struct OnDirectiveModifiers {
     pub trusted: bool,
     pub once: bool,
     pub capture: bool,
-    /// `Some(true)` = passive, `Some(false)` = nonpassive, `None` = unset.
+
     pub passive: Option<bool>,
 }
 
@@ -965,8 +831,6 @@ impl OnDirectiveModifiers {
         result
     }
 
-    /// Ordered handler wrapper modifiers that are active.
-    /// Order matches Svelte reference (stopPropagation → once).
     pub fn handler_wrappers(&self) -> impl Iterator<Item = &'static str> {
         [
             (self.stop_propagation, "stopPropagation"),
@@ -981,31 +845,27 @@ impl OnDirectiveModifiers {
     }
 }
 
-/// Direction of a transition directive.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TransitionDirection {
-    /// `transition:` — plays on both intro and outro
     Both,
-    /// `in:` — plays only on intro
+
     In,
-    /// `out:` — plays only on outro
+
     Out,
 }
 
-/// transition:name, in:name, or out:name directive.
 #[derive(Clone)]
 pub struct TransitionDirective {
     pub id: NodeId,
     pub span: Span,
     pub name_ref: ExprRef,
     pub expression: Option<ExprRef>,
-    /// Modifiers like "local", "global".
+
     pub modifiers: Vec<String>,
-    /// Whether this is `transition:`, `in:`, or `out:`.
+
     pub direction: TransitionDirection,
 }
 
-/// animate:name or animate:name={expr}
 #[derive(Clone)]
 pub struct AnimateDirective {
     pub id: NodeId,
@@ -1014,8 +874,6 @@ pub struct AnimateDirective {
     pub expression: Option<ExprRef>,
 }
 
-/// {@attach expr} — element attachment (Svelte 5.29+).
-/// Modern alternative to `use:action`. Re-runs on reactive dependency changes.
 #[derive(Clone)]
 pub struct AttachTag {
     pub id: NodeId,
@@ -1023,18 +881,14 @@ pub struct AttachTag {
     pub expression: ExprRef,
 }
 
-// ---------------------------------------------------------------------------
-// Script
-// ---------------------------------------------------------------------------
-
 pub struct Script {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the content between <script> and </script>.
+
     pub content_span: Span,
     pub context: ScriptContext,
     pub language: ScriptLanguage,
-    /// `true` when the legacy `context="module"` attribute was used instead of `module`.
+
     pub context_deprecated: bool,
 }
 
@@ -1050,38 +904,28 @@ pub enum ScriptLanguage {
     TypeScript,
 }
 
-// ---------------------------------------------------------------------------
-// RawBlock (CSS)
-// ---------------------------------------------------------------------------
-
 pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
 }
 
-// ---------------------------------------------------------------------------
-// SvelteOptions — parsed from <svelte:options> tag
-// ---------------------------------------------------------------------------
-
-/// Component-level options parsed from `<svelte:options .../>`.
-/// Stored on `Component.options` after extraction from the fragment.
 pub struct SvelteOptions {
     pub span: Span,
-    /// Whether this component uses runes mode. `None` = inherit from compiler options.
+
     pub runes: Option<bool>,
-    /// Component namespace: "html" (default), "svg", or "mathml".
+
     pub namespace: Option<Namespace>,
-    /// CSS injection mode. Currently only "injected" is valid.
+
     pub css: Option<CssMode>,
-    /// Custom element tag name (simple string form).
+
     pub custom_element: Option<CustomElementConfig>,
-    /// LEGACY(svelte4): immutable mode. Deprecated in Svelte 5.
+
     pub immutable: Option<bool>,
-    /// LEGACY(svelte4): accessors mode. Deprecated in Svelte 5.
+
     pub accessors: Option<bool>,
-    /// Preserve whitespace in template.
+
     pub preserve_whitespace: Option<bool>,
-    /// Raw attributes from the `<svelte:options>` tag, preserved for tooling.
+
     pub attributes: Vec<Attribute>,
 }
 
@@ -1097,28 +941,16 @@ pub enum CssMode {
     Injected,
 }
 
-/// Custom element configuration from `<svelte:options customElement=...>`.
 pub enum CustomElementConfig {
-    /// Simple string form: `customElement="my-tag"`
     Tag(String),
-    /// Object form: `customElement={{ tag: "...", ... }}`
-    /// Stores the expression span for deferred parsing in analysis.
+
     Expression(Span),
 }
 
-// ---------------------------------------------------------------------------
-// AstStore — flat arena for all template nodes
-// ---------------------------------------------------------------------------
-
-/// Flat arena storing all template nodes and fragments.
-/// `NodeId` and `FragmentId` are indices into the respective vectors.
-/// Reserved slots (for attributes, key_id, script) hold placeholder Error nodes.
 pub struct AstStore {
     nodes: Vec<Node>,
     fragments: Vec<Fragment>,
-    /// Reverse index: NodeId → FragmentId of its containing fragment.
-    /// Empty until `freeze_node_fragments` is called by the parser at the
-    /// end of construction.
+
     node_to_fragment: Vec<Option<FragmentId>>,
 }
 
@@ -1131,7 +963,6 @@ impl AstStore {
         }
     }
 
-    /// Create a store pre-allocated for the expected number of nodes.
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             nodes: Vec::with_capacity(cap),
@@ -1202,7 +1033,6 @@ impl AstStore {
         self.fragments.iter()
     }
 
-    /// Push a template node into the store. Sets the node's id to match its index.
     pub fn push(&mut self, mut node: Node) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
         node.set_id(id);
@@ -1210,8 +1040,6 @@ impl AstStore {
         id
     }
 
-    /// Reserve a slot for a non-node id (attributes, key expressions, script, etc.).
-    /// Fills with a placeholder — must never be accessed via `get()`.
     pub fn reserve(&mut self) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
         self.nodes.push(Node::Error(ErrorNode {
@@ -1221,17 +1049,14 @@ impl AstStore {
         id
     }
 
-    /// Get a node by id.
     pub fn get(&self, id: NodeId) -> &Node {
         &self.nodes[id.0 as usize]
     }
 
-    /// Get a mutable node by id.
     pub fn get_mut(&mut self, id: NodeId) -> &mut Node {
         &mut self.nodes[id.0 as usize]
     }
 
-    /// Take a node out of the store, leaving a placeholder in its slot.
     pub fn take(&mut self, id: NodeId) -> Node {
         std::mem::replace(
             &mut self.nodes[id.0 as usize],
@@ -1242,13 +1067,11 @@ impl AstStore {
         )
     }
 
-    /// Replace a node in-place (used by svelte:element/boundary conversion).
     pub fn replace(&mut self, id: NodeId, mut node: Node) {
         node.set_id(id);
         self.nodes[id.0 as usize] = node;
     }
 
-    /// Total number of allocated slots (nodes + reserved).
     pub fn len(&self) -> u32 {
         self.nodes.len() as u32
     }
@@ -1257,7 +1080,6 @@ impl AstStore {
         self.nodes.is_empty()
     }
 
-    /// Iterate every node in store insertion order.
     pub fn iter_nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.iter()
     }
@@ -1269,7 +1091,6 @@ impl Default for AstStore {
     }
 }
 
-/// Typed accessor macro for AstStore — generates methods like `element(id) -> &Element`.
 macro_rules! impl_store_accessors {
     ( $( $method:ident -> $Type:ident / $as_method:ident ),+ $(,)? ) => {
         impl AstStore {

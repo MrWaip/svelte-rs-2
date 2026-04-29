@@ -79,9 +79,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .attr_expression(attr_id)
                         .is_some_and(|i| i.has_call());
                     if has_call {
-                        // Привет ИИ, так не делай, мы это отрефакторим в analyze —
-                        // legacy подход: dynamic call в slot props лифтится в derived_safe_equal
-                        // с $.untrack-обёрткой, пропу возвращается getter $.get($N).
                         let name = format!("${}", memo_stmts.len());
                         let name_ref = self.ctx.b.alloc_str(&name);
                         let untrack = self
@@ -167,15 +164,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn legacy_slot_name(&self, attrs: &[Attribute]) -> String {
         for attr in attrs {
-            if let Attribute::StringAttribute(sa) = attr {
-                if sa.name == "name" {
-                    return self
-                        .ctx
-                        .query
-                        .component
-                        .source_text(sa.value_span)
-                        .to_string();
-                }
+            if let Attribute::StringAttribute(sa) = attr
+                && sa.name == "name"
+            {
+                return self
+                    .ctx
+                    .query
+                    .component
+                    .source_text(sa.value_span)
+                    .to_string();
             }
         }
         "default".to_string()

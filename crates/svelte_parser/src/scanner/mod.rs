@@ -12,7 +12,7 @@ use token::{
 };
 
 use svelte_diagnostics::Diagnostic;
-use svelte_span::{Span, SPAN};
+use svelte_span::{SPAN, Span};
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -82,7 +82,6 @@ impl<'a> Scanner<'a> {
         self.diagnostics.push(diagnostic);
     }
 
-    /// Skip forward to the next synchronization point after a scan error.
     fn sync_to_next_token(&mut self) {
         while !self.is_at_end() {
             match self.peek() {
@@ -296,7 +295,6 @@ impl<'a> Scanner<'a> {
                 AttributeIdentifierType::LetDirectiveLegacy(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_use_directive(name) {
                 AttributeIdentifierType::UseDirective(value_span, value).as_ok()
-            // LEGACY(svelte4): on:directive
             } else if AttributeIdentifierType::is_on_directive(name) {
                 AttributeIdentifierType::OnDirectiveLegacy(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_transition_directive(name) {
@@ -368,8 +366,6 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    // Tokens:
-
     fn start_tag(&mut self) -> Result<(), Diagnostic> {
         let name_start = self.current;
         let name = if let Some(name) = self.try_component_tag_name() {
@@ -384,13 +380,11 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        // Consume dotted component name segments: <registry.Widget />
         self.consume_dotted_tag_suffix();
 
-        // Handle `svelte:*` special element names (e.g., svelte:options, svelte:head)
         if name == "svelte" && self.peek() == Some(':') {
-            self.advance(); // consume ':'
-            self.identifier(); // consume the rest (options, head, window, etc.)
+            self.advance();
+            self.identifier();
         }
 
         let name_span = self.span(name_start, self.current);
@@ -399,7 +393,6 @@ impl<'a> Scanner<'a> {
         let self_closing = self.match_char('/') || is_void(name);
 
         if !self.match_char('>') {
-            // Emit partial StartTag with recovery — parser-level will handle auto-close
             self.recover(Diagnostic::unterminated_start_tag(
                 self.span(name_start, self.current),
             ));
@@ -482,7 +475,7 @@ impl<'a> Scanner<'a> {
                         self.let_directive_legacy(span, name)
                     }
                     AttributeIdentifierType::UseDirective(span, _) => self.use_directive(span),
-                    // LEGACY(svelte4): on:directive
+
                     AttributeIdentifierType::OnDirectiveLegacy(span, _) => {
                         self.on_directive_legacy(span)
                     }
@@ -545,7 +538,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn style_directive(&mut self, name_span: Span) -> Result<Attribute, Diagnostic> {
-        // Check for |important modifier
         let important = if self.match_char('|') {
             let start = self.current;
             while self.peek().is_some_and(|c| c.is_alphabetic()) {
@@ -554,7 +546,7 @@ impl<'a> Scanner<'a> {
             let modifier = self.slice_source(start, self.current);
             if modifier != "important" {
                 self.recover(Diagnostic::unknown_directive(Span::new(
-                    start as u32 - 1, // include the '|'
+                    start as u32 - 1,
                     self.current as u32,
                 )));
                 false
@@ -606,7 +598,6 @@ impl<'a> Scanner<'a> {
         }))
     }
 
-    /// LEGACY(svelte4): Parse `let:name` or `let:name={expr}` for slot props.
     fn let_directive_legacy(
         &mut self,
         name_span: Span,
@@ -632,11 +623,8 @@ impl<'a> Scanner<'a> {
     }
 
     fn use_directive(&mut self, mut name_span: Span) -> Result<Attribute, Diagnostic> {
-        // Consume dotted name segments: use:a.b.c or use:a.b-hyphen.c
-        // Segments may contain hyphens (e.g. `tooltip-extra`), which require bracket
-        // notation in JS output but are valid Svelte directive name segments.
         while self.peek() == Some('.') {
-            self.advance(); // consume '.'
+            self.advance();
             while self
                 .peek()
                 .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-')
@@ -665,7 +653,6 @@ impl<'a> Scanner<'a> {
         }))
     }
 
-    /// LEGACY(svelte4): Parse `on:event|modifier1|modifier2={handler}` or `on:event` (bubble).
     fn on_directive_legacy(&mut self, name_span: Span) -> Result<Attribute, Diagnostic> {
         let mut modifiers = Vec::new();
         while self.match_char('|') {
@@ -687,7 +674,6 @@ impl<'a> Scanner<'a> {
             }));
         }
 
-        // No expression — bubble event
         Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
             span: SPAN,
             name_span,
@@ -697,22 +683,19 @@ impl<'a> Scanner<'a> {
         }))
     }
 
-    /// Parse `transition:name|modifier={expr}`, `in:name`, or `out:name`.
     fn transition_directive(
         &mut self,
         mut name_span: Span,
         prefix: &str,
     ) -> Result<Attribute, Diagnostic> {
-        // Consume dotted name segments: transition:a.b.c
         while self.peek() == Some('.') {
-            self.advance(); // consume '.'
+            self.advance();
             while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
                 self.advance();
             }
             name_span = Span::new(name_span.start, self.current as u32);
         }
 
-        // Parse |modifier segments
         let mut modifiers = Vec::new();
         while self.match_char('|') {
             let start = self.current;
@@ -744,11 +727,9 @@ impl<'a> Scanner<'a> {
         }))
     }
 
-    /// Parse `animate:name={expr}` or `animate:name`.
     fn animate_directive(&mut self, mut name_span: Span) -> Result<Attribute, Diagnostic> {
-        // Consume dotted name segments: animate:a.b.c
         while self.peek() == Some('.') {
-            self.advance(); // consume '.'
+            self.advance();
             while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
                 self.advance();
             }
@@ -773,11 +754,9 @@ impl<'a> Scanner<'a> {
         }))
     }
 
-    /// Parse `{@attach expr}` in the attribute position.
     fn attach_tag_attribute(&mut self) -> Result<AttachTagToken, Diagnostic> {
         debug_assert!(self.source[self.current..].starts_with("{@attach"));
 
-        // Consume `{@attach`
         for _ in 0.."{@attach".len() {
             self.advance();
         }
@@ -829,7 +808,6 @@ impl<'a> Scanner<'a> {
         let start = self.current;
         let mut parts: Vec<ConcatenationPart> = vec![];
 
-        // consume first quote
         self.advance();
         let mut current_pos: usize = self.current;
 
@@ -860,7 +838,6 @@ impl<'a> Scanner<'a> {
 
         let last_span = self.span(current_pos, self.current);
 
-        // consume last quote (or recover at EOF)
         if !self.is_at_end() {
             self.advance();
         } else {
@@ -870,11 +847,8 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        if has_expression && current_pos < self.current - 1 {
-            // There's trailing text after last expression (before closing quote)
-            if last_span.start != last_span.end {
-                parts.push(ConcatenationPart::String(last_span));
-            }
+        if has_expression && current_pos < self.current - 1 && last_span.start != last_span.end {
+            parts.push(ConcatenationPart::String(last_span));
         }
 
         if !has_expression && parts.is_empty() {
@@ -947,13 +921,11 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        // Consume dotted component name segments: </registry.Widget>
         self.consume_dotted_tag_suffix();
 
-        // Handle `svelte:*` special element names
         if name == "svelte" && self.peek() == Some(':') {
-            self.advance(); // consume ':'
-            self.identifier(); // consume the rest
+            self.advance();
+            self.identifier();
         }
 
         let name_span = self.span(name_start, self.current);
@@ -1090,9 +1062,9 @@ impl<'a> Scanner<'a> {
         let start = self.current;
         while self.peek() != Some(quote) && !self.is_at_end() {
             if self.peek() == Some('\\') {
-                self.advance(); // skip backslash
+                self.advance();
                 if !self.is_at_end() {
-                    self.advance(); // skip escaped char
+                    self.advance();
                 }
                 continue;
             }
@@ -2045,7 +2017,6 @@ impl<'a> Scanner<'a> {
                     }
                 }
 
-                // Consume closing '}'
                 if self.peek() == Some('}') {
                     self.advance();
                 }
@@ -2074,9 +2045,8 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        // Consume optional params: `(a, b)`
         if self.peek() == Some('(') {
-            self.advance(); // consume '('
+            self.advance();
             if self
                 .scan_js_pattern(JsScanTerminator::MatchingParen)?
                 .end
@@ -2089,7 +2059,6 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        // expression_span covers `name(params)` or just `name`
         let expression_span = self.span(expr_start, self.current);
 
         self.skip_whitespace();
@@ -2117,13 +2086,11 @@ impl<'a> Scanner<'a> {
         let mut depth: u32 = 0;
         let mut collection_span: Option<Span> = None;
         let mut item_span: Option<Span> = None;
-        // Tracks the last `,` byte position at depth 0, to support `{#each expr, index}`.
+
         let mut last_comma_pos: Option<usize> = None;
-        // Index span extracted from the no-`as` indexed form (not from collect_each_context).
+
         let mut no_as_index_span: Option<Span> = None;
 
-        // Scan the collection expression, tracking nesting depth.
-        // Stop on `}` at depth 0 (no `as` binding) or on `as` keyword at depth 0.
         while !self.is_at_end() {
             let ch = self.peek().expect("loop condition guarantees not at end");
             match ch {
@@ -2144,11 +2111,6 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 '}' => {
-                    // End of tag without `as` binding.
-                    // Check for `{#each expr, index}` — a trailing `, identifier` at depth 0
-                    // signals the item-less indexed form (mirrors SequenceExpression unwrap in
-                    // the reference parser). Commas inside brackets are never recorded because
-                    // last_comma_pos is only updated at depth 0.
                     let raw_end = self.current;
                     if let Some(comma_pos) = last_comma_pos {
                         let after_comma = self.slice_source(comma_pos + 1, raw_end);
@@ -2162,14 +2124,14 @@ impl<'a> Scanner<'a> {
                             let idx_end =
                                 raw_end - (after_comma.len() - after_comma.trim_end().len());
                             no_as_index_span = Some(self.span(idx_start, idx_end));
-                            self.advance(); // consume `}`
+                            self.advance();
                             break;
                         }
                     }
                     let raw = self.slice_source(start_collection_pos, raw_end);
                     let trimmed_end = start_collection_pos + raw.trim_end().len();
                     collection_span = Some(self.span(start_collection_pos, trimmed_end));
-                    self.advance(); // consume `}`
+                    self.advance();
                     break;
                 }
                 ',' if depth == 0 => {
@@ -2186,7 +2148,6 @@ impl<'a> Scanner<'a> {
                         item_span = Some(self.collect_each_context()?);
                         break;
                     }
-                    // else: keep scanning (identifier was part of the expression)
                 }
                 _ => {
                     self.advance();
@@ -2199,16 +2160,12 @@ impl<'a> Scanner<'a> {
                 .as_err();
         };
 
-        // last_char is only meaningful when item_span was parsed (collect_each_context sets self.prev)
         let last_char = if item_span.is_some() {
             self.slice_source(self.prev, self.prev + 1)
         } else {
-            // No binding: `}` was already consumed by the loop above
             ""
         };
 
-        // Parse optional index: `, i`
-        // no_as_index_span is pre-populated for `{#each expr, index}` (no `as` context).
         let mut index_span = no_as_index_span;
         let mut key_span = None;
 
@@ -2226,7 +2183,6 @@ impl<'a> Scanner<'a> {
             index_span = Some(self.span(idx_start, idx_start + idx_name.len()));
             self.skip_whitespace();
 
-            // After index, check for key `(expr)` or closing `}`
             if self.peek() == Some('(') {
                 key_span = Some(self.collect_key_expression(false)?);
                 self.skip_whitespace();
@@ -2240,7 +2196,6 @@ impl<'a> Scanner<'a> {
                 .as_err();
             }
         } else if last_char == "(" {
-            // Key expression directly after item (no index), `(` already consumed
             key_span = Some(self.collect_key_expression(true)?);
             self.skip_whitespace();
 
@@ -2252,7 +2207,6 @@ impl<'a> Scanner<'a> {
                 .as_err();
             }
         }
-        // else: `}` — no index, no key
 
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection_span,
@@ -2265,13 +2219,10 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    /// Collect key expression in `{#each ... (key)}`.
-    /// If `open_consumed` is true, `(` was already consumed by the caller.
-    /// If false, `(` is expected at the current peek position and will be consumed.
     fn collect_key_expression(&mut self, open_consumed: bool) -> Result<Span, Diagnostic> {
         if !open_consumed {
             debug_assert_eq!(self.peek(), Some('('));
-            self.advance(); // consume '('
+            self.advance();
         }
 
         let start = self.current;
@@ -2285,8 +2236,6 @@ impl<'a> Scanner<'a> {
         Ok(self.trimmed_span(start, end))
     }
 
-    /// Collect item expression in each-block context.
-    /// Stops on `,` or `}` at depth 0. Tracks `{}` and `[]` nesting for destructuring.
     fn collect_each_context(&mut self) -> Result<Span, Diagnostic> {
         let start = self.current;
 
@@ -2300,10 +2249,6 @@ impl<'a> Scanner<'a> {
         Ok(self.trimmed_span(start, end))
     }
 
-    /// Parse `{#await expr}`, `{#await expr then val}`, or `{#await expr catch err}`.
-    ///
-    /// The expression ends where a top-level `then` or `catch` keyword appears
-    /// (preceded and followed by whitespace), or at the closing `}`.
     fn start_await_tag(&mut self) -> Result<(), Diagnostic> {
         self.skip_whitespace();
 
@@ -2313,7 +2258,6 @@ impl<'a> Scanner<'a> {
 
         match scan.await_clause {
             Some("then") => {
-                // Short form: {#await expr then val}
                 self.skip_whitespace();
                 let binding_span = if self.peek() == Some('}') {
                     self.advance();
@@ -2330,7 +2274,6 @@ impl<'a> Scanner<'a> {
                 self.enter_fragment();
             }
             Some("catch") => {
-                // Short form: {#await expr catch err}
                 self.skip_whitespace();
                 let binding_span = if self.peek() == Some('}') {
                     self.advance();
@@ -2347,7 +2290,6 @@ impl<'a> Scanner<'a> {
                 self.enter_fragment();
             }
             _ => {
-                // Implicit form: {#await expr}
                 self.add_token(TokenType::StartAwaitTag(token::StartAwaitTag {
                     expression_span,
                     value_span: None,
@@ -2361,9 +2303,6 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    /// Collect a binding pattern for `{:then val}` / `{:catch err}` / `{#await expr then val}`.
-    /// Handles simple identifiers and destructured patterns like `{name, age}` or `[a, b]`.
-    /// Stops at `}` at depth 0 (closing the tag).
     fn collect_await_binding(&mut self) -> Result<Span, Diagnostic> {
         let start = self.current;
 
@@ -2378,8 +2317,6 @@ impl<'a> Scanner<'a> {
     }
 }
 
-/// Returns `true` if `s` is a valid JS identifier (non-empty, starts with `_`/`$`/alpha,
-/// rest are `_`/`$`/alphanumeric). Used to detect the `{#each expr, index}` no-`as` form.
 fn is_js_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {

@@ -524,7 +524,7 @@ fn walk_attributes(
                     id: a.id,
                     kind: ParentKind::LetDirectiveLegacy,
                 });
-                // LetDirectiveLegacy carries a binding StmtRef, not an expression.
+
                 if let Some(stmt_ref) = a.binding.as_ref() {
                     dispatch_stmt(visitors, a.id, stmt_ref, ctx);
                 }

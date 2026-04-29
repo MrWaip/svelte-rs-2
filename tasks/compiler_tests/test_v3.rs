@@ -1,12 +1,12 @@
 use std::{
-    fs::{read_to_string, File},
+    fs::{File, read_to_string},
     io::Write,
     path::Path,
 };
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, compile, compile_module};
 
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
@@ -66,10 +66,10 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
                 _ => Namespace::Html,
             };
         }
-        if let Some(exp) = config.get("experimental") {
-            if let Some(async_val) = exp.get("async").and_then(|v| v.as_bool()) {
-                opts.experimental.async_ = async_val;
-            }
+        if let Some(exp) = config.get("experimental")
+            && let Some(async_val) = exp.get("async").and_then(|v| v.as_bool())
+        {
+            opts.experimental.async_ = async_val;
         }
     }
 
@@ -899,61 +899,51 @@ fn legacy_props_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: top-level legacy let bindings do not lower to mutable_source/get/set legacy state (analyze/codegen, needs infrastructure)"]
 fn legacy_reactivity_let_basic() {
     assert_compiler("legacy_reactivity_let_basic");
 }
 
 #[rstest]
-#[ignore = "missing: top-level legacy var bindings need mutable_source lowering with safe_get reads (analyze/codegen, moderate)"]
 fn legacy_reactivity_var_basic() {
     assert_compiler("legacy_reactivity_var_basic");
 }
 
 #[rstest]
-#[ignore = "missing: legacy member mutations need mutate/get lowering for top-level state locals (analyze/codegen, moderate)"]
 fn legacy_reactivity_member_mutation() {
     assert_compiler("legacy_reactivity_member_mutation");
 }
 
 #[rstest]
-#[ignore = "missing: legacy array self-assignment invalidation is not lowered through get/set state helpers (analyze/codegen, moderate)"]
 fn legacy_reactivity_array_self_assign() {
     assert_compiler("legacy_reactivity_array_self_assign");
 }
 
 #[rstest]
-#[ignore = "missing: destructured top-level legacy bindings do not lower through legacy state declarators (analyze/codegen, needs infrastructure)"]
 fn legacy_reactivity_destructure() {
     assert_compiler("legacy_reactivity_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: statement discovery and client lowering (analyze/codegen, needs infrastructure)"]
 fn legacy_reactive_assignment_basic() {
     assert_compiler("legacy_reactive_assignment_basic");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: dependency capture for declared let/var locals (analyze/codegen, needs infrastructure)"]
 fn legacy_reactive_assignment_declared_dependency() {
     assert_compiler("legacy_reactive_assignment_declared_dependency");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: block bodies and destructuring targets (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_block_destructure() {
     assert_compiler("legacy_reactive_assignment_block_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: coarse dependency reads for props and reserved prop bags (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_coarse_deps() {
     assert_compiler("legacy_reactive_assignment_coarse_deps");
 }
 
 #[rstest]
-#[ignore = "missing: legacy $: import dependency wrapping and topological ordering (analyze/codegen, moderate)"]
 fn legacy_reactive_assignment_import_topology() {
     assert_compiler("legacy_reactive_assignment_import_topology");
 }

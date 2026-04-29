@@ -1,27 +1,10 @@
-//! `{#key}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `KeyBlock` — record its
-//! `BlockSemantics::Key(...)` payload — then recurse into its body
-//! fragment through the same walker so nested blocks of every migrated
-//! kind get visited inside a single template walk.
-//!
-//! Shape is minimal: Key branches on a single async axis (the key
-//! expression's `has_await` + blocker set). No flattening, no
-//! per-branch data, no memoization (reference compiler never wraps the
-//! key in `$.derived` — it is always a direct `() => expr` thunk).
-
 use super::super::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
 use super::common::expression_async_facts;
 use super::walker::Ctx;
 use smallvec::SmallVec;
 use svelte_ast::KeyBlock;
 
-/// Populate `BlockSemantics::Key` for this block and recurse into its
-/// body fragment.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
-    // Walker owns recursion: descend into the body first so nested
-    // blocks (of any migrated kind) populate inside the same walk.
     ctx.visit_fragment(block.fragment);
 
     let (has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
