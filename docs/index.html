@@ -49,6 +49,7 @@
                 <div class="brand">
                     <span class="logo" aria-hidden="true"></span>
                     <h1>Rust Svelte</h1>
+                    <span class="brand-version" data-version>v0.4.2</span>
                 </div>
                 <nav class="mode-tabs" role="tablist" aria-label="Compilation mode">
                     <button data-mode="component" class="active" role="tab">Component</button>
@@ -61,6 +62,7 @@
                     <button class="icon-btn" data-action="settings" aria-label="Settings" title="Compiler options">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
+                    <span class="actions-divider" aria-hidden="true"></span>
                     <button class="icon-btn" data-action="theme" aria-label="Toggle theme" title="Toggle theme">
                         <svg class="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                         <svg class="theme-icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -127,14 +129,42 @@
 
             <aside class="settings-drawer" data-open="false" aria-label="Compiler options">
                 <header class="drawer-head">
-                    <h2>Compiler options</h2>
-                    <button class="icon-btn" data-action="close-settings" aria-label="Close">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
+                    <div class="drawer-head-row">
+                        <h2>Compiler options</h2>
+                        <button class="icon-btn" data-action="close-settings" aria-label="Close">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <span class="drawer-subtitle">svelte/compiler · v5.4.0</span>
                 </header>
+                <div class="preset-bar">
+                    <span class="preset-label">Preset</span>
+                    <div class="preset-chips" role="tablist">
+                        <button class="preset-chip" data-preset="default" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Default
+                        </button>
+                        <button class="preset-chip" data-preset="legacy" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Legacy
+                        </button>
+                        <button class="preset-chip" data-preset="ssr" role="tab">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            SSR
+                        </button>
+                        <span class="preset-chip" data-preset="custom" role="tab" aria-disabled="true">
+                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                            Custom
+                        </span>
+                    </div>
+                </div>
                 <div class="drawer-body">
-                    <fieldset>
-                        <legend>Output</legend>
+                    <fieldset data-section="output">
+                        <legend>
+                            <span class="legend-title">Output</span>
+                            <span class="legend-count" data-section-count></span>
+                            <span class="legend-mod" data-section-mod hidden></span>
+                        </legend>
                         <label class="select">
                             <span>generate</span>
                             <select data-opt="generate">
@@ -153,8 +183,12 @@
                         <label class="toggle"><input type="checkbox" data-opt="hmr"> <span>hmr</span></label>
                         <label class="toggle"><input type="checkbox" data-opt="discloseVersion"> <span>discloseVersion</span></label>
                     </fieldset>
-                    <fieldset data-component-only>
-                        <legend>Component</legend>
+                    <fieldset data-component-only data-section="component">
+                        <legend>
+                            <span class="legend-title">Component</span>
+                            <span class="legend-count" data-section-count></span>
+                            <span class="legend-mod" data-section-mod hidden></span>
+                        </legend>
                         <label class="toggle"><input type="checkbox" data-opt="runes" checked> <span>runes</span></label>
                         <label class="toggle"><input type="checkbox" data-opt="customElement"> <span>customElement</span></label>
                         <label class="toggle"><input type="checkbox" data-opt="preserveComments"> <span>preserveComments</span></label>
@@ -164,9 +198,23 @@
                             <input type="text" data-opt="name" placeholder="App">
                         </label>
                     </fieldset>
-                    <button class="btn-primary" data-action="reset-options">Reset to defaults</button>
                 </div>
+                <footer class="drawer-foot">
+                    <span class="drawer-foot-meta" data-overrides-count>0 overrides</span>
+                    <button class="btn-ghost" data-action="reset-options">Reset</button>
+                    <button class="btn-primary" data-action="close-settings">Apply &amp; close</button>
+                </footer>
             </aside>
+
+            <nav class="mobile-actions" aria-label="Quick actions">
+                <button class="mobile-action mobile-action-primary" data-action="recompile">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span data-recompile-label>Recompile</span>
+                </button>
+                <button class="mobile-action" data-action="share" aria-label="Copy share link">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </button>
+            </nav>
         </div>
 
         <script type="module" src="./src/main.js"></script>
