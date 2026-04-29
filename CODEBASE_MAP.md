@@ -6,14 +6,16 @@ Rust компилятор Svelte v5. Компилирует `.svelte` → client
 
 ```
 source: &str
-  → svelte_parser::parse_with_js → (Component, ParserResult, Vec<Diagnostic>)
+  → svelte_parser::parse_with_js → (Component, JsAst, Vec<Diagnostic>)
   → svelte_parser::parse_css_block → Option<(StyleSheet, Vec<Diagnostic>)>
-  → svelte_analyze::analyze_with_options → (AnalysisData, ParserResult, Vec<Diagnostic>)
+  → svelte_analyze::analyze_with_options → (AnalysisData, JsAst, Vec<Diagnostic>)
   → svelte_analyze::analyze_css_pass → mutates AnalysisData (used selectors, hash, keyframes)
   → svelte_transform_css::transform_css_with_usage → String (scoped CSS)
-  → svelte_transform::transform_component → (mutates ParserResult in-place, returns TransformData)
-  → svelte_codegen_client::generate → String (JS)
+  → svelte_transform::transform_component(&mut CompileContext, &TransformOptions) → TransformData (mutates JsAst in place)
+  → svelte_codegen_client::generate(CompileContext, &CodegenOptions, TransformData, css) → String (JS)
 ```
+
+Transform and codegen take a shared `svelte_types::CompileContext { alloc, component, analysis, js_arena, ident_gen }`.
 
 Entry point: `svelte_compiler::compile` / `svelte_compiler::compile_module`
 
@@ -85,9 +87,11 @@ Entry point: `svelte_compiler::compile` / `svelte_compiler::compile_module`
 ### `svelte_parser`
 `crates/svelte_parser/src/lib.rs` — парсер + JS pre-parsing.
 
-Public API: `parse_with_js` (Svelte source → Component + ParserResult), `parse_module` (`.svelte.js`/`.svelte.ts`), `parse_css_block` (топ-уровневый `<style>` → `svelte_css::StyleSheet`).
+Public API: `parse_with_js` (Svelte source → Component + JsAst), `parse_module` (`.svelte.js`/`.svelte.ts`), `parse_css_block` (топ-уровневый `<style>` → `svelte_css::StyleSheet`).
 
-Shared types в `types.rs`: `ParserResult` (instance/module/standalone OXC Programs + template expressions/statements keyed by span offset), `ExprHandle`, `StmtHandle`, `ParsedCeConfig`, `CePropConfig`, `CeShadowMode`.
+Shared types в `types.rs`: `JsAst<'a>` (instance/module OXC `Program`s + template expressions/statements; pending по span-offset, после bind — по `OxcNodeId`), `ParsedCeConfig`, `CePropConfig`, `CeShadowMode`.
+
+`svelte_ast` владеет `ExprRef` / `StmtRef` (late-bound `OxcNodeId`); сами OXC `Expression`/`Statement` хранит `JsAst` в caller-owned `Allocator`.
 
 Подмодули: `scanner/`, `parse_js.rs`, `walk_js.rs` (обход template для сбора JS-фрагментов), `html.rs` (HTML character reference decoding), `html_entities.rs`, `attr_convert.rs`, `handlers.rs`, `svelte_elements.rs`.
 
@@ -134,21 +138,21 @@ CSS analysis вызывается отдельно из `svelte_compiler` чер
 
 **Ключевые модули:**
 - `lib.rs` — entry points, `AnalyzeOptions`, `RuntimePlan` builder
-- `passes/` — все analysis passes (по одному модулю на pass)
+- `passes/` — все analysis passes (по одному модулю на pass) + `executor.rs`, `bundles.rs` (объединённые multi-visitor walks для template execution stage), `js_analyze/` (script body / runes / async blockers / pickled awaits / needs_context / expression_info), `template_validation/` (включая `a11y.rs`), `dynamism.rs`, `element_flags.rs`, `content_types.rs`, `bind_semantics.rs`
 - `block_semantics/` — типы для control-flow блоков (`AwaitBlockSemantics`, `EachBlockSemantics`, `IfBlockSemantics`, `KeyBlockSemantics`, `SnippetBlockSemantics`, `RenderTagBlockSemantics`, `ConstTagBlockSemantics`)
 - `reactivity_semantics/` — reactive declarations и signals
-- `types/` — `data.rs` (`AnalysisData`), `script.rs`
+- `types/` — `data/` (модульный `AnalysisData` + поддержки: `analysis`, `async_data`, `attr_index`, `codegen_view`, `css`, `directive_modifier_flags`, `element_facts`, `elements`, `expr`, `fragment_facts`, `fragment_namespaces`, `ignore`, `pickled_await_offsets`, `proxy_state_inits`, `rich_content_facts`, `runtime`, `script_rune_calls`, `template_data`, `template_element_index`, `template_topology`), `script.rs`, `markers.rs`, `node_table.rs`
 - `scope.rs` — `ComponentScoping` (wraps `ComponentSemantics`)
 - `validate/`, `passes/template_validation/` — семантические и template-level проверки (включая a11y warnings)
 - `walker/` — общая инфраструктура обхода template
 - `css.rs`, `passes/css_analyze.rs`, `passes/css_prune.rs`, `passes/css_prune_index.rs` — CSS pipeline
 - `utils/` — `IdentGen`, `script_info`, helpers (`is_capture_event`, `is_delegatable_event`, `is_passive_event`, `is_regular_dom_property`, `normalize_regular_attribute_name`, etc.)
 
-**Ключевые типы данных** (`types/data.rs`):
+**Ключевые типы данных** (`types/data/`):
 - `AnalysisData<'a>` — центральная side table, keyed by `NodeId`. Содержит ScriptAnalysis, TemplateAnalysis, ReactivitySemantics, BlockAnalysis, ElementAnalysis, FragmentFacts, RichContentFacts, CssAnalysis, CodegenView, RuntimePlan, и десятки специализированных side-tables
 - `ElementFacts` владеет нормализованными per-element attribute facts (`AttrIndex` — внутренний by-name primitive). Consumer-pass’ы используют `AnalysisData` accessors (`has_attribute`, `attribute`, `string_attribute`, `bind_directive`, `expression_attribute`, etc.), не `attr_index(...)` напрямую
-- `ExpressionInfo` / `ExpressionKind` / `ExprHandle` / `ExprDeps` / `ExprRole` / `ExprSite` — per-expression analysis
-- `ParsedExprs<'a>` (через `ParserResult<'a>`) — OXC Expression ASTs
+- `ExpressionInfo` / `ExpressionKind` / `ExprDeps` / `ExprRole` / `ExprSite` — per-expression analysis (адресуется по `OxcNodeId` JS-узла, привязанного через `ExprRef`/`StmtRef`)
+- `JsAst<'a>` (re-export из `svelte_parser`) — OXC `Program`s + bound expression/statement nodes
 - `RuntimePlan` — финальный план для codegen (`needs_push`, `has_component_exports`, `has_bindable`, `has_stores`, etc.)
 - `RuntimeRuneKind`, `OptimizedRuneSemantics` — rune-related semantics
 - `CssAnalysis` — hash, keyframes, used_selectors, inject_styles
@@ -159,8 +163,8 @@ CSS analysis вызывается отдельно из `svelte_compiler` чер
 `crates/svelte_codegen_client/src/` — generates client-side JS from AST + AnalysisData.
 
 **Top-level:**
-- `lib.rs` — `generate()` entry point
-- `context.rs` — `Ctx<'a>` (центральный контекст: ast_builder, component, analysis, transform_data, ident_gen, module_hoisted)
+- `lib.rs` — `generate(CompileContext, &CodegenOptions, TransformData, css)` и `generate_module(...)` entry points
+- `context.rs` — `Ctx<'a> = { query: CodegenQuery, state: CodegenState }` (Deref/DerefMut в `state`). `CodegenQuery`: component + analysis + per-id accessors (`element`, `if_block`, `each_block`, `expression`, `expr_deps`, `runtime_plan`, …). `CodegenState`: `Builder`, `JsAst`, `IdentGen`, `TransformData`, hoisted statements, delegated events, css text, dev/async flags
 - `custom_element.rs` — custom element wrapper
 
 **`script/`** — script-side codegen
@@ -183,17 +187,24 @@ CSS analysis вызывается отдельно из `svelte_compiler` чер
 ### `svelte_transform`
 `crates/svelte_transform/src/` — mutates OXC expression ASTs in-place (после analyze, до generate).
 
-Перезаписывает: rune references → `$.get/set/update`, prop sources → thunk calls, prop non-sources → `$$props.name`, each-block context → `$.get`, snippet params → thunk calls, destructured const aliases → `$.get(tmp).prop`. Также: TS-cleanup, derived calls, inspect runes, location injection (dev mode).
+Перезаписывает: rune references → `$.get/set/update`, prop sources → thunk calls, prop non-sources → `$$props.name`, each-block context → `$.get`, snippet params → thunk calls, destructured const aliases → `$.get(tmp).prop`. Также: TS-cleanup, derived calls, inspect runes, location injection (dev mode), legacy `$:` reactive statements, legacy props/state.
 
-Public API: `transform_component(...) → TransformData`, `transform_script(...)`, `compute_line_col`, `sanitize_location`, `IgnoreQuery`, `TransformScriptOutput`.
+Public API: `transform_component(&mut svelte_types::CompileContext, &svelte_types::TransformOptions) → TransformData`, `transform_script(...)`, `compute_line_col`, `sanitize_location`, `IgnoreQuery`, `TransformScriptOutput`.
 
 **Структура:**
 - `lib.rs` — entry, `transform_component`
 - `data.rs` — `TransformData` (output)
 - `rune_refs.rs` — rune reference rewrites
-- `transformer/` — `mod.rs`, `entry.rs`, `template_entry.rs`, `model.rs`, `assignments.rs`, `derived.rs`, `inspect.rs`, `location.rs`, `props.rs`, `rewrites.rs`, `runes.rs`, `state.rs`, `statement_passes.rs`, `template_rewrites.rs`, `ts_cleanup.rs`
+- `transformer/` — `mod.rs`, `entry.rs`, `template_entry.rs`, `template_rewrites.rs`, `model.rs`, `builders.rs`, `assignments.rs`, `derived.rs`, `inspect.rs`, `location.rs`, `props.rs`, `props_legacy.rs`, `rewrites.rs`, `runes.rs`, `state.rs`, `state_legacy.rs`, `legacy_reactive.rs`, `statement_passes.rs`, `ts_cleanup.rs`
 
-Template entry собирает `ExprHandle`/`StmtHandle` через структурный обход Svelte-AST, затем `oxc_traverse` гоняет `ComponentTransformer` по reusable synthetic `Program`.
+Template entry собирает `ExprRef`/`StmtRef` через структурный обход Svelte-AST, читает узлы по `OxcNodeId` из `JsAst`, затем `oxc_traverse` гоняет `ComponentTransformer` по reusable synthetic `Program`.
+
+---
+
+### `svelte_types`
+`crates/svelte_types/src/lib.rs` — общие типы для transform/codegen/compiler.
+
+Публикует `CompileContext<'a, 'ctx> { alloc, component, analysis, js_arena, ident_gen }` (мутабельно прокидывает `JsAst` и `IdentGen` вниз по pipeline'у), `TransformOptions { dev }`, `CodegenOptions { dev, experimental_async, filename }`.
 
 ---
 
@@ -225,19 +236,21 @@ Codegen завёрнут в `catch_unwind` для надёжности; ошиб
 ```
 svelte_span → svelte_diagnostics → svelte_ast → svelte_css
   → svelte_component_semantics → svelte_parser → svelte_ast_builder
-  → svelte_analyze → svelte_transform → svelte_transform_css
-  → svelte_codegen_client → svelte_compiler → { wasm_compiler, napi_compiler }
+  → svelte_analyze → svelte_transform_css
+  → svelte_types → { svelte_transform, svelte_codegen_client }
+  → svelte_compiler → { wasm_compiler, napi_compiler }
 ```
 
 ## Ключевые инварианты
 
-- OXC Expression ASTs живут в `ParsedExprs<'a>` (аллокатор принадлежит caller'у), не выходят в публичный API
+- OXC Expression/Statement ASTs живут в `JsAst<'a>` (аллокатор принадлежит `svelte_compiler`), не выходят в публичный API; в analyze они адресуются через `OxcNodeId`, привязанный в `ComponentSemanticsBuilder` к `ExprRef`/`StmtRef` Svelte-AST
 - `ComponentScoping` — owned, lifetime-free (`ComponentSemantics` внутри)
-- Все поля `AnalysisData` — owned, без lifetime параметров (кроме `ParsedExprs<'a>`)
-- AST хранит `Span`; parser парсит JS один раз в `ParsedExprs`; transform мутирует; codegen использует
+- Все поля `AnalysisData` — owned, без lifetime параметров (кроме `JsAst<'a>`-зависимостей через analyze API)
+- AST хранит `Span`; parser парсит JS один раз в `JsAst`; transform мутирует; codegen использует
 - `u32` везде где возможно (`NodeId`, `FragmentId`, `Span`, `CssNodeId`)
 - `ConcatPart` (svelte_ast) и аналоги в svelte_analyze — **разные типы** для разных фаз
 - Sub-struct поля — `pub(crate)`, снаружи через методы
 - Каждый analyze pass — изолированный модуль; зависимости описаны через `DataToken`, выполнение в фиксированном порядке стадий
 - CSS pipeline отдельный: `svelte_css` (parser/AST/printer) и `svelte_transform_css` (мутации) — analyze CSS интегрирован в `svelte_analyze::passes::css_*`, но запускается из `svelte_compiler`
+- Transform и codegen получают одинаковый `svelte_types::CompileContext` — единый владелец `Allocator`/`JsAst`/`IdentGen` на всю оставшуюся часть pipeline'а
 - Codegen — «dumb»: всю логику решает analyze, codegen только эмитит. Transform только мутирует JS AST, не делает классификацию.
