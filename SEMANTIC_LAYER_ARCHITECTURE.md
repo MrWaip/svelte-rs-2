@@ -57,19 +57,15 @@ same bar.
   `ReferenceId`, `SymbolId`, enum variants, bools, numeric payloads. No
   `String`, `Box<str>`, `&str`, `Cow<str>` in stored facts or answers. Text is
   resolved at consumption time via identity-keyed lookups.
-- **Parser-handle ban.** `StmtHandle` and `ExprHandle` are parser-internal
-  indices into `ParserResult.stmts` / `.exprs` and **must not** appear in
-  cluster payloads (`block_semantics::*`, `attribute_semantics::*`,
-  `element_shape_semantics::*`, …). Payloads carry `OxcNodeId` as the
-  sole AST hook; consumers resolve the statement / expression on demand
-  through `ComponentSemantics::js_storage()` / the equivalent `kind(id)` /
-  `node(id)` lookup, not through handle tables. Handles remain legal
-  inside the parser and analyze-local side tables that own their own
-  identity (e.g. `TemplateSemanticsData::snippet_stmt_handles`), but
-  they never cross into a cluster answer variant. Rationale: handles
-  are a second identity system layered over the same AST — hauling them
-  into cluster payloads forces consumers to mix two identities and
-  turns payloads into JSON-shuffling thin wrappers over `ParserResult`.
+- **`OxcNodeId` is the sole AST hook.** Cluster payloads carry `OxcNodeId`
+  for any reference into JS AST; consumers resolve the statement /
+  expression on demand through `JsAst::expr(id)` / `JsAst::stmt(id)`.
+  The historical `StmtHandle` / `ExprHandle` parser-side indices (and the
+  `ParserResult.stmts` / `.exprs` tables they pointed into) have been
+  removed — `JsAst` is now keyed by `OxcNodeId` directly. Do not
+  reintroduce a parallel handle system layered over the same AST: a
+  second identity forces consumers to mix two systems and turns
+  payloads into JSON-shuffling thin wrappers.
 - **No binding-pattern repack.** `BindingPattern` subtrees
   (`$props`, `$state`, `$derived`, `{@const}`, `{#snippet}` params,
   `{#each … as pat}`, `{#await … then pat}`, `let:` directives, etc.)
@@ -103,7 +99,7 @@ same bar.
   never the four underlying facts.
 - **Dependency Boundary.** Each cluster builds on `ComponentSemantics` and AST,
   not on legacy Svelte-specific classification tables. Concretely: a cluster
-  builder's signature accepts only AST (`&Component` and `&ParserResult` —
+  builder's signature accepts only AST (`&Component` and `&JsAst` —
   the latter is the parser's pre-parsed JS store for template spans and is
   considered part of the AST surface, not a separate cluster),
   `ComponentSemantics`, `ReactivitySemantics`, and narrow analyzer-output
@@ -436,114 +432,41 @@ Surfaces marked deprecated as the first step of each kind migration:
   owning cluster's payload for higher-level answers.
 - Attribute dynamism / ExpressionInfo bit combinations re-derived in consumers
 - Element-kind AST dispatch in template traversal
-- `FragmentItem` — duplicates Block / ElementShape node-kind
-  discrimination; see "Prerequisite: Kill `FragmentItem`" below
 - Async-specific side tables (`AsyncEmissionPlan`, pickled-await bookkeeping)
+
+Already removed:
+- `FragmentItem` / `LoweredFragment` — the codegen-side dispatcher
+  that conflated lowering facts with node-kind discrimination has been
+  deleted. Codegen now walks fragment children through
+  `svelte_codegen_client::codegen::fragment::prepare` (emit-time
+  hoisting + whitespace normalization + `ContentStrategy`) without
+  duplicating Block / ElementShape kind dispatch.
 
 Deletion is gradual and per-kind; parallel ownership is contained by the
 `#[deprecated]` warning.
 
-## Prerequisite: Kill `FragmentItem`
+## Historical: `FragmentItem` killed
 
-The codegen consumer path in `svelte_codegen_client` does not walk the
-Svelte AST directly. It walks `LoweredFragment { items: Vec<FragmentItem> }`
-produced by `svelte_analyze`, where `FragmentItem` is an enum that
-discriminates template items by AST node kind:
+The earlier prerequisite slice — replacing the analyze-side
+`LoweredFragment { items: Vec<FragmentItem> }` dispatcher with a
+codegen-side fragment plan that does not duplicate Block / ElementShape
+node-kind discrimination — has landed.
 
-```rust
-pub enum FragmentItem {
-    Element(NodeId),
-    ComponentNode(NodeId),
-    IfBlock(NodeId),
-    EachBlock(NodeId),
-    AwaitBlock(NodeId),
-    KeyBlock(NodeId),
-    RenderTag(NodeId),
-    HtmlTag(NodeId),
-    SvelteElement(NodeId),
-    SvelteBoundary(NodeId),
-    SlotElementLegacy(NodeId),
-    SvelteFragmentLegacy(NodeId),
-    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
-}
-```
+Today fragment children are walked in
+`svelte_codegen_client::codegen::fragment` (`mod.rs`, `prepare.rs`,
+`process_children.rs`, `types.rs`). `prepare` does the genuine
+lowering work — hoist structural nodes (snippets, const-tags,
+debug-tags, `<svelte:head>`, `<svelte:window>` / `<svelte:document>` /
+`<svelte:body>`, head titles), trim whitespace per Svelte rules,
+coalesce adjacent `Text` + `{expression}` into a single `Concat`, and
+classify the result into `ContentStrategy` — and dispatches each child
+through Block Semantics + AST node-kind matches without going through a
+parallel discriminator.
 
-This enum conflates two very different things:
-
-1. **Real lowering facts that AST does not carry.** `TextConcat` merges a
-   run of adjacent `Text` / `ExpressionTag` / `Text` nodes into a single
-   runtime `$.set_text` target; lowering also filters hoisted nodes
-   (`SnippetBlock`, `SvelteHead`, `{@const}`, `{@debug}`, `<svelte:window>`,
-   whitespace-only text) and normalizes sibling order per the reference
-   compiler's whitespace rules. These are genuine additions over AST.
-2. **Node-kind discrimination that Block / ElementShape Semantics now
-   own.** Every `FragmentItem::*Block(id)` / `*Tag(id)` / `*Element(id)` /
-   `ComponentNode(id)` / `SvelteBoundary(id)` variant is redundant with a
-   one-query `block_semantics(id)` or `element_shape_semantics(id)` lookup.
-
-The consequence: as long as `FragmentItem` is the codegen dispatcher, a
-migrated cluster cannot produce a clean root consumer point. The Root
-Consumer Migration Rule is violated by construction — every block-kind
-emission currently starts at a `match FragmentItem::*` site, and a
-`match block_semantics(id)` inside a single FragmentItem arm is a
-meaningless narrowing (one-variant match inside a variant). The form the
-architecture actually wants is:
-
-```rust
-for &node_id in fragment_plan {  // plan = filtered, ordered NodeIds + TextConcat pseudo-items
-    match analysis.block_semantics(node_id) {
-        BlockSemantics::Each(sem) => gen_each_block(ctx, node_id, sem, ...),
-        BlockSemantics::If(sem)   => gen_if_block(...),
-        BlockSemantics::Await(..) => gen_await_block(...),
-        ...
-        BlockSemantics::NonSpecial => match analysis.element_shape_semantics(node_id) {
-            ElementShapeSemantics::Html(..) => process_element(...),
-            ElementShapeSemantics::Component(..) => gen_component(...),
-            ...
-        }
-    }
-}
-```
-
-This is not achievable inside the Block Semantics migration. It requires
-a separate initiative:
-
-### Separate slice: **kill `FragmentItem`**
-
-Scope:
-- Reshape `LoweredFragment` to hold a plan of `NodeId`s (plus
-  `TextConcat` as an explicit pseudo-node or side table) without
-  duplicating node-kind discrimination.
-- Replace `FragmentItem::*` matches across `svelte_codegen_client`
-  (~250 call sites) and `svelte_analyze` consumers with Block / ElementShape
-  Semantics queries, falling back to AST node-kind reads only where the
-  cluster does not yet own the decision.
-- Preserve lowering's genuine work: whitespace collapse, hoisted-node
-  filtering, TextConcat merging, fragment-scoped flags consumed by
-  codegen (`ContentStrategy`, `has_dynamic_children`, etc.).
-- Remove `FragmentItem` once no consumer references it.
-
-Ordering vs. the semantic clusters:
-- **Precedes** end-to-end Block Semantics consumer migration. Until it
-  lands, block-kind consumer migrations can only land as transitional
-  `match block_semantics(id)` inserted inside the existing `FragmentItem`
-  dispatcher, which is tolerated but not the target form.
-- **Independent** of Attribute Semantics (attributes live on element
-  nodes, not on fragment items).
-- **Coordinates with** ElementShape Semantics: both need the semantic
-  dispatcher in codegen; landing ElementShape and the FragmentItem kill
-  in the same slice may be the simplest path.
-
-Migration unit: not a cluster. A dedicated infrastructure slice with its
-own spec. It does not add new semantic meaning; it removes a duplicated
-dispatcher that blocks the cluster migrations from reaching their target
-consumer shape.
-
-Until this slice lands, the Block Semantics payload is built and unit
-tested, but consumer code for block kinds either (a) reads the payload
-from inside a FragmentItem arm (acceptable transitional form), or
-(b) does not migrate its consumer at all and only lives as an
-analyzer-side contract (preferred when no clean consumer path exists).
+The target form for downstream cluster migrations is therefore already
+in place: each child resolves through `block_semantics(node_id)`
+first, then ElementShape (today still AST node-kind based, until that
+cluster lands).
 
 ## Open: Кто отдаёт семантику для ExpressionTag в шаблонах
 
