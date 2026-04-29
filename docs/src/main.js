@@ -17,10 +17,12 @@ import {
     bindDiagnosticsToggle,
     bindBenchmark,
     bindResizer,
+    bindMobileActions,
     setStatus,
     setParity,
     setPerf,
     setSpeedup,
+    setRecompileState,
 } from "./ui.js";
 
 const app = document.querySelector(".app");
@@ -76,6 +78,14 @@ bindBenchmark(app, () => {
         selection: { anchor: 0 },
     });
     runCompile();
+});
+bindMobileActions(app, {
+    onRecompile: () => runCompile(),
+    onShare: async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+        } catch { /* ignore */ }
+    },
 });
 
 let prev = store.get();
@@ -143,10 +153,13 @@ function runCompile() {
 
     if (!svelte.ok || (rust && !rust.ok)) {
         setParity(app, "error", "error");
+        setRecompileState(app, "error");
     } else if (rust && rust.js === svelte.js) {
         setParity(app, "match", "parity");
+        setRecompileState(app, "ok");
     } else {
         setParity(app, "diverged", "diverged");
+        setRecompileState(app, "ok");
     }
 
     const { rust: rustDiags, svelte: svelteDiags } = normalizeAll(

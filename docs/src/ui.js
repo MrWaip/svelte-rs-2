@@ -1,5 +1,27 @@
 import { saveOptions, saveTheme, DEFAULT_OPTIONS } from "./state.js";
 
+const SECTION_KEYS = {
+    output: ["generate", "css", "dev", "hmr", "discloseVersion"],
+    component: ["runes", "customElement", "preserveComments", "preserveWhitespace", "name"],
+};
+
+const PRESETS = {
+    default: { ...DEFAULT_OPTIONS },
+    legacy: { ...DEFAULT_OPTIONS, runes: false, hmr: false },
+    ssr: { ...DEFAULT_OPTIONS, generate: "server" },
+};
+
+function detectPreset(options) {
+    for (const [id, preset] of Object.entries(PRESETS)) {
+        if (Object.keys(preset).every((k) => options[k] === preset[k])) return id;
+    }
+    return "custom";
+}
+
+function countOverrides(options, keys = Object.keys(DEFAULT_OPTIONS)) {
+    return keys.filter((k) => options[k] !== DEFAULT_OPTIONS[k]).length;
+}
+
 export function bindModeTabs(app, store) {
     const buttons = app.querySelectorAll(".mode-tabs button[data-mode]");
     buttons.forEach((btn) => {
@@ -55,6 +77,10 @@ export function bindSettings(app, store) {
     });
 
     const inputs = drawer.querySelectorAll("[data-opt]");
+    const presetChips = drawer.querySelectorAll(".preset-chip");
+    const sectionEls = drawer.querySelectorAll("[data-section]");
+    const overridesMeta = drawer.querySelector("[data-overrides-count]");
+
     const sync = (options) => {
         inputs.forEach((input) => {
             const key = input.dataset.opt;
@@ -65,6 +91,35 @@ export function bindSettings(app, store) {
                 input.value = value ?? "";
             }
         });
+
+        const activePreset = detectPreset(options);
+        presetChips.forEach((chip) => {
+            const id = chip.dataset.preset;
+            chip.toggleAttribute("data-active", id === activePreset);
+        });
+
+        sectionEls.forEach((section) => {
+            const keys = SECTION_KEYS[section.dataset.section] ?? [];
+            const mod = countOverrides(options, keys);
+            const countEl = section.querySelector("[data-section-count]");
+            const modEl = section.querySelector("[data-section-mod]");
+            if (countEl) countEl.textContent = `${keys.length} fields`;
+            if (modEl) {
+                if (mod > 0) {
+                    modEl.textContent = `${mod} mod`;
+                    modEl.hidden = false;
+                } else {
+                    modEl.hidden = true;
+                }
+            }
+        });
+
+        if (overridesMeta) {
+            const total = countOverrides(options);
+            overridesMeta.textContent = total === 0
+                ? "matches defaults"
+                : `${total} override${total === 1 ? "" : "s"}`;
+        }
     };
 
     inputs.forEach((input) => {
@@ -81,17 +136,47 @@ export function bindSettings(app, store) {
         });
     });
 
+    presetChips.forEach((chip) => {
+        if (chip.hasAttribute("data-readonly")) return;
+        chip.addEventListener("click", () => {
+            const preset = PRESETS[chip.dataset.preset];
+            if (!preset) return;
+            const next = { ...preset };
+            store.set({ options: next });
+            saveOptions(next);
+        });
+    });
+
     app.querySelector('[data-action="reset-options"]').addEventListener("click", () => {
         const next = { ...DEFAULT_OPTIONS };
         store.set({ options: next });
         saveOptions(next);
-        sync(next);
     });
 
     sync(store.get().options);
     store.subscribe((s, prev) => {
         if (s.options !== prev.options) sync(s.options);
     });
+}
+
+export function bindMobileActions(app, { onRecompile, onShare }) {
+    const recompile = app.querySelector('[data-action="recompile"]');
+    const share = app.querySelector('[data-action="share"]');
+    if (recompile && onRecompile) recompile.addEventListener("click", onRecompile);
+    if (share && onShare) share.addEventListener("click", onShare);
+}
+
+export function setRecompileState(app, state) {
+    const btn = app.querySelector('[data-action="recompile"]');
+    const label = app.querySelector("[data-recompile-label]");
+    if (!btn) return;
+    if (state === "error") {
+        btn.dataset.state = "error";
+        if (label) label.textContent = "Fix errors";
+    } else {
+        delete btn.dataset.state;
+        if (label) label.textContent = "Recompile";
+    }
 }
 
 export function bindDiagnosticsToggle(app) {
