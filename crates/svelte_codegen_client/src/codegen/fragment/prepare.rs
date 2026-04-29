@@ -15,9 +15,6 @@ pub(super) fn prepare<'a>(
     ctx: &FragmentCtx<'a>,
     bucket: &mut HoistedBucket,
 ) -> (Vec<Child>, ContentStrategy) {
-    // LEGACY(svelte4): children with `slot="..."` on a ComponentNode belong to
-    // a named slot fragment emitted separately and must not be walked as part
-    // of the default `children` body.
     let exclude_slotted = ctx.role == svelte_ast::FragmentRole::ComponentChildren;
     let mut filtered: SmallVec<[&Node; 8]> = SmallVec::with_capacity(raw.len());
     for &id in raw {
@@ -69,11 +66,11 @@ pub(super) fn prepare<'a>(
     let filtered_slice: &[&Node] = if preserve {
         let mut end = filtered.len();
         while end > 0 {
-            if let Node::Text(t) = filtered[end - 1] {
-                if is_ws_only(t.value(ctx.source)) {
-                    end -= 1;
-                    continue;
-                }
+            if let Node::Text(t) = filtered[end - 1]
+                && is_ws_only(t.value(ctx.source))
+            {
+                end -= 1;
+                continue;
             }
             break;
         }
@@ -81,21 +78,21 @@ pub(super) fn prepare<'a>(
     } else {
         let mut start = 0;
         while start < filtered.len() {
-            if let Node::Text(t) = filtered[start] {
-                if is_ws_only(t.value(ctx.source)) {
-                    start += 1;
-                    continue;
-                }
+            if let Node::Text(t) = filtered[start]
+                && is_ws_only(t.value(ctx.source))
+            {
+                start += 1;
+                continue;
             }
             break;
         }
         let mut end = filtered.len();
         while end > start {
-            if let Node::Text(t) = filtered[end - 1] {
-                if is_ws_only(t.value(ctx.source)) {
-                    end -= 1;
-                    continue;
-                }
+            if let Node::Text(t) = filtered[end - 1]
+                && is_ws_only(t.value(ctx.source))
+            {
+                end -= 1;
+                continue;
             }
             break;
         }

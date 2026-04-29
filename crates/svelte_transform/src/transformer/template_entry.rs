@@ -1,11 +1,7 @@
-//! Template-side driver: wraps each template expression/statement handle
-//! in a reusable synthetic `Program` and runs the unified
-//! `ComponentTransformer` via `oxc_traverse`.
-
 use oxc_allocator::{Allocator, CloneIn};
-use oxc_ast::ast::Statement;
 use oxc_ast::AstBuilder;
-use oxc_span::{SourceType, SPAN};
+use oxc_ast::ast::Statement;
+use oxc_span::{SPAN, SourceType};
 use oxc_traverse::ReusableTraverseCtx;
 
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -119,33 +115,15 @@ pub(crate) fn run_template<'a>(
         );
     }
 
-    // Bind-directive expressions: build `SequenceExpression(getter_arrow, setter_arrow)`
-    // so codegen can emit `$.bind_*(target, get, set)` by trivial unpack.
-    //
-    // For `bind:value={expr}` we want:
-    //   get: () => <transformed_read(expr)>
-    //   set: ($$value) => <transformed_write(expr = $$value)>
-    //
-    // Running each sub-expression through the shared template transformer
-    // reuses the identifier-read, signal-assignment, store, prop, rest-prop
-    // and deep-store rewrites already keyed on `ReferenceSemantics`. Codegen
-    // no longer branches on rune / prop / store identity for bind emission.
     for (handle, owner) in bind_expr_handles {
         let Some(orig) = parsed.take_expr(handle) else {
             continue;
         };
 
-        // Setter LHS shares identity with the getter expression (same
-        // `reference_id`s), so we clone BEFORE transforming either side to
-        // keep both copies independent. `clone_in_with_semantic_ids`
-        // preserves `reference_id` / `symbol_id` — plain `clone_in` resets
-        // them to `None`, which would kill the signal-write rewrite on the
-        // setter's assignment LHS.
         let setter_lhs_expr = orig.clone_in_with_semantic_ids(alloc);
 
         transformer.template_owner_node = Some(owner);
 
-        // Getter: transform the read form of the expression.
         program.body.clear();
         program.body.push(ast.statement_expression(SPAN, orig));
         oxc_traverse::traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
@@ -158,11 +136,6 @@ pub(crate) fn run_template<'a>(
         };
         let getter_body = es.unbox().expression;
 
-        // Setter: build `<lhs> = $$value` and transform the whole assignment.
-        // The bind setter's LHS is always a primitive target (bound to a DOM
-        // property), so flag the traverse so `rewrite_signal_or_store_identifier_assignment`
-        // skips the proxy argument on the generated `$.set` call. Mirrors
-        // reference compiler's `is_primitive` check on BindDirective parents.
         let value_ident = b.rid_expr("$$value");
         let assign_target = b.expr_to_assignment_target(setter_lhs_expr);
         let assign_expr = b.assign_expr_raw(assign_target, value_ident);

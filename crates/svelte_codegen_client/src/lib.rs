@@ -111,8 +111,6 @@ pub fn generate<'a>(
         ));
     }
 
-    // LEGACY(svelte4): emit `const $$sanitized_props = $.legacy_rest_props($$props, [reserved keys])`
-    // and (if `$$restProps` is read) `const $$restProps = $.legacy_rest_props($$sanitized_props, [named keys])`.
     if ctx.query.needs_sanitized_legacy_props() {
         let arr = ctx.b.array_from_args(
             ctx.query
@@ -180,7 +178,7 @@ pub fn generate<'a>(
         let mut store_names: Vec<&str> = ctx
             .query
             .view
-            .iter_store_declarations()
+            .iter_store_bindings()
             .map(|(_, store)| scoping.symbol_name(store.base_symbol))
             .collect();
         store_names.sort();
@@ -247,33 +245,33 @@ pub fn generate<'a>(
             }
         }
 
-        if ctx.query.accessors() || runtime.has_ce_props {
-            if let Some(props_decl) = ctx.query.props() {
-                for prop in &props_decl.props {
-                    if prop.is_rest || prop.is_reserved() {
-                        continue;
-                    }
-                    let key: &str = ctx.b.alloc_str(&prop.prop_name);
-                    let local: &str = ctx.b.alloc_str(&prop.local_name);
-
-                    let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
-                    export_props.push(ObjProp::Getter(key, getter_expr));
-
-                    let default_expr = if ctx.query.runes() {
-                        prop.default_text
-                            .as_deref()
-                            .map(|text| ctx.b.parse_expression(text))
-                    } else {
-                        None
-                    };
-                    let setter_body = vec![
-                        ctx.b
-                            .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
-                        ctx.b
-                            .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
-                    ];
-                    export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
+        if (ctx.query.accessors() || runtime.has_ce_props)
+            && let Some(props_decl) = ctx.query.props()
+        {
+            for prop in &props_decl.props {
+                if prop.is_rest || prop.is_reserved() {
+                    continue;
                 }
+                let key: &str = ctx.b.alloc_str(&prop.prop_name);
+                let local: &str = ctx.b.alloc_str(&prop.local_name);
+
+                let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
+                export_props.push(ObjProp::Getter(key, getter_expr));
+
+                let default_expr = if ctx.query.runes() {
+                    prop.default_text
+                        .as_deref()
+                        .map(|text| ctx.b.parse_expression(text))
+                } else {
+                    None
+                };
+                let setter_body = vec![
+                    ctx.b
+                        .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
+                    ctx.b
+                        .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
+                ];
+                export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
             }
         }
 
@@ -288,7 +286,6 @@ pub fn generate<'a>(
         ));
     }
 
-    // LEGACY(svelte4): emit the `$.init(...)` call form decided by the analyzer.
     match runtime.legacy_init {
         svelte_analyze::LegacyInit::None => {}
         svelte_analyze::LegacyInit::Plain => {

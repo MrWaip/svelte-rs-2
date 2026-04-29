@@ -1,16 +1,5 @@
 use super::*;
 
-/// Legacy catch-all bag of per-expression facts collected by
-/// `collect_symbols`. Consumers that reach for it are rebuilding
-/// semantic meaning from scattered booleans — exactly what the semantic
-/// cluster migration aims to eliminate. The proper path for any new
-/// consumer question is:
-///
-/// - reactive per-reference decisions → `reactivity_semantics`
-/// - per-cluster higher-level answers → the owning cluster
-///   (`block_semantics` / `attribute_semantics` / `element_shape_semantics`)
-///
-/// This type is kept only while existing call sites are migrated away.
 #[deprecated(note = "ExpressionInfo is a legacy bag of facts. For new code: \
             use reactivity_semantics for per-reference decisions, or add \
             the needed higher-level answer to the owning semantic cluster \
@@ -21,10 +10,7 @@ pub struct ExpressionInfo {
     expr_role: Option<ExprRole>,
     ref_symbols: SmallVec<[SymbolId; 2]>,
     uses_legacy_slots: bool,
-    /// LEGACY(svelte4): true when expression contains a read of unresolved
-    /// `$$props` / `$$restProps`. Codegen consults this to add the
-    /// `$.deep_read_state` / `$.untrack` coarse-wrap around legacy member reads.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
+
     uses_legacy_sanitized_props: bool,
     has_store_ref: bool,
     has_side_effects: bool,
@@ -62,8 +48,6 @@ impl ExpressionInfo {
         }
     }
 
-    /// LEGACY(svelte4): builder hook — record `$$props` / `$$restProps` usage in this expression.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
     pub(crate) fn set_uses_legacy_sanitized_props(&mut self, value: bool) {
         self.uses_legacy_sanitized_props = value;
     }
@@ -93,10 +77,7 @@ impl ExpressionInfo {
 
     pub(crate) fn set_needs_context(&mut self, needs_context: bool) {
         self.needs_context = needs_context;
-        // `ClassifyNeedsContext` runs before `Dynamism`, so `ExprRole` is
-        // provisionally set to `DynamicWithContext` here and may be overwritten
-        // later by `set_expr_role_from_dynamism` (which preserves
-        // `DynamicWithContext` when `needs_context` is set).
+
         if self.expr_role == Some(ExprRole::RenderTag) {
             return;
         }
@@ -105,11 +86,6 @@ impl ExpressionInfo {
         }
     }
 
-    /// Applied by the `dynamism` pass after `DynamismData` is built. `ExprRole`
-    /// is deliberately non-authoritative: the bitsets on `DynamismData` are the
-    /// source of truth; this mirror exists only so consumers that historically
-    /// asked "what kind of template role does this expression play?" keep the
-    /// same answer without re-querying the bitsets.
     pub(crate) fn set_expr_role_from_dynamism(&mut self, is_dynamic: bool) {
         if self.expr_role == Some(ExprRole::RenderTag) {
             return;
@@ -199,10 +175,6 @@ impl ExpressionInfo {
         self.uses_legacy_slots
     }
 
-    /// LEGACY(svelte4): true when expression contains a read of unresolved
-    /// `$$props` / `$$restProps`. Codegen consults this to add the legacy
-    /// coarse-wrap.
-    /// Deprecated in Svelte 5, remove in Svelte 6.
     pub fn uses_legacy_sanitized_props(&self) -> bool {
         self.uses_legacy_sanitized_props
     }

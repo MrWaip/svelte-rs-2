@@ -1,7 +1,5 @@
 use crate::DiagnosticKind;
 
-/// Returns the new warning code for a legacy (Svelte 4) svelte-ignore code.
-/// Legacy codes used kebab-case; Svelte 5 uses snake_case.
 pub fn legacy_replacement(code: &str) -> Option<&'static str> {
     match code {
         "non-top-level-reactive-declaration" => Some("reactive_declaration_invalid_placement"),
@@ -19,22 +17,17 @@ pub fn legacy_replacement(code: &str) -> Option<&'static str> {
     }
 }
 
-/// Runtime-only warnings that can be suppressed via `svelte-ignore` but are not
-/// emitted by the compiler. Matches Svelte's `IGNORABLE_RUNTIME_WARNINGS`.
 const IGNORABLE_RUNTIME_WARNINGS: &[&str] = &[
     "await_waterfall",
     "await_reactivity_loss",
     "state_snapshot_uncloneable",
 ];
 
-/// Returns true if the code is a valid warning code (compile-time or runtime-ignorable).
 pub fn is_valid_warning_code(code: &str) -> bool {
     DiagnosticKind::all_warning_codes().contains(&code)
         || IGNORABLE_RUNTIME_WARNINGS.contains(&code)
 }
 
-/// Finds the closest match for `input` among `candidates` using Levenshtein distance.
-/// Returns `None` if no candidate is close enough (threshold: len/3, min 2).
 pub fn fuzzymatch<'a>(input: &str, candidates: &[&'a str]) -> Option<&'a str> {
     let threshold = (input.len() / 3).max(2);
     let mut best: Option<(&'a str, usize)> = None;

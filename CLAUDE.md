@@ -62,3 +62,12 @@ When user ask something to do specific, don't fallback. If user ask use mcp for 
 # Verify work
 
 After completed task run `just test-compiler` and `just test-diagnostics` and `just clippy-strict`. It have to be GREEN.
+
+# Glossary
+
+## Never use
+
+- leaf
+- leaves
+- plan
+- lowering / lower

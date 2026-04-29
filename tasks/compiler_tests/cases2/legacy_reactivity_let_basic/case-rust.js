@@ -1,13 +1,15 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root = $.from_html(`<button></button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let count = 0;
+	let count = $.mutable_source(0);
 	function increment() {
-		count += 1;
+		$.set(count, $.get(count) + 1);
 	}
 	var button = root();
-	button.textContent = `clicks: ${count ?? ""}`;
+	var text = $.child(button);
+	$.reset(button);
+	$.template_effect(() => $.set_text(text, `clicks: ${$.get(count) ?? ""}`));
 	$.delegated("click", button, increment);
 	$.append($$anchor, button);
 }

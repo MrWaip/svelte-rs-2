@@ -1,10 +1,3 @@
-//! Public entry point for running the script transformer over an OXC Program.
-//!
-//! The caller (svelte_codegen_client) passes a parsed Program plus all context,
-//! this module constructs the ComponentTransformer internally and runs the Traverse
-//! pass, returning the modified Program plus post-traverse flags the caller needs
-//! for further codegen decisions.
-
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 use oxc_semantic::SemanticBuilder;

@@ -1,9 +1,7 @@
-use svelte_ast::{is_mathml, is_svg, AstStore, Component, Namespace, Node};
+use svelte_ast::{AstStore, Component, Namespace, Node, is_mathml, is_svg};
 
 use crate::types::data::AnalysisData;
 
-/// Record which `{@html ...}` tags sit inside an SVG or MathML subtree, so
-/// codegen can wrap their innerHTML application accordingly.
 pub(crate) fn collect(component: &Component, data: &mut AnalysisData) {
     let initial_svg = component
         .options

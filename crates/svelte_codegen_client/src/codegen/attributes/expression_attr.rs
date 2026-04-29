@@ -1,4 +1,4 @@
-use svelte_analyze::{normalize_regular_attribute_name, EventHandlerMode, ExprSite};
+use svelte_analyze::{EventHandlerMode, ExprSite, normalize_regular_attribute_name};
 use svelte_ast::{ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
 

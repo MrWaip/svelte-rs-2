@@ -1,13 +1,13 @@
 use svelte_ast::{
     AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Namespace, Node, NodeId,
-    SlotElementLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteFragmentLegacy,
-    SvelteHead, SvelteOptions, SvelteWindow, SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT,
-    SVELTE_ELEMENT, SVELTE_FRAGMENT, SVELTE_HEAD, SVELTE_OPTIONS, SVELTE_WINDOW,
+    SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_FRAGMENT, SVELTE_HEAD,
+    SVELTE_OPTIONS, SVELTE_WINDOW, SlotElementLegacy, SvelteBody, SvelteBoundary, SvelteDocument,
+    SvelteFragmentLegacy, SvelteHead, SvelteOptions, SvelteWindow,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
-use crate::{validate_custom_element_tag, Parser, TagError};
+use crate::{Parser, TagError, validate_custom_element_tag};
 
 impl<'a> Parser<'a> {
     pub(crate) fn validate_root_only_special_elements(&mut self, component: &Component) {
@@ -29,44 +29,44 @@ impl<'a> Parser<'a> {
             for &id in &current_level {
                 let node = component.store.get(id);
 
-                if let Node::Element(el) = node {
-                    if matches!(
+                if let Node::Element(el) = node
+                    && matches!(
                         el.name.as_str(),
                         "svelte:window" | "svelte:document" | "svelte:body"
-                    ) {
-                        let already_seen = match el.name.as_str() {
-                            "svelte:window" => seen.window,
-                            "svelte:document" => seen.document,
-                            "svelte:body" => seen.body,
-                            _ => unreachable!("only root-only special elements are tracked here"),
-                        };
+                    )
+                {
+                    let already_seen = match el.name.as_str() {
+                        "svelte:window" => seen.window,
+                        "svelte:document" => seen.document,
+                        "svelte:body" => seen.body,
+                        _ => unreachable!("only root-only special elements are tracked here"),
+                    };
 
-                        if already_seen {
-                            self.recover(Diagnostic::error(
-                                svelte_diagnostics::DiagnosticKind::SvelteMetaDuplicate {
-                                    name: el.name.clone(),
-                                },
-                                el.span,
-                            ));
-                        } else {
-                            match el.name.as_str() {
-                                "svelte:window" => seen.window = true,
-                                "svelte:document" => seen.document = true,
-                                "svelte:body" => seen.body = true,
-                                _ => {
-                                    unreachable!("only root-only special elements are tracked here")
-                                }
+                    if already_seen {
+                        self.recover(Diagnostic::error(
+                            svelte_diagnostics::DiagnosticKind::SvelteMetaDuplicate {
+                                name: el.name.clone(),
+                            },
+                            el.span,
+                        ));
+                    } else {
+                        match el.name.as_str() {
+                            "svelte:window" => seen.window = true,
+                            "svelte:document" => seen.document = true,
+                            "svelte:body" => seen.body = true,
+                            _ => {
+                                unreachable!("only root-only special elements are tracked here")
                             }
                         }
+                    }
 
-                        if !at_root {
-                            self.recover(Diagnostic::error(
-                                svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
-                                    name: el.name.clone(),
-                                },
-                                el.span,
-                            ));
-                        }
+                    if !at_root {
+                        self.recover(Diagnostic::error(
+                            svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
+                                name: el.name.clone(),
+                            },
+                            el.span,
+                        ));
                     }
                 }
 
@@ -78,10 +78,6 @@ impl<'a> Parser<'a> {
             at_root = false;
         }
     }
-
-    // -----------------------------------------------------------------------
-    // <svelte:options> extraction
-    // -----------------------------------------------------------------------
 
     pub(crate) fn extract_svelte_options(&mut self, component: &mut Component) {
         let root_id = component.root;
@@ -159,7 +155,6 @@ impl<'a> Parser<'a> {
                             self.process_svelte_option_bool(&ea.name, false, el.span, &mut options);
                         }
                         _ => {
-                            // Could be an object expression for customElement
                             if ea.name == "customElement" {
                                 self.process_custom_element_expression(
                                     ea.expression.span,
@@ -173,7 +168,6 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    // Directives and other non-standard attributes are not allowed
                     self.recover(Diagnostic::svelte_options_invalid_attribute(el.span));
                 }
             }
@@ -200,7 +194,6 @@ impl<'a> Parser<'a> {
                     "a string value".into(),
                 ));
             }
-            // LEGACY(svelte4): `tag` renamed to `customElement`
             "tag" => {
                 self.recover(Diagnostic::svelte_options_deprecated_tag(span));
             }
@@ -266,7 +259,6 @@ impl<'a> Parser<'a> {
                     "true or false".into(),
                 ));
             }
-            // LEGACY(svelte4): `tag` renamed to `customElement`
             "tag" => {
                 self.recover(Diagnostic::svelte_options_deprecated_tag(span));
             }
@@ -286,27 +278,15 @@ impl<'a> Parser<'a> {
         options: &mut SvelteOptions,
     ) {
         let expr_text = expression_span.source_text(self.source).trim();
-
-        // `null` is backwards compat from Svelte 4 — just ignore
         if expr_text == "null" {
             return;
         }
-
-        // Must be an object expression
         if !expr_text.starts_with('{') {
             self.recover(Diagnostic::svelte_options_invalid_attribute(el_span));
             return;
         }
-
-        // Store the expression span; full object parsing deferred to analysis
         options.custom_element = Some(CustomElementConfig::Expression(expression_span));
     }
-
-    // -----------------------------------------------------------------------
-    // <svelte:head> conversion
-    // -----------------------------------------------------------------------
-
-    /// Convert `<svelte:head>` Element nodes in the root fragment to SvelteHead nodes.
     pub(crate) fn convert_svelte_head(component: &mut Component) {
         let root_id = component.root;
         let len = component.fragment_nodes(root_id).len();
@@ -335,8 +315,6 @@ impl<'a> Parser<'a> {
             );
         }
     }
-
-    /// Convert `<svelte:window>` Element nodes in the root fragment to SvelteWindow nodes.
     pub(crate) fn convert_svelte_window(component: &mut Component) {
         let root_id = component.root;
         let len = component.fragment_nodes(root_id).len();
@@ -364,8 +342,6 @@ impl<'a> Parser<'a> {
             );
         }
     }
-
-    /// Convert `<svelte:document>` Element nodes in the root fragment to SvelteDocument nodes.
     pub(crate) fn convert_svelte_document(component: &mut Component) {
         let root_id = component.root;
         let len = component.fragment_nodes(root_id).len();
@@ -393,8 +369,6 @@ impl<'a> Parser<'a> {
             );
         }
     }
-
-    /// Convert `<svelte:body>` Element nodes in the root fragment to SvelteBody nodes.
     pub(crate) fn convert_svelte_body(component: &mut Component) {
         let root_id = component.root;
         let len = component.fragment_nodes(root_id).len();
@@ -422,13 +396,6 @@ impl<'a> Parser<'a> {
             );
         }
     }
-
-    // -----------------------------------------------------------------------
-    // LEGACY(svelte4): <slot> conversion
-    // -----------------------------------------------------------------------
-
-    /// Convert legacy `<slot>` Element nodes to SlotElementLegacy nodes.
-    /// Recursive because slot elements can appear anywhere in the template tree.
     pub(crate) fn convert_slot_element_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
@@ -460,13 +427,6 @@ impl<'a> Parser<'a> {
             Self::convert_slot_element_legacy(store, &next_level);
         }
     }
-
-    // -----------------------------------------------------------------------
-    // LEGACY(svelte4): <svelte:fragment> conversion
-    // -----------------------------------------------------------------------
-
-    /// Convert legacy `<svelte:fragment>` Element nodes to SvelteFragmentLegacy nodes.
-    /// Recursive because fragment wrappers can appear inside component children and blocks.
     pub(crate) fn convert_svelte_fragment_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
@@ -498,13 +458,6 @@ impl<'a> Parser<'a> {
             Self::convert_svelte_fragment_legacy(store, &next_level);
         }
     }
-
-    // -----------------------------------------------------------------------
-    // <svelte:element> conversion
-    // -----------------------------------------------------------------------
-
-    /// Convert `<svelte:element this={expr}>` Element nodes to SvelteElement nodes.
-    /// Unlike svelte:head, these can appear anywhere in the tree, so we walk recursively.
     pub(crate) fn convert_svelte_element(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
@@ -546,9 +499,6 @@ impl<'a> Parser<'a> {
             Self::convert_svelte_element(store, &next_level);
         }
     }
-
-    /// Convert `<svelte:boundary>` Element nodes to SvelteBoundary nodes.
-    /// Recursive — boundary can appear anywhere in the template.
     pub(crate) fn convert_svelte_boundary(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
@@ -582,8 +532,6 @@ impl<'a> Parser<'a> {
         }
     }
 }
-
-/// Collect all child fragment ids owned by a node.
 fn collect_child_fragments(node: &Node, buf: &mut Vec<svelte_ast::FragmentId>) {
     match node {
         Node::Element(el) => buf.push(el.fragment),

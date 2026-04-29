@@ -9,17 +9,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
     ) {
         self.strip_ts_specifiers_and_statements(stmts);
-        // LEGACY(svelte4): lower legacy `export let` / `export var` / specifier props
-        // before `strip_export_keywords` because we need the export wrapper as a marker.
+
         self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);
-        // Props declarations have a dedicated lowering path and should be removed
-        // before generic rune destructuring can reinterpret the same statement.
+
         self.replace_props_declaration(stmts);
         self.process_derived_destructuring(stmts);
         self.expand_state_destructuring(stmts);
+
+        self.expand_legacy_state_destructuring(stmts);
     }
 
     fn strip_export_keywords(
@@ -33,11 +33,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         while i < stmts.len() {
             if let oxc_ast::ast::Statement::ExportNamedDeclaration(_) = &stmts[i] {
                 let stmt = stmts.remove(i);
-                if let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt {
-                    if let Some(decl) = export.unbox().declaration {
-                        stmts.insert(i, oxc_ast::ast::Statement::from(decl));
-                        i += 1;
-                    }
+                if let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt
+                    && let Some(decl) = export.unbox().declaration
+                {
+                    stmts.insert(i, oxc_ast::ast::Statement::from(decl));
+                    i += 1;
                 }
             } else {
                 i += 1;
@@ -79,10 +79,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
     ) {
         stmts.retain(|stmt| {
-            if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
-                if Self::is_props_id_declaration(decl) {
-                    return false;
-                }
+            if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt
+                && Self::is_props_id_declaration(decl)
+            {
+                return false;
             }
             true
         });

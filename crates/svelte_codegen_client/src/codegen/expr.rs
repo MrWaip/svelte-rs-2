@@ -3,7 +3,6 @@ use svelte_ast::{ExprRef, Node, NodeId};
 
 use super::{Codegen, CodegenError, Result};
 
-/// Resolve the primary `ExprRef` carried by a template node id.
 fn expr_ref_for_node(node: &Node) -> Option<&ExprRef> {
     match node {
         Node::ExpressionTag(t) => Some(&t.expression),
@@ -61,16 +60,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let Some(getter) = build_reactive_dep_expr_legacy(self.ctx, sym) else {
                 continue;
             };
-            let getter = self
-                .ctx
-                .b
-                .call_expr("$.deep_read_state", [Arg::Expr(getter)]);
+
+            let getter = if uses_deep_read_state(self.ctx, sym) {
+                self.ctx
+                    .b
+                    .call_expr("$.deep_read_state", [Arg::Expr(getter)])
+            } else {
+                getter
+            };
             seq_parts.push(getter);
         }
-        // LEGACY(svelte4): also wrap when expression reads unresolved
-        // `$$props` / `$$restProps`. Identifier was rewritten to
-        // `$$sanitized_props` / `$$restProps` const at this point, but the
-        // dep needs deep-read so the immutable runtime tracks member access.
+
         if info.uses_legacy_sanitized_props() {
             let getter = self
                 .ctx
@@ -122,15 +122,14 @@ fn build_reactive_dep_expr_legacy<'a>(
     sym: svelte_analyze::scope::SymbolId,
 ) -> Option<Expression<'a>> {
     use svelte_analyze::{
-        ConstDeclarationSemantics, ContextualDeclarationSemantics as Ck, DeclarationSemantics,
-        EachIndexStrategy, EachItemStrategy, PropDeclarationKind, PropDeclarationSemantics,
+        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics as Ck,
+        EachIndexStrategy, EachItemStrategy, PropBindingKind, PropBindingSemantics,
         SnippetParamStrategy,
     };
     use svelte_ast_builder::Arg;
-    let node_id = ctx.query.scoping().symbol_declaration(sym);
-    match ctx.query.view.declaration_semantics(node_id) {
-        DeclarationSemantics::Prop(PropDeclarationSemantics {
-            kind: PropDeclarationKind::NonSource,
+    match ctx.query.view.binding_semantics(sym) {
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::NonSource,
             ..
         }) => {
             let prop_name = ctx.query.view.binding_origin_key(sym)?;
@@ -139,32 +138,42 @@ fn build_reactive_dep_expr_legacy<'a>(
                     .static_member_expr(ctx.b.rid_expr("$$props"), prop_name),
             )
         }
-        DeclarationSemantics::Prop(PropDeclarationSemantics {
-            kind: PropDeclarationKind::Source { .. },
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. },
             ..
         }) => Some(ctx.b.call_expr(
             ctx.query.symbol_name(sym),
             std::iter::empty::<Arg<'a, '_>>(),
         )),
-        // LEGACY(svelte4): legacy bindable prop reads as `name()` — same shape as runes Source.
-        DeclarationSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
+
+        BindingSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
             ctx.query.symbol_name(sym),
             std::iter::empty::<Arg<'a, '_>>(),
         )),
-        DeclarationSemantics::Prop(PropDeclarationSemantics {
-            kind: PropDeclarationKind::Rest,
+
+        BindingSemantics::LegacyState(state) => {
+            let helper = if state.var_declared {
+                "$.safe_get"
+            } else {
+                "$.get"
+            };
+            Some(
+                ctx.b
+                    .call_expr(helper, [Arg::Ident(ctx.query.symbol_name(sym))]),
+            )
+        }
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Rest,
             ..
         }) => Some(ctx.b.rid_expr(ctx.query.symbol_name(sym))),
-        DeclarationSemantics::Const(ConstDeclarationSemantics::ConstTag {
-            destructured, ..
-        }) => {
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { destructured, .. }) => {
             let helper = if destructured { "$.safe_get" } else { "$.get" };
             Some(ctx.b.call_expr(
                 helper,
                 [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
             ))
         }
-        DeclarationSemantics::Contextual(kind) => {
+        BindingSemantics::Contextual(kind) => {
             let name = ctx.query.symbol_name(sym);
             match kind {
                 Ck::EachItem(EachItemStrategy::Accessor)
@@ -183,11 +192,27 @@ fn build_reactive_dep_expr_legacy<'a>(
                 }
             }
         }
-        DeclarationSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
+        BindingSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
             Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))
         }
         _ => None,
     }
+}
+
+fn uses_deep_read_state(
+    ctx: &crate::context::Ctx<'_>,
+    sym: svelte_analyze::scope::SymbolId,
+) -> bool {
+    use svelte_analyze::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+    let decl = ctx.query.view.binding_semantics(sym);
+    matches!(
+        decl,
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::NonSource | PropBindingKind::Rest,
+            ..
+        }) | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Contextual(_)
+    ) || ctx.query.scoping().is_import(sym)
 }
 
 fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {

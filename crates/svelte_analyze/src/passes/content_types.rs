@@ -3,11 +3,6 @@ use svelte_ast::{AstStore, Attribute, Element, Node, NodeId};
 use crate::types::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
-/// Visitor that computes `needs_var` for element fragments during the main
-/// composite walk.
-///
-/// Must be LAST in the composite tuple: reads `dynamic_nodes` and `needs_ref`
-/// populated by ReactivityVisitor earlier in the same walk.
 pub(crate) struct ContentAndVarVisitor;
 
 impl TemplateVisitor for ContentAndVarVisitor {

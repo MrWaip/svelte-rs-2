@@ -1,17 +1,15 @@
-//! Store subscription validation — scoped subscription, rune conflict.
-
 use oxc_ast::ast::{
     BindingPattern, CallExpression, Expression, IdentifierReference, VariableDeclarator,
 };
-use oxc_ast_visit::walk::{walk_call_expression, walk_variable_declarator};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_call_expression, walk_variable_declarator};
 use oxc_span::GetSpan;
 use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::is_rune_name;
-use crate::{AnalysisData, DeclarationSemantics};
+use crate::{AnalysisData, BindingSemantics};
 
 pub(super) fn validate(
     data: &AnalysisData<'_>,
@@ -43,7 +41,6 @@ impl StoreValidator<'_> {
         }
     }
 
-    /// Check if `$X` where `X` is declared in a nested (non-root) scope.
     fn check_scoped_subscription(&mut self, ident: &IdentifierReference<'_>) {
         let name = ident.name.as_str();
         if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
@@ -51,19 +48,16 @@ impl StoreValidator<'_> {
         }
         let base = &name[1..];
 
-        // Skip rune names — those are handled by rune validation
         if is_rune_name(name) {
             return;
         }
 
         let root = self.data.scoping.root_scope_id();
 
-        // If already resolved in root scope, it's a valid store subscription
         if self.data.scoping.find_binding(root, base).is_some() {
             return;
         }
 
-        // Check if base name exists in any non-root scope
         if self.data.scoping.find_binding_in_any_scope(base).is_some() {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::StoreInvalidScopedSubscription,
@@ -171,11 +165,7 @@ impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
             .scoping
             .find_binding(root, base)
             .is_some_and(|sym| {
-                matches!(
-                    self.data
-                        .declaration_semantics(self.data.scoping.symbol_declaration(sym)),
-                    DeclarationSemantics::Store(_),
-                )
+                matches!(self.data.binding_semantics(sym), BindingSemantics::Store(_),)
             })
         {
             self.diags.push(Diagnostic::error(
@@ -201,8 +191,6 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
             return;
         };
 
-        // Standalone module analysis does not classify stores the way component
-        // analysis does, so this check must resolve the backing binding directly.
         if !self.reported_bindings.insert(sym_id) {
             return;
         }
@@ -225,7 +213,6 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
-        // store_rune_conflict: $X(...) where is_rune_name("$X") and X is a local binding
         if let Expression::Identifier(callee) = &call.callee {
             if self
                 .suppressed_rune_conflicts
@@ -260,11 +247,8 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
 }
 
 fn is_props_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
-    // `$props()` identifier/rest bindings are special compiler-owned bindings, not
-    // user-authored locals that can be mistaken for store subscriptions.
     matches!(
-        data.reactivity
-            .declaration_semantics(data.scoping.symbol_declaration(sym_id)),
-        DeclarationSemantics::Prop(_),
+        data.reactivity.binding_semantics(sym_id),
+        BindingSemantics::Prop(_),
     )
 }

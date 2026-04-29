@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{compile, CompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, Namespace, compile};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -49,10 +49,10 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
                 _ => Namespace::Html,
             };
         }
-        if let Some(exp) = config.get("experimental") {
-            if let Some(async_val) = exp.get("async").and_then(|v| v.as_bool()) {
-                opts.experimental.async_ = async_val;
-            }
+        if let Some(exp) = config.get("experimental")
+            && let Some(async_val) = exp.get("async").and_then(|v| v.as_bool())
+        {
+            opts.experimental.async_ = async_val;
         }
     }
 

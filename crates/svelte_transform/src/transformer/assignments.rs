@@ -332,10 +332,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        // Script-only identifier branches: prop mutation, then shared signal/store
-        // rewrite (used identically by template exit), then legacy v1 SignalSet
-        // fallback. Each block re-borrows `node` because the previous step may
-        // have replaced it.
         let is_identifier_target = {
             let Expression::AssignmentExpression(assign) = &*node else {
                 unreachable!();
@@ -346,107 +342,81 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target {
-            if let Some(analysis) = self.analysis {
-                // Prop identifier mutation: `prop = val` → `prop(val)`. Script-only —
-                // template never writes a prop identifier directly. Must run before
-                // the shared helper so a prop-classified identifier takes this branch.
-                let prop_rewrite = {
-                    let Expression::AssignmentExpression(assign) = node else {
-                        unreachable!();
-                    };
-                    let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) =
-                        &assign.left
-                    else {
-                        unreachable!();
-                    };
-                    id.reference_id.get().is_some_and(|ref_id| {
-                        matches!(
-                            analysis.reference_semantics(ref_id),
-                            ReferenceSemantics::PropMutation { .. }
-                        )
-                    })
+        if is_identifier_target && let Some(analysis) = self.analysis {
+            let prop_rewrite = {
+                let Expression::AssignmentExpression(assign) = node else {
+                    unreachable!();
                 };
-                if prop_rewrite {
-                    let Expression::AssignmentExpression(assign) = node else {
-                        unreachable!();
-                    };
-                    let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) =
-                        &assign.left
-                    else {
-                        unreachable!();
-                    };
-                    let name = id.name.as_str().to_string();
-                    let right = self.b.move_expr(&mut assign.right);
-                    *node = self.b.call_expr(&name, [Arg::Expr(right)]);
-                    return;
-                }
+                let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
+                else {
+                    unreachable!();
+                };
+                id.reference_id.get().is_some_and(|ref_id| {
+                    matches!(
+                        analysis.reference_semantics(ref_id),
+                        ReferenceSemantics::PropMutation { .. }
+                    )
+                })
+            };
+            if prop_rewrite {
+                let Expression::AssignmentExpression(assign) = node else {
+                    unreachable!();
+                };
+                let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
+                else {
+                    unreachable!();
+                };
+                let name = id.name.as_str().to_string();
+                let right = self.b.move_expr(&mut assign.right);
+                *node = self.b.call_expr(&name, [Arg::Expr(right)]);
+                return;
+            }
 
-                // Signal / store identifier assignment — shared with Template.
-                if super::rewrites::rewrite_signal_or_store_identifier_assignment(
-                    analysis,
-                    self.b.ast.allocator,
-                    node,
-                    false,
-                ) {
-                    return;
-                }
+            let _ = analysis;
+            if self.rewrite_signal_or_store_identifier_assignment(node, false) {
+                return;
             }
         }
 
-        // Member-target branches: prop member dev-validation + deep store
-        // member mutation. Re-bind `assign` because the identifier-target
-        // block above may have consumed it.
         let Expression::AssignmentExpression(assign) = node else {
             return;
         };
-        // Prop member mutation (`foo.x = val` where foo is a `$props()` binding):
-        // `ReferenceSemantics::Prop*MemberMutationRoot` is the analyzer's
-        // operation-oriented answer for the root identifier. No AST
-        // reconstruction here; the semantic variant already tells us this
-        // reference is exactly "root of an LHS member on an assignment".
+
         let mut semantic_prop_alias = None;
         let mut semantic_root_name = None;
         let mut semantic_bindable = false;
         let mut semantic_source_root_name = None;
         let mut semantic_segments = None;
-        if let Some(analysis) = self.analysis {
-            if let Some(member) = assign.left.as_member_expression() {
-                if let Some(root_id) = self.member_root_identifier(member) {
-                    if let Some(ref_id) = root_id.reference_id.get() {
-                        match analysis.reference_semantics(ref_id) {
-                            ReferenceSemantics::PropSourceMemberMutationRoot {
-                                bindable,
-                                symbol,
-                            } => {
-                                if let (Some(prop_alias), Some(segments)) = (
-                                    analysis.binding_origin_key(symbol),
-                                    self.prop_mutation_segments_from_member(member),
-                                ) {
-                                    let root_name =
-                                        analysis.scoping.symbol_name(symbol).to_string();
-                                    semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name = Some(root_name.clone());
-                                    semantic_bindable = bindable;
-                                    semantic_source_root_name = Some(root_name);
-                                    semantic_segments = Some(segments);
-                                }
-                            }
-                            ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                                if let (Some(prop_alias), Some(segments)) = (
-                                    analysis.binding_origin_key(symbol),
-                                    self.prop_mutation_segments_from_member(member),
-                                ) {
-                                    semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name =
-                                        Some(analysis.scoping.symbol_name(symbol).to_string());
-                                    semantic_segments = Some(segments);
-                                }
-                            }
-                            _ => {}
-                        }
+        if let Some(analysis) = self.analysis
+            && let Some(member) = assign.left.as_member_expression()
+            && let Some(root_id) = self.member_root_identifier(member)
+            && let Some(ref_id) = root_id.reference_id.get()
+        {
+            match analysis.reference_semantics(ref_id) {
+                ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        let root_name = analysis.scoping.symbol_name(symbol).to_string();
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(root_name.clone());
+                        semantic_bindable = bindable;
+                        semantic_source_root_name = Some(root_name);
+                        semantic_segments = Some(segments);
                     }
                 }
+                ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
+                        semantic_segments = Some(segments);
+                    }
+                }
+                _ => {}
             }
         }
         if let (Some(prop_alias), Some(root_name), Some(segments)) =
@@ -465,13 +435,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         let left_span_start = assign.span.start;
 
-        // Deep store member mutation — shared with Template (same helper).
-        if let Some(analysis) = self.analysis {
-            if super::rewrites::rewrite_deep_store_member_assignment(
-                analysis,
-                self.b.ast.allocator,
-                node,
-            ) {
+        if self.analysis.is_some() {
+            if self.rewrite_deep_store_member_assignment(node) {
+                return;
+            }
+
+            if self.rewrite_legacy_state_member_assignment(node) {
                 return;
             }
         }
@@ -485,7 +454,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        // Re-bind after the shared helper call above; it may have mutated `node`.
         let Expression::AssignmentExpression(assign) = node else {
             return;
         };
@@ -579,139 +547,122 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target {
-            if let Some(analysis) = self.analysis {
-                // Prop identifier update — script-only.
-                let prop_rewrite = {
-                    let Expression::UpdateExpression(upd) = node else {
-                        unreachable!();
-                    };
-                    let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                        &upd.argument
-                    else {
-                        unreachable!();
-                    };
-                    id.reference_id.get().is_some_and(|ref_id| {
-                        matches!(
-                            analysis.reference_semantics(ref_id),
-                            ReferenceSemantics::PropMutation { .. }
-                        )
-                    })
+        if is_identifier_target && let Some(analysis) = self.analysis {
+            let prop_rewrite = {
+                let Expression::UpdateExpression(upd) = node else {
+                    unreachable!();
                 };
-                if prop_rewrite {
-                    let Expression::UpdateExpression(upd) = node else {
-                        unreachable!();
-                    };
-                    let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                        &upd.argument
-                    else {
-                        unreachable!();
-                    };
-                    let name = id.name.as_str().to_string();
-                    let fn_name = if upd.prefix {
-                        "$.update_pre_prop"
-                    } else {
-                        "$.update_prop"
-                    };
-                    let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
-                    if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
-                        args.push(Arg::Num(-1.0));
-                    }
-                    *node = self.b.call_expr(fn_name, args);
-                    return;
-                }
-
-                // Signal / store identifier update — shared with Template.
-                if super::rewrites::rewrite_signal_or_store_identifier_update(
-                    analysis,
-                    self.b.ast.allocator,
-                    node,
-                ) {
-                    return;
-                }
-            }
-        }
-
-        // Re-bind `upd`; the identifier-target block above may have consumed it.
-        let Expression::UpdateExpression(upd) = node else {
-            return;
-        };
-
-        if let oxc_ast::ast::SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument {
-            if matches!(&pfe.object, Expression::ThisExpression(_))
-                && self.is_private_state_field(pfe.field.name.as_str())
-            {
-                let field_name = pfe.field.name.as_str();
+                let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
+                    &upd.argument
+                else {
+                    unreachable!();
+                };
+                id.reference_id.get().is_some_and(|ref_id| {
+                    matches!(
+                        analysis.reference_semantics(ref_id),
+                        ReferenceSemantics::PropMutation { .. }
+                    )
+                })
+            };
+            if prop_rewrite {
+                let Expression::UpdateExpression(upd) = node else {
+                    unreachable!();
+                };
+                let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
+                    &upd.argument
+                else {
+                    unreachable!();
+                };
+                let name = id.name.as_str().to_string();
                 let fn_name = if upd.prefix {
-                    "$.update_pre"
+                    "$.update_pre_prop"
                 } else {
-                    "$.update"
+                    "$.update_prop"
                 };
-                let field_expr = self.b.this_private_member(field_name);
-                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(field_expr)];
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
                 if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
                     args.push(Arg::Num(-1.0));
                 }
                 *node = self.b.call_expr(fn_name, args);
                 return;
             }
-        }
 
-        // Deep store member update — shared with Template (same helper).
-        if let Some(analysis) = self.analysis {
-            if super::rewrites::rewrite_deep_store_member_update(
-                analysis,
-                self.b.ast.allocator,
-                node,
-            ) {
+            let _ = analysis;
+            if self.rewrite_signal_or_store_identifier_update(node) {
                 return;
             }
         }
 
-        // Re-bind again for prop member dev-validation bookkeeping.
         let Expression::UpdateExpression(upd) = node else {
             return;
         };
-        // Mirror of the assignment enter-path: `PropSourceMemberMutationRoot` /
-        // `PropNonSourceMemberMutationRoot` carry the operation directly,
-        // no need to inspect AST to decide "is this a prop member mutation".
+
+        if let oxc_ast::ast::SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument
+            && matches!(&pfe.object, Expression::ThisExpression(_))
+            && self.is_private_state_field(pfe.field.name.as_str())
+        {
+            let field_name = pfe.field.name.as_str();
+            let fn_name = if upd.prefix {
+                "$.update_pre"
+            } else {
+                "$.update"
+            };
+            let field_expr = self.b.this_private_member(field_name);
+            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(field_expr)];
+            if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+                args.push(Arg::Num(-1.0));
+            }
+            *node = self.b.call_expr(fn_name, args);
+            return;
+        }
+
+        if self.analysis.is_some() {
+            if self.rewrite_deep_store_member_update(node) {
+                return;
+            }
+
+            if self.rewrite_legacy_state_member_update(node) {
+                return;
+            }
+        }
+
+        let Expression::UpdateExpression(upd) = node else {
+            return;
+        };
+
         let mut semantic_prop_alias = None;
         let mut semantic_root_name = None;
         let mut semantic_source_root_name = None;
         let mut semantic_segments = None;
-        if let Some(analysis) = self.analysis {
-            if let Some(member) = upd.argument.as_member_expression() {
-                if let Some(root_id) = self.member_root_identifier(member) {
-                    if let Some(ref_id) = root_id.reference_id.get() {
-                        match analysis.reference_semantics(ref_id) {
-                            ReferenceSemantics::PropSourceMemberMutationRoot { symbol, .. } => {
-                                if let (Some(prop_alias), Some(segments)) = (
-                                    analysis.binding_origin_key(symbol),
-                                    self.prop_mutation_segments_from_member(member),
-                                ) {
-                                    let root_name =
-                                        analysis.scoping.symbol_name(symbol).to_string();
-                                    semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name = Some(root_name.clone());
-                                    semantic_source_root_name = Some(root_name);
-                                    semantic_segments = Some(segments);
-                                }
-                            }
-                            ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                                if let (Some(prop_alias), Some(segments)) = (
-                                    analysis.binding_origin_key(symbol),
-                                    self.prop_mutation_segments_from_member(member),
-                                ) {
-                                    semantic_prop_alias = Some(prop_alias.to_string());
-                                    semantic_root_name =
-                                        Some(analysis.scoping.symbol_name(symbol).to_string());
-                                    semantic_segments = Some(segments);
-                                }
-                            }
-                            _ => {}
-                        }
+        if let Some(analysis) = self.analysis
+            && let Some(member) = upd.argument.as_member_expression()
+            && let Some(root_id) = self.member_root_identifier(member)
+            && let Some(ref_id) = root_id.reference_id.get()
+        {
+            match analysis.reference_semantics(ref_id) {
+                ReferenceSemantics::PropSourceMemberMutationRoot { symbol, .. } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        let root_name = analysis.scoping.symbol_name(symbol).to_string();
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(root_name.clone());
+                        semantic_source_root_name = Some(root_name);
+                        semantic_segments = Some(segments);
                     }
                 }
+                ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
+                        semantic_segments = Some(segments);
+                    }
+                }
+                _ => {}
             }
         }
         if let (Some(prop_alias), Some(root_name), Some(segments)) =
@@ -739,50 +690,41 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     pub(crate) fn rewrite_private_assignment_exit(&self, node: &mut Expression<'a>) -> bool {
-        if let Expression::AssignmentExpression(assign) = node {
-            if let oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left {
-                if matches!(&pfe.object, Expression::ThisExpression(_)) {
-                    let field_name = pfe.field.name.as_str();
-                    if self.is_private_state_field(field_name) {
-                        let left_expr = self.b.this_private_member(field_name);
-                        let right = self.b.move_expr(&mut assign.right);
-                        let get_expr = self.b.this_private_member(field_name);
-                        let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
-                        let value = crate::rune_refs::build_compound_value(
-                            self.b.ast.allocator,
-                            assign.operator,
-                            left_read,
-                            right,
-                        );
+        if let Expression::AssignmentExpression(assign) = node
+            && let oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
+            && matches!(&pfe.object, Expression::ThisExpression(_))
+        {
+            let field_name = pfe.field.name.as_str();
+            if self.is_private_state_field(field_name) {
+                let left_expr = self.b.this_private_member(field_name);
+                let right = self.b.move_expr(&mut assign.right);
+                let get_expr = self.b.this_private_member(field_name);
+                let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
+                let value = self.build_compound_value(assign.operator, left_read, right);
 
-                        *node = self
-                            .b
-                            .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)]);
-                        return true;
-                    }
-                }
+                *node = self
+                    .b
+                    .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)]);
+                return true;
             }
         }
         false
     }
 
     pub(crate) fn rewrite_private_read_exit(&self, node: &mut Expression<'a>) -> bool {
-        if let Expression::PrivateFieldExpression(pfe) = node {
-            if matches!(&pfe.object, Expression::ThisExpression(_)) {
-                let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
-                if let Some(kind) = rune_kind {
-                    if self.in_constructor() && matches!(kind, RuneKind::State | RuneKind::StateRaw)
-                    {
-                        // Inside constructor, $state/$state.raw: this.#field → this.#field.v
-                        let field_expr = self.b.move_expr(node);
-                        *node = self.b.static_member_expr(field_expr, "v");
-                    } else {
-                        // Outside constructor or $derived: this.#field → $.get(this.#field)
-                        let field_expr = self.b.move_expr(node);
-                        *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
-                    }
-                    return true;
+        if let Expression::PrivateFieldExpression(pfe) = node
+            && matches!(&pfe.object, Expression::ThisExpression(_))
+        {
+            let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
+            if let Some(kind) = rune_kind {
+                if self.in_constructor() && matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                    let field_expr = self.b.move_expr(node);
+                    *node = self.b.static_member_expr(field_expr, "v");
+                } else {
+                    let field_expr = self.b.move_expr(node);
+                    *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
                 }
+                return true;
             }
         }
         false

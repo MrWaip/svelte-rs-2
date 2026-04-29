@@ -1,9 +1,5 @@
 use crate::ast::*;
 
-// ---------------------------------------------------------------------------
-// Visit (immutable)
-// ---------------------------------------------------------------------------
-
 pub trait Visit {
     fn visit_stylesheet(&mut self, node: &StyleSheet) {
         walk_stylesheet(self, node);
@@ -90,10 +86,6 @@ pub fn walk_block<V: Visit + ?Sized>(v: &mut V, node: &Block) {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// VisitMut (mutable)
-// ---------------------------------------------------------------------------
 
 pub trait VisitMut {
     fn visit_stylesheet_mut(&mut self, node: &mut StyleSheet) {
@@ -182,13 +174,6 @@ pub fn walk_block_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut Block) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Visit into PseudoClass args (recursive selectors)
-// ---------------------------------------------------------------------------
-
-/// Walk into pseudo-class arguments that contain selector lists.
-/// Call this from your `visit_simple_selector` if you need to recurse into
-/// `:not(...)`, `:is(...)`, `:global(...)` etc.
 pub fn walk_simple_selector_args<V: Visit + ?Sized>(v: &mut V, node: &SimpleSelector) {
     let args = match node {
         SimpleSelector::PseudoClass(pc) => pc.args.as_deref(),
@@ -200,7 +185,6 @@ pub fn walk_simple_selector_args<V: Visit + ?Sized>(v: &mut V, node: &SimpleSele
     }
 }
 
-/// Mutable version of [`walk_simple_selector_args`].
 pub fn walk_simple_selector_args_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut SimpleSelector) {
     let args = match node {
         SimpleSelector::PseudoClass(pc) => pc.args.as_deref_mut(),

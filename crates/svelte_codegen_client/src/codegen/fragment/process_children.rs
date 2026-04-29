@@ -232,7 +232,9 @@ fn emit_concat_set<'a, 'ctx>(
                 }
             } else {
                 let defined = cg.is_node_expr_definitely_defined(*id, &expr);
-                tpl_parts.push(TemplatePart::Expr(expr, defined));
+                let info = cg.ctx.expression(*id).cloned();
+                let wrapped = cg.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
+                tpl_parts.push(TemplatePart::Expr(wrapped, defined));
             }
         }
     }

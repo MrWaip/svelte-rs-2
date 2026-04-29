@@ -62,7 +62,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Expression::ChainExpression(chain) => match chain.unbox().expression {
                 oxc_ast::ast::ChainElement::CallExpression(call) => call,
                 _ => {
-                    return CodegenError::unexpected_node(id, "render tag must wrap CallExpression")
+                    return CodegenError::unexpected_node(
+                        id,
+                        "render tag must wrap CallExpression",
+                    );
                 }
             },
             _ => return CodegenError::unexpected_node(id, "render tag must wrap CallExpression"),

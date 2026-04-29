@@ -2,34 +2,18 @@ use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_span::{GetSpan, Span};
 
-/// Inline capacity for selector lists (most rules have 1-2 selectors).
 pub type SelectorVec<T> = SmallVec<[T; 2]>;
 
-/// Inline capacity for simple selectors within a relative selector (usually 1-3).
 pub type SimpleSelectorVec = SmallVec<[SimpleSelector; 4]>;
 
-/// Inline capacity for relative selectors within a complex selector (usually 1-2).
 pub type RelativeSelectorVec = SmallVec<[RelativeSelector; 2]>;
 
-// ---------------------------------------------------------------------------
-// CssNodeId — stable identity for side-table keying
-// ---------------------------------------------------------------------------
-
-/// Unique identifier for CSS AST nodes that receive per-node metadata
-/// in the analyze phase. Assigned sequentially by the parser.
-///
-/// Used to key into side tables (e.g. `IndexVec<CssNodeId, RuleMeta>`)
-/// in `svelte_analyze`, keeping derived data out of the immutable AST.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CssNodeId(pub u32);
 
 impl CssNodeId {
     pub const DUMMY: Self = Self(u32::MAX);
 }
-
-// ---------------------------------------------------------------------------
-// Top-level
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StyleSheet {
@@ -41,23 +25,14 @@ pub struct StyleSheet {
 pub enum StyleSheetChild {
     Rule(Rule),
     Comment(Comment),
-    /// Skipped invalid CSS (parse error recovery).
+
     Error(Span),
 }
 
-// ---------------------------------------------------------------------------
-// Comments
-// ---------------------------------------------------------------------------
-
-/// A CSS comment including its `/* ... */` delimiters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Comment {
     pub span: Span,
 }
-
-// ---------------------------------------------------------------------------
-// Rules
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Rule {
@@ -74,11 +49,6 @@ pub struct StyleRule {
 }
 
 impl StyleRule {
-    /// Returns true if this rule's prelude is a lone `:global` (block form).
-    ///
-    /// Matches exactly: one `ComplexSelector` → one `RelativeSelector` → one
-    /// `SimpleSelector::Global { args: None }`.  This is distinct from the
-    /// compound form (`:global .foo { … }`) which has additional selectors.
     pub fn is_lone_global_block(&self) -> bool {
         self.prelude.children.len() == 1
             && self.prelude.children[0].children.len() == 1
@@ -95,14 +65,10 @@ pub struct AtRule {
     pub span: Span,
     pub name: CompactString,
     pub prelude: Span,
-    /// When set by the transform, the printer uses this instead of `prelude`.
+
     pub prelude_override: Option<CompactString>,
     pub block: Option<Block>,
 }
-
-// ---------------------------------------------------------------------------
-// Selectors
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectorList {
@@ -133,15 +99,14 @@ pub struct Combinator {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombinatorKind {
-    /// Whitespace (descendant)
     Descendant,
-    /// `>`
+
     Child,
-    /// `+`
+
     NextSibling,
-    /// `~`
+
     SubsequentSibling,
-    /// `||`
+
     Column,
 }
 
@@ -159,30 +124,36 @@ impl CombinatorKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimpleSelector {
-    /// Element / type selector (e.g. `div`, `*`, `ns|div`)
-    Type { span: Span, name: CompactString },
-    /// `#id`
-    Id { span: Span, name: CompactString },
-    /// `.class`
-    Class { span: Span, name: CompactString },
-    /// `:pseudo-class` or `:pseudo-class(...)`
+    Type {
+        span: Span,
+        name: CompactString,
+    },
+
+    Id {
+        span: Span,
+        name: CompactString,
+    },
+
+    Class {
+        span: Span,
+        name: CompactString,
+    },
+
     PseudoClass(PseudoClassSelector),
-    /// `::pseudo-element`
+
     PseudoElement(PseudoElementSelector),
-    /// `[attr]`, `[attr=value]`, etc.
+
     Attribute(AttributeSelector),
-    /// `:global(...)` or `:global` — Svelte-specific scoping escape.
-    /// Separated from `PseudoClass` because it controls scoping semantics,
-    /// not CSS matching. Exhaustive match forces every consumer to handle it.
+
     Global {
         span: Span,
         args: Option<Box<SelectorList>>,
     },
-    /// `&` nesting selector
+
     Nesting(Span),
-    /// An+B notation inside `:nth-child()` etc.
+
     Nth(Span),
-    /// Percentage (e.g. in `@keyframes`)
+
     Percentage(Span),
 }
 
@@ -190,7 +161,7 @@ pub enum SimpleSelector {
 pub struct PseudoClassSelector {
     pub span: Span,
     pub name: CompactString,
-    /// Boxed to break the recursive type cycle (SelectorList → SimpleSelector → PseudoClassSelector).
+
     pub args: Option<Box<SelectorList>>,
 }
 
@@ -198,7 +169,7 @@ pub struct PseudoClassSelector {
 pub struct PseudoElementSelector {
     pub span: Span,
     pub name: CompactString,
-    /// Arguments for functional pseudo-elements like `::part(foo)`, `::slotted(.foo)`.
+
     pub args: Option<Box<SelectorList>>,
 }
 
@@ -206,17 +177,13 @@ pub struct PseudoElementSelector {
 pub struct AttributeSelector {
     pub span: Span,
     pub name: CompactString,
-    /// The matcher operator span (e.g. `~=`, `^=`, `=`)
+
     pub matcher: Option<Span>,
-    /// The attribute value (quoted or unquoted content, without quotes)
+
     pub value: Option<Span>,
-    /// Case-sensitivity flags (e.g. `i`, `s`)
+
     pub flags: Option<Span>,
 }
-
-// ---------------------------------------------------------------------------
-// Blocks & Declarations
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
@@ -229,7 +196,7 @@ pub enum BlockChild {
     Declaration(Declaration),
     Rule(Rule),
     Comment(Comment),
-    /// Skipped invalid CSS (parse error recovery).
+
     Error(Span),
 }
 
@@ -238,13 +205,9 @@ pub struct Declaration {
     pub span: Span,
     pub property: Span,
     pub value: Span,
-    /// When set by the transform, the printer uses this instead of `value`.
+
     pub value_override: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// GetSpan implementations
-// ---------------------------------------------------------------------------
 
 impl GetSpan for StyleSheet {
     fn span(&self) -> Span {

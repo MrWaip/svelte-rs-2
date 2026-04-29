@@ -1,15 +1,11 @@
 use crate::types::data::AnalysisData;
 use crate::types::script::{DeclarationKind, RuneKind};
 
-/// Run all passes that depend on resolve_references but are independent of each other.
-/// Combines known value collection, props analysis, and needs_context aggregation.
 pub fn run_post_resolve_passes(data: &mut AnalysisData) {
     analyze_declarations(data);
     aggregate_store_needs_context(data);
 }
 
-/// Single pass over script declarations for both known-value collection and props-id detection.
-/// Then processes props_declaration separately (only needed for props analysis).
 fn analyze_declarations(data: &mut AnalysisData) {
     let script = match &data.script.info {
         Some(s) => s,
@@ -17,7 +13,6 @@ fn analyze_declarations(data: &mut AnalysisData) {
     };
     let root = data.scoping.root_scope_id();
 
-    // Single pass: known_values + props_id detection
     for decl in &script.declarations {
         if decl.is_rune == Some(RuneKind::PropsId) && data.script.props_id.is_none() {
             data.script.props_id = Some(decl.name.to_string());
@@ -49,17 +44,12 @@ fn analyze_declarations(data: &mut AnalysisData) {
     mark_rest_prop_symbol(data);
 }
 
-/// Mark the rest-prop's leaf symbol so downstream passes (static member
-/// rewrites, codegen) can recognise `<rest>.<key>` reads without
-/// walking the pattern again. This is the only post-semantic side
-/// effect we need from the `$props()` declaration — the rest of the
-/// information is read directly from `ScriptAnalysis::props_declaration`.
 fn mark_rest_prop_symbol(data: &mut AnalysisData) {
     let Some(decl) = data.script.props_declaration() else {
         return;
     };
     let root = data.scoping.root_scope_id();
-    // Snapshot rest-prop names before mutating scoping.
+
     let rest_names: Vec<String> = decl
         .props
         .iter()
@@ -73,7 +63,6 @@ fn mark_rest_prop_symbol(data: &mut AnalysisData) {
     }
 }
 
-/// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
 fn aggregate_store_needs_context(data: &mut AnalysisData) {
     if data.output.needs_context {
         return;

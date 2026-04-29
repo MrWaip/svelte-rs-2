@@ -1,6 +1,4 @@
-//! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
-
-use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_SELF};
+use svelte_ast::{Attribute, ComponentNode, Element, SVELTE_SELF, is_mathml, is_svg, is_void};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -51,7 +49,6 @@ impl<'src> ElementFlagsVisitor<'src> {
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
-        // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
         if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::ElementInvalidSelfClosingTag {
@@ -79,18 +76,17 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
         }
 
-        // <option>: single ExpressionTag child, no explicit value attribute → synthetic __value
-        if el.name == "option" && !has_value_attr {
-            if let Some(child_id) = ctx.data.fragment_single_expression_child_by_id(fragment_id) {
-                ctx.data
-                    .elements
-                    .flags
-                    .option_synthetic_value_expr
-                    .insert(el.id, child_id);
-            }
+        if el.name == "option"
+            && !has_value_attr
+            && let Some(child_id) = ctx.data.fragment_single_expression_child_by_id(fragment_id)
+        {
+            ctx.data
+                .elements
+                .flags
+                .option_synthetic_value_expr
+                .insert(el.id, child_id);
         }
 
-        // Customizable select: <select>, <optgroup>, <option> with rich DOM content.
         let rich_content_parent = match el.name.as_str() {
             "select" => Some(RichContentParentKind::Select),
             "optgroup" => Some(RichContentParentKind::Optgroup),
@@ -128,11 +124,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::ClassDirective(cd) => {
-                // Shorthand `class:name` now carries a synthesized `Identifier`
-                // expression through `ParserResult`, so the codegen can always
-                // reach a transformed value via `get_attr_expr`. `has_expression`
-                // stays true uniformly — the shorthand-vs-explicit distinction
-                // no longer affects expression availability.
                 ctx.data
                     .elements
                     .flags
@@ -230,9 +221,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             data.elements.flags.is_svelte_self.insert(cn.id);
         }
         for attr in &cn.attributes {
-            // CSS custom properties (`--name`) on a component are routed to the
-            // wrapper-element + `$.css_props(...)` lowering, not into the regular
-            // component props loop.
             let css_prop_name: Option<&str> = match attr {
                 Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
                 Attribute::StringAttribute(a) if a.name.starts_with("--") => Some(&a.name),
@@ -296,21 +284,12 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                             expr_id: b.expression.id(),
                         }
                     } else {
-                        // Store-sub detection: only possible with explicit expression
-                        // (`bind:value={$count}`). Shorthand `bind:count` binds to `count`,
-                        // never to `$count`, so it can't be a store sub.
                         let expr_text = if b.shorthand {
                             None
                         } else {
                             Some(self.source_text(b.expression.span).to_string())
                         };
 
-                        // Store-sub detection on `bind:value={$count}`: resolve
-                        // the textual expression's `$foo` root identifier to a
-                        // root-scope binding whose declaration semantics is
-                        // `Store(_)`. Uses the expression text because the bind
-                        // attribute's `attr_expression` may resolve to a synthesized
-                        // reference whose symbol isn't classified as a store in v2.
                         let is_store = expr_text.as_deref().is_some_and(|t| {
                             let trimmed = t.trim();
                             trimmed.starts_with('$')
@@ -321,10 +300,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                     let root = data.scoping.root_scope_id();
                                     data.scoping.find_binding(root, base).is_some_and(|sym| {
                                         matches!(
-                                            data.declaration_semantics(
-                                                data.scoping.symbol_declaration(sym),
-                                            ),
-                                            crate::types::data::DeclarationSemantics::Store(_),
+                                            data.binding_semantics(sym),
+                                            crate::types::data::BindingSemantics::Store(_),
                                         )
                                     })
                                 }
@@ -346,20 +323,20 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                 .map(|sym| {
                                     let decl = data
                                         .reactivity
-                                        .declaration_semantics(data.scoping.symbol_declaration(sym));
+                                        .binding_semantics(sym);
                                     match decl {
-                                        crate::types::data::DeclarationSemantics::Prop(
-                                            crate::types::data::PropDeclarationSemantics {
-                                                kind: crate::types::data::PropDeclarationKind::Source { .. },
+                                        crate::types::data::BindingSemantics::Prop(
+                                            crate::types::data::PropBindingSemantics {
+                                                kind: crate::types::data::PropBindingKind::Source { .. },
                                                 ..
                                             },
                                         )
-                                        | crate::types::data::DeclarationSemantics::LegacyBindableProp(_) => {
+                                        | crate::types::data::BindingSemantics::LegacyBindableProp(_) => {
                                             ComponentBindMode::PropSource
                                         }
-                                        crate::types::data::DeclarationSemantics::State(_)
-                                        | crate::types::data::DeclarationSemantics::Derived(_)
-                                        | crate::types::data::DeclarationSemantics::OptimizedRune(_) => {
+                                        crate::types::data::BindingSemantics::State(_)
+                                        | crate::types::data::BindingSemantics::Derived(_)
+                                        | crate::types::data::BindingSemantics::OptimizedRune(_) => {
                                             ComponentBindMode::Rune
                                         }
                                         _ => ComponentBindMode::Plain,

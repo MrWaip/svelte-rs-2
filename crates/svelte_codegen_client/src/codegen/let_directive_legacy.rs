@@ -108,11 +108,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let declarator = decl.declarations.first()?;
             let stmt_oxc_node_id = decl.node_id();
 
-            // Привет ИИ, так не делай, мы это отрефакторим в analyze — legacy подход.
-            // Имена биндингов извлекаются ручным обходом BindingPattern —
-            // эту информацию должен давать analyze через
-            // `declaration_semantics(stmt_oxc_node_id).let_carrier_binding_names()`
-            // чтобы codegen только читал готовый список.
             let mut binding_names: Vec<String> = Vec::new();
             svelte_component_semantics::walk_bindings(&declarator.id, |v| {
                 binding_names.push(self.ctx.symbol_name(v.symbol).to_string());
@@ -122,8 +117,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (stmt_clone, stmt_oxc_node_id, binding_names)
         };
 
-        let carrier_sym_id = match self.ctx.query.view.declaration_semantics(stmt_oxc_node_id) {
-            svelte_analyze::DeclarationSemantics::LetCarrier { carrier_symbol } => carrier_symbol,
+        let carrier_sym_id = match self.ctx.query.view.declarator_semantics(stmt_oxc_node_id) {
+            svelte_analyze::DeclaratorSemantics::LetCarrier { carrier_symbol } => carrier_symbol,
             _ => return None,
         };
         let carrier_name = self.ctx.symbol_name(carrier_sym_id).to_string();

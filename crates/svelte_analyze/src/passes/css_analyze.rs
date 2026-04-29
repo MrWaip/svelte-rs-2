@@ -14,10 +14,6 @@ use crate::css::css_component_hash;
 use crate::types::data::{AnalysisData, CssAnalysis};
 use crate::types::node_table::NodeBitSet;
 
-/// Classify the CSS block: compute hash, mark scoped template elements, set inject flag.
-/// Also validates CSS and emits diagnostics for invalid `:global()` usage.
-///
-/// Does NOT transform or serialize CSS — call `svelte_transform_css::transform_css` for that.
 pub fn analyze_css_pass(
     component: &SvelteComponent,
     stylesheet: &StyleSheet,
@@ -32,10 +28,8 @@ pub fn analyze_css_pass(
     let css_text = component.source_text(css_block.content_span);
     let hash = css_component_hash(css_text);
 
-    // Phase 1: collect locally-scoped @keyframes names.
     let keyframes = collect_keyframe_names(stylesheet, css_text);
 
-    // Phase 2: validate CSS (:global usage, nesting selectors, etc.)
     let css_diag_start = diagnostics.len();
     let mut validator = CssValidator::new(css_block.content_span.start, diagnostics);
     validator.visit_stylesheet(stylesheet);
@@ -52,8 +46,6 @@ pub fn analyze_css_pass(
         used_selectors: rustc_hash::FxHashSet::default(),
     };
 
-    // Phase 3: prune — backward-match every selector against the template, populate
-    // `used_selectors` and mark every matched element in `scoped_elements`.
     super::css_prune::prune_and_warn(
         component,
         stylesheet,
@@ -65,10 +57,6 @@ pub fn analyze_css_pass(
         diagnostics,
     );
 }
-
-// ---------------------------------------------------------------------------
-// Collect @keyframes names (read-only)
-// ---------------------------------------------------------------------------
 
 fn collect_keyframe_names(stylesheet: &StyleSheet, source: &str) -> Vec<CompactString> {
     let mut collector = KeyframeCollector {
@@ -86,7 +74,6 @@ struct KeyframeCollector<'a> {
 
 impl Visit for KeyframeCollector<'_> {
     fn visit_style_rule(&mut self, node: &StyleRule) {
-        // Skip `:global { ... }` blocks — their keyframes are unscoped.
         if node.is_lone_global_block() {
             return;
         }
@@ -100,23 +87,15 @@ impl Visit for KeyframeCollector<'_> {
                 self.names.push(CompactString::new(prelude));
             }
         }
-        // Still recurse into the block for nested @keyframes (unlikely but correct)
+
         svelte_css::visit::walk_at_rule(self, node);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// True if the `SimpleSelector` is `:global` (block form, no args).
 fn is_global_block_selector(sel: &SimpleSelector) -> bool {
     matches!(sel, SimpleSelector::Global { args: None, .. })
 }
 
-/// True if a `RelativeSelector` is `:global(...)` or `:global` and all other
-/// selectors in the compound are unscoped pseudo-classes or pseudo-elements.
-/// Matches the reference compiler's `is_global()` from `css/utils.js`.
 fn is_global_relative_selector(rel: &RelativeSelector) -> bool {
     let Some(first) = rel.selectors.first() else {
         return false;
@@ -124,10 +103,9 @@ fn is_global_relative_selector(rel: &RelativeSelector) -> bool {
     match first {
         SimpleSelector::Global { args, .. } => {
             if args.is_none() {
-                // `:global` block selector — counts as global
                 return true;
             }
-            // `:global(...)` — only global if all siblings are unscoped pseudo-classes/pseudo-elements
+
             rel.selectors.iter().all(|s| match s {
                 SimpleSelector::PseudoElement(_) => true,
                 SimpleSelector::PseudoClass(_) => is_unscoped_pseudo_class(s),
@@ -139,15 +117,13 @@ fn is_global_relative_selector(rel: &RelativeSelector) -> bool {
     }
 }
 
-/// True if the pseudo-class cannot be scoped (matches reference `is_unscoped_pseudo_class`).
 fn is_unscoped_pseudo_class(sel: &SimpleSelector) -> bool {
     let SimpleSelector::PseudoClass(pc) = sel else {
         return false;
     };
     let name = pc.name.as_str();
-    // These pseudo-classes make the selector scoped
+
     if name == "has" || name == "is" || name == "where" {
-        // ...unless all their children are global
         return pc.args.as_ref().is_none_or(|args| {
             args.children
                 .iter()
@@ -155,8 +131,6 @@ fn is_unscoped_pseudo_class(sel: &SimpleSelector) -> bool {
         });
     }
     if name == "not" {
-        // :not is special: unscoped unless it has multiple selectors in args
-        // (e.g. :not(.x .y) should be scoped, :not(.x) is unscoped)
         return pc.args.as_ref().is_none_or(|args| {
             args.children.iter().all(|c| c.children.len() == 1)
                 || args
@@ -165,33 +139,26 @@ fn is_unscoped_pseudo_class(sel: &SimpleSelector) -> bool {
                     .all(|c| c.children.iter().all(is_global_relative_selector))
         });
     }
-    // All other pseudo-classes are unscoped
+
     true
 }
 
-// ---------------------------------------------------------------------------
-// CSS validation — `:global()` diagnostics
-// ---------------------------------------------------------------------------
-
-/// Per-rule context tracked on the validator's stack.
 struct RuleContext {
-    /// Whether this rule is a lone `:global` block (single complex, single relative, single selector).
     is_lone_global_block: bool,
-    /// Whether this rule has a parent rule (i.e. is nested).
+
     has_parent_rule: bool,
-    /// Whether the parent rule is a lone top-level `:global` block
-    /// (needed for `&` validation inside `:global { &.foo { ... } }`).
+
     parent_is_lone_global_block: bool,
-    /// True if this rule's prelude is exactly `:global(&)`.
+
     is_lone_global_with_nesting_arg: bool,
 }
 
 struct CssValidator<'a> {
     css_offset: u32,
     diagnostics: &'a mut Vec<Diagnostic>,
-    /// Stack of parent style rules (innermost last).
+
     rule_stack: Vec<RuleContext>,
-    /// Whether we're currently inside a pseudo-class selector's args.
+
     in_pseudo_class: bool,
 }
 
@@ -214,8 +181,6 @@ impl<'a> CssValidator<'a> {
         self.diagnostics.push(Diagnostic::error(kind, span));
     }
 
-    /// Validate and traverse a style rule.
-    /// Ported from the `Rule` visitor in `css-analyze.js`.
     fn validate_rule(&mut self, rule: &StyleRule) {
         let has_parent = !self.rule_stack.is_empty();
         let mut rule_is_global_block = false;
@@ -231,7 +196,6 @@ impl<'a> CssValidator<'a> {
                 if let Some(idx) = global_pos {
                     if idx == 0 {
                         if child.selectors.len() > 1 && selector_idx == 0 && !has_parent {
-                            // `:global.foo { ... }` at top level — modifier not allowed
                             self.emit(
                                 DiagnosticKind::CssGlobalBlockInvalidModifierStart,
                                 child.selectors[1].span(),
@@ -239,16 +203,15 @@ impl<'a> CssValidator<'a> {
                         } else {
                             is_global_block = true;
 
-                            // `:global` can only follow descendant combinator
-                            if let Some(ref comb) = child.combinator {
-                                if comb.kind != CombinatorKind::Descendant {
-                                    self.emit(
-                                        DiagnosticKind::CssGlobalBlockInvalidCombinator {
-                                            name: comb.kind.as_str().to_string(),
-                                        },
-                                        child.span,
-                                    );
-                                }
+                            if let Some(ref comb) = child.combinator
+                                && comb.kind != CombinatorKind::Descendant
+                            {
+                                self.emit(
+                                    DiagnosticKind::CssGlobalBlockInvalidCombinator {
+                                        name: comb.kind.as_str().to_string(),
+                                    },
+                                    child.span,
+                                );
                             }
 
                             let is_lone_global = complex_selector.children.len() == 1
@@ -282,7 +245,6 @@ impl<'a> CssValidator<'a> {
                             }
                         }
                     } else {
-                        // `:global` not at position 0 — modifying an existing selector
                         self.emit(
                             DiagnosticKind::CssGlobalBlockInvalidModifier,
                             child.selectors[idx].span(),
@@ -302,7 +264,6 @@ impl<'a> CssValidator<'a> {
             first_complex = false;
         }
 
-        // Compute context for child rules
         let is_lone_global_block = rule_is_global_block
             && rule.prelude.children.len() == 1
             && rule.prelude.children[0].children.len() == 1
@@ -331,17 +292,13 @@ impl<'a> CssValidator<'a> {
             is_lone_global_with_nesting_arg,
         });
 
-        // Visit prelude then block
         self.visit_selector_list(&rule.prelude);
         self.visit_block(&rule.block);
 
         self.rule_stack.pop();
     }
 
-    /// Validate a complex selector for `:global(...)` placement issues.
-    /// Ported from the `ComplexSelector` visitor in `css-analyze.js`.
     fn validate_complex_selector(&mut self, node: &ComplexSelector) {
-        // Check `:global` block inside pseudo-class
         if let Some(global_rel) = node
             .children
             .iter()
@@ -354,7 +311,6 @@ impl<'a> CssValidator<'a> {
                 );
             }
 
-            // `:global(...)` not in middle unless all following are also global
             let idx = node
                 .children
                 .iter()
@@ -365,19 +321,16 @@ impl<'a> CssValidator<'a> {
                 span,
                 ..
             } = &global_rel.selectors[0]
+                && idx != 0
+                && idx != node.children.len() - 1
+                && node.children[idx + 1..]
+                    .iter()
+                    .any(|r| !is_global_relative_selector(r))
             {
-                if idx != 0
-                    && idx != node.children.len() - 1
-                    && node.children[idx + 1..]
-                        .iter()
-                        .any(|r| !is_global_relative_selector(r))
-                {
-                    self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
-                }
+                self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
             }
         }
 
-        // Validate `:global(...)` / `:global` args in each relative selector
         for rel in &node.children {
             for (i, sel) in rel.selectors.iter().enumerate() {
                 let (args, span) = match sel {
@@ -386,19 +339,17 @@ impl<'a> CssValidator<'a> {
                 };
 
                 if let Some(args) = args {
-                    // `:global(element)` must be at position 0 in compound
                     if let Some(first_type_sel) = args
                         .children
                         .first()
                         .and_then(|c| c.children.first())
                         .and_then(|r| r.selectors.first())
+                        && matches!(first_type_sel, SimpleSelector::Type { .. })
+                        && i != 0
                     {
-                        if matches!(first_type_sel, SimpleSelector::Type { .. }) && i != 0 {
-                            self.emit(DiagnosticKind::CssGlobalInvalidSelectorList, *span);
-                        }
+                        self.emit(DiagnosticKind::CssGlobalInvalidSelectorList, *span);
                     }
 
-                    // `:global(...)` must contain exactly one selector in compound context
                     if args.children.len() > 1
                         && (node.children.len() > 1 || rel.selectors.len() > 1)
                     {
@@ -406,23 +357,19 @@ impl<'a> CssValidator<'a> {
                     }
                 }
 
-                // `:global(...)` or bare `:global` must not be followed by a type selector
-                if let Some(next) = rel.selectors.get(i + 1) {
-                    if matches!(next, SimpleSelector::Type { .. }) {
-                        self.emit(DiagnosticKind::CssTypeSelectorInvalidPlacement, next.span());
-                    }
+                if let Some(next) = rel.selectors.get(i + 1)
+                    && matches!(next, SimpleSelector::Type { .. })
+                {
+                    self.emit(DiagnosticKind::CssTypeSelectorInvalidPlacement, next.span());
                 }
             }
         }
     }
 
-    /// Validate nesting selector (`&`) placement.
-    /// Ported from the `NestingSelector` visitor in `css-analyze.js`.
     fn validate_nesting_selector(&mut self, span: svelte_span::Span) {
         let has_parent = self.current_rule().is_some_and(|r| r.has_parent_rule);
 
         if !has_parent {
-            // `&` outside nested rule — only valid inside lone `:global(&)`
             let valid = self
                 .current_rule()
                 .is_some_and(|r| r.is_lone_global_with_nesting_arg);
@@ -430,7 +377,6 @@ impl<'a> CssValidator<'a> {
                 self.emit(DiagnosticKind::CssNestingSelectorInvalidPlacement, span);
             }
         } else {
-            // `:global { &.foo { ... } }` — `&` inside lone top-level global block is invalid
             if self
                 .current_rule()
                 .is_some_and(|r| r.parent_is_lone_global_block)
@@ -441,7 +387,6 @@ impl<'a> CssValidator<'a> {
     }
 }
 
-/// True if the args of a `:global(...)` contain a single nesting selector `&`.
 fn is_nesting_in_global_args(args: &SelectorList) -> bool {
     args.children
         .first()
@@ -451,7 +396,6 @@ fn is_nesting_in_global_args(args: &SelectorList) -> bool {
         })
 }
 
-/// True if a `RelativeSelector` starts with `:global` (block form, no args).
 fn is_global_block_selector_in_rel(rel: &RelativeSelector) -> bool {
     rel.selectors.first().is_some_and(is_global_block_selector)
 }
@@ -469,15 +413,13 @@ impl Visit for CssValidator<'_> {
     }
 
     fn visit_complex_selector(&mut self, node: &ComplexSelector) {
-        // Validate relative selectors (leading combinator), walk into them, then validate complex
         for (i, child) in node.children.iter().enumerate() {
             if i == 0
                 && !self.in_pseudo_class
                 && !self.current_rule().is_some_and(|r| r.has_parent_rule)
+                && let Some(combinator) = child.combinator.as_ref()
             {
-                if let Some(combinator) = child.combinator.as_ref() {
-                    self.emit(DiagnosticKind::CssSelectorInvalid, combinator.span);
-                }
+                self.emit(DiagnosticKind::CssSelectorInvalid, combinator.span);
             }
             self.visit_relative_selector(child);
         }

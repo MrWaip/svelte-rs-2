@@ -1,20 +1,7 @@
-//! LEGACY(svelte4): instance-script diagnostics for legacy props.
-//!
-//! Four diagnostics, three runes-mode bans + one non-runes warning:
-//! - `legacy_export_invalid` — runes mode forbids `export let` (use `$props()`).
-//! - `legacy_props_invalid` / `legacy_rest_props_invalid` — runes mode forbids
-//!   `$$props` / `$$restProps` identifier reads.
-//! - `export_let_unused` — non-runes warning for legacy bindable prop with no
-//!   read references outside the export specifier.
-//!
-//! Deprecated in Svelte 5, remove in Svelte 6.
-//! Removal recipe: `rg 'LEGACY\(svelte4\):' crates/svelte_analyze/src/validate/`,
-//! drop the matched module, unwire from `validate/mod.rs`.
-
+use oxc_ast::AstKind;
 use oxc_ast::ast::{
     Declaration, IdentifierReference, ModuleExportName, Program, Statement, VariableDeclarationKind,
 };
-use oxc_ast::AstKind;
 use oxc_semantic::ReferenceId;
 use rustc_hash::FxHashSet;
 use svelte_component_semantics::OxcNodeId;
@@ -23,7 +10,6 @@ use svelte_span::Span;
 
 use crate::AnalysisData;
 
-/// LEGACY(svelte4): entry point — runes-mode bans or non-runes unused warning.
 pub(super) fn validate_legacy_diagnostics(
     data: &AnalysisData,
     program: &Program<'_>,
@@ -40,9 +26,6 @@ pub(super) fn validate_legacy_diagnostics(
     }
 }
 
-/// LEGACY(svelte4): runes mode rejects `export let foo` at the instance script.
-/// Span = whole `ExportNamedDeclaration`. Companion `state_invalid_export` skips
-/// the same span via the shared `span_already_taken` filter (see `validate/mod.rs`).
 fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mut Vec<Diagnostic>) {
     for stmt in &program.body {
         let Statement::ExportNamedDeclaration(export) = stmt else {
@@ -61,7 +44,6 @@ fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mu
     }
 }
 
-/// LEGACY(svelte4): runes mode rejects `$$props` identifier reads.
 fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut Vec<Diagnostic>) {
     emit_first_unresolved_read(
         data,
@@ -72,7 +54,6 @@ fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut V
     );
 }
 
-/// LEGACY(svelte4): runes mode rejects `$$restProps` identifier reads.
 fn validate_legacy_rest_props_invalid(
     data: &AnalysisData,
     offset: u32,
@@ -87,8 +68,6 @@ fn validate_legacy_rest_props_invalid(
     );
 }
 
-/// One diagnostic per component on the first read site, mirroring reference
-/// compiler `e.legacy_props_invalid(props_refs[0].node)` in `2-analyze/index.js`.
 fn emit_first_unresolved_read(
     data: &AnalysisData,
     name: &str,
@@ -120,8 +99,6 @@ fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<
     }
 }
 
-/// LEGACY(svelte4): non-runes warning for legacy bindable prop with no read
-/// references outside the export specifier itself.
 fn validate_export_let_unused(
     data: &AnalysisData,
     program: &Program<'_>,
@@ -158,19 +135,15 @@ fn collect_export_specifier_refs(program: &Program<'_>) -> FxHashSet<ReferenceId
             if let ModuleExportName::IdentifierReference(IdentifierReference {
                 reference_id, ..
             }) = &spec.local
+                && let Some(id) = reference_id.get()
             {
-                if let Some(id) = reference_id.get() {
-                    out.insert(id);
-                }
+                out.insert(id);
             }
         }
     }
     out
 }
 
-/// Svelte store auto-subscription: `$foo` inside the script desugars to
-/// `foo.subscribe(...)`. A `$<name>` binding in the same scope means the legacy
-/// prop *is* used through the store-read sugar even if no direct read exists.
 fn has_companion_store(data: &AnalysisData, sym: oxc_semantic::SymbolId) -> bool {
     let name = data.scoping.symbol_name(sym);
     let companion = format!("${name}");

@@ -8,13 +8,9 @@ fn parse(source: &str) -> Component {
     );
     component
 }
-
-/// Get a node reference from the component's root fragment by index.
 fn node_at(c: &Component, index: usize) -> &Node {
     c.store.get(c.store.fragment(c.root).nodes[index])
 }
-
-/// Get a node reference from any fragment by index.
 fn frag_node_at(c: &Component, fragment_id: svelte_ast::FragmentId, index: usize) -> &Node {
     c.store.get(c.store.fragment(fragment_id).nodes[index])
 }
@@ -32,7 +28,7 @@ fn assert_script(c: &Component, expected: &str) {
 }
 
 fn assert_if_block(c: &Component, index: usize, expected_test: &str) {
-    if let Node::IfBlock(ref ib) = node_at(c, index) {
+    if let Node::IfBlock(ib) = node_at(c, index) {
         assert_eq!(c.source_text(ib.test.span), expected_test);
     } else {
         panic!("expected IfBlock at index {index}");
@@ -256,12 +252,13 @@ fn unclosed_element_returns_diagnostic() {
         !diagnostics.is_empty(),
         "expected diagnostics for unclosed element"
     );
-    // AST should still contain the auto-closed element
     assert_eq!(component.store.fragment(component.root).nodes.len(), 1);
-    assert!(component
-        .store
-        .get(component.store.fragment(component.root).nodes[0])
-        .is_element());
+    assert!(
+        component
+            .store
+            .get(component.store.fragment(component.root).nodes[0])
+            .is_element()
+    );
 }
 
 #[test]
@@ -302,7 +299,7 @@ fn assert_snippet_block(
     expected_name: &str,
     expected_expression: &str,
 ) {
-    if let Node::SnippetBlock(ref sb) = node_at(c, index) {
+    if let Node::SnippetBlock(sb) = node_at(c, index) {
         assert_eq!(sb.name(&c.source), expected_name);
         assert_eq!(c.source_text(sb.decl.span), expected_expression);
     } else {
@@ -311,7 +308,7 @@ fn assert_snippet_block(
 }
 
 fn assert_render_tag(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::RenderTag(ref rt) = node_at(c, index) {
+    if let Node::RenderTag(rt) = node_at(c, index) {
         assert_eq!(c.source_text(rt.expression.span), expected_expr);
     } else {
         panic!("expected RenderTag at index {index}");
@@ -366,10 +363,8 @@ fn snippet_and_render_together() {
     assert_render_tag(&c, 1, "greet(x)");
 }
 
-// --- HtmlTag tests ---
-
 fn assert_html_tag(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::HtmlTag(ref ht) = node_at(c, index) {
+    if let Node::HtmlTag(ht) = node_at(c, index) {
         assert_eq!(c.source_text(ht.expression.span), expected_expr);
     } else {
         panic!("expected HtmlTag at index {index}");
@@ -388,15 +383,13 @@ fn html_tag_complex_expression() {
     assert_html_tag(&c, 0, "'<p>' + name + '</p>'");
 }
 
-// --- ConstTag tests ---
-
 fn assert_const_tag(
     c: &Component,
     fragment_id: svelte_ast::FragmentId,
     index: usize,
     expected_expr: &str,
 ) {
-    if let Node::ConstTag(ref ct) = frag_node_at(c, fragment_id, index) {
+    if let Node::ConstTag(ct) = frag_node_at(c, fragment_id, index) {
         assert_eq!(c.source_text(ct.decl.span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
@@ -406,7 +399,7 @@ fn assert_const_tag(
 #[test]
 fn const_tag_basic() {
     let c = parse("{#each items as item}{@const doubled = item * 2}<p>{doubled}</p>{/each}");
-    if let Node::EachBlock(ref eb) = node_at(&c, 0) {
+    if let Node::EachBlock(eb) = node_at(&c, 0) {
         assert_const_tag(&c, eb.body, 0, "doubled = item * 2");
     } else {
         panic!("expected EachBlock at index 0");
@@ -416,17 +409,15 @@ fn const_tag_basic() {
 #[test]
 fn const_tag_in_if_block() {
     let c = parse("{#if show}{@const x = count + 1}<p>{x}</p>{/if}");
-    if let Node::IfBlock(ref ib) = node_at(&c, 0) {
+    if let Node::IfBlock(ib) = node_at(&c, 0) {
         assert_const_tag(&c, ib.consequent, 0, "x = count + 1");
     } else {
         panic!("expected IfBlock at index 0");
     }
 }
 
-// --- KeyBlock tests ---
-
 fn assert_key_block(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::KeyBlock(ref kb) = node_at(c, index) {
+    if let Node::KeyBlock(kb) = node_at(c, index) {
         assert_eq!(c.source_text(kb.expression.span), expected_expr);
     } else {
         panic!("expected KeyBlock at index {index}");
@@ -446,15 +437,11 @@ fn key_block_complex_expr() {
     assert_key_block(&c, 0, "item.id");
 }
 
-// --- Escape sequence tests (Bug #1) ---
-
 #[test]
 fn interpolation_with_escaped_quotes() {
     let c = parse(r#"{ name.replace("\"", "'") }"#);
     assert_node(&c, 0, r#"{ name.replace("\"", "'") }"#);
 }
-
-// --- Style tag tests (Bug #2) ---
 
 fn assert_css(c: &Component, expected_content: &str) {
     let css = c.css.as_ref().expect("expected css");
@@ -532,10 +519,8 @@ fn nested_style_tag_inside_block_stays_in_fragment() {
     );
 }
 
-// --- Each block key tests (Bug #3) ---
-
 fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {
-    if let Node::EachBlock(ref eb) = node_at(c, index) {
+    if let Node::EachBlock(eb) = node_at(c, index) {
         assert_eq!(c.source_text(eb.expression.span), expected_expr);
         let actual_key = eb.key.as_ref().map(|r| c.source_text(r.span));
         assert_eq!(actual_key, expected_key);
@@ -556,8 +541,6 @@ fn each_block_with_index_and_key() {
     assert_each_block(&c, 0, "items", Some("item.id"));
 }
 
-// --- Deep nesting tests ---
-
 #[test]
 fn deeply_nested_blocks() {
     let c = parse("{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}");
@@ -568,13 +551,11 @@ fn deeply_nested_blocks() {
     );
 }
 
-// --- Directive tests at parser level ---
-
 #[test]
 fn class_directive_on_element() {
     let c = parse("<div class:active={isActive}>text</div>");
     assert_node(&c, 0, "<div class:active={isActive}>text</div>");
-    if let Node::Element(ref el) = node_at(&c, 0) {
+    if let Node::Element(el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -589,7 +570,7 @@ fn class_directive_on_element() {
 fn bind_directive_on_element() {
     let c = parse("<input bind:value={name}/>");
     assert_node(&c, 0, "<input bind:value={name}/>");
-    if let Node::Element(ref el) = node_at(&c, 0) {
+    if let Node::Element(el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -603,7 +584,7 @@ fn bind_directive_on_element() {
 #[test]
 fn spread_attribute_on_element() {
     let c = parse("<div {...props}>text</div>");
-    if let Node::Element(ref el) = node_at(&c, 0) {
+    if let Node::Element(el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -614,8 +595,6 @@ fn spread_attribute_on_element() {
     }
 }
 
-// --- Error recovery tests ---
-
 fn parse_with_diagnostics(source: &str) -> (Component, Vec<Diagnostic>) {
     Parser::new(source).parse()
 }
@@ -624,7 +603,6 @@ fn parse_with_diagnostics(source: &str) -> (Component, Vec<Diagnostic>) {
 fn recovery_unclosed_element_with_text() {
     let (c, diags) = parse_with_diagnostics("<div><span>text");
     assert!(!diags.is_empty());
-    // Auto-closed: div contains span, span contains text
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
     assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_element());
 }
@@ -633,7 +611,6 @@ fn recovery_unclosed_element_with_text() {
 fn recovery_mismatched_close_tag() {
     let (c, diags) = parse_with_diagnostics("<div></span></div>");
     assert!(!diags.is_empty());
-    // div should still be properly closed
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
@@ -641,7 +618,6 @@ fn recovery_mismatched_close_tag() {
 fn recovery_unclosed_if_block() {
     let (c, diags) = parse_with_diagnostics("{#if x}hello");
     assert!(!diags.is_empty());
-    // Should produce an auto-closed IfBlock
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
     assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_if_block());
 }
@@ -654,7 +630,6 @@ fn recovery_multiple_errors() {
         "expected multiple diagnostics, got {}",
         diags.len()
     );
-    // Both unclosed elements should be auto-closed
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
 
@@ -677,7 +652,6 @@ fn recovery_text_only() {
 fn recovery_close_tag_no_matching_open() {
     let (c, diags) = parse_with_diagnostics("</div>");
     assert!(!diags.is_empty());
-    // Error node for the orphan close tag
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
     assert!(matches!(
         c.store.get(c.store.fragment(c.root).nodes[0]),
@@ -698,7 +672,6 @@ fn dual_scripts_instance_and_module() {
 
 #[test]
 fn dual_scripts_module_then_instance() {
-    // Order does not matter — module goes to module_script, instance to instance_script.
     let c = parse("<script>let a = 1;</script><script module>export let b = 2;</script>");
     assert!(c.instance_script.is_some());
     assert!(c.module_script.is_some());
@@ -710,7 +683,6 @@ fn recovery_duplicate_script_continues() {
         "<script>let a = 1;</script><script>let b = 2;</script><div>ok</div>",
     );
     assert!(!diags.is_empty());
-    // First instance script is kept, second is skipped, div is parsed
     assert!(c.instance_script.is_some());
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
     assert!(c.store.get(c.store.fragment(c.root).nodes[0]).is_element());
@@ -735,7 +707,7 @@ fn recovery_unclosed_each_block() {
 }
 
 fn assert_element(c: &Component, index: usize, name: &str, self_closing: bool) {
-    if let Node::Element(ref el) = node_at(c, index) {
+    if let Node::Element(el) = node_at(c, index) {
         assert_eq!(el.name, name, "expected element name '{name}'");
         assert_eq!(
             el.self_closing, self_closing,
@@ -780,9 +752,11 @@ fn void_element_img() {
 fn void_element_closing_tag_error() {
     let (_, diags) = parse_with_diagnostics("</input>");
     assert!(!diags.is_empty());
-    assert!(diags
-        .iter()
-        .any(|d| d.kind == svelte_diagnostics::DiagnosticKind::VoidElementInvalidContent));
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.kind == svelte_diagnostics::DiagnosticKind::VoidElementInvalidContent)
+    );
 }
 
 #[test]
@@ -793,8 +767,6 @@ fn void_element_multiple() {
     assert_element(&c, 1, "br", true);
     assert_element(&c, 2, "hr", true);
 }
-
-// --- <svelte:options> tests ---
 
 fn assert_options_runes(c: &Component, expected: bool) {
     let opts = c.options.as_ref().expect("expected svelte:options");
@@ -924,7 +896,6 @@ fn svelte_options_multiple_attributes() {
 fn svelte_options_with_content() {
     let c = parse("<svelte:options runes={true} />\n<p>Hello</p>");
     assert_options_runes(&c, true);
-    // <p> should be in the fragment, svelte:options should not
     assert_eq!(c.store.fragment(c.root).nodes.len(), 2); // newline text + <p>
 }
 
@@ -1051,7 +1022,6 @@ fn svelte_options_reserved_tag_name_diagnostic() {
 
 #[test]
 fn svelte_options_custom_element_null_compat() {
-    // null is backwards compat from Svelte 4 — should not error
     let c = parse("<svelte:options customElement={null} />");
     let opts = c.options.as_ref().expect("expected svelte:options");
     assert!(opts.custom_element.is_none());
@@ -1071,10 +1041,11 @@ fn svelte_options_deprecated_tag_diagnostic() {
         &d.kind,
         svelte_diagnostics::DiagnosticKind::SvelteOptionsDeprecatedTag
     )));
-    // Should be a warning, not an error
-    assert!(diags
-        .iter()
-        .any(|d| d.severity == svelte_diagnostics::Severity::Warning));
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == svelte_diagnostics::Severity::Warning)
+    );
 }
 
 #[test]
@@ -1095,15 +1066,13 @@ fn svelte_options_preserves_attributes() {
     assert_eq!(opts.attributes.len(), 2);
 }
 
-// --- DebugTag tests ---
-
 fn assert_debug_tag(
     c: &Component,
     fragment_id: svelte_ast::FragmentId,
     index: usize,
     expected_ids: &[&str],
 ) {
-    if let Node::DebugTag(ref dt) = frag_node_at(c, fragment_id, index) {
+    if let Node::DebugTag(dt) = frag_node_at(c, fragment_id, index) {
         let actual: Vec<&str> = dt
             .identifier_refs
             .iter()
@@ -1151,8 +1120,6 @@ fn debug_tag_call_expression_error() {
     );
 }
 
-// --- AwaitBlock diagnostic tests ---
-
 #[test]
 fn await_duplicate_then_clause() {
     let (_, diags) = parse_with_diagnostics("{#await p}{:then a}text{:then b}more{/await}");
@@ -1188,7 +1155,6 @@ fn await_valid_then_catch_no_duplicate() {
 
 #[test]
 fn await_duplicate_then_after_catch_then() {
-    // {:then}{:catch}{:then} — the third clause triggers the then_children.is_some() branch
     let (_, diags) =
         parse_with_diagnostics("{#await p}{:then a}t{:catch e}err{:then b}more{/await}");
     assert!(
@@ -1201,7 +1167,6 @@ fn await_duplicate_then_after_catch_then() {
 
 #[test]
 fn await_catch_before_then_no_panic() {
-    // {:catch} before {:then} with no prior {:then} must not panic
     let (_, diags) = parse_with_diagnostics("{#await p}{:catch e}err{:then a}ok{/await}");
     assert!(
         !diags
@@ -1321,10 +1286,6 @@ fn let_directive_legacy_converts_to_dedicated_attribute() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// JS parsing tests (moved from svelte_types)
-// ---------------------------------------------------------------------------
-
 mod js_parse_tests {
     use oxc_allocator::Allocator;
 
@@ -1335,7 +1296,6 @@ mod js_parse_tests {
         let arena_source = alloc.alloc_str(source);
         let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false)
             .expect("test invariant");
-        // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
         assert!(!program.body.is_empty());
     }
 
@@ -1349,10 +1309,6 @@ mod js_parse_tests {
         assert!(!program.body.is_empty());
     }
 }
-
-// ---------------------------------------------------------------------------
-// attribute_duplicate
-// ---------------------------------------------------------------------------
 
 fn parse_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
     Parser::new(source).parse().1
@@ -1369,7 +1325,6 @@ fn attribute_duplicate_same_name() {
 
 #[test]
 fn attribute_duplicate_bind_and_attr() {
-    // BindDirective and HTMLAttribute share the "attr" key space.
     let diags = parse_with_diags(r#"<input bind:value={x} value="y" />"#);
     assert!(
         diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
@@ -1379,7 +1334,6 @@ fn attribute_duplicate_bind_and_attr() {
 
 #[test]
 fn attribute_duplicate_this_excluded() {
-    // Two `this` attributes must NOT fire attribute_duplicate (excluded per reference).
     let diags = parse_with_diags(r#"<svelte:element this="div" this="span"></svelte:element>"#);
     assert!(
         !diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
@@ -1395,10 +1349,6 @@ fn attribute_duplicate_style_directive() {
         "expected attribute_duplicate, got {diags:?}"
     );
 }
-
-// ---------------------------------------------------------------------------
-// LEGACY(svelte4): named slot bucketing on ComponentNode
-// ---------------------------------------------------------------------------
 
 fn component_at(c: &Component, index: usize) -> &svelte_ast::ComponentNode {
     let Node::ComponentNode(cn) = node_at(c, index) else {
@@ -1492,13 +1442,10 @@ fn slot_on_nested_component_child_is_bucketed() {
 
 #[test]
 fn slot_on_svelte_fragment_is_bucketed_before_legacy_conversion() {
-    // <svelte:fragment> still appears as Element at ComponentNode-construction time;
-    // partition reads slot= from its attributes and buckets by name.
     let c = parse(r#"<Comp><svelte:fragment slot="item">named</svelte:fragment></Comp>"#);
     let cn = component_at(&c, 0);
     assert_eq!(slot_names(cn), vec!["item"]);
     let wrapper_id = c.store.fragment(cn.legacy_slots[0].fragment).nodes[0];
-    // After convert_svelte_fragment_legacy ran, wrapper is now SvelteFragmentLegacy.
     assert!(matches!(
         c.store.get(wrapper_id),
         Node::SvelteFragmentLegacy(_)
@@ -1507,7 +1454,6 @@ fn slot_on_svelte_fragment_is_bucketed_before_legacy_conversion() {
 
 #[test]
 fn dynamic_slot_value_stays_in_default() {
-    // slot={expr} is ExpressionAttribute, not StringAttribute — no static name available.
     let c = parse(r#"<Comp><div slot={name}>X</div></Comp>"#);
     let cn = component_at(&c, 0);
     assert!(cn.legacy_slots.is_empty(), "dynamic slot stays in default");
@@ -1527,7 +1473,6 @@ fn empty_slot_name_stays_in_default() {
 
 #[test]
 fn slot_attr_on_non_component_child_is_ignored_by_partition() {
-    // <div slot="x"> directly in root fragment — not inside a component, no bucketing.
     let c = parse(r#"<div slot="x">x</div>"#);
     let Node::Element(el) = node_at(&c, 0) else {
         panic!("expected element");

@@ -1,11 +1,5 @@
-//! Syntactic check for "simple" JS expressions — mirrors reference compiler's
-//! `is_simple_expression` (`reference/compiler/utils/ast.js`).
-//!
-//! A simple expression is one whose value can be embedded directly without
-//! lazy-thunk wrapping (e.g. as the second argument of `$.fallback`).
-
 use oxc_ast::ast::Expression;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 
 struct SimpleExprChecker(bool);
 

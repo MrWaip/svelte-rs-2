@@ -1,30 +1,14 @@
-//! `{@render}` population for Block Semantics.
-//!
-//! Free function invoked by the cluster-wide walker in [`super::walker`]:
-//! given the shared `Ctx`, consume one `RenderTag` node and record its
-//! `BlockSemantics::Render(...)` payload. `{@render}` does not own a
-//! fragment of its own, so no recursion is required after populate.
-//!
-//! Scope boundary: this module folds the four former surfaces
-//! (`RenderTagPlan.callee_mode`, `render_tag_is_chain`,
-//! per-arg `ExpressionInfo` + `prop_source`, async-wrapper plan) into
-//! one composite answer. Per-reference reactive meaning — which
-//! symbols read as `$.get` vs `$.safe_get` inside the args — stays
-//! in `reactivity_semantics`; the consumer resolves those through
-//! the transformer before codegen sees the args.
-
 use super::super::{
     BlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape, RenderTagBlockSemantics,
 };
 use super::walker::Ctx;
-use crate::types::data::{DeclarationSemantics, PropDeclarationKind, PropDeclarationSemantics};
+use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
 use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
 use svelte_ast::RenderTag;
 use svelte_component_semantics::{ReferenceId, SymbolId};
 
-/// Populate `BlockSemantics::Render` for this tag.
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     let Some(expr) = ctx.parsed.expr(tag.expression.id()) else {
         return;
@@ -59,11 +43,6 @@ fn classify_callee_shape(
     is_chain: bool,
     callee_sym: Option<SymbolId>,
 ) -> RenderCalleeShape {
-    // A callee is "dynamic" iff its binding has any reactive declaration
-    // semantics. Non-identifier callees (member expressions, calls, etc.)
-    // are treated as dynamic — matching the reference compiler's
-    // `binding?.kind !== 'normal'` where a missing binding falls into
-    // the non-normal branch.
     let is_dynamic = callee_sym.is_none_or(|sym| is_reactive_symbol(ctx, sym));
     match (is_dynamic, is_chain) {
         (false, false) => RenderCalleeShape::Static,
@@ -82,19 +61,12 @@ fn callee_symbol(callee: &Expression<'_>, ctx: &Ctx<'_, '_>) -> Option<SymbolId>
 }
 
 fn is_reactive_symbol(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
-    let decl = ctx.semantics.symbol_declaration(sym);
     !matches!(
-        ctx.reactivity.declaration_semantics(decl),
-        DeclarationSemantics::NonReactive | DeclarationSemantics::Unresolved,
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
     )
 }
 
-/// Single-pass classification of every argument: one OXC sub-walk per
-/// arg collects `has_call`, `has_await`, and all identifier references
-/// at once. That satisfies the Traversal Budget rule (single-pass per
-/// subtree) — downstream derivation (`RenderArgLowering`, cross-arg
-/// blocker union, top-level `async_kind`) is pure book-keeping over
-/// the collected facts.
 fn classify_args_and_async<'a>(
     ctx: &Ctx<'_, 'a>,
     arguments: &oxc_allocator::Vec<'a, Argument<'a>>,
@@ -106,13 +78,12 @@ fn classify_args_and_async<'a>(
     for arg in arguments {
         let Argument::SpreadElement(_) = arg else {
             let expr = arg.to_expression();
-            // Fast-path: PropSource identifier needs no sub-walk.
+
             if let Some(sym) = prop_source_arg(ctx, expr) {
                 args.push(RenderArgLowering::PropSource { sym });
                 continue;
             }
 
-            // One walk over the arg subtree collects everything we need.
             let facts = ArgFacts::collect(expr);
             let arg_blockers_found = union_blockers(ctx, &facts.refs, &mut blockers);
             any_await |= facts.has_await;
@@ -125,9 +96,7 @@ fn classify_args_and_async<'a>(
             let _ = arg_blockers_found;
             continue;
         };
-        // Analyze layer rejects `SpreadElement` in render args via a
-        // diagnostic, but defensively classify non-expression arguments
-        // as `Plain` so the builder never panics on malformed input.
+
         args.push(RenderArgLowering::Plain);
     }
     blockers.sort_unstable();
@@ -141,21 +110,16 @@ fn classify_args_and_async<'a>(
     (args, async_kind)
 }
 
-/// A prop-source argument is a single `Identifier` whose binding is a
-/// `$props()` source. Membership expressions, even when rooted at a
-/// prop, do not qualify — they need a thunk so the getter isn't
-/// shadowed by property access.
 fn prop_source_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {
     let Expression::Identifier(ident) = arg else {
         return None;
     };
     let ref_id = ident.reference_id.get()?;
     let sym = ctx.semantics.get_reference(ref_id).symbol_id()?;
-    let decl = ctx.semantics.symbol_declaration(sym);
     if matches!(
-        ctx.reactivity.declaration_semantics(decl),
-        DeclarationSemantics::Prop(PropDeclarationSemantics {
-            kind: PropDeclarationKind::Source { .. },
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. },
             ..
         }),
     ) {
@@ -165,29 +129,21 @@ fn prop_source_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> 
     }
 }
 
-/// Resolve each reference to its symbol's script-level blocker index
-/// (if any) and union into the running list. Returns `true` iff at
-/// least one blocker was added — the caller uses this to decide
-/// whether the argument has an async dependency beyond a literal
-/// `await`.
 fn union_blockers(ctx: &Ctx<'_, '_>, refs: &[ReferenceId], out: &mut SmallVec<[u32; 2]>) -> bool {
     let before = out.len();
     for ref_id in refs {
         let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
             continue;
         };
-        if let Some(idx) = ctx.blockers.symbol_blocker(sym) {
-            if !out.contains(&idx) {
-                out.push(idx);
-            }
+        if let Some(idx) = ctx.blockers.symbol_blocker(sym)
+            && !out.contains(&idx)
+        {
+            out.push(idx);
         }
     }
     out.len() > before
 }
 
-/// Every fact Block Semantics needs from one argument subtree, in a
-/// single OXC sub-walk: call present, await present, and the list of
-/// reference ids used downstream to compute blockers.
 struct ArgFacts {
     has_call: bool,
     has_await: bool,
@@ -335,10 +291,6 @@ mod tests {
 
     #[test]
     fn render_arg_prop_source() {
-        // Prop becomes a Source kind when it's bindable (accessor-style
-        // lowering). Non-bindable, non-mutated destructured props stay as
-        // NonSource and fall into the Plain arm — matching legacy
-        // `resolve_render_tag_meta::resolve_arg_prop_sources`.
         assert_render(
             r#"<script>let { value = $bindable() } = $props(); function row(_) {}</script>{@render row(value)}"#,
             |sem| {

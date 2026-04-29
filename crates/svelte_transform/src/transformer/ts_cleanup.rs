@@ -134,10 +134,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 &node.value,
                 Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
             );
-            if is_fn_value || node.method {
-                if let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &node.key {
-                    self.next_arrow_name = Some(id.name.to_string());
-                }
+            if (is_fn_value || node.method)
+                && let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &node.key
+            {
+                self.next_arrow_name = Some(id.name.to_string());
             }
         }
     }
@@ -161,10 +161,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     pub(crate) fn capture_variable_arrow_name(&mut self, node: &VariableDeclarator<'a>) {
-        if let Some(Expression::ArrowFunctionExpression(_)) = &node.init {
-            if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id {
-                self.next_arrow_name = Some(id.name.to_string());
-            }
+        if let Some(Expression::ArrowFunctionExpression(_)) = &node.init
+            && let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id
+        {
+            self.next_arrow_name = Some(id.name.to_string());
         }
     }
 
