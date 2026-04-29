@@ -59,7 +59,7 @@ export function bindThemeToggle(app, store) {
         saveTheme(next);
     });
     store.subscribe((s) => {
-        app.dataset.theme = s.theme;
+        document.documentElement.dataset.theme = s.theme;
     });
 }
 
@@ -158,10 +158,10 @@ export function bindSettings(app, store) {
     });
 }
 
-export function bindMobileActions(app, { onRecompile, onShare }) {
-    const recompile = app.querySelector('[data-action="recompile"]');
+export function bindMobileActions(app, { onBenchmark, onShare }) {
+    const benchmark = app.querySelector('[data-action="mobile-benchmark"]');
     const share = app.querySelector('[data-action="share"]');
-    if (recompile && onRecompile) recompile.addEventListener("click", onRecompile);
+    if (benchmark && onBenchmark) benchmark.addEventListener("click", onBenchmark);
     if (share && onShare) {
         share.addEventListener("click", async () => {
             const ok = await onShare();
@@ -172,7 +172,7 @@ export function bindMobileActions(app, { onRecompile, onShare }) {
 }
 
 export function setRecompileState(app, state) {
-    const btn = app.querySelector('[data-action="recompile"]');
+    const btn = app.querySelector('[data-action="mobile-benchmark"]');
     const label = app.querySelector("[data-recompile-label]");
     if (!btn) return;
     if (state === "error") {
@@ -180,7 +180,7 @@ export function setRecompileState(app, state) {
         if (label) label.textContent = "Fix errors";
     } else {
         delete btn.dataset.state;
-        if (label) label.textContent = "Recompile";
+        if (label) label.textContent = "Benchmark";
     }
 }
 

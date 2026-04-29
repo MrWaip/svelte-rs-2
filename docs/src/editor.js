@@ -78,7 +78,7 @@ const lightHighlight = HighlightStyle.define([
     { tag: t.invalid, color: "#d63031" },
 ]);
 
-function baseTheme() {
+function baseTheme(theme) {
     return EditorView.theme({
         "&": {
             height: "100%",
@@ -93,7 +93,22 @@ function baseTheme() {
         ".cm-line": {
             padding: "0 12px",
         },
-    });
+        ".cm-gutters": {
+            backgroundColor: "transparent",
+            border: "none",
+            color: "var(--fg-tertiary)",
+        },
+        ".cm-gutterElement": {
+            color: "var(--fg-tertiary)",
+        },
+        ".cm-activeLineGutter": {
+            backgroundColor: "transparent",
+            color: "var(--fg-secondary)",
+        },
+        ".cm-foldGutter .cm-gutterElement": {
+            color: "var(--fg-tertiary)",
+        },
+    }, { dark: theme === "dark" });
 }
 
 export const themeCompartment = new Compartment();
@@ -108,7 +123,7 @@ export function highlightForTheme(theme) {
     return syntaxHighlighting(theme === "light" ? lightHighlight : darkHighlight);
 }
 
-function commonExtensions() {
+function commonExtensions(theme) {
     return [
         lineNumbers(),
         foldGutter(),
@@ -126,7 +141,7 @@ function commonExtensions() {
             ...historyKeymap,
             ...foldKeymap,
         ]),
-        baseTheme(),
+        baseTheme(theme),
         EditorView.lineWrapping,
     ];
 }
@@ -137,7 +152,7 @@ export function createSourceEditor({ parent, doc, mode, theme, onChange }) {
         state: EditorState.create({
             doc,
             extensions: [
-                ...commonExtensions(),
+                ...commonExtensions(theme),
                 langCompartment.of(langForMode(mode)),
                 themeCompartment.of(highlightForTheme(theme)),
                 EditorView.updateListener.of((update) => {
@@ -160,7 +175,7 @@ export function createReadOnlyEditor({ parent, doc, theme }) {
                 bracketMatching(),
                 javascript(),
                 themeCompartment.of(highlightForTheme(theme)),
-                baseTheme(),
+                baseTheme(theme),
                 EditorView.editable.of(false),
                 EditorState.readOnly.of(true),
                 EditorView.lineWrapping,

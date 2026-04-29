@@ -1,49 +1,118 @@
-import { MergeView } from "@codemirror/merge";
+import { MergeView, unifiedMergeView } from "@codemirror/merge";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
 import { foldGutter, bracketMatching } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { highlightForTheme } from "./editor.js";
 
-const themeCompartment = new Compartment();
+const splitThemeCompartment = new Compartment();
+const unifiedThemeCompartment = new Compartment();
 
-function baseExtensions(theme) {
+const MOBILE_QUERY = "(max-width: 768px)";
+
+export function isMobileLayout() {
+    return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+export function watchMobileLayout(callback) {
+    const mql = window.matchMedia(MOBILE_QUERY);
+    const handler = (e) => callback(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+}
+
+function diffEditorTheme(theme) {
+    return EditorView.theme({
+        "&": { height: "100%", backgroundColor: "transparent" },
+        ".cm-scroller": { overflow: "auto" },
+        ".cm-content": { padding: "12px 0" },
+        ".cm-line": { padding: "0 12px" },
+        ".cm-gutters": {
+            backgroundColor: "transparent",
+            border: "none",
+            color: "var(--fg-tertiary)",
+        },
+        ".cm-gutterElement": {
+            color: "var(--fg-tertiary)",
+        },
+        ".cm-activeLineGutter": {
+            backgroundColor: "transparent",
+            color: "var(--fg-secondary)",
+        },
+        ".cm-foldGutter .cm-gutterElement": {
+            color: "var(--fg-tertiary)",
+        },
+    }, { dark: theme === "dark" });
+}
+
+function splitExtensions(theme) {
     return [
         lineNumbers(),
         foldGutter(),
         bracketMatching(),
         javascript(),
-        themeCompartment.of(highlightForTheme(theme)),
-        EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-            ".cm-content": { padding: "12px 0" },
-            ".cm-line": { padding: "0 12px" },
-        }),
+        splitThemeCompartment.of(highlightForTheme(theme)),
+        diffEditorTheme(theme),
         EditorView.editable.of(false),
         EditorState.readOnly.of(true),
         EditorView.lineWrapping,
     ];
 }
 
-export function createDiff({ parent, original = "", modified = "", theme }) {
+function unifiedExtensions(theme, original) {
+    return [
+        unifiedMergeView({ original, mergeControls: false }),
+        lineNumbers(),
+        foldGutter(),
+        bracketMatching(),
+        javascript(),
+        unifiedThemeCompartment.of(highlightForTheme(theme)),
+        diffEditorTheme(theme),
+        EditorView.editable.of(false),
+        EditorState.readOnly.of(true),
+        EditorView.lineWrapping,
+    ];
+}
+
+export function createDiff({ parent, original = "", modified = "", theme, layout }) {
+    if (layout === "unified") return createUnifiedDiff({ parent, original, modified, theme });
+    return createSplitDiff({ parent, original, modified, theme });
+}
+
+function createSplitDiff({ parent, original, modified, theme }) {
     const view = new MergeView({
         parent,
-        a: {
-            doc: original,
-            extensions: baseExtensions(theme),
-        },
-        b: {
-            doc: modified,
-            extensions: baseExtensions(theme),
-        },
+        a: { doc: original, extensions: splitExtensions(theme) },
+        b: { doc: modified, extensions: splitExtensions(theme) },
         orientation: "a-b",
         revertControls: false,
         highlightChanges: true,
         gutter: true,
     });
     syncScroll(view.a.scrollDOM, view.b.scrollDOM);
-    return view;
+    return { kind: "split", view, a: view.a, b: view.b };
+}
+
+function createUnifiedDiff({ parent, original, modified, theme }) {
+    const obj = { kind: "unified", parent, theme, original, modified, view: null };
+    obj.view = buildUnifiedView(obj);
+    return obj;
+}
+
+function buildUnifiedView(obj) {
+    return new EditorView({
+        parent: obj.parent,
+        state: EditorState.create({
+            doc: obj.modified,
+            extensions: unifiedExtensions(obj.theme, obj.original),
+        }),
+    });
+}
+
+function rebuildUnifiedView(obj) {
+    obj.view.destroy();
+    obj.parent.innerHTML = "";
+    obj.view = buildUnifiedView(obj);
 }
 
 function syncScroll(left, right) {
@@ -64,23 +133,38 @@ function syncScroll(left, right) {
 }
 
 export function setOriginal(diff, doc) {
-    const view = diff.a;
-    view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: doc },
-    });
+    if (diff.kind === "split") {
+        const v = diff.a;
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
+    } else {
+        diff.original = doc;
+    }
 }
 
 export function setModified(diff, doc) {
-    const view = diff.b;
-    view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: doc },
-    });
+    if (diff.kind === "split") {
+        const v = diff.b;
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
+    } else {
+        diff.modified = doc;
+        rebuildUnifiedView(diff);
+    }
 }
 
 export function applyDiffTheme(diff, theme) {
-    for (const view of [diff.a, diff.b]) {
-        view.dispatch({
-            effects: themeCompartment.reconfigure(highlightForTheme(theme)),
-        });
+    if (diff.kind === "split") {
+        for (const v of [diff.a, diff.b]) {
+            v.dispatch({
+                effects: splitThemeCompartment.reconfigure(highlightForTheme(theme)),
+            });
+        }
+    } else {
+        diff.theme = theme;
+        rebuildUnifiedView(diff);
     }
+}
+
+export function destroyDiff(diff) {
+    if (diff.kind === "split") diff.view.destroy();
+    else diff.view.destroy();
 }

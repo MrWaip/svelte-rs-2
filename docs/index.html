@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -44,7 +44,7 @@
         </script>
     </head>
     <body>
-        <div class="app" data-theme="dark" data-mobile-tab="source">
+        <div class="app" data-mobile-tab="source">
             <header class="topbar">
                 <div class="brand">
                     <span class="logo" aria-hidden="true"></span>
@@ -107,17 +107,26 @@
             </main>
 
             <aside class="diagnostics-panel" data-collapsed="true" aria-label="Diagnostics">
-                <button class="diag-toggle" data-action="toggle-diagnostics" aria-expanded="false">
-                    <span class="diag-toggle-label">Diagnostics</span>
+                <header class="diag-head">
+                    <button class="diag-toggle" data-action="toggle-diagnostics" aria-expanded="false">
+                        <span class="caret" aria-hidden="true">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                        </span>
+                        <span class="diag-toggle-label">Diagnostics</span>
+                    </button>
                     <span class="diag-counts">
-                        <span class="badge rust" data-rust-count="" hidden>0 rust</span>
-                        <span class="badge svelte" data-svelte-count="" hidden>0 svelte</span>
+                        <span class="badge error" data-error-count="" hidden>0 errors</span>
+                        <span class="badge warn" data-warn-count="" hidden>0 warnings</span>
                         <span class="badge muted" data-clean="" hidden>clean</span>
                     </span>
-                    <span class="caret" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                    </span>
-                </button>
+                    <span class="diag-divider" aria-hidden="true"></span>
+                    <div class="diag-filters" data-filter-group role="tablist" aria-label="Filter diagnostics">
+                        <button class="diag-filter active" data-filter="all" role="tab">all <span data-count>0</span></button>
+                        <button class="diag-filter" data-filter="rust" role="tab" hidden>rust <span data-count>0</span></button>
+                        <button class="diag-filter" data-filter="svelte" role="tab" hidden>svelte <span data-count>0</span></button>
+                    </div>
+                    <button class="btn-ghost diag-copy" data-action="copy-diagnostics" hidden>Copy all</button>
+                </header>
                 <div class="diag-body">
                     <div class="diag-list" data-diag-list>
                         <p class="diag-empty">No diagnostics.</p>
@@ -202,17 +211,14 @@
                 <footer class="drawer-foot">
                     <span class="drawer-foot-meta" data-overrides-count>0 overrides</span>
                     <button class="btn-ghost" data-action="reset-options">Reset</button>
-                    <button class="btn-primary" data-action="close-settings">Apply &amp; close</button>
+                    <button class="btn-primary" data-action="close-settings">Apply &amp; recompile</button>
                 </footer>
             </aside>
 
             <nav class="mobile-actions" aria-label="Quick actions">
-                <button class="mobile-action mobile-action-primary" data-action="recompile">
+                <button class="mobile-action mobile-action-primary" data-action="mobile-benchmark">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    <span data-recompile-label>Recompile</span>
-                </button>
-                <button class="mobile-action" data-action="share" aria-label="Copy share link">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    <span data-recompile-label>Benchmark</span>
                 </button>
             </nav>
         </div>
