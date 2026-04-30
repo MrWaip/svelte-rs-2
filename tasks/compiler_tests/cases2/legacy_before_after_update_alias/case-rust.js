@@ -10,6 +10,7 @@ export default function App($$anchor, $$props) {
 	after(() => {
 		console.log("after");
 	});
+	$.init();
 	var p = root();
 	$.append($$anchor, p);
 	$.pop();

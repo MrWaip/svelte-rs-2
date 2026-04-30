@@ -1,9 +1,9 @@
 # `beforeUpdate` / `afterUpdate`
 
 ## Current state
-- **Working**: 0/4 use cases
-- **Tests**: 0/4 green
-- Last updated: 2026-04-12
+- **Working**: 4/4 use cases
+- **Tests**: 4/4 green
+- Last updated: 2026-04-30
 
 ## Source
 - `ROADMAP.md` Legacy Svelte 4: `beforeUpdate` / `afterUpdate`
@@ -47,10 +47,10 @@
 
 ## Use cases
 
-- [ ] Legacy components with direct `beforeUpdate` / `afterUpdate` imports preserve the hook registrations and emit `$.init()` before DOM creation (test: legacy_before_after_update_basic, #[ignore], moderate)
-- [ ] Legacy components with aliased `beforeUpdate` / `afterUpdate` imports preserve the local call-sites and emit `$.init()` before DOM creation (test: legacy_before_after_update_alias, #[ignore], moderate)
-- [ ] Runes mode rejects `beforeUpdate` / `afterUpdate` imports from `svelte`, including aliased imports, with the reference `runes_mode_invalid_import` diagnostic span (test: runes/validate_before_after_update_invalid_import, #[ignore], quick fix)
-- [ ] Runes mode rejects split `beforeUpdate` and `afterUpdate` import declarations from `svelte` in the same component, matching the current reference `runes_mode_invalid_import` count and span (test: runes/validate_before_after_update_invalid_import_split_statements, #[ignore], quick fix)
+- [x] Legacy components with direct `beforeUpdate` / `afterUpdate` imports preserve the hook registrations and emit `$.init()` before DOM creation (test: legacy_before_after_update_basic, moderate)
+- [x] Legacy components with aliased `beforeUpdate` / `afterUpdate` imports preserve the local call-sites and emit `$.init()` before DOM creation (test: legacy_before_after_update_alias, moderate)
+- [x] Runes mode rejects `beforeUpdate` / `afterUpdate` imports from `svelte`, including aliased imports, with the reference `runes_mode_invalid_import` diagnostic span (test: runes/validate_before_after_update_invalid_import, quick fix)
+- [x] Runes mode rejects split `beforeUpdate` and `afterUpdate` import declarations from `svelte` in the same component, matching the current reference `runes_mode_invalid_import` count and span (test: runes/validate_before_after_update_invalid_import_split_statements, quick fix)
 
 ## Out of scope
 
@@ -74,7 +74,7 @@
 
 ## Test cases
 
-- [ ] `legacy_before_after_update_basic`
-- [ ] `legacy_before_after_update_alias`
-- [ ] `runes/validate_before_after_update_invalid_import`
-- [ ] `runes/validate_before_after_update_invalid_import_split_statements`
+- [x] `legacy_before_after_update_basic`
+- [x] `legacy_before_after_update_alias`
+- [x] `runes/validate_before_after_update_invalid_import`
+- [x] `runes/validate_before_after_update_invalid_import_split_statements`

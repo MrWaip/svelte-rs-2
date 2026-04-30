@@ -1,7 +1,8 @@
 use oxc_ast::ast::{
     AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, MemberExpression,
-    MethodDefinitionKind, ModuleExportName, PropertyDefinition, VariableDeclarator,
+    ExportNamedDeclaration, Expression, ExpressionStatement, ImportDeclarationSpecifier,
+    MemberExpression, MethodDefinitionKind, ModuleExportName, PropertyDefinition, Statement,
+    VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -33,12 +34,54 @@ pub(super) fn validate(
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
+    validate_invalid_lifecycle_imports(program, offset, runes, diags);
     let mut v = RuneValidator::new(data, diags, offset, runes, true);
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
     validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
     validate_rest_prop_illegal_access(data, program, offset, diags);
+}
+
+fn validate_invalid_lifecycle_imports(
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if !runes {
+        return;
+    }
+    'outer: for stmt in &program.body {
+        let Statement::ImportDeclaration(import) = stmt else {
+            continue;
+        };
+        if import.source.value.as_str() != "svelte" {
+            continue;
+        }
+        let Some(specifiers) = &import.specifiers else {
+            continue;
+        };
+        for spec in specifiers {
+            let ImportDeclarationSpecifier::ImportSpecifier(s) = spec else {
+                continue;
+            };
+            let name = match &s.imported {
+                ModuleExportName::IdentifierName(id) => id.name.as_str(),
+                ModuleExportName::IdentifierReference(id) => id.name.as_str(),
+                ModuleExportName::StringLiteral(lit) => lit.value.as_str(),
+            };
+            if name == "beforeUpdate" || name == "afterUpdate" {
+                diags.push(Diagnostic::error(
+                    DiagnosticKind::RunesModeInvalidImport {
+                        name: name.to_string(),
+                    },
+                    Span::new(s.span.start + offset, s.span.end + offset),
+                ));
+                break 'outer;
+            }
+        }
+    }
 }
 
 pub(super) fn validate_module_props_runes(
