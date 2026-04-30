@@ -1,9 +1,9 @@
 # $host
 
 ## Current state
-- **Working**: 4/5 use cases
-- **Tests**: 1/4 green
-- Last updated: 2026-04-04
+- **Working**: 5/5 use cases
+- **Tests**: 4/4 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -26,7 +26,7 @@
 - [x] Basic client transform for `$host()` inside a custom element instance script. (test: `host_basic`)
 - [x] Reject `$host()` arguments with `rune_invalid_arguments`. (test: `validate_host_invalid_arguments`)
 - [x] Reject `$host()` outside custom element instance scripts with `host_invalid_placement`. (test: `validate_host_invalid_placement_without_custom_element`)
-- [ ] Reject `$host()` inside `<script module>` even in custom elements (`host_invalid_placement`) — reference: `ast_type === 'module'` check in `CallExpression.js`, distinct from the non-custom-element case
+- [x] Reject `$host()` inside `<script module>` even in custom elements (`host_invalid_placement`). (test: `validate_host_invalid_placement_module`)
 - [x] `$host()` coexists with `$props()` in custom elements — rest props exclude `$$host`. (test: `host_props_rest`)
 
 ## Reference
@@ -47,6 +47,7 @@
 ## Test cases
 
 - [x] `host_basic`
-- [ ] `host_props_rest`
-- [ ] `validate_host_invalid_placement_without_custom_element`
-- [ ] `validate_host_invalid_arguments`
+- [x] `host_props_rest`
+- [x] `validate_host_invalid_placement_without_custom_element`
+- [x] `validate_host_invalid_arguments`
+- [x] `validate_host_invalid_placement_module`
