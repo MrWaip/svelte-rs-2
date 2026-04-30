@@ -61,7 +61,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 - [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
-- [ ] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
+- [x] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
 - [ ] `$host` — [spec](specs/host-rune.md)

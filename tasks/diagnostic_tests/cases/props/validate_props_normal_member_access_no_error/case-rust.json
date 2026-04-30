@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "warning",
+    "code": "state_referenced_locally",
+    "start": 52,
+    "end": 56
+  }
+]

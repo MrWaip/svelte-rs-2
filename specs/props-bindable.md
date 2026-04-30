@@ -2,8 +2,8 @@
 
 ## Current state
 - **Working**: 22/22 use cases
-- **Tests**: 52/54 green
-- Last updated: 2026-04-29
+- **Tests**: 54/54 green
+- Last updated: 2026-04-30
 - Member-target prop mutations inside template expressions (`{props.x++}`, `{props.x += n}`) lower through the shared `rewrite_prop_member_assignment` / `rewrite_prop_member_update` helpers (extracted from `transform_assignment` / `transform_update`), now dispatched from `template_rewrites::rewrite_template_enter`. Bindable prop sources receive the `obj(obj().x++, true)` wrap for both assign and update. The dev ownership-validator hook `rewrite_prop_update_ownership_exit` is now also invoked from `rewrite_template_exit` so template-side member updates still emit `$$ownership_validator.mutation(...)` in dev.
 
 ## Source
@@ -101,13 +101,13 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `validate_props_id_invalid_placement_inside_function`
 - [x] `validate_props_illegal_name_rest_member_access`
 - [x] `validate_props_illegal_name_identifier_pattern_member_access`
-- [ ] `validate_props_normal_member_access_no_error`
+- [x] `validate_props_normal_member_access_no_error`
 - [x] diagnostic parity: `validate_props_invalid_placement_in_module_script`
 - [x] diagnostic parity: `validate_props_id_invalid_placement_in_module_script`
 - [x] diagnostic parity: `validate_props_invalid_arguments_in_module_script`
 - [x] diagnostic parity: `validate_props_id_invalid_arguments_in_module_script`
 - [x] `validate_custom_element_props_identifier_warns`
-- [ ] `validate_custom_element_props_rest_warns`
+- [x] `validate_custom_element_props_rest_warns`
 - [x] `validate_custom_element_props_destructured_no_warn`
 - [x] `validate_custom_element_with_explicit_props_config_no_warn`
 - [x] `validate_bindable_invalid_location`

@@ -343,6 +343,7 @@ fn validate_state_referenced_locally_derived(
         diags,
         in_state_rune_arg: false,
         call_depth_offset: 0,
+        in_illegal_prop_member_object: false,
         _phantom: std::marker::PhantomData,
     };
     v.visit_program(program);
@@ -356,6 +357,8 @@ struct StateRefLocallyValidator<'a, 'b> {
     in_state_rune_arg: bool,
 
     call_depth_offset: u32,
+
+    in_illegal_prop_member_object: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -390,6 +393,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
                 StateKind::State => !opt.proxy_init,
                 StateKind::StateEager => false,
             },
+            BindingSemantics::Prop(_) if !self.in_illegal_prop_member_object => true,
             _ => false,
         };
         if !should_warn {
@@ -471,6 +475,16 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         walk_function(self, func, flags);
         self.in_state_rune_arg = prev_state_arg;
         self.call_depth_offset = prev_call_depth;
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &oxc_ast::ast::StaticMemberExpression<'a>) {
+        if is_props_illegal_name_member(expr, self.data) {
+            let prev = std::mem::replace(&mut self.in_illegal_prop_member_object, true);
+            self.visit_expression(&expr.object);
+            self.in_illegal_prop_member_object = prev;
+        } else {
+            oxc_ast_visit::walk::walk_static_member_expression(self, expr);
+        }
     }
 
     fn visit_export_specifier(&mut self, _spec: &oxc_ast::ast::ExportSpecifier<'a>) {}
@@ -878,22 +892,7 @@ struct RestPropAccessValidator<'a, 'b> {
 impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
         if let MemberExpression::StaticMemberExpression(member) = expr
-            && let Expression::Identifier(obj) = &member.object
-            && member.property.name.starts_with("$$")
-            && let Some(sym_id) = obj
-                .reference_id
-                .get()
-                .and_then(|r| self.data.scoping.try_get_reference(r))
-                .and_then(|reference| reference.symbol_id())
-            && matches!(
-                self.data.binding_semantics(sym_id),
-                crate::types::data::BindingSemantics::Prop(
-                    crate::types::data::PropBindingSemantics {
-                        kind: crate::types::data::PropBindingKind::Rest,
-                        ..
-                    },
-                ),
-            )
+            && is_props_illegal_name_member(member, self.data)
         {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::PropsIllegalName,
@@ -905,4 +904,31 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
         }
         walk_member_expression(self, expr);
     }
+}
+
+fn is_props_illegal_name_member(
+    member: &oxc_ast::ast::StaticMemberExpression<'_>,
+    data: &AnalysisData<'_>,
+) -> bool {
+    let Expression::Identifier(obj) = &member.object else {
+        return false;
+    };
+    if !member.property.name.starts_with("$$") {
+        return false;
+    }
+    let Some(sym_id) = obj
+        .reference_id
+        .get()
+        .and_then(|r| data.scoping.try_get_reference(r))
+        .and_then(|reference| reference.symbol_id())
+    else {
+        return false;
+    };
+    matches!(
+        data.binding_semantics(sym_id),
+        crate::types::data::BindingSemantics::Prop(crate::types::data::PropBindingSemantics {
+            kind: crate::types::data::PropBindingKind::Rest,
+            ..
+        }),
+    )
 }

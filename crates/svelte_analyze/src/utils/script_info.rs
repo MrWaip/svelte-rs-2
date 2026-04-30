@@ -144,6 +144,7 @@ fn collect_legacy_export_props(
             props,
             is_identifier_pattern: false,
             declaration_spans: vec![Span::new(decl.span.start + offset, decl.span.end + offset)],
+            rest_pattern_span: None,
         })
     }
 }
@@ -329,6 +330,7 @@ fn collect_var_declarations(
                             decl.span.start + offset,
                             decl.span.end + offset,
                         )],
+                        rest_pattern_span: None,
                     });
                 }
 
@@ -381,6 +383,7 @@ fn collect_var_declarations(
                         });
                     }
 
+                    let mut rest_pattern_span = None;
                     if let Some(rest) = &obj_pat.rest
                         && let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) =
                             &rest.argument
@@ -406,6 +409,8 @@ fn collect_var_declarations(
                             is_rest: true,
                             is_simple_default: true,
                         });
+                        rest_pattern_span =
+                            Some(Span::new(rest.span.start + offset, rest.span.end + offset));
                     }
 
                     *props_declaration = Some(PropsDeclaration {
@@ -415,6 +420,7 @@ fn collect_var_declarations(
                             decl.span.start + offset,
                             decl.span.end + offset,
                         )],
+                        rest_pattern_span,
                     });
                 } else if matches!(
                     rune,
