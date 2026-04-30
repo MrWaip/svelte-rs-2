@@ -89,13 +89,6 @@ pub fn generate<'a>(
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
-    if ctx.query.view.inject_styles() && ctx.state.css_text.is_some() {
-        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr(
-            "$.append_styles",
-            [Arg::Ident("$$anchor"), Arg::Ident("$$css")],
-        )));
-    }
-
     if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx
@@ -159,6 +152,14 @@ pub fn generate<'a>(
         }
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.push", push_args)));
     }
+
+    if ctx.query.view.inject_styles() && ctx.state.css_text.is_some() {
+        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr(
+            "$.append_styles",
+            [Arg::Ident("$$anchor"), Arg::Ident("$$css")],
+        )));
+    }
+
     if ctx.state.needs_binding_group {
         fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
     }
