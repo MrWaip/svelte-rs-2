@@ -898,23 +898,19 @@ mod components {
     );
     diagnostic_case!(
         svelte_self_deprecated_warns_with_default_self_import_hint,
-        "components/svelte_self_deprecated_warns_with_default_self_import_hint",
-        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+        "components/svelte_self_deprecated_warns_with_default_self_import_hint"
     );
     diagnostic_case!(
         svelte_self_deprecated_warns_with_configured_self_import_hint,
-        "components/svelte_self_deprecated_warns_with_configured_self_import_hint",
-        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+        "components/svelte_self_deprecated_warns_with_configured_self_import_hint"
     );
     diagnostic_case!(
         svelte_self_deprecated_uses_deconflicted_component_name,
-        "components/svelte_self_deprecated_uses_deconflicted_component_name",
-        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+        "components/svelte_self_deprecated_uses_deconflicted_component_name"
     );
     diagnostic_case!(
         svelte_self_deprecated_uses_reserved_word_deconflicted_component_name,
-        "components/svelte_self_deprecated_uses_reserved_word_deconflicted_component_name",
-        ignore = "known mismatch: npm svelte/compiler currently reports an error while analyzer reports a warning"
+        "components/svelte_self_deprecated_uses_reserved_word_deconflicted_component_name"
     );
     diagnostic_case!(
         svelte_component_deprecated_warns_in_runes_mode,
@@ -936,8 +932,7 @@ mod components {
     );
     diagnostic_case!(
         svelte_self_deprecated_no_warn_in_legacy_mode,
-        "components/svelte_self_deprecated_no_warn_in_legacy_mode",
-        ignore = "known mismatch: npm svelte/compiler reports svelte_self_invalid_placement while analyzer emits no diagnostic"
+        "components/svelte_self_deprecated_no_warn_in_legacy_mode"
     );
     diagnostic_case!(
         component_invalid_directive_use,
