@@ -2,6 +2,7 @@ use oxc_ast::NONE;
 use oxc_ast::ast::{Argument, Expression, NumberBase};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
+use oxc_traverse::TraverseCtx;
 
 use super::model::ComponentTransformer;
 
@@ -172,6 +173,34 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let callee = self.make_dollar_member("untrack");
         let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(dollar_name)));
         ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
+    }
+
+    pub(crate) fn make_each_item_invalidate_seq(
+        &self,
+        mutation: Expression<'a>,
+        source_names: &[String],
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> Expression<'a> {
+        let ast = self.b.ast;
+        let body_expr = match source_names {
+            [single] => self.make_rune_get(single),
+            many => {
+                let mut elems = ast.vec();
+                for name in many {
+                    elems.push(self.make_rune_get(name));
+                }
+                ast.expression_sequence(SPAN, elems)
+            }
+        };
+        let thunk = self.b.thunk_in_scope(body_expr, ctx.current_scope_id());
+        let invalidate = ast.expression_call(
+            SPAN,
+            self.make_dollar_member("invalidate_inner_signals"),
+            NONE,
+            ast.vec1(Argument::from(thunk)),
+            false,
+        );
+        ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
     }
 
     pub(crate) fn make_legacy_state_mutate(

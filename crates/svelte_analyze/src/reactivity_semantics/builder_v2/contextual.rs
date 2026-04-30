@@ -6,7 +6,7 @@ use svelte_component_semantics::OxcNodeId;
 
 use super::super::data::{
     ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
-    SnippetParamStrategy,
+    LegacyStateSemantics, SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -270,6 +270,109 @@ fn ensure_slot_let_carrier(
     data.reactivity
         .record_let_carrier_binding(stmt_node_id, sym);
     sym
+}
+
+pub(super) fn promote_each_sources_to_legacy_state<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    if data.script.runes {
+        return;
+    }
+    let root = data.scoping.root_scope_id();
+    let component_name = data.output.component_name.clone();
+    let mut ctx = VisitContext::with_parsed(
+        root,
+        data,
+        &component.store,
+        parsed,
+        &component.source,
+        false,
+        &component_name,
+        "",
+    );
+    let mut promoter = EachSourcePromoter;
+    let mut visitors: [&mut dyn TemplateVisitor; 1] = [&mut promoter];
+    walk_template(component.root, &mut ctx, &mut visitors);
+}
+
+struct EachSourcePromoter;
+
+impl TemplateVisitor for EachSourcePromoter {
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
+        let Some(parsed) = ctx.parsed else { return };
+
+        let item_syms: Vec<SymbolId> = {
+            let Some(stmt) = block.context.as_ref().and_then(|r| parsed.stmt(r.id())) else {
+                return;
+            };
+            let Some(declarator) = declarator_from_stmt_local(stmt) else {
+                return;
+            };
+            let mut syms = Vec::new();
+            svelte_component_semantics::walk_bindings(&declarator.id, |v| syms.push(v.symbol));
+            syms
+        };
+
+        if !item_syms
+            .iter()
+            .any(|&sym| ctx.data.scoping.is_mutated_any(sym))
+        {
+            return;
+        }
+
+        let Some(expr) = parsed.expr(block.expression.id()) else {
+            return;
+        };
+
+        let mut collector = ExprRefCollector { refs: Vec::new() };
+        collector.visit_expression(expr);
+
+        let immutable = ctx.data.script.immutable;
+        let mut promoted_sources: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+        for ref_id in collector.refs {
+            let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+                continue;
+            };
+            if !ctx.data.scoping.is_component_top_level_symbol(sym) {
+                continue;
+            }
+            if ctx.data.reactivity.binding_facts(sym).is_some() {
+                continue;
+            }
+            ctx.data.reactivity.record_legacy_state_binding(
+                sym,
+                LegacyStateSemantics {
+                    var_declared: false,
+                    immutable,
+                },
+            );
+            promoted_sources.push(sym);
+        }
+
+        if !promoted_sources.is_empty() {
+            for item_sym in &item_syms {
+                for &source_sym in &promoted_sources {
+                    ctx.data
+                        .reactivity
+                        .add_each_item_indirect_source(*item_sym, source_sym);
+                }
+            }
+        }
+    }
+}
+
+struct ExprRefCollector {
+    refs: Vec<svelte_component_semantics::ReferenceId>,
+}
+
+impl<'a> Visit<'a> for ExprRefCollector {
+    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        if let Some(ref_id) = ident.reference_id.get() {
+            self.refs.push(ref_id);
+        }
+    }
 }
 
 pub(super) fn classify_contextual_read_kind(

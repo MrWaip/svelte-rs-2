@@ -325,7 +325,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
                 oxc_traverse::Ancestor::AssignmentExpressionLeft(_)
                     | oxc_traverse::Ancestor::UpdateExpressionArgument(_)
             );
-            template_rewrites::rewrite_template_enter(self, node, is_lhs);
+            template_rewrites::rewrite_template_enter(self, node, is_lhs, ctx);
             return;
         }
 
