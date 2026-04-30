@@ -1705,8 +1705,20 @@ fn module_compilation() {
 
 #[rstest]
 #[ignore = "diagnose: pending fix"]
-fn module_compilation_dev() {
-    assert_compiler_module("module_compilation_dev");
+fn module_dev_state_tag() {
+    assert_compiler_module("module_dev_state_tag");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn module_dev_derived_tag() {
+    assert_compiler_module("module_dev_derived_tag");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn module_dev_console_log_wrap() {
+    assert_compiler_module("module_dev_console_log_wrap");
 }
 
 #[rstest]

@@ -1,8 +1,8 @@
 # $state rune
 
 ## Current state
-- **Working**: 43/43 use cases
-- **Tests**: 49/49 green
+- **Working**: 43/44 use cases
+- **Tests**: 49/50 green
 - Last updated: 2026-04-30
 
 ## Source
@@ -41,6 +41,7 @@ Audit of existing implementation
 - [x] Interaction with memoized props (covered, test: component_prop_memo_state)
 - [x] State in render tag context (covered, test: render_tag_dynamic_state)
 - [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
+- [ ] `$.tag(source, label)` in dev mode also fires for `$state` declarations in `.svelte.js` / `.svelte.ts` standalone modules (currently broken: `compile_module` does not thread `dev` into the codegen-side transform pipeline) (test: `module_dev_state_tag`)
 - [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
 - [x] `$.tag` label for destructured state — ArrayPattern uses `[$state iterable]`, and nested array carriers under top-level ObjectPattern use `[$state object]` (covered, test: tag_state_destructured_object)
 - [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
@@ -103,6 +104,7 @@ Audit of existing implementation
 - [x] `state_assign_dev`
 - [x] `state_var_safe_get`
 - [x] `tag_state_destructured_object`
+- [ ] `module_dev_state_tag`
 - [x] `state_constructor_read_v`
 - [x] `state_constructor_read_derived`
 - [x] `validate_state_invalid_placement_bare_expr`
