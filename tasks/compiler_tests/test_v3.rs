@@ -241,7 +241,6 @@ fn warn_attr_avoid_is() {
 }
 
 #[rstest]
-#[ignore = "missing: parser errors on unknown directive prefix (data:foo), reference treats as plain attribute"]
 fn warn_attr_illegal_colon() {
     assert_compiler("warn_attr_illegal_colon");
 }
@@ -277,7 +276,6 @@ fn slot_props_spread() {
 }
 
 #[test]
-#[ignore = "missing: legacy `export let` props lowering through reactivity_semantics v2 (codegen)"]
 fn slot_props_dynamic_state() {
     assert_compiler("slot_props_dynamic_state");
 }
@@ -343,13 +341,11 @@ fn css_keyframes_scoped() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn css_keyframes_percentage_scopes_all() {
     assert_compiler("css_keyframes_percentage_scopes_all");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn bind_this_with_children_and_class_directive() {
     assert_compiler("bind_this_with_children_and_class_directive");
 }
@@ -895,7 +891,6 @@ fn custom_element_no_tag() {
 }
 
 #[rstest]
-#[ignore = "missing: aliased prop accessors in custom elements (analyze/codegen)"]
 fn custom_element_prop_alias() {
     assert_compiler("custom_element_prop_alias");
 }
@@ -988,13 +983,11 @@ fn legacy_before_after_update_alias() {
 }
 
 #[rstest]
-#[ignore = "missing: custom-element default CSS injection (compiler/codegen)"]
 fn custom_element_css_default_injected() {
     assert_compiler("custom_element_css_default_injected");
 }
 
 #[rstest]
-#[ignore = "missing: ShadowRootInit object emission for customElement.shadow (analyze/codegen)"]
 fn custom_element_shadow_object() {
     assert_compiler("custom_element_shadow_object");
 }
@@ -1842,7 +1835,6 @@ fn smoke_runes_declarator_gaps_all() {
 }
 
 #[rstest]
-#[ignore = "$state.eager rewrite panics in oxc_traverse (replacement node has no NodeId); tracked in debt.md"]
 fn smoke_runes_state_eager_panic() {
     assert_compiler("smoke_runes_state_eager_panic");
 }
@@ -1853,7 +1845,6 @@ fn smoke_ts_non_null_assertion_mutations() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn text_expression_binary_no_nullish_fallback() {
     assert_compiler("text_expression_binary_no_nullish_fallback");
 }
@@ -2586,7 +2577,6 @@ fn each_keyed_index() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn each_key_is_index_literal_diagnose() {
     assert_compiler("each_key_is_index_literal_diagnose");
 }
@@ -3220,13 +3210,11 @@ fn props_bindable_checkbox_disabled_shorthand_ts() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_onclick_state() {
     assert_compiler("diagnose_component_onclick_state");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_svg_city_icon() {
     assert_compiler("diagnose_svg_city_icon");
 }

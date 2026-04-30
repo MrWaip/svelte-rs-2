@@ -75,10 +75,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let init_expr = self.b.move_expr(init);
 
         if matches!(kind, StateKind::StateEager) {
-            if let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr {
-                let arg = call.arguments.remove(0).into_expression();
-                node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]));
-            }
+            node.init = None;
             return;
         }
 

@@ -18,6 +18,7 @@ pub(crate) struct EmitState<'a> {
     pub local_snippet_decls: Option<Vec<Statement<'a>>>,
     pub skip_snippets: bool,
     pub last_fragment_needs_reset: bool,
+    pub pending_bind_this: Vec<Statement<'a>>,
     pub pending_anchor_idents: Option<(String, String)>,
     pub suppress_root_finalize: bool,
 }

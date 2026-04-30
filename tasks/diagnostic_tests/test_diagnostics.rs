@@ -1740,9 +1740,7 @@ mod each {
     );
     diagnostic_case!(
         validate_each_key_without_as,
-        "each/validate_each_key_without_as",
-        ignore =
-            "known mismatch: each_key_without_as is unreachable from valid Svelte template syntax"
+        "each/validate_each_key_without_as"
     );
 }
 

@@ -1,4 +1,6 @@
+use oxc_ast::ast::{BindingPattern, Statement};
 use oxc_span::{GetSpan, GetSpanMut};
+use svelte_analyze::{BindingSemantics, StateKind};
 
 use super::inspect::{is_inspect_call, is_inspect_trace_call};
 use super::model::ComponentTransformer;
@@ -14,6 +16,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);
+        self.strip_eager_state_declarations(stmts);
 
         self.replace_props_declaration(stmts);
         self.process_derived_destructuring(stmts);
@@ -85,6 +88,29 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return false;
             }
             true
+        });
+    }
+
+    fn strip_eager_state_declarations(&self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        let Some(analysis) = self.analysis.as_ref() else {
+            return;
+        };
+        stmts.retain(|stmt| {
+            let Statement::VariableDeclaration(decl) = stmt else {
+                return true;
+            };
+            !decl.declarations.iter().all(|d| {
+                let BindingPattern::BindingIdentifier(ident) = &d.id else {
+                    return false;
+                };
+                let Some(sym) = ident.symbol_id.get() else {
+                    return false;
+                };
+                matches!(
+                    analysis.binding_semantics(sym),
+                    BindingSemantics::State(state) if state.kind == StateKind::StateEager
+                )
+            })
         });
     }
 

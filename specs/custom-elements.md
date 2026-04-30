@@ -1,8 +1,8 @@
 # Custom Elements
 
 ## Current state
-- **Working**: 10/14 use cases
-- **Tests**: 12/15 green
+- **Working**: 11/14 use cases
+- **Tests**: 13/15 green
 - Last updated: 2026-04-07
 
 ## Source
@@ -35,7 +35,7 @@
 - [x] `customElement={{ tag }}` object form resolves the tag from the parsed config and defines the element.
 - [x] `customElement={{ shadow: "open" }}` emits the default open shadow-root config.
 - [x] `customElement={{ shadow: "none" }}` omits the shadow-root config argument.
-- [ ] `customElement={{ shadow: ShadowRootInit }}` forwards the full object instead of collapsing it to `{ mode: "open" }`.
+- [x] `customElement={{ shadow: ShadowRootInit }}` forwards the full object instead of collapsing it to `{ mode: "open" }`.
 - [x] `customElement={{ props }}` emits explicit prop metadata including `attribute`, `reflect`, and `type`.
 - [x] Boolean-valued prop fallbacks infer `type: "Boolean"` for uncovered CE props.
 - [ ] Prop aliases from `$props()` destructuring are exposed under the public prop name and still get CE accessor/export wrapping in the generated component.
@@ -89,4 +89,4 @@
 - [x] Parser tests for custom-element tag/null compatibility and analyzer tests for `$props()` custom-element warnings, missing compile-flag warnings, and `$host()` placement
 - [ ] `custom_element_css_default_injected` — ignored as `missing: custom-element default CSS injection (compiler/codegen)` — effort: moderate
 - [ ] `custom_element_prop_alias` — ignored as `missing: aliased prop accessors in custom elements (analyze/codegen)` — effort: moderate
-- [ ] `custom_element_shadow_object` — ignored as `missing: ShadowRootInit object emission for customElement.shadow (analyze/codegen)` — effort: moderate
+- [x] `custom_element_shadow_object`

@@ -75,6 +75,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         nid: NodeId,
         expr: &oxc_ast::ast::Expression<'_>,
     ) -> bool {
+        if matches!(expr, oxc_ast::ast::Expression::BinaryExpression(_)) {
+            return true;
+        }
         if !matches!(expr, oxc_ast::ast::Expression::Identifier(_)) {
             return false;
         }
@@ -95,6 +98,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: EmitState<'a>,
         anchor_ident: &str,
     ) -> Result<Vec<Statement<'a>>> {
+        debug_assert!(
+            state.pending_bind_this.is_empty(),
+            "pending_bind_this not flushed before pack_body"
+        );
         let EmitState {
             template: _,
             init,

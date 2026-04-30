@@ -125,7 +125,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut css_text: Option<String> = None;
         if let Some((ss, css_diags)) = css_parsed {
             analyze_diags.extend(css_diags);
-            let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected;
+            let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
+                || analysis.output.custom_element;
             svelte_analyze::analyze_css_pass(
                 &component,
                 &ss,

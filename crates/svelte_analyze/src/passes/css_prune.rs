@@ -215,9 +215,6 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
 
 impl Visit for PruneVisitor<'_, '_, '_, '_> {
     fn visit_at_rule(&mut self, node: &AtRule) {
-        if node.name == "keyframes" {
-            return;
-        }
         svelte_css::visit::walk_at_rule(self, node);
     }
 

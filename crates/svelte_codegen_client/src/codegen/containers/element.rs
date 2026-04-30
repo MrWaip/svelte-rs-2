@@ -122,7 +122,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .cloned()
             .partition(|a| matches!(a, svelte_ast::Attribute::AttachTag(_)));
 
+        let prev_pending_bind_this = std::mem::take(&mut state.pending_bind_this);
         self.emit_dom_attributes(state, el_id, &el_name_hint, &el_name, &non_attach_attrs)?;
+        let my_bind_this = std::mem::take(&mut state.pending_bind_this);
+        state.pending_bind_this = prev_pending_bind_this;
 
         if !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -160,6 +163,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
         }
+
+        state.init.extend(my_bind_this);
 
         for attr in &attach_attrs {
             if let svelte_ast::Attribute::AttachTag(a) = attr {

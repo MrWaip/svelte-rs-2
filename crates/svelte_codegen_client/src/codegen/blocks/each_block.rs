@@ -2,7 +2,7 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{
     EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind,
+    EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -32,6 +32,7 @@ struct EachPlan {
     render_index_name: Option<String>,
     collection_id_name: Option<String>,
     key_uses_index: bool,
+    key_is_index: bool,
     has_fallback: bool,
     item_reactive: bool,
     is_prop_source: bool,
@@ -219,6 +220,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             render_index_name,
             collection_id_name,
             key_uses_index,
+            key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             item_reactive: sem.each_flags.contains(EachFlags::ITEM_REACTIVE),
             is_prop_source: matches!(sem.collection_kind, EachCollectionKind::PropSource),
@@ -282,6 +284,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         plan: &EachPlan,
         context_pattern: Option<&BindingPattern<'a>>,
     ) -> Result<Expression<'a>> {
+        if plan.key_is_index {
+            return Ok(self.ctx.b.rid_expr("$.index"));
+        }
         let block = self.ctx.query.each_block(block_id);
         let Some(key_ref) = block.key.as_ref() else {
             return Ok(self.ctx.b.rid_expr("$.index"));

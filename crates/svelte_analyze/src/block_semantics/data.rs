@@ -100,6 +100,8 @@ pub enum EachIndexKind {
 pub enum EachKeyKind {
     Unkeyed,
 
+    KeyedByIndex,
+
     KeyedByItem,
 
     KeyedByExpr(OxcNodeId),

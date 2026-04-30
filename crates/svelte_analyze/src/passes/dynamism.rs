@@ -281,6 +281,9 @@ fn has_state_component_attr(
     if info.has_await() {
         return true;
     }
+    if matches!(info.kind(), ExpressionKind::ArrowFunction) {
+        return false;
+    }
     attr_symbols(info, scoping).any(|sym_id| {
         !scoping.is_component_top_level_symbol(sym_id)
             || !is_unified_plain_symbol(scoping, reactivity, sym_id)

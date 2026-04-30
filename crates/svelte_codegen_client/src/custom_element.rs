@@ -37,6 +37,7 @@ pub fn gen_custom_element<'a>(
     }));
 
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
+    let delegates_focus = parsed.is_some_and(|o| o.delegates_focus);
 
     let extend_arg = take_extend_expr(ctx, ce_config);
     let b = &ctx.b;
@@ -49,9 +50,12 @@ pub fn gen_custom_element<'a>(
     ];
 
     if !is_shadow_none {
-        args.push(Arg::Expr(
-            b.object_expr([ObjProp::KeyValue("mode", b.str_expr("open"))]),
-        ));
+        let mut shadow_props: Vec<ObjProp<'_>> =
+            vec![ObjProp::KeyValue("mode", b.str_expr("open"))];
+        if delegates_focus {
+            shadow_props.push(ObjProp::KeyValue("delegatesFocus", b.bool_expr(true)));
+        }
+        args.push(Arg::Expr(b.object_expr(shadow_props)));
     }
 
     if let Some(extend_expr) = extend_arg {

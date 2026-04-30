@@ -5,6 +5,6 @@ export default function App($$anchor, $$props) {
 	let b = $.prop($$props, "b", 8, 2);
 	$.next();
 	var text = $.text();
-	$.template_effect(() => $.set_text(text, `${a() ?? ""} ${a() + b() ?? ""}`));
+	$.template_effect(() => $.set_text(text, `${a() ?? ""} ${a() + b()}`));
 	$.append($$anchor, text);
 }
