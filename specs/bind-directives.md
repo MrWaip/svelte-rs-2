@@ -1,8 +1,8 @@
 # bind:*
 
 ## Current state
-- **Working**: 16/20 use cases
-- **Tests**: 60/64 green
+- **Working**: 16/21 use cases
+- **Tests**: 60/65 green
 - Last updated: 2026-04-30
 
 ## Source
@@ -57,6 +57,7 @@ ROADMAP.md — Bindings
 - [x] Warning parity for rest-pattern each bindings
   `bind_invalid_each_rest`
 - [ ] Dev-mode component prop bindings validate ownership via `$$ownership_validator.binding(...)`
+- [ ] Dev-mode element bind helpers (`$.bind_value`, `$.bind_checked`, `$.bind_group`, `$.bind_select_value`, `$.bind_content_editable`, `$.bind_volume`, `$.bind_paused`, `$.bind_element_size`) take named `function get() {...}` / `function set($$value) {...}` declarations as get/set callbacks instead of arrow expressions. (test: `diagnose_runes_dev_ce_benchmark`)
 
 ## Reference
 
@@ -142,3 +143,4 @@ ROADMAP.md — Bindings
 - [x] `validate_bind_member_expression_no_error`
 - [x] `validate_bind_getter_setter_no_error`
 - [x] `bind_select_static_option_value`
+- [ ] `diagnose_runes_dev_ce_benchmark`

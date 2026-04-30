@@ -82,7 +82,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [x] `{@const}` — [spec](specs/const-tag.md)
 - [x] `{@debug}` — [spec](specs/debug-tag.md)
 - [ ] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
-- [ ] Experimental async — [spec](specs/experimental-async.md)
+- [x] Experimental async — [spec](specs/experimental-async.md)
 
 ## Attributes & Spreads
 
@@ -113,8 +113,8 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 
 ## Directives
 
-- [ ] `use:action` — [spec](specs/use-action.md)
-- [ ] `transition:` / `in:` / `out:` — [spec](specs/transitions.md)
+- [x] `use:action` — [spec](specs/use-action.md)
+- [x] `transition:` / `in:` / `out:` — [spec](specs/transitions.md)
 - [x] `animate:` — [spec](specs/animate.md)
 - [x] `{@attach}` — [spec](specs/attach-tag.md)
 

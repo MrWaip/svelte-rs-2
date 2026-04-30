@@ -1,9 +1,9 @@
 # Custom Elements
 
 ## Current state
-- **Working**: 11/14 use cases
-- **Tests**: 13/15 green
-- Last updated: 2026-04-07
+- **Working**: 11/17 use cases
+- **Tests**: 13/16 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -45,6 +45,9 @@
 - [ ] CE mode injects component CSS into JS/shadow-root output even without inline `css="injected"`.
 - [x] `$host()` is available when compiling as a custom element, and CE rest-prop lowering excludes `$$host`.
 - [ ] Object-form `customElement` validation for `props` shape, allowed `type` values, and `shadow` value parity still lives in analyze-only extraction instead of the parser path used by the reference compiler.
+- [ ] Compile-option `customElement: true` (without an inline `<svelte:options customElement>`) emits the `$.create_custom_element(App, propsMeta, [], exports, { mode: "open" })` constructor call at module scope. (test: `diagnose_runes_dev_ce_benchmark`)
+- [ ] CE/legacy instance-script exports (`export const`, `export function`) appear on `$$exports` as `get NAME() { return NAME; }` accessors plus a trailing `...$.legacy_api()` spread instead of plain shorthand properties. (test: `diagnose_runes_dev_ce_benchmark`)
+- [ ] CE rest-prop lowering `$.rest_props($$props, [...keys], "rest")` includes `"$$host"` in the excluded-key list and passes the destructured-binding label `"rest"` as the trailing argument. (test: `diagnose_runes_dev_ce_benchmark`)
 
 ## Out of scope
 
@@ -90,3 +93,4 @@
 - [ ] `custom_element_css_default_injected` — ignored as `missing: custom-element default CSS injection (compiler/codegen)` — effort: moderate
 - [ ] `custom_element_prop_alias` — ignored as `missing: aliased prop accessors in custom elements (analyze/codegen)` — effort: moderate
 - [x] `custom_element_shadow_object`
+- [ ] `diagnose_runes_dev_ce_benchmark`
