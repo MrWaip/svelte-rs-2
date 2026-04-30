@@ -3217,7 +3217,6 @@ fn diagnose_svg_city_icon() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn clock_svg_derived_onmount() {
     assert_compiler("clock_svg_derived_onmount");
 }

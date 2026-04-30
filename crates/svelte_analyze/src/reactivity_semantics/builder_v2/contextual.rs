@@ -196,6 +196,10 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
         }
 
+        if !each_collection_has_external_deps(block, body_scope, ctx) {
+            mark_each_item_syms_non_reactive(block, ctx, self.staging);
+        }
+
         run_each_index_marker(block, ctx, self.staging);
     }
 
@@ -478,6 +482,49 @@ fn run_snippet_param_marker<'a>(
         in_default: false,
     };
     marker.visit_statement(stmt);
+}
+
+fn each_collection_has_external_deps(
+    block: &EachBlock,
+    body_scope: crate::scope::ScopeId,
+    ctx: &VisitContext<'_, '_>,
+) -> bool {
+    let Some(parsed) = ctx.parsed else {
+        return true;
+    };
+    let Some(expr) = parsed.expr(block.expression.id()) else {
+        return true;
+    };
+    let each_depth = ctx.data.scoping.function_depth(body_scope) + 1;
+    let mut collector = ExprRefCollector { refs: Vec::new() };
+    collector.visit_expression(expr);
+    for ref_id in collector.refs {
+        let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+            continue;
+        };
+        let decl_scope = ctx.data.scoping.symbol_scope_id(sym);
+        if ctx.data.scoping.function_depth(decl_scope) < each_depth {
+            return true;
+        }
+    }
+    false
+}
+
+fn mark_each_item_syms_non_reactive(
+    block: &EachBlock,
+    ctx: &VisitContext<'_, '_>,
+    staging: &mut ContextualStaging,
+) {
+    let Some(parsed) = ctx.parsed else { return };
+    let Some(stmt) = block.context.as_ref().and_then(|r| parsed.stmt(r.id())) else {
+        return;
+    };
+    let Some(declarator) = declarator_from_stmt_local(stmt) else {
+        return;
+    };
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+        staging.mark_each_non_reactive(v.symbol);
+    });
 }
 
 fn mark_key_is_item_each_binding(

@@ -270,6 +270,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             ContentStrategy::Multi { .. } => {
                 self.process_children_with_prefix(state, ctx, &children, emitted_prefix_next)?;
+                needs_reset = state.last_fragment_needs_reset;
             }
         }
         state.last_fragment_needs_reset = needs_reset;

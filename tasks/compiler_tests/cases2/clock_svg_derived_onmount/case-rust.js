@@ -43,21 +43,20 @@ export default function App($$anchor, $$props) {
 			4
 		], $.index, ($$anchor, offset) => {
 			var line_1 = root_2();
-			$.template_effect(() => $.set_attribute(line_1, "transform", `rotate(${6 * ($.get(minute) + $.get(offset)) ?? ""})`));
+			$.template_effect(() => $.set_attribute(line_1, "transform", `rotate(${6 * (minute + offset)})`));
 			$.append($$anchor, line_1);
 		});
-		$.template_effect(() => $.set_attribute(line, "transform", `rotate(${30 * $.get(minute) ?? ""})`));
+		$.template_effect(() => $.set_attribute(line, "transform", `rotate(${30 * minute})`));
 		$.append($$anchor, fragment);
 	});
 	var line_2 = $.sibling(node);
 	var line_3 = $.sibling(line_2);
 	var g = $.sibling(line_3);
-	$.reset(g);
 	$.reset(svg);
 	$.template_effect(() => {
-		$.set_attribute(line_2, "transform", `rotate(${30 * $.get(hours) + $.get(minutes) / 2 ?? ""})`);
-		$.set_attribute(line_3, "transform", `rotate(${6 * $.get(minutes) + $.get(seconds) / 10 ?? ""})`);
-		$.set_attribute(g, "transform", `rotate(${6 * $.get(seconds) ?? ""})`);
+		$.set_attribute(line_2, "transform", `rotate(${30 * $.get(hours) + $.get(minutes) / 2})`);
+		$.set_attribute(line_3, "transform", `rotate(${6 * $.get(minutes) + $.get(seconds) / 10})`);
+		$.set_attribute(g, "transform", `rotate(${6 * $.get(seconds)})`);
 	});
 	$.append($$anchor, svg);
 	$.pop();
