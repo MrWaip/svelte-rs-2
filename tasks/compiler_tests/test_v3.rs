@@ -306,6 +306,12 @@ fn push_binding_group_order() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn bind_group_order_with_stores() {
+    assert_compiler("bind_group_order_with_stores");
+}
+
+#[rstest]
 fn css_scoped_basic() {
     assert_compiler("css_scoped_basic");
 }
