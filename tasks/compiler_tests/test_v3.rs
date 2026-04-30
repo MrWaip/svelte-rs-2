@@ -1669,12 +1669,26 @@ fn assert_compiler_module(case: &str) {
         .join("case.svelte.js");
     let input = read_to_string(&path).expect("test invariant");
 
-    let result = compile_module(&input, &ModuleCompileOptions::default());
+    let dir = path.parent().expect("test invariant");
+    let config_path = dir.join("config.json");
+    let mut opts = ModuleCompileOptions::default();
+    if config_path.exists() {
+        let config: serde_json::Value =
+            serde_json::from_str(&read_to_string(&config_path).expect("test invariant"))
+                .expect("test invariant");
+        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
+            opts.dev = dev;
+        }
+        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
+            opts.filename = filename.to_string();
+        }
+    }
+
+    let result = compile_module(&input, &opts);
     let js = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile_module produced no JS"));
 
-    let dir = path.parent().expect("test invariant");
     let expected = read_to_string(dir.join("case-svelte.js")).expect("test invariant");
 
     File::create(dir.join("case-rust.js"))
@@ -1687,6 +1701,24 @@ fn assert_compiler_module(case: &str) {
 #[rstest]
 fn module_compilation() {
     assert_compiler_module("module_compilation");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn module_dev_state_tag() {
+    assert_compiler_module("module_dev_state_tag");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn module_dev_derived_tag() {
+    assert_compiler_module("module_dev_derived_tag");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn module_dev_console_log_wrap() {
+    assert_compiler_module("module_dev_console_log_wrap");
 }
 
 #[rstest]
