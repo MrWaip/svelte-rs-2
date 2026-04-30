@@ -1,9 +1,9 @@
 # CSS
 
 ## Current state
-- **Working**: 14/15 use cases
-- **Tests**: 95/96 green
-- Last updated: 2026-04-29
+- **Working**: 14/17 use cases
+- **Tests**: 95/98 green
+- Last updated: 2026-04-30
 
 ## Source
 Project CSS pipeline parity work and follow-up diagnostic audit.
@@ -12,6 +12,8 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 
 - [x] Top-level component CSS is extracted from `<style>`, analyzed, transformed, and returned through `CompileResult.css` in external mode (tests: `css_scoped_basic`, `explicit_external_css_mode_returns_compile_result_css`)
 - [x] Injected CSS mode works through compile options and inline `<svelte:options css="injected">` precedence (tests: `css_injected`, `css_injected_via_compile_options`, `inline_css_injected_overrides_external_compile_option`)
+- [ ] Injected CSS `code:` string preserves source whitespace (newlines, indentation, space after `:`, space inside braces) the way reference does — currently our pipeline minifies through lightningcss so non-trivial source CSS (e.g. `@keyframes` blocks) loses formatting and diverges from reference verbatim string. (test: `css_injected_keyframes_preserve_whitespace`, M)
+- [ ] In injected CSS mode, `$.append_styles($$anchor, $$css);` must be emitted AFTER `$.push($$props, ...)` and before the auto-subscribed-store getter consts / `$.setup_stores()` block (reference unshifts append_styles after store_setup is unshifted, so `push → append_styles → store_setup → store_init`). Currently we emit `append_styles` before `$.push(...)` whenever stores are present. (test: `css_injected_append_styles_with_stores_order`, S)
 - [x] Scoped selector marking and scope-class injection work for ordinary elements, snippets, `<svelte:element>`, class-object attrs, and spread attrs (tests: `css_scoped_class_selector`, `css_scope_class_in_snippet`, `css_scope_svelte_element_class`, `css_scope_class_object`, `css_scope_spread_attribute`)
 - [x] Selector matching covers type, class, id, attribute presence, static attribute matcher/value selectors, and bounded dynamic attribute expansion with reference-conservative behavior where required (tests: `css_scoped_id_selector`, `css_scoped_attr_presence`, `css_scoped_attr_value_selector`, `css_scoped_attr_matcher_operators`, `css_scoped_attr_name_casefolding`, `css_dynamic_attr_selector_match`, `concat_attribute_selector_no_match`)
 - [x] `:global(...)`, bare `:global`, `:global { ... }`, and `:global(...)` inside `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)` match the reference transform/analyze behavior for valid CSS (tests: `css_global_basic`, `css_global_compound`, `css_global_block`, `css_global_in_pseudo`)
@@ -63,6 +65,8 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_injected`
 - [x] `css_injected_via_compile_options`
 - [x] `inline_css_injected_overrides_external_compile_option`
+- [ ] `css_injected_keyframes_preserve_whitespace`
+- [ ] `css_injected_append_styles_with_stores_order`
 - [x] `css_scoped_class_selector`
 - [x] `css_scope_class_in_snippet`
 - [x] `css_scope_svelte_element_class`
