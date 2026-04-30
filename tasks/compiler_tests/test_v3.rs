@@ -971,13 +971,11 @@ fn legacy_slots_script_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: legacy beforeUpdate/afterUpdate components do not emit $.init() before DOM creation (codegen, moderate)"]
 fn legacy_before_after_update_basic() {
     assert_compiler("legacy_before_after_update_basic");
 }
 
 #[rstest]
-#[ignore = "missing: aliased legacy beforeUpdate/afterUpdate components do not emit $.init() before DOM creation (codegen, moderate)"]
 fn legacy_before_after_update_alias() {
     assert_compiler("legacy_before_after_update_alias");
 }

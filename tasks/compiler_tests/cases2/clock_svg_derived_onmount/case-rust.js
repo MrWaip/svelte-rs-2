@@ -52,7 +52,6 @@ export default function App($$anchor, $$props) {
 	var line_2 = $.sibling(node);
 	var line_3 = $.sibling(line_2);
 	var g = $.sibling(line_3);
-	$.next();
 	$.reset(g);
 	$.reset(svg);
 	$.template_effect(() => {
