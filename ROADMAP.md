@@ -154,6 +154,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 ## Modules `.svelte.js` / `.svelte.ts`
 
 - [ ] `.svelte.js` / `.svelte.ts`
+  - [ ] `dev: true` threading — `compile_module` discards `dev` before codegen, so `$state`/`$derived` skip `$.tag(...)` wrapping and `console.*` skip `$.log_if_contains_state(...)` wrapping in standalone module compilation (tracked in [`specs/unknown.md`](specs/unknown.md); per-rune slices in [`specs/state-rune.md`](specs/state-rune.md), [`specs/derived-state.md`](specs/derived-state.md))
 
 ## Custom Elements
 
