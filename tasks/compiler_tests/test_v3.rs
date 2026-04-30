@@ -2475,6 +2475,16 @@ fn html_tag_nested_svg() {
 }
 
 #[rstest]
+fn html_tag_nested_mathml() {
+    assert_compiler("html_tag_nested_mathml");
+}
+
+#[rstest]
+fn html_tag_hydration_ignore() {
+    assert_compiler("html_tag_hydration_ignore");
+}
+
+#[rstest]
 fn const_tag_dev() {
     assert_compiler("const_tag_dev");
 }

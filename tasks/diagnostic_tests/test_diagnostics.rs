@@ -1801,6 +1801,10 @@ mod template {
         "template/debug_tag_non_runes_skips_opening_tag_check"
     );
     diagnostic_case!(
+        html_tag_invalid_opening_tag_runes,
+        "template/html_tag_invalid_opening_tag_runes"
+    );
+    diagnostic_case!(
         validate_key_block_empty_warns,
         "template/validate_key_block_empty_warns"
     );

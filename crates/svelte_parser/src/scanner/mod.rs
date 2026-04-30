@@ -107,11 +107,12 @@ impl<'a> Scanner<'a> {
         }
 
         if char == '{' {
+            self.skip_whitespace();
             return match self.peek() {
                 Some('#') => self.start_template(),
                 Some(':') => self.middle_template(),
-                Some('/') => self.end_template(),
                 Some('@') => self.at_template(),
+                Some('/') => self.end_template(),
                 _ => self.interpolation(),
             };
         }
@@ -1582,17 +1583,13 @@ impl<'a> Scanner<'a> {
     fn end_template(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.peek(), Some('/'));
 
+        let saved_current = self.current;
+        let saved_prev = self.prev;
+
         self.advance();
 
         let start = self.current;
         let keyword = self.identifier();
-
-        if keyword.is_empty() {
-            return Err(Diagnostic::unexpected_keyword(Span::new(
-                self.start as u32,
-                self.current as u32,
-            )));
-        }
 
         match keyword {
             "if" => {
@@ -1670,10 +1667,11 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
-            _ => Err(Diagnostic::unexpected_keyword(Span::new(
-                start as u32,
-                self.current as u32,
-            ))),
+            _ => {
+                self.current = saved_current;
+                self.prev = saved_prev;
+                self.interpolation()
+            }
         }
     }
 

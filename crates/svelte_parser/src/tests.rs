@@ -383,6 +383,12 @@ fn html_tag_complex_expression() {
     assert_html_tag(&c, 0, "'<p>' + name + '</p>'");
 }
 
+#[test]
+fn html_tag_with_leading_whitespace() {
+    let c = parse("{ @html content}");
+    assert_html_tag(&c, 0, "content");
+}
+
 fn assert_const_tag(
     c: &Component,
     fragment_id: svelte_ast::FragmentId,

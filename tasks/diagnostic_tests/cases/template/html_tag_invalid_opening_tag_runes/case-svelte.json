@@ -1,0 +1,8 @@
+[
+  {
+    "code": "block_unexpected_character",
+    "end": 50,
+    "severity": "error",
+    "start": 45
+  }
+]

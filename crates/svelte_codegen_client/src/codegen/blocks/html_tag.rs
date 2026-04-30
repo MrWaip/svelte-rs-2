@@ -5,6 +5,29 @@ use super::super::data_structures::AsyncEmissionPlan;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, Result};
+use crate::context::Ctx;
+
+fn push_html_trailing_args<'a, 'b>(
+    ctx: &'b Ctx<'a>,
+    args: &mut Vec<Arg<'a, 'b>>,
+    is_controlled: bool,
+    is_svg: bool,
+    is_mathml: bool,
+    hydration_ignored: bool,
+) {
+    let flags = [is_controlled, is_svg, is_mathml, hydration_ignored];
+    let last_set = flags.iter().rposition(|&f| f);
+    let Some(last) = last_set else {
+        return;
+    };
+    for &flag in &flags[..=last] {
+        args.push(if flag {
+            Arg::Bool(true)
+        } else {
+            Arg::Expr(ctx.b.void_zero_expr())
+        });
+    }
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn emit_html_tag(
@@ -20,6 +43,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let is_svg = !is_controlled && self.ctx.query.view.html_tag_in_svg(id);
         let is_mathml = !is_controlled && self.ctx.query.view.html_tag_in_mathml(id);
+        let hydration_ignored =
+            self.ctx.state.dev && self.ctx.query.view.is_ignored(id, "hydration_html_changed");
 
         let plan = AsyncEmissionPlan::for_node(self.ctx, id);
 
@@ -32,23 +57,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident("$$html")]));
             let mut html_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("node"), Arg::Expr(html_value)];
 
-            if is_controlled || is_svg || is_mathml {
-                html_args.push(if is_controlled {
-                    Arg::Bool(true)
-                } else {
-                    Arg::Expr(self.ctx.b.void_zero_expr())
-                });
-            }
-            if is_svg || is_mathml {
-                html_args.push(if is_svg {
-                    Arg::Bool(true)
-                } else {
-                    Arg::Expr(self.ctx.b.void_zero_expr())
-                });
-            }
-            if is_mathml {
-                html_args.push(Arg::Bool(true));
-            }
+            push_html_trailing_args(
+                self.ctx,
+                &mut html_args,
+                is_controlled,
+                is_svg,
+                is_mathml,
+                hydration_ignored,
+            );
 
             let html_stmt = self.ctx.b.call_stmt("$.html", html_args);
 
@@ -75,23 +91,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&anchor_name), Arg::Expr(thunk)];
 
-        if is_controlled || is_svg || is_mathml {
-            args.push(if is_controlled {
-                Arg::Bool(true)
-            } else {
-                Arg::Expr(self.ctx.b.void_zero_expr())
-            });
-        }
-        if is_svg || is_mathml {
-            args.push(if is_svg {
-                Arg::Bool(true)
-            } else {
-                Arg::Expr(self.ctx.b.void_zero_expr())
-            });
-        }
-        if is_mathml {
-            args.push(Arg::Bool(true));
-        }
+        push_html_trailing_args(
+            self.ctx,
+            &mut args,
+            is_controlled,
+            is_svg,
+            is_mathml,
+            hydration_ignored,
+        );
 
         state.init.push(self.ctx.b.call_stmt("$.html", args));
 

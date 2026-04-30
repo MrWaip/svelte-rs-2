@@ -78,7 +78,7 @@ SSR remains a separate future track. This roadmap stays client-only until these 
 - [x] `{#await}` — [spec](specs/await-block.md)
 - [x] `{#key}` — [spec](specs/key-block.md)
 - [ ] `{#snippet}` / `{@render}` — [spec](specs/snippet-block.md)
-- [ ] `{@html}` — [spec](specs/html-tag.md)
+- [x] `{@html}` — [spec](specs/html-tag.md)
 - [x] `{@const}` — [spec](specs/const-tag.md)
 - [x] `{@debug}` — [spec](specs/debug-tag.md)
 - [ ] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
