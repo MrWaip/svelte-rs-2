@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: 16/19 use cases
-- **Tests**: 60/63 green
-- Last updated: 2026-04-29
+- **Working**: 16/20 use cases
+- **Tests**: 60/64 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -30,6 +30,7 @@ ROADMAP.md — Bindings
   Existing tests: `bind_textarea_value`, `textarea_child_value_dynamic`
 - [x] `bind:checked`, `bind:group`, and `bind:files`
   Existing tests: `bind_directives_extended`, `bind_function_checked`, `bind_group_*`, `bind_files`, `push_binding_group_order`
+- [ ] `bind:group` with auto-subscribed stores in same component: the synthesized `const binding_group = [];` declaration must be emitted AFTER the store getter constants and `const [$$stores, $$cleanup] = $.setup_stores();` (reference order = `store_setup` → `store_init` → `group_binding_declarations`). Currently emitted before them. (test: `bind_group_order_with_stores`, S)
 - [x] Regular-element `bind:checked` targeting a `$bindable` prop source from `$props()` passes the prop accessor directly to `$.bind_checked(...)` instead of lowering through rune getter/setter closures (test: `props_bindable_checkbox_disabled_shorthand_ts`)
 - [x] Contenteditable bindings: `bind:innerHTML`, `bind:innerText`, `bind:textContent`
   Existing tests: `bind_content_editable`, `bind_contenteditable_flag`, `bind_multiple_on_element`
@@ -112,6 +113,7 @@ ROADMAP.md — Bindings
 - [x] `component_bind_this`
 - [x] `component_bind_this_variants`
 - [x] `push_binding_group_order`
+- [ ] `bind_group_order_with_stores`
 - [x] `props_bindable_checkbox_disabled_shorthand_ts`
 - [x] `svelte_document_bindings`
 - [x] `svelte_element_bind`

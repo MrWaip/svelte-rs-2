@@ -1,9 +1,9 @@
 # TypeScript Script Stripping
 
 ## Current state
-- **Working**: 6/7 use cases
-- **Tests**: 6/7 green
-- Last updated: 2026-04-11
+- **Working**: 6/8 use cases
+- **Tests**: 6/8 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -18,6 +18,7 @@
 - `<div value={foo as string} />`
 - `{#const value = expr as T}`
 - `<script lang="ts">// comment only</script>`
+- `<script>/** @type {Foo} */ let x;</script>` (JSDoc type annotations on plain JS scripts)
 
 ## Use cases
 
@@ -28,6 +29,7 @@
 - [x] TypeScript wrappers inside regular dynamic attributes are stripped in emitted client output (test: `ts_strip_attribute`)
 - [x] Instance `<script lang="ts">` with surviving runtime JavaScript strips type syntax while preserving the remaining script logic (test: `ts_strip_script_types`)
 - [ ] Comment-only or otherwise effectively-empty `<script lang="ts">` blocks must not preserve orphaned script comments in final client JS, and must not introduce extra template cursor operations such as `$.next(...)` or `$.reset(...)` after the script disappears (test: `diagnose_svg_city_icon`, moderate)
+- [ ] JSDoc `/** @type ... */` annotations on plain `<script>` (non-`lang="ts"`) `let`/`var`/`const` declarations must be stripped from the emitted client JS instead of leaking through as leading comments. Currently only reproduces inside the large `/diagnose` benchmark component (script with stores + runes + `bind:group` + JSDoc-annotated `let show;`); could not be reduced to a focused isolated case during diagnose. Symptom may resolve once `bind_group_order_with_stores` lands since both originate from the same instance-body splice region. (broad-repro only, S–M)
 
 ## Out of scope
 
@@ -56,3 +58,4 @@
 - [x] `ts_strip_attribute`
 - [x] `ts_strip_script_types`
 - [ ] `diagnose_svg_city_icon`
+- [ ] JSDoc `@type` leak on plain `<script>` — broad-repro only; revisit after `bind_group_order_with_stores` lands
