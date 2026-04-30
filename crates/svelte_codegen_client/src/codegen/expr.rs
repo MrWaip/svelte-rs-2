@@ -210,7 +210,8 @@ fn uses_deep_read_state(
     sym: svelte_analyze::scope::SymbolId,
 ) -> bool {
     use svelte_analyze::{
-        BindingSemantics, ContextualBindingSemantics, PropBindingKind, PropBindingSemantics,
+        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, PropBindingKind,
+        PropBindingSemantics,
     };
     let decl = ctx.query.view.binding_semantics(sym);
     matches!(
@@ -224,6 +225,7 @@ fn uses_deep_read_state(
                     | ContextualBindingSemantics::AwaitValue
                     | ContextualBindingSemantics::AwaitError
             )
+            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive: true, .. })
     ) || ctx.query.scoping().is_import(sym)
 }
 

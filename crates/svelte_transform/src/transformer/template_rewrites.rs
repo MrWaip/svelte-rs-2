@@ -1,4 +1,5 @@
 use oxc_ast::ast::Expression;
+use oxc_traverse::TraverseCtx;
 
 use super::model::ComponentTransformer;
 
@@ -6,6 +7,7 @@ pub(crate) fn rewrite_template_enter<'a>(
     t: &mut ComponentTransformer<'_, 'a>,
     it: &mut Expression<'a>,
     is_lhs: bool,
+    ctx: &mut TraverseCtx<'a, ()>,
 ) {
     if t.rewrite_rest_prop_member(it, is_lhs) {
         return;
@@ -20,12 +22,12 @@ pub(crate) fn rewrite_template_enter<'a>(
         if t.dispatch_identifier_update(it) {
             return;
         }
-        t.dispatch_member_update(it);
+        t.dispatch_member_update(it, ctx);
         return;
     }
 
     if matches!(it, Expression::AssignmentExpression(_)) {
-        t.dispatch_member_assignment(it, false);
+        t.dispatch_member_assignment(it, false, ctx);
     }
 }
 

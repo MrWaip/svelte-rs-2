@@ -47,13 +47,13 @@ export default function App($$anchor, $$props) {
 	let key = "x";
 	const store = writable(0);
 	const objStore = writable({ x: 0 });
-	let items = [{
+	let items = $.mutable_source([{
 		id: 1,
 		x: 0
 	}, {
 		id: 2,
 		x: 0
-	}];
+	}]);
 	let promise = Promise.resolve({ x: 0 });
 	function script_ops() {
 		count(1);
@@ -143,7 +143,7 @@ export default function App($$anchor, $$props) {
 	var fragment_1 = root();
 	var text_1 = $.first_child(fragment_1);
 	var node = $.sibling(text_1);
-	$.each(node, 3, () => items, (item) => item.id, ($$anchor, item, i) => {
+	$.each(node, 3, () => $.get(items), (item) => item.id, ($$anchor, item, i) => {
 		$.next();
 		var fragment_2 = root_2();
 		var text_2 = $.first_child(fragment_2);
@@ -151,53 +151,53 @@ export default function App($$anchor, $$props) {
 		$.template_effect(() => $.set_text(text_2, `${$.get(item) ?? ""}
 	${$.get(i) ?? ""}
 	${($.get(item), $.untrack(() => $.get(item).x)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x = 1)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x += 2)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x -= 3)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x++)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x--)) ?? ""}
-	${($.get(item), $.untrack(() => ++$.get(item).x)) ?? ""}
-	${($.get(item), $.untrack(() => --$.get(item).x)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x &&= 4)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x ||= 5)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item).x ??= 6)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)["x"] = 1)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)["x"] += 2)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)["x"]++)) ?? ""}
-	${($.get(item), $.untrack(() => ++$.get(item)["x"])) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)[key] = 1)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)[key] += 2)) ?? ""}
-	${($.get(item), $.untrack(() => $.get(item)[key]++)) ?? ""}
-	${($.get(item), $.untrack(() => ++$.get(item)[key])) ?? ""} `));
+	${($.get(item), $.untrack(() => ($.get(item).x = 1, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x += 2, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x -= 3, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x++, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x--, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => (++$.get(item).x, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => (--$.get(item).x, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x &&= 4, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x ||= 5, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item).x ??= 6, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)["x"] = 1, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)["x"] += 2, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)["x"]++, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => (++$.get(item)["x"], $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)[key] = 1, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)[key] += 2, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => ($.get(item)[key]++, $.invalidate_inner_signals(() => $.get(items))))) ?? ""}
+	${($.get(item), $.untrack(() => (++$.get(item)[key], $.invalidate_inner_signals(() => $.get(items))))) ?? ""} `));
 		$.delegated("click", button_1, () => {
-			$.get(item).x = 1;
-			$.get(item).x += 2;
-			$.get(item).x++;
-			++$.get(item).x;
-			$.get(item).x &&= 4;
-			$.get(item).x ||= 5;
-			$.get(item).x ??= 6;
-			$.get(item)["x"] = 1;
-			$.get(item)[key] = 1;
-			$.get(item)[key]++;
+			$.get(item).x = 1, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item).x += 2, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item).x++, $.invalidate_inner_signals(() => $.get(items));
+			++$.get(item).x, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item).x &&= 4, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item).x ||= 5, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item).x ??= 6, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item)["x"] = 1, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item)[key] = 1, $.invalidate_inner_signals(() => $.get(items));
+			$.get(item)[key]++, $.invalidate_inner_signals(() => $.get(items));
 		});
 		$.append($$anchor, fragment_2);
 	});
 	var node_1 = $.sibling(node, 2);
-	$.each(node_1, 1, () => items, (it) => it.id, ($$anchor, it) => {
-		const ctx = $.derived(() => $.get(it));
+	$.each(node_1, 1, () => $.get(items), (it) => it.id, ($$anchor, it) => {
+		const ctx = $.derived_safe_equal(() => $.get(it));
 		$.next();
 		var text_3 = $.text();
-		$.template_effect(() => $.set_text(text_3, `${($.get(ctx), $.untrack(() => $.get(ctx).x)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x = 1)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x += 2)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x++)) ?? ""}
-	${($.get(ctx), $.untrack(() => ++$.get(ctx).x)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x &&= 3)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x ||= 4)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx).x ??= 5)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx)["x"] = 1)) ?? ""}
-	${($.get(ctx), $.untrack(() => $.get(ctx)[key] = 1)) ?? ""}`));
+		$.template_effect(() => $.set_text(text_3, `${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x = 1)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x += 2)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x++)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => ++$.get(ctx).x)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x &&= 3)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x ||= 4)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx).x ??= 5)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx)["x"] = 1)) ?? ""}
+	${($.deep_read_state($.get(ctx)), $.untrack(() => $.get(ctx)[key] = 1)) ?? ""}`));
 		$.append($$anchor, text_3);
 	});
 	var node_2 = $.sibling(node_1, 2);

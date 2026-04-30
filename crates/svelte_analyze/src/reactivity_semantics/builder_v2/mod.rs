@@ -43,6 +43,7 @@ pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut
     let lr_collected =
         build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
     contextual::collect_template_declarations(component, parsed, data);
+    contextual::promote_each_sources_to_legacy_state(component, parsed, data);
 
     legacy_reactive::build_from_collected(
         data,

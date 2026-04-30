@@ -1822,7 +1822,6 @@ fn smoke_runes_reactive_mutations_all() {
 }
 
 #[rstest]
-#[ignore = "exposes legacy each-item member mutation gaps (mutable_source upgrade + invalidate_inner_signals chain); tracked in debt.md"]
 fn smoke_legacy_contextual_mutations_all() {
     assert_compiler("smoke_legacy_contextual_mutations_all");
 }

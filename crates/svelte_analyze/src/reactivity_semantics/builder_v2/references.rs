@@ -178,6 +178,10 @@ fn classify_reference_semantics(
             if !is_read {
                 return None;
             }
+            if is_member_mutation_root && data.reactivity.each_item_indirect_sources(sym).is_some()
+            {
+                return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_sym: sym });
+            }
             let owner_node = data.reactivity.contextual_owner(sym)?;
             let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind);
             Some(ReferenceFacts::ContextualRead(ContextualReadSemantics {

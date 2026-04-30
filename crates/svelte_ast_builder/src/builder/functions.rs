@@ -133,6 +133,14 @@ impl<'a> Builder<'a> {
         self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
     }
 
+    pub fn thunk_in_scope(&self, expr: Expression<'a>, scope_id: ScopeId) -> Expression<'a> {
+        let arrow_expr = self.arrow_expr(self.no_params(), [self.expr_stmt(expr)]);
+        if let Expression::ArrowFunctionExpression(arrow) = &arrow_expr {
+            arrow.scope_id.set(Some(scope_id));
+        }
+        arrow_expr
+    }
+
     pub fn thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
         self.arrow_block_expr(self.no_params(), stmts)
     }

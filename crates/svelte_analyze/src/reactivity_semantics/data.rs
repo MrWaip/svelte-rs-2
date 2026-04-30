@@ -304,6 +304,10 @@ pub enum ReferenceSemantics {
         symbol: SymbolId,
     },
 
+    LegacyEachItemMemberMutationRoot {
+        item_sym: SymbolId,
+    },
+
     IllegalWrite,
 
     Unresolved,
@@ -438,6 +442,10 @@ pub(crate) enum ReferenceFacts {
         symbol: SymbolId,
     },
 
+    LegacyEachItemMemberMutationRoot {
+        item_sym: SymbolId,
+    },
+
     IllegalWrite,
 
     Proxy,
@@ -467,6 +475,8 @@ pub struct ReactivitySemantics {
 
     legacy_has_member_mutated: bool,
 
+    each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
+
     const_alias_owner: FxHashMap<SymbolId, NodeId>,
 
     uses_runes: bool,
@@ -486,6 +496,7 @@ impl ReactivitySemantics {
             reference_facts: IndexVec::new(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
+            each_item_indirect_sources: FxHashMap::default(),
             const_alias_owner: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             legacy_bindable_prop_symbols: Vec::new(),
@@ -651,6 +662,11 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
+            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_sym }) => {
+                ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                    item_sym: *item_sym,
+                }
+            }
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
@@ -785,6 +801,23 @@ impl ReactivitySemantics {
 
     pub(crate) fn contextual_owner(&self, sym: SymbolId) -> Option<NodeId> {
         self.contextual_owner.get(&sym).copied()
+    }
+
+    pub(crate) fn add_each_item_indirect_source(
+        &mut self,
+        item_sym: SymbolId,
+        source_sym: SymbolId,
+    ) {
+        let entry = self.each_item_indirect_sources.entry(item_sym).or_default();
+        if !entry.contains(&source_sym) {
+            entry.push(source_sym);
+        }
+    }
+
+    pub(crate) fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.each_item_indirect_sources
+            .get(&item_sym)
+            .map(|v| v.as_slice())
     }
 
     pub(crate) fn record_const_alias_owner(&mut self, sym: SymbolId, owner_node: NodeId) {

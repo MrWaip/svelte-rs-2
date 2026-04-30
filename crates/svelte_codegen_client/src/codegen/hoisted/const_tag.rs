@@ -58,7 +58,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let name = self.ctx.query.view.symbol_name(sym).to_string();
         let thunk = self.ctx.b.thunk(init_expr);
-        let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+        let derived_fn = if self.ctx.query.runes() {
+            "$.derived"
+        } else {
+            "$.derived_safe_equal"
+        };
+        let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
 
         let final_expr = if self.ctx.state.dev {
             let name_str = self.ctx.b.alloc_str(&name);
@@ -110,7 +115,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .arrow_block_expr(self.ctx.b.no_params(), [destruct_stmt, ret]);
-        let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+        let derived_fn = if self.ctx.query.runes() {
+            "$.derived"
+        } else {
+            "$.derived_safe_equal"
+        };
+        let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
 
         let final_expr = if self.ctx.state.dev {
             self.ctx
@@ -324,7 +334,12 @@ fn create_derived<'a>(
         ctx.b.call_expr("$.async_derived", [Arg::Expr(thunk)])
     } else {
         let thunk = ctx.b.thunk(init);
-        ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])
+        let fn_name = if ctx.query.runes() {
+            "$.derived"
+        } else {
+            "$.derived_safe_equal"
+        };
+        ctx.b.call_expr(fn_name, [Arg::Expr(thunk)])
     }
 }
 

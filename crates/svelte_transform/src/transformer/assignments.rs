@@ -464,7 +464,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
-        if self.dispatch_member_assignment(node, is_expr_stmt) {
+        if self.dispatch_member_assignment(node, is_expr_stmt, ctx) {
             return;
         }
 
@@ -558,7 +558,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn transform_update(
         &mut self,
         node: &mut Expression<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if !matches!(node, Expression::UpdateExpression(_)) {
             return;
@@ -601,7 +601,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        self.dispatch_member_update(node);
+        self.dispatch_member_update(node, ctx);
     }
 
     pub(crate) fn rewrite_prop_update_ownership_exit(&mut self, node: &mut Expression<'a>) {

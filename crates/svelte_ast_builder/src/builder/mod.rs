@@ -13,6 +13,7 @@ use oxc_ast::{
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{Atom, SPAN, SourceType, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
+use oxc_syntax::scope::ScopeId;
 use std::cell::Cell;
 
 mod base;

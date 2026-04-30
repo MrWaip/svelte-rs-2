@@ -243,6 +243,9 @@ impl<'a> AnalysisData<'a> {
     pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
         self.scoping.binding_origin_key(sym)
     }
+    pub fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.reactivity.each_item_indirect_sources(item_sym)
+    }
     pub fn symbol_for_reference(
         &self,
         ref_id: svelte_component_semantics::ReferenceId,
