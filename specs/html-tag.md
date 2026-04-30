@@ -1,9 +1,9 @@
 # `{@html}`
 
 ## Current state
-- **Working**: 7/9 use cases
-- **Tests**: 8/10 green
-- Last updated: 2026-04-04
+- **Working**: 10/10 use cases
+- **Tests**: 12/12 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -27,8 +27,9 @@
 - [x] Emit top-level `svg` namespace `{@html}` via `<svelte:options namespace="svg" />`
 - [x] Emit top-level `mathml` namespace `{@html}` via `<svelte:options namespace="mathml" />`
 - [x] Namespace propagation for non-controlled nested `svg` / `mathml`
-- [ ] Preserve reference behavior for non-repaired hydration mismatches / `svelte-ignore hydration_html_changed`
-- [ ] Runes-mode invalid-opening-tag diagnostics
+- [x] Preserve reference behavior for `svelte-ignore hydration_html_changed` — codegen passes 6th arg `true` to `$.html(...)` when annotated (test: `html_tag_hydration_ignore`)
+- [x] Parser tolerates whitespace between `{` and `@` for `{@html}` (parser unit test: `html_tag_with_leading_whitespace`)
+- [x] Analyzer emits `block_unexpected_character` (`@`) for `{ @html ...}` in runes mode (diagnostic test: `html_tag_invalid_opening_tag_runes`)
 
 ## Reference
 
@@ -63,5 +64,7 @@
 - [x] `html_tag_nested_svg`
 - [x] `html_tag_basic` (parser unit test)
 - [x] `html_tag_complex_expression` (parser unit test)
-- [ ] `html_tag_nested_mathml`
-- [ ] hydration mismatch / ignore coverage once the harness can assert it
+- [x] `html_tag_nested_mathml`
+- [x] `html_tag_with_leading_whitespace` (parser unit test)
+- [x] `html_tag_invalid_opening_tag_runes` (diagnostic parity test)
+- [x] `html_tag_hydration_ignore`

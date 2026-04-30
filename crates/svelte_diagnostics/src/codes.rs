@@ -21,6 +21,11 @@ const IGNORABLE_RUNTIME_WARNINGS: &[&str] = &[
     "await_waterfall",
     "await_reactivity_loss",
     "state_snapshot_uncloneable",
+    "binding_property_non_reactive",
+    "hydration_attribute_changed",
+    "hydration_html_changed",
+    "ownership_invalid_binding",
+    "ownership_invalid_mutation",
 ];
 
 pub fn is_valid_warning_code(code: &str) -> bool {
@@ -97,6 +102,44 @@ mod tests {
         let codes = DiagnosticKind::all_warning_codes();
         assert_eq!(fuzzymatch("block_emtpy", codes), Some("block_empty"));
         assert_eq!(fuzzymatch("a11y_acceeskey", codes), Some("a11y_accesskey"));
+    }
+
+    #[test]
+    fn ignorable_runtime_warnings_in_sync_with_reference() {
+        let candidates = [
+            "../../tasks/generate_test_cases/node_modules/svelte/src/constants.js",
+            "../../tasks/benchmark/node_modules/svelte/src/constants.js",
+        ];
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = candidates
+            .iter()
+            .map(|c| manifest_dir.join(c))
+            .find(|p| p.exists());
+        let Some(path) = path else {
+            return;
+        };
+        let content = std::fs::read_to_string(&path).expect("read constants.js");
+        let start = content
+            .find("IGNORABLE_RUNTIME_WARNINGS")
+            .expect("constant present");
+        let body_start = content[start..].find('[').expect("array start");
+        let body_end = content[start + body_start..].find(']').expect("array end");
+        let body = &content[start + body_start + 1..start + body_start + body_end];
+        let mut reference: Vec<&str> = body
+            .split(',')
+            .map(str::trim)
+            .filter(|s| s.starts_with('\'') && s.ends_with('\''))
+            .map(|s| &s[1..s.len() - 1])
+            .collect();
+        reference.sort();
+        let mut ours: Vec<&str> = IGNORABLE_RUNTIME_WARNINGS.to_vec();
+        ours.sort();
+        assert_eq!(
+            ours,
+            reference,
+            "IGNORABLE_RUNTIME_WARNINGS drifted from svelte/src/constants.js at {}",
+            path.display()
+        );
     }
 
     #[test]

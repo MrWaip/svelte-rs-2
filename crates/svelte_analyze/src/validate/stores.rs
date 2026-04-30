@@ -1,8 +1,6 @@
-use oxc_ast::ast::{
-    BindingPattern, CallExpression, Expression, IdentifierReference, VariableDeclarator,
-};
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{walk_call_expression, walk_variable_declarator};
+use oxc_ast_visit::walk::walk_call_expression;
 use oxc_span::GetSpan;
 use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -21,7 +19,6 @@ pub(super) fn validate(
         diags,
         offset,
         data,
-        suppressed_rune_conflicts: FxHashSet::default(),
     };
     v.visit_program(program);
 }
@@ -30,7 +27,6 @@ struct StoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     offset: u32,
     data: &'a AnalysisData<'a>,
-    suppressed_rune_conflicts: FxHashSet<(u32, u32)>,
 }
 
 impl StoreValidator<'_> {
@@ -64,28 +60,6 @@ impl StoreValidator<'_> {
                 self.span(ident.span()),
             ));
         }
-    }
-
-    fn suppress_self_declaration_rune_conflict(&mut self, decl: &VariableDeclarator<'_>) {
-        let BindingPattern::BindingIdentifier(ident) = &decl.id else {
-            return;
-        };
-        let Some(Expression::CallExpression(call)) = &decl.init else {
-            return;
-        };
-        let Expression::Identifier(callee) = &call.callee else {
-            return;
-        };
-        let rune_name = callee.name.as_str();
-        if !is_rune_name(rune_name) {
-            return;
-        }
-        if ident.name.as_str() != &rune_name[1..] {
-            return;
-        }
-
-        self.suppressed_rune_conflicts
-            .insert((call.span.start, call.span.end));
     }
 }
 
@@ -203,25 +177,12 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
 }
 
 impl<'ast> Visit<'ast> for StoreValidator<'_> {
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'ast>) {
-        self.suppress_self_declaration_rune_conflict(decl);
-        walk_variable_declarator(self, decl);
-    }
-
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
         self.check_scoped_subscription(ident);
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
         if let Expression::Identifier(callee) = &call.callee {
-            if self
-                .suppressed_rune_conflicts
-                .contains(&(call.span.start, call.span.end))
-            {
-                walk_call_expression(self, call);
-                return;
-            }
-
             let name = callee.name.as_str();
             if is_rune_name(name) && name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];
@@ -230,7 +191,7 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
                     .data
                     .scoping
                     .find_binding(root, base)
-                    .is_some_and(|sym_id| should_warn_store_rune_conflict(self.data, sym_id))
+                    .is_some_and(|sym_id| !is_rune_or_prop_origin(self.data, sym_id))
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {
@@ -246,17 +207,15 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
     }
 }
 
-fn should_warn_store_rune_conflict(
-    data: &AnalysisData,
-    sym_id: oxc_syntax::symbol::SymbolId,
-) -> bool {
-    !matches!(
+fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
+    matches!(
         data.reactivity.binding_semantics(sym_id),
-        BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::State(_)
+        BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
             | BindingSemantics::OptimizedRune(_)
-            | BindingSemantics::RuntimeRune { .. },
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_),
     )
 }

@@ -5,7 +5,7 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
     AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
-    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, IfBlock, KeyBlock,
+    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock,
     LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT,
     SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock,
     SvelteBody, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow, Text,
@@ -806,13 +806,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_snippet_rest_params(block, ctx);
         validate_snippet_shadowing_prop(block, ctx);
         validate_snippet_children_conflict(block, ctx);
+        check_opening_sigil(block.span, b'#', ctx);
     }
 
-    fn visit_render_tag(&mut self, _tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         self.note_render_tag(ctx);
+        check_opening_sigil(tag.span, b'@', ctx);
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
+        check_opening_sigil(tag.span, b'@', ctx);
         if let Some(parsed) = ctx.parsed()
             && let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
                 parsed.stmt(tag.decl.id())
@@ -1394,33 +1397,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
-        if ctx.runes {
-            let start = tag.span.start as usize;
-            if ctx.source.as_bytes().get(start + 1) != Some(&b'@') {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::BlockUnexpectedCharacter {
-                        character: "@".to_string(),
-                    },
-                    Span::new(tag.span.start, tag.span.start + 5),
-                ));
-            }
-        }
+        check_opening_sigil(tag.span, b'@', ctx);
+    }
+
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_, '_>) {
+        check_opening_sigil(tag.span, b'@', ctx);
     }
 
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
         check_empty_fragment(block.fragment, ctx);
-
-        if ctx.runes {
-            let start = block.span.start as usize;
-            if ctx.source.as_bytes().get(start + 1) != Some(&b'#') {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::BlockUnexpectedCharacter {
-                        character: "#".to_string(),
-                    },
-                    Span::new(block.span.start, block.span.start + 5),
-                ));
-            }
-        }
+        check_opening_sigil(block.span, b'#', ctx);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -1428,22 +1414,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if let Some(alt) = block.alternate {
             check_empty_fragment(alt, ctx);
         }
-
-        if ctx.runes {
-            let expected: u8 = if block.elseif { b':' } else { b'#' };
-            let start = block.span.start as usize;
-            if ctx.source.as_bytes().get(start + 1) != Some(&expected) {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::BlockUnexpectedCharacter {
-                        character: (expected as char).to_string(),
-                    },
-                    Span::new(block.span.start, block.span.start + 5),
-                ));
-            }
-        }
+        let expected = if block.elseif { b':' } else { b'#' };
+        check_opening_sigil(block.span, expected, ctx);
     }
 
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
+        check_opening_sigil(block.span, b'#', ctx);
         if !ctx.runes {
             return;
         }
@@ -1476,6 +1452,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 key_ref.span,
             ));
         }
+        check_opening_sigil(block.span, b'#', ctx);
     }
 
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_, '_>) {
@@ -2637,6 +2614,21 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
             return;
         }
         walk::walk_expression(self, expr);
+    }
+}
+
+fn check_opening_sigil(span: Span, expected: u8, ctx: &mut VisitContext<'_, '_>) {
+    if !ctx.runes {
+        return;
+    }
+    let start = span.start as usize;
+    if ctx.source.as_bytes().get(start + 1) != Some(&expected) {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::BlockUnexpectedCharacter {
+                character: (expected as char).to_string(),
+            },
+            Span::new(span.start, span.start + 5),
+        ));
     }
 }
 
