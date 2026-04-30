@@ -96,8 +96,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if prev.is_none() && matches!(ctx.anchor, FragmentAnchor::Child { .. }) {
+            state.last_fragment_needs_reset = false;
             return Ok(());
         }
+        state.last_fragment_needs_reset = true;
         let _ = prefix_next_emitted;
         if skipped > 1 {
             let trailing = skipped - 1;

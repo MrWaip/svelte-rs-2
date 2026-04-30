@@ -237,8 +237,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .attr_expression(*part_id)
                         .or_else(|| self.ctx.expression(*part_id))
                         .cloned();
+                    let defined = self.is_node_expr_definitely_defined(*part_id, &expr);
                     let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
-                    tpl_parts.push(TemplatePart::Expr(wrapped, false));
+                    tpl_parts.push(TemplatePart::Expr(wrapped, defined));
                 }
             }
         }
