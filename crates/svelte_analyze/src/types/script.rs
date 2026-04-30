@@ -27,6 +27,8 @@ pub struct PropsDeclaration {
     pub is_identifier_pattern: bool,
 
     pub declaration_spans: Vec<Span>,
+
+    pub rest_pattern_span: Option<Span>,
 }
 
 impl PropsDeclaration {

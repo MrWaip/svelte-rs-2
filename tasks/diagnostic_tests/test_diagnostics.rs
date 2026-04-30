@@ -1060,8 +1060,7 @@ mod options {
     );
     diagnostic_case!(
         validate_custom_element_props_rest_warns,
-        "options/validate_custom_element_props_rest_warns",
-        ignore = "known mismatch: Rust warning span highlights the rest binding while npm svelte/compiler highlights the rest identifier usage"
+        "options/validate_custom_element_props_rest_warns"
     );
     diagnostic_case!(
         validate_custom_element_props_destructured_no_warn,
@@ -1164,8 +1163,7 @@ mod props {
     );
     diagnostic_case!(
         validate_props_normal_member_access_no_error,
-        "props/validate_props_normal_member_access_no_error",
-        ignore = "known mismatch: npm svelte/compiler reports state_referenced_locally while analyzer reports no diagnostics"
+        "props/validate_props_normal_member_access_no_error"
     );
     diagnostic_case!(
         validate_props_typed_children_snippet_no_diagnostic,

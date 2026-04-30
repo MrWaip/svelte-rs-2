@@ -365,17 +365,22 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
         return;
     }
 
-    let span = data
-        .script
-        .info
-        .as_ref()
-        .and_then(|s| {
-            s.declarations
-                .iter()
-                .find(|d| d.is_rune == Some(RuneKind::Props))
-                .map(|d| d.span)
-        })
-        .unwrap_or_else(|| panic!("data.props exists but no $props() declaration in script info"));
+    let span = if let Some(rest_span) = props.rest_pattern_span {
+        rest_span
+    } else {
+        data.script
+            .info
+            .as_ref()
+            .and_then(|s| {
+                s.declarations
+                    .iter()
+                    .find(|d| d.is_rune == Some(RuneKind::Props))
+                    .map(|d| d.span)
+            })
+            .unwrap_or_else(|| {
+                panic!("data.props exists but no $props() declaration in script info")
+            })
+    };
 
     diags.push(Diagnostic::warning(
         DiagnosticKind::CustomElementPropsIdentifier,
