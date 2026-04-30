@@ -317,6 +317,8 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
+        self.strip_ts_expression_wrappers(node);
+
         if self.mode == model::TransformMode::Template {
             let is_lhs = matches!(
                 ctx.parent(),
@@ -327,7 +329,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
 
-        self.strip_ts_expression_wrappers(node);
         match node {
             Expression::AssignmentExpression(_) => self.transform_assignment(node, ctx),
             Expression::UpdateExpression(_) => self.transform_update(node, ctx),

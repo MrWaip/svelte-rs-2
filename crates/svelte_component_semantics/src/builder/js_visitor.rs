@@ -185,15 +185,25 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         };
         ident.reference_id.set(Some(ref_id));
 
-        if let Some(sym_id) = self.semantics.find_binding(self.scope, ident.name.as_str()) {
+        let name = ident.name.as_str();
+        if let Some(sym_id) = self.semantics.find_binding(self.scope, name) {
             self.semantics
                 .get_reference_mut(ref_id)
                 .set_symbol_id(sym_id);
             self.semantics.add_resolved_reference(sym_id, ref_id);
-        } else {
-            if let Some(current_level) = self.unresolved_stack.last_mut() {
-                current_level.push((CompactString::from(ident.name.as_str()), ref_id));
+        } else if let Some(base) = store_candidate_base(name) {
+            let root = self.semantics.root_scope_id();
+            if let Some(sym_id) = self.semantics.find_binding(root, base) {
+                self.semantics
+                    .get_reference_mut(ref_id)
+                    .set_symbol_id(sym_id);
+                self.semantics.add_resolved_reference(sym_id, ref_id);
+                self.semantics.add_store_candidate_ref(sym_id, ref_id);
+            } else if let Some(current_level) = self.unresolved_stack.last_mut() {
+                current_level.push((CompactString::from(name), ref_id));
             }
+        } else if let Some(current_level) = self.unresolved_stack.last_mut() {
+            current_level.push((CompactString::from(name), ref_id));
         }
     }
 
@@ -625,6 +635,18 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         if let Some(init) = &it.init {
             self.visit_expression(init);
         }
+    }
+}
+
+fn store_candidate_base(name: &str) -> Option<&str> {
+    if name.starts_with('$')
+        && name.len() > 1
+        && !name.starts_with("$$")
+        && !svelte_ast::is_rune_name(name)
+    {
+        Some(&name[1..])
+    } else {
+        None
     }
 }
 

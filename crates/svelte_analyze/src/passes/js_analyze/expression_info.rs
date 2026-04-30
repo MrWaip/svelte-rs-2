@@ -2,7 +2,7 @@ use crate::types::data::{ExpressionInfo, ExpressionKind};
 use crate::types::script::RuneKind;
 use compact_str::CompactString;
 use oxc_ast::ast::{
-    AssignmentTargetPropertyIdentifier, CallExpression, Expression, MemberExpression,
+    AssignmentTargetPropertyIdentifier, CallExpression, ChainElement, Expression, MemberExpression,
     SimpleAssignmentTarget,
 };
 use oxc_ast_visit::Visit;
@@ -50,8 +50,19 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
                 Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
                     ExpressionKind::MemberExpression
                 }
+                Expression::ChainExpression(chain) => match &chain.expression {
+                    ChainElement::CallExpression(call) => {
+                        let callee = match &call.callee {
+                            Expression::Identifier(id) => CompactString::from(id.name.as_str()),
+                            _ => CompactString::default(),
+                        };
+                        ExpressionKind::CallExpression { callee }
+                    }
+                    _ => ExpressionKind::MemberExpression,
+                },
                 Expression::ArrowFunctionExpression(_) => ExpressionKind::ArrowFunction,
                 Expression::AssignmentExpression(_) => ExpressionKind::Assignment,
+                Expression::UpdateExpression(_) => ExpressionKind::Update,
                 _ => ExpressionKind::Other,
             };
             self.has_side_effects = matches!(

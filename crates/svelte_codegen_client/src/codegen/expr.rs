@@ -151,6 +151,12 @@ fn build_reactive_dep_expr_legacy<'a>(
             std::iter::empty::<Arg<'a, '_>>(),
         )),
 
+        BindingSemantics::Store(store) => {
+            let base_name = ctx.query.symbol_name(store.base_symbol);
+            let dollar_name = format!("${}", base_name);
+            let dollar: &str = ctx.b.alloc_str(&dollar_name);
+            Some(ctx.b.call_expr(dollar, std::iter::empty::<Arg<'a, '_>>()))
+        }
         BindingSemantics::LegacyState(state) => {
             let helper = if state.var_declared {
                 "$.safe_get"
@@ -203,7 +209,9 @@ fn uses_deep_read_state(
     ctx: &crate::context::Ctx<'_>,
     sym: svelte_analyze::scope::SymbolId,
 ) -> bool {
-    use svelte_analyze::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+    use svelte_analyze::{
+        BindingSemantics, ContextualBindingSemantics, PropBindingKind, PropBindingSemantics,
+    };
     let decl = ctx.query.view.binding_semantics(sym);
     matches!(
         decl,
@@ -211,7 +219,11 @@ fn uses_deep_read_state(
             kind: PropBindingKind::NonSource | PropBindingKind::Rest,
             ..
         }) | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::Contextual(_)
+            | BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirective
+                    | ContextualBindingSemantics::AwaitValue
+                    | ContextualBindingSemantics::AwaitError
+            )
     ) || ctx.query.scoping().is_import(sym)
 }
 

@@ -1,10 +1,11 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 5/5 use cases
-- **Tests**: 5/5 green
+- **Working**: 7/8 use cases
+- **Tests**: 7/8 green
 - Last updated: 2026-04-29
 - Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
+- Member-target legacy state mutations inside template expressions (`{obj.x++}`, `{obj.x += n}`) lower through `rewrite_legacy_state_member_update` / `rewrite_legacy_state_member_assignment`, dispatched from `template_rewrites::rewrite_template_enter` alongside the existing deep-store member rewrites. Same helpers serve script-body traversal, ensuring identical lowering across both contexts.
 
 ## Source
 
@@ -56,6 +57,9 @@
 - [x] Member mutations of top-level legacy locals lower through `$.mutate(...)` and coarse member reads, so `object.x += 1` invalidates template consumers via the legacy runtime instead of mutating a plain object local (test: `legacy_reactivity_member_mutation`)
 - [x] Array-method mutation plus explicit self-assignment (`numbers.push(...); numbers = numbers;`) lowers through `$.get(...)` / `$.set(...)` and coarse member reads for dependent expressions like `numbers.length` (test: `legacy_reactivity_array_self_assign`)
 - [x] Destructured top-level legacy declarations lower through the legacy-state declarator path so each bound name becomes its own mutable source and destructuring reassignment lowers to `$.set(...)` updates, rather than staying plain destructured locals (test: `legacy_reactivity_destructure`)
+- [x] Member update of a top-level legacy state inside a template expression (`{obj.x++}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x++)))`. `template_rewrites::rewrite_template_enter` dispatches `rewrite_legacy_state_member_update` for `UpdateExpression`; legacy coarse-wrap activates because `UpdateExpression` maps to `ExpressionKind::Update` (test: `legacy_state_member_update_in_template`).
+- [x] Compound member assignment to a top-level legacy state inside a template expression (`{obj.x += 5}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x += 5)))` via the same template-enter dispatch into `rewrite_legacy_state_member_assignment` (test: `legacy_state_member_compound_in_template`).
+- [ ] Each-item member mutation through `{#each items as item}` propagates an indirect-binding back to the iterated collection. Reference upgrades the collection declarator from `let items = [...]` to `let items = $.mutable_source([...])` and wraps each member-mutation in the template effect with `$.invalidate_inner_signals(() => $.get(items))` (mirroring `legacy_indirect_bindings` in `reference/compiler/phases/scope.js`). Owning area: a new propagation pass in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/legacy.rs` plus a tail-emit hook in `crates/svelte_codegen_client/src/codegen/expr.rs::maybe_wrap_legacy_coarse_expr`. (test: `smoke_legacy_contextual_mutations_all` — ignored)
 
 ## Out of scope
 
@@ -100,3 +104,6 @@
 - [x] `legacy_reactivity_member_mutation`
 - [x] `legacy_reactivity_array_self_assign`
 - [x] `legacy_reactivity_destructure`
+- [x] `legacy_state_member_update_in_template`
+- [x] `legacy_state_member_compound_in_template`
+- [x] e2e smoke: `smoke_legacy_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for legacy state identifier and member targets — including static (`obj.x`), computed string (`obj["x"]`), and computed dynamic (`obj[key]`) member access — in both script body and template expressions, alongside legacy bindable, store, and deep-store paths.

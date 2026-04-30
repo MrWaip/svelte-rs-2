@@ -315,6 +315,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         node: &mut oxc_ast::ast::Expression<'a>,
     ) {
-        let _ = self.rewrite_identifier_read(node);
+        let _ = self.dispatch_identifier_read(node);
     }
 }

@@ -752,7 +752,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             BindingPattern::BindingIdentifier(ident) => {
                 let sym = ident.symbol_id.get()?;
                 let is_source = matches!(self.prop_lowering_mode, PropLoweringMode::CustomElement)
-                    || self.data.scoping.is_mutated(sym);
+                    || self.data.scoping.is_mutated_any(sym);
                 let kind = if is_source {
                     PropBindingKind::Source {
                         bindable: false,

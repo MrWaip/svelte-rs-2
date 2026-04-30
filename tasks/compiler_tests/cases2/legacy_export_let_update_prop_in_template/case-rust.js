@@ -5,6 +5,6 @@ export default function App($$anchor, $$props) {
 	count();
 	$.next();
 	var text = $.text();
-	$.template_effect(() => $.set_text(text, count++));
+	$.template_effect(() => $.set_text(text, ($.deep_read_state(count()), $.untrack(() => $.update_prop(count)))));
 	$.append($$anchor, text);
 }

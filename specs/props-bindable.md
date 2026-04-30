@@ -1,9 +1,10 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 21/21 use cases
-- **Tests**: 50/52 green
-- Last updated: 2026-04-12
+- **Working**: 22/22 use cases
+- **Tests**: 52/54 green
+- Last updated: 2026-04-29
+- Member-target prop mutations inside template expressions (`{props.x++}`, `{props.x += n}`) lower through the shared `rewrite_prop_member_assignment` / `rewrite_prop_member_update` helpers (extracted from `transform_assignment` / `transform_update`), now dispatched from `template_rewrites::rewrite_template_enter`. Bindable prop sources receive the `obj(obj().x++, true)` wrap for both assign and update. The dev ownership-validator hook `rewrite_prop_update_ownership_exit` is now also invoked from `rewrite_template_exit` so template-side member updates still emit `$$ownership_validator.mutation(...)` in dev.
 
 ## Source
 
@@ -43,6 +44,8 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `props_illegal_name` for MemberExpression access on rest props
 - [x] Custom-element warning: `custom_element_props_identifier` for identifier/rest `$props()` in custom elements
 - [x] Dev-mode ownership mutation validation for prop / bindable-prop member writes via `$$ownership_validator.mutation(...)` (tests: `compile_dev_props_member_mutation_uses_ownership_validator`, `compile_dev_bindable_prop_member_mutation_uses_prop_alias`, `compile_dev_bindable_prop_member_update_uses_ownership_validator`, `compile_dev_props_member_mutation_in_return_uses_ownership_validator`, `compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator`, `props_member_mutation_computed`, `props_renamed_member_update_computed`)
+- [x] Member-target update of a runes prop inside a template expression (`{obj.x++}`) lowers to `obj().x++` (root rewritten to the prop getter call) via the shared `rewrite_prop_member_update` dispatched from `template_rewrites::rewrite_template_enter` (test: `runes_prop_member_update_in_template`).
+- [x] Member-target compound assignment to a runes prop inside a template expression (`{obj.x += 5}`) lowers to `obj().x += 5` via the shared `rewrite_prop_member_assignment` dispatched from `template_rewrites::rewrite_template_enter` (test: `runes_prop_member_compound_in_template`).
 
 ## Reference
 
@@ -117,3 +120,6 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] compiler unit: `compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator`
 - [x] `props_member_mutation_computed`
 - [x] `props_renamed_member_update_computed`
+- [x] `runes_prop_member_update_in_template`
+- [x] `runes_prop_member_compound_in_template`
+- [x] e2e smoke: `smoke_runes_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for runes prop / `$bindable` identifier and member targets — including static (`obj.x`), computed string (`obj["x"]`), computed dynamic (`obj[key]`), and deep chains (`obj.a.b.c.x`, `obj["a"]["b"]["c"]["x"]`, mixed `obj[k1].b[k2]`) plus optional-chain reads (`obj?.a?.b?.c?.x`) — in both script body and template expressions, alongside `$state`, `$state.raw`, store, and deep-store paths. The smoke also exercises every contextual reactive reference: `{#each}` items, `{#snippet}` params, `{@const}` aliases, `{#await}` resolved/error values. Companion `smoke_runes_declarator_gaps_all` (ignored) captures three declarator gaps tracked in debt.md: `var foo = $state(0)`, `let { rawProp } = $props()` (NonSource→Source upgrade on mutation), `$state.eager(0)`.

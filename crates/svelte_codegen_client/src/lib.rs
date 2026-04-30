@@ -175,13 +175,12 @@ pub fn generate<'a>(
 
     if runtime.has_stores {
         let scoping = ctx.query.scoping();
-        let mut store_names: Vec<&str> = ctx
+        let store_names: Vec<&str> = ctx
             .query
             .view
             .iter_store_bindings()
             .map(|(_, store)| scoping.symbol_name(store.base_symbol))
             .collect();
-        store_names.sort();
 
         for base_name in &store_names {
             let mut dollar_name = String::with_capacity(1 + base_name.len());

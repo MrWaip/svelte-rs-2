@@ -1,8 +1,8 @@
 # $state rune
 
 ## Current state
-- **Working**: 42/42 use cases
-- **Tests**: 47/48 green
+- **Working**: 42/43 use cases
+- **Tests**: 47/49 green
 - Last updated: 2026-04-12
 
 ## Source
@@ -15,6 +15,7 @@ Audit of existing implementation
 - [x] `$state.raw(value)` — shallow reactive, no proxy (covered, test: state_raw)
 - [x] `$state.snapshot(value)` → `$.snapshot(value)` (covered, tests: state_snapshot_*)
 - [x] `$state.eager(expr)` → `$.eager(() => expr)` (covered, tests: state_eager_*)
+- [ ] `let foo = $state.eager(expr)` declarator does not panic during transform. Currently `rewrite_shared_call::$state.eager` replaces the call with a freshly-built `$.eager(thunk)` node that has no `oxc::NodeId`, so the traverser hits `Option::unwrap()` at `oxc_traverse/walk.rs:2452` when descending into the replacement. (test: `smoke_runes_state_eager_panic` — ignored)
 - [x] Multiple rune types in same script (covered, test: state_runes)
 - [x] Objects/arrays wrapped in `$.proxy()` for `$state` (covered, test: hello_state)
 - [x] Primitives NOT wrapped in `$.proxy()` (covered, test: mutated_state_rune)
@@ -85,6 +86,7 @@ Audit of existing implementation
 - [x] `state_snapshot_ignored`
 - [x] `state_snapshot_not_ignored`
 - [x] `state_eager_basic`
+- [ ] `smoke_runes_state_eager_panic` (ignored — `$state.eager` declarator panics in oxc_traverse)
 - [x] `mutated_state_rune`
 - [x] `unmutated_state_optimization`
 - [x] `state_destructure`
@@ -127,3 +129,4 @@ Audit of existing implementation
 - [x] `validate_state_eager_too_many_args`
 - [x] `validate_state_referenced_locally_basic`
 - [x] `validate_state_invalid_export_basic`
+- [x] e2e smoke: `smoke_runes_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for `$state` and `$state.raw` identifier and `$state` member targets — including static (`obj.x`), computed string (`obj["x"]`), and computed dynamic (`obj[key]`) member access — in both script body and template expressions, alongside runes-prop / `$bindable` / store paths.
