@@ -1449,8 +1449,7 @@ mod stores {
     );
     diagnostic_case!(
         state_rune_no_conflict_with_other_rune_calls,
-        "stores/state_rune_no_conflict_with_other_rune_calls",
-        ignore = "diagnose-diagnostics: pending fix"
+        "stores/state_rune_no_conflict_with_other_rune_calls"
     );
     diagnostic_case!(
         validate_store_rune_conflict,
