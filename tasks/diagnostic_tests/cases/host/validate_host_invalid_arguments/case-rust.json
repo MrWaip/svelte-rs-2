@@ -4,11 +4,5 @@
     "code": "rune_invalid_arguments",
     "start": 20,
     "end": 28
-  },
-  {
-    "severity": "warning",
-    "code": "store_rune_conflict",
-    "start": 20,
-    "end": 25
   }
 ]

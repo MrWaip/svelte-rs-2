@@ -1,0 +1,8 @@
+[
+  {
+    "code": "host_invalid_placement",
+    "end": 80,
+    "severity": "error",
+    "start": 73
+  }
+]

@@ -534,6 +534,21 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                     DiagnosticKind::PropsIdInvalidPlacement,
                     self.span(call.span),
                 )),
+                RuneKind::Host => {
+                    if !call.arguments.is_empty() {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArguments {
+                                rune: rune.display_name().into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    } else {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::HostInvalidPlacement,
+                            self.span(call.span),
+                        ));
+                    }
+                }
                 _ => {}
             }
             walk_call_expression(self, call);

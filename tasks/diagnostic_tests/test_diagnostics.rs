@@ -1471,13 +1471,15 @@ mod host {
 
     diagnostic_case!(
         validate_host_invalid_placement_without_custom_element,
-        "host/validate_host_invalid_placement_without_custom_element",
-        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning alongside host_invalid_placement"
+        "host/validate_host_invalid_placement_without_custom_element"
     );
     diagnostic_case!(
         validate_host_invalid_arguments,
-        "host/validate_host_invalid_arguments",
-        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning alongside rune_invalid_arguments"
+        "host/validate_host_invalid_arguments"
+    );
+    diagnostic_case!(
+        validate_host_invalid_placement_module,
+        "host/validate_host_invalid_placement_module"
     );
 }
 
