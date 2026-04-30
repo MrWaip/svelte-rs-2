@@ -30,6 +30,7 @@ pub fn validate(
     if let Some(program) = &parsed.program {
         let offset = parsed.script_content_span.map_or(0, |s| s.start);
         validate_program(data, program, offset, runes, diags);
+        validate_illegal_default_export(program, offset, diags);
     }
 
     validate_module_program(parsed, diags);
@@ -165,13 +166,20 @@ fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };
+    validate_illegal_default_export(module_program, 0, diags);
+}
 
-    for stmt in &module_program.body {
+fn validate_illegal_default_export(
+    program: &Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for stmt in &program.body {
         match stmt {
             Statement::ExportDefaultDeclaration(export) => {
                 diags.push(Diagnostic::error(
                     DiagnosticKind::ModuleIllegalDefaultExport,
-                    Span::new(export.span.start, export.span.end),
+                    Span::new(export.span.start + offset, export.span.end + offset),
                 ));
             }
             Statement::ExportNamedDeclaration(export)
@@ -179,7 +187,7 @@ fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
             {
                 diags.push(Diagnostic::error(
                     DiagnosticKind::ModuleIllegalDefaultExport,
-                    Span::new(export.span.start, export.span.end),
+                    Span::new(export.span.start + offset, export.span.end + offset),
                 ));
             }
             _ => {}

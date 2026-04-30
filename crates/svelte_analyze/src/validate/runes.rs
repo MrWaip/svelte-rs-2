@@ -1,8 +1,7 @@
 use oxc_ast::ast::{
-    AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, ImportDeclarationSpecifier,
-    MemberExpression, MethodDefinitionKind, ModuleExportName, PropertyDefinition, Statement,
-    VariableDeclarator,
+    AssignmentOperator, BindingPattern, CallExpression, ExportNamedDeclaration, Expression,
+    ExpressionStatement, ImportDeclarationSpecifier, MemberExpression, MethodDefinitionKind,
+    ModuleExportName, PropertyDefinition, Statement, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -277,14 +276,8 @@ fn validate_invalid_export(
     predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
 ) {
     for stmt in &program.body {
-        match stmt {
-            oxc_ast::ast::Statement::ExportNamedDeclaration(export) => {
-                validate_invalid_named_export(data, export, offset, diags, make_kind, predicate);
-            }
-            oxc_ast::ast::Statement::ExportDefaultDeclaration(export) => {
-                validate_invalid_default_export(data, export, offset, diags, make_kind, predicate);
-            }
-            _ => {}
+        if let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt {
+            validate_invalid_named_export(data, export, offset, diags, make_kind, predicate);
         }
     }
 }
@@ -297,45 +290,15 @@ fn validate_invalid_named_export(
     make_kind: impl Fn() -> DiagnosticKind + Copy,
     predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
 ) {
-    let has_invalid_export = export
-        .declaration
-        .as_ref()
-        .is_some_and(|decl| declaration_has_invalid_export(data, decl, predicate))
-        || export
-            .specifiers
-            .iter()
-            .filter_map(|spec| export_specifier_symbol(data, spec))
-            .any(|sym_id| predicate(data, sym_id));
-
-    if has_invalid_export {
-        let span = Span::new(export.span.start + offset, export.span.end + offset);
-        if !crate::validate::span_already_taken(diags, span) {
-            diags.push(Diagnostic::error(make_kind(), span));
-        }
+    let Some(decl) = export.declaration.as_ref() else {
+        return;
+    };
+    if !declaration_has_invalid_export(data, decl, predicate) {
+        return;
     }
-}
-
-fn validate_invalid_default_export(
-    data: &AnalysisData,
-    export: &ExportDefaultDeclaration<'_>,
-    offset: u32,
-    diags: &mut Vec<Diagnostic>,
-    make_kind: impl Fn() -> DiagnosticKind + Copy,
-    predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
-) {
-    let oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(ident) = &export.declaration else {
-        return;
-    };
-    let Some(sym_id) =
-        resolve_root_identifier_symbol(data, ident.name.as_str(), ident.reference_id.get())
-    else {
-        return;
-    };
-    if predicate(data, sym_id) {
-        diags.push(Diagnostic::error(
-            make_kind(),
-            Span::new(export.span.start + offset, export.span.end + offset),
-        ));
+    let span = Span::new(export.span.start + offset, export.span.end + offset);
+    if !crate::validate::span_already_taken(diags, span) {
+        diags.push(Diagnostic::error(make_kind(), span));
     }
 }
 
@@ -356,30 +319,6 @@ fn declaration_has_invalid_export(
             .get()
             .is_some_and(|sym_id| predicate(data, sym_id))
     })
-}
-
-fn export_specifier_symbol(
-    data: &AnalysisData,
-    spec: &oxc_ast::ast::ExportSpecifier<'_>,
-) -> Option<oxc_semantic::SymbolId> {
-    let ModuleExportName::IdentifierReference(ident) = &spec.local else {
-        return None;
-    };
-    resolve_root_identifier_symbol(data, ident.name.as_str(), ident.reference_id.get())
-}
-
-fn resolve_root_identifier_symbol(
-    data: &AnalysisData,
-    name: &str,
-    ref_id: Option<oxc_semantic::ReferenceId>,
-) -> Option<oxc_semantic::SymbolId> {
-    ref_id
-        .and_then(|ref_id| data.scoping.try_get_reference(ref_id))
-        .and_then(|reference| reference.symbol_id())
-        .or_else(|| {
-            data.scoping
-                .find_binding(data.scoping.root_scope_id(), name)
-        })
 }
 
 fn is_reassigned_state_export(data: &AnalysisData<'_>, sym_id: oxc_semantic::SymbolId) -> bool {
@@ -532,6 +471,21 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         walk_function(self, func, flags);
         self.in_state_rune_arg = prev_state_arg;
         self.call_depth_offset = prev_call_depth;
+    }
+
+    fn visit_export_specifier(&mut self, _spec: &oxc_ast::ast::ExportSpecifier<'a>) {}
+
+    fn visit_export_default_declaration(
+        &mut self,
+        export: &oxc_ast::ast::ExportDefaultDeclaration<'a>,
+    ) {
+        if matches!(
+            export.declaration,
+            oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(_)
+        ) {
+            return;
+        }
+        oxc_ast_visit::walk::walk_export_default_declaration(self, export);
     }
 }
 

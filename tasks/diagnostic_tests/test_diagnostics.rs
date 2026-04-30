@@ -1228,13 +1228,11 @@ mod runes {
     );
     diagnostic_case!(
         validate_derived_invalid_export_specifier,
-        "runes/validate_derived_invalid_export_specifier",
-        ignore = "known mismatch: analyzer reports derived_invalid_export for export specifier but npm svelte/compiler reports no diagnostic"
+        "runes/validate_derived_invalid_export_specifier"
     );
     diagnostic_case!(
         validate_derived_invalid_default_export,
-        "runes/validate_derived_invalid_default_export",
-        ignore = "known mismatch: npm svelte/compiler reports module_illegal_default_export while analyzer reports derived_invalid_export plus state_referenced_locally"
+        "runes/validate_derived_invalid_default_export"
     );
     diagnostic_case!(
         validate_state_invalid_placement_bare_expr,
