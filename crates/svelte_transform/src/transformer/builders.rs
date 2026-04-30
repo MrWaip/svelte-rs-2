@@ -178,15 +178,19 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn make_each_item_invalidate_seq(
         &self,
         mutation: Expression<'a>,
-        source_names: &[String],
+        source_syms: &[svelte_component_semantics::SymbolId],
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
-        let body_expr = match source_names {
-            [single] => self.make_rune_get(single),
+        let body_expr = match source_syms {
+            [single] => {
+                let name = self.component_scoping.symbol_name(*single);
+                self.make_rune_get(name)
+            }
             many => {
-                let mut elems = ast.vec();
-                for name in many {
+                let mut elems = ast.vec_with_capacity(many.len());
+                for &sym in many {
+                    let name = self.component_scoping.symbol_name(sym);
                     elems.push(self.make_rune_get(name));
                 }
                 ast.expression_sequence(SPAN, elems)

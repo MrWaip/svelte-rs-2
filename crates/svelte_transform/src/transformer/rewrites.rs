@@ -1,4 +1,5 @@
 use oxc_ast::ast::Expression;
+use oxc_traverse::TraverseCtx;
 use svelte_ast_builder::Arg;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
@@ -6,6 +7,7 @@ use svelte_analyze::{
     CarrierMemberReadSemantics, ContextualReadKind, ContextualReadSemantics,
     PropReferenceSemantics, ReferenceSemantics, StateKind,
 };
+use svelte_component_semantics::SymbolId;
 
 use super::model::ComponentTransformer;
 use crate::rune_refs;
@@ -137,6 +139,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::RestPropMemberRewrite
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -190,6 +193,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -238,6 +242,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -247,6 +252,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         node: &mut Expression<'a>,
         is_expr_stmt: bool,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -277,6 +283,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_assignment(node, is_expr_stmt)
             }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
+                self.rewrite_legacy_each_item_member_assignment(node, item_sym, ctx)
+            }
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -301,7 +310,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    pub(crate) fn dispatch_member_update(&mut self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn dispatch_member_update(
+        &mut self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -330,6 +343,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_update(node)
+            }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
+                self.rewrite_legacy_each_item_member_update(node, item_sym, ctx)
             }
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
@@ -715,6 +731,76 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
         *node = self.make_legacy_state_mutate(&root_name, mutation);
+        true
+    }
+
+    pub(crate) fn rewrite_legacy_each_item_member_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Expression::AssignmentExpression(assign) = node else {
+            return false;
+        };
+        let Some(member) = assign.left.as_member_expression() else {
+            return false;
+        };
+        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+            return false;
+        };
+        let item_name = root.name.as_str().to_string();
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        rune_refs::replace_expr_root_in_assign_target(
+            &mut assign.left,
+            self.make_rune_get(&item_name),
+        );
+        let placeholder = self.make_rune_get("");
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(mutation, source_syms, ctx);
+        true
+    }
+
+    pub(crate) fn rewrite_legacy_each_item_member_update(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Expression::UpdateExpression(upd) = node else {
+            return false;
+        };
+        let Some(member) = upd.argument.as_member_expression() else {
+            return false;
+        };
+        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+            return false;
+        };
+        let item_name = root.name.as_str().to_string();
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        rune_refs::replace_expr_root_in_simple_target(
+            &mut upd.argument,
+            self.make_rune_get(&item_name),
+        );
+        let placeholder = self.make_rune_get("");
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(mutation, source_syms, ctx);
         true
     }
 
