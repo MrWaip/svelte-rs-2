@@ -67,6 +67,11 @@ impl<'a> NeedsContextVisitor<'a> {
             match node {
                 Expression::StaticMemberExpression(m) => node = &m.object,
                 Expression::ComputedMemberExpression(m) => node = &m.object,
+                Expression::TSAsExpression(t) => node = &t.expression,
+                Expression::TSSatisfiesExpression(t) => node = &t.expression,
+                Expression::TSNonNullExpression(t) => node = &t.expression,
+                Expression::TSTypeAssertion(t) => node = &t.expression,
+                Expression::TSInstantiationExpression(t) => node = &t.expression,
                 _ => break,
             }
         }

@@ -199,16 +199,7 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
 }
 
 pub fn is_rune_name(name: &str) -> bool {
-    matches!(
-        name,
-        STATE_RUNE_NAME
-            | DERIVED_RUNE_NAME
-            | EFFECT_RUNE_NAME
-            | PROPS_RUNE_NAME
-            | BINDABLE_RUNE_NAME
-            | INSPECT_RUNE_NAME
-            | HOST_RUNE_NAME
-    )
+    svelte_ast::is_rune_name(name)
 }
 
 fn collect_export_names_from_declaration(

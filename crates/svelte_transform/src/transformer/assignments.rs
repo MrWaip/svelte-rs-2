@@ -163,7 +163,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     fn finish_semantic_prop_member_assignment(
         &mut self,
         node: &mut Expression<'a>,
-        ctx: &mut TraverseCtx<'a, ()>,
+        is_expr_stmt: bool,
         prop_alias: String,
         root_name: String,
         bindable: bool,
@@ -189,7 +189,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
         if is_expr_stmt {
             if let Some(source_root_name) = bindable_prop_source_root_name {
                 self.wrap_bindable_prop_source_mutation(node, &source_root_name);
@@ -292,6 +291,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut Expression<'a>,
         prop_alias: String,
         root_name: String,
+        bindable: bool,
         source_root_name: Option<String>,
         segments: Vec<Expression<'a>>,
     ) {
@@ -300,17 +300,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let span_start = upd.span.start;
 
-        if let Some(source_root_name) = source_root_name {
-            self.rewrite_prop_source_member_update_target(&mut upd.argument, &source_root_name);
-            self.pending_prop_update_validations.insert(
-                span_start,
-                PendingPropMutationValidation {
-                    prop_alias,
-                    root_name,
-                    segments,
-                },
-            );
-            return;
+        let bindable_prop_source_root_name =
+            source_root_name.as_ref().filter(|_| bindable).cloned();
+
+        if let Some(source_root_name) = &source_root_name {
+            self.rewrite_prop_source_member_update_target(&mut upd.argument, source_root_name);
+        }
+
+        if let Some(source_root_name) = bindable_prop_source_root_name {
+            self.wrap_bindable_prop_source_mutation(node, &source_root_name);
         }
 
         self.pending_prop_update_validations.insert(
@@ -323,65 +321,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
     }
 
-    pub(crate) fn transform_assignment(
+    pub(crate) fn rewrite_prop_member_assignment(
         &mut self,
         node: &mut Expression<'a>,
-        ctx: &mut TraverseCtx<'a, ()>,
-    ) {
-        if !matches!(node, Expression::AssignmentExpression(_)) {
-            return;
-        }
-
-        let is_identifier_target = {
-            let Expression::AssignmentExpression(assign) = &*node else {
-                unreachable!();
-            };
-            matches!(
-                &assign.left,
-                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)
-            )
-        };
-
-        if is_identifier_target && let Some(analysis) = self.analysis {
-            let prop_rewrite = {
-                let Expression::AssignmentExpression(assign) = node else {
-                    unreachable!();
-                };
-                let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-                else {
-                    unreachable!();
-                };
-                id.reference_id.get().is_some_and(|ref_id| {
-                    matches!(
-                        analysis.reference_semantics(ref_id),
-                        ReferenceSemantics::PropMutation { .. }
-                    )
-                })
-            };
-            if prop_rewrite {
-                let Expression::AssignmentExpression(assign) = node else {
-                    unreachable!();
-                };
-                let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-                else {
-                    unreachable!();
-                };
-                let name = id.name.as_str().to_string();
-                let right = self.b.move_expr(&mut assign.right);
-                *node = self.b.call_expr(&name, [Arg::Expr(right)]);
-                return;
-            }
-
-            let _ = analysis;
-            if self.rewrite_signal_or_store_identifier_assignment(node, false) {
-                return;
-            }
-        }
-
+        is_expr_stmt: bool,
+    ) -> bool {
         let Expression::AssignmentExpression(assign) = node else {
-            return;
+            return false;
         };
-
         let mut semantic_prop_alias = None;
         let mut semantic_root_name = None;
         let mut semantic_bindable = false;
@@ -419,41 +366,117 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 _ => {}
             }
         }
-        if let (Some(prop_alias), Some(root_name), Some(segments)) =
+        let (Some(prop_alias), Some(root_name), Some(segments)) =
             (semantic_prop_alias, semantic_root_name, semantic_segments)
+        else {
+            return false;
+        };
+        self.finish_semantic_prop_member_assignment(
+            node,
+            is_expr_stmt,
+            prop_alias,
+            root_name,
+            semantic_bindable,
+            semantic_source_root_name,
+            segments,
+        );
+        true
+    }
+
+    pub(crate) fn rewrite_prop_member_update(&mut self, node: &mut Expression<'a>) -> bool {
+        let Expression::UpdateExpression(upd) = node else {
+            return false;
+        };
+        let mut semantic_prop_alias = None;
+        let mut semantic_root_name = None;
+        let mut semantic_bindable = false;
+        let mut semantic_source_root_name = None;
+        let mut semantic_segments = None;
+        if let Some(analysis) = self.analysis
+            && let Some(member) = upd.argument.as_member_expression()
+            && let Some(root_id) = self.member_root_identifier(member)
+            && let Some(ref_id) = root_id.reference_id.get()
         {
-            self.finish_semantic_prop_member_assignment(
-                node,
-                ctx,
-                prop_alias,
-                root_name,
-                semantic_bindable,
-                semantic_source_root_name,
-                segments,
-            );
+            match analysis.reference_semantics(ref_id) {
+                ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        let root_name = analysis.scoping.symbol_name(symbol).to_string();
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(root_name.clone());
+                        semantic_bindable = bindable;
+                        semantic_source_root_name = Some(root_name);
+                        semantic_segments = Some(segments);
+                    }
+                }
+                ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
+                    if let (Some(prop_alias), Some(segments)) = (
+                        analysis.binding_origin_key(symbol),
+                        self.prop_mutation_segments_from_member(member),
+                    ) {
+                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
+                        semantic_segments = Some(segments);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let (Some(prop_alias), Some(root_name), Some(segments)) =
+            (semantic_prop_alias, semantic_root_name, semantic_segments)
+        else {
+            return false;
+        };
+        self.finish_semantic_prop_member_update(
+            node,
+            prop_alias,
+            root_name,
+            semantic_bindable,
+            semantic_source_root_name,
+            segments,
+        );
+        true
+    }
+
+    pub(crate) fn transform_assignment(
+        &mut self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if !matches!(node, Expression::AssignmentExpression(_)) {
             return;
         }
-        let left_span_start = assign.span.start;
 
-        if self.analysis.is_some() {
-            if self.rewrite_deep_store_member_assignment(node) {
-                return;
-            }
+        let is_identifier_target = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                unreachable!();
+            };
+            matches!(
+                &assign.left,
+                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)
+            )
+        };
 
-            if self.rewrite_legacy_reactive_import_member_assignment(node) {
-                return;
-            }
-
-            if self.rewrite_legacy_state_member_assignment(node) {
-                return;
-            }
+        if is_identifier_target && self.dispatch_identifier_assignment(node, false) {
+            return;
         }
+
+        let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
+        if self.dispatch_member_assignment(node, is_expr_stmt) {
+            return;
+        }
+
+        let Expression::AssignmentExpression(assign) = node else {
+            return;
+        };
+        let left_span_start = assign.span.start;
 
         if !self.dev {
             return;
         }
 
-        let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
         if is_expr_stmt {
             return;
         }
@@ -551,50 +574,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && let Some(analysis) = self.analysis {
-            let prop_rewrite = {
-                let Expression::UpdateExpression(upd) = node else {
-                    unreachable!();
-                };
-                let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                    &upd.argument
-                else {
-                    unreachable!();
-                };
-                id.reference_id.get().is_some_and(|ref_id| {
-                    matches!(
-                        analysis.reference_semantics(ref_id),
-                        ReferenceSemantics::PropMutation { .. }
-                    )
-                })
-            };
-            if prop_rewrite {
-                let Expression::UpdateExpression(upd) = node else {
-                    unreachable!();
-                };
-                let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                    &upd.argument
-                else {
-                    unreachable!();
-                };
-                let name = id.name.as_str().to_string();
-                let fn_name = if upd.prefix {
-                    "$.update_pre_prop"
-                } else {
-                    "$.update_prop"
-                };
-                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
-                if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
-                    args.push(Arg::Num(-1.0));
-                }
-                *node = self.b.call_expr(fn_name, args);
-                return;
-            }
-
-            let _ = analysis;
-            if self.rewrite_signal_or_store_identifier_update(node) {
-                return;
-            }
+        if is_identifier_target && self.dispatch_identifier_update(node) {
+            return;
         }
 
         let Expression::UpdateExpression(upd) = node else {
@@ -620,70 +601,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        if self.analysis.is_some() {
-            if self.rewrite_deep_store_member_update(node) {
-                return;
-            }
-
-            if self.rewrite_legacy_reactive_import_member_update(node) {
-                return;
-            }
-
-            if self.rewrite_legacy_state_member_update(node) {
-                return;
-            }
-        }
-
-        let Expression::UpdateExpression(upd) = node else {
-            return;
-        };
-
-        let mut semantic_prop_alias = None;
-        let mut semantic_root_name = None;
-        let mut semantic_source_root_name = None;
-        let mut semantic_segments = None;
-        if let Some(analysis) = self.analysis
-            && let Some(member) = upd.argument.as_member_expression()
-            && let Some(root_id) = self.member_root_identifier(member)
-            && let Some(ref_id) = root_id.reference_id.get()
-        {
-            match analysis.reference_semantics(ref_id) {
-                ReferenceSemantics::PropSourceMemberMutationRoot { symbol, .. } => {
-                    if let (Some(prop_alias), Some(segments)) = (
-                        analysis.binding_origin_key(symbol),
-                        self.prop_mutation_segments_from_member(member),
-                    ) {
-                        let root_name = analysis.scoping.symbol_name(symbol).to_string();
-                        semantic_prop_alias = Some(prop_alias.to_string());
-                        semantic_root_name = Some(root_name.clone());
-                        semantic_source_root_name = Some(root_name);
-                        semantic_segments = Some(segments);
-                    }
-                }
-                ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
-                        analysis.binding_origin_key(symbol),
-                        self.prop_mutation_segments_from_member(member),
-                    ) {
-                        semantic_prop_alias = Some(prop_alias.to_string());
-                        semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
-                        semantic_segments = Some(segments);
-                    }
-                }
-                _ => {}
-            }
-        }
-        if let (Some(prop_alias), Some(root_name), Some(segments)) =
-            (semantic_prop_alias, semantic_root_name, semantic_segments)
-        {
-            self.finish_semantic_prop_member_update(
-                node,
-                prop_alias,
-                root_name,
-                semantic_source_root_name,
-                segments,
-            );
-        }
+        self.dispatch_member_update(node);
     }
 
     pub(crate) fn rewrite_prop_update_ownership_exit(&mut self, node: &mut Expression<'a>) {

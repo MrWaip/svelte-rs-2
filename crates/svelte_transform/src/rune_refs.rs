@@ -1,5 +1,15 @@
 use oxc_ast::ast::*;
 
+pub fn is_non_coercive_operator(op: AssignmentOperator) -> bool {
+    matches!(
+        op,
+        AssignmentOperator::Assign
+            | AssignmentOperator::LogicalAnd
+            | AssignmentOperator::LogicalOr
+            | AssignmentOperator::LogicalNullish
+    )
+}
+
 pub fn should_proxy(e: &Expression) -> bool {
     if e.is_literal() {
         return false;

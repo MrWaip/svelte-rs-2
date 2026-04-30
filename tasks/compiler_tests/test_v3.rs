@@ -1781,15 +1781,75 @@ fn legacy_export_let_bind_to_inner() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn legacy_export_let_compound_assign_prop() {
     assert_compiler("legacy_export_let_compound_assign_prop");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn legacy_export_let_update_prop_in_template() {
     assert_compiler("legacy_export_let_update_prop_in_template");
+}
+
+#[rstest]
+fn legacy_export_let_assign_prop_in_template() {
+    assert_compiler("legacy_export_let_assign_prop_in_template");
+}
+
+#[rstest]
+fn legacy_state_member_update_in_template() {
+    assert_compiler("legacy_state_member_update_in_template");
+}
+
+#[rstest]
+fn legacy_state_member_compound_in_template() {
+    assert_compiler("legacy_state_member_compound_in_template");
+}
+
+#[rstest]
+fn legacy_export_let_member_update_in_template() {
+    assert_compiler("legacy_export_let_member_update_in_template");
+}
+
+#[rstest]
+fn runes_prop_member_update_in_template() {
+    assert_compiler("runes_prop_member_update_in_template");
+}
+
+#[rstest]
+fn runes_prop_member_compound_in_template() {
+    assert_compiler("runes_prop_member_compound_in_template");
+}
+
+#[rstest]
+fn smoke_legacy_reactive_mutations_all() {
+    assert_compiler("smoke_legacy_reactive_mutations_all");
+}
+
+#[rstest]
+fn smoke_runes_reactive_mutations_all() {
+    assert_compiler("smoke_runes_reactive_mutations_all");
+}
+
+#[rstest]
+#[ignore = "exposes legacy each-item member mutation gaps (mutable_source upgrade + invalidate_inner_signals chain); tracked in debt.md"]
+fn smoke_legacy_contextual_mutations_all() {
+    assert_compiler("smoke_legacy_contextual_mutations_all");
+}
+
+#[rstest]
+fn smoke_runes_declarator_gaps_all() {
+    assert_compiler("smoke_runes_declarator_gaps_all");
+}
+
+#[rstest]
+#[ignore = "$state.eager rewrite panics in oxc_traverse (replacement node has no NodeId); tracked in debt.md"]
+fn smoke_runes_state_eager_panic() {
+    assert_compiler("smoke_runes_state_eager_panic");
+}
+
+#[rstest]
+fn smoke_ts_non_null_assertion_mutations() {
+    assert_compiler("smoke_ts_non_null_assertion_mutations");
 }
 
 #[rstest]

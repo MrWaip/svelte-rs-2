@@ -2545,70 +2545,6 @@ fn extract_arrow_params<'s, 'a: 's>(
     Some(&arrow.params)
 }
 
-struct EachBlockVarRefVisitor<'s> {
-    data: &'s AnalysisData<'s>,
-    found: bool,
-}
-
-impl<'a> Visit<'a> for EachBlockVarRefVisitor<'_> {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        if is_each_block_var_ref(ident, self.data) {
-            self.found = true;
-        }
-    }
-
-    fn visit_assignment_target_property_identifier(
-        &mut self,
-        it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
-    ) {
-        if is_each_block_var_ref(&it.binding, self.data) {
-            self.found = true;
-        }
-        if let Some(init) = &it.init {
-            self.visit_expression(init);
-        }
-    }
-
-    fn visit_expression(&mut self, expr: &Expression<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_expression(self, expr);
-    }
-
-    fn visit_assignment_target(&mut self, target: &AssignmentTarget<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_assignment_target(self, target);
-    }
-
-    fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_simple_assignment_target(self, target);
-    }
-}
-
-fn contains_each_block_var_in_assignment_target(
-    target: &AssignmentTarget<'_>,
-    data: &AnalysisData<'_>,
-) -> bool {
-    let mut visitor = EachBlockVarRefVisitor { data, found: false };
-    visitor.visit_assignment_target(target);
-    visitor.found
-}
-
-fn contains_each_block_var_in_simple_target(
-    target: &SimpleAssignmentTarget<'_>,
-    data: &AnalysisData<'_>,
-) -> bool {
-    let mut visitor = EachBlockVarRefVisitor { data, found: false };
-    visitor.visit_simple_assignment_target(target);
-    visitor.found
-}
-
 struct InvalidEachAssignmentVisitor<'s> {
     data: &'s AnalysisData<'s>,
     found: bool,
@@ -2616,7 +2552,9 @@ struct InvalidEachAssignmentVisitor<'s> {
 
 impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
     fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
-        if contains_each_block_var_in_assignment_target(&expr.left, self.data) {
+        if let AssignmentTarget::AssignmentTargetIdentifier(id) = &expr.left
+            && is_each_block_var_ref(id, self.data)
+        {
             self.found = true;
             return;
         }
@@ -2624,7 +2562,9 @@ impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
     }
 
     fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
-        if contains_each_block_var_in_simple_target(&expr.argument, self.data) {
+        if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &expr.argument
+            && is_each_block_var_ref(id, self.data)
+        {
             self.found = true;
             return;
         }
@@ -2645,70 +2585,6 @@ fn contains_invalid_each_assignment(expr: &Expression<'_>, data: &AnalysisData<'
     visitor.found
 }
 
-struct SnippetParamRefVisitor<'s> {
-    data: &'s AnalysisData<'s>,
-    found: bool,
-}
-
-impl<'a> Visit<'a> for SnippetParamRefVisitor<'_> {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        if is_snippet_param_ref(ident, self.data) {
-            self.found = true;
-        }
-    }
-
-    fn visit_assignment_target_property_identifier(
-        &mut self,
-        it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
-    ) {
-        if is_snippet_param_ref(&it.binding, self.data) {
-            self.found = true;
-        }
-        if let Some(init) = &it.init {
-            self.visit_expression(init);
-        }
-    }
-
-    fn visit_expression(&mut self, expr: &Expression<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_expression(self, expr);
-    }
-
-    fn visit_assignment_target(&mut self, target: &AssignmentTarget<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_assignment_target(self, target);
-    }
-
-    fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
-        if self.found {
-            return;
-        }
-        walk::walk_simple_assignment_target(self, target);
-    }
-}
-
-fn contains_snippet_param_in_assignment_target(
-    target: &AssignmentTarget<'_>,
-    data: &AnalysisData<'_>,
-) -> bool {
-    let mut visitor = SnippetParamRefVisitor { data, found: false };
-    visitor.visit_assignment_target(target);
-    visitor.found
-}
-
-fn contains_snippet_param_in_simple_target(
-    target: &SimpleAssignmentTarget<'_>,
-    data: &AnalysisData<'_>,
-) -> bool {
-    let mut visitor = SnippetParamRefVisitor { data, found: false };
-    visitor.visit_simple_assignment_target(target);
-    visitor.found
-}
-
 struct InvalidSnippetParamAssignmentVisitor<'s> {
     data: &'s AnalysisData<'s>,
     found: bool,
@@ -2716,7 +2592,9 @@ struct InvalidSnippetParamAssignmentVisitor<'s> {
 
 impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
     fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
-        if contains_snippet_param_in_assignment_target(&expr.left, self.data) {
+        if let AssignmentTarget::AssignmentTargetIdentifier(id) = &expr.left
+            && is_snippet_param_ref(id, self.data)
+        {
             self.found = true;
             return;
         }
@@ -2724,7 +2602,9 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
     }
 
     fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
-        if contains_snippet_param_in_simple_target(&expr.argument, self.data) {
+        if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &expr.argument
+            && is_snippet_param_ref(id, self.data)
+        {
             self.found = true;
             return;
         }

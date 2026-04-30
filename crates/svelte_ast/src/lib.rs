@@ -171,6 +171,27 @@ pub const SVELTE_ELEMENT: &str = "svelte:element";
 
 pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 
+pub const RUNE_STATE: &str = "$state";
+pub const RUNE_DERIVED: &str = "$derived";
+pub const RUNE_EFFECT: &str = "$effect";
+pub const RUNE_PROPS: &str = "$props";
+pub const RUNE_BINDABLE: &str = "$bindable";
+pub const RUNE_INSPECT: &str = "$inspect";
+pub const RUNE_HOST: &str = "$host";
+
+pub fn is_rune_name(name: &str) -> bool {
+    matches!(
+        name,
+        RUNE_STATE
+            | RUNE_DERIVED
+            | RUNE_EFFECT
+            | RUNE_PROPS
+            | RUNE_BINDABLE
+            | RUNE_INSPECT
+            | RUNE_HOST
+    )
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
 

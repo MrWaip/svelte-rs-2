@@ -353,6 +353,20 @@ Walk JS AST nodes and rewrite them. Lowers runes (`$state` / `$derived` / `$prop
 - Stitching meaning together from multiple raw boolean flags across subsystems.
 - Emitting user-facing errors/warnings.
 
+### Reactive reference dispatchers
+
+All AST mutations driven by `ReferenceSemantics` go through five centralized dispatchers in `crates/svelte_transform/src/transformer/rewrites.rs`:
+
+- `dispatch_identifier_read` — identifier reads.
+- `dispatch_identifier_assignment` — `=` / `+=` / `&&=` / … on identifier targets.
+- `dispatch_identifier_update` — `++` / `--` on identifier targets.
+- `dispatch_member_assignment` — assignment on member targets, keyed off the member root's reference semantics.
+- `dispatch_member_update` — update on member targets, keyed off the member root's reference semantics.
+
+Each dispatcher uses an exhaustive `match` over every `ReferenceSemantics` variant. Adding a new variant is enforced by the compiler: `match` non-exhaustiveness errors fire in all five dispatchers, forcing the developer to wire the new primitive's read / identifier-write / identifier-update / member-write / member-update behavior up front (or explicitly mark it as no-op for that operation).
+
+`transform_assignment`, `transform_update`, `template_rewrites::rewrite_template_enter`, `rewrite_template_exit`, and the runes identifier traversal all call only these dispatchers — never the per-kind helpers directly. Adding a new reactive primitive should never need a new "if X try this" chain in any traversal.
+
 ---
 
 ## 5. Codegen (dumb codegen dogma)
