@@ -690,20 +690,41 @@ impl TemplateValidationVisitor {
         span: Span,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if !ctx.runes {
-            return;
-        }
+        if name == SVELTE_SELF {
+            let valid_placement = ctx.ancestors().any(|p| match p.kind {
+                ParentKind::IfBlock | ParentKind::EachBlock | ParentKind::SnippetBlock => true,
+                ParentKind::ComponentNode => {
+                    if let Node::ComponentNode(cn) = ctx.store.get(p.id) {
+                        cn.name != SVELTE_SELF && cn.name != SVELTE_COMPONENT
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            });
 
-        if name == SVELTE_COMPONENT {
+            if !valid_placement {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SvelteSelfInvalidPlacement,
+                    span,
+                ));
+                return;
+            }
+
+            if ctx.runes {
+                let component_name = ctx.component_name().to_string();
+                let basename = ctx.filename_basename().to_string();
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::SvelteSelfDeprecated {
+                        name: component_name,
+                        basename,
+                    },
+                    span,
+                ));
+            }
+        } else if name == SVELTE_COMPONENT && ctx.runes {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SvelteComponentDeprecated,
-                span,
-            ));
-        } else if name == SVELTE_SELF {
-            let name = ctx.component_name().to_string();
-            let basename = ctx.filename_basename().to_string();
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::SvelteSelfDeprecated { name, basename },
                 span,
             ));
         }

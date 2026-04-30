@@ -1,7 +1,7 @@
 [
   {
-    "severity": "warning",
-    "code": "svelte_self_deprecated",
+    "severity": "error",
+    "code": "svelte_self_invalid_placement",
     "start": 33,
     "end": 60
   }
