@@ -1,9 +1,9 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 17/20 use cases
-- **Tests**: 18/19 green
-- Last updated: 2026-04-29
+- **Working**: 20/20 use cases
+- **Tests**: 19/19 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -36,13 +36,13 @@
 - [x] Dev-mode store setup validates the underlying store with `$.validate_store` (test: `store_validate_dev`)
 - [x] Store cleanup runs after `$.pop(...)` without becoming unreachable when stores and component return values coexist (test: `store_validate_dev`)
 - [x] Each-block with store-backed collection sets correct flags (`EACH_ITEM_REACTIVE`, no `EACH_ITEM_IMMUTABLE`) (test: `store_each_invalidate`)
-- [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` — legacy-only (test: `store_reassign_unsub`)
-- [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` — legacy-only (test: `store_each_invalidate`)
+- [x] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` — legacy-only (test: `store_reassign_unsub`)
+- [x] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` — legacy-only (test: `store_each_invalidate`)
 - [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding` (test: `store_mark_binding`)
 - [x] Analyzer rejects subscriptions to stores not declared at component top level (test: `validate_store_invalid_scoped_subscription`)
 - [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`) (test: `validate_store_rune_conflict`)
 - [x] Rune self-declarations like `let state = $state("")` must not emit a false-positive `store_rune_conflict` warning (diagnostic test: `state_rune_no_store_rune_conflict`)
-- [ ] When a local binding `state` is initialized with a `$state(...)` rune call, OTHER `$state(...)` calls in the same scope must not emit a `store_rune_conflict` warning either (diagnostic test: `state_rune_no_conflict_with_other_rune_calls`)
+- [x] When a local binding `state` is initialized with a `$state(...)` rune call, OTHER `$state(...)` calls in the same scope must not emit a `store_rune_conflict` warning either (diagnostic test: `state_rune_no_conflict_with_other_rune_calls`)
 - [x] Analyzer rejects `$store` reads inside `<script module>` (test: `validate_store_invalid_subscription_in_module`)
 - [x] Module compilation rejects `$store` reads outside `.svelte` components
 - [x] Analyzer emits store-specific diagnostics (`StoreInvalidScopedSubscription`, `StoreInvalidSubscription`, `StoreInvalidSubscriptionModule`, `StoreRuneConflict`)
@@ -95,7 +95,7 @@
 - [x] `store_each_invalidate`
 - [x] `store_mark_binding`
 - [x] `state_rune_no_store_rune_conflict`
-- [ ] `state_rune_no_conflict_with_other_rune_calls`
+- [x] `state_rune_no_conflict_with_other_rune_calls`
 - [x] `validate_store_invalid_scoped_subscription` (analyzer unit test)
 - [x] `validate_store_invalid_subscription_in_module` (diagnostic parity test)
 - [x] `validate_store_rune_conflict` (analyzer unit test)

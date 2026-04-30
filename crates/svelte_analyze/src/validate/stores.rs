@@ -230,7 +230,7 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
                     .data
                     .scoping
                     .find_binding(root, base)
-                    .is_some_and(|sym_id| !is_props_binding(self.data, sym_id))
+                    .is_some_and(|sym_id| should_warn_store_rune_conflict(self.data, sym_id))
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {
@@ -246,9 +246,17 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
     }
 }
 
-fn is_props_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
-    matches!(
+fn should_warn_store_rune_conflict(
+    data: &AnalysisData,
+    sym_id: oxc_syntax::symbol::SymbolId,
+) -> bool {
+    !matches!(
         data.reactivity.binding_semantics(sym_id),
-        BindingSemantics::Prop(_),
+        BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. },
     )
 }
