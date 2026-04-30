@@ -24,6 +24,7 @@ pub(crate) fn run_template<'a>(
     dev: bool,
 ) -> TransformData {
     let b = Builder::new(alloc);
+    let is_ts = parsed.typescript;
 
     let mut transformer = ComponentTransformer {
         mode: TransformMode::Template,
@@ -38,7 +39,7 @@ pub(crate) fn run_template<'a>(
         async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports: false,
         dev,
-        is_ts: false,
+        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         needs_ownership_validator: false,

@@ -109,6 +109,8 @@ pub struct ComponentSemantics<'a> {
 
     root_unresolved_references: FxHashMap<CompactString, Vec<ReferenceId>>,
 
+    store_candidate_refs: Vec<(SymbolId, ReferenceId)>,
+
     fragment_scopes: Vec<Option<ScopeId>>,
 
     template_scope_set: FxHashSet<ScopeId>,
@@ -130,6 +132,7 @@ impl<'a> ComponentSemantics<'a> {
             js: JsStorage::new(),
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
+            store_candidate_refs: Vec::new(),
             fragment_scopes: Vec::new(),
             template_scope_set: FxHashSet::default(),
             module_scope_id: None,
@@ -515,6 +518,14 @@ impl<'a> ComponentSemantics<'a> {
 
     pub fn root_unresolved_references(&self) -> &FxHashMap<CompactString, Vec<ReferenceId>> {
         &self.root_unresolved_references
+    }
+
+    pub(crate) fn add_store_candidate_ref(&mut self, sym: SymbolId, ref_id: ReferenceId) {
+        self.store_candidate_refs.push((sym, ref_id));
+    }
+
+    pub fn store_candidate_refs(&self) -> &[(SymbolId, ReferenceId)] {
+        &self.store_candidate_refs
     }
 
     pub(crate) fn set_module_scope_id(&mut self, id: ScopeId) {

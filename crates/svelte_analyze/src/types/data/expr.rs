@@ -215,7 +215,9 @@ impl ExpressionInfo {
         self.has_call
             || matches!(
                 self.kind,
-                ExpressionKind::MemberExpression | ExpressionKind::Assignment
+                ExpressionKind::MemberExpression
+                    | ExpressionKind::Assignment
+                    | ExpressionKind::Update
             )
     }
 }
@@ -228,6 +230,7 @@ pub enum ExpressionKind {
     MemberExpression,
     ArrowFunction,
     Assignment,
+    Update,
     Other,
 }
 

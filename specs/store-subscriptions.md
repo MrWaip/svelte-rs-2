@@ -102,3 +102,5 @@
 - [x] `analyze_module_reports_store_invalid_subscription_module` (analyzer unit test)
 - [x] `module_store_subscription_reports_module_diagnostic_for_js` (`compile_module()` unit test)
 - [x] `module_store_subscription_reports_module_diagnostic_for_ts` (`compile_module()` unit test)
+- [x] e2e smoke (legacy): `smoke_legacy_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for `$store` identifier and deep `$store.x` member targets — including static (`obj.x`), computed string (`obj["x"]`), and computed dynamic (`obj[key]`) member access — in both script body and template expressions in legacy mode, including legacy coarse-wrap parity (`($store(), $.untrack(() => …))`).
+- [x] e2e smoke (runes): `smoke_runes_reactive_mutations_all` — covers every assignment + update operator for `$store` identifier and deep `$store.x` member targets — including static (`obj.x`), computed string (`obj["x"]`), and computed dynamic (`obj[key]`) member access — in both script body and template expressions in runes mode.

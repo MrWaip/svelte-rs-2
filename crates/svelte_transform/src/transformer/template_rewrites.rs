@@ -12,21 +12,20 @@ pub(crate) fn rewrite_template_enter<'a>(
     }
 
     if matches!(it, Expression::Identifier(_)) {
-        t.rewrite_identifier_read(it);
+        t.dispatch_identifier_read(it);
         return;
     }
 
     if matches!(it, Expression::UpdateExpression(_)) {
-        if t.rewrite_signal_or_store_identifier_update(it) {
+        if t.dispatch_identifier_update(it) {
             return;
         }
-
-        t.rewrite_deep_store_member_update(it);
+        t.dispatch_member_update(it);
         return;
     }
 
     if matches!(it, Expression::AssignmentExpression(_)) {
-        t.rewrite_deep_store_member_assignment(it);
+        t.dispatch_member_assignment(it, false);
     }
 }
 
@@ -79,6 +78,8 @@ pub(crate) fn rewrite_template_exit<'a>(
         }
     }
 
+    t.rewrite_prop_update_ownership_exit(it);
+
     let suppress_proxy = t.in_bind_setter_traverse;
-    t.rewrite_signal_or_store_identifier_assignment(it, suppress_proxy);
+    t.dispatch_identifier_assignment(it, suppress_proxy);
 }

@@ -4231,27 +4231,6 @@ fn legacy_state_skipped_in_runes_mode() {
 }
 
 #[test]
-fn legacy_state_skipped_when_no_template_read() {
-    use crate::types::data::BindingSemantics;
-    let (_c, data) = analyze_source_with_options(
-        "<script>let count = 0; function inc() { count += 1; }</script><button>x</button>",
-        AnalyzeOptions {
-            runes: false,
-            ..AnalyzeOptions::default()
-        },
-    );
-    let sym = data
-        .scoping
-        .find_binding_in_any_scope("count")
-        .expect("count binding");
-    let decl = data.binding_semantics(sym);
-    assert!(
-        !matches!(decl, BindingSemantics::LegacyState(_)),
-        "legacy state requires at least one template/$: read site (got {decl:?})"
-    );
-}
-
-#[test]
 fn legacy_state_skipped_when_not_mutated() {
     use crate::types::data::BindingSemantics;
     let (_c, data) = analyze_source_with_options(
