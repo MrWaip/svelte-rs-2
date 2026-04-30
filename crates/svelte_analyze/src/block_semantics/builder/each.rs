@@ -56,7 +56,9 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     let key = match key_expr {
         None => EachKeyKind::Unkeyed,
         Some(expr) => {
-            if let Some(sym) = item_sym {
+            if index_sym.is_some_and(|sym| expression_is_identifier_of(expr, sym, ctx.semantics)) {
+                EachKeyKind::KeyedByIndex
+            } else if let Some(sym) = item_sym {
                 if expression_is_identifier_of(expr, sym, ctx.semantics) {
                     EachKeyKind::KeyedByItem
                 } else {
@@ -131,7 +133,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         .map(|e| collection_kind_of(ctx, e))
         .unwrap_or(EachCollectionKind::Regular);
 
-    let has_key = !matches!(key, EachKeyKind::Unkeyed);
+    let has_key = !matches!(key, EachKeyKind::Unkeyed | EachKeyKind::KeyedByIndex);
     let has_index = matches!(index, EachIndexKind::Declared { .. });
     let key_is_item = matches!(key, EachKeyKind::KeyedByItem);
     let runes = ctx.reactivity.uses_runes();

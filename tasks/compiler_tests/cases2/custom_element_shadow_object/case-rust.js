@@ -4,4 +4,7 @@ export default function App($$anchor) {
 	var p = root();
 	$.append($$anchor, p);
 }
-customElements.define("my-dialog", $.create_custom_element(App, {}, [], [], { mode: "open" }));
+customElements.define("my-dialog", $.create_custom_element(App, {}, [], [], {
+	mode: "open",
+	delegatesFocus: true
+}));

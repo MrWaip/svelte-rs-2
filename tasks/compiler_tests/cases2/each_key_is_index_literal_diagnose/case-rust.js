@@ -8,7 +8,7 @@ export default function App($$anchor) {
 		"Bananas are berries, but strawberries aren't."
 	];
 	var ol = root();
-	$.each(ol, 23, () => facts, (fact, i) => i, ($$anchor, fact) => {
+	$.each(ol, 21, () => facts, $.index, ($$anchor, fact) => {
 		var li = root_1();
 		var text = $.child(li, true);
 		$.reset(li);

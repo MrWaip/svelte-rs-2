@@ -174,6 +174,7 @@ pub struct CePropConfig {
 pub struct ParsedCeConfig {
     pub tag: Option<String>,
     pub shadow: CeShadowMode,
+    pub delegates_focus: bool,
 
     pub props: Vec<CePropConfig>,
 

@@ -152,6 +152,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             )?
         };
 
+        inner_state
+            .init
+            .extend(std::mem::take(&mut inner_state.pending_bind_this));
         self.emit_fragment(&mut inner_state, &inner_ctx, svelte_el_fragment)?;
         let inner_body: Vec<Statement<'a>> = self.pack_callback_body(inner_state, "$$anchor")?;
 

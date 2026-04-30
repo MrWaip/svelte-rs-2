@@ -8,6 +8,7 @@ pub(crate) fn extract_ce_config_from_expr(
     let mut config = svelte_parser::ParsedCeConfig {
         tag: None,
         shadow: svelte_parser::CeShadowMode::Open,
+        delegates_focus: false,
         props: Vec::new(),
         extend_span: None,
     };
@@ -31,13 +32,27 @@ pub(crate) fn extract_ce_config_from_expr(
                     config.tag = Some(lit.value.to_string());
                 }
             }
-            "shadow" => {
-                if let Expression::StringLiteral(lit) = &prop.value
-                    && lit.value.as_str() == "none"
-                {
+            "shadow" => match &prop.value {
+                Expression::StringLiteral(lit) if lit.value.as_str() == "none" => {
                     config.shadow = svelte_parser::CeShadowMode::None;
                 }
-            }
+                Expression::ObjectExpression(obj) => {
+                    for shadow_prop in &obj.properties {
+                        let ObjectPropertyKind::ObjectProperty(sp) = shadow_prop else {
+                            continue;
+                        };
+                        let PropertyKey::StaticIdentifier(id) = &sp.key else {
+                            continue;
+                        };
+                        if id.name.as_str() == "delegatesFocus"
+                            && let Expression::BooleanLiteral(lit) = &sp.value
+                        {
+                            config.delegates_focus = lit.value;
+                        }
+                    }
+                }
+                _ => {}
+            },
             "props" => {
                 extract_ce_props(&prop.value, &mut config);
             }

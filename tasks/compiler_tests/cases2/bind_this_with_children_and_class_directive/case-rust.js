@@ -5,7 +5,6 @@ export default function App($$anchor) {
 	let dynamicEl;
 	let counter = 0;
 	var div = root();
-	$.bind_this(div, ($$value) => dynamicEl = $$value, () => dynamicEl);
 	$.set_class(div, 1, "", null, {}, { state: counter > 0 });
 	var node = $.child(div);
 	{
@@ -18,5 +17,6 @@ export default function App($$anchor) {
 		});
 	}
 	$.reset(div);
+	$.bind_this(div, ($$value) => dynamicEl = $$value, () => dynamicEl);
 	$.append($$anchor, div);
 }

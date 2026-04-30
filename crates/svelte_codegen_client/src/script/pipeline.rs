@@ -283,7 +283,6 @@ fn run_transform<'a>(
         reattach_orphaned_comments(&mut program);
     }
 
-    let comments: Vec<Comment> = program.comments.iter().copied().collect();
     let source_text = program.source_text;
     let program_span_end = program.span.end;
 
@@ -295,6 +294,12 @@ fn run_transform<'a>(
             _ => body.push(stmt),
         }
     }
+
+    let comments: Vec<Comment> = if imports.is_empty() && body.is_empty() {
+        vec![]
+    } else {
+        program.comments.iter().copied().collect()
+    };
 
     ScriptOutput {
         imports,

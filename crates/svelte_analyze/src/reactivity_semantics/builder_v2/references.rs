@@ -1,6 +1,6 @@
 use super::super::data::{
     BindingFacts, ContextualReadSemantics, DerivedKind, PropBindingKind, PropDefaultLowering,
-    PropLoweringMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
+    PropLoweringMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -64,6 +64,9 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::State(state) => {
+            if state.kind == StateKind::StateEager {
+                return None;
+            }
             if is_write && is_read {
                 Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,
