@@ -1,9 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 23/23 use cases
-- **Tests**: 25/27 green
-- Last updated: 2026-04-08
+- **Working**: 23/25 use cases
+- **Tests**: 25/28 green
+- Last updated: 2026-04-30
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
@@ -33,6 +33,8 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_shadowing_prop` validation (tests: analyzer unit tests)
 - [x] `snippet_conflict` validation (tests: analyzer unit tests)
 - [x] `snippet_invalid_export` validation (tests: analyzer unit tests)
+- [ ] Dev-mode `{@render snippet(...)}` calls are wrapped in `$.add_svelte_meta(() => snippet(...), "render", App, line, col)` rather than emitted bare. (test: `diagnose_runes_dev_ce_benchmark`)
+- [ ] Snippet parameter object destructuring with a default-initialized nested pattern (e.g. `{ label, values = [counter], meta: { id = propsId } = {} }`) registers the destructured locals (`label`, `values`, `id`) as effect dependencies so reads inside the body are tracked. (test: `diagnose_runes_dev_ce_benchmark`)
 
 ## Reference
 
@@ -85,3 +87,4 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `validate_snippet_children_without_other_content_has_no_conflict`
 - [x] `snippet_destructure_default_state_ref`
 - [x] `snippet_destructure_default_mutated_state_ref`
+- [ ] `diagnose_runes_dev_ce_benchmark`

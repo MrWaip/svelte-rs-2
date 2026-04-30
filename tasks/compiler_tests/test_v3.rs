@@ -3253,3 +3253,9 @@ fn clock_svg_derived_onmount() {
 fn diagnose_component_default_and_named_slot_expr() {
     assert_compiler("diagnose_component_default_and_named_slot_expr");
 }
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_runes_dev_ce_benchmark() {
+    assert_compiler("diagnose_runes_dev_ce_benchmark");
+}

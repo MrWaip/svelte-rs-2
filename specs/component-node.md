@@ -1,9 +1,9 @@
 # ComponentNode
 
 ## Current state
-- **Working**: 12/13 use cases
-- **Tests**: 19/20 green
-- Last updated: 2026-04-11
+- **Working**: 12/14 use cases
+- **Tests**: 19/21 green
+- Last updated: 2026-04-30
 
 ## Source
 
@@ -38,6 +38,7 @@
 - [x] Runes-mode dotted dynamic component refs whose root binding is non-normal use the same template binding read semantics as ordinary template reads, including `$props()`-backed roots like `<registry.Widget />` (test: `component_dynamic_dotted_props_root`)
 - [x] Runes-mode local component bindings whose tag names include `_` or digits, including `<Derived_1>` from `$derived(Widget)` and `<Const_0>` from `{@const}`, parse and lower through the dynamic-component path with `bind:this` (test: `component_local_underscored_bind_this`)
 - [x] Analyze emits component-specific validation/warnings for invalid directives and attribute edge cases (component-tag directives/modifiers plus direct attribute-name/value checks)
+- [ ] Dev-mode default `children` slot snippet passed to a component is wrapped with `$.wrap_snippet(App, ($$anchor, $$slotProps) => { ... })` (test: `diagnose_runes_dev_ce_benchmark`)
 
 ## Reference
 
@@ -79,3 +80,4 @@
 - [x] analyzer unit tests: component invalid directive, component `on:` modifier validation, component illegal colon warning, component unquoted attribute sequence
 - [x] `component_invalid_directive_use`
 - [x] `component_on_modifier_only_allows_once`
+- [ ] `diagnose_runes_dev_ce_benchmark`
