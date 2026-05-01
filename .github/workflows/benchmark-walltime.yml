@@ -1,18 +1,17 @@
-name: CodSpeed (instrumentation)
+name: CodSpeed (walltime)
 
 on:
   push:
     branches: [master]
-  pull_request:
   workflow_dispatch:
 
 env:
   RUST_CHANNEL: '1.94.1'
 
 jobs:
-  instrumentation:
-    name: Rust instruction-count
-    runs-on: ubuntu-24.04
+  walltime:
+    name: Walltime (Rust + Node)
+    runs-on: codspeed-macro
     steps:
       - uses: actions/checkout@v4
 
@@ -25,12 +24,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Build the benchmark target(s)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Rust benchmarks
         run: cargo codspeed build --features codspeed -p benchmark
 
-      - name: Run the benchmarks
+      - name: Install Node bench deps
+        run: npm ci
+
+      - name: Run benchmarks (Rust + Node)
         uses: CodSpeedHQ/action@v3
         with:
-          run: cargo codspeed run
-          mode: instrumentation
+          run: cargo codspeed run && node tasks/benchmark/bench.mjs
+          mode: walltime
           token: ${{ secrets.CODSPEED_TOKEN }}

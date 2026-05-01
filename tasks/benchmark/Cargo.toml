@@ -20,11 +20,19 @@ harness = false
 name = "svelte_compiler_dev"
 harness = false
 
-[[bin]]
-name = "bench_cli"
-path = "src/bench_cli.rs"
+[[bench]]
+name = "svelte_compile_module"
+harness = false
+
+[[bench]]
+name = "svelte_compile_module_dev"
+harness = false
+
+[features]
+default = []
+codspeed = ["criterion2/codspeed"]
 
 [dependencies]
 svelte_compiler = { workspace = true }
-criterion2 = { workspace = true, features = ["codspeed"] }
+criterion2 = { workspace = true }
 glob = { workspace = true }
