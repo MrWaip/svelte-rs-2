@@ -920,6 +920,22 @@ mod components {
         "components/svelte_self_deprecated_uses_reserved_word_deconflicted_component_name"
     );
     diagnostic_case!(
+        svelte_self_deprecated_valid_placement_default_basename,
+        "components/svelte_self_deprecated_valid_placement_default_basename"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_configured_filename,
+        "components/svelte_self_deprecated_valid_placement_configured_filename"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_deconflicted_name,
+        "components/svelte_self_deprecated_valid_placement_deconflicted_name"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_reserved_word_name,
+        "components/svelte_self_deprecated_valid_placement_reserved_word_name"
+    );
+    diagnostic_case!(
         svelte_component_deprecated_warns_in_runes_mode,
         "components/svelte_component_deprecated_warns_in_runes_mode"
     );
