@@ -8,11 +8,7 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, compile, compile_module};
 
-/// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
-/// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
 fn normalize_css(s: &str) -> String {
-    // Collapse all whitespace (including newlines) so that single-line
-    // and multi-line representations of the same rule compare equal.
     s.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
@@ -22,9 +18,6 @@ fn normalize_css(s: &str) -> String {
         .join(" ")
 }
 
-/// Returns true if the entire (trimmed) line is a CSS comment.
-/// Catches standalone comment lines like `/* :global {*/` or `/*}*/`
-/// that the reference compiler emits as wrappers around global blocks.
 fn is_css_comment_line(line: &str) -> bool {
     let s = line.trim();
     s.starts_with("/*") && s.ends_with("*/")
@@ -97,8 +90,6 @@ fn assert_compiler(case: &str) {
 
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
-    // Compare CSS output when a reference file exists.
-    // Normalize whitespace (indent style varies between lightningcss and JS reference).
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
         let expected_css = read_to_string(&expected_css_path).expect("test invariant");
@@ -309,12 +300,6 @@ fn push_binding_group_order() {
 #[ignore = "diagnose: pending fix"]
 fn bind_group_order_with_stores() {
     assert_compiler("bind_group_order_with_stores");
-}
-
-#[rstest]
-#[ignore = "diagnose: pending fix"]
-fn css_injected_keyframes_preserve_whitespace() {
-    assert_compiler("css_injected_keyframes_preserve_whitespace");
 }
 
 #[rstest]

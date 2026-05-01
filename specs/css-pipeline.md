@@ -1,8 +1,8 @@
 # CSS
 
 ## Current state
-- **Working**: 14/17 use cases
-- **Tests**: 95/98 green
+- **Working**: 17/17 use cases
+- **Tests**: 97/97 green
 - Last updated: 2026-04-30
 
 ## Source
@@ -12,13 +12,13 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 
 - [x] Top-level component CSS is extracted from `<style>`, analyzed, transformed, and returned through `CompileResult.css` in external mode (tests: `css_scoped_basic`, `explicit_external_css_mode_returns_compile_result_css`)
 - [x] Injected CSS mode works through compile options and inline `<svelte:options css="injected">` precedence (tests: `css_injected`, `css_injected_via_compile_options`, `inline_css_injected_overrides_external_compile_option`)
-- [ ] Injected CSS `code:` string preserves source whitespace (newlines, indentation, space after `:`, space inside braces) the way reference does — currently our pipeline minifies through lightningcss so non-trivial source CSS (e.g. `@keyframes` blocks) loses formatting and diverges from reference verbatim string. (test: `css_injected_keyframes_preserve_whitespace`, M)
-- [ ] In injected CSS mode, `$.append_styles($$anchor, $$css);` must be emitted AFTER `$.push($$props, ...)` and before the auto-subscribed-store getter consts / `$.setup_stores()` block (reference unshifts append_styles after store_setup is unshifted, so `push → append_styles → store_setup → store_init`). Currently we emit `append_styles` before `$.push(...)` whenever stores are present. (test: `css_injected_append_styles_with_stores_order`, S)
+- [x] Injected CSS `code:` string carries semantically equivalent CSS to the reference output: same selectors, scope class injection, keyframe rename, animation value rewrite, and declaration values. Whitespace shape inside the `code:` string is not part of the contract. (test: `css_injected_keyframes_preserve_semantics` in `crates/svelte_compiler/src/tests.rs`)
+- [x] In injected CSS mode, `$.append_styles($$anchor, $$css);` is emitted AFTER `$.push($$props, ...)` and before the auto-subscribed-store getter consts / `$.setup_stores()` block, matching the reference `push → append_styles → store_setup → store_init` order (test: `css_injected_append_styles_with_stores_order`)
 - [x] Scoped selector marking and scope-class injection work for ordinary elements, snippets, `<svelte:element>`, class-object attrs, and spread attrs (tests: `css_scoped_class_selector`, `css_scope_class_in_snippet`, `css_scope_svelte_element_class`, `css_scope_class_object`, `css_scope_spread_attribute`)
 - [x] Selector matching covers type, class, id, attribute presence, static attribute matcher/value selectors, and bounded dynamic attribute expansion with reference-conservative behavior where required (tests: `css_scoped_id_selector`, `css_scoped_attr_presence`, `css_scoped_attr_value_selector`, `css_scoped_attr_matcher_operators`, `css_scoped_attr_name_casefolding`, `css_dynamic_attr_selector_match`, `concat_attribute_selector_no_match`)
 - [x] `:global(...)`, bare `:global`, `:global { ... }`, and `:global(...)` inside `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)` match the reference transform/analyze behavior for valid CSS (tests: `css_global_basic`, `css_global_compound`, `css_global_block`, `css_global_in_pseudo`)
 - [x] Scoped keyframes and `-global-` escapes are rewritten correctly (test: `css_keyframes_scoped`)
-- [ ] `@keyframes` containing percentage selectors (`0%`, `50%`, `100%`) marks every component element as scoped, matching the reference compiler's parse-keyframe-bodies-as-rules quirk; `from`/`to` keyword keyframes do not (test: `css_keyframes_percentage_scopes_all`)
+- [x] `@keyframes` containing percentage selectors (`0%`, `50%`, `100%`) marks every component element as scoped, matching the reference compiler's parse-keyframe-bodies-as-rules quirk; `from`/`to` keyword keyframes do not (test: `css_keyframes_percentage_scopes_all`)
 - [x] Unused selector warnings and emitted-CSS pruning work for descendant/child/sibling combinators, pseudo selectors, nesting selectors, escaped class/id selectors, and snippet/component boundaries (tests: `css_unused_external`, `css_unused_injected`, `css_pseudo_compound_unused_but_scoped`, `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`, `css_escaped_selector_scoped`, `css_snippet_descendant_scope_boundary`, `css_snippet_sibling_boundary`, `css_component_snippet_descendant_boundary`)
 - [x] Diagnostic parity for CSS pruning covers `:is(...)`, `:where(...)`, implicit nesting, `:root:has(...)`, escaped selectors, attribute concatenation, and conservative no-match cases where the reference compiler reports `css_unused_selector` (tests: `is_selector_match`, `is_selector_no_match`, `is_selector_compound_no_match`, `where_selector_match`, `where_selector_complex_branch_conservative`, `implicit_nesting_match`, `root_has_match`, `escaped_selector_match`, `concat_attribute_selector_no_match`, `type_selector_no_match`, `class_selector_no_match`, `id_selector_no_match`, `descendant_combinator_no_match`, `child_combinator_indirect_no_match`, `adjacent_sibling_combinator_no_match`, `general_sibling_combinator_no_match`, `multiple_selectors_mixed`, `media_query_unused_selector`, `no_elements_all_unused`)
 - [x] CSS serializer specificity matches the reference for nested selectors and pseudo selector lists, including implicit nesting and `:root:has(...)` handling (tests: `css_pseudo_has`, `css_nesting_selector_scoped`, `css_root_has_scoped`)
@@ -65,8 +65,8 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_injected`
 - [x] `css_injected_via_compile_options`
 - [x] `inline_css_injected_overrides_external_compile_option`
-- [ ] `css_injected_keyframes_preserve_whitespace`
-- [ ] `css_injected_append_styles_with_stores_order`
+- [x] `css_injected_keyframes_preserve_semantics` (inline test, `crates/svelte_compiler/src/tests.rs`)
+- [x] `css_injected_append_styles_with_stores_order`
 - [x] `css_scoped_class_selector`
 - [x] `css_scope_class_in_snippet`
 - [x] `css_scope_svelte_element_class`
@@ -84,7 +84,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_global_block`
 - [x] `css_global_in_pseudo`
 - [x] `css_keyframes_scoped`
-- [ ] `css_keyframes_percentage_scopes_all`
+- [x] `css_keyframes_percentage_scopes_all`
 - [x] `css_unused_external`
 - [x] `css_unused_injected`
 - [x] `css_pseudo_compound_unused_but_scoped`

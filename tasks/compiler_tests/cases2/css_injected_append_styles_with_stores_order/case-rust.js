@@ -6,8 +6,8 @@ const $$css = {
 	code: "p.svelte-sw3owg {color:red;}"
 };
 export default function App($$anchor, $$props) {
-	$.append_styles($$anchor, $$css);
 	$.push($$props, true);
+	$.append_styles($$anchor, $$css);
 	const $store = () => $.store_get(store, "$store", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
 	let store = writable(0);
