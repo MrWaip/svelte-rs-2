@@ -69,7 +69,6 @@ export const benchmarkExample = `<script module>
     let metrics = writable([1, 2, 3]);
     let labelStore = writable("ready");
 
-    /** @type {Function | undefined} */
     let show;
 
     counter = 10;
