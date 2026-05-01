@@ -11,8 +11,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         bind_id: NodeId,
         value: Expression<'a>,
     ) -> Result<Expression<'a>> {
-        let cn = self.ctx.query.component_node(el_id);
-        let Some(bind) = cn.attributes.iter().find_map(|a| {
+        let Some(view) = self
+            .ctx
+            .query
+            .component
+            .store
+            .get(el_id)
+            .as_component_like()
+        else {
+            return CodegenError::unexpected_node(el_id, "component-like");
+        };
+        let Some(bind) = view.attributes.iter().find_map(|a| {
             if let Attribute::BindDirective(b) = a {
                 if b.id == bind_id { Some(b) } else { None }
             } else {

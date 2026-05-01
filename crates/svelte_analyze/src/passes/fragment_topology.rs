@@ -53,52 +53,15 @@ fn visit_fragment(
                 record_custom_element_slot_name(data, &el.attributes, &component.source);
                 visit_fragment(el.fragment, component, data);
             }
-            Node::ComponentNode(cn) => {
-                let snippets: Vec<_> = store
-                    .fragment(cn.fragment)
-                    .nodes
-                    .iter()
-                    .filter_map(|&nid| {
-                        if let Node::SnippetBlock(s) = store.get(nid) {
-                            Some(s.id)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                if !snippets.is_empty() {
-                    data.template
-                        .snippets
-                        .component_snippets
-                        .insert(cn.id, snippets);
-                }
-
-                let cn_id = cn.id;
-                let cn_fragment = cn.fragment;
-                let legacy_slots: Vec<_> = cn
-                    .legacy_slots
-                    .iter()
-                    .map(|s| {
-                        let wrapper_id = store.fragment_nodes(s.fragment)[0];
-                        (s.fragment, wrapper_id)
-                    })
-                    .collect();
-
-                visit_fragment(cn_fragment, component, data);
-
-                for (slot_fid, wrapper_id) in legacy_slots {
-                    let slot_items: SmallVec<[NodeId; 4]> = match store.get(wrapper_id) {
-                        Node::SvelteFragmentLegacy(el) => {
-                            data.elements.flags.svelte_fragment_slots.insert(wrapper_id);
-                            store.fragment_nodes(el.fragment).iter().copied().collect()
-                        }
-                        _ => {
-                            let mut v = SmallVec::new();
-                            v.push(wrapper_id);
-                            v
-                        }
-                    };
-                    visit_slot(slot_fid, &slot_items, cn_id, component, data);
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    visit_component_like(
+                        view.id,
+                        view.fragment,
+                        view.legacy_slots,
+                        component,
+                        data,
+                    );
                 }
             }
             Node::SvelteFragmentLegacy(el) => {
@@ -169,6 +132,59 @@ fn visit_fragment(
     }
 }
 
+fn visit_component_like(
+    cn_id: NodeId,
+    cn_fragment: svelte_ast::FragmentId,
+    legacy_slots_in: &[svelte_ast::LegacySlot],
+    component: &Component,
+    data: &mut AnalysisData,
+) {
+    let store = &component.store;
+    let snippets: Vec<_> = store
+        .fragment(cn_fragment)
+        .nodes
+        .iter()
+        .filter_map(|&nid| {
+            if let Node::SnippetBlock(s) = store.get(nid) {
+                Some(s.id)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !snippets.is_empty() {
+        data.template
+            .snippets
+            .component_snippets
+            .insert(cn_id, snippets);
+    }
+
+    let legacy_slots: Vec<_> = legacy_slots_in
+        .iter()
+        .map(|s| {
+            let wrapper_id = store.fragment_nodes(s.fragment)[0];
+            (s.fragment, wrapper_id)
+        })
+        .collect();
+
+    visit_fragment(cn_fragment, component, data);
+
+    for (slot_fid, wrapper_id) in legacy_slots {
+        let slot_items: SmallVec<[NodeId; 4]> = match store.get(wrapper_id) {
+            Node::SvelteFragmentLegacy(el) => {
+                data.elements.flags.svelte_fragment_slots.insert(wrapper_id);
+                store.fragment_nodes(el.fragment).iter().copied().collect()
+            }
+            _ => {
+                let mut v = SmallVec::new();
+                v.push(wrapper_id);
+                v
+            }
+        };
+        visit_slot(slot_fid, &slot_items, cn_id, component, data);
+    }
+}
+
 fn visit_slot(
     slot_fid: svelte_ast::FragmentId,
     items: &[NodeId],
@@ -207,7 +223,11 @@ fn visit_slot(
                 record_custom_element_slot_name(data, &el.attributes, &component.source);
                 visit_fragment(el.fragment, component, data);
             }
-            Node::ComponentNode(cn) => visit_fragment(cn.fragment, component, data),
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    visit_fragment(view.fragment, component, data);
+                }
+            }
             Node::SvelteFragmentLegacy(el) => visit_fragment(el.fragment, component, data),
             _ => {}
         }
@@ -232,7 +252,7 @@ fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {
 }
 
 fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute], source: &str) {
-    if !data.output.custom_element {
+    if !data.output.is_custom_element_target {
         return;
     }
     let slot_name = legacy_slot_name(attrs, source);

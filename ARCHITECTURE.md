@@ -208,6 +208,7 @@ Modeled after `oxc` `Scoping` module, adapted to a Svelte component (multi-progr
 - One source of `OxcNodeId`s. Downstream subsystems index by them; nobody else hands out fresh ones.
 - Read-only on AST after build.
 - **Identity by id, never by string.** Symbol / binding / reference resolution goes through `OxcNodeId` / `ReferenceId` / `SymbolId`. No `find_binding_by_name("foo")` for real lookups. Name comparison is allowed only for syntactic predicates (e.g. detecting `$state` rune callee, `$$props`).
+- **JS spans are script-content-relative.** `oxc_parser` parses `<script>` / `<script module>` as standalone JS, so spans on stored symbols / bindings / references are zero-based against the script body. Consumers that need a file-relative span (diagnostics, source-text lookup) lazily shift via `Span::shifted_from_oxc(script_offset, oxc_span)` at the call site — no global rewrite, no hidden state.
 
 ### Anti-patterns
 

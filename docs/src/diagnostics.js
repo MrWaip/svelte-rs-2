@@ -26,6 +26,7 @@ function normalizeDiag(d, source) {
 export function toLintDiagnostics(view, diagnostics) {
     if (!view) return [];
     const doc = view.state.doc;
+    const docLen = doc.length;
     return diagnostics.map((d) => {
         const safeLine = Math.max(1, Math.min(d.line, doc.lines));
         const lineInfo = doc.line(safeLine);
@@ -33,9 +34,13 @@ export function toLintDiagnostics(view, diagnostics) {
         const safeEndLine = Math.max(safeLine, Math.min(d.endLine, doc.lines));
         const endLineInfo = doc.line(safeEndLine);
         const toCol = Math.max(fromCol, Math.min(d.endColumn, endLineInfo.length));
+        let from = Math.min(lineInfo.from + fromCol, docLen);
+        let to = Math.min(endLineInfo.from + toCol, docLen);
+        if (to < from) to = from;
+        if (from === to && from < docLen) to = from + 1;
         return {
-            from: lineInfo.from + fromCol,
-            to: endLineInfo.from + toCol,
+            from,
+            to,
             severity: d.severity,
             message: d.code ? `${d.code}: ${d.message}` : d.message,
             source: d.source,

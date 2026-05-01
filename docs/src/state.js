@@ -24,6 +24,7 @@ export const DEFAULT_OPTIONS = {
     customElement: false,
     preserveComments: false,
     preserveWhitespace: false,
+    experimentalAsync: false,
     generate: "client",
     css: "external",
     name: "App",

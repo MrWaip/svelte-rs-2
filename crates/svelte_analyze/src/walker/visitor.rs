@@ -1,4 +1,5 @@
 use super::*;
+use svelte_ast::SvelteComponentLegacy;
 
 #[allow(unused_variables)]
 pub(crate) trait TemplateVisitor {
@@ -20,6 +21,18 @@ pub(crate) trait TemplateVisitor {
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {}
+    fn visit_svelte_component_legacy(
+        &mut self,
+        el: &SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+    }
+    fn leave_svelte_component_legacy(
+        &mut self,
+        el: &SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+    }
     fn visit_svelte_fragment_legacy(
         &mut self,
         el: &SvelteFragmentLegacy,
@@ -27,6 +40,7 @@ pub(crate) trait TemplateVisitor {
     ) {
     }
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {}
+    fn visit_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_window(&mut self, w: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_document(&mut self, doc: &SvelteDocument, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_, '_>) {}

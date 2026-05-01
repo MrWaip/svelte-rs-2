@@ -38,9 +38,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         .map(Arg::Str)
                         .collect::<Vec<_>>(),
                 );
-                let init = self
-                    .b
-                    .call_expr("$.rest_props", [Arg::Ident("$$props"), Arg::Expr(arr_expr)]);
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
+                if self.dev {
+                    args.push(Arg::Str(id.name.to_string()));
+                }
+                let init = self.b.call_expr("$.rest_props", args);
                 Some(vec![self.b.const_stmt(id.name.as_str(), init)])
             }
             BindingPattern::ObjectPattern(obj) => {
@@ -183,12 +185,14 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     let arr_expr = self.b.array_from_args(
                         excluded.iter().cloned().map(Arg::Str).collect::<Vec<_>>(),
                     );
+                    let mut args: Vec<Arg<'a, '_>> =
+                        vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
+                    if self.dev {
+                        args.push(Arg::Str(id.name.to_string()));
+                    }
                     declarators.push((
                         self.b.alloc_str(id.name.as_str()),
-                        self.b.call_expr(
-                            "$.rest_props",
-                            [Arg::Ident("$$props"), Arg::Expr(arr_expr)],
-                        ),
+                        self.b.call_expr("$.rest_props", args),
                     ));
                 }
 

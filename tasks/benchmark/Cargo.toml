@@ -16,6 +16,10 @@ doctest = false
 name = "svelte_compiler"
 harness = false
 
+[[bench]]
+name = "svelte_compiler_dev"
+harness = false
+
 [[bin]]
 name = "bench_cli"
 path = "src/bench_cli.rs"

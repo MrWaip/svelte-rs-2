@@ -15,6 +15,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         match node {
             Node::Element(_)
             | Node::ComponentNode(_)
+            | Node::SvelteComponentLegacy(_)
             | Node::SvelteElement(_)
             | Node::SvelteBoundary(_)
             | Node::SvelteWindow(_)

@@ -2,7 +2,7 @@
   {
     "severity": "warning",
     "code": "non_reactive_update",
-    "start": 20,
-    "end": 24
+    "start": 28,
+    "end": 32
   }
 ]

@@ -20,6 +20,10 @@ impl Span {
         Self::new(self.start.min(other.start), self.end.max(other.end))
     }
 
+    pub fn shifted_from_oxc(offset: u32, span: oxc_span::Span) -> Self {
+        Self::new(span.start + offset, span.end + offset)
+    }
+
     pub fn source_text<'a>(&self, source_text: &'a str) -> &'a str {
         &source_text[self.start as usize..self.end as usize]
     }

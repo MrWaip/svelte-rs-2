@@ -487,69 +487,110 @@ body.resizing * {
     color: var(--fg-tertiary);
 }
 
-.chip.parity {
+.chip.speedup {
     border-radius: var(--radius-pill);
     font-family: var(--font-ui);
+    font-size: 11px;
     font-weight: 600;
+    padding: 3px 10px;
+    gap: 6px;
     border-color: transparent;
+    background: var(--bg-elevated);
+    color: var(--fg-secondary);
+    letter-spacing: 0.01em;
 }
 
-.chip.parity::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--fg-tertiary);
+.chip.speedup .speedup-label {
+    text-transform: lowercase;
 }
 
-.chip.parity[data-state="match"] {
-    color: var(--success);
-    background: var(--success-soft);
+.chip.speedup b {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: inherit;
+    opacity: 0.85;
 }
 
-.chip.parity[data-state="match"]::before {
-    background: var(--success);
-}
-
-.chip.parity[data-state="diverged"] {
-    color: var(--warn);
-    background: var(--warn-soft);
-}
-
-.chip.parity[data-state="diverged"]::before {
-    background: var(--warn);
-}
-
-.chip.parity[data-state="error"] {
+.chip.speedup[data-state="much-slower"],
+.chip.speedup[data-state="slower"] {
     color: var(--error);
     background: var(--error-soft);
 }
 
-.chip.parity[data-state="error"]::before {
-    background: var(--error);
+.chip.speedup[data-state="slower"]::before {
+    content: "▼";
+    font-size: 9px;
 }
 
-.chip.speedup {
-    border-radius: var(--radius-pill);
-    font-family: var(--font-ui);
-    font-weight: 600;
-    border-color: transparent;
+.chip.speedup[data-state="much-slower"]::before {
+    content: "💀";
+    font-size: 11px;
+}
+
+.chip.speedup[data-state="barely"] {
+    color: var(--fg-secondary);
     background: var(--bg-elevated);
 }
 
 .chip.speedup[data-state="faster"] {
-    color: var(--accent);
-    background: var(--accent-soft);
+    color: var(--success);
+    background: var(--success-soft);
+    box-shadow: inset 0 0 0 1px var(--success-line);
 }
 
 .chip.speedup[data-state="faster"]::before {
-    content: "⚡";
+    content: "✓";
     font-size: 11px;
 }
 
-.chip.speedup[data-state="slower"] {
-    color: var(--error);
-    background: var(--error-soft);
+.chip.speedup[data-state="strong"] {
+    color: var(--success);
+    background: var(--success-soft);
+    box-shadow: inset 0 0 0 1px var(--success-line), 0 0 0 1px var(--success-soft);
+}
+
+.chip.speedup[data-state="strong"]::before {
+    content: "⚡";
+    font-size: 12px;
+}
+
+.chip.speedup[data-state="blazing"] {
+    color: #fff;
+    background: linear-gradient(135deg, var(--success), var(--accent));
+    box-shadow: 0 4px 14px -4px var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    animation: speedup-pulse 2s ease-in-out infinite;
+}
+
+.chip.speedup[data-state="blazing"]::before {
+    content: "🔥";
+    font-size: 12px;
+}
+
+.chip.speedup[data-state="ludicrous"] {
+    color: #fff;
+    background: linear-gradient(110deg, #ff0080, var(--accent), #ffd400, var(--success));
+    background-size: 300% 100%;
+    box-shadow: 0 6px 22px -4px var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    animation: speedup-rainbow 3s linear infinite, speedup-pulse 1.4s ease-in-out infinite;
+}
+
+.chip.speedup[data-state="ludicrous"]::before {
+    content: "🚀";
+    font-size: 13px;
+}
+
+@keyframes speedup-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+}
+
+@keyframes speedup-rainbow {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 300% 50%; }
 }
 
 .spinner {

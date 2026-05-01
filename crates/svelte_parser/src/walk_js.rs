@@ -401,9 +401,18 @@ fn walk_node<'a>(
             );
         }
         Node::SvelteElement(el) => {
-            if !el.static_tag {
-                parse_span(alloc, component, el.tag_span, typescript, result, diags);
-            }
+            walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
+            walk_fragment(
+                alloc,
+                el.fragment,
+                store,
+                component,
+                typescript,
+                result,
+                diags,
+            );
+        }
+        Node::SvelteComponentLegacy(el) => {
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,

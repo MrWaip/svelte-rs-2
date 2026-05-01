@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_meta_invalid_placement",
+    "start": 8,
+    "end": 8
+  }
+]

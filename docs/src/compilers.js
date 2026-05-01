@@ -113,6 +113,7 @@ function buildRustOptions(mode, options) {
         generate: options.generate,
         css: options.css,
         name: options.name || "App",
+        experimental: { async: !!options.experimentalAsync },
     };
 }
 
@@ -135,6 +136,7 @@ function buildSvelteOptions(mode, options) {
         css: options.css,
         name: options.name || "App",
         modernAst: true,
+        experimental: { async: !!options.experimentalAsync },
     };
 }
 

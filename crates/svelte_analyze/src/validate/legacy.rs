@@ -289,7 +289,7 @@ fn validate_export_let_unused(
         let name = data.scoping.symbol_name(sym).to_string();
         diags.push(Diagnostic::warning(
             DiagnosticKind::ExportLetUnused { name },
-            Span::new(span.start + offset, span.end + offset),
+            Span::shifted_from_oxc(offset, span),
         ));
     }
 }

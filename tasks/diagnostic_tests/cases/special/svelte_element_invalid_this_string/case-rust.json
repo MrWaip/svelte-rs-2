@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "warning",
+    "code": "svelte_element_invalid_this",
+    "start": 16,
+    "end": 26
+  }
+]

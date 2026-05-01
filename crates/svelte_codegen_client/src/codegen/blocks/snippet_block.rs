@@ -174,6 +174,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
             decls.push(self.ctx.b.var_stmt(&insert.name, derived));
         }
+        let dev = self.ctx.state.dev;
         for mut path in paths {
             rewrite_array_reads(self, &mut path.expression, &array_insert_names);
             let thunk = self.ctx.b.thunk(path.expression);
@@ -185,6 +186,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 thunk
             };
             decls.push(self.ctx.b.let_init_stmt(&path.name, init));
+            if dev {
+                let name_alloc = self.ctx.b.alloc_str(&path.name);
+                let eager = if path.has_default {
+                    self.ctx.b.call_stmt("$.get", [Arg::Ident(name_alloc)])
+                } else {
+                    self.ctx
+                        .b
+                        .call_stmt(&path.name, std::iter::empty::<Arg<'_, '_>>())
+                };
+                decls.push(eager);
+            }
         }
     }
 

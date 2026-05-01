@@ -46,6 +46,8 @@ pub enum ComponentPropKind {
         mode: ComponentBindMode,
 
         expr_name: Option<String>,
+
+        requires_ownership_emit: bool,
     },
     Spread {
         attr_id: NodeId,

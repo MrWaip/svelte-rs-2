@@ -6,7 +6,7 @@ import {
     setTheme as setEditorTheme,
     publishLintDiagnostics,
 } from "./editor.js";
-import { createDiff, setOriginal, setModified, applyDiffTheme, destroyDiff, isMobileLayout, watchMobileLayout } from "./diff.js";
+import { createDiff, setDiffDocs, applyDiffTheme, destroyDiff, isMobileLayout, watchMobileLayout } from "./diff.js";
 import { loadWasmCompiler, isWasmReady, compileRust, compileSvelte, warmup } from "./compilers.js";
 import { normalizeAll, renderPanel, toLintDiagnostics, bindDiagnosticsFilters, bindCopyDiagnostics } from "./diagnostics.js";
 import {
@@ -168,8 +168,7 @@ function runCompile() {
 
     lastSvelteJs = svelte.js;
     lastRustJs = rust ? rust.js : "// WASM compiler not available";
-    setOriginal(diffView, lastSvelteJs);
-    setModified(diffView, lastRustJs);
+    setDiffDocs(diffView, lastSvelteJs, lastRustJs);
 
     setPerf(app, "svelte", svelte.ok ? svelte.ms : null);
     setPerf(app, "rust", rust && rust.ok ? rust.ms : null);

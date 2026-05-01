@@ -108,13 +108,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             &mut async_values,
             sync_memo_count,
         )?;
-        let final_stmt = self.build_render_final_call(
+        let tag_span_start = tag.span.start;
+        let final_expr = self.build_render_final_call(
             sem.callee_shape,
             callee_expr,
             callee_text,
             inner_anchor_expr,
             arg_thunks,
         );
+        let final_stmt = self.add_svelte_meta(final_expr, tag_span_start, "render");
 
         if needs_async {
             self.emit_render_async_wrapped(
@@ -282,7 +284,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         callee_text: &'a str,
         anchor_expr: Expression<'a>,
         arg_thunks: Vec<Arg<'a, 'static>>,
-    ) -> Statement<'a> {
+    ) -> Expression<'a> {
         match shape {
             RenderCalleeShape::Dynamic | RenderCalleeShape::DynamicChain => {
                 let is_chain = matches!(shape, RenderCalleeShape::DynamicChain);
@@ -300,19 +302,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let mut snippet_args: Vec<Arg<'a, '_>> =
                     vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
                 snippet_args.extend(arg_thunks);
-                self.ctx.b.call_stmt("$.snippet", snippet_args)
+                self.ctx.b.call_expr("$.snippet", snippet_args)
             }
             RenderCalleeShape::StaticChain => {
                 let callee = self.ctx.b.rid_expr(callee_text);
                 let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
                 all_args.extend(arg_thunks);
-                let call_expr = self.ctx.b.maybe_call_expr(callee, all_args);
-                self.ctx.b.expr_stmt(call_expr)
+                self.ctx.b.maybe_call_expr(callee, all_args)
             }
             RenderCalleeShape::Static => {
+                let callee = self.ctx.b.rid_expr(callee_text);
                 let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
                 all_args.extend(arg_thunks);
-                self.ctx.b.call_stmt(callee_text, all_args)
+                self.ctx.b.call_expr_callee(callee, all_args)
             }
         }
     }

@@ -20,6 +20,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let attr_id = attr.id;
         let val = self.build_concat_expr_collapse_single(attr_id, &attr.parts)?;
 
+        if attr.name == "value" && owner_tag == "option" {
+            self.emit_option_concat_value(state, owner_var, val);
+            return Ok(());
+        }
+
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
         let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);

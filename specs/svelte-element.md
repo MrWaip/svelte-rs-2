@@ -1,9 +1,9 @@
 # Svelte Element
 
 ## Current state
-- **Working**: 8/12 use cases
-- **Tests**: 15/18 green
-- Last updated: 2026-04-07
+- **Working**: 14/14 use cases
+- **Tests**: 21/21 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -40,10 +40,12 @@
 - [x] Static `xmlns="http://www.w3.org/2000/svg"` flips the namespace flag passed to `$.element` (test: `svelte_element_xmlns`)
 - [x] Async tag expressions are lowered through the async wrapper path (test: `async_svelte_element`)
 - [x] Legacy string `this="div"` still compiles compatibly (test: `svelte_element_static_tag`)
-- [ ] Dynamic `xmlns={ns}` is forwarded as the runtime namespace thunk argument to `$.element` (new test: `svelte_element_dynamic_xmlns`)
-- [ ] Dev mode emits `$.validate_dynamic_element_tag` before creating the element (new test: `svelte_element_dev_invalid_tag`)
-- [ ] Dev mode emits `$.validate_void_dynamic_element` when a dynamic element with children could become void (new test: `svelte_element_dev_void_children`)
-- [ ] Parser diagnostics match reference behavior for missing `this`, boolean `this`, and string-literal `this` warning; diagnostics exist in `svelte_diagnostics` but no parser call sites emit them yet
+- [x] Dynamic `xmlns={ns}` is forwarded as the runtime namespace thunk argument to `$.element` (test: `svelte_element_dynamic_xmlns`)
+- [x] Dev mode emits `$.validate_dynamic_element_tag` before creating the element (test: `svelte_element_dev_invalid_tag`)
+- [x] Dev mode emits `$.validate_void_dynamic_element` when a dynamic element with children could become void (test: `svelte_element_dev_void_children`)
+- [x] Analyzer emits `svelte_element_missing_this` error when `this` attribute is absent (test: `svelte_element_missing_this`)
+- [x] Analyzer emits `svelte_element_missing_this` error for bare boolean `this` (test: `svelte_element_missing_this_boolean`)
+- [x] Analyzer emits `svelte_element_invalid_this` warning for string-literal `this="..."` while still compiling (test: `svelte_element_invalid_this_string`; existing `svelte_element_static_tag` remains green)
 
 ## Out of scope
 
@@ -86,6 +88,9 @@
 - [x] `svelte_element_static_class_attr`
 - [x] `svelte_element_static_tag`
 - [x] `async_svelte_element`
-- [ ] `svelte_element_dynamic_xmlns`
-- [ ] `svelte_element_dev_invalid_tag`
-- [ ] `svelte_element_dev_void_children`
+- [x] `svelte_element_dynamic_xmlns`
+- [x] `svelte_element_dev_invalid_tag`
+- [x] `svelte_element_dev_void_children`
+- [x] `svelte_element_missing_this` (diagnostic)
+- [x] `svelte_element_missing_this_boolean` (diagnostic)
+- [x] `svelte_element_invalid_this_string` (diagnostic)

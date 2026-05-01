@@ -215,8 +215,10 @@ fn node_has_slot_attribute(node: &Node) -> bool {
     let attrs: &[Attribute] = match node {
         Node::Element(el) => &el.attributes,
         Node::SvelteFragmentLegacy(el) => &el.attributes,
-        Node::ComponentNode(cn) => &cn.attributes,
-        _ => return false,
+        _ => match node.as_component_like() {
+            Some(view) => view.attributes,
+            None => return false,
+        },
     };
     attrs
         .iter()

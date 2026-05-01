@@ -4,11 +4,5 @@
     "code": "const_tag_invalid_reference",
     "start": 130,
     "end": 133
-  },
-  {
-    "severity": "error",
-    "code": "snippet_conflict",
-    "start": 106,
-    "end": 116
   }
 ]
