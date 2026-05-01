@@ -107,6 +107,7 @@ pub fn transform_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    dev: bool,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -116,7 +117,7 @@ pub fn transform_module_program<'a, 'b>(
         None,
         0,
         false,
-        false,
+        dev,
         "",
         0,
         "(unknown)",

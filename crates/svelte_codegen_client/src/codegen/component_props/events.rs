@@ -17,8 +17,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        let cn = self.ctx.query.component_node(el_id);
-        let event_expr_offsets: Vec<(NodeId, u32)> = cn
+        let Some(view) = self
+            .ctx
+            .query
+            .component
+            .store
+            .get(el_id)
+            .as_component_like()
+        else {
+            return CodegenError::unexpected_node(el_id, "component-like");
+        };
+        let event_expr_offsets: Vec<(NodeId, u32)> = view
             .attributes
             .iter()
             .filter_map(|attr| {

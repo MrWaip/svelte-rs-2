@@ -1,11 +1,12 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 7/8 use cases
-- **Tests**: 7/8 green
-- Last updated: 2026-04-29
+- **Working**: 8/8 use cases
+- **Tests**: 8/8 green
+- Last updated: 2026-05-01
 - Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
 - Member-target legacy state mutations inside template expressions (`{obj.x++}`, `{obj.x += n}`) lower through `rewrite_legacy_state_member_update` / `rewrite_legacy_state_member_assignment`, dispatched from `template_rewrites::rewrite_template_enter` alongside the existing deep-store member rewrites. Same helpers serve script-body traversal, ensuring identical lowering across both contexts.
+- Each-item indirect propagation lives in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::promote_each_sources_to_legacy_state` (`EachSourcePromoter::visit_each_block`): when an each-item is mutated, collection symbols are promoted to legacy state and indirect links are recorded via `add_each_item_indirect_source`, so member-mutations emit `$.invalidate_inner_signals(() => $.get(items))` through the existing legacy coarse-wrap path.
 
 ## Source
 
@@ -59,7 +60,7 @@
 - [x] Destructured top-level legacy declarations lower through the legacy-state declarator path so each bound name becomes its own mutable source and destructuring reassignment lowers to `$.set(...)` updates, rather than staying plain destructured locals (test: `legacy_reactivity_destructure`)
 - [x] Member update of a top-level legacy state inside a template expression (`{obj.x++}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x++)))`. `template_rewrites::rewrite_template_enter` dispatches `rewrite_legacy_state_member_update` for `UpdateExpression`; legacy coarse-wrap activates because `UpdateExpression` maps to `ExpressionKind::Update` (test: `legacy_state_member_update_in_template`).
 - [x] Compound member assignment to a top-level legacy state inside a template expression (`{obj.x += 5}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x += 5)))` via the same template-enter dispatch into `rewrite_legacy_state_member_assignment` (test: `legacy_state_member_compound_in_template`).
-- [ ] Each-item member mutation through `{#each items as item}` propagates an indirect-binding back to the iterated collection. Reference upgrades the collection declarator from `let items = [...]` to `let items = $.mutable_source([...])` and wraps each member-mutation in the template effect with `$.invalidate_inner_signals(() => $.get(items))` (mirroring `legacy_indirect_bindings` in `reference/compiler/phases/scope.js`). Owning area: a new propagation pass in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/legacy.rs` plus a tail-emit hook in `crates/svelte_codegen_client/src/codegen/expr.rs::maybe_wrap_legacy_coarse_expr`. (test: `smoke_legacy_contextual_mutations_all` — ignored)
+- [x] Each-item member mutation through `{#each items as item}` propagates an indirect-binding back to the iterated collection. Collection declarator upgrades from `let items = [...]` to `let items = $.mutable_source([...])` and member-mutations in the template effect emit `$.invalidate_inner_signals(() => $.get(items))` (mirrors reference `legacy_indirect_bindings`). Owning area: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::EachSourcePromoter` + standard legacy coarse-wrap codegen (test: `smoke_legacy_contextual_mutations_all`).
 
 ## Out of scope
 

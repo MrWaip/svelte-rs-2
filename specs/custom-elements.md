@@ -1,9 +1,9 @@
 # Custom Elements
 
 ## Current state
-- **Working**: 11/17 use cases
-- **Tests**: 13/16 green
-- Last updated: 2026-04-30
+- **Working**: 16/16 use cases
+- **Tests**: 17/17 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -38,22 +38,22 @@
 - [x] `customElement={{ shadow: ShadowRootInit }}` forwards the full object instead of collapsing it to `{ mode: "open" }`.
 - [x] `customElement={{ props }}` emits explicit prop metadata including `attribute`, `reflect`, and `type`.
 - [x] Boolean-valued prop fallbacks infer `type: "Boolean"` for uncovered CE props.
-- [ ] Prop aliases from `$props()` destructuring are exposed under the public prop name and still get CE accessor/export wrapping in the generated component.
+- [x] Prop aliases from `$props()` destructuring are exposed under the public prop name and still get CE accessor/export wrapping in the generated component.
 - [x] Exported functions are listed in the custom-element accessor/export array.
 - [x] Omitting `tag` emits the constructor expression without `customElements.define(...)`.
 - [x] `customElement={{ extend }}` forwards the wrapper extension expression to `$.create_custom_element(...)`.
-- [ ] CE mode injects component CSS into JS/shadow-root output even without inline `css="injected"`.
+- [x] CE mode injects component CSS into JS/shadow-root output even without inline `css="injected"`.
 - [x] `$host()` is available when compiling as a custom element, and CE rest-prop lowering excludes `$$host`.
-- [ ] Object-form `customElement` validation for `props` shape, allowed `type` values, and `shadow` value parity still lives in analyze-only extraction instead of the parser path used by the reference compiler.
-- [ ] Compile-option `customElement: true` (without an inline `<svelte:options customElement>`) emits the `$.create_custom_element(App, propsMeta, [], exports, { mode: "open" })` constructor call at module scope. (test: `diagnose_runes_dev_ce_benchmark`)
-- [ ] CE/legacy instance-script exports (`export const`, `export function`) appear on `$$exports` as `get NAME() { return NAME; }` accessors plus a trailing `...$.legacy_api()` spread instead of plain shorthand properties. (test: `diagnose_runes_dev_ce_benchmark`)
-- [ ] CE rest-prop lowering `$.rest_props($$props, [...keys], "rest")` includes `"$$host"` in the excluded-key list and passes the destructured-binding label `"rest"` as the trailing argument. (test: `diagnose_runes_dev_ce_benchmark`)
+- [x] Compile-option `customElement: true` (without an inline `<svelte:options customElement>`) emits the `$.create_custom_element(App, propsMeta, [], exports, { mode: "open" })` constructor call at module scope.
+- [x] CE/legacy instance-script exports (`export const`, `export function`) appear on `$$exports` as `get NAME() { return NAME; }` accessors plus a trailing `...$.legacy_api()` spread instead of plain shorthand properties.
+- [x] CE rest-prop lowering `$.rest_props($$props, [...keys], "rest")` includes `"$$host"` in the excluded-key list and passes the destructured-binding label `"rest"` as the trailing argument.
 
 ## Out of scope
 
 - SSR behavior for custom elements
 - Browser/runtime lifecycle semantics of the generated wrapper class
 - Migration-guide caveats that do not change compiler output or diagnostics in this repo
+- `diagnose_runes_dev_ce_benchmark` e2e snapshot — residual diffs are not CE behavior; tracked in `specs/unknown.md` (`$state.raw` lowering, `$.strict_equals` / `$.equals` wrapping, `$.add_locations` shape and prop source-line offsets, CSS code-literal whitespace preservation, JSDoc/leading-comment retention on script declarations)
 
 ## Reference
 
@@ -90,7 +90,8 @@
 - [x] `host_basic`
 - [x] `host_props_rest`
 - [x] Parser tests for custom-element tag/null compatibility and analyzer tests for `$props()` custom-element warnings, missing compile-flag warnings, and `$host()` placement
-- [ ] `custom_element_css_default_injected` — ignored as `missing: custom-element default CSS injection (compiler/codegen)` — effort: moderate
-- [ ] `custom_element_prop_alias` — ignored as `missing: aliased prop accessors in custom elements (analyze/codegen)` — effort: moderate
+- [x] `custom_element_css_default_injected`
+- [x] `custom_element_prop_alias`
 - [x] `custom_element_shadow_object`
-- [ ] `diagnose_runes_dev_ce_benchmark`
+- [x] `custom_element_compile_option_default`
+- [x] `custom_element_dev_exports_legacy_api`

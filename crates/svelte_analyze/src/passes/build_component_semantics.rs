@@ -100,6 +100,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     self.walk_fragment(el.fragment, ctx);
                 }
                 Node::ComponentNode(node) => self.walk_component_node(node, ctx),
+                Node::SvelteComponentLegacy(node) => self.walk_svelte_component_legacy(node, ctx),
                 Node::ExpressionTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
@@ -177,11 +178,6 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     self.walk_fragment(node.fragment, ctx);
                 }
                 Node::SvelteElement(el) => {
-                    if let (Some(expr), Some(tag_ref)) =
-                        (self.parsed.pending_expr(el.tag_span.start), el.tag.as_ref())
-                    {
-                        ctx.visit_js_expression(tag_ref, expr);
-                    }
                     self.walk_attributes(&el.attributes, ctx);
                     ctx.enter_fragment_scope_by_id(el.fragment);
                     self.walk_fragment(el.fragment, ctx);
@@ -359,9 +355,25 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         node: &'d svelte_ast::ComponentNode,
         ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
-        let component_has_slot_attr =
-            attrs_static_slot_name(&node.attributes, self.source).is_some();
-        let cn_fragment = node.fragment;
+        self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
+    }
+
+    fn walk_svelte_component_legacy(
+        &mut self,
+        node: &'d svelte_ast::SvelteComponentLegacy,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
+    }
+
+    fn walk_component_like(
+        &mut self,
+        attributes: &'d [Attribute],
+        cn_fragment: svelte_ast::FragmentId,
+        legacy_slots: &'d [svelte_ast::LegacySlot],
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        let component_has_slot_attr = attrs_static_slot_name(attributes, self.source).is_some();
         let default_scope = if component_has_slot_attr {
             ctx.register_fragment_scope_by_id(cn_fragment);
             ctx.current_scope()
@@ -371,7 +383,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             scope
         };
 
-        for attr in &node.attributes {
+        for attr in attributes {
             match attr {
                 Attribute::LetDirectiveLegacy(dir) => {
                     ctx.enter_scope(default_scope);
@@ -387,7 +399,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         ctx.leave_scope();
 
         let slot_frags: Vec<svelte_ast::FragmentId> =
-            node.legacy_slots.iter().map(|s| s.fragment).collect();
+            legacy_slots.iter().map(|s| s.fragment).collect();
         for slot_fid in slot_frags {
             let scope = ctx.enter_fragment_scope_by_id(slot_fid);
             debug_assert_eq!(scope, ctx.current_scope());
@@ -688,15 +700,18 @@ fn collect_ref_ids(
                     }
                     walk_fragment(component, el.fragment, expr_ids, stmt_ids);
                 }
-                Node::ComponentNode(cn) => {
-                    for attr in &cn.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    let cn_fragment = cn.fragment;
-                    let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
-                    walk_fragment(component, cn_fragment, expr_ids, stmt_ids);
-                    for fid in slot_frags {
-                        walk_fragment(component, fid, expr_ids, stmt_ids);
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                    if let Some(view) = component.store.get(id).as_component_like() {
+                        for attr in view.attributes {
+                            walk_attr(attr, expr_ids, stmt_ids);
+                        }
+                        let cn_fragment = view.fragment;
+                        let slot_frags: Vec<_> =
+                            view.legacy_slots.iter().map(|s| s.fragment).collect();
+                        walk_fragment(component, cn_fragment, expr_ids, stmt_ids);
+                        for fid in slot_frags {
+                            walk_fragment(component, fid, expr_ids, stmt_ids);
+                        }
                     }
                 }
                 Node::ExpressionTag(t) => {
@@ -752,7 +767,7 @@ fn collect_ref_ids(
                     walk_fragment(component, node.fragment, expr_ids, stmt_ids);
                 }
                 Node::SvelteElement(el) => {
-                    if let Some(tag_ref) = el.tag.as_ref() {
+                    if let Some(tag_ref) = el.this_expr() {
                         record_expr(tag_ref, el.tag_span.start, expr_ids);
                     }
                     for attr in &el.attributes {

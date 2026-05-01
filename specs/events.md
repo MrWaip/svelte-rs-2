@@ -1,9 +1,9 @@
 # Events
 
 ## Current state
-- **Working**: 11/12 use cases
-- **Tests**: 23/28 green
-- Last updated: 2026-04-11
+- **Working**: 13/13 use cases
+- **Tests**: 28/28 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -33,7 +33,8 @@
 - [x] `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` accept both Svelte 5 event attributes and legacy `on:` syntax in the same special-element code paths (tests: `svelte_window_event_attr`, `svelte_document_events`, `svelte_body_event_attr`)
 - [x] Legacy `nonpassive` modifier preserves an undefined capture slot and passes explicit passive `false` (`on_directive_nonpassive`)
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
-- [ ] Non-runes mode must not emit `event_directive_deprecated` for legacy `on:` directives on `<svelte:window>` (diagnostic test: `on_directive_not_deprecated_in_non_runes_mode_svelte_window`)
+- [x] Non-runes mode must not emit `event_directive_deprecated` for legacy `on:` directives on `<svelte:window>` (diagnostic test: `on_directive_not_deprecated_in_non_runes_mode_svelte_window`)
+- [x] Legacy `on:` directive errors (`event_handler_invalid_modifier`, `event_handler_invalid_modifier_combination`, `mixed_event_handler_syntaxes`) report the full directive span, and diagnostic-parity harness collapses output to the first error to mirror reference's throw-on-first-error semantics (tests: `on_directive_invalid_modifier`, `on_directive_passive_nonpassive_conflict`, `on_directive_mixed_syntax`, `on_directive_mixed_syntax_svelte_element`)
 - [x] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` is implemented in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
 - [x] Dev-mode `$.apply()` + event handler naming (tests: `event_attr_dev_apply`, `on_directive_dev_apply`)
 
@@ -79,10 +80,10 @@
 - [x] `on_directive`
 - [x] `on_directive_dev_apply`
 - [x] `on_directive_modifiers`
-- [ ] `on_directive_invalid_modifier`
-- [ ] `on_directive_passive_nonpassive_conflict`
-- [ ] `on_directive_mixed_syntax`
-- [ ] `on_directive_mixed_syntax_svelte_element`
+- [x] `on_directive_invalid_modifier`
+- [x] `on_directive_passive_nonpassive_conflict`
+- [x] `on_directive_mixed_syntax`
+- [x] `on_directive_mixed_syntax_svelte_element`
 - [x] `on_directive_deprecated_in_runes_mode`
 - [x] `svelte_body_event_attr`
 - [x] `svelte_body_event_legacy`
@@ -92,4 +93,4 @@
 - [x] `svelte_window_event_legacy`
 - [x] `on_directive_nonpassive`
 - [x] `component_events` (covered in `specs/component-node.md`)
-- [ ] `on_directive_not_deprecated_in_non_runes_mode_svelte_window` (diagnose-diagnostics: pending fix)
+- [x] `on_directive_not_deprecated_in_non_runes_mode_svelte_window`

@@ -7,6 +7,7 @@ mod dispatch;
 mod events_common;
 mod expression_attr;
 mod on_directive_legacy;
+mod option_value;
 mod regular;
 mod spread_attr;
 mod style_directive;

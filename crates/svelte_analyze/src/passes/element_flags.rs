@@ -208,19 +208,39 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 
+    fn visit_svelte_component_legacy(
+        &mut self,
+        cn: &svelte_ast::SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        self.process_component_like(cn.id, svelte_ast::SVELTE_COMPONENT, &cn.attributes, ctx);
+    }
+
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
+        self.process_component_like(cn.id, cn.name.as_str(), &cn.attributes, ctx);
+    }
+}
+
+impl<'src> ElementFlagsVisitor<'src> {
+    fn process_component_like(
+        &self,
+        cn_id: svelte_ast::NodeId,
+        cn_name: &str,
+        attributes: &[Attribute],
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let data = &mut *ctx.data;
-        let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
+        let base_name = cn_name.split('.').next().unwrap_or(cn_name);
         if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
             data.elements
                 .flags
                 .component_binding_sym
-                .insert(cn.id, sym_id);
+                .insert(cn_id, sym_id);
         }
-        if cn.name == SVELTE_SELF {
-            data.elements.flags.is_svelte_self.insert(cn.id);
+        if cn_name == SVELTE_SELF {
+            data.elements.flags.is_svelte_self.insert(cn_id);
         }
-        for attr in &cn.attributes {
+        for attr in attributes {
             let css_prop_name: Option<&str> = match attr {
                 Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
                 Attribute::StringAttribute(a) if a.name.starts_with("--") => Some(&a.name),
@@ -238,7 +258,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     data.elements
                         .flags
                         .component_css_props
-                        .get_or_default(cn.id)
+                        .get_or_default(cn_id)
                         .push((name.to_string(), attr.id(), expr_id));
                 }
                 continue;
@@ -278,9 +298,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         continue;
                     };
 
+                    let bind_id = b.id;
                     if bind_semantics.is_this() {
                         ComponentPropKind::BindThis {
-                            bind_id: b.id,
+                            bind_id,
                             expr_id: b.expression.id(),
                         }
                     } else {
@@ -310,16 +331,24 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         if is_store {
                             ComponentPropKind::Bind {
                                 name: b.name.clone(),
-                                bind_id: b.id,
+                                bind_id,
                                 expr_id: b.expression.id(),
                                 mode: ComponentBindMode::StoreSub,
                                 expr_name: expr_text,
+                                requires_ownership_emit: false,
                             }
                         } else {
+                            let source_lookup_name = match &expr_text {
+                                Some(text) if crate::utils::is_simple_identifier(text.trim()) => {
+                                    text.trim().to_string()
+                                }
+                                Some(_) => b.name.clone(),
+                                None => b.name.clone(),
+                            };
                             let root = data.scoping.root_scope_id();
                             let mode = data
                                 .scoping
-                                .find_binding(root, &b.name)
+                                .find_binding(root, &source_lookup_name)
                                 .map(|sym| {
                                     let decl = data
                                         .reactivity
@@ -343,12 +372,28 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                                     }
                                 })
                                 .unwrap_or(ComponentBindMode::Plain);
+                            let requires_ownership_emit = data.script.dev
+                                && matches!(mode, ComponentBindMode::PropSource)
+                                && !data
+                                    .output
+                                    .ignore_data
+                                    .is_ignored(bind_id, "ownership_invalid_binding");
+                            if requires_ownership_emit {
+                                data.output.needs_component_bind_ownership = true;
+                            }
+                            let source_ident = match &expr_text {
+                                Some(text) if crate::utils::is_simple_identifier(text.trim()) => {
+                                    Some(text.trim().to_string())
+                                }
+                                _ => None,
+                            };
                             ComponentPropKind::Bind {
                                 name: b.name.clone(),
-                                bind_id: b.id,
+                                bind_id,
                                 expr_id: b.expression.id(),
                                 mode,
-                                expr_name: None,
+                                expr_name: source_ident,
+                                requires_ownership_emit,
                             }
                         }
                     }
@@ -374,7 +419,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             data.elements
                 .flags
                 .component_props
-                .get_or_default(cn.id)
+                .get_or_default(cn_id)
                 .push(ComponentPropInfo { kind, is_dynamic });
         }
     }

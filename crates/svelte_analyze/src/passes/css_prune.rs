@@ -289,12 +289,14 @@ fn collect_css_prune_edges_in_fragment(
             Node::SlotElementLegacy(el) => {
                 collect_css_prune_edges_in_fragment(el.fragment, component, data, edges);
             }
-            Node::ComponentNode(node) => {
-                let snippets = component_possible_snippets(node, data);
-                let node_id = node.id;
-                let f = node.fragment;
-                record_possible_snippets(node_id, &snippets, edges, true);
-                collect_css_prune_edges_in_fragment(f, component, data, edges);
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = component.store.get(id).as_component_like() {
+                    let snippets = component_possible_snippets(view.id, view.attributes, data);
+                    let cn_id = view.id;
+                    let f = view.fragment;
+                    record_possible_snippets(cn_id, &snippets, edges, true);
+                    collect_css_prune_edges_in_fragment(f, component, data, edges);
+                }
             }
             Node::IfBlock(block) => {
                 collect_css_prune_edges_in_fragment(block.consequent, component, data, edges);
@@ -394,13 +396,14 @@ fn render_tag_possible_snippets(id: NodeId, data: &AnalysisData) -> Vec<NodeId> 
 }
 
 fn component_possible_snippets(
-    node: &svelte_ast::ComponentNode,
+    node_id: NodeId,
+    attributes: &[Attribute],
     data: &AnalysisData,
 ) -> Vec<NodeId> {
     let mut resolved = true;
     let mut snippets = Vec::new();
 
-    for attr in &node.attributes {
+    for attr in attributes {
         match attr {
             Attribute::SpreadAttribute(_) | Attribute::BindDirective(_) => {
                 resolved = false;
@@ -427,7 +430,7 @@ fn component_possible_snippets(
     }
 
     if resolved {
-        for &snippet_id in data.template.snippets.component_snippets(node.id) {
+        for &snippet_id in data.template.snippets.component_snippets(node_id) {
             if !snippets.contains(&snippet_id) {
                 snippets.push(snippet_id);
             }
@@ -1304,6 +1307,13 @@ fn collect_descendants_from_node(
             seen_snippets,
             out,
         ),
+        Node::SvelteComponentLegacy(cn) => collect_descendants_from_fragment(
+            pruner,
+            cn.fragment,
+            adjacent_only,
+            seen_snippets,
+            out,
+        ),
         Node::SnippetBlock(block) => {
             collect_descendants_from_fragment(pruner, block.body, adjacent_only, seen_snippets, out)
         }
@@ -1354,7 +1364,7 @@ fn collect_descendants_from_fragment(
                     collect_descendants_from_node(pruner, id, false, seen_snippets, out);
                 }
             }
-            Node::RenderTag(_) | Node::ComponentNode(_) => {
+            Node::RenderTag(_) | Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
                 collect_descendants_from_node(pruner, id, adjacent_only, seen_snippets, out);
             }
             _ => {}
@@ -1475,7 +1485,7 @@ fn collect_possible_siblings(
                         return;
                     }
                 }
-                Node::ComponentNode(_) => {
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
@@ -1524,7 +1534,7 @@ fn collect_possible_siblings(
         current_id = owner_id;
 
         match pruner.component.store.get(owner_id) {
-            Node::ComponentNode(_) => {
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
                 current_fragment = pruner.component.store.node_fragment(owner_id);
                 continue;
             }
@@ -1612,6 +1622,15 @@ fn get_possible_nested_siblings(
             fragments.push(block.body);
         }
         Node::ComponentNode(cn) => {
+            fragments.push(cn.fragment);
+            let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
+            for snippet_id in snippet_ids {
+                if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
+                    fragments.push(block.body);
+                }
+            }
+        }
+        Node::SvelteComponentLegacy(cn) => {
             fragments.push(cn.fragment);
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {

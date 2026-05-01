@@ -122,7 +122,9 @@ pub fn analyze_with_options<'a>(
     data.script.accessors = options.accessors;
     data.script.immutable = options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
-    data.output.custom_element = options.custom_element
+    data.script.dev = options.dev;
+    data.output.custom_element_compile_flag = options.custom_element;
+    data.output.is_custom_element_target = options.custom_element
         || component
             .options
             .as_ref()
@@ -229,7 +231,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         .props_declaration()
         .is_some_and(|d| d.has_bindable());
     let has_stores = data.reactivity.has_store_bindings();
-    let has_ce_props = data.output.custom_element
+    let has_ce_props = data.output.is_custom_element_target
         && data
             .script
             .props_declaration()

@@ -1,9 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 23/25 use cases
-- **Tests**: 25/28 green
-- Last updated: 2026-04-30
+- **Working**: 25/25 use cases
+- **Tests**: 28/28 green
+- Last updated: 2026-05-01
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
@@ -33,8 +33,8 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_shadowing_prop` validation (tests: analyzer unit tests)
 - [x] `snippet_conflict` validation (tests: analyzer unit tests)
 - [x] `snippet_invalid_export` validation (tests: analyzer unit tests)
-- [ ] Dev-mode `{@render snippet(...)}` calls are wrapped in `$.add_svelte_meta(() => snippet(...), "render", App, line, col)` rather than emitted bare. (test: `diagnose_runes_dev_ce_benchmark`)
-- [ ] Snippet parameter object destructuring with a default-initialized nested pattern (e.g. `{ label, values = [counter], meta: { id = propsId } = {} }`) registers the destructured locals (`label`, `values`, `id`) as effect dependencies so reads inside the body are tracked. (test: `diagnose_runes_dev_ce_benchmark`)
+- [x] Dev-mode `{@render snippet(...)}` calls are wrapped in `$.add_svelte_meta(() => snippet(...), "render", App, line, col)` rather than emitted bare. (test: `tag_render_dev`)
+- [x] Dev-mode snippet parameter destructuring emits an eager-evaluation read after each leaf binding declaration (`name()` for thunk-form, `$.get(name)` for `has_default` derived form) so "Cannot access X before initialization" errors fire eagerly. Mirrors reference `SnippetBlock.js:63-67`. (test: `snippet_destructure_dev`)
 
 ## Reference
 
@@ -65,6 +65,8 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `boundary_const_in_snippet`
 - [x] `component_snippet_prop`
 - [x] `tag_snippet_dev`
+- [x] `tag_render_dev`
+- [x] `snippet_destructure_dev`
 - [x] `snippet_object_destructure`
 - [x] `snippet_array_destructure`
 - [x] `snippet_mixed_params`
@@ -72,7 +74,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_computed_key_destructure`
 - [x] `snippet_parameter_assignment` (analyzer)
 - [x] `validate_snippet_parameter_assignment`
-- [ ] `validate_snippet_parameter_assignment_in_nested_target`
+- [x] `validate_snippet_parameter_assignment_in_nested_target`
 - [x] `snippet_invalid_rest_parameter` (analyzer)
 - [x] `validate_snippet_invalid_rest_parameter`
 - [x] `snippet_shadowing_prop` (analyzer)
@@ -87,4 +89,3 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `validate_snippet_children_without_other_content_has_no_conflict`
 - [x] `snippet_destructure_default_state_ref`
 - [x] `snippet_destructure_default_mutated_state_ref`
-- [ ] `diagnose_runes_dev_ce_benchmark`

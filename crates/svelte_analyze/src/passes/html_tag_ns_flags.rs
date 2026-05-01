@@ -45,8 +45,10 @@ fn walk_fragment(
             Node::SvelteFragmentLegacy(el) => {
                 walk_fragment(el.fragment, store, in_svg_ns, in_mathml, data);
             }
-            Node::ComponentNode(cn) => {
-                walk_fragment(cn.fragment, store, false, false, data);
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    walk_fragment(view.fragment, store, false, false, data);
+                }
             }
             Node::IfBlock(block) => {
                 walk_fragment(block.consequent, store, in_svg_ns, in_mathml, data);

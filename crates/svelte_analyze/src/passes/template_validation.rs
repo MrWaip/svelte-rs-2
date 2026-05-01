@@ -4,14 +4,15 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
-    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock,
-    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT,
-    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock,
-    SvelteBody, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow, Text,
-    TransitionDirection, TransitionDirective, UseDirective, is_svg,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
+    ConstTag, DebugTag, EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag,
+    IfBlock, KeyBlock, LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY,
+    SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
+    SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text, TransitionDirection, TransitionDirective,
+    UseDirective, is_svg,
 };
-use svelte_component_semantics::SymbolFlags;
+use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -695,11 +696,12 @@ impl TemplateValidationVisitor {
                 ParentKind::IfBlock | ParentKind::EachBlock | ParentKind::SnippetBlock => true,
                 ParentKind::ComponentNode => {
                     if let Node::ComponentNode(cn) = ctx.store.get(p.id) {
-                        cn.name != SVELTE_SELF && cn.name != SVELTE_COMPONENT
+                        cn.name != SVELTE_SELF
                     } else {
                         false
                     }
                 }
+                ParentKind::SvelteComponentLegacy => false,
                 _ => false,
             });
 
@@ -731,7 +733,7 @@ impl TemplateValidationVisitor {
     }
 
     fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if ctx.data.output.custom_element {
+        if ctx.data.output.is_custom_element_target {
             return;
         }
 
@@ -746,7 +748,7 @@ impl TemplateValidationVisitor {
     fn note_render_tag(&mut self, ctx: &mut VisitContext<'_, '_>) {
         self.saw_render_tag = true;
 
-        if ctx.data.output.custom_element {
+        if ctx.data.output.is_custom_element_target {
             return;
         }
 
@@ -845,12 +847,49 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 DiagnosticKind::ConstTagInvalidPlacement,
                 tag.span,
             ));
+            return;
+        }
+
+        if !ctx.data.script.experimental_async
+            && let Some(parsed) = ctx.parsed()
+            && let Some(stmt) = parsed.stmt(tag.decl.id())
+            && let Some(span) = first_await_span_in_stmt(stmt, tag.decl.span.start)
+        {
+            ctx.warnings_mut()
+                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
         }
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);
+
+        if el.name == "title"
+            && ctx
+                .data
+                .parent(el.id)
+                .is_some_and(|p| p.kind == ParentKind::SvelteHead)
+        {
+            for attr in &el.attributes {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::TitleIllegalAttribute,
+                    attr.span(),
+                ));
+            }
+            let invalid_spans: Vec<Span> = ctx
+                .store
+                .fragment_nodes(el.fragment)
+                .iter()
+                .filter_map(|&id| {
+                    let child = ctx.store.get(id);
+                    (!matches!(child, Node::Text(_) | Node::ExpressionTag(_))).then(|| child.span())
+                })
+                .collect();
+            for span in invalid_spans {
+                ctx.warnings_mut()
+                    .push(Diagnostic::error(DiagnosticKind::TitleInvalidContent, span));
+            }
+        }
 
         if el.name == "dialog" {
             self.dialog_depth += 1;
@@ -929,10 +968,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_name_lowercase(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
+        check_event_handler_value(&el.attributes, ctx);
 
         if el.name.contains('-') {
             check_attribute_quoted(&el.attributes, ctx);
         }
+
+        check_node_invalid_placement(el, ctx);
 
         let _ = has_spread;
     }
@@ -945,7 +987,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
-        if ctx.runes && !ctx.data.output.custom_element {
+        if ctx.runes && !ctx.data.output.is_custom_element_target {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SlotElementDeprecated,
                 el.span,
@@ -1015,6 +1057,21 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
+        check_event_handler_value(&cn.attributes, ctx);
+    }
+
+    fn visit_svelte_component_legacy(
+        &mut self,
+        cn: &svelte_ast::SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        self.maybe_warn_legacy_special_element(SVELTE_COMPONENT, cn.span, ctx);
+        validate_svelte_component_legacy_this(cn, ctx);
+        check_component_directives(&cn.attributes, ctx);
+        check_component_attribute_warnings(&cn.attributes, ctx);
+        check_attribute_unquoted_sequence(&cn.attributes, ctx);
+        check_attribute_quoted(&cn.attributes, ctx);
+        check_event_handler_value(&cn.attributes, ctx);
     }
 
     fn visit_svelte_fragment_legacy(
@@ -1097,8 +1154,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
+        validate_svelte_element_this(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
+        check_event_handler_value(&el.attributes, ctx);
+    }
+
+    fn visit_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {
+        for attr in &head.attributes {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteHeadIllegalAttribute,
+                attr.span(),
+            ));
+        }
     }
 
     fn visit_svelte_window(&mut self, window: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {
@@ -1128,6 +1196,36 @@ impl TemplateVisitor for TemplateValidationVisitor {
         );
     }
 
+    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, ctx: &mut VisitContext<'_, '_>) {
+        const VALID: &[&str] = &["onerror", "failed", "pending"];
+
+        for attr in &boundary.attributes {
+            let invalid_attr = match attr {
+                Attribute::StringAttribute(a) => !VALID.contains(&a.name.as_str()),
+                Attribute::ExpressionAttribute(a) => !VALID.contains(&a.name.as_str()),
+                Attribute::BooleanAttribute(a) => !VALID.contains(&a.name.as_str()),
+                Attribute::ConcatenationAttribute(a) => !VALID.contains(&a.name.as_str()),
+                _ => true,
+            };
+
+            if invalid_attr {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SvelteBoundaryInvalidAttribute,
+                    attr.span(),
+                ));
+                return;
+            }
+
+            if !matches!(attr, Attribute::ExpressionAttribute(_)) {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SvelteBoundaryInvalidAttributeValue,
+                    attr.span(),
+                ));
+                return;
+            }
+        }
+    }
+
     fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
         self.emit_mixed_syntax_if_needed(ctx);
     }
@@ -1137,6 +1235,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
         attr: &ExpressionAttribute,
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        if ctx
+            .data
+            .attr_expression(attr.id)
+            .is_some_and(|info| info.has_await())
+        {
+            emit_template_await_experimental(ctx, &attr.expression);
+        }
+
         if attr.event_name.is_some()
             && let Some(Expression::Identifier(ident)) =
                 ctx.parsed().and_then(|p| p.expr(attr.expression.id()))
@@ -1176,35 +1282,43 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 .is_some_and(|info| info.is_identifier())
         };
 
-        let Some(expr_shape) = bind_expression_shape(dir, ctx) else {
-            if is_identifier_target {
-                validate_bind_identifier_value(dir, ctx);
-            }
-            validate_bind_group_binding(dir, ctx);
-            return;
-        };
+        let shape = bind_expression_shape(dir, ctx);
+        let mut shape_invalid = false;
 
-        match expr_shape {
-            BindExpressionShape::Sequence { len, has_parens } => {
-                validate_bind_sequence_expression(dir, len, has_parens, ctx);
-                return;
+        match shape {
+            None => {
+                if is_identifier_target {
+                    validate_bind_identifier_value(dir, ctx);
+                }
+                validate_bind_group_binding(dir, ctx);
             }
-            BindExpressionShape::Invalid => {
+            Some(BindExpressionShape::Sequence { len, has_parens }) => {
+                validate_bind_sequence_expression(dir, len, has_parens, ctx);
+            }
+            Some(BindExpressionShape::Invalid) => {
                 emit_bind_error(
                     ctx,
                     dir.expression.span,
                     DiagnosticKind::BindInvalidExpression,
                 );
-                return;
+                shape_invalid = true;
             }
-            BindExpressionShape::IdentifierOrMember => {}
+            Some(BindExpressionShape::IdentifierOrMember) => {
+                if is_identifier_target {
+                    validate_bind_identifier_value(dir, ctx);
+                }
+                validate_bind_group_binding(dir, ctx);
+            }
         }
 
-        if is_identifier_target {
-            validate_bind_identifier_value(dir, ctx);
+        if !shape_invalid
+            && ctx
+                .data
+                .attr_expression(dir.id)
+                .is_some_and(|info| info.has_await())
+        {
+            emit_directive_await_diagnostic(ctx, &dir.expression);
         }
-
-        validate_bind_group_binding(dir, ctx);
     }
 
     fn visit_let_directive_legacy(
@@ -1232,7 +1346,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_, '_>) {
-        let Some(expression_span) = dir.expression.as_ref().map(|r| r.span) else {
+        let Some(expression) = dir.expression.as_ref() else {
             return;
         };
 
@@ -1241,10 +1355,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             .attr_expression(dir.id)
             .is_some_and(|info| info.has_await())
         {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::IllegalAwaitExpression,
-                expression_span,
-            ));
+            emit_directive_await_diagnostic(ctx, expression);
         }
     }
 
@@ -1291,16 +1402,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span)
+        if let Some(expression) = dir.expression.as_ref()
             && ctx
                 .data
                 .attr_expression(dir.id)
                 .is_some_and(|info| info.has_await())
         {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::IllegalAwaitExpression,
-                expression_span,
-            ));
+            emit_directive_await_diagnostic(ctx, expression);
         }
     }
 
@@ -1309,10 +1417,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
         dir: &OnDirectiveLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let is_component = ctx
-            .data
-            .parent(dir.id)
-            .is_some_and(|p| p.kind == ParentKind::ComponentNode);
+        let parent_kind = ctx.data.parent(dir.id).map(|p| p.kind);
+        let is_component = parent_kind == Some(ParentKind::ComponentNode);
+        let is_regular_or_svelte_element = matches!(
+            parent_kind,
+            Some(ParentKind::Element | ParentKind::SvelteElement)
+        );
 
         if !is_component {
             let list = EVENT_MODIFIERS.join(", ");
@@ -1320,7 +1430,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 if !EVENT_MODIFIERS.contains(&modifier.as_str()) {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::EventHandlerInvalidModifier { list: list.clone() },
-                        dir.name_span,
+                        dir.span,
                     ));
                 }
             }
@@ -1334,12 +1444,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         modifier1: "passive".to_string(),
                         modifier2: "nonpassive".to_string(),
                     },
-                    dir.name_span,
+                    dir.span,
                 ));
             }
         }
 
-        if ctx.runes && !is_component {
+        if ctx.runes && is_regular_or_svelte_element {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::EventDirectiveDeprecated {
                     name: dir.name.clone(),
@@ -1351,7 +1461,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if !is_component && let Some(state) = self.element_event_state.last_mut() {
             state
                 .first_on_directive
-                .get_or_insert((dir.name_span, dir.name.clone()));
+                .get_or_insert((dir.span, dir.name.clone()));
         }
     }
 
@@ -1394,6 +1504,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 tag.span,
             ));
         }
+
+        if ctx
+            .data
+            .expression(tag.id)
+            .is_some_and(|info| info.has_await())
+        {
+            emit_template_await_experimental(ctx, &tag.expression);
+        }
     }
 
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
@@ -1402,6 +1520,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_, '_>) {
         check_opening_sigil(tag.span, b'@', ctx);
+    }
+
+    fn visit_attach_tag(&mut self, tag: &AttachTag, ctx: &mut VisitContext<'_, '_>) {
+        if ctx
+            .data
+            .attr_expression(tag.id)
+            .is_some_and(|info| info.has_await())
+        {
+            emit_directive_await_diagnostic(ctx, &tag.expression);
+        }
     }
 
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -1467,16 +1595,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        if let Some(expression_span) = dir.expression.as_ref().map(|r| r.span)
+        if let Some(expression) = dir.expression.as_ref()
             && ctx
                 .data
                 .attr_expression(dir.id)
                 .is_some_and(|info| info.has_await())
         {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::IllegalAwaitExpression,
-                expression_span,
-            ));
+            emit_directive_await_diagnostic(ctx, expression);
         }
 
         let (parent, grandparent) = {
@@ -1864,6 +1989,7 @@ fn validate_bind_sequence_expression(
             dir.expression.span,
             DiagnosticKind::BindGroupInvalidExpression,
         );
+        return;
     }
 
     if has_parens {
@@ -1874,6 +2000,7 @@ fn validate_bind_sequence_expression(
                 name: dir.name.clone(),
             },
         );
+        return;
     }
 
     if len != 2 {
@@ -2169,11 +2296,117 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
     let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
         return;
     };
-    if component_has_implicit_default_children(component, Some(block.id), ctx).is_some() {
+    if should_emit_snippet_conflict(component, block, ctx) {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SnippetConflict,
             block.decl.span,
         ));
+    }
+}
+
+fn should_emit_snippet_conflict(
+    component: &ComponentNode,
+    snippet: &SnippetBlock,
+    ctx: &VisitContext<'_, '_>,
+) -> bool {
+    let parsed = ctx.parsed();
+    let async_mode = ctx.data.script.experimental_async;
+
+    let mut has_implicit = false;
+    let mut only_const_tags = true;
+    let mut const_tag_symbols: Vec<SymbolId> = Vec::new();
+
+    for child_id in ctx.store.fragment_nodes(component.fragment) {
+        let child_id = *child_id;
+        if child_id == snippet.id {
+            continue;
+        }
+        let child = ctx.store.get(child_id);
+        match child {
+            Node::Text(text) if text.value(ctx.source).trim().is_empty() => {}
+            Node::Comment(_) => {}
+            Node::SnippetBlock(_) => {}
+            Node::ConstTag(tag) => {
+                has_implicit = true;
+                if !only_const_tags || !async_mode {
+                    continue;
+                }
+                let Some(parsed) = parsed else {
+                    only_const_tags = false;
+                    continue;
+                };
+                let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
+                    parsed.stmt(tag.decl.id())
+                else {
+                    only_const_tags = false;
+                    continue;
+                };
+                let Some(declarator) = decl.declarations.first() else {
+                    only_const_tags = false;
+                    continue;
+                };
+                walk_bindings(&declarator.id, |v| const_tag_symbols.push(v.symbol));
+            }
+            _ => {
+                has_implicit = true;
+                only_const_tags = false;
+            }
+        }
+    }
+
+    if !has_implicit {
+        for slot in &component.legacy_slots {
+            for wrapper_id in ctx.store.fragment_nodes(slot.fragment) {
+                let wrapper_id = *wrapper_id;
+                if wrapper_id == snippet.id {
+                    continue;
+                }
+                let child = ctx.store.get(wrapper_id);
+                if matches!(child, Node::Element(_) | Node::SvelteFragmentLegacy(_)) {
+                    continue;
+                }
+                has_implicit = true;
+                only_const_tags = false;
+                break;
+            }
+            if has_implicit {
+                break;
+            }
+        }
+    }
+
+    if !has_implicit {
+        return false;
+    }
+
+    if !async_mode || !only_const_tags || const_tag_symbols.is_empty() {
+        return true;
+    }
+
+    let Some(snippet_scope) = ctx.data.scoping.fragment_scope_by_id(snippet.body) else {
+        return true;
+    };
+
+    for sym in &const_tag_symbols {
+        for ref_id in ctx.data.scoping.get_resolved_reference_ids(*sym) {
+            let r = ctx.data.scoping.get_reference(*ref_id);
+            if scope_is_within(ctx, r.scope_id(), snippet_scope) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn scope_is_within(ctx: &VisitContext<'_, '_>, mut scope: ScopeId, target: ScopeId) -> bool {
+    loop {
+        if scope == target {
+            return true;
+        }
+        match ctx.data.scoping.scope_parent_id(scope) {
+            Some(parent) => scope = parent,
+            None => return false,
+        }
     }
 }
 
@@ -2262,22 +2495,93 @@ fn is_bidi_control(ch: char) -> bool {
     )
 }
 
+fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
+    let Some(parent_element) = ctx.element_name().map(str::to_owned) else {
+        return;
+    };
+
+    let mut past_parent = false;
+    let mut only_warn = false;
+    let mut ancestors: Vec<String> = vec![parent_element.clone()];
+
+    let path: Vec<_> = ctx.ancestors().copied().collect();
+
+    for ancestor in path {
+        match ancestor.kind {
+            ParentKind::IfBlock
+            | ParentKind::EachBlock
+            | ParentKind::AwaitBlock
+            | ParentKind::KeyBlock => {
+                only_warn = true;
+            }
+            _ => {}
+        }
+
+        if !past_parent {
+            if ancestor.kind == ParentKind::Element {
+                let name = match ctx.store.get(ancestor.id).as_element() {
+                    Some(e) => e.name.clone(),
+                    None => continue,
+                };
+                if name == parent_element {
+                    if let Some(message) =
+                        crate::utils::html_tree_validation::is_tag_valid_with_parent(
+                            &el.name,
+                            &parent_element,
+                        )
+                    {
+                        emit_invalid_placement(el, message, only_warn, ctx);
+                    }
+                    past_parent = true;
+                }
+            }
+        } else if ancestor.kind == ParentKind::Element {
+            let name = match ctx.store.get(ancestor.id).as_element() {
+                Some(e) => e.name.clone(),
+                None => continue,
+            };
+            ancestors.push(name);
+            let refs: Vec<&str> = ancestors.iter().map(String::as_str).collect();
+            if let Some(message) =
+                crate::utils::html_tree_validation::is_tag_valid_with_ancestor(&el.name, &refs)
+            {
+                emit_invalid_placement(el, message, only_warn, ctx);
+            }
+        } else if matches!(
+            ancestor.kind,
+            ParentKind::ComponentNode | ParentKind::SvelteElement | ParentKind::SnippetBlock
+        ) {
+            break;
+        }
+    }
+}
+
+fn emit_invalid_placement(
+    el: &Element,
+    message: String,
+    only_warn: bool,
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    if only_warn {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::NodeInvalidPlacementSsr { message },
+            el.span,
+        ));
+    } else {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::NodeInvalidPlacement { message },
+            el.span,
+        ));
+    }
+}
+
 fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<String> {
     let parent = ctx
         .data
         .ancestors(id)
         .find(|parent| parent.kind == ParentKind::Element)?;
     let element = ctx.store.get(parent.id).as_element()?;
-    let name = element.name.as_str();
-
-    if matches!(
-        name,
-        "table" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" | "select" | "datalist"
-    ) {
-        Some(format!("`<{}>` cannot contain text nodes", name))
-    } else {
-        None
-    }
+    crate::utils::html_tree_validation::is_tag_valid_with_parent("#text", element.name.as_str())
 }
 
 fn is_each_block_var_ref(
@@ -2596,7 +2900,7 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
             self.found = true;
             return;
         }
-        walk::walk_assignment_expression(self, expr);
+        self.visit_expression(&expr.right);
     }
 
     fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
@@ -2647,6 +2951,61 @@ fn contains_invalid_snippet_param_assignment(expr: &Expression<'_>, data: &Analy
     let mut visitor = InvalidSnippetParamAssignmentVisitor { data, found: false };
     visitor.visit_expression(expr);
     visitor.found
+}
+
+fn validate_svelte_component_legacy_this(
+    el: &svelte_ast::SvelteComponentLegacy,
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    let this_attr = el.attributes.iter().find(|a| a.name() == Some("this"));
+
+    match this_attr {
+        None => {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteComponentMissingThis,
+                el.span,
+            ));
+        }
+        Some(Attribute::BooleanAttribute(b)) => {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteComponentMissingThis,
+                b.span,
+            ));
+        }
+        Some(Attribute::StringAttribute(s)) => {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteComponentInvalidThis,
+                s.span,
+            ));
+        }
+        _ => {}
+    }
+}
+
+fn validate_svelte_element_this(el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
+    let this_attr = el.attributes.iter().find(|a| a.name() == Some("this"));
+
+    match this_attr {
+        None => {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteElementMissingThis,
+                Span::new(el.span.start, el.span.start),
+            ));
+        }
+        Some(Attribute::BooleanAttribute(b)) => {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteElementMissingThis,
+                b.span,
+            ));
+        }
+        Some(Attribute::StringAttribute(s)) => {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::SvelteElementInvalidThis,
+                s.span,
+            ));
+        }
+        _ => {}
+    }
 }
 
 fn check_plain_attr_warnings(
@@ -2756,6 +3115,24 @@ fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContex
         ctx.warnings_mut().push(Diagnostic::warning(
             DiagnosticKind::AttributeIllegalColon,
             span,
+        ));
+    }
+}
+
+fn check_event_handler_value(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
+    for attr in attrs {
+        let Some(name) = attr.name() else {
+            continue;
+        };
+        if name.len() <= 2 || !name.starts_with("on") {
+            continue;
+        }
+        if matches!(attr, Attribute::ExpressionAttribute(_)) {
+            continue;
+        }
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::AttributeInvalidEventHandler,
+            attr.span(),
         ));
     }
 }
@@ -2882,6 +3259,56 @@ fn warn_missing_attr(el: &Element, attrs: &[&str]) -> Diagnostic {
         },
         el.span,
     )
+}
+
+fn emit_directive_await_diagnostic(ctx: &mut VisitContext<'_, '_>, expression: &ExprRef) {
+    let span = first_await_span(ctx, expression).unwrap_or(expression.span);
+    let kind = if ctx.data.script.experimental_async {
+        DiagnosticKind::IllegalAwaitExpression
+    } else {
+        DiagnosticKind::ExperimentalAsync
+    };
+    ctx.warnings_mut().push(Diagnostic::error(kind, span));
+}
+
+fn emit_template_await_experimental(ctx: &mut VisitContext<'_, '_>, expression: &ExprRef) {
+    if ctx.data.script.experimental_async {
+        return;
+    }
+    let span = first_await_span(ctx, expression).unwrap_or(expression.span);
+    ctx.warnings_mut()
+        .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+}
+
+fn first_await_span(ctx: &VisitContext<'_, '_>, expression: &ExprRef) -> Option<Span> {
+    let parsed = ctx.parsed()?;
+    let expr = parsed.expr(expression.id())?;
+    let mut visitor = FirstAwaitVisitor { found: None };
+    visitor.visit_expression(expr);
+    let s = visitor.found?;
+    Some(Span::new(
+        expression.span.start + s.start,
+        expression.span.start + s.end,
+    ))
+}
+
+fn first_await_span_in_stmt(stmt: &Statement<'_>, source_offset: u32) -> Option<Span> {
+    let mut visitor = FirstAwaitVisitor { found: None };
+    visitor.visit_statement(stmt);
+    let s = visitor.found?;
+    Some(Span::new(source_offset + s.start, source_offset + s.end))
+}
+
+struct FirstAwaitVisitor {
+    found: Option<oxc_span::Span>,
+}
+
+impl<'a> Visit<'a> for FirstAwaitVisitor {
+    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+        if self.found.is_none() {
+            self.found = Some(expr.span);
+        }
+    }
 }
 
 #[cfg(test)]

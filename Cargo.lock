@@ -1365,6 +1365,7 @@ dependencies = [
 name = "svelte_span"
 version = "0.1.0"
 dependencies = [
+ "oxc_span",
  "serde",
 ]
 

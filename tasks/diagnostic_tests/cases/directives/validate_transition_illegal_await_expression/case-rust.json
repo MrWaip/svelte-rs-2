@@ -1,7 +1,7 @@
 [
   {
     "severity": "error",
-    "code": "illegal_await_expression",
+    "code": "experimental_async",
     "start": 142,
     "end": 154
   }

@@ -19,7 +19,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let el = self.ctx.query.svelte_element(el_id);
         let static_tag = el.static_tag;
         let tag_span = el.tag_span;
-        let attributes = el.attributes.clone();
+        let attributes: Vec<Attribute> = el
+            .attributes
+            .iter()
+            .filter(|a| !a.is_svelte_element_this())
+            .cloned()
+            .collect();
 
         let tag_async_plan =
             super::super::data_structures::AsyncEmissionPlan::for_node(self.ctx, el_id);

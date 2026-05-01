@@ -52,6 +52,12 @@ pub(in crate::codegen) fn async_value_thunk<'a>(
 ) -> Expression<'a> {
     if let Expression::AwaitExpression(await_expr) = expr {
         let inner = await_expr.unbox().argument;
+        if let Expression::CallExpression(call) = &inner
+            && call.arguments.is_empty()
+            && let Expression::Identifier(ident) = &call.callee
+        {
+            return ctx.b.rid_expr(ident.name.as_str());
+        }
         ctx.b
             .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
     } else {

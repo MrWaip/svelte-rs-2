@@ -2,6 +2,7 @@ pub(crate) mod attributes;
 pub(crate) mod binding_pattern;
 pub(crate) mod ce_config;
 pub(crate) mod events;
+pub(crate) mod html_tree_validation;
 pub(crate) mod ident_gen;
 pub(crate) mod legacy_slot;
 pub(crate) mod property_key;

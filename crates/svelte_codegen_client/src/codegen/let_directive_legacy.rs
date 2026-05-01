@@ -8,11 +8,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         owner_id: NodeId,
     ) -> Vec<oxc_ast::ast::Statement<'a>> {
-        let attrs: &[Attribute] = match self.ctx.query.component.store.get(owner_id) {
+        let node = self.ctx.query.component.store.get(owner_id);
+        let attrs: &[Attribute] = match node {
             Node::Element(el) => &el.attributes,
             Node::SvelteFragmentLegacy(el) => &el.attributes,
-            Node::ComponentNode(cn) => &cn.attributes,
-            _ => return Vec::new(),
+            _ => match node.as_component_like() {
+                Some(view) => view.attributes,
+                None => return Vec::new(),
+            },
         };
         let let_dirs: Vec<svelte_ast::LetDirectiveLegacy> = attrs
             .iter()
@@ -34,18 +37,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &self,
         component_id: NodeId,
     ) -> bool {
-        let cn = match self.ctx.query.component.store.get(component_id) {
-            Node::ComponentNode(cn) => cn,
-            _ => return false,
+        let Some(view) = self
+            .ctx
+            .query
+            .component
+            .store
+            .get(component_id)
+            .as_component_like()
+        else {
+            return false;
         };
-        let has_static_slot = cn
+        let has_static_slot = view
             .attributes
             .iter()
             .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"));
         if has_static_slot {
             return false;
         }
-        cn.attributes
+        view.attributes
             .iter()
             .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
     }

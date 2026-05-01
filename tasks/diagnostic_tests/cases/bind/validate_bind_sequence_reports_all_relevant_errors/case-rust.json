@@ -4,17 +4,5 @@
     "code": "bind_group_invalid_expression",
     "start": 85,
     "end": 138
-  },
-  {
-    "severity": "error",
-    "code": "bind_invalid_expression",
-    "start": 85,
-    "end": 138
-  },
-  {
-    "severity": "error",
-    "code": "bind_invalid_parens",
-    "start": 85,
-    "end": 138
   }
 ]

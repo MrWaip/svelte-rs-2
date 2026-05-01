@@ -9,8 +9,8 @@ use svelte_analyze::{
     ExprSite, ExpressionInfo, IdentGen, JsAst, RuntimePlan,
 };
 use svelte_ast::{
-    AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
-    RenderTag, SvelteBoundary, SvelteElement,
+    AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag,
+    SvelteBoundary, SvelteElement,
 };
 use svelte_transform::TransformData;
 
@@ -33,9 +33,6 @@ impl<'a> CodegenQuery<'a> {
 
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.component.store.element(id)
-    }
-    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
-        self.component.store.component_node(id)
     }
     pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
         self.component.store.if_block(id)

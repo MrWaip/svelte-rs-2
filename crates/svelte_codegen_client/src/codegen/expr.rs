@@ -12,7 +12,7 @@ fn expr_ref_for_node(node: &Node) -> Option<&ExprRef> {
         Node::EachBlock(b) => Some(&b.expression),
         Node::KeyBlock(b) => Some(&b.expression),
         Node::AwaitBlock(b) => Some(&b.expression),
-        Node::SvelteElement(el) => el.tag.as_ref(),
+        Node::SvelteElement(el) => el.this_expr(),
         _ => None,
     }
 }

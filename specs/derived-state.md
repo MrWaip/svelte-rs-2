@@ -1,9 +1,9 @@
 # $derived / $derived.by
 
 ## Current state
-- **Working**: 20/21 use cases
-- **Tests**: 37/38 green
-- Last updated: 2026-04-30
+- **Working**: 21/21 use cases
+- **Tests**: 38/38 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -19,7 +19,7 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] Constructor assignment `this.x = $derived(...)`
 - [x] Read access rewritten to `$.get(x)`
 - [x] Dev mode `$.tag($.derived(...), "name")` wrapping
-- [ ] Dev mode `$.tag($.derived(...), "name")` wrapping also fires for `$derived` declarations in `.svelte.js` / `.svelte.ts` standalone modules (currently broken: `compile_module` does not thread `dev` into the codegen-side transform pipeline) (test: `module_dev_derived_tag`)
+- [x] Dev mode `$.tag($.derived(...), "name")` wrapping also fires for `$derived` declarations in `.svelte.js` / `.svelte.ts` standalone modules (test: `module_dev_derived_tag`)
 - [x] Async `$derived(await expr)` → `await $.async_derived(async () => expr)`
 - [x] Async destructured `$derived(await expr)` with intermediate variable
 - [x] Async dev mode with label and location args
@@ -68,7 +68,7 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] `derived_nested_getter`
 - [x] `derived_shorthand_property`
 - [x] `tag_derived_basic`
-- [ ] `module_dev_derived_tag`
+- [x] `module_dev_derived_tag`
 - [x] `tag_derived_by`
 - [x] `state_constructor_read_derived`
 - [x] `event_handler_derived_with_class_directives`

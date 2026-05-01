@@ -44,8 +44,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let attrs: &[svelte_ast::Attribute] = match n {
                         svelte_ast::Node::Element(el) => &el.attributes,
                         svelte_ast::Node::SvelteElement(el) => &el.attributes,
-                        svelte_ast::Node::ComponentNode(cn) => &cn.attributes,
-                        _ => continue,
+                        _ => match n.as_component_like() {
+                            Some(view) => view.attributes,
+                            None => continue,
+                        },
                     };
                     for a in attrs {
                         if a.id() == val_attr_id {

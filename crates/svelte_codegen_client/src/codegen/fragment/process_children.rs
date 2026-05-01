@@ -149,6 +149,7 @@ fn emit_child_node<'a, 'ctx>(
             Ok(())
         }
         Node::ComponentNode(_)
+        | Node::SvelteComponentLegacy(_)
         | Node::SvelteElement(_)
         | Node::SvelteBoundary(_)
         | Node::SlotElementLegacy(_)
@@ -211,12 +212,13 @@ fn emit_concat_set<'a, 'ctx>(
     node_name: &str,
     parts: &[ConcatPart],
 ) -> Result<()> {
-    let is_dyn = parts.iter().any(|p| match p {
-        ConcatPart::Expr(id) => cg.ctx.is_dynamic(*id),
-        _ => false,
-    });
+    use crate::codegen::data_structures::TemplateMemoState;
+    use svelte_analyze::ExprSite;
 
+    let mut is_dyn = false;
+    let mut memo_deps = TemplateMemoState::default();
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(parts.len());
+
     for part in parts {
         if let Some(s) = ctx.static_text_of(part) {
             if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
@@ -224,21 +226,48 @@ fn emit_concat_set<'a, 'ctx>(
             } else {
                 tpl_parts.push(TemplatePart::Str(s.to_string()));
             }
-        } else if let ConcatPart::Expr(id) = part {
-            let expr = cg.take_node_expr(*id)?;
-            if let Some(known) = cg.try_resolve_known_from_expr(&expr) {
-                if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                    prev.push_str(&known);
-                } else {
-                    tpl_parts.push(TemplatePart::Str(known));
-                }
-            } else {
-                let defined = cg.is_node_expr_definitely_defined(*id, &expr);
-                let info = cg.ctx.expression(*id).cloned();
-                let wrapped = cg.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
-                tpl_parts.push(TemplatePart::Expr(wrapped, defined));
-            }
+            continue;
         }
+        let ConcatPart::Expr(id) = part else { continue };
+
+        if cg.ctx.is_dynamic(*id) {
+            is_dyn = true;
+        }
+
+        let expr = cg.take_node_expr(*id)?;
+        if let Some(known) = cg.try_resolve_known_from_expr(&expr) {
+            if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
+                prev.push_str(&known);
+            } else {
+                tpl_parts.push(TemplatePart::Str(known));
+            }
+            continue;
+        }
+
+        let defined = cg.is_node_expr_definitely_defined(*id, &expr);
+        let info = cg.ctx.expression(*id).cloned();
+        let expr = cg.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
+
+        let (needs_memo, has_await) = cg
+            .ctx
+            .expr_deps(ExprSite::Node(*id))
+            .map(|d| (d.needs_memo, d.has_await()))
+            .unwrap_or((false, false));
+
+        let effective_expr = if needs_memo {
+            memo_deps.push_node_deps(cg.ctx, *id);
+            let cloned = cg.ctx.b.clone_expr(&expr);
+            if has_await {
+                let index = memo_deps.async_values_push(cloned);
+                memo_deps.async_param_expr(cg.ctx, index)
+            } else {
+                let index = memo_deps.sync_values_push(cloned);
+                memo_deps.sync_param_expr(cg.ctx, index)
+            }
+        } else {
+            expr
+        };
+        tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
     }
 
     let b = &cg.ctx.state.b;
@@ -253,9 +282,30 @@ fn emit_concat_set<'a, 'ctx>(
     };
 
     if is_dyn {
-        state
-            .update
-            .push(b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(tpl_expr)]));
+        if memo_deps.has_deps() {
+            let param_names = memo_deps.param_names();
+            let params = if param_names.is_empty() {
+                cg.ctx.b.no_params()
+            } else {
+                cg.ctx.b.params(param_names.iter().map(|s| s.as_str()))
+            };
+            let set_text = cg
+                .ctx
+                .b
+                .call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(tpl_expr)]);
+            let callback = cg.ctx.b.arrow_expr(params, [set_text]);
+            crate::codegen::effect::emit_effect_call_extern(
+                cg.ctx,
+                "$.template_effect",
+                callback,
+                &mut memo_deps,
+                &mut state.after_update,
+            );
+        } else {
+            state
+                .update
+                .push(b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(tpl_expr)]));
+        }
     } else {
         let member = b.static_member(b.rid_expr(node_name), "nodeValue");
         state
