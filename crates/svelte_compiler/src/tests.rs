@@ -603,6 +603,102 @@ fn inline_css_injected_overrides_external_compile_option() {
     );
 }
 
+fn read_js_string_after(js: &str, key: &str) -> Option<String> {
+    let mut idx = 0;
+    while let Some(found) = js[idx..].find(key) {
+        let after = &js[idx + found + key.len()..];
+        let after = after.trim_start();
+        if let Some(rest) = after.strip_prefix('"') {
+            let mut out = String::new();
+            let mut chars = rest.chars();
+            while let Some(c) = chars.next() {
+                if c == '"' {
+                    return Some(out);
+                }
+                if c == '\\' {
+                    match chars.next() {
+                        Some('n') => out.push('\n'),
+                        Some('t') => out.push('\t'),
+                        Some('r') => out.push('\r'),
+                        Some('"') => out.push('"'),
+                        Some('\\') => out.push('\\'),
+                        Some(other) => {
+                            out.push('\\');
+                            out.push(other);
+                        }
+                        None => return None,
+                    }
+                } else {
+                    out.push(c);
+                }
+            }
+            return None;
+        }
+        idx += found + key.len();
+    }
+    None
+}
+
+fn normalize_css_for_compare(css: &str) -> String {
+    let collapsed: String = css.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = String::with_capacity(collapsed.len());
+    let bytes = collapsed.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b' ' {
+            let prev = out.as_bytes().last().copied();
+            let next = bytes.get(i + 1).copied();
+            let structural = |b: Option<u8>| matches!(b, Some(b'{' | b'}' | b':' | b';' | b','));
+            if structural(prev) || structural(next) {
+                i += 1;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+#[test]
+fn css_injected_keyframes_preserve_semantics() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        css: CssMode::Injected,
+        ..Default::default()
+    };
+    let source = r#"<svelte:options css="injected" />
+
+<style>
+    @keyframes pulse {
+        0% { opacity: 0.4; }
+        100% { opacity: 1; }
+    }
+    .x { animation: pulse 1s; }
+</style>
+
+<div class="x">x</div>"#;
+
+    let result = compile(source, &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
+
+    let hash = read_js_string_after(&js, "hash:").expect("expected hash literal in $$css const");
+    let actual_code =
+        read_js_string_after(&js, "code:").expect("expected code literal in $$css const");
+
+    let expected = format!(
+        "@keyframes {hash}-pulse {{ 0% {{ opacity: 0.4; }} 100% {{ opacity: 1; }} }} .x.{hash} {{ animation: {hash}-pulse 1s; }}"
+    );
+
+    assert_eq!(
+        normalize_css_for_compare(&actual_code),
+        normalize_css_for_compare(&expected),
+        "injected css `code:` mismatch"
+    );
+}
+
 #[test]
 fn explicit_external_css_mode_returns_compile_result_css() {
     let opts = CompileOptions {

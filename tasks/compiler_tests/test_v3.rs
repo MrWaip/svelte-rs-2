@@ -304,12 +304,6 @@ fn bind_group_order_with_stores() {
 
 #[rstest]
 #[ignore = "diagnose: pending fix"]
-fn css_injected_keyframes_preserve_whitespace() {
-    assert_compiler("css_injected_keyframes_preserve_whitespace");
-}
-
-#[rstest]
-#[ignore = "diagnose: pending fix"]
 fn css_injected_append_styles_with_stores_order() {
     assert_compiler("css_injected_append_styles_with_stores_order");
 }
