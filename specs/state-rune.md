@@ -3,7 +3,7 @@
 ## Current state
 - **Working**: 43/44 use cases
 - **Tests**: 49/50 green
-- Last updated: 2026-04-30
+- Last updated: 2026-05-01
 
 ## Source
 Audit of existing implementation
@@ -124,7 +124,7 @@ Audit of existing implementation
 - [x] `validate_state_referenced_locally_no_warning_for_proxy_state`
 - [x] `validate_state_referenced_locally_for_state_raw`
 - [x] `validate_state_referenced_locally_no_warning_across_fn_boundary_state`
-- [ ] `validate_state_invalid_export_for_reassigned_state_export_specifier`
+- [x] `validate_state_invalid_export_for_reassigned_state_export_specifier`
 - [x] `validate_state_invalid_export_for_reassigned_state_default_export`
 - [x] `validate_state_invalid_export_no_error_for_default_export_without_reassignment`
 - [x] `validate_state_eager_no_args`

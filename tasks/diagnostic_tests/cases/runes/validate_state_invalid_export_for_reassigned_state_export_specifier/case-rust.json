@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "error",
+    "code": "state_invalid_export",
+    "start": 59,
+    "end": 64
+  }
+]

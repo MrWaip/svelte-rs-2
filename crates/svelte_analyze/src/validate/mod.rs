@@ -37,6 +37,15 @@ pub fn validate(
     if let Some(module_program) = &parsed.module_program {
         let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
         runes::validate_module_props_runes(data, module_program, offset, runes, diags);
+        if let Some(module_scope) = data.scoping.module_scope_id() {
+            runes::validate_module_invalid_export_specifiers(
+                data,
+                module_program,
+                module_scope,
+                offset,
+                diags,
+            );
+        }
         stores::validate_module(data, module_program, offset, diags);
         validate_perf_class_warnings(module_program, offset, 0, diags);
     }
@@ -86,6 +95,13 @@ pub fn validate_standalone_module(
     diags: &mut Vec<Diagnostic>,
 ) {
     runes::validate(data, program, offset, runes, diags);
+    runes::validate_module_invalid_export_specifiers(
+        data,
+        program,
+        data.scoping.root_scope_id(),
+        offset,
+        diags,
+    );
     stores::validate_standalone_module(data, program, offset, diags);
     validate_perf_class_warnings(program, offset, 0, diags);
 }

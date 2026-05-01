@@ -282,6 +282,69 @@ fn validate_invalid_export(
     }
 }
 
+pub(super) fn validate_module_invalid_export_specifiers(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    scope_id: oxc_semantic::ScopeId,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    validate_invalid_export_specifiers(
+        data,
+        program,
+        scope_id,
+        offset,
+        diags,
+        || DiagnosticKind::DerivedInvalidExport,
+        |data, sym_id| matches!(data.binding_semantics(sym_id), BindingSemantics::Derived(_)),
+    );
+    validate_invalid_export_specifiers(
+        data,
+        program,
+        scope_id,
+        offset,
+        diags,
+        || DiagnosticKind::StateInvalidExport,
+        is_reassigned_state_export,
+    );
+}
+
+fn validate_invalid_export_specifiers(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    scope_id: oxc_semantic::ScopeId,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+    make_kind: impl Fn() -> DiagnosticKind + Copy,
+    predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
+) {
+    for stmt in &program.body {
+        let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt else {
+            continue;
+        };
+        if export.declaration.is_some() {
+            continue;
+        }
+        for spec in &export.specifiers {
+            let (name, span) = match &spec.local {
+                ModuleExportName::IdentifierReference(id) => (id.name.as_str(), id.span),
+                ModuleExportName::IdentifierName(id) => (id.name.as_str(), id.span),
+                ModuleExportName::StringLiteral(_) => continue,
+            };
+            let Some(sym_id) = data.scoping.find_binding(scope_id, name) else {
+                continue;
+            };
+            if !predicate(data, sym_id) {
+                continue;
+            }
+            let span = Span::new(span.start + offset, span.end + offset);
+            if !crate::validate::span_already_taken(diags, span) {
+                diags.push(Diagnostic::error(make_kind(), span));
+            }
+        }
+    }
+}
+
 fn validate_invalid_named_export(
     data: &AnalysisData,
     export: &ExportNamedDeclaration<'_>,
