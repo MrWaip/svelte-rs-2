@@ -56,16 +56,6 @@ impl<'a> Parser<'a> {
                         ));
                     }
 
-                    if name.len() > 2
-                        && name.as_bytes().starts_with(b"on")
-                        && !matches!(html_attr.value, token::AttributeValue::ExpressionTag(_))
-                    {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeInvalidEventHandler,
-                            html_attr.name_span,
-                        ));
-                    }
-
                     track_duplicate(
                         &mut seen,
                         ("attr", name),
@@ -332,25 +322,19 @@ impl<'a> Parser<'a> {
         attributes
     }
 
-    pub(crate) fn extract_this_attribute(
-        attributes: &mut Vec<svelte_ast::Attribute>,
-    ) -> (Span, bool) {
-        let pos = attributes.iter().position(|attr| match attr {
-            svelte_ast::Attribute::ExpressionAttribute(a) => a.name == "this",
-            svelte_ast::Attribute::StringAttribute(a) => a.name == "this",
-            _ => false,
-        });
-
-        if let Some(idx) = pos {
-            let attr = attributes.remove(idx);
+    pub(crate) fn classify_this_attribute(attributes: &[svelte_ast::Attribute]) -> (Span, bool) {
+        for attr in attributes {
             match attr {
-                svelte_ast::Attribute::ExpressionAttribute(a) => (a.expression.span, false),
-                svelte_ast::Attribute::StringAttribute(a) => (a.value_span, true),
-                _ => unreachable!(),
+                svelte_ast::Attribute::ExpressionAttribute(a) if a.name == "this" => {
+                    return (a.expression.span, false);
+                }
+                svelte_ast::Attribute::StringAttribute(a) if a.name == "this" => {
+                    return (a.value_span, true);
+                }
+                _ => {}
             }
-        } else {
-            (Span::new(0, 0), false)
         }
+        (Span::new(0, 0), false)
     }
 
     fn convert_concat_parts(&mut self, parts: &[token::ConcatenationPart]) -> Vec<ConcatPart> {

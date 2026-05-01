@@ -24,6 +24,13 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub events: Vec<EventRaw>,
     pub svelte_component_this: Option<Expression<'a>>,
     pub memo_decls: Vec<Statement<'a>>,
+
+    pub ownership_bindings: Vec<OwnershipBinding<'a>>,
+}
+
+pub(in super::super) struct OwnershipBinding<'a> {
+    pub name: String,
+    pub source_ident: &'a str,
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -45,6 +52,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             events: Vec::new(),
             svelte_component_this: None,
             memo_decls: Vec::new(),
+            ownership_bindings: Vec::new(),
         };
         let mut memo_counter: u32 = 0;
 
@@ -105,9 +113,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     name,
                     mode,
                     expr_name,
+                    requires_ownership_emit,
                     ..
                 } => {
-                    self.emit_component_prop_bind(el_id, &name, mode, expr_name, &mut out.items)?;
+                    self.emit_component_prop_bind(
+                        el_id,
+                        &name,
+                        mode,
+                        expr_name,
+                        requires_ownership_emit,
+                        &mut out.items,
+                        &mut out.ownership_bindings,
+                    )?;
                 }
                 ComponentPropKind::BindThis { bind_id, .. } => {
                     out.bind_this = Some(bind_id);

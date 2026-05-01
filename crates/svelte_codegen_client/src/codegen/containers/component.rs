@@ -1,5 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast::{Node, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
+use svelte_ast::{NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::EmitState;
@@ -15,20 +15,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         _existing_var: Option<&str>,
     ) -> Result<String> {
-        let cn = self.ctx.query.component_node(el_id);
-        let cn_name = cn.name.clone();
+        let (cn_name, span_start, cn_fragment, named_slots) = {
+            let Some(view) = self
+                .ctx
+                .query
+                .component
+                .store
+                .get(el_id)
+                .as_component_like()
+            else {
+                return CodegenError::unexpected_node(el_id, "component-like");
+            };
+            let named_slots: Vec<(String, NodeId)> = view
+                .legacy_slots
+                .iter()
+                .map(|slot| {
+                    (
+                        slot.name.clone(),
+                        self.ctx.query.component.fragment_nodes(slot.fragment)[0],
+                    )
+                })
+                .collect();
+            (
+                view.name.to_string(),
+                view.span.start,
+                view.fragment,
+                named_slots,
+            )
+        };
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
-        let named_slots: Vec<(String, NodeId)> = cn
-            .legacy_slots
-            .iter()
-            .map(|slot| {
-                (
-                    slot.name.clone(),
-                    self.ctx.query.component.fragment_nodes(slot.fragment)[0],
-                )
-            })
-            .collect();
         let is_dynamic = self.ctx.is_dynamic_component(el_id) || cn_name == SVELTE_COMPONENT;
 
         let mut props = self.build_component_props(el_id, &cn_name)?;
@@ -43,10 +59,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
 
-        let cn_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::ComponentNode(cn) => cn.fragment,
-            _ => return CodegenError::unexpected_node(el_id, "ComponentNode"),
-        };
         let default_has_let = self.default_slot_has_let_directive_legacy(el_id);
         let children_body = if default_has_let {
             self.build_component_default_children_with_let(ctx, el_id, cn_fragment)?
@@ -60,6 +72,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             slot_entries.push(ObjProp::KeyValue(key, self.ctx.b.bool_expr(true)));
         }
         if let Some(arrow) = children_body {
+            let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
             if default_has_let {
                 props
                     .items
@@ -86,6 +99,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             match self.emit_slot_fragment_legacy_component_only_dont_use(ctx, el_id, slot_el_id)? {
                 SlotFragmentOutcome::Empty => continue,
                 SlotFragmentOutcome::Arrow(arrow) => {
+                    let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
                     let key = self.ctx.b.alloc_str(&slot_name);
                     slot_entries.push(ObjProp::KeyValue(key, arrow));
                 }
@@ -108,7 +122,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let props_expr = self.build_props_expr(props.items);
-        let span_start = self.ctx.query.component_node(el_id).span.start;
 
         if is_dynamic {
             return self.emit_dynamic_component(
@@ -121,6 +134,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 props_expr,
                 snippet_children.decls,
                 props.memo_decls,
+                props.ownership_bindings,
                 span_start,
             );
         }
@@ -153,15 +167,50 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.add_svelte_meta_with_extra(final_expr, span_start, "component", Some(extra_obj))
         };
 
-        if snippet_children.decls.is_empty() && props.memo_decls.is_empty() {
+        let ownership_stmts = self.build_ownership_binding_stmts(&props.ownership_bindings, callee);
+        if snippet_children.decls.is_empty()
+            && props.memo_decls.is_empty()
+            && ownership_stmts.is_empty()
+        {
             state.init.push(component_stmt);
         } else {
             let mut block = snippet_children.decls;
             block.extend(props.memo_decls);
+            block.extend(ownership_stmts);
             block.push(component_stmt);
             state.init.push(self.ctx.b.block_stmt(block));
         }
         Ok(String::new())
+    }
+
+    fn build_ownership_binding_stmts(
+        &self,
+        bindings: &[super::super::component_props::OwnershipBinding<'a>],
+        comp_id: &str,
+    ) -> Vec<Statement<'a>> {
+        bindings
+            .iter()
+            .map(|b| {
+                self.ctx.b.call_stmt(
+                    "$$ownership_validator.binding",
+                    [
+                        Arg::Str(b.name.clone()),
+                        Arg::Ident(comp_id),
+                        Arg::Ident(b.source_ident),
+                    ],
+                )
+            })
+            .collect()
+    }
+
+    fn maybe_wrap_slot_snippet_dev(&self, arrow: Expression<'a>) -> Expression<'a> {
+        if !self.ctx.state.dev {
+            return arrow;
+        }
+        let component = self.ctx.b.rid_expr(self.ctx.state.name);
+        self.ctx
+            .b
+            .call_expr("$.wrap_snippet", [Arg::Expr(component), Arg::Expr(arrow)])
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -176,6 +225,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         props_expr: Expression<'a>,
         snippet_decls: Vec<Statement<'a>>,
         memo_decls: Vec<Statement<'a>>,
+        ownership_bindings: Vec<super::super::component_props::OwnershipBinding<'a>>,
         span_start: u32,
     ) -> Result<String> {
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
@@ -207,6 +257,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             inner_call
         };
         let mut inner_body: Vec<Statement<'a>> = memo_decls;
+        inner_body
+            .extend(self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref));
         inner_body.push(self.ctx.b.expr_stmt(inner_final));
         let inner_arrow = self.ctx.b.arrow_block_expr(
             self.ctx.b.params(["$$anchor", intermediate_ref]),

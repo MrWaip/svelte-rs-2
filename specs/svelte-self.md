@@ -1,9 +1,9 @@
 # <svelte:self>
 
 ## Current state
-- **Working**: 5/9 use cases
-- **Tests**: 5/11 green
-- Last updated: 2026-04-12
+- **Working**: 8/9 use cases
+- **Tests**: 15/15 green
+- Last updated: 2026-05-01
 
 ## Source
 - ROADMAP.md Legacy Svelte 4: `<svelte:self>`
@@ -29,9 +29,9 @@
 - [x] `bind:this` lowers on `<svelte:self>` the same way as ordinary components (test: `svelte_self_bind_this`)
 - [x] Recursive self-call works inside `{#each}` blocks with prop forwarding (test: `svelte_self_each`)
 - [x] Recursive self-call works inside `{#snippet}` blocks (test: `svelte_self_snippet`)
-- [ ] `<svelte:self slot="name" />` passed to another component should lower into `$$slots.<name>` instead of the default `children` slot path; current Rust output keeps `slot="footer"` on the recursive call but still builds `children`/`$$slots.default` on the parent (test: `svelte_self_slot`, `#[ignore]`, moderate)
-- [ ] Top-level `<svelte:self>` should emit `svelte_self_invalid_placement` in both legacy and runes modes; analyzer currently emits no placement diagnostic in legacy mode and a warning-only deprecation diagnostic in runes mode (tests: `svelte_self_deprecated_warns_with_default_self_import_hint`, `svelte_self_deprecated_warns_with_configured_self_import_hint`, `svelte_self_deprecated_uses_deconflicted_component_name`, `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`, `svelte_self_deprecated_no_warn_in_legacy_mode`, needs infrastructure)
-- [ ] In runes mode, valid-placement `<svelte:self>` should still emit the deprecation warning with the correct self-import hint, including deconflicted component names and basename selection; current diagnostic coverage only exercises invalid top-level placement, so the deprecation path is still unproven in a valid context (test: none yet, needs infrastructure)
+- [x] `<svelte:self slot="name" />` passed to another component lowers into `$$slots.<name>` (test: `svelte_self_slot`)
+- [x] Top-level `<svelte:self>` emits `svelte_self_invalid_placement` in both legacy and runes modes (tests: `svelte_self_deprecated_warns_with_default_self_import_hint`, `svelte_self_deprecated_warns_with_configured_self_import_hint`, `svelte_self_deprecated_uses_deconflicted_component_name`, `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`, `svelte_self_deprecated_no_warn_in_legacy_mode`)
+- [x] In runes mode, valid-placement `<svelte:self>` emits the deprecation warning with correct self-import hint, including deconflicted component names and basename selection (tests: `svelte_self_deprecated_valid_placement_default_basename`, `svelte_self_deprecated_valid_placement_configured_filename`, `svelte_self_deprecated_valid_placement_deconflicted_name`, `svelte_self_deprecated_valid_placement_reserved_word_name`)
 
 ## Out of scope
 - SSR behavior
@@ -67,9 +67,13 @@
 - [x] `svelte_self_snippet`
 - [x] `svelte_self_props`
 - [x] `svelte_self_bind_this`
-- [ ] `svelte_self_slot`
-- [ ] `svelte_self_deprecated_warns_with_default_self_import_hint`
-- [ ] `svelte_self_deprecated_warns_with_configured_self_import_hint`
-- [ ] `svelte_self_deprecated_uses_deconflicted_component_name`
-- [ ] `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`
-- [ ] `svelte_self_deprecated_no_warn_in_legacy_mode`
+- [x] `svelte_self_slot`
+- [x] `svelte_self_deprecated_warns_with_default_self_import_hint`
+- [x] `svelte_self_deprecated_warns_with_configured_self_import_hint`
+- [x] `svelte_self_deprecated_uses_deconflicted_component_name`
+- [x] `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`
+- [x] `svelte_self_deprecated_no_warn_in_legacy_mode`
+- [x] `svelte_self_deprecated_valid_placement_default_basename`
+- [x] `svelte_self_deprecated_valid_placement_configured_filename`
+- [x] `svelte_self_deprecated_valid_placement_deconflicted_name`
+- [x] `svelte_self_deprecated_valid_placement_reserved_word_name`

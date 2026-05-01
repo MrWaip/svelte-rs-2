@@ -922,7 +922,6 @@ fn no_svelte_options() {
 }
 
 #[test]
-#[ignore = "missing: duplicate <svelte:head> validation (parser)"]
 fn svelte_head_duplicate_reports_diagnostic() {
     let diags = parse_with_diags("<svelte:head></svelte:head><svelte:head></svelte:head>");
     assert!(
@@ -934,7 +933,6 @@ fn svelte_head_duplicate_reports_diagnostic() {
 }
 
 #[test]
-#[ignore = "missing: root-only <svelte:head> placement validation (parser)"]
 fn svelte_head_invalid_placement_inside_block_reports_diagnostic() {
     let diags = parse_with_diags("{#if ok}<svelte:head></svelte:head>{/if}");
     assert!(

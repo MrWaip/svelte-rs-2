@@ -1,9 +1,9 @@
 # experimental.async
 
 ## Current state
-- **Working**: 36/36 use cases
-- **Tests**: 43/45 green
-- Last updated: 2026-04-07
+- **Working**: 47/47 use cases
+- **Tests**: 60/60 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -44,10 +44,21 @@ Audit of existing implementation (2026-03-28)
 - [x] `{await expr}` experimental template syntax — Svelte 5.36+ (covered: parser/analyze/codegen)
 - [x] `(await $.save(expr))()` — context preservation for awaits in reactive expressions (covered for template/attr expressions)
 - N/A `{#await}` dev mode — reference `AwaitBlock.js` does not use `$.apply()`; no action needed
-- [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
+- [x] `$derived` async — `svelte-ignore await_waterfall` suppression (tests: async_derived_dev_ignored, async_derived_dev_ignored_destructured)
 - [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
 - [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
 - [x] `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding in async mode; implemented via per-symbol template-declaration marking plus scope-aware identifier validation in analyze
+- [x] Emit `experimental_async` (instead of `illegal_await_expression`) at directive expression span for `use:` / `transition:` / `animate:` directives whose argument contains `await`, when `experimental.async = false` (matches reference `AwaitExpression` visitor order — throws before per-directive `illegal_await_expression`)
+- [x] `bind:` directive — emit `experimental_async` (else `illegal_await_expression`) when bind expression contains `await`; precedence by `script.experimental_async`
+- [x] `{@attach}` tag — same precedence for attach expression
+- [x] `{@const}` tag in non-async mode — same precedence for const expression
+- [x] `$derived` / `$derived.by` — emit `experimental_async` at await node when `experimental.async = false` (script analyzer)
+- [x] Top-level `await` in instance script (TLA) — emit `experimental_async` when `experimental.async = false`
+- [x] Template expression paths (`ExpressionTag`, `ExpressionAttribute`) — emit `experimental_async` at await node span when `experimental.async = false`
+- [x] Accurate await-node span (walk JS to first `AwaitExpression`) for `use:` / `transition:` / `animate:` / `bind:` directive sites
+- [x] Accurate await-node span for `{@attach}` site
+- [x] Accurate await-node span for `{@const}` site
+- [x] `{await call(args)}` ExpressionTag in fragment-text context with non-blocker callee (e.g. global `fetch`) — extract callee/args into `Memoizer.async_values` as thunk and replace `await` in template literal body with `$N` param. Reopens prior claim at line 43. Owning layer: codegen — `crates/svelte_codegen_client/src/codegen/fragment/process_children.rs::emit_concat_set` routes through `TemplateMemoState`; `expr_deps.needs_memo` no longer requires `ref_symbols` when expression has `await`; `async_value_thunk` eta-reduces `() => f()` → `f` for Identifier callee.
 
 ## Out of scope
 
@@ -117,7 +128,7 @@ Audit of existing implementation (2026-03-28)
 - [x] async_svelte_element
 - [x] async_title_basic
 - [x] attach_blockers
-- [ ] `validate_const_tag_invalid_reference_component_children_async`
+- [x] `validate_const_tag_invalid_reference_component_children_async`
 - [x] `validate_const_tag_invalid_reference_boundary_failed_async`
 - [x] `validate_const_tag_invalid_reference_boundary_pending_async`
 - [x] `validate_const_tag_invalid_reference_skipped_without_async`
@@ -138,4 +149,19 @@ Audit of existing implementation (2026-03-28)
 - [x] inline_await_basic
 - [x] inline_await_text_concat
 - [x] transition_blockers
-- [ ] async_derived_dev_ignored_destructured — destructured variant (ignored: blocked on Tier 6c `$.tag()`)
+- [x] async_derived_dev_ignored_destructured
+- [x] `validate_use_directive_illegal_await_expression`
+- [x] `validate_transition_illegal_await_expression`
+- [x] `validate_animate_directive_illegal_await_expression`
+- [x] `validate_bind_directive_illegal_await_expression`
+- [x] `validate_attach_tag_illegal_await_expression`
+- [x] `validate_const_tag_illegal_await_expression`
+- [x] `validate_expression_tag_illegal_await_expression`
+- [x] `validate_expression_attribute_illegal_await_expression`
+- [x] `validate_derived_illegal_await_expression`
+- [x] `validate_top_level_await_illegal_expression`
+- [x] `validate_bind_invalid_expression_with_await` (combo: bind shape error suppresses await diagnostic)
+- [x] `validate_const_tag_invalid_placement_with_await` (combo: placement error suppresses await diagnostic)
+- [x] `validate_derived_by_async_arrow_no_emit` (negative: await inside async arrow inside `$derived.by` does not fire)
+- [x] `validate_async_fn_decl_top_level_no_emit` (negative: await inside async fn decl at top level does not fire)
+- [x] `inline_await_global_callee`

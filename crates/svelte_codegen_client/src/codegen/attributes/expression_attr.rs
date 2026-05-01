@@ -38,6 +38,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
+        if attr.name == "value" && owner_tag == "option" {
+            let val = self.take_attr_expr(attr.id, &attr.expression)?;
+            self.emit_option_expr_value(state, owner_var, val);
+            return Ok(());
+        }
+
         let attr_id = attr.id;
         let is_dyn = self.ctx.is_dynamic_attr(attr_id);
         let needs_memo = is_dyn

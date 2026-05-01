@@ -102,33 +102,17 @@ fn walk_node<'a>(
             walk_attrs(ctx, &el.attributes, parsed);
             walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
-        Node::ComponentNode(cn) => {
-            let component_has_slot_attr =
-                attrs_static_slot_name(&cn.attributes, component.source.as_str()).is_some();
-            let default_scope = if component_has_slot_attr {
-                scope
-            } else {
-                ctx.analysis
-                    .scoping
-                    .fragment_scope_by_id(cn.fragment)
-                    .unwrap_or(scope)
-            };
-
-            for attr in &cn.attributes {
-                walk_attrs(ctx, std::slice::from_ref(attr), parsed);
-            }
-
-            walk_fragment(ctx, cn.fragment, component, parsed, default_scope);
-
-            let slot_frags: Vec<svelte_ast::FragmentId> =
-                cn.legacy_slots.iter().map(|s| s.fragment).collect();
-            for slot_fid in slot_frags {
-                let slot_scope = ctx
-                    .analysis
-                    .scoping
-                    .fragment_scope_by_id(slot_fid)
-                    .unwrap_or(scope);
-                walk_fragment(ctx, slot_fid, component, parsed, slot_scope);
+        Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+            if let Some(view) = node.as_component_like() {
+                walk_component_like(
+                    ctx,
+                    view.attributes,
+                    view.fragment,
+                    view.legacy_slots,
+                    component,
+                    parsed,
+                    scope,
+                );
             }
         }
         Node::IfBlock(block) => {
@@ -187,7 +171,7 @@ fn walk_node<'a>(
             walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
         Node::SvelteElement(el) => {
-            if let Some(tag_ref) = el.tag.as_ref() {
+            if let Some(tag_ref) = el.this_expr() {
                 record_expr(ctx, parsed, tag_ref, Some(el.id));
             }
             walk_attrs(ctx, &el.attributes, parsed);
@@ -233,6 +217,44 @@ fn record_expr<'a>(
     owner: Option<svelte_ast::NodeId>,
 ) {
     ctx.expr_handles.push((expr_ref.id(), owner));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk_component_like<'a>(
+    ctx: &mut TransformCtx<'a, '_>,
+    attributes: &[Attribute],
+    cn_fragment: svelte_ast::FragmentId,
+    legacy_slots: &[svelte_ast::LegacySlot],
+    component: &Component,
+    parsed: &mut JsAst<'a>,
+    scope: ScopeId,
+) {
+    let component_has_slot_attr =
+        attrs_static_slot_name(attributes, component.source.as_str()).is_some();
+    let default_scope = if component_has_slot_attr {
+        scope
+    } else {
+        ctx.analysis
+            .scoping
+            .fragment_scope_by_id(cn_fragment)
+            .unwrap_or(scope)
+    };
+
+    for attr in attributes {
+        walk_attrs(ctx, std::slice::from_ref(attr), parsed);
+    }
+
+    walk_fragment(ctx, cn_fragment, component, parsed, default_scope);
+
+    let slot_frags: Vec<svelte_ast::FragmentId> = legacy_slots.iter().map(|s| s.fragment).collect();
+    for slot_fid in slot_frags {
+        let slot_scope = ctx
+            .analysis
+            .scoping
+            .fragment_scope_by_id(slot_fid)
+            .unwrap_or(scope);
+        walk_fragment(ctx, slot_fid, component, parsed, slot_scope);
+    }
 }
 
 fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &JsAst<'a>) {

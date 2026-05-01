@@ -16,6 +16,7 @@ pub struct ScriptAnalysis {
     pub immutable: bool,
     pub preserve_whitespace: bool,
     pub experimental_async: bool,
+    pub dev: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
     pub proxy_state_inits: ProxyStateInits,
     pub pickled_await_offsets: PickledAwaitOffsets,
@@ -38,6 +39,7 @@ impl ScriptAnalysis {
             immutable: false,
             preserve_whitespace: false,
             experimental_async: false,
+            dev: false,
             ce_config: None,
             proxy_state_inits: ProxyStateInits::new(),
             pickled_await_offsets: PickledAwaitOffsets::new(),
@@ -137,9 +139,11 @@ pub struct OutputPlanData {
     pub needs_sanitized_legacy_slots: bool,
     pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
-    pub custom_element: bool,
+    pub is_custom_element_target: bool,
+    pub custom_element_compile_flag: bool,
     pub runtime_plan: RuntimePlan,
     pub ignore_data: IgnoreData,
+    pub needs_component_bind_ownership: bool,
 
     pub css: CssAnalysis,
 }
@@ -151,9 +155,11 @@ impl OutputPlanData {
             needs_sanitized_legacy_slots: false,
             custom_element_slot_names: Vec::new(),
             component_name: String::new(),
-            custom_element: false,
+            is_custom_element_target: false,
+            custom_element_compile_flag: false,
             runtime_plan: RuntimePlan::default(),
             ignore_data: IgnoreData::new(),
+            needs_component_bind_ownership: false,
             css: CssAnalysis::empty(node_count),
         }
     }
@@ -654,7 +660,8 @@ impl<'a> AnalysisData<'a> {
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: info.needs_memoized_value() && !info.ref_symbols().is_empty(),
+                    needs_memo: info.needs_memoized_value()
+                        && (info.has_await() || !info.ref_symbols().is_empty()),
                 })
             }
             ExprSite::Attr(id) => {

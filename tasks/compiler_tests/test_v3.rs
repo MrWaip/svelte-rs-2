@@ -297,7 +297,6 @@ fn push_binding_group_order() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn bind_group_order_with_stores() {
     assert_compiler("bind_group_order_with_stores");
 }
@@ -446,6 +445,51 @@ fn textarea_child_value_dynamic() {
 #[rstest]
 fn option_expr_child_value() {
     assert_compiler("option_expr_child_value");
+}
+
+#[rstest]
+fn option_expr_value() {
+    assert_compiler("option_expr_value");
+}
+
+#[rstest]
+fn option_concat_value() {
+    assert_compiler("option_concat_value");
+}
+
+#[rstest]
+fn option_expr_value_multi() {
+    assert_compiler("option_expr_value_multi");
+}
+
+#[rstest]
+fn bind_value_dev_named_fns() {
+    assert_compiler("bind_value_dev_named_fns");
+}
+
+#[rstest]
+fn bind_component_prop_dev_ownership() {
+    assert_compiler("bind_component_prop_dev_ownership");
+}
+
+#[rstest]
+fn bind_component_plain_prop_dev_ownership() {
+    assert_compiler("bind_component_plain_prop_dev_ownership");
+}
+
+#[rstest]
+fn bind_dynamic_component_dev_ownership() {
+    assert_compiler("bind_dynamic_component_dev_ownership");
+}
+
+#[rstest]
+fn bind_component_dev_ownership_ignore() {
+    assert_compiler("bind_component_dev_ownership_ignore");
+}
+
+#[rstest]
+fn bind_component_explicit_source() {
+    assert_compiler("bind_component_explicit_source");
 }
 
 #[rstest]
@@ -896,6 +940,16 @@ fn custom_element_no_tag() {
 #[rstest]
 fn custom_element_prop_alias() {
     assert_compiler("custom_element_prop_alias");
+}
+
+#[rstest]
+fn custom_element_compile_option_default() {
+    assert_compiler("custom_element_compile_option_default");
+}
+
+#[rstest]
+fn custom_element_dev_exports_legacy_api() {
+    assert_compiler("custom_element_dev_exports_legacy_api");
 }
 
 #[rstest]
@@ -1689,19 +1743,16 @@ fn module_compilation() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn module_dev_state_tag() {
     assert_compiler_module("module_dev_state_tag");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn module_dev_derived_tag() {
     assert_compiler_module("module_dev_derived_tag");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn module_dev_console_log_wrap() {
     assert_compiler_module("module_dev_console_log_wrap");
 }
@@ -2962,6 +3013,11 @@ fn inline_await_basic() {
 }
 
 #[rstest]
+fn inline_await_global_callee() {
+    assert_compiler("inline_await_global_callee");
+}
+
+#[rstest]
 fn inline_await_text_concat() {
     assert_compiler("inline_await_text_concat");
 }
@@ -3162,6 +3218,16 @@ fn tag_snippet_dev() {
 }
 
 #[rstest]
+fn tag_render_dev() {
+    assert_compiler("tag_render_dev");
+}
+
+#[rstest]
+fn snippet_destructure_dev() {
+    assert_compiler("snippet_destructure_dev");
+}
+
+#[rstest]
 fn snippet_object_destructure() {
     assert_compiler("snippet_object_destructure");
 }
@@ -3275,4 +3341,9 @@ fn diagnose_component_default_and_named_slot_expr() {
 #[ignore = "diagnose: pending fix"]
 fn diagnose_runes_dev_ce_benchmark() {
     assert_compiler("diagnose_runes_dev_ce_benchmark");
+}
+
+#[rstest]
+fn component_dev_default_children_wrap_snippet() {
+    assert_compiler("component_dev_default_children_wrap_snippet");
 }

@@ -40,8 +40,11 @@ const JS_UNDEFINED_NAME: &str = "undefined";
 
 pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut AnalysisData<'a>) {
     data.reactivity.set_uses_runes(data.script.runes);
-    let lr_collected =
-        build_script_semantics_v2(parsed, data, component_prop_lowering_mode(component));
+    let lr_collected = build_script_semantics_v2(
+        parsed,
+        data,
+        component_prop_lowering_mode(data.output.is_custom_element_target),
+    );
     contextual::collect_template_declarations(component, parsed, data);
     contextual::promote_each_sources_to_legacy_state(component, parsed, data);
 
@@ -851,13 +854,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 }
 
-fn component_prop_lowering_mode(component: &Component) -> PropLoweringMode {
-    component
-        .options
-        .as_ref()
-        .and_then(|options| options.custom_element.as_ref())
-        .map(|_| PropLoweringMode::CustomElement)
-        .unwrap_or(PropLoweringMode::Standard)
+fn component_prop_lowering_mode(is_custom_element: bool) -> PropLoweringMode {
+    if is_custom_element {
+        PropLoweringMode::CustomElement
+    } else {
+        PropLoweringMode::Standard
+    }
 }
 
 impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {

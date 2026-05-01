@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_element_missing_this",
+    "start": 0,
+    "end": 0
+  }
+]

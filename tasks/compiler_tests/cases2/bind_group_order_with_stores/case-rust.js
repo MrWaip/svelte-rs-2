@@ -3,9 +3,9 @@ import { writable } from "svelte/store";
 var root = $.from_html(`<input type="radio"/> <input type="radio"/> <p> </p>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
-	const binding_group = [];
 	const $metrics = () => $.store_get(metrics, "$metrics", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
+	const binding_group = [];
 	let metrics = writable([
 		1,
 		2,

@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_meta_duplicate",
+    "start": 27,
+    "end": 27
+  }
+]

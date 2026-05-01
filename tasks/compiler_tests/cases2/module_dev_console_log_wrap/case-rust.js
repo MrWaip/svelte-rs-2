@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
-let count = $.state(0);
+let count = $.tag($.state(0), "count");
 export function increment() {
 	$.update(count);
 }
 $.user_effect(() => {
-	console.log("count changed:", $.get(count));
+	console.log(...$.log_if_contains_state("log", "count changed:", $.get(count)));
 });

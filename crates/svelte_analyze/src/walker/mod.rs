@@ -7,7 +7,7 @@ use svelte_ast::{
     ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy, Node,
     NodeId, OnDirectiveLegacy, RenderTag, SlotElementLegacy, SnippetBlock, SpreadAttribute,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteFragmentLegacy, SvelteWindow, TransitionDirective, UseDirective,
+    SvelteFragmentLegacy, SvelteHead, SvelteWindow, TransitionDirective, UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, extract_svelte_ignore};
 use svelte_span::Span;

@@ -1227,7 +1227,7 @@ fn assert_expr_tag_async_query(
 #[test]
 fn dynamic_expr_inside_svelte_element() {
     let (c, data) = analyze_source(
-        r#"<script>let { name } = $props();</script><svelte:element this="div">{name}</svelte:element>"#,
+        r#"<script>let { name } = $props();</script><svelte:element this={"div"}>{name}</svelte:element>"#,
     );
     assert_dynamic_tag(&data, &c, "name");
 }
@@ -2661,8 +2661,13 @@ fn blocker_no_await_no_async() {
 
 #[test]
 fn blocker_single_await() {
-    let (_c, data) =
-        analyze_source(r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#);
+    let (_c, data) = analyze_source_with_options(
+        r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
     assert_symbol_blocker(&data, "data", 0);
@@ -2670,12 +2675,16 @@ fn blocker_single_await() {
 
 #[test]
 fn blocker_sync_before_await() {
-    let (c, data) = analyze_source(
+    let (c, data) = analyze_source_with_options(
         r#"<script>
 let x = 1;
 let data = await fetch('/api');
 </script>
 <p>{x}</p><p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 1);
@@ -2687,12 +2696,16 @@ let data = await fetch('/api');
 
 #[test]
 fn blocker_multiple_await_statements() {
-    let (_c, data) = analyze_source(
+    let (_c, data) = analyze_source_with_options(
         r#"<script>
 let a = await fetch('/a');
 let b = await fetch('/b');
 </script>
 <p>{a}{b}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
@@ -2702,12 +2715,16 @@ let b = await fetch('/b');
 
 #[test]
 fn blocker_fragment_indices_are_sorted_and_unique() {
-    let (component, data) = analyze_source(
+    let (component, data) = analyze_source_with_options(
         r#"<script>
 let a = await fetch('/a');
 let b = await fetch('/b');
 </script>
 <p>{b}{a}{b}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     let paragraph =
         find_element(component.root, &component, "p").unwrap_or_else(|| panic!("no <p> element"));
@@ -2895,7 +2912,10 @@ fn custom_element_slots_collect_ordered_slot_names() {
         r#"<svelte:options customElement="my-layout" />
 <header><slot name="actions" /></header>
 <main><slot /></main>"#,
-        AnalyzeOptions::default(),
+        AnalyzeOptions {
+            custom_element: true,
+            ..AnalyzeOptions::default()
+        },
     );
 
     let slot_names: Vec<_> = data
@@ -3720,12 +3740,16 @@ fn reactivity_semantics_collects_contextual_binding_owners() {
 
 #[test]
 fn blocker_function_decl_no_blocker() {
-    let (_c, data) = analyze_source(
+    let (_c, data) = analyze_source_with_options(
         r#"<script>
 let data = await fetch('/api');
 function helper() { return data; }
 </script>
 <p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
@@ -3734,12 +3758,16 @@ function helper() { return data; }
 
 #[test]
 fn blocker_function_valued_init_stays_sync() {
-    let (_c, data) = analyze_source(
+    let (_c, data) = analyze_source_with_options(
         r#"<script>
 let data = await fetch('/api');
 let fn1 = () => data;
 </script>
 <p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
@@ -3748,12 +3776,16 @@ let fn1 = () => data;
 
 #[test]
 fn blocker_stmt_meta_hoist_names() {
-    let (_c, data) = analyze_source(
+    let (_c, data) = analyze_source_with_options(
         r#"<script>
 let data = await fetch('/api');
 let y = data.length;
 </script>
 <p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
@@ -3765,23 +3797,31 @@ let y = data.length;
 
 #[test]
 fn blocker_expressions_marked_dynamic() {
-    let (c, data) = analyze_source(
+    let (c, data) = analyze_source_with_options(
         r#"<script>
 let x = 1;
 let data = await fetch('/api');
 </script>
 <p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_dynamic_tag(&data, &c, "data");
 }
 
 #[test]
 fn blocker_needs_memoization_with_await() {
-    let (c, data) = analyze_source(
+    let (c, data) = analyze_source_with_options(
         r#"<script>
 let data = await fetch('/api');
 </script>
 {#if await check(data)}yes{/if}"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     let block =
         find_if_block(c.root, &c, "await check(data)").unwrap_or_else(|| panic!("no IfBlock"));
@@ -3793,12 +3833,16 @@ let data = await fetch('/api');
 
 #[test]
 fn blocker_import_skipped_in_indexing() {
-    let (_c, data) = analyze_source(
+    let (_c, data) = analyze_source_with_options(
         r#"<script>
 import { foo } from './foo';
 let data = await fetch('/api');
 </script>
 <p>{data}</p>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
@@ -6134,5 +6178,50 @@ mod expr_ref_bind_tests {
         }
         assert!(total > 0);
         assert_eq!(bound_count, total);
+    }
+}
+
+#[cfg(test)]
+mod svelte_head_title_diagnostics {
+    use super::{analyze_source_with_diags, assert_diag_codes};
+
+    #[test]
+    fn clean_head_with_title_no_diagnostics() {
+        let (_, _, diags) =
+            analyze_source_with_diags("<svelte:head><title>hi {name}</title></svelte:head>");
+        assert_diag_codes(&diags, &[]);
+    }
+
+    #[test]
+    fn svelte_head_attribute_emits_diagnostic_per_attribute() {
+        let (_, _, diags) =
+            analyze_source_with_diags(r#"<svelte:head lang="en" dir="ltr"></svelte:head>"#);
+        assert_diag_codes(
+            &diags,
+            &[
+                "svelte_head_illegal_attribute",
+                "svelte_head_illegal_attribute",
+            ],
+        );
+    }
+
+    #[test]
+    fn title_attribute_inside_head_emits_diagnostic() {
+        let (_, _, diags) =
+            analyze_source_with_diags(r#"<svelte:head><title class="x">hi</title></svelte:head>"#);
+        assert_diag_codes(&diags, &["title_illegal_attribute"]);
+    }
+
+    #[test]
+    fn title_non_text_child_emits_invalid_content() {
+        let (_, _, diags) =
+            analyze_source_with_diags("<svelte:head><title><span>hi</span></title></svelte:head>");
+        assert_diag_codes(&diags, &["title_invalid_content"]);
+    }
+
+    #[test]
+    fn title_outside_head_is_not_validated_as_special() {
+        let (_, _, diags) = analyze_source_with_diags(r#"<title class="x"><span>x</span></title>"#);
+        assert_diag_codes(&diags, &[]);
     }
 }

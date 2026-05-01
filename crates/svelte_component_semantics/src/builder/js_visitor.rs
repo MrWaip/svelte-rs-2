@@ -567,18 +567,13 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         let kind = AstKind::BindingIdentifier(self.alloc(ident));
         self.enter_node(kind);
         if let Some((scope, flags)) = self.binding_flags {
-            let sym_id = self.semantics.symbols.create_symbol(
-                CompactString::from(ident.name.as_str()),
+            let sym_id = self.semantics.add_binding(
+                scope,
+                ident.name.as_str(),
                 ident.span,
                 flags,
-                scope,
                 self.current_node_id,
                 self.owner,
-            );
-            self.semantics.scopes.add_binding(
-                scope,
-                CompactString::from(ident.name.as_str()),
-                sym_id,
             );
             ident.symbol_id.set(Some(sym_id));
         }

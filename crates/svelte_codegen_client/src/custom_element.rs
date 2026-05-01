@@ -7,13 +7,14 @@ use svelte_ast_builder::{Arg, ObjProp};
 
 pub fn gen_custom_element<'a>(
     ctx: &mut Ctx<'a>,
-    ce_config: &CustomElementConfig,
+    ce_config: Option<&CustomElementConfig>,
 ) -> Vec<Statement<'a>> {
     let parsed_config = ctx.ce_config().cloned();
 
     let (simple_tag, parsed) = match ce_config {
-        CustomElementConfig::Tag(tag) => (Some(tag.as_str()), None),
-        CustomElementConfig::Expression(_) => (None, parsed_config.as_ref()),
+        Some(CustomElementConfig::Tag(tag)) => (Some(tag.as_str()), None),
+        Some(CustomElementConfig::Expression(_)) => (None, parsed_config.as_ref()),
+        None => (None, None),
     };
 
     let resolved_tag: Option<&str> = match (&simple_tag, &parsed) {
@@ -79,9 +80,9 @@ pub fn gen_custom_element<'a>(
 
 fn take_extend_expr<'a>(
     ctx: &mut Ctx<'a>,
-    ce_config: &CustomElementConfig,
+    ce_config: Option<&CustomElementConfig>,
 ) -> Option<Expression<'a>> {
-    let CustomElementConfig::Expression(span) = ce_config else {
+    let Some(CustomElementConfig::Expression(span)) = ce_config else {
         return None;
     };
     let config = ctx.ce_config()?;

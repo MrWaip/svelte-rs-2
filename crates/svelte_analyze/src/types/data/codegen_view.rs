@@ -11,8 +11,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         Self { data }
     }
 
-    pub fn custom_element(&self) -> bool {
-        self.data.output.custom_element
+    pub fn is_custom_element_target(&self) -> bool {
+        self.data.output.is_custom_element_target
     }
     pub fn runes(&self) -> bool {
         self.data.uses_runes()

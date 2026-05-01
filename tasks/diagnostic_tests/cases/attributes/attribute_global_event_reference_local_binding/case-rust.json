@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "severity": "warning",
+    "code": "a11y_consider_explicit_label",
+    "start": 46,
+    "end": 81
+  }
+]

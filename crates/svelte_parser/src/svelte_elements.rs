@@ -13,6 +13,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn validate_root_only_special_elements(&mut self, component: &Component) {
         #[derive(Default)]
         struct Seen {
+            head: bool,
             window: bool,
             document: bool,
             body: bool,
@@ -32,10 +33,11 @@ impl<'a> Parser<'a> {
                 if let Node::Element(el) = node
                     && matches!(
                         el.name.as_str(),
-                        "svelte:window" | "svelte:document" | "svelte:body"
+                        "svelte:head" | "svelte:window" | "svelte:document" | "svelte:body"
                     )
                 {
                     let already_seen = match el.name.as_str() {
+                        "svelte:head" => seen.head,
                         "svelte:window" => seen.window,
                         "svelte:document" => seen.document,
                         "svelte:body" => seen.body,
@@ -47,10 +49,11 @@ impl<'a> Parser<'a> {
                             svelte_diagnostics::DiagnosticKind::SvelteMetaDuplicate {
                                 name: el.name.clone(),
                             },
-                            el.span,
+                            Span::new(el.span.start, el.span.start),
                         ));
                     } else {
                         match el.name.as_str() {
+                            "svelte:head" => seen.head = true,
                             "svelte:window" => seen.window = true,
                             "svelte:document" => seen.document = true,
                             "svelte:body" => seen.body = true,
@@ -65,7 +68,7 @@ impl<'a> Parser<'a> {
                             svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
                                 name: el.name.clone(),
                             },
-                            el.span,
+                            Span::new(el.span.start, el.span.start),
                         ));
                     }
                 }
@@ -310,6 +313,7 @@ impl<'a> Parser<'a> {
                 Node::SvelteHead(SvelteHead {
                     id: el.id,
                     span: el.span,
+                    attributes: el.attributes,
                     fragment: el.fragment,
                 }),
             );
@@ -458,7 +462,11 @@ impl<'a> Parser<'a> {
             Self::convert_svelte_fragment_legacy(store, &next_level);
         }
     }
-    pub(crate) fn convert_svelte_element(store: &mut AstStore, node_ids: &[NodeId]) {
+    pub(crate) fn convert_svelte_element(
+        store: &mut AstStore,
+        diagnostics: &mut Vec<Diagnostic>,
+        node_ids: &[NodeId],
+    ) {
         let mut next_level = Vec::new();
         for &id in node_ids {
             if store
@@ -466,17 +474,22 @@ impl<'a> Parser<'a> {
                 .as_element()
                 .is_some_and(|el| el.name == SVELTE_ELEMENT)
             {
-                let Node::Element(mut el) = store.take(id) else {
-                    unreachable!()
+                let el = match store.take(id) {
+                    Node::Element(el) => el,
+                    other => {
+                        diagnostics.push(Diagnostic::error(
+                            svelte_diagnostics::DiagnosticKind::InternalError(
+                                "convert_svelte_element: expected Element node".into(),
+                            ),
+                            other.span(),
+                        ));
+                        store.replace(id, other);
+                        continue;
+                    }
                 };
-                let (tag_span, static_tag) = Self::extract_this_attribute(&mut el.attributes);
+                let (tag_span, static_tag) = Self::classify_this_attribute(&el.attributes);
                 let inner_nodes = store.fragment_nodes(el.fragment).to_vec();
-                Self::convert_svelte_element(store, &inner_nodes);
-                let tag = if static_tag {
-                    None
-                } else {
-                    Some(svelte_ast::ExprRef::new(tag_span))
-                };
+                Self::convert_svelte_element(store, diagnostics, &inner_nodes);
                 store.fragment_mut(el.fragment).role = svelte_ast::FragmentRole::SvelteElementBody;
                 store.replace(
                     id,
@@ -484,7 +497,6 @@ impl<'a> Parser<'a> {
                         id: el.id,
                         span: el.span,
                         tag_span,
-                        tag,
                         static_tag,
                         attributes: el.attributes,
                         fragment: el.fragment,
@@ -496,7 +508,7 @@ impl<'a> Parser<'a> {
             }
         }
         if !next_level.is_empty() {
-            Self::convert_svelte_element(store, &next_level);
+            Self::convert_svelte_element(store, diagnostics, &next_level);
         }
     }
     pub(crate) fn convert_svelte_boundary(store: &mut AstStore, node_ids: &[NodeId]) {
@@ -562,6 +574,12 @@ fn collect_child_fragments(node: &Node, buf: &mut Vec<svelte_ast::FragmentId>) {
         Node::SvelteHead(head) => buf.push(head.fragment),
         Node::SvelteFragmentLegacy(fragment) => buf.push(fragment.fragment),
         Node::SvelteElement(el) => buf.push(el.fragment),
+        Node::SvelteComponentLegacy(el) => {
+            buf.push(el.fragment);
+            for slot in &el.legacy_slots {
+                buf.push(slot.fragment);
+            }
+        }
         Node::SvelteBoundary(b) => buf.push(b.fragment),
         Node::AwaitBlock(block) => {
             if let Some(pending) = block.pending {

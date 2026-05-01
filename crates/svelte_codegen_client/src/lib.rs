@@ -31,7 +31,8 @@ pub fn generate<'a>(
     let script_imports = script_output.imports;
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
-    let needs_ownership_validator = script_output.needs_ownership_validator;
+    let needs_ownership_validator =
+        script_output.needs_ownership_validator || analysis.output.needs_component_bind_ownership;
     let mut script_comments = script_output.comments;
     let mut script_source_text = script_output.source_text;
     let mut script_span_end = script_output.program_span_end;
@@ -160,10 +161,6 @@ pub fn generate<'a>(
         )));
     }
 
-    if ctx.state.needs_binding_group {
-        fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
-    }
-
     if ctx.state.dev && needs_ownership_validator {
         fn_body.push(
             ctx.b.var_stmt(
@@ -223,6 +220,10 @@ pub fn generate<'a>(
         );
     }
 
+    if ctx.state.needs_binding_group {
+        fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
+    }
+
     fn_body.extend(instance_snippets);
 
     if ctx.state.experimental_async && ctx.query.blocker_data().has_async() {
@@ -232,58 +233,67 @@ pub fn generate<'a>(
         fn_body.extend(script_body);
     }
 
-    if runtime.has_exports || runtime.has_ce_props || ctx.query.accessors() {
+    let has_explicit_exports = runtime.has_exports || runtime.has_ce_props || ctx.query.accessors();
+    let dev_legacy_only = ctx.state.dev && runtime.needs_push;
+    if has_explicit_exports || dev_legacy_only {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
-        for e in ctx.query.exports() {
-            let name: &str = ctx.b.alloc_str(&e.name);
-            if let Some(alias) = &e.alias {
-                let alias: &str = ctx.b.alloc_str(alias);
-                export_props.push(ObjProp::KeyValue(alias, ctx.b.rid_expr(name)));
-            } else {
-                export_props.push(ObjProp::Shorthand(name));
+        if has_explicit_exports {
+            for e in ctx.query.exports() {
+                let name: &str = ctx.b.alloc_str(&e.name);
+                let key: &str = e
+                    .alias
+                    .as_deref()
+                    .map(|a| ctx.b.alloc_str(a))
+                    .unwrap_or(name);
+                if ctx.state.dev {
+                    export_props.push(ObjProp::Getter(key, ctx.b.rid_expr(name)));
+                } else if e.alias.is_some() {
+                    export_props.push(ObjProp::KeyValue(key, ctx.b.rid_expr(name)));
+                } else {
+                    export_props.push(ObjProp::Shorthand(name));
+                }
+            }
+
+            if (ctx.query.accessors() || runtime.has_ce_props)
+                && let Some(props_decl) = ctx.query.props()
+            {
+                for prop in &props_decl.props {
+                    if prop.is_rest || prop.is_reserved() {
+                        continue;
+                    }
+                    let key: &str = ctx.b.alloc_str(&prop.prop_name);
+                    let local: &str = ctx.b.alloc_str(&prop.local_name);
+
+                    let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
+                    export_props.push(ObjProp::Getter(key, getter_expr));
+
+                    let default_expr = if ctx.query.runes() {
+                        prop.default_text
+                            .as_deref()
+                            .map(|text| ctx.b.parse_expression(text))
+                    } else {
+                        None
+                    };
+                    let setter_body = vec![
+                        ctx.b
+                            .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
+                        ctx.b
+                            .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
+                    ];
+                    export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
+                }
             }
         }
 
-        if (ctx.query.accessors() || runtime.has_ce_props)
-            && let Some(props_decl) = ctx.query.props()
-        {
-            for prop in &props_decl.props {
-                if prop.is_rest || prop.is_reserved() {
-                    continue;
-                }
-                let key: &str = ctx.b.alloc_str(&prop.prop_name);
-                let local: &str = ctx.b.alloc_str(&prop.local_name);
-
-                let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
-                export_props.push(ObjProp::Getter(key, getter_expr));
-
-                let default_expr = if ctx.query.runes() {
-                    prop.default_text
-                        .as_deref()
-                        .map(|text| ctx.b.parse_expression(text))
-                } else {
-                    None
-                };
-                let setter_body = vec![
-                    ctx.b
-                        .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
-                    ctx.b
-                        .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
-                ];
-                export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
-            }
+        if ctx.state.dev {
+            let legacy_call = ctx
+                .b
+                .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
+            export_props.push(ObjProp::Spread(legacy_call));
         }
 
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
-    } else if ctx.state.dev && runtime.needs_push {
-        let legacy_call = ctx
-            .b
-            .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
-        fn_body.push(ctx.b.var_stmt(
-            "$$exports",
-            ctx.b.object_expr([ObjProp::Spread(legacy_call)]),
-        ));
     }
 
     match runtime.legacy_init {
@@ -448,11 +458,11 @@ pub fn generate<'a>(
     program_body.push(export_default);
     program_body.extend(delegate_stmts);
 
-    if let Some(ce_config) = component
-        .options
-        .as_ref()
-        .and_then(|o| o.custom_element.as_ref())
-    {
+    if ctx.query.view.is_custom_element_target() {
+        let ce_config = component
+            .options
+            .as_ref()
+            .and_then(|o| o.custom_element.as_ref());
         let ce_stmts = custom_element::gen_custom_element(&mut ctx, ce_config);
         program_body.extend(ce_stmts);
     }
@@ -610,9 +620,8 @@ pub fn generate_module<'a>(
     analysis: &AnalysisData<'a>,
     dev: bool,
 ) -> String {
-    let _ = dev;
     let script_output =
-        script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping);
+        script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping, dev);
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");

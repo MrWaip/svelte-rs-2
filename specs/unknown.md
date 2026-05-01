@@ -1,9 +1,9 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 0/5 use cases
+- **Working**: 0/8 use cases
 - **Tests**: 0/2 green
-- Last updated: 2026-04-30
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -17,6 +17,9 @@
 - [ ] `$state.raw({...})` declarator in a script that combines `$props()` rest, dev mode, and `customElement: true` is emitted as a plain object literal instead of `$.tag($.state({...}), "name")`, and the corresponding `$state.snapshot(rawData)` reads `rawData` directly instead of `$.get(rawData)`; not reproducible in isolation, only in the combined benchmark; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: state-rune.md, custom-elements.md; suggested spec: state-rune.md
 - [ ] Dev-mode console method calls referencing reactive state are wrapped via `$.log_if_contains_state(method, ...args)` (e.g. `console.log("count:", count)` → `console.log(...$.log_if_contains_state("log", "count:", $.get(count)))`); currently not emitted on the `.svelte.js` / `.svelte.ts` standalone module path — layer: codegen + transform; repro/test: `module_dev_console_log_wrap`; candidate specs: `inspect-runes.md` (related but only covers `$inspect`), none cover console-method auto-instrumentation; suggested spec: new `dev-console-instrumentation.md` covering `console.{log,debug,info,warn,error,trace,dir,group,groupCollapsed}` dev wrapping for both component scripts and `.svelte.js` modules
 - [ ] `compile_module` (`.svelte.js` / `.svelte.ts`) does not thread `dev` flag into the codegen-side transform pipeline — `svelte_codegen_client::generate_module` discards `dev`, and `script::pipeline::transform_module_program` hardcodes `dev: false` into `run_transform`. Cross-cutting: this is the shared root cause for `module_dev_state_tag` (owned by `state-rune.md`), `module_dev_derived_tag` (owned by `derived-state.md`), and `module_dev_console_log_wrap` (above) — layer: codegen; repro/test: any of the three above; candidate specs: `state-rune.md` + `derived-state.md` already track their slice, this entry tracks the shared infrastructure fix
+- [ ] CSS pipeline emits stylesheet content (the value of `$$css.code`) collapsed onto a single line; reference compiler preserves original source whitespace and comment markers; layer: css-pipeline; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md`
+- [ ] Instance-script leading JSDoc / line comments on simple declarations (e.g. `/** @type {Function | undefined} */ let show;`) are stripped during script lowering; reference retains them; layer: codegen/script; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: none specifically for comment retention; suggested spec: none — needs new comment-retention spec or extend script lowering doc
+- [ ] `validate_options_custom_element_warns_without_compiler_flag` diagnostic emits span 0..0 instead of spanning the `customElement` option attribute as reference does; layer: analyze (validate); repro/test: `validate_options_custom_element_warns_without_compiler_flag`; candidate specs: `diagnostics-infrastructure.md`, `custom-elements.md`; suggested spec: `diagnostics-infrastructure.md`
 
 ## Out of scope
 

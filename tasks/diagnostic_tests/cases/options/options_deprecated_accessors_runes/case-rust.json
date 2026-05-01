@@ -2,7 +2,7 @@
   {
     "severity": "warning",
     "code": "options_deprecated_accessors",
-    "start": 0,
-    "end": 0
+    "start": 16,
+    "end": 32
   }
 ]

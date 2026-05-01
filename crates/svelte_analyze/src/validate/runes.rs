@@ -1,7 +1,7 @@
 use oxc_ast::ast::{
-    AssignmentOperator, BindingPattern, CallExpression, ExportNamedDeclaration, Expression,
-    ExpressionStatement, ImportDeclarationSpecifier, MemberExpression, MethodDefinitionKind,
-    ModuleExportName, PropertyDefinition, Statement, VariableDeclarator,
+    AssignmentOperator, BindingPattern, CallExpression, Expression, ExpressionStatement,
+    ImportDeclarationSpecifier, MemberExpression, MethodDefinitionKind, ModuleExportName,
+    PropertyDefinition, Statement, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -36,8 +36,6 @@ pub(super) fn validate(
     validate_invalid_lifecycle_imports(program, offset, runes, diags);
     let mut v = RuneValidator::new(data, diags, offset, runes, true);
     v.visit_program(program);
-    validate_derived_invalid_export(data, program, offset, diags);
-    validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
     validate_rest_prop_illegal_access(data, program, offset, diags);
 }
@@ -149,7 +147,7 @@ impl RuneValidator<'_> {
             has_props_id: false,
             in_props_destructure: false,
             is_instance_script,
-            custom_element: data.output.custom_element,
+            custom_element: data.output.is_custom_element_target,
         }
     }
 
@@ -235,100 +233,83 @@ impl RuneValidator<'_> {
     }
 }
 
-fn validate_derived_invalid_export(
+pub(super) fn validate_invalid_exports(
     data: &AnalysisData,
     program: &oxc_ast::ast::Program<'_>,
+    check_decl: bool,
+    specifier_scope: Option<oxc_semantic::ScopeId>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
-    validate_invalid_export(
-        data,
-        program,
-        offset,
-        diags,
-        || DiagnosticKind::DerivedInvalidExport,
-        |data, sym_id| matches!(data.binding_semantics(sym_id), BindingSemantics::Derived(_)),
-    );
-}
-
-fn validate_state_invalid_export(
-    data: &AnalysisData,
-    program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
-    diags: &mut Vec<Diagnostic>,
-) {
-    validate_invalid_export(
-        data,
-        program,
-        offset,
-        diags,
-        || DiagnosticKind::StateInvalidExport,
-        is_reassigned_state_export,
-    );
-}
-
-fn validate_invalid_export(
-    data: &AnalysisData,
-    program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
-    diags: &mut Vec<Diagnostic>,
-    make_kind: impl Fn() -> DiagnosticKind + Copy,
-    predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
-) {
+    if !check_decl && specifier_scope.is_none() {
+        return;
+    }
     for stmt in &program.body {
-        if let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt {
-            validate_invalid_named_export(data, export, offset, diags, make_kind, predicate);
+        let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt else {
+            continue;
+        };
+        if let Some(decl) = export.declaration.as_ref() {
+            if !check_decl {
+                continue;
+            }
+            if let Some(kind) = declaration_export_kind(data, decl) {
+                let span = Span::new(export.span.start + offset, export.span.end + offset);
+                push_unique(diags, kind, span);
+            }
+        } else if let Some(scope) = specifier_scope {
+            for spec in &export.specifiers {
+                let (name, sp) = match &spec.local {
+                    ModuleExportName::IdentifierReference(id) => (id.name.as_str(), id.span),
+                    ModuleExportName::IdentifierName(id) => (id.name.as_str(), id.span),
+                    ModuleExportName::StringLiteral(_) => continue,
+                };
+                let Some(sym_id) = data.scoping.find_binding(scope, name) else {
+                    continue;
+                };
+                let Some(kind) = export_kind_for_symbol(data, sym_id) else {
+                    continue;
+                };
+                let span = Span::new(sp.start + offset, sp.end + offset);
+                push_unique(diags, kind, span);
+            }
         }
     }
 }
 
-fn validate_invalid_named_export(
-    data: &AnalysisData,
-    export: &ExportNamedDeclaration<'_>,
-    offset: u32,
-    diags: &mut Vec<Diagnostic>,
-    make_kind: impl Fn() -> DiagnosticKind + Copy,
-    predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
-) {
-    let Some(decl) = export.declaration.as_ref() else {
-        return;
-    };
-    if !declaration_has_invalid_export(data, decl, predicate) {
-        return;
-    }
-    let span = Span::new(export.span.start + offset, export.span.end + offset);
-    if !crate::validate::span_already_taken(diags, span) {
-        diags.push(Diagnostic::error(make_kind(), span));
-    }
-}
-
-fn declaration_has_invalid_export(
+fn declaration_export_kind(
     data: &AnalysisData,
     decl: &oxc_ast::ast::Declaration<'_>,
-    predicate: impl Fn(&AnalysisData, oxc_semantic::SymbolId) -> bool + Copy,
-) -> bool {
+) -> Option<DiagnosticKind> {
     let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
-        return false;
+        return None;
     };
-    var_decl.declarations.iter().any(|declarator| {
+    var_decl.declarations.iter().find_map(|declarator| {
         let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
-            return false;
+            return None;
         };
-        ident
-            .symbol_id
-            .get()
-            .is_some_and(|sym_id| predicate(data, sym_id))
+        let sym_id = ident.symbol_id.get()?;
+        export_kind_for_symbol(data, sym_id)
     })
 }
 
-fn is_reassigned_state_export(data: &AnalysisData<'_>, sym_id: oxc_semantic::SymbolId) -> bool {
-    matches!(
-        data.binding_semantics(sym_id),
+fn export_kind_for_symbol(
+    data: &AnalysisData,
+    sym_id: oxc_semantic::SymbolId,
+) -> Option<DiagnosticKind> {
+    match data.binding_semantics(sym_id) {
+        BindingSemantics::Derived(_) => Some(DiagnosticKind::DerivedInvalidExport),
         BindingSemantics::State(crate::StateDeclarationSemantics {
             kind: StateKind::State | StateKind::StateRaw,
             ..
-        })
-    ) && data.scoping.is_mutated(sym_id)
+        }) if data.scoping.is_mutated(sym_id) => Some(DiagnosticKind::StateInvalidExport),
+        _ => None,
+    }
+}
+
+fn push_unique(diags: &mut Vec<Diagnostic>, kind: DiagnosticKind, span: Span) {
+    if !crate::validate::span_already_taken(diags, span) {
+        diags.push(Diagnostic::error(kind, span));
+    }
 }
 
 fn validate_state_referenced_locally_derived(

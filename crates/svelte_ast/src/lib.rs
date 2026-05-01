@@ -373,6 +373,7 @@ impl_node_enum! {
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
     SvelteFragmentLegacy(SvelteFragmentLegacy) => is_svelte_fragment_legacy / as_svelte_fragment_legacy,
+    SvelteComponentLegacy(SvelteComponentLegacy) => is_svelte_component_legacy / as_svelte_component_legacy,
     SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
     SvelteWindow(SvelteWindow)       => is_svelte_window / as_svelte_window,
     SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
@@ -527,6 +528,7 @@ pub struct KeyBlock {
 pub struct SvelteHead {
     pub id: NodeId,
     pub span: Span,
+    pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
 }
 
@@ -543,11 +545,93 @@ pub struct SvelteElement {
 
     pub tag_span: Span,
 
-    pub tag: Option<ExprRef>,
-
     pub static_tag: bool,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
+}
+
+pub struct SvelteComponentLegacy {
+    pub id: NodeId,
+    pub span: Span,
+    pub self_closing: bool,
+    pub attributes: Vec<Attribute>,
+    pub fragment: FragmentId,
+    pub legacy_slots: Vec<LegacySlot>,
+}
+
+pub struct ComponentLikeView<'a> {
+    pub id: NodeId,
+    pub name: &'a str,
+    pub attributes: &'a [Attribute],
+    pub fragment: FragmentId,
+    pub legacy_slots: &'a [LegacySlot],
+    pub span: Span,
+    pub self_closing: bool,
+}
+
+impl Node {
+    pub fn as_component_like(&self) -> Option<ComponentLikeView<'_>> {
+        match self {
+            Node::ComponentNode(cn) => Some(ComponentLikeView {
+                id: cn.id,
+                name: &cn.name,
+                attributes: &cn.attributes,
+                fragment: cn.fragment,
+                legacy_slots: &cn.legacy_slots,
+                span: cn.span,
+                self_closing: cn.self_closing,
+            }),
+            Node::SvelteComponentLegacy(cn) => Some(ComponentLikeView {
+                id: cn.id,
+                name: SVELTE_COMPONENT,
+                attributes: &cn.attributes,
+                fragment: cn.fragment,
+                legacy_slots: &cn.legacy_slots,
+                span: cn.span,
+                self_closing: cn.self_closing,
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl SvelteComponentLegacy {
+    pub fn this_attribute(&self) -> Option<&Attribute> {
+        self.attributes.iter().find(|a| match a {
+            Attribute::ExpressionAttribute(x) => x.name == "this",
+            Attribute::StringAttribute(x) => x.name == "this",
+            Attribute::ConcatenationAttribute(x) => x.name == "this",
+            Attribute::BooleanAttribute(x) => x.name == "this",
+            _ => false,
+        })
+    }
+
+    pub fn this_expr(&self) -> Option<&ExprRef> {
+        self.attributes.iter().find_map(|a| match a {
+            Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+            _ => None,
+        })
+    }
+}
+
+impl SvelteElement {
+    pub fn this_expr(&self) -> Option<&ExprRef> {
+        self.attributes.iter().find_map(|a| match a {
+            Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+            _ => None,
+        })
+    }
+}
+
+impl Attribute {
+    pub fn is_svelte_element_this(&self) -> bool {
+        match self {
+            Attribute::ExpressionAttribute(a) => a.name == "this",
+            Attribute::StringAttribute(a) => a.name == "this",
+            Attribute::BooleanAttribute(a) => a.name == "this",
+            _ => false,
+        }
+    }
 }
 
 pub struct SvelteWindow {
@@ -1141,6 +1225,7 @@ impl_store_accessors! {
     key_block -> KeyBlock / as_key_block,
     svelte_head -> SvelteHead / as_svelte_head,
     svelte_element -> SvelteElement / as_svelte_element,
+    svelte_component_legacy -> SvelteComponentLegacy / as_svelte_component_legacy,
     svelte_window -> SvelteWindow / as_svelte_window,
     svelte_document -> SvelteDocument / as_svelte_document,
     svelte_body -> SvelteBody / as_svelte_body,

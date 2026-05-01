@@ -2,7 +2,7 @@
 
 use svelte_ast::{
     AwaitBlock, ComponentNode, EachBlock, Element, ExprRef, FragmentRole, IfBlock, KeyBlock, Node,
-    NodeId, SnippetBlock, StmtRef,
+    NodeId, SVELTE_COMPONENT, SnippetBlock, StmtRef, SvelteComponentLegacy,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -64,7 +64,20 @@ impl<'a> Parser<'a> {
                 let children = pop_children(children_stack);
                 let merged_span = el.span_start.merge(&span);
 
-                let node = if is_component_name(&el.name) {
+                let node = if el.name == SVELTE_COMPONENT {
+                    let (default_children, legacy_slots) =
+                        self.partition_component_children(children);
+                    let fragment =
+                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
+                    Node::SvelteComponentLegacy(SvelteComponentLegacy {
+                        id: NodeId(0),
+                        span: merged_span,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment,
+                        legacy_slots,
+                    })
+                } else if is_component_name(&el.name) {
                     let (default_children, legacy_slots) =
                         self.partition_component_children(children);
                     let fragment =
@@ -408,7 +421,20 @@ impl<'a> Parser<'a> {
                 let children = pop_children(children_stack);
                 let merged_span = el.span_start.merge(&eof_span);
 
-                let node = if is_component_name(&el.name) {
+                let node = if el.name == SVELTE_COMPONENT {
+                    let (default_children, legacy_slots) =
+                        self.partition_component_children(children);
+                    let fragment =
+                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
+                    Node::SvelteComponentLegacy(SvelteComponentLegacy {
+                        id: NodeId(0),
+                        span: merged_span,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment,
+                        legacy_slots,
+                    })
+                } else if is_component_name(&el.name) {
                     let (default_children, legacy_slots) =
                         self.partition_component_children(children);
                     let fragment =

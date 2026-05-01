@@ -126,7 +126,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         if let Some((ss, css_diags)) = css_parsed {
             analyze_diags.extend(css_diags);
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
-                || analysis.output.custom_element;
+                || analysis.output.is_custom_element_target;
             svelte_analyze::analyze_css_pass(
                 &component,
                 &ss,

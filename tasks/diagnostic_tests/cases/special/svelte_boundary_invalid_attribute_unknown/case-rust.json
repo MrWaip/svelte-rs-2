@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "svelte_boundary_invalid_attribute",
+    "start": 17,
+    "end": 24
+  }
+]

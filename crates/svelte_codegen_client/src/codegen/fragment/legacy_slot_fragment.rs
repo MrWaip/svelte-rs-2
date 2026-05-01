@@ -25,10 +25,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let node = self.ctx.query.component.store.get(slot_el_id);
-        let append_inside = match node {
-            Node::ComponentNode(cn) => cn.name != svelte_ast::SVELTE_SELF,
-            _ => false,
-        };
+        let append_inside = node
+            .as_component_like()
+            .is_some_and(|view| view.name != svelte_ast::SVELTE_SELF);
 
         let inner_ctx = parent_ctx.child_of_named_slot(FragmentAnchor::CallbackParam {
             name: "$$anchor".to_string(),
@@ -46,13 +45,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Node::Element(_) => {
                 self.emit_single_slot_element(&mut inner_state, &inner_ctx, slot_el_id, let_stmts)?;
             }
-            Node::ComponentNode(_) => {
-                inner_state.init.extend(let_stmts);
-                self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
-            }
             Node::SvelteFragmentLegacy(el) => {
                 inner_state.init.extend(let_stmts);
                 self.emit_fragment(&mut inner_state, &inner_ctx, el.fragment)?;
+            }
+            n if n.as_component_like().is_some() => {
+                inner_state.init.extend(let_stmts);
+                self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
             _ => {}
         }
@@ -70,10 +69,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return false;
         }
 
-        let fragment_id = match self.ctx.query.component.store.get(slot_el_id) {
+        let node = self.ctx.query.component.store.get(slot_el_id);
+        let fragment_id = match node {
             Node::Element(el) => el.fragment,
             Node::SvelteFragmentLegacy(el) => el.fragment,
-            Node::ComponentNode(_) => return false,
+            n if n.as_component_like().is_some() => return false,
             _ => return true,
         };
         let mut bucket = HoistedBucket::default();
@@ -87,11 +87,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn has_let_directives(&self, owner_id: NodeId) -> bool {
-        let attrs = match self.ctx.query.component.store.get(owner_id) {
-            Node::Element(el) => &el.attributes,
-            Node::SvelteFragmentLegacy(el) => &el.attributes,
-            Node::ComponentNode(cn) => &cn.attributes,
-            _ => return false,
+        let node = self.ctx.query.component.store.get(owner_id);
+        let attrs = match node {
+            Node::Element(el) => &el.attributes[..],
+            Node::SvelteFragmentLegacy(el) => &el.attributes[..],
+            _ => match node.as_component_like() {
+                Some(view) => view.attributes,
+                None => return false,
+            },
         };
         attrs
             .iter()

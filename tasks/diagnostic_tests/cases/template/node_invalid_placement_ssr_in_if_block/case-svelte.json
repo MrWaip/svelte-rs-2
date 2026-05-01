@@ -1,0 +1,8 @@
+[
+  {
+    "code": "node_invalid_placement_ssr",
+    "end": 37,
+    "severity": "warning",
+    "start": 22
+  }
+]

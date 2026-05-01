@@ -4,6 +4,7 @@ use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_semantic::{ScopeFlags, SymbolId};
 use rustc_hash::FxHashSet;
 use svelte_ast::{Attribute, Component, ConcatPart, FragmentId, Node, StyleDirectiveValue};
+use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -24,12 +25,17 @@ pub(super) fn validate(
         return;
     };
 
+    let instance_offset = parsed.script_content_span.map_or(0, |s| s.start);
+    let module_offset = parsed.module_script_content_span.map_or(0, |s| s.start);
+
     let mut validator = TemplateValidator {
         component,
         data,
         parsed,
         diags,
         warned: FxHashSet::default(),
+        instance_offset,
+        module_offset,
     };
     validator.visit_fragment(component.root, false);
 }
@@ -40,6 +46,8 @@ struct TemplateValidator<'a, 'b> {
     parsed: &'a JsAst<'a>,
     diags: &'b mut Vec<Diagnostic>,
     warned: FxHashSet<SymbolId>,
+    instance_offset: u32,
+    module_offset: u32,
 }
 
 impl<'a> TemplateValidator<'a, '_> {
@@ -73,6 +81,12 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::ComponentNode(node) => {
+                    let f = node.fragment;
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
+                }
+                Node::SvelteComponentLegacy(node) => {
                     let f = node.fragment;
                     let attrs = node.attributes.clone();
                     self.visit_attributes(&attrs, in_dynamic_block);
@@ -133,7 +147,7 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteElement(el) => {
-                    let tag = el.tag.clone();
+                    let tag = el.this_expr().cloned();
                     let f = el.fragment;
                     let attrs = el.attributes.clone();
                     if let Some(tag_ref) = tag.as_ref() {
@@ -269,6 +283,8 @@ impl<'a> TemplateValidator<'a, '_> {
             bind_this,
             in_dynamic_block,
             function_depth: 0,
+            instance_offset: self.instance_offset,
+            module_offset: self.module_offset,
         };
         visitor.visit_expression(expr);
     }
@@ -290,6 +306,8 @@ impl<'a> TemplateValidator<'a, '_> {
             bind_this,
             in_dynamic_block,
             function_depth: 0,
+            instance_offset: self.instance_offset,
+            module_offset: self.module_offset,
         };
         visitor.visit_statement(stmt);
     }
@@ -302,6 +320,8 @@ struct ReferenceVisitor<'a, 'b> {
     bind_this: bool,
     in_dynamic_block: bool,
     function_depth: u32,
+    instance_offset: u32,
+    module_offset: u32,
 }
 
 impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
@@ -333,11 +353,16 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
         }
 
         let decl_span = self.data.scoping.symbol_span(sym_id);
+        let offset = match self.data.scoping.symbol_owner(sym_id) {
+            SymbolOwner::ModuleScript => self.module_offset,
+            SymbolOwner::InstanceScript => self.instance_offset,
+            _ => 0,
+        };
         self.diags.push(Diagnostic::warning(
             DiagnosticKind::NonReactiveUpdate {
                 name: self.data.scoping.symbol_name(sym_id).to_string(),
             },
-            Span::new(decl_span.start, decl_span.end),
+            Span::shifted_from_oxc(offset, decl_span),
         ));
         self.warned.insert(sym_id);
     }

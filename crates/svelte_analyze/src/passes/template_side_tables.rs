@@ -100,8 +100,16 @@ fn collect_fragment_namespaces_in(
             Node::Element(el) => {
                 collect_fragment_namespaces_in(el.fragment, Some(el.id), root_ns, store, data)
             }
-            Node::ComponentNode(cn) => {
-                collect_fragment_namespaces_in(cn.fragment, parent_element, root_ns, store, data)
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    collect_fragment_namespaces_in(
+                        view.fragment,
+                        parent_element,
+                        root_ns,
+                        store,
+                        data,
+                    );
+                }
             }
             Node::IfBlock(block) => {
                 collect_fragment_namespaces_in(
@@ -216,12 +224,14 @@ fn collect_fragment_facts_in(
     for id in nodes {
         match store.get(id) {
             Node::Element(el) => collect_fragment_facts_in(el.fragment, store, source, facts),
-            Node::ComponentNode(cn) => {
-                let cn_fragment = cn.fragment;
-                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
-                collect_fragment_facts_in(cn_fragment, store, source, facts);
-                for fid in slot_frags {
-                    collect_fragment_facts_in(fid, store, source, facts);
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    let cn_fragment = view.fragment;
+                    let slot_frags: Vec<_> = view.legacy_slots.iter().map(|s| s.fragment).collect();
+                    collect_fragment_facts_in(cn_fragment, store, source, facts);
+                    for fid in slot_frags {
+                        collect_fragment_facts_in(fid, store, source, facts);
+                    }
                 }
             }
             Node::IfBlock(block) => {
@@ -275,12 +285,14 @@ fn collect_rich_content_facts_in(
     for id in nodes {
         match store.get(id) {
             Node::Element(el) => collect_rich_content_facts_in(el.fragment, store, source, facts),
-            Node::ComponentNode(cn) => {
-                let cn_fragment = cn.fragment;
-                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
-                collect_rich_content_facts_in(cn_fragment, store, source, facts);
-                for fid in slot_frags {
-                    collect_rich_content_facts_in(fid, store, source, facts);
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                if let Some(view) = store.get(id).as_component_like() {
+                    let cn_fragment = view.fragment;
+                    let slot_frags: Vec<_> = view.legacy_slots.iter().map(|s| s.fragment).collect();
+                    collect_rich_content_facts_in(cn_fragment, store, source, facts);
+                    for fid in slot_frags {
+                        collect_rich_content_facts_in(fid, store, source, facts);
+                    }
                 }
             }
             Node::IfBlock(block) => {
@@ -583,6 +595,28 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
+        ctx.data
+            .template
+            .template_topology
+            .record_node_parent(cn.id, ctx.parent());
+        ctx.data.record_element_facts(
+            cn.id,
+            ElementFactsEntry::build(
+                &cn.attributes,
+                ctx.source,
+                inherited_namespace(self.component, ctx, ctx.nearest_element()),
+                inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
+                false,
+                false,
+            ),
+        );
+    }
+
+    fn visit_svelte_component_legacy(
+        &mut self,
+        cn: &svelte_ast::SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         ctx.data
             .template
             .template_topology

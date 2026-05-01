@@ -275,12 +275,7 @@ export function setStatus(app, text, kind = "muted") {
     }
 }
 
-export function setParity(app, state, label) {
-    const chip = app.querySelector(".chip[data-parity]");
-    if (chip) {
-        chip.dataset.state = state;
-        chip.textContent = label;
-    }
+export function setParity(app, state) {
     const out = app.querySelector('[data-panel="output"]');
     if (out) out.dataset.parity = state;
 }
@@ -300,13 +295,21 @@ export function setSpeedup(app, ratio) {
         return;
     }
     chip.hidden = false;
-    if (ratio >= 1) {
-        chip.dataset.state = "faster";
-        chip.textContent = `${ratio.toFixed(1)}× faster`;
-    } else {
-        chip.dataset.state = "slower";
-        chip.textContent = `${(1 / ratio).toFixed(1)}× slower`;
-    }
+    const tier = speedupTier(ratio);
+    chip.dataset.state = tier.state;
+    const factor = ratio >= 1 ? ratio : 1 / ratio;
+    const factorStr = factor >= 10 ? factor.toFixed(0) : factor.toFixed(1);
+    chip.innerHTML = `<span class="speedup-label">${tier.label}</span><b>${factorStr}×</b>`;
+}
+
+function speedupTier(ratio) {
+    if (ratio < 0.8) return { state: "much-slower", label: "much slower" };
+    if (ratio < 1) return { state: "slower", label: "slower" };
+    if (ratio < 1.5) return { state: "barely", label: "barely faster" };
+    if (ratio < 3) return { state: "faster", label: "noticeably faster" };
+    if (ratio < 10) return { state: "strong", label: "way faster" };
+    if (ratio < 50) return { state: "blazing", label: "blazing fast" };
+    return { state: "ludicrous", label: "ludicrous speed" };
 }
 
 function formatMs(ms) {

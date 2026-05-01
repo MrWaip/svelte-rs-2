@@ -45,7 +45,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(el_id);
         match node {
             Node::Element(_) => self.emit_element_html(state, ctx, el_id, existing_var),
-            Node::ComponentNode(_) => self.emit_component(state, ctx, el_id, existing_var),
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                self.emit_component(state, ctx, el_id, existing_var)
+            }
             Node::SvelteElement(_) => self.emit_svelte_element(state, ctx, el_id, existing_var),
             Node::SvelteBoundary(_) => self.emit_svelte_boundary(state, ctx, el_id, existing_var),
             Node::SvelteWindow(_)

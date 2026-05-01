@@ -157,8 +157,27 @@ pub(crate) fn run_template<'a>(
         };
         let setter_body = es.unbox().expression;
 
-        let getter = b.thunk(getter_body);
-        let setter = b.arrow_expr(b.params(["$$value"]), [b.expr_stmt(setter_body)]);
+        let (getter, setter) = if dev {
+            (
+                b.named_function_expr(
+                    "get",
+                    b.no_params(),
+                    vec![b.return_stmt(getter_body)],
+                    false,
+                ),
+                b.named_function_expr(
+                    "set",
+                    b.params(["$$value"]),
+                    vec![b.expr_stmt(setter_body)],
+                    false,
+                ),
+            )
+        } else {
+            (
+                b.thunk(getter_body),
+                b.arrow_expr(b.params(["$$value"]), [b.expr_stmt(setter_body)]),
+            )
+        };
         let seq = b.seq_expr([getter, setter]);
 
         parsed.replace_expr(handle, seq);

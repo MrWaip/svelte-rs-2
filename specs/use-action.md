@@ -2,8 +2,8 @@
 
 ## Current state
 - **Working**: 11/11 use cases
-- **Tests**: 13/14 green
-- Last updated: 2026-04-09
+- **Tests**: 13/13 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -38,6 +38,7 @@
 - SSR behavior for actions
 - Legacy action `update`/`destroy` runtime semantics beyond preserving reference client output shape
 - Migration guidance toward `{@attach ...}`
+- `experimental_async` diagnostic for `await` inside `use:` argument when `experimental.async` is disabled — owned by `specs/experimental-async.md`
 
 ## Reference
 
@@ -97,4 +98,3 @@
 - [x] `bind_use_deferral`
 - [x] `action_blockers`
 - [x] analyzer validation: `await` inside `use:` directive value
-- [ ] `validate_use_directive_illegal_await_expression`

@@ -136,48 +136,32 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_component_node(cn, ctx);
                 }
-                ctx.push(ParentRef {
-                    id: cn.id,
-                    kind: ParentKind::ComponentNode,
-                });
-                let saved = ctx.scope;
-                let component_has_slot_attr =
-                    attrs_static_slot_name(&cn.attributes, ctx.source).is_some();
-                let default_scope = if component_has_slot_attr {
-                    saved
-                } else {
-                    ctx.data
-                        .scoping
-                        .fragment_scope_by_id(cn.fragment)
-                        .unwrap_or(saved)
-                };
-
-                for attr in &cn.attributes {
-                    match attr {
-                        Attribute::LetDirectiveLegacy(_) => {
-                            ctx.scope = default_scope;
-                            walk_attributes(std::slice::from_ref(attr), ctx, visitors);
-                            ctx.scope = saved;
-                        }
-                        _ => walk_attributes(std::slice::from_ref(attr), ctx, visitors),
-                    }
+                walk_component_like(
+                    cn.id,
+                    &cn.attributes,
+                    cn.fragment,
+                    &cn.legacy_slots,
+                    ParentKind::ComponentNode,
+                    ctx,
+                    visitors,
+                );
+            }
+            Node::SvelteComponentLegacy(cn) => {
+                for v in visitors.iter_mut() {
+                    v.visit_svelte_component_legacy(cn, ctx);
                 }
-
-                ctx.scope = default_scope;
-                walk_template(cn.fragment, ctx, visitors);
-
-                let slot_frags: Vec<svelte_ast::FragmentId> =
-                    cn.legacy_slots.iter().map(|s| s.fragment).collect();
-                for slot_fid in slot_frags {
-                    ctx.scope = ctx
-                        .data
-                        .scoping
-                        .fragment_scope_by_id(slot_fid)
-                        .unwrap_or(saved);
-                    walk_template(slot_fid, ctx, visitors);
+                walk_component_like(
+                    cn.id,
+                    &cn.attributes,
+                    cn.fragment,
+                    &cn.legacy_slots,
+                    ParentKind::SvelteComponentLegacy,
+                    ctx,
+                    visitors,
+                );
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_component_legacy(cn, ctx);
                 }
-                ctx.scope = saved;
-                ctx.pop();
             }
             Node::RenderTag(tag) => {
                 for v in visitors.iter_mut() {
@@ -218,6 +202,9 @@ pub(crate) fn walk_template(
                 ctx.pop();
             }
             Node::SvelteHead(head) => {
+                for v in visitors.iter_mut() {
+                    v.visit_svelte_head(head, ctx);
+                }
                 ctx.push(ParentRef {
                     id: head.id,
                     kind: ParentKind::SvelteHead,
@@ -251,7 +238,7 @@ pub(crate) fn walk_template(
                     id: el.id,
                     kind: ParentKind::SvelteElement,
                 });
-                if let Some(tag_ref) = el.tag.as_ref() {
+                if let Some(tag_ref) = el.this_expr() {
                     dispatch_expr(visitors, el.id, tag_ref, ctx);
                 }
                 walk_attributes(&el.attributes, ctx, visitors);
@@ -348,6 +335,57 @@ pub(crate) fn walk_template(
     }
 }
 
+fn walk_component_like(
+    cn_id: NodeId,
+    attributes: &[Attribute],
+    cn_fragment: svelte_ast::FragmentId,
+    legacy_slots: &[svelte_ast::LegacySlot],
+    parent_kind: ParentKind,
+    ctx: &mut VisitContext<'_, '_>,
+    visitors: &mut [&mut dyn TemplateVisitor],
+) {
+    ctx.push(ParentRef {
+        id: cn_id,
+        kind: parent_kind,
+    });
+    let saved = ctx.scope;
+    let component_has_slot_attr = attrs_static_slot_name(attributes, ctx.source).is_some();
+    let default_scope = if component_has_slot_attr {
+        saved
+    } else {
+        ctx.data
+            .scoping
+            .fragment_scope_by_id(cn_fragment)
+            .unwrap_or(saved)
+    };
+
+    for attr in attributes {
+        match attr {
+            Attribute::LetDirectiveLegacy(_) => {
+                ctx.scope = default_scope;
+                walk_attributes(std::slice::from_ref(attr), ctx, visitors);
+                ctx.scope = saved;
+            }
+            _ => walk_attributes(std::slice::from_ref(attr), ctx, visitors),
+        }
+    }
+
+    ctx.scope = default_scope;
+    walk_template(cn_fragment, ctx, visitors);
+
+    let slot_frags: Vec<svelte_ast::FragmentId> = legacy_slots.iter().map(|s| s.fragment).collect();
+    for slot_fid in slot_frags {
+        ctx.scope = ctx
+            .data
+            .scoping
+            .fragment_scope_by_id(slot_fid)
+            .unwrap_or(saved);
+        walk_template(slot_fid, ctx, visitors);
+    }
+    ctx.scope = saved;
+    ctx.pop();
+}
+
 fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attrs.iter().find_map(|attr| match attr {
         Attribute::StringAttribute(attr) if attr.name == "slot" => {
@@ -366,6 +404,7 @@ fn node_id_of(node: &Node) -> NodeId {
         Node::EachBlock(n) => n.id,
         Node::SnippetBlock(n) => n.id,
         Node::ComponentNode(n) => n.id,
+        Node::SvelteComponentLegacy(n) => n.id,
         Node::RenderTag(n) => n.id,
         Node::HtmlTag(n) => n.id,
         Node::ConstTag(n) => n.id,
@@ -432,6 +471,7 @@ fn walk_attributes(
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
     for attr in attrs {
+        ctx.record_ignore_for_node(attr.id());
         for v in visitors.iter_mut() {
             v.visit_attribute(attr, ctx);
         }

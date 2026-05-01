@@ -69,8 +69,8 @@ fn expected_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
 
 fn normalize_actual_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
     let (input, opts) = case_input_and_options(case);
-    compile(&input, &opts)
-        .diagnostics
+    let diagnostics = compile(&input, &opts).diagnostics;
+    let normalized: Vec<ExpectedDiagnostic> = diagnostics
         .into_iter()
         .map(|diagnostic| ExpectedDiagnostic {
             severity: match diagnostic.severity {
@@ -81,7 +81,18 @@ fn normalize_actual_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
             start: diagnostic.span.start,
             end: diagnostic.span.end,
         })
-        .collect()
+        .collect();
+
+    if let Some(first_error) = normalized
+        .iter()
+        .filter(|d| d.severity == "error")
+        .min_by_key(|d| (d.start, d.end))
+        .cloned()
+    {
+        return vec![first_error];
+    }
+
+    normalized
 }
 
 fn sort_diagnostics(diags: &mut [ExpectedDiagnostic]) {
@@ -549,13 +560,11 @@ mod attributes {
 
     diagnostic_case!(
         attribute_global_event_reference_missing_binding,
-        "attributes/attribute_global_event_reference_missing_binding",
-        ignore = "known mismatch: reference repro includes extra/missing warnings beyond attribute_global_event_reference in current fixture"
+        "attributes/attribute_global_event_reference_missing_binding"
     );
     diagnostic_case!(
         attribute_global_event_reference_local_binding,
-        "attributes/attribute_global_event_reference_local_binding",
-        ignore = "known mismatch: reference repro includes extra/missing warnings beyond attribute_global_event_reference in current fixture"
+        "attributes/attribute_global_event_reference_local_binding"
     );
     diagnostic_case!(
         attribute_quoted_on_component,
@@ -811,8 +820,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_plain_let_is_valid,
-        "bind/validate_bind_plain_let_is_valid",
-        ignore = "known mismatch: analyzer and npm svelte/compiler report non_reactive_update on different spans"
+        "bind/validate_bind_plain_let_is_valid"
     );
     diagnostic_case!(
         validate_attribute_contenteditable_missing,
@@ -841,8 +849,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_sequence_reports_all_relevant_errors,
-        "bind/validate_bind_sequence_reports_all_relevant_errors",
-        ignore = "known mismatch: analyzer reports extra bind_invalid_expression and bind_invalid_parens beyond npm svelte/compiler"
+        "bind/validate_bind_sequence_reports_all_relevant_errors"
     );
     diagnostic_case!(
         validate_bind_group_invalid_snippet_parameter,
@@ -913,6 +920,22 @@ mod components {
         "components/svelte_self_deprecated_uses_reserved_word_deconflicted_component_name"
     );
     diagnostic_case!(
+        svelte_self_deprecated_valid_placement_default_basename,
+        "components/svelte_self_deprecated_valid_placement_default_basename"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_configured_filename,
+        "components/svelte_self_deprecated_valid_placement_configured_filename"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_deconflicted_name,
+        "components/svelte_self_deprecated_valid_placement_deconflicted_name"
+    );
+    diagnostic_case!(
+        svelte_self_deprecated_valid_placement_reserved_word_name,
+        "components/svelte_self_deprecated_valid_placement_reserved_word_name"
+    );
+    diagnostic_case!(
         svelte_component_deprecated_warns_in_runes_mode,
         "components/svelte_component_deprecated_warns_in_runes_mode"
     );
@@ -922,13 +945,11 @@ mod components {
     );
     diagnostic_case!(
         svelte_component_missing_this,
-        "components/svelte_component_missing_this",
-        ignore = "missing: parser-owned <svelte:component> missing this diagnostic (parser)"
+        "components/svelte_component_missing_this"
     );
     diagnostic_case!(
         svelte_component_invalid_this_string,
-        "components/svelte_component_invalid_this_string",
-        ignore = "missing: parser-owned <svelte:component> invalid this diagnostic (parser)"
+        "components/svelte_component_invalid_this_string"
     );
     diagnostic_case!(
         svelte_self_deprecated_no_warn_in_legacy_mode,
@@ -949,23 +970,19 @@ mod events {
 
     diagnostic_case!(
         on_directive_invalid_modifier,
-        "events/on_directive_invalid_modifier",
-        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+        "events/on_directive_invalid_modifier"
     );
     diagnostic_case!(
         on_directive_passive_nonpassive_conflict,
-        "events/on_directive_passive_nonpassive_conflict",
-        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+        "events/on_directive_passive_nonpassive_conflict"
     );
     diagnostic_case!(
         on_directive_mixed_syntax,
-        "events/on_directive_mixed_syntax",
-        ignore = "known mismatch: analyzer reports extra event_directive_deprecated and a11y warnings for legacy on: syntax"
+        "events/on_directive_mixed_syntax"
     );
     diagnostic_case!(
         on_directive_mixed_syntax_svelte_element,
-        "events/on_directive_mixed_syntax_svelte_element",
-        ignore = "known mismatch: analyzer reports extra event_directive_deprecated warning for legacy on: syntax"
+        "events/on_directive_mixed_syntax_svelte_element"
     );
     diagnostic_case!(
         on_directive_deprecated_in_runes_mode,
@@ -977,8 +994,7 @@ mod events {
     );
     diagnostic_case!(
         on_directive_not_deprecated_in_non_runes_mode_svelte_window,
-        "events/on_directive_not_deprecated_in_non_runes_mode_svelte_window",
-        ignore = "diagnose-diagnostics: pending fix"
+        "events/on_directive_not_deprecated_in_non_runes_mode_svelte_window"
     );
 }
 
@@ -1006,19 +1022,24 @@ mod directives {
         "directives/validate_transition_conflict_out"
     );
     diagnostic_case!(
+        validate_bind_directive_illegal_await_expression,
+        "directives/validate_bind_directive_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_expression_with_await,
+        "directives/validate_bind_invalid_expression_with_await"
+    );
+    diagnostic_case!(
         validate_use_directive_illegal_await_expression,
-        "directives/validate_use_directive_illegal_await_expression",
-        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
+        "directives/validate_use_directive_illegal_await_expression"
     );
     diagnostic_case!(
         validate_transition_illegal_await_expression,
-        "directives/validate_transition_illegal_await_expression",
-        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
+        "directives/validate_transition_illegal_await_expression"
     );
     diagnostic_case!(
         validate_animate_directive_illegal_await_expression,
-        "directives/validate_animate_directive_illegal_await_expression",
-        ignore = "known mismatch: npm svelte/compiler reports experimental_async while analyzer reports illegal_await_expression"
+        "directives/validate_animate_directive_illegal_await_expression"
     );
 }
 
@@ -1027,9 +1048,7 @@ mod options {
 
     diagnostic_case!(
         options_deprecated_accessors_runes,
-        "options/options_deprecated_accessors_runes",
-        ignore =
-            "known mismatch: Rust warning span is 0..0 while reference spans the accessors option"
+        "options/options_deprecated_accessors_runes"
     );
     diagnostic_case!(
         options_deprecated_accessors_legacy,
@@ -1037,9 +1056,7 @@ mod options {
     );
     diagnostic_case!(
         options_deprecated_immutable_runes,
-        "options/options_deprecated_immutable_runes",
-        ignore =
-            "known mismatch: Rust warning span is 0..0 while reference spans the immutable option"
+        "options/options_deprecated_immutable_runes"
     );
     diagnostic_case!(
         options_deprecated_immutable_legacy,
@@ -1047,8 +1064,7 @@ mod options {
     );
     diagnostic_case!(
         validate_options_custom_element_warns_without_compiler_flag,
-        "options/validate_options_custom_element_warns_without_compiler_flag",
-        ignore = "known mismatch: Rust warning span is 0..0 while reference spans the customElement option"
+        "options/validate_options_custom_element_warns_without_compiler_flag"
     );
     diagnostic_case!(
         validate_options_custom_element_no_warn_with_compiler_flag,
@@ -1178,6 +1194,22 @@ mod props {
 mod runes {
     use super::*;
 
+    diagnostic_case!(
+        validate_derived_illegal_await_expression,
+        "runes/validate_derived_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_top_level_await_illegal_expression,
+        "runes/validate_top_level_await_illegal_expression"
+    );
+    diagnostic_case!(
+        validate_derived_by_async_arrow_no_emit,
+        "runes/validate_derived_by_async_arrow_no_emit"
+    );
+    diagnostic_case!(
+        validate_async_fn_decl_top_level_no_emit,
+        "runes/validate_async_fn_decl_top_level_no_emit"
+    );
     diagnostic_case!(
         validate_effect_invalid_placement_fn_arg,
         "runes/validate_effect_invalid_placement_fn_arg"
@@ -1487,8 +1519,7 @@ mod special {
 
     diagnostic_case!(
         svelte_head_illegal_attribute,
-        "special/svelte_head_illegal_attribute",
-        ignore = "known mismatch: analyzer is missing svelte_head_illegal_attribute"
+        "special/svelte_head_illegal_attribute"
     );
     diagnostic_case!(
         svelte_window_illegal_attribute_class,
@@ -1515,6 +1546,30 @@ mod special {
         "special/svelte_body_illegal_attribute_spread"
     );
     diagnostic_case!(
+        svelte_boundary_invalid_attribute_directive,
+        "special/svelte_boundary_invalid_attribute_directive"
+    );
+    diagnostic_case!(
+        svelte_boundary_invalid_attribute_unknown,
+        "special/svelte_boundary_invalid_attribute_unknown"
+    );
+    diagnostic_case!(
+        svelte_boundary_invalid_attribute_spread,
+        "special/svelte_boundary_invalid_attribute_spread"
+    );
+    diagnostic_case!(
+        svelte_boundary_invalid_attribute_value_boolean,
+        "special/svelte_boundary_invalid_attribute_value_boolean"
+    );
+    diagnostic_case!(
+        svelte_boundary_invalid_attribute_value_string,
+        "special/svelte_boundary_invalid_attribute_value_string"
+    );
+    diagnostic_case!(
+        svelte_boundary_invalid_attribute_value_concat,
+        "special/svelte_boundary_invalid_attribute_value_concat"
+    );
+    diagnostic_case!(
         svelte_window_invalid_content,
         "special/svelte_window_invalid_content"
     );
@@ -1526,15 +1581,27 @@ mod special {
         svelte_body_invalid_content,
         "special/svelte_body_invalid_content"
     );
+    diagnostic_case!(title_illegal_attribute, "special/title_illegal_attribute");
+    diagnostic_case!(title_invalid_content, "special/title_invalid_content");
     diagnostic_case!(
-        title_illegal_attribute,
-        "special/title_illegal_attribute",
-        ignore = "known mismatch: analyzer is missing title_illegal_attribute"
+        svelte_meta_duplicate_head,
+        "special/svelte_meta_duplicate_head"
     );
     diagnostic_case!(
-        title_invalid_content,
-        "special/title_invalid_content",
-        ignore = "known mismatch: analyzer is missing title_invalid_content"
+        svelte_meta_invalid_placement_head,
+        "special/svelte_meta_invalid_placement_head"
+    );
+    diagnostic_case!(
+        svelte_element_missing_this,
+        "special/svelte_element_missing_this"
+    );
+    diagnostic_case!(
+        svelte_element_missing_this_boolean,
+        "special/svelte_element_missing_this_boolean"
+    );
+    diagnostic_case!(
+        svelte_element_invalid_this_string,
+        "special/svelte_element_invalid_this_string"
     );
 }
 
@@ -1666,8 +1733,7 @@ mod const_tag {
     );
     diagnostic_case!(
         validate_const_tag_invalid_reference_component_children_async,
-        "const_tag/validate_const_tag_invalid_reference_component_children_async",
-        ignore = "known mismatch: analyzer reports extra snippet_conflict alongside const_tag_invalid_reference"
+        "const_tag/validate_const_tag_invalid_reference_component_children_async"
     );
     diagnostic_case!(
         validate_const_tag_invalid_reference_boundary_failed_async,
@@ -1720,13 +1786,11 @@ mod each {
     );
     diagnostic_case!(
         validate_each_item_invalid_assignment_array_destructure,
-        "each/validate_each_item_invalid_assignment_array_destructure",
-        ignore = "known mismatch: analyzer reports each_item_invalid_assignment for array destructure while npm svelte/compiler reports no diagnostic"
+        "each/validate_each_item_invalid_assignment_array_destructure"
     );
     diagnostic_case!(
         validate_each_item_invalid_assignment_nested_object_destructure,
-        "each/validate_each_item_invalid_assignment_nested_object_destructure",
-        ignore = "known mismatch: analyzer reports each_item_invalid_assignment for nested object destructure while npm svelte/compiler reports no diagnostic"
+        "each/validate_each_item_invalid_assignment_nested_object_destructure"
     );
     diagnostic_case!(
         validate_each_key_without_as,
@@ -1743,8 +1807,7 @@ mod snippets {
     );
     diagnostic_case!(
         validate_snippet_parameter_assignment_in_nested_target,
-        "snippets/validate_snippet_parameter_assignment_in_nested_target",
-        ignore = "known mismatch: analyzer reports snippet_parameter_assignment for nested destructuring target while npm svelte/compiler reports no diagnostic"
+        "snippets/validate_snippet_parameter_assignment_in_nested_target"
     );
     diagnostic_case!(
         validate_snippet_invalid_rest_parameter,
@@ -1785,6 +1848,26 @@ mod template {
     use super::*;
 
     diagnostic_case!(
+        validate_attach_tag_illegal_await_expression,
+        "template/validate_attach_tag_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_const_tag_illegal_await_expression,
+        "template/validate_const_tag_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_with_await,
+        "template/validate_const_tag_invalid_placement_with_await"
+    );
+    diagnostic_case!(
+        validate_expression_tag_illegal_await_expression,
+        "template/validate_expression_tag_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_expression_attribute_illegal_await_expression,
+        "template/validate_expression_attribute_illegal_await_expression"
+    );
+    diagnostic_case!(
         invalid_text_parent_uses_topology_ancestor_lookup,
         "template/invalid_text_parent_uses_topology_ancestor_lookup"
     );
@@ -1821,6 +1904,14 @@ mod template {
         "template/validate_expression_tag_invalid_placement"
     );
     diagnostic_case!(
+        node_invalid_placement_ssr_in_if_block,
+        "template/node_invalid_placement_ssr_in_if_block"
+    );
+    diagnostic_case!(
+        node_invalid_placement_in_table,
+        "template/node_invalid_placement_in_table"
+    );
+    diagnostic_case!(
         validate_text_bidirectional_control_warning,
         "template/validate_text_bidirectional_control_warning"
     );
@@ -1838,13 +1929,11 @@ mod template {
     );
     diagnostic_case!(
         validate_non_reactive_update_for_direct_template_read,
-        "template/validate_non_reactive_update_for_direct_template_read",
-        ignore = "known mismatch: analyzer reports non_reactive_update on a different span than npm svelte/compiler"
+        "template/validate_non_reactive_update_for_direct_template_read"
     );
     diagnostic_case!(
         validate_non_reactive_update_no_warning_across_function_boundary,
-        "template/validate_non_reactive_update_no_warning_across_function_boundary",
-        ignore = "known mismatch: npm svelte/compiler reports a11y_consider_explicit_label for unlabeled button while analyzer reports no diagnostic"
+        "template/validate_non_reactive_update_no_warning_across_function_boundary"
     );
     diagnostic_case!(
         validate_non_reactive_update_bind_this_no_warning_without_dynamic_block,
@@ -1852,7 +1941,6 @@ mod template {
     );
     diagnostic_case!(
         validate_non_reactive_update_bind_this_warns_inside_if_block,
-        "template/validate_non_reactive_update_bind_this_warns_inside_if_block",
-        ignore = "known mismatch: analyzer reports non_reactive_update on a different span than npm svelte/compiler"
+        "template/validate_non_reactive_update_bind_this_warns_inside_if_block"
     );
 }

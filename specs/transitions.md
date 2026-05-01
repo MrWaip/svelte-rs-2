@@ -2,8 +2,8 @@
 
 ## Current state
 - **Working**: 16/16 use cases
-- **Tests**: 18/19 green
-- Last updated: 2026-04-09
+- **Tests**: 19/19 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -93,4 +93,4 @@
 - [x] `validate_transition_duplicate_out`
 - [x] `validate_transition_conflict_in`
 - [x] `validate_transition_conflict_out`
-- [ ] `validate_transition_illegal_await_expression`
+- [x] `validate_transition_illegal_await_expression`

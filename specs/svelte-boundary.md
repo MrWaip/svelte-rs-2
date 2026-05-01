@@ -1,9 +1,9 @@
 # `<svelte:boundary>`
 
 ## Current state
-- **Working**: 17/19 use cases
-- **Tests**: 19/19 green
-- Last updated: 2026-04-07
+- **Working**: 19/19 use cases
+- **Tests**: 25/25 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -41,8 +41,8 @@
 - [x] Preserve boundary behavior when nested inside `if` blocks or inside another boundary
 - [x] Prefer inline `failed` snippet over `failed={expr}` when both are present; covered by `boundary_failed_attribute_override`
 - [x] Prefer inline `pending` snippet over `pending={expr}` when both are present; covered by `boundary_pending_attribute_override`
-- [ ] Reject invalid boundary attributes and directives with `svelte_boundary_invalid_attribute` diagnostics in analyze
-- [ ] Reject bare, string, or multi-chunk attribute values with `svelte_boundary_invalid_attribute_value` diagnostics in analyze
+- [x] Reject invalid boundary attributes and directives with `svelte_boundary_invalid_attribute` diagnostics in analyze
+- [x] Reject bare, string, or multi-chunk attribute values with `svelte_boundary_invalid_attribute_value` diagnostics in analyze
 - [x] Treat boundary children as their own fragment scope in semantics/analyze
 - [x] Permit boundary-local snippets such as `failed`/`pending` to coexist with other snippet declarations
 - [x] Support async-mode boundary const-tag duplication for snippet references
@@ -90,3 +90,9 @@
 - [x] `boundary_pending_imported`
 - [x] `boundary_failed_attribute_override`
 - [x] `boundary_pending_attribute_override`
+- [x] `svelte_boundary_invalid_attribute_directive`
+- [x] `svelte_boundary_invalid_attribute_unknown`
+- [x] `svelte_boundary_invalid_attribute_spread`
+- [x] `svelte_boundary_invalid_attribute_value_boolean`
+- [x] `svelte_boundary_invalid_attribute_value_string`
+- [x] `svelte_boundary_invalid_attribute_value_concat`

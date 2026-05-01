@@ -1,9 +1,9 @@
 # $state rune
 
 ## Current state
-- **Working**: 43/44 use cases
-- **Tests**: 49/50 green
-- Last updated: 2026-04-30
+- **Working**: 44/44 use cases
+- **Tests**: 50/50 green
+- Last updated: 2026-05-01
 
 ## Source
 Audit of existing implementation
@@ -41,7 +41,7 @@ Audit of existing implementation
 - [x] Interaction with memoized props (covered, test: component_prop_memo_state)
 - [x] State in render tag context (covered, test: render_tag_dynamic_state)
 - [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
-- [ ] `$.tag(source, label)` in dev mode also fires for `$state` declarations in `.svelte.js` / `.svelte.ts` standalone modules (currently broken: `compile_module` does not thread `dev` into the codegen-side transform pipeline) (test: `module_dev_state_tag`)
+- [x] `$.tag(source, label)` in dev mode also fires for `$state` declarations in `.svelte.js` / `.svelte.ts` standalone modules (test: `module_dev_state_tag`)
 - [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
 - [x] `$.tag` label for destructured state — ArrayPattern uses `[$state iterable]`, and nested array carriers under top-level ObjectPattern use `[$state object]` (covered, test: tag_state_destructured_object)
 - [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
@@ -104,7 +104,7 @@ Audit of existing implementation
 - [x] `state_assign_dev`
 - [x] `state_var_safe_get`
 - [x] `tag_state_destructured_object`
-- [ ] `module_dev_state_tag`
+- [x] `module_dev_state_tag`
 - [x] `state_constructor_read_v`
 - [x] `state_constructor_read_derived`
 - [x] `validate_state_invalid_placement_bare_expr`
@@ -124,7 +124,7 @@ Audit of existing implementation
 - [x] `validate_state_referenced_locally_no_warning_for_proxy_state`
 - [x] `validate_state_referenced_locally_for_state_raw`
 - [x] `validate_state_referenced_locally_no_warning_across_fn_boundary_state`
-- [ ] `validate_state_invalid_export_for_reassigned_state_export_specifier`
+- [x] `validate_state_invalid_export_for_reassigned_state_export_specifier`
 - [x] `validate_state_invalid_export_for_reassigned_state_default_export`
 - [x] `validate_state_invalid_export_no_error_for_default_export_without_reassignment`
 - [x] `validate_state_eager_no_args`

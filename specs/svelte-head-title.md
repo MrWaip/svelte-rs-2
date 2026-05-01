@@ -1,9 +1,9 @@
 # `<svelte:head>` / `<title>`
 
 ## Current state
-- **Working**: 5/10 use cases
-- **Tests**: 12/15 green
-- Last updated: 2026-04-07
+- **Working**: 10/10 use cases
+- **Tests**: 15/15 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -32,11 +32,11 @@
 - [x] Generate `$.head(hash(filename), ($$anchor) => { ... })` for `<svelte:head>` content.
 - [x] Lower `<title>` content into `$.document.title = ...` with static, reactive, mixed-text, entity-decoded, and async expression variants.
 - [x] Allow other regular head children like `<meta>` and `<link>` alongside `<title>`.
-- [ ] Reject duplicate `<svelte:head>` tags with `svelte_meta_duplicate`.
-- [ ] Reject `<svelte:head>` outside the component top level with `svelte_meta_invalid_placement`.
-- [ ] Reject attributes or directives on `<svelte:head>` with `svelte_head_illegal_attribute`.
-- [ ] Reject attributes or directives on `<title>` inside `<svelte:head>` with `title_illegal_attribute`.
-- [ ] Reject non-text / non-expression children inside `<title>` with `title_invalid_content`.
+- [x] Reject duplicate `<svelte:head>` tags with `svelte_meta_duplicate`.
+- [x] Reject `<svelte:head>` outside the component top level with `svelte_meta_invalid_placement`.
+- [x] Reject attributes or directives on `<svelte:head>` with `svelte_head_illegal_attribute`.
+- [x] Reject attributes or directives on `<title>` inside `<svelte:head>` with `title_illegal_attribute`.
+- [x] Reject non-text / non-expression children inside `<title>` with `title_invalid_content`.
 
 ## Out of scope
 
@@ -75,6 +75,8 @@
 - [x] `head_position_with_body`
 - [x] Parser coverage for duplicate `<svelte:head>` and invalid `<svelte:head>` placement
 - [x] Analyzer coverage for illegal `<svelte:head>` attributes, illegal `<title>` attributes, and invalid `<title>` content
-- [ ] `svelte_head_illegal_attribute`
-- [ ] `title_illegal_attribute`
-- [ ] `title_invalid_content`
+- [x] `svelte_head_illegal_attribute`
+- [x] `title_illegal_attribute`
+- [x] `title_invalid_content`
+- [x] `svelte_meta_duplicate_head`
+- [x] `svelte_meta_invalid_placement_head`

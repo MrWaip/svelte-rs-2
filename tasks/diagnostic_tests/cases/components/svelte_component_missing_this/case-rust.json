@@ -1,8 +1,8 @@
 [
   {
     "severity": "error",
-    "code": "internal_error",
+    "code": "svelte_component_missing_this",
     "start": 0,
-    "end": 0
+    "end": 32
   }
 ]

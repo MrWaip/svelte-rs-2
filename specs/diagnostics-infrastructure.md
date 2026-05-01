@@ -1,9 +1,9 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 24/25 use cases
-- **Tests**: 34/42 green
-- Last updated: 2026-04-11
+- **Working**: 25/25 use cases
+- **Tests**: 44/44 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -35,7 +35,7 @@ ROADMAP Tier 5, item 5a
 - [x] Options warnings: `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, `OptionsMissingCustomElement`
 - [x] Perf warnings: `PerfAvoidInlineClass`, `PerfAvoidNestedClass`
 - [x] Diagnostic parity harness with generated `case-svelte.json` / `case-rust.json` snapshots (test: integration)
-- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`
+- [x] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`
 
 ## Reference
 
@@ -48,6 +48,7 @@ ROADMAP Tier 5, item 5a
 - `crates/svelte_diagnostics/src/lib.rs` — DiagnosticKind (~274 variants), Severity, Diagnostic
 - `crates/svelte_diagnostics/src/codes.rs` — legacy map, fuzzymatch, is_valid
 - `crates/svelte_diagnostics/src/extract_svelte_ignore.rs` — svelte-ignore comment parsing
+- `crates/svelte_analyze/src/utils/html_tree_validation.rs` — ported `is_tag_valid_with_parent` / `is_tag_valid_with_ancestor` tables
 - `crates/svelte_analyze/src/validate.rs` — empty stub (ready for 5b–5g)
 - `crates/svelte_analyze/src/walker.rs` — VisitContext with ignore stack, ctx.warn()
 - `crates/svelte_analyze/src/types/data.rs` — IgnoreData side table in AnalysisData
@@ -75,19 +76,19 @@ ROADMAP Tier 5, item 5a
 - [x] compile: all ~165 semantic error enum variants
 - [x] compile: `AnalyzeOptions` struct
 - [x] unit: `SvelteComponentDeprecated` / `SvelteSelfDeprecated`
-- [ ] `attribute_global_event_reference_missing_binding`
-- [ ] `attribute_global_event_reference_local_binding`
+- [x] `attribute_global_event_reference_missing_binding`
+- [x] `attribute_global_event_reference_local_binding`
 - [x] `attribute_quoted_on_component`
 - [x] `attribute_quoted_custom_element`
 - [x] `attribute_quoted_regular_element_no_warn`
 - [x] `component_attribute_illegal_colon_warns`
 - [x] `component_name_lowercase_unused_import`
 - [x] `component_name_lowercase_plain_html_element`
-- [ ] `options_deprecated_accessors_runes`
+- [x] `options_deprecated_accessors_runes`
 - [x] `options_deprecated_accessors_legacy`
-- [ ] `options_deprecated_immutable_runes`
+- [x] `options_deprecated_immutable_runes`
 - [x] `options_deprecated_immutable_legacy`
-- [ ] `validate_options_custom_element_warns_without_compiler_flag`
+- [x] `validate_options_custom_element_warns_without_compiler_flag`
 - [x] `validate_options_custom_element_no_warn_with_compiler_flag`
 - [x] `validate_perf_avoid_nested_class_no_warning_at_instance_top_level`
 - [x] `validate_perf_avoid_nested_class_warns_in_instance_nested_function`
@@ -96,7 +97,9 @@ ROADMAP Tier 5, item 5a
 - [x] `validate_perf_avoid_inline_class_warns_at_instance_top_level`
 - [x] `validate_perf_avoid_inline_class_no_warning_at_module_top_level`
 - [x] `validate_perf_avoid_inline_class_warns_in_nested_function`
-- [ ] `validate_non_reactive_update_for_direct_template_read`
-- [ ] `validate_non_reactive_update_no_warning_across_function_boundary`
+- [x] `validate_non_reactive_update_for_direct_template_read`
+- [x] `validate_non_reactive_update_no_warning_across_function_boundary`
 - [x] `validate_non_reactive_update_bind_this_no_warning_without_dynamic_block`
-- [ ] `validate_non_reactive_update_bind_this_warns_inside_if_block`
+- [x] `validate_non_reactive_update_bind_this_warns_inside_if_block`
+- [x] `node_invalid_placement_ssr_in_if_block`
+- [x] `node_invalid_placement_in_table`

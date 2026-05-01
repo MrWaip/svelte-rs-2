@@ -1,9 +1,9 @@
 # Each Block
 
 ## Current state
-- **Working**: 18/20 use cases
-- **Tests**: 26/31 green
-- Last updated: 2026-04-11
+- **Working**: 20/20 use cases
+- **Tests**: 31/31 green
+- Last updated: 2026-05-01
 
 ## Source
 
@@ -29,7 +29,7 @@
 - [x] Item iteration with index: `{#each items as item, i}`.
 - [x] Non-keyed each-block index identifier in interpolated text is NOT wrapped in `?? ""` (reference treats bare `index` as `is_defined`). Keyed each blocks transform `i` into `$.get(i)` (a call expression), so those correctly keep the `?? ""` fallback. (test: `each_index_text_no_coalesce`)
 - [x] Keyed each blocks, including key expressions that reference the index.
-- [ ] Keyed each blocks where the key expression is exactly the index identifier should emit `$.index` and the same each flags as the reference compiler (test: `each_key_is_index_literal_diagnose`).
+- [x] Keyed each blocks where the key expression is exactly the index identifier should emit `$.index` and the same each flags as the reference compiler (test: `each_key_is_index_literal_diagnose`).
 - [x] Key-is-item optimization in runes mode.
 - [x] Destructured object and array patterns.
 - [x] Destructured defaults inside each context.
@@ -44,7 +44,7 @@
 - [x] Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 - [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
 - [x] Parser support for item-less each blocks with index: `{#each expression, index}`. Compiler coverage exists via `each_block_no_item_with_index`; the stale ignored parser unit test should not keep the roadmap feature open.
-- [ ] Nested each callback params in runes mode remain plain identifiers in template-attribute expressions (no `$.get(...)` wrapping and no extra fallback coercion noise) when the collection expression is non-reactive literals. (test: `clock_svg_derived_onmount`)
+- [x] Nested each callback params in runes mode remain plain identifiers in template-attribute expressions (no `$.get(...)` wrapping and no extra fallback coercion noise) when the collection expression is non-reactive literals. (test: `clock_svg_derived_onmount`)
 
 ## Out of scope
 
@@ -77,7 +77,7 @@
 - [x] `each_block`
 - [x] `each_keyed_index`
 - [x] `each_key_uses_index`
-- [ ] `each_key_is_index_literal_diagnose`
+- [x] `each_key_is_index_literal_diagnose`
 - [x] `each_key_is_item`
 - [x] `each_destructured_obj`
 - [x] `each_destructured_array`
@@ -101,7 +101,7 @@
 - [x] `validate_each_item_invalid_assignment`
 - [x] `validate_each_item_invalid_assignment_bind_identifier`
 - [x] `validate_each_item_bind_member_expression_no_invalid_assignment`
-- [ ] `validate_each_item_invalid_assignment_array_destructure`
-- [ ] `validate_each_item_invalid_assignment_nested_object_destructure`
-- [ ] `validate_each_key_without_as`
-- [ ] `clock_svg_derived_onmount`
+- [x] `validate_each_item_invalid_assignment_array_destructure`
+- [x] `validate_each_item_invalid_assignment_nested_object_destructure`
+- [x] `validate_each_key_without_as`
+- [x] `clock_svg_derived_onmount`

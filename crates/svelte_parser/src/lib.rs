@@ -276,7 +276,16 @@ impl<'a> Parser<'a> {
                             FragmentRole::Element
                         };
                         let fragment = self.empty_fragment(role);
-                        let node = if is_component_name(&name) {
+                        let node = if name == SVELTE_COMPONENT {
+                            Node::SvelteComponentLegacy(svelte_ast::SvelteComponentLegacy {
+                                id: NodeId(0),
+                                span: token.span,
+                                self_closing: true,
+                                attributes: attrs,
+                                fragment,
+                                legacy_slots: Vec::new(),
+                            })
+                        } else if is_component_name(&name) {
                             Node::ComponentNode(ComponentNode {
                                 id: NodeId(0),
                                 span: token.span,
@@ -541,7 +550,7 @@ impl<'a> Parser<'a> {
 
         Self::convert_slot_element_legacy(&mut component.store, &root_nodes);
         Self::convert_svelte_fragment_legacy(&mut component.store, &root_nodes);
-        Self::convert_svelte_element(&mut component.store, &root_nodes);
+        Self::convert_svelte_element(&mut component.store, &mut self.diagnostics, &root_nodes);
         Self::convert_svelte_boundary(&mut component.store, &root_nodes);
 
         Self::populate_fragment_owners(&mut component.store);

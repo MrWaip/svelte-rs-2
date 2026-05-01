@@ -90,7 +90,7 @@ function createSplitDiff({ parent, original, modified, theme }) {
         gutter: true,
     });
     syncScroll(view.a.scrollDOM, view.b.scrollDOM);
-    return { kind: "split", view, a: view.a, b: view.b };
+    return { kind: "split", view, a: view.a, b: view.b, parent, theme };
 }
 
 function createUnifiedDiff({ parent, original, modified, theme }) {
@@ -132,24 +132,23 @@ function syncScroll(left, right) {
     link(right, left);
 }
 
-export function setOriginal(diff, doc) {
+export function setDiffDocs(diff, original, modified) {
     if (diff.kind === "split") {
-        const v = diff.a;
-        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
+        diff.view.destroy();
+        const parent = diff.view.dom.parentNode || diff.parent;
+        if (parent) parent.innerHTML = "";
+        const rebuilt = createSplitDiff({ parent, original, modified, theme: diff.theme });
+        diff.view = rebuilt.view;
+        diff.a = rebuilt.a;
+        diff.b = rebuilt.b;
+        diff.parent = parent;
     } else {
-        diff.original = doc;
-    }
-}
-
-export function setModified(diff, doc) {
-    if (diff.kind === "split") {
-        const v = diff.b;
-        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
-    } else {
-        diff.modified = doc;
+        diff.original = original;
+        diff.modified = modified;
         rebuildUnifiedView(diff);
     }
 }
+
 
 export function applyDiffTheme(diff, theme) {
     if (diff.kind === "split") {

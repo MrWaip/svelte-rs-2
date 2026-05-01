@@ -1,3 +1,4 @@
+mod experimental_async;
 mod legacy;
 mod non_reactive_update;
 mod runes;
@@ -30,6 +31,7 @@ pub fn validate(
     if let Some(program) = &parsed.program {
         let offset = parsed.script_content_span.map_or(0, |s| s.start);
         validate_program(data, program, offset, runes, diags);
+        runes::validate_invalid_exports(data, program, true, None, offset, diags);
         validate_illegal_default_export(program, offset, diags);
     }
 
@@ -37,6 +39,14 @@ pub fn validate(
     if let Some(module_program) = &parsed.module_program {
         let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
         runes::validate_module_props_runes(data, module_program, offset, runes, diags);
+        runes::validate_invalid_exports(
+            data,
+            module_program,
+            false,
+            data.scoping.module_scope_id(),
+            offset,
+            diags,
+        );
         stores::validate_module(data, module_program, offset, diags);
         validate_perf_class_warnings(module_program, offset, 0, diags);
     }
@@ -72,6 +82,7 @@ pub fn validate_program(
     runes::validate(data, program, offset, runes, diags);
     stores::validate(data, program, offset, diags);
     validate_perf_class_warnings(program, offset, 1, diags);
+    experimental_async::validate_instance_program(data, program, offset, diags);
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
@@ -86,6 +97,14 @@ pub fn validate_standalone_module(
     diags: &mut Vec<Diagnostic>,
 ) {
     runes::validate(data, program, offset, runes, diags);
+    runes::validate_invalid_exports(
+        data,
+        program,
+        true,
+        Some(data.scoping.root_scope_id()),
+        offset,
+        diags,
+    );
     stores::validate_standalone_module(data, program, offset, diags);
     validate_perf_class_warnings(program, offset, 0, diags);
 }
@@ -343,7 +362,7 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
 }
 
 fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    if !data.output.custom_element {
+    if !data.output.is_custom_element_target {
         return;
     }
 
@@ -402,7 +421,7 @@ fn validate_svelte_options_warnings(
         let kind = match attr.html_name() {
             "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
             "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
-            "customElement" if !data.output.custom_element => {
+            "customElement" if !data.output.custom_element_compile_flag => {
                 Some(DiagnosticKind::OptionsMissingCustomElement)
             }
             _ => None,
