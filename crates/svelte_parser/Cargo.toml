@@ -22,6 +22,7 @@ oxc_syntax = { workspace = true }
 compact_str = { workspace = true }
 rustc-hash = { workspace = true }
 svelte_css = { workspace = true }
+memchr = "2"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

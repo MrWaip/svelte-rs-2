@@ -1224,6 +1224,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "compact_str",
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
@@ -1347,6 +1348,7 @@ name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
  "compact_str",
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
  "oxc_estree",

@@ -1477,23 +1477,37 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        for (offset, ch) in value.char_indices() {
-            if !is_bidi_control(ch) {
-                continue;
+        let bytes = value.as_bytes();
+        if !bytes.contains(&0xE2) {
+            return;
+        }
+
+        if ctx
+            .data
+            .output
+            .ignore_data
+            .is_ignored(text.id, "bidirectional_control_characters")
+        {
+            return;
+        }
+
+        let mut i = 0;
+        while let Some(off) = memchr::memchr(0xE2, &bytes[i..]) {
+            let pos = i + off;
+            if pos + 2 < bytes.len() {
+                let b1 = bytes[pos + 1];
+                let b2 = bytes[pos + 2];
+                let is_bidi = (b1 == 0x80 && matches!(b2, 0xAA..=0xAE))
+                    || (b1 == 0x81 && matches!(b2, 0xA6..=0xA9));
+                if is_bidi {
+                    let start = text.span.start + pos as u32;
+                    ctx.warnings_mut().push(Diagnostic::warning(
+                        DiagnosticKind::BidirectionalControlCharacters,
+                        Span::new(start, start + 3),
+                    ));
+                }
             }
-            if ctx
-                .data
-                .output
-                .ignore_data
-                .is_ignored(text.id, "bidirectional_control_characters")
-            {
-                break;
-            }
-            let start = text.span.start + offset as u32;
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::BidirectionalControlCharacters,
-                Span::new(start, start + ch.len_utf8() as u32),
-            ));
+            i = pos + 1;
         }
     }
 
@@ -2476,23 +2490,8 @@ fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_, '_>) -> bool 
 }
 
 fn contains_non_whitespace_text(text: &str) -> bool {
-    text.chars()
-        .any(|ch| !matches!(ch, ' ' | '\t' | '\r' | '\n'))
-}
-
-fn is_bidi_control(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{202A}'
-            | '\u{202B}'
-            | '\u{202C}'
-            | '\u{202D}'
-            | '\u{202E}'
-            | '\u{2066}'
-            | '\u{2067}'
-            | '\u{2068}'
-            | '\u{2069}'
-    )
+    text.bytes()
+        .any(|b| !matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
 }
 
 fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {

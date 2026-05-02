@@ -1,0 +1,34 @@
+{
+  "name": "svelte-rs-2",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/svelte-rs-2",
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=svelte-rs-cargo-registry,target=/usr/local/cargo/registry,type=volume",
+    "source=svelte-rs-cargo-git,target=/usr/local/cargo/git,type=volume",
+    "source=svelte-rs-target,target=${containerWorkspaceFolder}/target,type=volume",
+    "source=svelte-rs-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+  ],
+  "containerEnv": {
+    "CARGO_HOME": "/usr/local/cargo",
+    "RUSTUP_HOME": "/usr/local/rustup",
+    "CARGO_TERM_COLOR": "always",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "skellock.just",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "rust-analyzer.server.path": "/usr/local/cargo/bin/rust-analyzer"
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}

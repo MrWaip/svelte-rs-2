@@ -1,4 +1,5 @@
 use super::*;
+use smallvec::SmallVec;
 
 use super::dispatch::{
     dispatch_concat_exprs, dispatch_expr, dispatch_opt_expr, dispatch_opt_stmt, dispatch_stmt,
@@ -9,7 +10,8 @@ pub(crate) fn walk_template(
     ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
-    let fragment_nodes: Vec<NodeId> = ctx.store.fragment_nodes(fragment_id).to_vec();
+    let fragment_nodes: SmallVec<[NodeId; 8]> =
+        SmallVec::from_slice(ctx.store.fragment_nodes(fragment_id));
     for (idx, id) in fragment_nodes.iter().copied().enumerate() {
         let node = ctx.store.get(id);
         let ignore_codes = scan_preceding_ignores(idx, &fragment_nodes, ctx);
@@ -37,7 +39,7 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_element(el, ctx);
                 }
-                let prev_name = ctx.replace_element_name(el.name.clone());
+                let prev_name = ctx.replace_element_name(el.id);
                 ctx.push(ParentRef {
                     id: el.id,
                     kind: ParentKind::Element,

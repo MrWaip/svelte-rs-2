@@ -8,21 +8,30 @@ const WINDOWS_1252: [u32; 32] = [
 const MAX_ENTITY_LEN: usize = 40;
 
 pub(crate) fn decode_text(input: &str) -> Option<String> {
-    let mut out = String::new();
-    let mut cursor = 0;
+    let bytes = input.as_bytes();
+    let first = memchr::memchr(b'&', bytes)?;
+
+    let mut out = String::with_capacity(input.len());
+    out.push_str(&input[..first]);
+    let mut cursor = first;
     let mut changed = false;
 
-    while let Some(rel) = input[cursor..].find('&') {
-        let start = cursor + rel;
-        out.push_str(&input[cursor..start]);
-
-        if let Some((decoded, consumed)) = decode_entity(&input[start + 1..]) {
+    loop {
+        if let Some((decoded, consumed)) = decode_entity(&input[cursor + 1..]) {
             out.push(decoded);
-            cursor = start + 1 + consumed;
+            cursor += 1 + consumed;
             changed = true;
         } else {
             out.push('&');
-            cursor = start + 1;
+            cursor += 1;
+        }
+
+        match memchr::memchr(b'&', &bytes[cursor..]) {
+            Some(rel) => {
+                out.push_str(&input[cursor..cursor + rel]);
+                cursor += rel;
+            }
+            None => break,
         }
     }
 
