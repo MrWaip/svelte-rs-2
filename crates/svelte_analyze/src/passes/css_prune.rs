@@ -2223,7 +2223,7 @@ fn attribute_selector_case_insensitive(
 
 fn test_attribute(operator: &str, expected: &str, case_insensitive: bool, value: &str) -> bool {
     let (expected, value) = if case_insensitive {
-        (expected.to_lowercase(), value.to_lowercase())
+        (expected.to_ascii_lowercase(), value.to_ascii_lowercase())
     } else {
         (expected.to_owned(), value.to_owned())
     };

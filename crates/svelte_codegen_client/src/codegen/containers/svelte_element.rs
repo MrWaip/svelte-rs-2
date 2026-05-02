@@ -41,10 +41,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let el_span_start = el.span.start;
         let dev_loc: Option<(usize, usize)> = if self.ctx.state.dev {
-            Some(crate::script::compute_line_col(
-                self.ctx.state.source,
-                el_span_start,
-            ))
+            Some(self.ctx.state.line_index.line_col(el_span_start))
         } else {
             None
         };
