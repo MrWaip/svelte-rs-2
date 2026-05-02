@@ -8,7 +8,7 @@ use svelte_analyze::RuneKind;
 
 use svelte_ast_builder::Arg;
 
-use super::location::{compute_line_col, sanitize_location};
+use super::location::sanitize_location;
 use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
@@ -607,7 +607,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 .is_ignored_at_span(decl_span_start, "await_waterfall")
             {
                 let full_offset = self.script_content_start + init_span_start;
-                let (line, col) = compute_line_col(self.component_source, full_offset);
+                let (line, col) = self.component_line_index.line_col(full_offset);
                 let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
                 args.push(Arg::Expr(self.b.str_expr(&loc)));
             }

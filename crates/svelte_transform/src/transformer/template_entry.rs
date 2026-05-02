@@ -12,15 +12,16 @@ use svelte_ast_builder::Builder;
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
 use crate::data::TransformData;
 
-pub(crate) fn run_template<'a>(
+pub(crate) fn run_template<'a, 'b>(
     alloc: &'a Allocator,
-    analysis: &AnalysisData<'a>,
-    component_scoping: &ComponentScoping<'a>,
+    analysis: &'b AnalysisData<'a>,
+    component_scoping: &'b ComponentScoping<'a>,
     expr_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
     stmt_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
     bind_expr_handles: Vec<(OxcNodeId, svelte_ast::NodeId)>,
     transform_data: TransformData,
     parsed: &mut JsAst<'a>,
+    line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> TransformData {
     let b = Builder::new(alloc);
@@ -45,6 +46,7 @@ pub(crate) fn run_template<'a>(
         needs_ownership_validator: false,
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source: "",
+        component_line_index: line_index,
         script_content_start: 0,
         filename: "",
         next_arrow_name: None,

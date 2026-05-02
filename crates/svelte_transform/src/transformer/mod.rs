@@ -20,7 +20,7 @@ mod template_rewrites;
 mod ts_cleanup;
 
 pub use entry::{TransformScriptOutput, transform_script};
-pub use location::{compute_line_col, sanitize_location};
+pub use location::sanitize_location;
 pub use model::IgnoreQuery;
 
 pub(crate) use svelte_analyze::{

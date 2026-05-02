@@ -47,6 +47,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     let filename = ctx.state.filename;
     let ignore_query = IgnoreQuery::new(ctx.query.analysis);
 
+    let line_index = ctx.state.line_index;
     let program = ctx.state.parsed.program.take();
     if let Some(program) = program {
         let component_scoping = ctx.query.scoping();
@@ -60,6 +61,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             true,
             dev,
             component_source,
+            line_index,
             script_content_start,
             filename,
             ctx.query.runes(),
@@ -89,6 +91,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         true,
         dev,
         component_source,
+        line_index,
         script_content_start,
         filename,
         ctx.query.runes(),
@@ -107,6 +110,7 @@ pub fn transform_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> ScriptOutput<'a> {
     run_transform(
@@ -119,6 +123,7 @@ pub fn transform_module_program<'a, 'b>(
         false,
         dev,
         "",
+        line_index,
         0,
         "(unknown)",
         true,
@@ -136,6 +141,7 @@ pub fn transform_component_module_script<'a>(
     is_ts: bool,
 ) -> ScriptOutput<'a> {
     let empty_scoping = ComponentScoping::new_empty();
+    let line_index = svelte_span::LineIndex::new(source);
     transform_script_text(
         allocator,
         source,
@@ -145,6 +151,7 @@ pub fn transform_component_module_script<'a>(
         false,
         false,
         source,
+        &line_index,
         0,
         "(unknown)",
         false,
@@ -164,6 +171,7 @@ pub fn transform_component_module_program<'a, 'b>(
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
     script_rune_calls: Option<&ScriptRuneCalls>,
+    line_index: &'b svelte_span::LineIndex,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -175,6 +183,7 @@ pub fn transform_component_module_program<'a, 'b>(
         false,
         false,
         "",
+        line_index,
         0,
         "(unknown)",
         false,
@@ -195,6 +204,7 @@ fn transform_script_text<'a>(
     strip_exports: bool,
     dev: bool,
     component_source: &str,
+    component_line_index: &svelte_span::LineIndex,
     script_content_start: u32,
     filename: &str,
     runes: bool,
@@ -226,6 +236,7 @@ fn transform_script_text<'a>(
         strip_exports,
         dev,
         component_source,
+        component_line_index,
         script_content_start,
         filename,
         runes,
@@ -247,6 +258,7 @@ fn run_transform<'a>(
     strip_exports: bool,
     dev: bool,
     component_source: &str,
+    component_line_index: &svelte_span::LineIndex,
     script_content_start: u32,
     filename: &str,
     runes: bool,
@@ -270,6 +282,7 @@ fn run_transform<'a>(
         strip_exports,
         dev,
         component_source,
+        component_line_index,
         script_content_start,
         filename,
         runes,

@@ -1299,6 +1299,7 @@ dependencies = [
  "svelte_codegen_client",
  "svelte_diagnostics",
  "svelte_parser",
+ "svelte_span",
  "svelte_transform",
  "svelte_transform_css",
  "svelte_types",
@@ -1408,6 +1409,7 @@ dependencies = [
  "oxc_allocator",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_span",
 ]
 
 [[package]]

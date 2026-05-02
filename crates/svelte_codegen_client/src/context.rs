@@ -83,6 +83,7 @@ pub struct CodegenState<'a> {
     pub b: Builder<'a>,
     pub name: &'a str,
     pub source: &'a str,
+    pub line_index: &'a svelte_span::LineIndex,
     pub filename: &'a str,
     pub experimental_async: bool,
     pub dev: bool,
@@ -114,6 +115,7 @@ impl<'a> CodegenState<'a> {
         allocator: &'a oxc_allocator::Allocator,
         name: &'a str,
         source: &'a str,
+        line_index: &'a svelte_span::LineIndex,
         filename: &'a str,
         experimental_async: bool,
         dev: bool,
@@ -126,6 +128,7 @@ impl<'a> CodegenState<'a> {
             b: Builder::new(allocator),
             name,
             source,
+            line_index,
             filename,
             experimental_async,
             dev,
@@ -185,6 +188,7 @@ impl<'a> Ctx<'a> {
         let analysis = compile_ctx.analysis;
         let parsed = compile_ctx.js_arena;
         let ident_gen = compile_ctx.ident_gen;
+        let line_index = compile_ctx.line_index;
 
         let name = allocator.alloc_str(analysis.component_name());
         let source = component.source.as_str();
@@ -198,6 +202,7 @@ impl<'a> Ctx<'a> {
                 allocator,
                 name,
                 source,
+                line_index,
                 filename,
                 options.experimental_async,
                 options.dev,

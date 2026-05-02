@@ -48,6 +48,7 @@ pub fn generate<'a>(
                 Some(analysis),
                 &analysis.scoping,
                 Some(analysis.script_rune_calls()),
+                ctx.state.line_index,
             )
         } else {
             let is_ts = module_script.language == svelte_ast::ScriptLanguage::TypeScript;
@@ -618,10 +619,17 @@ pub fn generate_module<'a>(
     alloc: &'a Allocator,
     program: oxc_ast::ast::Program<'a>,
     analysis: &AnalysisData<'a>,
+    line_index: &svelte_span::LineIndex,
     dev: bool,
 ) -> String {
-    let script_output =
-        script::transform_module_program(alloc, program, Some(analysis), &analysis.scoping, dev);
+    let script_output = script::transform_module_program(
+        alloc,
+        program,
+        Some(analysis),
+        &analysis.scoping,
+        line_index,
+        dev,
+    );
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");

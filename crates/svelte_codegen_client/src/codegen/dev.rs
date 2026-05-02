@@ -23,7 +23,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if !self.ctx.state.dev {
             return self.ctx.b.expr_stmt(expression);
         }
-        let (line, col) = crate::script::compute_line_col(self.ctx.state.source, span_start);
+        let (line, col) = self.ctx.state.line_index.line_col(span_start);
         let thunk = self
             .ctx
             .b

@@ -108,7 +108,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.needs_ownership_validator = true;
 
         let offset = self.script_content_start + span_start;
-        let (line, col) = super::location::compute_line_col(self.component_source, offset);
+        let (line, col) = self.component_line_index.line_col(offset);
 
         let mut path: Vec<Expression<'a>> = Vec::with_capacity(1 + segments.len());
         path.push(self.b.str_expr(&root_name));
@@ -140,7 +140,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.needs_ownership_validator = true;
 
         let offset = self.script_content_start + span_start;
-        let (line, col) = super::location::compute_line_col(self.component_source, offset);
+        let (line, col) = self.component_line_index.line_col(offset);
 
         let mut path: Vec<Expression<'a>> = Vec::with_capacity(1 + mutation_info.segments.len());
         path.push(self.b.str_expr(&mutation_info.root_name));
@@ -236,7 +236,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let fn_name = fn_name.unwrap_or_else(|| unreachable!());
 
         let offset = self.script_content_start + left_span_start;
-        let (line, col) = super::location::compute_line_col(self.component_source, offset);
+        let (line, col) = self.component_line_index.line_col(offset);
         let loc = format!(
             "{}:{}:{}",
             super::location::sanitize_location(self.filename),
@@ -509,7 +509,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let fn_name = fn_name.unwrap_or_else(|| unreachable!());
 
         let offset = self.script_content_start + left_span_start;
-        let (line, col) = super::location::compute_line_col(self.component_source, offset);
+        let (line, col) = self.component_line_index.line_col(offset);
         let loc = format!(
             "{}:{}:{}",
             super::location::sanitize_location(self.filename),

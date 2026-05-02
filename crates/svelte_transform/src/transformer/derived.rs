@@ -2,13 +2,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 
-use super::location::{compute_line_col, sanitize_location};
+use super::location::sanitize_location;
 use super::model::AsyncDerivedMode;
 use super::model::IgnoreQuery;
 use svelte_ast_builder::{Arg, Builder};
 
 pub(crate) struct DevContext<'a> {
-    pub(crate) component_source: &'a str,
+    pub(crate) component_line_index: &'a svelte_span::LineIndex,
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'a str,
 
@@ -18,7 +18,7 @@ pub(crate) struct DevContext<'a> {
 impl DevContext<'_> {
     fn locate(&self, script_offset: u32) -> String {
         let full_offset = self.script_content_start + script_offset;
-        let (line, col) = compute_line_col(self.component_source, full_offset);
+        let (line, col) = self.component_line_index.line_col(full_offset);
         format!("{}:{}:{}", sanitize_location(self.filename), line, col)
     }
 }

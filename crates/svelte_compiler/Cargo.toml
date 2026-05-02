@@ -17,6 +17,7 @@ svelte_transform = { workspace = true }
 svelte_diagnostics = { workspace = true }
 svelte_codegen_client = { path = "../svelte_codegen_client" }
 svelte_types = { workspace = true }
+svelte_span = { workspace = true }
 svelte_transform_css = { workspace = true }
 oxc_allocator = { workspace = true }
 serde = { version = "1", features = ["derive"] }
