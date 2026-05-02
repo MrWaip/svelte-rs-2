@@ -58,6 +58,19 @@ bench:
 bench-node:
     node tasks/benchmark/bench.mjs
 
+# Run a single bench by substring filter
+bench-case filter:
+    cargo bench -p benchmark --bench svelte_compiler -- '{{filter}}'
+
+# Profile a single .svelte file with samply. Writes profile/profile.json. Requires: cargo install samply && samply setup.
+# Usage: just bench-flame tasks/benchmark/benches/compiler/snippets/case_01.svelte 5
+bench-flame path seconds='5':
+    cargo build --profile profiling -p benchmark --bin profile
+    mkdir -p profile
+    samply record --save-only --no-open --unstable-presymbolicate -d {{seconds}} -o profile/profile.json.gz -- target/profiling/profile '{{path}}' {{seconds}}
+    gunzip -f profile/profile.json.gz
+    node tasks/benchmark/scripts/gecko-to-folded.mjs profile
+
 # Dump OXC AST as JSON for a JS expression
 dump-ast expr:
     cargo run -p svelte_parser --example dump_ast -- '{{expr}}'

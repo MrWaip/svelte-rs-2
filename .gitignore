@@ -1,4 +1,6 @@
+.DS_Store
 /target
+/profile
 /cclsp
 docs/compiler/
 node_modules/
