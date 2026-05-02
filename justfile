@@ -1,6 +1,5 @@
 # Generate expected JS output (case-svelte.js) for all compiler test cases
 generate:
-    cd tasks/generate_test_cases && npm install --silent
     cargo run -p generate_test_cases
 
 # Run all diagnostic integration tests
@@ -51,15 +50,13 @@ test-parser:
 test-analyzer:
     cargo test -p svelte_analyze
 
-# Generate benchmark .svelte file (usage: just generate-benchmark big_v2 50)
-generate-benchmark name='big_v6' chunks='50':
-    cargo run -p generate_benchmark -- {{name}} {{chunks}}
+# Run all Rust benchmarks
+bench:
+    cargo bench -p benchmark
 
-# Compare Rust vs JS compiler performance (wall-clock)
-compare-benchmark file='tasks/benchmark/benches/compiler/big_v6.svelte':
-    cargo build --release -p benchmark --bin bench_cli
-    cd tasks/benchmark && npm install --silent
-    node tasks/benchmark/compare.mjs {{file}}
+# Run Node benchmarks against svelte/compiler
+bench-node:
+    node tasks/benchmark/bench.mjs
 
 # Dump OXC AST as JSON for a JS expression
 dump-ast expr:
@@ -67,7 +64,6 @@ dump-ast expr:
 
 # Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte)
 quick-check path:
-    cd tasks/generate_test_cases && npm install --silent
     cargo run -q -p quick_check -- {{path}}
 
 # Build WASM and serve the playground
