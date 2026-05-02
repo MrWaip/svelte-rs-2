@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "svelte": "5.53.9"
+  },
+  "devDependencies": {
+    "@codspeed/benchmark.js-plugin": "^4.0.0",
+    "benchmark": "^2.1.4",
+    "glob": "^11.0.0"
+  }
+}
