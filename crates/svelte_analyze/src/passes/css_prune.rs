@@ -2221,19 +2221,63 @@ fn attribute_selector_case_insensitive(
 }
 
 fn test_attribute(operator: &str, expected: &str, case_insensitive: bool, value: &str) -> bool {
-    let (expected, value) = if case_insensitive {
-        (expected.to_ascii_lowercase(), value.to_ascii_lowercase())
-    } else {
-        (expected.to_owned(), value.to_owned())
+    let eq = |a: &str, b: &str| {
+        if case_insensitive {
+            a.eq_ignore_ascii_case(b)
+        } else {
+            a == b
+        }
+    };
+    let starts_with = |haystack: &str, needle: &str| -> bool {
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        h.len() >= n.len() && {
+            if case_insensitive {
+                h[..n.len()].eq_ignore_ascii_case(n)
+            } else {
+                &h[..n.len()] == n
+            }
+        }
+    };
+    let ends_with = |haystack: &str, needle: &str| -> bool {
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        h.len() >= n.len() && {
+            let off = h.len() - n.len();
+            if case_insensitive {
+                h[off..].eq_ignore_ascii_case(n)
+            } else {
+                &h[off..] == n
+            }
+        }
+    };
+    let contains = |haystack: &str, needle: &str| -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        if !case_insensitive {
+            return haystack.contains(needle);
+        }
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        if h.len() < n.len() {
+            return false;
+        }
+        (0..=h.len() - n.len()).any(|i| h[i..i + n.len()].eq_ignore_ascii_case(n))
     };
 
     match operator {
-        "=" => value == expected,
-        "~=" => value.split_whitespace().any(|part| part == expected),
-        "|=" => format!("{value}-").starts_with(&format!("{expected}-")),
-        "^=" => value.starts_with(expected.as_str()),
-        "$=" => value.ends_with(expected.as_str()),
-        "*=" => value.contains(expected.as_str()),
+        "=" => eq(value, expected),
+        "~=" => value.split_whitespace().any(|part| eq(part, expected)),
+        "|=" => {
+            eq(value, expected)
+                || (value.len() > expected.len()
+                    && value.as_bytes()[expected.len()] == b'-'
+                    && starts_with(value, expected))
+        }
+        "^=" => starts_with(value, expected),
+        "$=" => ends_with(value, expected),
+        "*=" => contains(value, expected),
         _ => false,
     }
 }
