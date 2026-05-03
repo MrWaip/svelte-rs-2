@@ -1,8 +1,8 @@
 # preserveWhitespace
 
 ## Current state
-- **Working**: 13/15 use cases
-- **Tests**: 5/8 green
+- **Working**: 15/15 use cases
+- **Tests**: 7/7 green
 - Last updated: 2026-05-03
 
 ## Source
@@ -27,9 +27,9 @@ When `true`, none of the above runs — text is forwarded verbatim. Two implicit
 - `<pre>` and `<textarea>` always preserve whitespace inside their fragment.
 - Client codegen also forces `preserve_whitespace=true` for `<script>` element children.
 
-There is one extra rule that runs even with preservation: if `<pre>`'s very first child `Text` is exactly `\n` or `\r\n`, drop it — the browser eats that leading newline anyway, so keeping it would diverge between SSR and hydration. This applies after the trim step (or unconditionally inside `<pre>` when preservation is on).
+There is one extra rule that runs even with preservation: if `<pre>`'s very first child `Text` is exactly `\n` or `\r\n`, drop it — the browser eats that leading newline anyway, so keeping it would diverge between SSR and hydration.
 
-Reference's parser also calls `template.trimEnd()` before parsing, so trailing source whitespace never reaches `clean_nodes`. Our parser does not. As a workaround, `prepare.rs` always trims trailing whitespace-only `Text` nodes from each fragment, even when `preserve_whitespace=true`. That is correct at the root fragment but wrong for inner fragments where preservation is on — see use cases.
+Trailing source whitespace is stripped at parser entry via `source.trim_end()` in `parse_with_js`, mirroring reference's `template.trimEnd()` in `phases/1-parse/index.js:97`. This means the AST never carries trailing whitespace-only `Text` nodes at the source-EOF boundary, so codegen does not need any root-vs-inner-fragment distinction when preservation is on.
 
 ## Syntax variants
 
@@ -56,18 +56,19 @@ compile(source, { preserveWhitespace: false });
 - [x] Default behavior — preserve whitespace at boundary with `ExpressionTag`: do not collapse leading ws before an expression or trailing ws after an expression, because Text+Expression+Text fuses into one logical run.
 - [x] `can_remove_entirely` for parents `select`, `tr`, `table`, `tbody`, `thead`, `tfoot`, `colgroup`, `datalist` — drop single-space Text entirely.
 - [x] `can_remove_entirely` for any SVG element except `<text>` (and any element that has a `<text>` ancestor); `foreignObject` switches the namespace back to HTML and disables removal (test: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`).
-- [x] `<pre>` parent forces `preserve_whitespace=true` for its children fragment, regardless of option (`FragmentCtx::child_of_element` sets `is_pre`).
+- [x] `<pre>` parent forces `preserve_whitespace=true` for its children fragment, regardless of option (`FragmentCtx::child_of_element` sets `inside_pre`).
 - [x] `<textarea>` parent forces `preserve_whitespace=true` for its children fragment (test: `textarea_child_value_dynamic`).
 - [x] Compile option `preserveWhitespace=true` (without `<svelte:options>`) preserves leading and trailing whitespace at the root fragment (test: `preserve_whitespace_compile_option_true`). Test runner `tasks/compiler_tests/test_v3.rs:case_input_and_options` extended during this audit to read `preserveWhitespace` from `config.json`.
-- [ ] `<script>` element child fragment (template-level `<script>`, not module/instance) should also force `preserve_whitespace=true` for its children. Reference: `phases/3-transform/client/visitors/RegularElement.js:317` passes `name === 'script' || state.preserve_whitespace` to `clean_nodes`. Our `FragmentCtx::child_of_element` only special-cases `pre`/`textarea`; add `script` next to them. Quick fix. Note: the `preserve_whitespace_script_element` test fixture also exercises an unrelated `$.with_script(...)` wrapper that our codegen does not yet emit, so the test will need a second fix to fully match (test: `preserve_whitespace_script_element`, `#[ignore]`).
-- [ ] `<pre>` first-child Text equal to exactly `\n` or `\r\n` must be dropped, regardless of `preserve_whitespace` value. Reference: `phases/3-transform/utils.js:257-262`. Triggered when `<pre>` opens with a newline followed by an inner element or `ExpressionTag`. Our `prepare.rs` has no such branch. Quick fix (test: `preserve_whitespace_pre_first_newline`, `#[ignore]`).
-- [ ] `preserve_whitespace=true` must keep trailing whitespace-only Text nodes inside *inner* fragments, not just at the root. Our `prepare.rs:70-79` unconditionally trims trailing ws-only nodes regardless of `preserve_whitespace`, as a workaround for the missing top-level `template.trimEnd()` that reference applies before parsing. Fix: trim trailing ws-only nodes only at the root fragment (or apply `trim_end` once on `Component::source` like reference does), not inside element fragments. Moderate (test: `preserve_whitespace_inner_trailing_text`, `#[ignore]`).
+- [x] `<script>` element child fragment in the template forces `preserve_whitespace=true` for its content, alongside `<pre>`/`<textarea>` (matches `phases/3-transform/client/visitors/RegularElement.js:317`). Implemented via the propagating `FragmentCtx::inside_script` flag set in `child_of_element("script", ...)`.
+- [x] `<pre>` first-child Text equal to exactly `\n` or `\r\n` is dropped, regardless of `preserve_whitespace` value (matches `phases/3-transform/utils.js:257-262`). Checked in `prepare.rs` against `FragmentCtx::parent_element_name == Some("pre")` after the trim filter (test: `preserve_whitespace_pre_first_newline`).
+- [x] `preserve_whitespace=true` keeps trailing whitespace-only Text nodes inside any non-root fragment. Achieved systemically via `source.trim_end()` at parse entry in `crates/svelte_parser/src/lib.rs:parse_with_js`, mirroring `reference/compiler/phases/1-parse/index.js:97`. Codegen does not need to distinguish root from inner fragments (test: `preserve_whitespace_inner_trailing_text`).
 
 ## Out of scope
 
 - SSR / server codegen for `preserveWhitespace` — `svelte_codegen_server` does not exist yet. Reference handling lives in `phases/3-transform/server/visitors/RegularElement.js` and `Fragment.js`.
 - `regex_whitespaces_strict` collapse on attribute values — that runs from a `trim_whitespace` flag inside `build_attribute_value`, not from `preserveWhitespace`; orthogonal feature.
 - Lone `<script>` fragment empty-comment append (`clean_nodes` line 267) — separate runtime concern, tracked under script-related work.
+- `<script>` element template emission via `$.with_script(...)` runtime wrapper — tracked under `specs/unknown.md` (`script-tag-with-script-wrapper`); orthogonal to whitespace.
 
 ## Reference
 
@@ -92,9 +93,10 @@ compile(source, { preserveWhitespace: false });
 - `crates/svelte_analyze/src/lib.rs:82,98,126` (`AnalyzeOptions::preserve_whitespace` plumbing)
 - `crates/svelte_analyze/src/types/data/analysis.rs:17,41` (storage)
 - `crates/svelte_analyze/src/types/data/codegen_view.rs:26-28` (accessor)
-- `crates/svelte_codegen_client/src/codegen/data_structures/fragment_ctx.rs:10-12,27,50-61` (`is_pre`, `is_textarea`, `can_remove_entirely`)
-- `crates/svelte_codegen_client/src/codegen/fragment/prepare.rs:68-103,127-147,418-442` (whitespace trim pipeline)
-- `tasks/compiler_tests/test_v3.rs:38-72` (config.json reader missing `preserveWhitespace`)
+- `crates/svelte_parser/src/lib.rs:parse_with_js` (`source.trim_end()` at parse entry)
+- `crates/svelte_codegen_client/src/codegen/data_structures/fragment_ctx.rs` (`inside_pre`, `inside_textarea`, `inside_script`, `parent_element_name`, `can_remove_entirely`)
+- `crates/svelte_codegen_client/src/codegen/fragment/prepare.rs` (whitespace trim pipeline + `<pre>` first-newline rule)
+- `tasks/compiler_tests/test_v3.rs:case_input_and_options` (reads `preserveWhitespace` from `config.json`)
 
 ## Test cases
 
@@ -103,6 +105,5 @@ compile(source, { preserveWhitespace: false });
 - [x] `svg_inner_whitespace_trimming`
 - [x] `svg_text_preserves_whitespace`
 - [x] `preserve_whitespace_compile_option_true`
-- [ ] `preserve_whitespace_pre_first_newline`
-- [ ] `preserve_whitespace_inner_trailing_text`
-- [ ] `preserve_whitespace_script_element`
+- [x] `preserve_whitespace_pre_first_newline`
+- [x] `preserve_whitespace_inner_trailing_text`

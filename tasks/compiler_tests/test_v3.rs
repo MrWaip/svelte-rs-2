@@ -1949,13 +1949,11 @@ fn preserve_whitespace_compile_option_true() {
 }
 
 #[rstest]
-#[ignore = "missing: <pre> first-child Text equal to '\\n' or '\\r\\n' must be dropped (codegen)"]
 fn preserve_whitespace_pre_first_newline() {
     assert_compiler("preserve_whitespace_pre_first_newline");
 }
 
 #[rstest]
-#[ignore = "missing: preserveWhitespace=true keeps trailing ws-only Text inside inner fragments (codegen)"]
 fn preserve_whitespace_inner_trailing_text() {
     assert_compiler("preserve_whitespace_inner_trailing_text");
 }

@@ -65,19 +65,10 @@ pub(super) fn prepare<'a>(
         }
     }
 
-    let preserve = ctx.preserve_whitespace || ctx.is_pre || ctx.is_textarea;
+    let preserve =
+        ctx.preserve_whitespace || ctx.inside_pre || ctx.inside_textarea || ctx.inside_script;
     let filtered_slice: &[&Node] = if preserve {
-        let mut end = filtered.len();
-        while end > 0 {
-            if let Node::Text(t) = filtered[end - 1]
-                && is_ws_only(t.value(ctx.source))
-            {
-                end -= 1;
-                continue;
-            }
-            break;
-        }
-        &filtered[..end]
+        &filtered[..]
     } else {
         let mut start = 0;
         while start < filtered.len() {
@@ -101,6 +92,16 @@ pub(super) fn prepare<'a>(
         }
         &filtered[start..end]
     };
+
+    let mut filtered_slice = filtered_slice;
+    if ctx.parent_element_name.as_deref() == Some("pre")
+        && let Some(Node::Text(t)) = filtered_slice.first()
+    {
+        let raw = t.value(ctx.source);
+        if raw == "\n" || raw == "\r\n" {
+            filtered_slice = &filtered_slice[1..];
+        }
+    }
 
     let len = filtered_slice.len();
     if len == 0 {

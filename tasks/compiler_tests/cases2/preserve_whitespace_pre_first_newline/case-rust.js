@@ -3,6 +3,6 @@ var root = $.from_html(`<pre></pre>`);
 export default function App($$anchor) {
 	let value = "hi";
 	var pre = root();
-	pre.textContent = "\nhi";
+	pre.textContent = "hi\n";
 	$.append($$anchor, pre);
 }
