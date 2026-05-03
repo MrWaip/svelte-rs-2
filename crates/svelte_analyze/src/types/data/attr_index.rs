@@ -1,6 +1,7 @@
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::borrow::Cow;
 use svelte_ast::{Attribute, NodeId};
 
 pub struct AttrIndex {
@@ -23,12 +24,12 @@ impl AttrIndex {
 
     #[inline]
     pub fn has(&self, name: &str) -> bool {
-        self.by_name.contains_key(name)
+        self.by_name.contains_key(lookup_key(name).as_ref())
     }
 
     #[inline]
     pub fn first<'a>(&self, attrs: &'a [Attribute], name: &str) -> Option<&'a Attribute> {
-        let pos = *self.by_name.get(name)?.first()?;
+        let pos = *self.by_name.get(lookup_key(name).as_ref())?.first()?;
         Some(&attrs[pos as usize])
     }
 
@@ -41,7 +42,7 @@ impl AttrIndex {
         'attrs: 'idx,
     {
         self.by_name
-            .get(name)
+            .get(lookup_key(name).as_ref())
             .into_iter()
             .flat_map(move |positions| positions.iter().map(move |&pos| &attrs[pos as usize]))
     }
@@ -54,5 +55,20 @@ impl AttrIndex {
 }
 
 fn attr_index_name(attr: &Attribute, _source: &str) -> Option<CompactString> {
-    attr.name().map(CompactString::from)
+    attr.name().map(|n| {
+        if n.bytes().any(|b| b.is_ascii_uppercase()) {
+            CompactString::from(n.to_ascii_lowercase())
+        } else {
+            CompactString::from(n)
+        }
+    })
+}
+
+#[inline]
+fn lookup_key(name: &str) -> Cow<'_, str> {
+    if name.bytes().any(|b| b.is_ascii_uppercase()) {
+        Cow::Owned(name.to_ascii_lowercase())
+    } else {
+        Cow::Borrowed(name)
+    }
 }
