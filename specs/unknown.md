@@ -1,9 +1,9 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 0/8 use cases
-- **Tests**: 0/2 green
-- Last updated: 2026-05-01
+- **Working**: 0/9 use cases
+- **Tests**: 0/3 green
+- Last updated: 2026-05-03
 
 ## Source
 
@@ -20,6 +20,7 @@
 - [ ] CSS pipeline emits stylesheet content (the value of `$$css.code`) collapsed onto a single line; reference compiler preserves original source whitespace and comment markers; layer: css-pipeline; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md`
 - [ ] Instance-script leading JSDoc / line comments on simple declarations (e.g. `/** @type {Function | undefined} */ let show;`) are stripped during script lowering; reference retains them; layer: codegen/script; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: none specifically for comment retention; suggested spec: none — needs new comment-retention spec or extend script lowering doc
 - [ ] `validate_options_custom_element_warns_without_compiler_flag` diagnostic emits span 0..0 instead of spanning the `customElement` option attribute as reference does; layer: analyze (validate); repro/test: `validate_options_custom_element_warns_without_compiler_flag`; candidate specs: `diagnostics-infrastructure.md`, `custom-elements.md`; suggested spec: `diagnostics-infrastructure.md`
+- [ ] `script-tag-with-script-wrapper` — template-level `<script>` element is not wrapped via `$.with_script(...)` and the closing `<!>` anchor is absent from our `from_html` template. Reference: `phases/3-transform/client/transform-template/index.js:47-55` wraps the builder call when `state.template.contains_script_tag` is true; `phases/3-transform/client/transform-template/template.js:12` documents `create_fragment_with_script_from_html` rationale. Repro/test: `preserve_whitespace_script_element` (currently `#[ignore]`); layer: codegen template-builder; suggested spec: new `script-template-emission.md` once audited.
 
 ## Out of scope
 
@@ -46,3 +47,4 @@
 ## Test cases
 - [ ] `diagnose_runes_dev_ce_benchmark`
 - [ ] `module_dev_console_log_wrap`
+- [ ] `preserve_whitespace_script_element`

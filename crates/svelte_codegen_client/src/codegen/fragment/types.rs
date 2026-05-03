@@ -41,6 +41,7 @@ bitflags! {
         const HAS_CONCAT   = 1 << 2;
         const HAS_ELEMENT  = 1 << 3;
         const HAS_BLOCK    = 1 << 4;
+        const HAS_COMMENT  = 1 << 5;
     }
 }
 
@@ -65,6 +66,7 @@ pub(super) enum Child {
     Expr(NodeId),
     Concat(SmallVec<[ConcatPart; 4]>),
     Node(NodeId),
+    Comment(String),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -110,7 +112,6 @@ pub(super) enum HoistedKind {
     SvelteDocument,
     SvelteBody,
     TitleInsideHead,
-    Comment,
     Error,
 }
 

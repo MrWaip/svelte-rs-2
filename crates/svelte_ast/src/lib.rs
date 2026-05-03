@@ -446,6 +446,12 @@ impl Comment {
     pub fn value<'a>(&self, source: &'a str) -> &'a str {
         &source[self.span.start as usize..self.span.end as usize]
     }
+
+    pub fn data<'a>(&self, source: &'a str) -> &'a str {
+        let raw = self.value(source);
+        let inner = raw.strip_prefix("<!--").unwrap_or(raw);
+        inner.strip_suffix("-->").unwrap_or(inner)
+    }
 }
 
 pub struct ExpressionTag {

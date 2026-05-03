@@ -80,6 +80,7 @@ pub struct AnalyzeOptions {
     pub accessors: bool,
     pub immutable: bool,
     pub preserve_whitespace: bool,
+    pub preserve_comments: bool,
     pub dev: bool,
     pub component_name: String,
     pub filename_basename: String,
@@ -95,6 +96,7 @@ impl Default for AnalyzeOptions {
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
+            preserve_comments: false,
             dev: false,
             component_name: "Self".to_string(),
             filename_basename: "Self.svelte".to_string(),
@@ -122,6 +124,7 @@ pub fn analyze_with_options<'a>(
     data.script.accessors = options.accessors;
     data.script.immutable = options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
+    data.script.preserve_comments = options.preserve_comments;
     data.script.dev = options.dev;
     data.output.custom_element_compile_flag = options.custom_element;
     data.output.is_custom_element_target = options.custom_element

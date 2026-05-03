@@ -39,7 +39,8 @@ pub fn parse_with_js<'a>(
     crate::types::JsAst<'a>,
     Vec<Diagnostic>,
 ) {
-    let (component, mut diagnostics) = Parser::new(source).parse();
+    let trimmed = source.trim_end();
+    let (component, mut diagnostics) = Parser::new(trimmed).parse();
     let mut result = crate::types::JsAst::new();
     walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
 

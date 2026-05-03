@@ -26,6 +26,9 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn preserve_whitespace(&self) -> bool {
         self.data.script.preserve_whitespace
     }
+    pub fn preserve_comments(&self) -> bool {
+        self.data.script.preserve_comments
+    }
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.data.output.runtime_plan
     }
