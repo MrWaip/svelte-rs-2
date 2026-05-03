@@ -1,16 +1,31 @@
 use oxc_ast::ast::{BindingPattern, Statement, VariableDeclarator};
 use svelte_ast::{
-    Attribute, ComponentNode, ConstTag, EachBlock, Element, Namespace, Node, SnippetBlock,
-    SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg,
-    is_void,
+    Attribute, ComponentNode, ConstTag, DebugTag, EachBlock, Element, FragmentId, FragmentRole,
+    HtmlTag, Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
+    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg, is_void,
 };
 
 use crate::ElementFactsEntry;
 use crate::types::data::NamespaceKind;
 use crate::walker::{TemplateVisitor, VisitContext};
 
+pub(crate) type FragmentBuckets = Vec<Option<Vec<NodeId>>>;
+
+fn push_into_bucket(buckets: &mut FragmentBuckets, frag_id: FragmentId, node_id: NodeId) {
+    let idx = frag_id.0 as usize;
+    if buckets.len() <= idx {
+        buckets.resize(idx + 1, None);
+    }
+    buckets[idx].get_or_insert_default().push(node_id);
+}
+
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
+    pub(crate) pending_html_tags: Vec<(NodeId, FragmentId)>,
+    pub(crate) const_tag_buckets: FragmentBuckets,
+    pub(crate) debug_tag_buckets: FragmentBuckets,
+    pub(crate) title_buckets: FragmentBuckets,
+    pub(crate) expression_tag_buckets: FragmentBuckets,
 }
 
 fn root_namespace(component: &svelte_ast::Component) -> NamespaceKind {
@@ -458,6 +473,80 @@ fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a Variabl
     }
 }
 
+fn record_component_snippets(
+    cn_id: NodeId,
+    cn_fragment: FragmentId,
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    let snippets: Vec<NodeId> = ctx
+        .store
+        .fragment_nodes(cn_fragment)
+        .iter()
+        .filter_map(|&nid| {
+            if let Node::SnippetBlock(s) = ctx.store.get(nid) {
+                Some(s.id)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !snippets.is_empty() {
+        ctx.data
+            .template
+            .snippets
+            .component_snippets
+            .insert(cn_id, snippets);
+    }
+}
+
+fn record_legacy_slot_wrappers(
+    legacy_slots: &[svelte_ast::LegacySlot],
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    for slot in legacy_slots {
+        let nodes = ctx.store.fragment_nodes(slot.fragment);
+        let Some(&wrapper_id) = nodes.first() else {
+            continue;
+        };
+        if matches!(ctx.store.get(wrapper_id), Node::SvelteFragmentLegacy(_)) {
+            ctx.data.elements.flags.svelte_fragment_slots.insert(wrapper_id);
+        }
+    }
+}
+
+fn record_custom_element_slot_name(
+    data: &mut crate::types::data::AnalysisData,
+    attrs: &[Attribute],
+    source: &str,
+) {
+    if !data.output.is_custom_element_target {
+        return;
+    }
+    let slot_name = legacy_slot_name(attrs, source);
+    if data
+        .output
+        .custom_element_slot_names
+        .iter()
+        .any(|existing| existing == slot_name)
+    {
+        return;
+    }
+    data.output
+        .custom_element_slot_names
+        .push(slot_name.to_string());
+}
+
+fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {
+    for attr in attrs {
+        if let Attribute::StringAttribute(attr) = attr
+            && attr.name == "name"
+        {
+            return attr.value_span.source_text(source);
+        }
+    }
+    "default"
+}
+
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_text(&mut self, text: &svelte_ast::Text, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
@@ -475,6 +564,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
+        push_into_bucket(
+            &mut self.expression_tag_buckets,
+            ctx.current_fragment_id(),
+            tag.id,
+        );
     }
 
     fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, ctx: &mut VisitContext<'_, '_>) {
@@ -484,11 +578,13 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .record_node_parent(tag.id, ctx.parent());
     }
 
-    fn visit_html_tag(&mut self, tag: &svelte_ast::HtmlTag, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
+        self.pending_html_tags
+            .push((tag.id, ctx.current_fragment_id()));
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -564,6 +660,19 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
+        push_into_bucket(
+            &mut self.const_tag_buckets,
+            ctx.current_fragment_id(),
+            tag.id,
+        );
+    }
+
+    fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
+        push_into_bucket(
+            &mut self.debug_tag_buckets,
+            ctx.current_fragment_id(),
+            tag.id,
+        );
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
@@ -592,6 +701,16 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_elements
             .record(el.id, &el.name, facts, parent_element);
+        let frag_id = ctx.current_fragment_id();
+        if el.name == "title"
+            && ctx.store.fragment(frag_id).role == FragmentRole::SvelteHeadBody
+        {
+            push_into_bucket(&mut self.title_buckets, frag_id, el.id);
+        }
+    }
+
+    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+        record_custom_element_slot_name(ctx.data, &el.attributes, ctx.source);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
@@ -610,11 +729,13 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 false,
             ),
         );
+        record_component_snippets(cn.id, cn.fragment, ctx);
+        record_legacy_slot_wrappers(&cn.legacy_slots, ctx);
     }
 
     fn visit_svelte_component_legacy(
         &mut self,
-        cn: &svelte_ast::SvelteComponentLegacy,
+        cn: &SvelteComponentLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
         ctx.data
@@ -632,6 +753,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 false,
             ),
         );
+        record_component_snippets(cn.id, cn.fragment, ctx);
+        record_legacy_slot_wrappers(&cn.legacy_slots, ctx);
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {

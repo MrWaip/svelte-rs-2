@@ -41,6 +41,7 @@ pub(crate) trait TemplateVisitor {
     }
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {}
+    fn leave_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_window(&mut self, w: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_document(&mut self, doc: &SvelteDocument, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_, '_>) {}

@@ -15,6 +15,7 @@ pub(crate) struct VisitContext<'d, 'a> {
     ignore_current: FxHashSet<String>,
     ignore_stack: Vec<FxHashSet<String>>,
     warnings: Vec<Diagnostic>,
+    current_fragment_id: Option<svelte_ast::FragmentId>,
 }
 
 impl<'d, 'a> VisitContext<'d, 'a> {
@@ -41,6 +42,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
+            current_fragment_id: None,
         }
     }
 
@@ -68,7 +70,24 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
+            current_fragment_id: None,
         }
+    }
+
+    pub(crate) fn set_current_fragment(
+        &mut self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<svelte_ast::FragmentId> {
+        self.current_fragment_id.replace(id)
+    }
+
+    pub(crate) fn restore_current_fragment(&mut self, prev: Option<svelte_ast::FragmentId>) {
+        self.current_fragment_id = prev;
+    }
+
+    pub fn current_fragment_id(&self) -> svelte_ast::FragmentId {
+        self.current_fragment_id
+            .expect("current_fragment_id queried outside walk_template")
     }
 
     pub fn parsed(&self) -> Option<&JsAst<'a>> {

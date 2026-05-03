@@ -9,6 +9,16 @@ pub(crate) fn walk_template(
     ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
+    let prev_fragment = ctx.set_current_fragment(fragment_id);
+    walk_template_inner(fragment_id, ctx, visitors);
+    ctx.restore_current_fragment(prev_fragment);
+}
+
+fn walk_template_inner(
+    fragment_id: svelte_ast::FragmentId,
+    ctx: &mut VisitContext<'_, '_>,
+    visitors: &mut [&mut dyn TemplateVisitor],
+) {
     let store = ctx.store;
     let fragment_nodes = store.fragment_nodes(fragment_id);
     for (idx, &id) in fragment_nodes.iter().enumerate() {
@@ -215,6 +225,9 @@ pub(crate) fn walk_template(
                 walk_template(head.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_head(head, ctx);
+                }
             }
             Node::SvelteFragmentLegacy(el) => {
                 for v in visitors.iter_mut() {

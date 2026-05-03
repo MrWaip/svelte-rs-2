@@ -86,6 +86,7 @@ pub struct TemplateAnalysis {
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
     pub bind_semantics: BindSemanticsData,
+    pub(crate) expression_tags_by_fragment: Vec<Option<Vec<NodeId>>>,
 }
 
 impl TemplateAnalysis {
@@ -103,6 +104,7 @@ impl TemplateAnalysis {
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
+            expression_tags_by_fragment: Vec::new(),
         }
     }
 
