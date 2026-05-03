@@ -67,6 +67,9 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         if let Some(pc) = config.get("preserveComments").and_then(|v| v.as_bool()) {
             opts.preserve_comments = pc;
         }
+        if let Some(pw) = config.get("preserveWhitespace").and_then(|v| v.as_bool()) {
+            opts.preserve_whitespace = pw;
+        }
     }
 
     (input, opts)
@@ -1938,6 +1941,29 @@ fn text_expression_binary_no_nullish_fallback() {
 #[rstest]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
+}
+
+#[rstest]
+fn preserve_whitespace_compile_option_true() {
+    assert_compiler("preserve_whitespace_compile_option_true");
+}
+
+#[rstest]
+#[ignore = "missing: <pre> first-child Text equal to '\\n' or '\\r\\n' must be dropped (codegen)"]
+fn preserve_whitespace_pre_first_newline() {
+    assert_compiler("preserve_whitespace_pre_first_newline");
+}
+
+#[rstest]
+#[ignore = "missing: preserveWhitespace=true keeps trailing ws-only Text inside inner fragments (codegen)"]
+fn preserve_whitespace_inner_trailing_text() {
+    assert_compiler("preserve_whitespace_inner_trailing_text");
+}
+
+#[rstest]
+#[ignore = "missing: <script> child element must force preserve_whitespace=true (codegen)"]
+fn preserve_whitespace_script_element() {
+    assert_compiler("preserve_whitespace_script_element");
 }
 
 #[rstest]
