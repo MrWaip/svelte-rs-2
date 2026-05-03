@@ -3365,6 +3365,12 @@ fn diagnose_runes_dev_ce_benchmark() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_legacy_dev_benchmark() {
+    assert_compiler("diagnose_legacy_dev_benchmark");
+}
+
+#[rstest]
 fn component_dev_default_children_wrap_snippet() {
     assert_compiler("component_dev_default_children_wrap_snippet");
 }
