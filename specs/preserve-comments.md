@@ -1,8 +1,8 @@
 # preserveComments
 
 ## Current state
-- **Working**: 0/7 use cases
-- **Tests**: 0/5 green
+- **Working**: 7/7 use cases
+- **Tests**: 9/9 green
 - Last updated: 2026-05-03
 
 ## Source
@@ -38,13 +38,13 @@ description
 
 ## Use cases
 
-- [ ] `Node::Comment::value()` returns the inner comment text (currently returns the full `<!--data-->` slice including delimiters); add an inner-data accessor that strips `<!--`/`-->` and trailing whitespace. (parser/AST, quick fix)
-- [ ] Thread `preserve_comments` from `CompileOptions` into `AnalyzeOptions`, store on `AnalysisData`, and expose via `CodegenView::preserve_comments()`. (analyze, quick fix)
-- [ ] When `preserve_comments=true`, stop classifying `Node::Comment` as `HoistedKind::Comment` in `crates/svelte_codegen_client/src/codegen/fragment/prepare.rs` so that comment children flow into the regular child stream. (codegen, moderate)
-- [ ] Emit preserved comments as `template.push_comment(Some(data))` in fragment processing so the static template HTML contains `<!--{data}-->`; verify whitespace trimming around comments matches reference. (codegen, moderate, test: `preserve_comments_basic`, `preserve_comments_only_child`)
-- [ ] Sibling/anchor walk must count preserved comments as real DOM siblings: `make_sibling_expr` and ghost-skip arithmetic must not skip them in `process_children.rs`. (codegen, moderate, test: `preserve_comments_between_elements`)
-- [ ] Preserved comments inside blocks (`{#if}`, `{#each}`, `{#await}`, `{#key}`, `{#snippet}`) emit into the block's child template, separately from the block-anchor `<!>` push. (codegen, moderate, test: `preserve_comments_in_block`)
-- [ ] `<!-- svelte-ignore … -->` and `<!-- @component … -->` are still emitted into output when `preserve_comments=true` (analyzer continues to consume them for warnings independently). (validate, quick fix, test: `preserve_comments_svelte_ignore`)
+- [x] `Node::Comment::data()` accessor returns inner comment text (strips `<!--`/`-->`); `value()` retained as raw-slice form for callers that need the full span.
+- [x] `preserve_comments` threaded from `CompileOptions` into `AnalyzeOptions::preserve_comments`, stored on `AnalysisData::script.preserve_comments`, exposed via `CodegenView::preserve_comments()` and `FragmentCtx::preserve_comments`.
+- [x] When `preserve_comments=true`, `prepare.rs` does not hoist `Node::Comment` (`HoistedKind::Comment` guarded by the flag); Comment nodes flow into the regular child stream as `Child::Comment(String)` (test: `preserve_comments_basic`).
+- [x] Preserved comments emit as `template.push_comment(Some(data))` so the static template HTML contains `<!--{data}-->`. Single-Comment fragments take the `$.comment()` runtime helper path via `emit_static_comment_anchor` (test: `preserve_comments_basic`, `preserve_comments_only_child`).
+- [x] Sibling/anchor walk: in `process_children.rs`, `Child::Comment` is treated as a static template child when inside a `FragmentAnchor::Child` parent and no later child needs an anchor; otherwise it gets a `var node = ...` extraction via `flush_sibling_var` so subsequent dynamic children compute the right `$.sibling(node, n)` (test: `preserve_comments_between_elements`).
+- [x] Preserved comments inside blocks (`{#if}` consequent/alternate, `{#each}` body, `{#snippet}`, `{#await}`, `{#key}`) emit into the block's inner fragment with the same logic; block-anchor `<!>` for the block itself (`push_comment(None)`) remains untouched (test: `preserve_comments_in_block`).
+- [x] `<!-- svelte-ignore … -->` and `<!-- @component … -->` retain analyzer consumption for warnings while also being emitted into the runtime template when `preserve_comments=true` (test: `preserve_comments_svelte_ignore`).
 
 ## Out of scope
 
@@ -79,8 +79,12 @@ description
 
 ## Test cases
 
-- [ ] `preserve_comments_basic`
-- [ ] `preserve_comments_only_child`
-- [ ] `preserve_comments_between_elements`
-- [ ] `preserve_comments_in_block`
-- [ ] `preserve_comments_svelte_ignore`
+- [x] `preserve_comments_basic`
+- [x] `preserve_comments_only_child`
+- [x] `preserve_comments_between_elements`
+- [x] `preserve_comments_in_block`
+- [x] `preserve_comments_svelte_ignore`
+- [x] `preserve_comments_only_in_block`
+- [x] `preserve_comments_consecutive`
+- [x] `preserve_comments_empty`
+- [x] `preserve_comments_in_each`

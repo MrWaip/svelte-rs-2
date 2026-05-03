@@ -107,7 +107,7 @@
 
 - [x] Filename-derived component naming — [spec](specs/filename-derived-component-name.md)
 - [ ] `discloseVersion` option
-- [ ] `preserveComments` option — [spec](specs/preserve-comments.md)
+- [x] `preserveComments` option — [spec](specs/preserve-comments.md)
 - [ ] HMR
 
 ## Source Maps

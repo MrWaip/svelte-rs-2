@@ -22,8 +22,11 @@ pub(super) fn prepare<'a>(
         if exclude_slotted && node_has_slot_attribute(node) {
             continue;
         }
+        if matches!(node, Node::Comment(_)) && !ctx.preserve_comments {
+            continue;
+        }
         match hoisted_kind(node, ctx.inside_head) {
-            HoistedKind::Comment | HoistedKind::Error => continue,
+            HoistedKind::Error => continue,
             HoistedKind::Snippet => {
                 bucket.snippets.push(node.node_id());
                 continue;
@@ -158,6 +161,13 @@ pub(super) fn prepare<'a>(
                 prev_text_ends_ws = false;
                 buf.push(BufItem::Expr(tag.id));
             }
+            Node::Comment(comment) => {
+                prev_text_ends_ws = false;
+                flush_buf(&mut buf, &mut children, &mut flags);
+                let data = comment.data(ctx.source).to_string();
+                children.push(Child::Comment(data));
+                flags.insert(ChildrenFlags::HAS_COMMENT);
+            }
             _ => {
                 prev_text_ends_ws = false;
                 flush_buf(&mut buf, &mut children, &mut flags);
@@ -191,7 +201,8 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
             has_blocks: flags.contains(ChildrenFlags::HAS_BLOCK),
             has_text: flags.contains(ChildrenFlags::HAS_TEXT)
                 || flags.contains(ChildrenFlags::HAS_EXPR)
-                || flags.contains(ChildrenFlags::HAS_CONCAT),
+                || flags.contains(ChildrenFlags::HAS_CONCAT)
+                || flags.contains(ChildrenFlags::HAS_COMMENT),
             first_is_block,
             first_is_text_like,
         };
@@ -200,6 +211,7 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
         Child::Text(_) => ContentStrategy::SingleStatic,
         Child::Expr(id) => ContentStrategy::SingleExpr(*id),
         Child::Concat(_) => ContentStrategy::SingleConcat,
+        Child::Comment(_) => ContentStrategy::SingleStatic,
         Child::Node(id) => {
             if flags.contains(ChildrenFlags::HAS_BLOCK) {
                 ContentStrategy::SingleBlock(*id)
@@ -227,7 +239,6 @@ fn node_has_slot_attribute(node: &Node) -> bool {
 
 fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {
     match node {
-        Node::Comment(_) => HoistedKind::Comment,
         Node::Error(_) => HoistedKind::Error,
         Node::SnippetBlock(_) => HoistedKind::Snippet,
         Node::ConstTag(_) => HoistedKind::ConstTag,

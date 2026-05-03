@@ -8,6 +8,7 @@ use crate::context::Ctx;
 #[derive(Clone)]
 pub(crate) struct FragmentCtx<'a> {
     pub preserve_whitespace: bool,
+    pub preserve_comments: bool,
     pub is_pre: bool,
     pub is_textarea: bool,
     pub can_remove_entirely: bool,
@@ -24,6 +25,7 @@ impl<'a> FragmentCtx<'a> {
         let fragment = ctx.query.component.store.fragment(fragment_id);
         Self {
             preserve_whitespace: ctx.query.view.preserve_whitespace(),
+            preserve_comments: ctx.query.view.preserve_comments(),
             is_pre: false,
             is_textarea: false,
             can_remove_entirely: false,
