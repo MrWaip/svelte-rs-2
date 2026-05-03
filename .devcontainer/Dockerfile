@@ -47,4 +47,6 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 RUN chmod -R a+rwX ${CARGO_HOME}/bin ${RUSTUP_HOME} ${NVM_DIR} \
     && chown -R vscode:vscode /usr/local/cargo /usr/local/rustup ${NVM_DIR}
 
+RUN echo 'alias claude="claude --dangerously-skip-permissions"' >> /home/vscode/.bashrc
+
 USER vscode
