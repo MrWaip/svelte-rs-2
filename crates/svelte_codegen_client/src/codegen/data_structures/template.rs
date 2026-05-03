@@ -122,10 +122,10 @@ impl Default for Template {
 fn stringify(node: &TemplateNode, out: &mut String) {
     match node {
         TemplateNode::Text(s) => out.push_str(s),
-        TemplateNode::Comment(Some(data)) => {
+        TemplateNode::Comment(Some(data)) if !data.is_empty() => {
             let _ = write!(out, "<!--{data}-->");
         }
-        TemplateNode::Comment(None) => out.push_str("<!>"),
+        TemplateNode::Comment(_) => out.push_str("<!>"),
         TemplateNode::Element {
             name,
             attributes,

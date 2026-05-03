@@ -107,6 +107,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         accessors: resolved_accessors_option(&component, options),
         immutable: resolved_immutable_option(&component, options),
         preserve_whitespace: resolved_preserve_whitespace_option(&component, options),
+        preserve_comments: options.preserve_comments,
         dev: options.dev,
         component_name: candidate_name,
         filename_basename: options

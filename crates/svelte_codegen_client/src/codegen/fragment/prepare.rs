@@ -22,8 +22,11 @@ pub(super) fn prepare<'a>(
         if exclude_slotted && node_has_slot_attribute(node) {
             continue;
         }
+        if matches!(node, Node::Comment(_)) && !ctx.preserve_comments {
+            continue;
+        }
         match hoisted_kind(node, ctx.inside_head) {
-            HoistedKind::Comment | HoistedKind::Error => continue,
+            HoistedKind::Error => continue,
             HoistedKind::Snippet => {
                 bucket.snippets.push(node.node_id());
                 continue;
@@ -62,19 +65,10 @@ pub(super) fn prepare<'a>(
         }
     }
 
-    let preserve = ctx.preserve_whitespace || ctx.is_pre || ctx.is_textarea;
+    let preserve =
+        ctx.preserve_whitespace || ctx.inside_pre || ctx.inside_textarea || ctx.inside_script;
     let filtered_slice: &[&Node] = if preserve {
-        let mut end = filtered.len();
-        while end > 0 {
-            if let Node::Text(t) = filtered[end - 1]
-                && is_ws_only(t.value(ctx.source))
-            {
-                end -= 1;
-                continue;
-            }
-            break;
-        }
-        &filtered[..end]
+        &filtered[..]
     } else {
         let mut start = 0;
         while start < filtered.len() {
@@ -98,6 +92,16 @@ pub(super) fn prepare<'a>(
         }
         &filtered[start..end]
     };
+
+    let mut filtered_slice = filtered_slice;
+    if ctx.parent_element_name.as_deref() == Some("pre")
+        && let Some(Node::Text(t)) = filtered_slice.first()
+    {
+        let raw = t.value(ctx.source);
+        if raw == "\n" || raw == "\r\n" {
+            filtered_slice = &filtered_slice[1..];
+        }
+    }
 
     let len = filtered_slice.len();
     if len == 0 {
@@ -158,6 +162,13 @@ pub(super) fn prepare<'a>(
                 prev_text_ends_ws = false;
                 buf.push(BufItem::Expr(tag.id));
             }
+            Node::Comment(comment) => {
+                prev_text_ends_ws = false;
+                flush_buf(&mut buf, &mut children, &mut flags);
+                let data = comment.data(ctx.source).to_string();
+                children.push(Child::Comment(data));
+                flags.insert(ChildrenFlags::HAS_COMMENT);
+            }
             _ => {
                 prev_text_ends_ws = false;
                 flush_buf(&mut buf, &mut children, &mut flags);
@@ -191,7 +202,8 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
             has_blocks: flags.contains(ChildrenFlags::HAS_BLOCK),
             has_text: flags.contains(ChildrenFlags::HAS_TEXT)
                 || flags.contains(ChildrenFlags::HAS_EXPR)
-                || flags.contains(ChildrenFlags::HAS_CONCAT),
+                || flags.contains(ChildrenFlags::HAS_CONCAT)
+                || flags.contains(ChildrenFlags::HAS_COMMENT),
             first_is_block,
             first_is_text_like,
         };
@@ -200,6 +212,7 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
         Child::Text(_) => ContentStrategy::SingleStatic,
         Child::Expr(id) => ContentStrategy::SingleExpr(*id),
         Child::Concat(_) => ContentStrategy::SingleConcat,
+        Child::Comment(_) => ContentStrategy::SingleStatic,
         Child::Node(id) => {
             if flags.contains(ChildrenFlags::HAS_BLOCK) {
                 ContentStrategy::SingleBlock(*id)
@@ -227,7 +240,6 @@ fn node_has_slot_attribute(node: &Node) -> bool {
 
 fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {
     match node {
-        Node::Comment(_) => HoistedKind::Comment,
         Node::Error(_) => HoistedKind::Error,
         Node::SnippetBlock(_) => HoistedKind::Snippet,
         Node::ConstTag(_) => HoistedKind::ConstTag,

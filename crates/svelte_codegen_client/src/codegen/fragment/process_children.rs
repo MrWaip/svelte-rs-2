@@ -45,7 +45,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut skipped: u32 = 0;
         let mut initial_opt = Some(initial);
 
-        for child in children {
+        for (idx, child) in children.iter().enumerate() {
             match child {
                 Child::Text(part) => {
                     if let Some(text) = ctx.static_text_of(part) {
@@ -91,6 +91,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut skipped,
                         &mut initial_opt,
                     )?;
+                }
+                Child::Comment(data) => {
+                    if comment_needs_var_extraction(self, ctx, &children[idx + 1..]) {
+                        flush_sibling_var(
+                            self,
+                            state,
+                            &mut prev,
+                            &mut skipped,
+                            &mut initial_opt,
+                            false,
+                            "node",
+                        )?;
+                        state.template.push_comment(Some(data.clone()));
+                    } else {
+                        state.template.push_comment(Some(data.clone()));
+                        skipped += 1;
+                    }
                 }
             }
         }
@@ -339,6 +356,25 @@ fn flush_sibling_var<'a, 'ctx>(
     *prev = Some(id.clone());
     *skipped = 1;
     Ok(id)
+}
+
+fn comment_needs_var_extraction<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    ctx: &FragmentCtx<'a>,
+    later: &[Child],
+) -> bool {
+    let parent_is_static_element = matches!(ctx.anchor, FragmentAnchor::Child { .. });
+    if !parent_is_static_element {
+        return true;
+    }
+    later.iter().any(|child| match child {
+        Child::Text(_) | Child::Comment(_) => false,
+        Child::Expr(_) | Child::Concat(_) => true,
+        Child::Node(id) => {
+            let node = cg.ctx.query.component.store.get(*id);
+            !matches!(node, Node::Element(_)) || cg.ctx.needs_var(*id)
+        }
+    })
 }
 
 fn make_sibling_expr<'a, 'ctx>(

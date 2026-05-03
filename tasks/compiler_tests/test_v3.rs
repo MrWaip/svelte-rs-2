@@ -64,6 +64,12 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         {
             opts.experimental.async_ = async_val;
         }
+        if let Some(pc) = config.get("preserveComments").and_then(|v| v.as_bool()) {
+            opts.preserve_comments = pc;
+        }
+        if let Some(pw) = config.get("preserveWhitespace").and_then(|v| v.as_bool()) {
+            opts.preserve_whitespace = pw;
+        }
     }
 
     (input, opts)
@@ -1935,6 +1941,72 @@ fn text_expression_binary_no_nullish_fallback() {
 #[rstest]
 fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
+}
+
+#[rstest]
+fn preserve_whitespace_compile_option_true() {
+    assert_compiler("preserve_whitespace_compile_option_true");
+}
+
+#[rstest]
+fn preserve_whitespace_pre_first_newline() {
+    assert_compiler("preserve_whitespace_pre_first_newline");
+}
+
+#[rstest]
+fn preserve_whitespace_inner_trailing_text() {
+    assert_compiler("preserve_whitespace_inner_trailing_text");
+}
+
+#[rstest]
+#[ignore = "missing: <script> child element must force preserve_whitespace=true (codegen)"]
+fn preserve_whitespace_script_element() {
+    assert_compiler("preserve_whitespace_script_element");
+}
+
+#[rstest]
+fn preserve_comments_basic() {
+    assert_compiler("preserve_comments_basic");
+}
+
+#[rstest]
+fn preserve_comments_only_child() {
+    assert_compiler("preserve_comments_only_child");
+}
+
+#[rstest]
+fn preserve_comments_between_elements() {
+    assert_compiler("preserve_comments_between_elements");
+}
+
+#[rstest]
+fn preserve_comments_in_block() {
+    assert_compiler("preserve_comments_in_block");
+}
+
+#[rstest]
+fn preserve_comments_svelte_ignore() {
+    assert_compiler("preserve_comments_svelte_ignore");
+}
+
+#[rstest]
+fn preserve_comments_only_in_block() {
+    assert_compiler("preserve_comments_only_in_block");
+}
+
+#[rstest]
+fn preserve_comments_consecutive() {
+    assert_compiler("preserve_comments_consecutive");
+}
+
+#[rstest]
+fn preserve_comments_empty() {
+    assert_compiler("preserve_comments_empty");
+}
+
+#[rstest]
+fn preserve_comments_in_each() {
+    assert_compiler("preserve_comments_in_each");
 }
 
 // ---------------------------------------------------------------------------

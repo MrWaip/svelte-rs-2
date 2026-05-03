@@ -216,6 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ContentStrategy::Empty => {}
             ContentStrategy::SingleStatic => match children.first() {
                 Some(Child::Text(part)) => self.emit_static_node(state, ctx, part)?,
+                Some(Child::Comment(_)) => self.emit_static_comment_anchor(state, ctx)?,
                 _ => {
                     return CodegenError::unexpected_child("Text", "non-Text for SingleStatic");
                 }
@@ -766,6 +767,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         Ok(())
+    }
+
+    fn emit_static_comment_anchor(
+        &mut self,
+        state: &mut EmitState<'a>,
+        ctx: &FragmentCtx<'a>,
+    ) -> Result<()> {
+        self.comment_anchor_node_name(state, ctx).map(drop)
     }
 
     fn emit_expr_node_in_fragment(

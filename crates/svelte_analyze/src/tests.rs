@@ -3883,6 +3883,7 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
+            preserve_comments: false,
             dev: true,
             component_name: "Self".to_string(),
             filename_basename: "Self.svelte".to_string(),
