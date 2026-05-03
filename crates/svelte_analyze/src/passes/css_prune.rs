@@ -148,7 +148,7 @@ pub(crate) fn prune_and_warn(
         used: &mut used,
         scoped,
         in_global_block: false,
-        rule_lookup,
+        rule_lookup: &rule_lookup,
         rule_stack: Vec::new(),
     };
     pruner.visit_stylesheet(stylesheet);
@@ -209,7 +209,7 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
     scoped: &'b mut NodeBitSet,
     in_global_block: bool,
-    rule_lookup: FxHashMap<CssNodeId, &'s StyleRule>,
+    rule_lookup: &'s FxHashMap<CssNodeId, &'s StyleRule>,
     rule_stack: Vec<CssNodeId>,
 }
 
@@ -225,8 +225,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         let parent_len = self.rule_stack.len();
         self.rule_stack.push(node.id);
         let parent_rules = self.rule_stack[..parent_len].to_vec();
-        let rule_lookup = self.rule_lookup.clone();
-        let rule_ctx = RuleContext::new(node.id, &parent_rules, &rule_lookup);
+        let rule_ctx = RuleContext::new(node.id, &parent_rules, self.rule_lookup);
 
         for complex in &node.prelude.children {
             let plan = build_rule_selector_plan(complex, &rule_ctx);
