@@ -1,6 +1,5 @@
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
-use oxc_semantic::SemanticBuilder;
 use oxc_traverse::traverse_mut;
 
 use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
@@ -32,12 +31,8 @@ pub fn transform_script<'a, 'b>(
     immutable: bool,
     experimental_async: bool,
     ignore_query: IgnoreQuery<'_, 'a>,
-    prepare_semantic: bool,
 ) -> TransformScriptOutput {
     let is_ts = program.source_type.is_typescript();
-    if prepare_semantic {
-        let _ = SemanticBuilder::new().build(program);
-    }
 
     let mut transformer = ComponentTransformer {
         mode: TransformMode::Script,

@@ -183,7 +183,7 @@ pub fn analyze_module<'a>(
     let mut parsed = JsAst::new();
 
     match svelte_parser::parse_module(alloc, source, is_ts) {
-        Ok((program, _scoping)) => {
+        Ok(program) => {
             let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
             builder.add_instance_program(&program);
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());

@@ -26,14 +26,9 @@ pub fn parse_module<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &str,
     is_ts: bool,
-) -> Result<(oxc_ast::ast::Program<'a>, oxc_semantic::Scoping), Vec<Diagnostic>> {
+) -> Result<oxc_ast::ast::Program<'a>, Vec<Diagnostic>> {
     let arena_source: &'a str = alloc.alloc_str(source);
-    let program = parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)?;
-    let scoping = oxc_semantic::SemanticBuilder::new()
-        .build(&program)
-        .semantic
-        .into_scoping();
-    Ok((program, scoping))
+    parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)
 }
 
 pub fn parse_with_js<'a>(
