@@ -1937,6 +1937,36 @@ fn svelte_options_preserve_whitespace() {
     assert_compiler("svelte_options_preserve_whitespace");
 }
 
+#[rstest]
+#[ignore = "missing: preserveComments option not threaded through analyze/codegen (codegen)"]
+fn preserve_comments_basic() {
+    assert_compiler("preserve_comments_basic");
+}
+
+#[rstest]
+#[ignore = "missing: preserveComments option not threaded through analyze/codegen (codegen)"]
+fn preserve_comments_only_child() {
+    assert_compiler("preserve_comments_only_child");
+}
+
+#[rstest]
+#[ignore = "missing: preserveComments option not threaded through analyze/codegen (codegen)"]
+fn preserve_comments_between_elements() {
+    assert_compiler("preserve_comments_between_elements");
+}
+
+#[rstest]
+#[ignore = "missing: preserveComments option not threaded through analyze/codegen (codegen)"]
+fn preserve_comments_in_block() {
+    assert_compiler("preserve_comments_in_block");
+}
+
+#[rstest]
+#[ignore = "missing: preserveComments option not threaded through analyze/codegen (codegen)"]
+fn preserve_comments_svelte_ignore() {
+    assert_compiler("preserve_comments_svelte_ignore");
+}
+
 // ---------------------------------------------------------------------------
 // svelte:head tests
 // ---------------------------------------------------------------------------
