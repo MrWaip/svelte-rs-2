@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
         sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} \
                   --component rustfmt --component clippy --component rust-src --component rust-analyzer \
-    && cargo install just@${JUST_VERSION} cargo-sweep cargo-nextest --locked
+    && cargo install just@${JUST_VERSION} cargo-sweep cargo-nextest samply --locked
 
 
 # 5. narsil-mcp — bumps with upstream
@@ -48,5 +48,8 @@ RUN chmod -R a+rwX ${CARGO_HOME}/bin ${RUSTUP_HOME} ${NVM_DIR} \
     && chown -R vscode:vscode /usr/local/cargo /usr/local/rustup ${NVM_DIR}
 
 RUN echo 'alias claude="claude --dangerously-skip-permissions"' >> /home/vscode/.bashrc
+RUN mkdir -p ~/.local/share/bash-completion/completions \
+    && just --completions bash > ~/.local/share/bash-completion/completions/just \
+    && echo 'source <(just --completions bash)' >> /home/vscode/.bashrc 
 
 USER vscode

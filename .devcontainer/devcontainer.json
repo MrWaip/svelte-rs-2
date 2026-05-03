@@ -2,6 +2,12 @@
   "name": "svelte-rs-2",
   "build": { "dockerfile": "Dockerfile" },
   "remoteUser": "vscode",
+  "initializeCommand": "docker run --rm --privileged --pid=host alpine sysctl -w kernel.perf_event_paranoid=1 >/dev/null 2>&1 || true",
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--cap-add=PERFMON",
+    "--security-opt", "seccomp=unconfined"
+  ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/svelte-rs-2,type=bind,consistency=delegated",
   "workspaceFolder": "/workspaces/svelte-rs-2",
   "mounts": [
