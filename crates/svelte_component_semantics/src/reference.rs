@@ -59,9 +59,9 @@ pub(crate) struct ReferenceTable {
 }
 
 impl ReferenceTable {
-    pub fn new() -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            references: Vec::new(),
+            references: Vec::with_capacity(capacity),
         }
     }
 
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn create_and_query() {
-        let mut t = ReferenceTable::new();
+        let mut t = ReferenceTable::with_capacity(0);
         let id = t.create_reference(Reference::new(
             OxcNodeId::DUMMY,
             ScopeId::from_usize(0),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn resolve_reference() {
-        let mut t = ReferenceTable::new();
+        let mut t = ReferenceTable::with_capacity(0);
         let id = t.create_reference(Reference::new(
             OxcNodeId::DUMMY,
             ScopeId::from_usize(0),

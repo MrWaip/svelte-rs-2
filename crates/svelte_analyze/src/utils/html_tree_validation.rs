@@ -136,19 +136,20 @@ pub fn is_tag_valid_with_parent(child_tag: &str, parent_tag: &str) -> Option<Str
         return None;
     }
 
-    let child = format!("`<{child_tag}>`");
-    let parent = format!("`<{parent_tag}>`");
-
     if let Some(kind) = lookup(parent_tag) {
         match kind {
             DisallowedKind::Direct(list) => {
                 if list.contains(&child_tag) {
-                    return Some(format!("{child} cannot be a direct child of {parent}"));
+                    return Some(format!(
+                        "`<{child_tag}>` cannot be a direct child of `<{parent_tag}>`"
+                    ));
                 }
             }
             DisallowedKind::Descendant { names, .. } => {
                 if names.contains(&child_tag) {
-                    return Some(format!("{child} cannot be a child of {parent}"));
+                    return Some(format!(
+                        "`<{child_tag}>` cannot be a child of `<{parent_tag}>`"
+                    ));
                 }
             }
             DisallowedKind::Only(list) => {
@@ -161,14 +162,16 @@ pub fn is_tag_valid_with_parent(child_tag: &str, parent_tag: &str) -> Option<Str
                     .collect::<Vec<_>>()
                     .join(", ");
                 return Some(format!(
-                    "{child} cannot be a child of {parent}. `<{parent_tag}>` only allows these children: {allowed}"
+                    "`<{child_tag}>` cannot be a child of `<{parent_tag}>`. `<{parent_tag}>` only allows these children: {allowed}"
                 ));
             }
             DisallowedKind::DescendantAndOnly {
                 descendant, only, ..
             } => {
                 if descendant.contains(&child_tag) {
-                    return Some(format!("{child} cannot be a child of {parent}"));
+                    return Some(format!(
+                        "`<{child_tag}>` cannot be a child of `<{parent_tag}>`"
+                    ));
                 }
                 if only.contains(&child_tag) {
                     return None;
@@ -179,24 +182,24 @@ pub fn is_tag_valid_with_parent(child_tag: &str, parent_tag: &str) -> Option<Str
                     .collect::<Vec<_>>()
                     .join(", ");
                 return Some(format!(
-                    "{child} cannot be a child of {parent}. `<{parent_tag}>` only allows these children: {allowed}"
+                    "`<{child_tag}>` cannot be a child of `<{parent_tag}>`. `<{parent_tag}>` only allows these children: {allowed}"
                 ));
             }
         }
     }
 
     match child_tag {
-        "body" | "caption" | "col" | "colgroup" | "frameset" | "frame" | "head" | "html" => {
-            Some(format!("{child} cannot be a child of {parent}"))
-        }
+        "body" | "caption" | "col" | "colgroup" | "frameset" | "frame" | "head" | "html" => Some(
+            format!("`<{child_tag}>` cannot be a child of `<{parent_tag}>`"),
+        ),
         "thead" | "tbody" | "tfoot" => Some(format!(
-            "{child} must be the child of a `<table>`, not a {parent}"
+            "`<{child_tag}>` must be the child of a `<table>`, not a `<{parent_tag}>`"
         )),
         "td" | "th" => Some(format!(
-            "{child} must be the child of a `<tr>`, not a {parent}"
+            "`<{child_tag}>` must be the child of a `<tr>`, not a `<{parent_tag}>`"
         )),
         "tr" => Some(format!(
-            "`<tr>` must be the child of a `<thead>`, `<tbody>`, or `<tfoot>`, not a {parent}"
+            "`<tr>` must be the child of a `<thead>`, `<tbody>`, or `<tfoot>`, not a `<{parent_tag}>`"
         )),
         _ => None,
     }

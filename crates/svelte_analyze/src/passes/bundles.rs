@@ -14,12 +14,41 @@ pub(crate) struct TemplateSideTablesBundle<'c> {
 impl<'c> TemplateSideTablesBundle<'c> {
     pub(crate) fn new(component: &'c Component) -> Self {
         Self {
-            side_tables: template_side_tables::TemplateSideTablesVisitor { component },
+            side_tables: template_side_tables::TemplateSideTablesVisitor {
+                component,
+                pending_html_tags: Vec::new(),
+                const_tag_buckets: Vec::new(),
+                debug_tag_buckets: Vec::new(),
+                title_buckets: Vec::new(),
+                expression_tag_buckets: Vec::new(),
+            },
         }
     }
 
     pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
         [&mut self.side_tables]
+    }
+
+    pub(crate) fn take_pending_html_tags(
+        &mut self,
+    ) -> Vec<(svelte_ast::NodeId, svelte_ast::FragmentId)> {
+        std::mem::take(&mut self.side_tables.pending_html_tags)
+    }
+
+    pub(crate) fn take_const_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {
+        std::mem::take(&mut self.side_tables.const_tag_buckets)
+    }
+
+    pub(crate) fn take_debug_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {
+        std::mem::take(&mut self.side_tables.debug_tag_buckets)
+    }
+
+    pub(crate) fn take_title_buckets(&mut self) -> template_side_tables::FragmentBuckets {
+        std::mem::take(&mut self.side_tables.title_buckets)
+    }
+
+    pub(crate) fn take_expression_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {
+        std::mem::take(&mut self.side_tables.expression_tag_buckets)
     }
 }
 

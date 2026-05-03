@@ -11,6 +11,7 @@ use token::{
     StartTag, StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
 };
 
+use memchr::{memchr, memchr2};
 use svelte_diagnostics::Diagnostic;
 use svelte_span::{SPAN, Span};
 
@@ -358,9 +359,21 @@ impl<'a> Scanner<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek() {
+        while let Some(&b) = self.bytes.get(self.current) {
+            if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+                self.prev = self.current;
+                self.current += 1;
+                continue;
+            }
+            if b < 0x80 {
+                break;
+            }
+            let Some(ch) = self.source[self.current..].chars().next() else {
+                break;
+            };
             if ch.is_whitespace() {
-                self.advance();
+                self.prev = self.current;
+                self.current += ch.len_utf8();
             } else {
                 break;
             }
@@ -432,7 +445,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn attributes(&mut self) -> Result<Vec<Attribute>, Diagnostic> {
-        let mut attributes: Vec<Attribute> = vec![];
+        let mut attributes: Vec<Attribute> = Vec::with_capacity(4);
 
         loop {
             self.skip_whitespace();
@@ -968,27 +981,31 @@ impl<'a> Scanner<'a> {
         let mut end_name_span = SPAN;
         let mut found_end_tag = false;
 
-        while !self.is_at_end() {
-            let ch = self.advance();
-            if ch != '<' {
-                continue;
+        loop {
+            match memchr(b'<', &self.bytes[self.current..]) {
+                Some(off) => {
+                    self.current += off;
+                    self.advance();
+                    let candidate_start = self.prev;
+                    if !self.match_char('/') {
+                        continue;
+                    }
+                    let close_name_start = self.current;
+                    if self.identifier() != tag_name {
+                        continue;
+                    }
+                    content_end = candidate_start;
+                    end_tag_start = candidate_start;
+                    end_name_span = self.span(close_name_start, self.current);
+                    found_end_tag = true;
+                    break;
+                }
+                None => {
+                    self.prev = self.current;
+                    self.current = self.bytes.len();
+                    break;
+                }
             }
-
-            let candidate_start = self.prev;
-            if !self.match_char('/') {
-                continue;
-            }
-
-            let close_name_start = self.current;
-            if self.identifier() != tag_name {
-                continue;
-            }
-
-            content_end = candidate_start;
-            end_tag_start = candidate_start;
-            end_name_span = self.span(close_name_start, self.current);
-            found_end_tag = true;
-            break;
         }
 
         if found_end_tag {
@@ -1026,8 +1043,12 @@ impl<'a> Scanner<'a> {
     }
 
     fn text(&mut self) {
-        while self.peek() != Some('<') && self.peek() != Some('{') && !self.is_at_end() {
-            self.advance();
+        if let Some(off) = memchr2(b'<', b'{', &self.bytes[self.current..]) {
+            self.prev = self.current + off.saturating_sub(1);
+            self.current += off;
+        } else {
+            self.prev = self.current;
+            self.current = self.bytes.len();
         }
 
         self.add_token(TokenType::Text);
@@ -1761,23 +1782,24 @@ impl<'a> Scanner<'a> {
         let start = self.current;
         let mut end = start;
 
-        while !self.is_at_end() {
-            let char = self.advance();
-
-            if char != '<' {
-                continue;
-            }
-
-            end = self.prev;
-
-            if !self.match_char('/') {
-                continue;
-            }
-
-            let identifier = self.identifier();
-
-            if identifier == "script" {
-                break;
+        loop {
+            match memchr(b'<', &self.bytes[self.current..]) {
+                Some(off) => {
+                    self.current += off;
+                    self.advance();
+                    end = self.prev;
+                    if !self.match_char('/') {
+                        continue;
+                    }
+                    if self.identifier() == "script" {
+                        break;
+                    }
+                }
+                None => {
+                    self.prev = self.current;
+                    self.current = self.bytes.len();
+                    break;
+                }
             }
         }
 
@@ -1847,23 +1869,24 @@ impl<'a> Scanner<'a> {
         let start = self.current;
         let mut end = start;
 
-        while !self.is_at_end() {
-            let char = self.advance();
-
-            if char != '<' {
-                continue;
-            }
-
-            end = self.prev;
-
-            if !self.match_char('/') {
-                continue;
-            }
-
-            let identifier = self.identifier();
-
-            if identifier == "style" {
-                break;
+        loop {
+            match memchr(b'<', &self.bytes[self.current..]) {
+                Some(off) => {
+                    self.current += off;
+                    self.advance();
+                    end = self.prev;
+                    if !self.match_char('/') {
+                        continue;
+                    }
+                    if self.identifier() == "style" {
+                        break;
+                    }
+                }
+                None => {
+                    self.prev = self.current;
+                    self.current = self.bytes.len();
+                    break;
+                }
             }
         }
 

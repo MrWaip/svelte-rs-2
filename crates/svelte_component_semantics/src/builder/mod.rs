@@ -27,6 +27,13 @@ impl<'a> ComponentSemanticsBuilder<'a> {
         }
     }
 
+    pub fn with_capacity(node_count: usize) -> Self {
+        Self {
+            semantics: ComponentSemantics::with_capacity(node_count),
+            next_node_id: 0,
+        }
+    }
+
     pub fn add_instance_program(&mut self, program: &Program<'a>) {
         let root = self.semantics.root_scope_id();
         program.scope_id.set(Some(root));

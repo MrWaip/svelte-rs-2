@@ -1,6 +1,5 @@
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
-use oxc_semantic::SemanticBuilder;
 use oxc_traverse::traverse_mut;
 
 use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
@@ -24,6 +23,7 @@ pub fn transform_script<'a, 'b>(
     strip_exports: bool,
     dev: bool,
     component_source: &str,
+    component_line_index: &svelte_span::LineIndex,
     script_content_start: u32,
     filename: &str,
     runes: bool,
@@ -31,12 +31,8 @@ pub fn transform_script<'a, 'b>(
     immutable: bool,
     experimental_async: bool,
     ignore_query: IgnoreQuery<'_, 'a>,
-    prepare_semantic: bool,
 ) -> TransformScriptOutput {
     let is_ts = program.source_type.is_typescript();
-    if prepare_semantic {
-        let _ = SemanticBuilder::new().build(program);
-    }
 
     let mut transformer = ComponentTransformer {
         mode: TransformMode::Script,
@@ -57,6 +53,7 @@ pub fn transform_script<'a, 'b>(
         needs_ownership_validator: false,
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source,
+        component_line_index,
         script_content_start,
         filename,
         next_arrow_name: None,
@@ -81,7 +78,7 @@ pub fn transform_script<'a, 'b>(
 
     if !transformer.derived_pending.is_empty() {
         let dev_ctx = dev.then_some(super::derived::DevContext {
-            component_source,
+            component_line_index,
             script_content_start,
             filename,
             ignore_query: transformer.ignore_query,

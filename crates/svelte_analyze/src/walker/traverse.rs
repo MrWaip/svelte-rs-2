@@ -9,10 +9,21 @@ pub(crate) fn walk_template(
     ctx: &mut VisitContext<'_, '_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
-    let fragment_nodes: Vec<NodeId> = ctx.store.fragment_nodes(fragment_id).to_vec();
-    for (idx, id) in fragment_nodes.iter().copied().enumerate() {
-        let node = ctx.store.get(id);
-        let ignore_codes = scan_preceding_ignores(idx, &fragment_nodes, ctx);
+    let prev_fragment = ctx.set_current_fragment(fragment_id);
+    walk_template_inner(fragment_id, ctx, visitors);
+    ctx.restore_current_fragment(prev_fragment);
+}
+
+fn walk_template_inner(
+    fragment_id: svelte_ast::FragmentId,
+    ctx: &mut VisitContext<'_, '_>,
+    visitors: &mut [&mut dyn TemplateVisitor],
+) {
+    let store = ctx.store;
+    let fragment_nodes = store.fragment_nodes(fragment_id);
+    for (idx, &id) in fragment_nodes.iter().enumerate() {
+        let node = store.get(id);
+        let ignore_codes = scan_preceding_ignores(idx, fragment_nodes, ctx);
         let has_ignores = !ignore_codes.is_empty();
         if has_ignores {
             ctx.push_ignore(ignore_codes);
@@ -37,7 +48,7 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() {
                     v.visit_element(el, ctx);
                 }
-                let prev_name = ctx.replace_element_name(el.name.clone());
+                let prev_name = ctx.replace_element_name(el.id);
                 ctx.push(ParentRef {
                     id: el.id,
                     kind: ParentKind::Element,
@@ -214,6 +225,9 @@ pub(crate) fn walk_template(
                 walk_template(head.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_head(head, ctx);
+                }
             }
             Node::SvelteFragmentLegacy(el) => {
                 for v in visitors.iter_mut() {

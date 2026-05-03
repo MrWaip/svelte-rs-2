@@ -50,13 +50,27 @@ test-parser:
 test-analyzer:
     cargo test -p svelte_analyze
 
-# Run all Rust benchmarks
-bench:
+# Walltime benchmark across all cases (criterion mean ms).
+bench-walltime-all:
     cargo bench -p benchmark
 
 # Run Node benchmarks against svelte/compiler
 bench-node:
     node tasks/benchmark/bench.mjs
+
+# Run a single bench by substring filter (criterion mean ms).
+bench-case filter:
+    cargo bench -p benchmark --bench svelte_compiler -- '{{filter}}'
+
+# Profile one file. Extra flags forwarded to profile bin: --dev, --mode compile|compile_module. Requires: cargo install samply && samply setup.
+bench-flame path *flags:
+    cargo build --profile profiling -p benchmark --bin profile
+    bash tasks/benchmark/scripts/bench-flame.sh '{{path}}' {{flags}}
+
+# Profile every case × {prod, dev}. Writes profile/<slug>_<mode>/* per case + profile/aggregate.top.txt.
+bench-flame-all:
+    cargo build --profile profiling -p benchmark --bin profile
+    bash tasks/benchmark/scripts/bench-flame-all.sh
 
 # Dump OXC AST as JSON for a JS expression
 dump-ast expr:

@@ -132,9 +132,11 @@ pub fn analyze_with_options<'a>(
             .is_some();
     data.output.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
-    let execution_order = passes::resolve_default_execution_order()
-        .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));
-    debug_assert_eq!(execution_order, passes::default_stage_execution_order());
+    debug_assert_eq!(
+        passes::resolve_default_execution_order()
+            .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}")),
+        passes::default_stage_execution_order()
+    );
 
     for &key in passes::PRE_TEMPLATE_SCRIPT_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
@@ -181,7 +183,7 @@ pub fn analyze_module<'a>(
     let mut parsed = JsAst::new();
 
     match svelte_parser::parse_module(alloc, source, is_ts) {
-        Ok((program, _scoping)) => {
+        Ok(program) => {
             let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
             builder.add_instance_program(&program);
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());

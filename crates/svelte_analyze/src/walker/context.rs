@@ -7,7 +7,7 @@ pub(crate) struct VisitContext<'d, 'a> {
     pub(crate) parsed: Option<&'d JsAst<'a>>,
     pub store: &'d svelte_ast::AstStore,
     parents: Vec<ParentRef>,
-    element_name: Option<String>,
+    element_name_id: Option<NodeId>,
     pub source: &'d str,
     pub runes: bool,
     component_name: &'d str,
@@ -15,6 +15,7 @@ pub(crate) struct VisitContext<'d, 'a> {
     ignore_current: FxHashSet<String>,
     ignore_stack: Vec<FxHashSet<String>>,
     warnings: Vec<Diagnostic>,
+    current_fragment_id: Option<svelte_ast::FragmentId>,
 }
 
 impl<'d, 'a> VisitContext<'d, 'a> {
@@ -33,7 +34,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             parsed: None,
             store,
             parents: Vec::new(),
-            element_name: None,
+            element_name_id: None,
             source,
             runes,
             component_name,
@@ -41,6 +42,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
+            current_fragment_id: None,
         }
     }
 
@@ -60,7 +62,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             parsed: Some(parsed),
             store,
             parents: Vec::new(),
-            element_name: None,
+            element_name_id: None,
             source,
             runes,
             component_name,
@@ -68,7 +70,24 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
+            current_fragment_id: None,
         }
+    }
+
+    pub(crate) fn set_current_fragment(
+        &mut self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<svelte_ast::FragmentId> {
+        self.current_fragment_id.replace(id)
+    }
+
+    pub(crate) fn restore_current_fragment(&mut self, prev: Option<svelte_ast::FragmentId>) {
+        self.current_fragment_id = prev;
+    }
+
+    pub fn current_fragment_id(&self) -> svelte_ast::FragmentId {
+        self.current_fragment_id
+            .expect("current_fragment_id queried outside walk_template")
     }
 
     pub fn parsed(&self) -> Option<&JsAst<'a>> {
@@ -84,7 +103,11 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn element_name(&self) -> Option<&str> {
-        self.element_name.as_deref()
+        let id = self.element_name_id?;
+        match self.store.get(id) {
+            svelte_ast::Node::Element(el) => Some(el.name.as_str()),
+            _ => None,
+        }
     }
 
     pub fn component_name(&self) -> &str {
@@ -163,12 +186,12 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         self.parents.pop();
     }
 
-    pub(crate) fn replace_element_name(&mut self, name: String) -> Option<String> {
-        self.element_name.replace(name)
+    pub(crate) fn replace_element_name(&mut self, id: NodeId) -> Option<NodeId> {
+        self.element_name_id.replace(id)
     }
 
-    pub(crate) fn set_element_name(&mut self, name: Option<String>) {
-        self.element_name = name;
+    pub(crate) fn set_element_name(&mut self, id: Option<NodeId>) {
+        self.element_name_id = id;
     }
 
     pub(crate) fn warnings_mut(&mut self) -> &mut Vec<Diagnostic> {

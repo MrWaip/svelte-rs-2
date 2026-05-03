@@ -17,18 +17,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::Identifier(id) = &*expr else {
-            return false;
+        let (name, ref_id) = {
+            let Expression::Identifier(id) = &*expr else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            (id.name, ref_id)
         };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
-        };
-        let name = id.name.as_str().to_string();
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
             ReferenceSemantics::StoreRead { .. } => {
-                *expr = self.make_thunk_call(&name);
+                *expr = self.make_thunk_call(name.as_str());
                 true
             }
             ReferenceSemantics::SignalRead { safe: false, .. }
@@ -36,17 +38,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::SignalUpdate { safe: false, .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { safe: false } => {
-                *expr = self.make_rune_get(&name);
+                *expr = self.make_rune_get(name.as_str());
                 true
             }
             ReferenceSemantics::SignalRead { safe: true, .. }
             | ReferenceSemantics::SignalUpdate { safe: true, .. }
             | ReferenceSemantics::LegacyStateUpdate { safe: true } => {
-                *expr = self.make_rune_safe_get(&name);
+                *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
             ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. }) => {
-                *expr = self.make_thunk_call(&name);
+                *expr = self.make_thunk_call(name.as_str());
                 true
             }
             ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { symbol }) => {
@@ -61,8 +63,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
             ReferenceSemantics::ConstAliasRead { owner_node } => {
                 if let Some(tmp) = self.transform_data.const_tag_tmp_names.get(&owner_node) {
-                    let tmp_name = tmp.clone();
-                    *expr = self.make_member_get(&tmp_name, &name);
+                    *expr = self.make_member_get(tmp.as_str(), name.as_str());
                 }
                 true
             }
@@ -70,8 +71,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 carrier_symbol,
                 ..
             }) => {
-                let carrier_name = analysis.scoping.symbol_name(carrier_symbol).to_string();
-                *expr = self.make_member_get(&carrier_name, &name);
+                let carrier_name = analysis.scoping.symbol_name(carrier_symbol);
+                *expr = self.make_member_get(carrier_name, name.as_str());
                 true
             }
             ReferenceSemantics::LegacyPropsIdentifierRead => {
@@ -83,17 +84,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::LegacyStateRead { safe: false } => {
-                *expr = self.make_rune_get(&name);
+                *expr = self.make_rune_get(name.as_str());
                 true
             }
             ReferenceSemantics::LegacyStateRead { safe: true } => {
-                *expr = self.make_rune_safe_get(&name);
+                *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
             ReferenceSemantics::LegacyReactiveImportRead => {
                 let import_name: &str = self
                     .b
-                    .alloc_str(&legacy_reactive_import_wrapper_name(&name));
+                    .alloc_str(&legacy_reactive_import_wrapper_name(name.as_str()));
                 *expr = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
                 true
             }
@@ -101,7 +102,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 match kind {
                     ContextualReadKind::EachItem { accessor: true, .. }
                     | ContextualReadKind::SnippetParam { accessor: true, .. } => {
-                        *expr = self.make_thunk_call(&name);
+                        *expr = self.make_thunk_call(name.as_str());
                     }
                     ContextualReadKind::EachItem {
                         signal: true,
@@ -115,7 +116,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     | ContextualReadKind::AwaitValue
                     | ContextualReadKind::AwaitError
                     | ContextualReadKind::LetDirective => {
-                        *expr = self.make_rune_get(&name);
+                        *expr = self.make_rune_get(name.as_str());
                     }
                     ContextualReadKind::EachItem {
                         accessor: false,
@@ -379,74 +380,91 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
+        let (name, ref_id, operator) = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
+            else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            (id.name, ref_id, assign.operator)
         };
-        let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
-        };
-        let name = id.name.as_str().to_string();
-        let operator = assign.operator;
         let semantics = analysis.reference_semantics(ref_id);
 
         match semantics {
             ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => {
-                let base_name = analysis.scoping.symbol_name(symbol).to_string();
+                let base_name = analysis.scoping.symbol_name(symbol);
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
                 let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
 
-                let left_read = self.make_thunk_call(&name);
+                let left_read = self.make_thunk_call(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_store_set(&base_name, value);
+                *node = self.make_store_set(base_name, value);
                 true
             }
             ReferenceSemantics::SignalWrite { kind } => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
                 let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
                 let needs_proxy = !suppress_proxy
                     && kind == StateKind::State
                     && rune_refs::is_non_coercive_operator(operator)
                     && rune_refs::should_proxy(&right);
-                let left_read = self.make_rune_get(&name);
+                let left_read = self.make_rune_get(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_rune_set(&name, value, needs_proxy);
+                *node = self.make_rune_set(name.as_str(), value, needs_proxy);
                 true
             }
             ReferenceSemantics::SignalUpdate { kind, safe } => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
                 let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
                 let needs_proxy = !suppress_proxy
                     && kind == StateKind::State
                     && rune_refs::is_non_coercive_operator(operator)
                     && rune_refs::should_proxy(&right);
                 let left_read = if safe {
-                    self.make_rune_safe_get(&name)
+                    self.make_rune_safe_get(name.as_str())
                 } else {
-                    self.make_rune_get(&name)
+                    self.make_rune_get(name.as_str())
                 };
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_rune_set(&name, value, needs_proxy);
+                *node = self.make_rune_set(name.as_str(), value, needs_proxy);
                 true
             }
 
             ReferenceSemantics::LegacyStateWrite => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
                 let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
-                let left_read = self.make_rune_get(&name);
+                let left_read = self.make_rune_get(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_rune_set(&name, value, false);
+                *node = self.make_rune_set(name.as_str(), value, false);
                 true
             }
 
             ReferenceSemantics::LegacyStateUpdate { safe } => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
                 let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
                 let left_read = if safe {
-                    self.make_rune_safe_get(&name)
+                    self.make_rune_safe_get(name.as_str())
                 } else {
-                    self.make_rune_get(&name)
+                    self.make_rune_get(name.as_str())
                 };
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_rune_set(&name, value, false);
+                *node = self.make_rune_set(name.as_str(), value, false);
                 true
             }
             _ => false,
@@ -460,36 +478,42 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
+        let (name, ref_id, is_increment, is_prefix) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
+                &upd.argument
+            else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            (
+                id.name,
+                ref_id,
+                upd.operator == oxc_syntax::operator::UpdateOperator::Increment,
+                upd.prefix,
+            )
         };
-        let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
-        else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
-        };
-        let is_increment = upd.operator == oxc_syntax::operator::UpdateOperator::Increment;
-        let name = id.name.as_str().to_string();
-        let is_prefix = upd.prefix;
 
         match analysis.reference_semantics(ref_id) {
             ReferenceSemantics::StoreUpdate { symbol } => {
-                let base_name = analysis.scoping.symbol_name(symbol).to_string();
-                *node = self.make_store_update(&base_name, &name, is_prefix, is_increment);
+                let base_name = analysis.scoping.symbol_name(symbol);
+                *node = self.make_store_update(base_name, name.as_str(), is_prefix, is_increment);
                 true
             }
             ReferenceSemantics::SignalUpdate {
                 kind: StateKind::State | StateKind::StateRaw,
                 ..
             } => {
-                *node = self.make_rune_update(&name, is_prefix, is_increment);
+                *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
                 true
             }
 
             ReferenceSemantics::LegacyStateUpdate { .. } => {
-                *node = self.make_rune_update(&name, is_prefix, is_increment);
+                *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
                 true
             }
             _ => false,
@@ -500,14 +524,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
-        };
-        let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
+        let (name, ref_id, operator) = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
+            else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            (id.name, ref_id, assign.operator)
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -515,16 +543,19 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let name = id.name.as_str().to_string();
-        let operator = assign.operator;
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
         let right = self.b.move_expr(&mut assign.right);
         let value = if operator.is_assign() {
             right
         } else {
-            let left_read = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
+            let left_read = self
+                .b
+                .call_expr(name.as_str(), std::iter::empty::<Arg<'a, '_>>());
             self.build_compound_value(operator, left_read, right)
         };
-        *node = self.b.call_expr(&name, [Arg::Expr(value)]);
+        *node = self.b.call_expr(name.as_str(), [Arg::Expr(value)]);
         true
     }
 
@@ -532,15 +563,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
-        };
-        let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
-        else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
+        let (name, ref_id, is_prefix, is_decrement) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
+                &upd.argument
+            else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            (
+                id.name,
+                ref_id,
+                upd.prefix,
+                upd.operator == oxc_ast::ast::UpdateOperator::Decrement,
+            )
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -548,14 +588,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let name = id.name.as_str().to_string();
-        let fn_name = if upd.prefix {
+        let fn_name = if is_prefix {
             "$.update_pre_prop"
         } else {
             "$.update_prop"
         };
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
-        if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(name.as_str())];
+        if is_decrement {
             args.push(Arg::Num(-1.0));
         }
         *node = self.b.call_expr(fn_name, args);
@@ -566,31 +605,36 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
-        };
-        let Some(member) = assign.left.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let Some(member) = assign.left.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         let ReferenceSemantics::StoreRead { symbol } = analysis.reference_semantics(ref_id) else {
             return false;
         };
-        let root_name = root.name.as_str().to_string();
-        let base_name = analysis.scoping.symbol_name(symbol).to_string();
+        let base_name = analysis.scoping.symbol_name(symbol);
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_assign_target(
             &mut assign.left,
-            self.make_untrack(&root_name),
+            self.make_untrack(root_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        let untracked = self.make_untrack(&root_name);
-        *node = self.make_store_mutate(&base_name, mutation, untracked);
+        let untracked = self.make_untrack(root_name.as_str());
+        *node = self.make_store_mutate(base_name, mutation, untracked);
         true
     }
 
@@ -601,17 +645,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
-        };
-        let Some(member) = assign.left.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let Some(member) = assign.left.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -619,11 +666,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let root_name = root.name.as_str().to_string();
         let import_name: &'a str = self
             .b
-            .alloc_str(&legacy_reactive_import_wrapper_name(&root_name));
+            .alloc_str(&legacy_reactive_import_wrapper_name(root_name.as_str()));
         let import_call = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_assign_target(&mut assign.left, import_call);
         let placeholder = self.b.cheap_expr();
         let mutation = std::mem::replace(node, placeholder);
@@ -638,17 +687,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
-        };
-        let Some(member) = upd.argument.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let Some(member) = upd.argument.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -656,11 +708,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let root_name = root.name.as_str().to_string();
         let import_name: &'a str = self
             .b
-            .alloc_str(&legacy_reactive_import_wrapper_name(&root_name));
+            .alloc_str(&legacy_reactive_import_wrapper_name(root_name.as_str()));
         let import_call = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_simple_target(&mut upd.argument, import_call);
         let placeholder = self.b.cheap_expr();
         let mutation = std::mem::replace(node, placeholder);
@@ -672,17 +726,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
-        };
-        let Some(member) = assign.left.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let Some(member) = assign.left.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -690,14 +747,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let root_name = root.name.as_str().to_string();
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_assign_target(
             &mut assign.left,
-            self.make_rune_get(&root_name),
+            self.make_rune_get(root_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(&root_name, mutation);
+        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
         true
     }
 
@@ -705,17 +764,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
-        };
-        let Some(member) = upd.argument.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let Some(member) = upd.argument.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         if !matches!(
             analysis.reference_semantics(ref_id),
@@ -723,14 +785,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        let root_name = root.name.as_str().to_string();
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_simple_target(
             &mut upd.argument,
-            self.make_rune_get(&root_name),
+            self.make_rune_get(root_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(&root_name, mutation);
+        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
         true
     }
 
@@ -743,25 +807,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::AssignmentExpression(assign) = node else {
-            return false;
+        let item_name = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let Some(member) = assign.left.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            root.name
         };
-        let Some(member) = assign.left.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let item_name = root.name.as_str().to_string();
         let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
             return false;
         };
         if source_syms.is_empty() {
             return false;
         }
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_assign_target(
             &mut assign.left,
-            self.make_rune_get(&item_name),
+            self.make_rune_get(item_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
@@ -778,25 +847,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
+        let item_name = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let Some(member) = upd.argument.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            root.name
         };
-        let Some(member) = upd.argument.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let item_name = root.name.as_str().to_string();
         let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
             return false;
         };
         if source_syms.is_empty() {
             return false;
         }
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_simple_target(
             &mut upd.argument,
-            self.make_rune_get(&item_name),
+            self.make_rune_get(item_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
@@ -808,31 +882,36 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::UpdateExpression(upd) = node else {
-            return false;
-        };
-        let Some(member) = upd.argument.as_member_expression() else {
-            return false;
-        };
-        let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
-            return false;
-        };
-        let Some(ref_id) = root.reference_id.get() else {
-            return false;
+        let (root_name, ref_id) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let Some(member) = upd.argument.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            let Some(ref_id) = root.reference_id.get() else {
+                return false;
+            };
+            (root.name, ref_id)
         };
         let ReferenceSemantics::StoreRead { symbol } = analysis.reference_semantics(ref_id) else {
             return false;
         };
-        let root_name = root.name.as_str().to_string();
-        let base_name = analysis.scoping.symbol_name(symbol).to_string();
+        let base_name = analysis.scoping.symbol_name(symbol);
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
         rune_refs::replace_expr_root_in_simple_target(
             &mut upd.argument,
-            self.make_untrack(&root_name),
+            self.make_untrack(root_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        let untracked = self.make_untrack(&root_name);
-        *node = self.make_store_mutate(&base_name, mutation, untracked);
+        let untracked = self.make_untrack(root_name.as_str());
+        *node = self.make_store_mutate(base_name, mutation, untracked);
         true
     }
 

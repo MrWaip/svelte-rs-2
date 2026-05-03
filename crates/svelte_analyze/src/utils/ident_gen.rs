@@ -1,14 +1,25 @@
-use std::fmt::Write;
-
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-fn build_name(prefix: &str, n: u32) -> CompactString {
-    let mut buf = CompactString::with_capacity(prefix.len() + 4);
-    buf.push_str(prefix);
-    buf.push('_');
-    let _ = write!(buf, "{}", n);
-    buf
+fn push_u32(out: &mut String, mut n: u32) {
+    if n == 0 {
+        out.push('0');
+        return;
+    }
+    let mut buf = [0u8; 10];
+    let mut i = buf.len();
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    out.push_str(unsafe { std::str::from_utf8_unchecked(&buf[i..]) });
+}
+
+fn build_name_into(out: &mut String, prefix: &str, n: u32) {
+    out.push_str(prefix);
+    out.push('_');
+    push_u32(out, n);
 }
 
 pub struct IdentGen {
@@ -55,26 +66,34 @@ impl IdentGen {
     }
 
     pub fn generate(&mut self, prefix: &str) -> String {
-        let key = CompactString::from(prefix);
-        let count = self.counters.entry(key).or_insert(0);
-
-        let mut name = if *count == 0 {
-            CompactString::from(prefix)
+        let count = if let Some(c) = self.counters.get_mut(prefix) {
+            let v = *c;
+            *c += 1;
+            v
         } else {
-            build_name(prefix, *count)
+            self.counters.insert(CompactString::from(prefix), 1);
+            0
         };
-        *count += 1;
+
+        let mut name = String::with_capacity(prefix.len() + 6);
+        if count == 0 {
+            name.push_str(prefix);
+        } else {
+            build_name_into(&mut name, prefix, count);
+        }
 
         while self.conflicts.contains(name.as_str()) {
             let c = self
                 .counters
                 .get_mut(prefix)
                 .expect("counter was inserted for this prefix above");
-            name = build_name(prefix, *c);
+            let n = *c;
             *c += 1;
+            name.clear();
+            build_name_into(&mut name, prefix, n);
         }
 
-        self.conflicts.insert(name.clone());
-        name.into()
+        self.conflicts.insert(CompactString::from(name.as_str()));
+        name
     }
 }

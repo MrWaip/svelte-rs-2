@@ -94,10 +94,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 std::mem::swap(&mut call.arguments[0], &mut dummy);
                 dummy.into_expression()
             } else {
-                let (line, col) = crate::script::compute_line_col(
-                    self.ctx.state.source,
-                    expr_offset + arrow.span.start,
-                );
+                let (line, col) = self
+                    .ctx
+                    .state
+                    .line_index
+                    .line_col(expr_offset + arrow.span.start);
                 let sanitized = crate::script::sanitize_location(self.ctx.state.filename);
                 let label = format!("trace ({sanitized}:{line}:{col})");
                 self.ctx.b.str_expr(&label)
@@ -169,7 +170,7 @@ fn build_event_apply_wrapper<'a>(
             .function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)]);
     }
 
-    let (line, col) = crate::script::compute_line_col(ctx.state.source, expr_offset);
+    let (line, col) = ctx.state.line_index.line_col(expr_offset);
     let location = ctx
         .b
         .array_expr([ctx.b.num_expr(line as f64), ctx.b.num_expr(col as f64)]);

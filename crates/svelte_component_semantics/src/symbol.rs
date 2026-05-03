@@ -37,17 +37,20 @@ pub(crate) struct SymbolTable {
 }
 
 impl SymbolTable {
-    pub fn new() -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            names: Vec::new(),
-            spans: Vec::new(),
-            flags: Vec::new(),
-            scope_ids: Vec::new(),
-            declaration_node_ids: Vec::new(),
-            resolved_references: Vec::new(),
-            state: Vec::new(),
-            owners: Vec::new(),
-            name_index: rustc_hash::FxHashMap::default(),
+            names: Vec::with_capacity(capacity),
+            spans: Vec::with_capacity(capacity),
+            flags: Vec::with_capacity(capacity),
+            scope_ids: Vec::with_capacity(capacity),
+            declaration_node_ids: Vec::with_capacity(capacity),
+            resolved_references: Vec::with_capacity(capacity),
+            state: Vec::with_capacity(capacity),
+            owners: Vec::with_capacity(capacity),
+            name_index: rustc_hash::FxHashMap::with_capacity_and_hasher(
+                capacity,
+                Default::default(),
+            ),
         }
     }
 
@@ -67,7 +70,7 @@ impl SymbolTable {
         self.flags.push(flags);
         self.scope_ids.push(scope_id);
         self.declaration_node_ids.push(node_id);
-        self.resolved_references.push(Vec::new());
+        self.resolved_references.push(Vec::with_capacity(2));
         self.state.push(0);
         self.owners.push(owner);
         id
@@ -155,7 +158,7 @@ mod tests {
 
     #[test]
     fn create_and_query() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         let id = make_symbol(&mut t, "foo");
 
         assert_eq!(t.symbol_name(id), "foo");
@@ -166,7 +169,7 @@ mod tests {
 
     #[test]
     fn eager_mutation_on_write_ref() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         let id = make_symbol(&mut t, "x");
         let ref_id = ReferenceId::from_usize(0);
 
@@ -180,7 +183,7 @@ mod tests {
 
     #[test]
     fn resolved_references_tracked() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         let id = make_symbol(&mut t, "x");
 
         assert!(t.get_resolved_reference_ids(id).is_empty());
@@ -195,7 +198,7 @@ mod tests {
 
     #[test]
     fn symbol_flags() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         let id = t.create_symbol(
             "imp".into(),
             Span::default(),
@@ -209,7 +212,7 @@ mod tests {
 
     #[test]
     fn owner_tracking() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         let m = t.create_symbol(
             "a".into(),
             Span::default(),
@@ -251,7 +254,7 @@ mod tests {
 
     #[test]
     fn symbol_ids_iterator() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         make_symbol(&mut t, "a");
         make_symbol(&mut t, "b");
         make_symbol(&mut t, "c");
@@ -264,7 +267,7 @@ mod tests {
 
     #[test]
     fn symbol_names_iterator() {
-        let mut t = SymbolTable::new();
+        let mut t = SymbolTable::with_capacity(0);
         make_symbol(&mut t, "x");
         make_symbol(&mut t, "y");
 

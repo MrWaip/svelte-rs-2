@@ -1224,6 +1224,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "compact_str",
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
@@ -1299,6 +1300,7 @@ dependencies = [
  "svelte_codegen_client",
  "svelte_diagnostics",
  "svelte_parser",
+ "svelte_span",
  "svelte_transform",
  "svelte_transform_css",
  "svelte_types",
@@ -1346,11 +1348,11 @@ name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
  "compact_str",
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
  "oxc_estree",
  "oxc_parser",
- "oxc_semantic",
  "oxc_span",
  "oxc_syntax",
  "pretty_assertions",
@@ -1408,6 +1410,7 @@ dependencies = [
  "oxc_allocator",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_span",
 ]
 
 [[package]]
