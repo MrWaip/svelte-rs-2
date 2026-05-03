@@ -184,7 +184,7 @@ impl<'a> AnalysisData<'a> {
         Self {
             expressions: NodeTable::new(node_count),
             attr_expressions: NodeTable::new(node_count),
-            scoping: ComponentScoping::new_empty(),
+            scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),
             template: TemplateAnalysis::new(node_count),

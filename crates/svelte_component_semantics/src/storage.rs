@@ -27,9 +27,13 @@ pub struct JsNode<'a> {
 
 impl<'a> JsStorage<'a> {
     pub fn new() -> Self {
+        Self::with_capacity(0)
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            nodes: Vec::new(),
-            parent_ids: Vec::new(),
+            nodes: Vec::with_capacity(capacity),
+            parent_ids: Vec::with_capacity(capacity),
         }
     }
 
@@ -123,13 +127,22 @@ pub struct ComponentSemantics<'a> {
 
 impl<'a> ComponentSemantics<'a> {
     pub fn new() -> Self {
-        let mut scopes = ScopeTable::new();
+        Self::with_capacity(0)
+    }
+
+    pub fn with_capacity(node_count: usize) -> Self {
+        let symbols_cap = (node_count / 8).max(16);
+        let refs_cap = (node_count / 4).max(32);
+        let scopes_cap = (node_count / 12).max(8);
+        let js_cap = node_count;
+
+        let mut scopes = ScopeTable::with_capacity(scopes_cap);
         scopes.add_scope(None, ScopeFlags::Top | ScopeFlags::Function);
         Self {
             scopes,
-            symbols: SymbolTable::new(),
-            references: ReferenceTable::new(),
-            js: JsStorage::new(),
+            symbols: SymbolTable::with_capacity(symbols_cap),
+            references: ReferenceTable::with_capacity(refs_cap),
+            js: JsStorage::with_capacity(js_cap),
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
             store_candidate_refs: Vec::new(),

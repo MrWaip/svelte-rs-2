@@ -33,6 +33,10 @@ impl<'a> ComponentScoping<'a> {
         Self::from_semantics(ComponentSemantics::new())
     }
 
+    pub fn with_capacity(node_count: usize) -> Self {
+        Self::from_semantics(ComponentSemantics::with_capacity(node_count))
+    }
+
     pub fn from_semantics(semantics: ComponentSemantics<'a>) -> Self {
         Self {
             semantics,

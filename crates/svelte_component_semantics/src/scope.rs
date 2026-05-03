@@ -10,11 +10,11 @@ pub(crate) struct ScopeTable {
 }
 
 impl ScopeTable {
-    pub fn new() -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            parent_ids: Vec::new(),
-            flags: Vec::new(),
-            bindings: Vec::new(),
+            parent_ids: Vec::with_capacity(capacity),
+            flags: Vec::with_capacity(capacity),
+            bindings: Vec::with_capacity(capacity),
         }
     }
 
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn add_scope_and_parent() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let root = t.add_scope(None, ScopeFlags::Top);
         let child = t.add_scope(Some(root), ScopeFlags::empty());
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn find_binding_walks_parents() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let root = t.add_scope(None, ScopeFlags::Top);
         let child = t.add_scope(Some(root), ScopeFlags::empty());
 
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn get_binding_no_walk() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let root = t.add_scope(None, ScopeFlags::Top);
         let child = t.add_scope(Some(root), ScopeFlags::empty());
 
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn shadowing() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let root = t.add_scope(None, ScopeFlags::Top);
         let child = t.add_scope(Some(root), ScopeFlags::empty());
 
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn find_function_scope() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let root = t.add_scope(None, ScopeFlags::Top | ScopeFlags::Function);
         let block = t.add_scope(Some(root), ScopeFlags::empty());
         let inner_fn = t.add_scope(Some(block), ScopeFlags::Function);
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn set_scope_parent_id() {
-        let mut t = ScopeTable::new();
+        let mut t = ScopeTable::with_capacity(0);
         let a = t.add_scope(None, ScopeFlags::Top);
         let b = t.add_scope(None, ScopeFlags::Top);
         let c = t.add_scope(Some(a), ScopeFlags::empty());
