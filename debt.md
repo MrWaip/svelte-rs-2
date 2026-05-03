@@ -103,3 +103,11 @@ Scope большой, трогает 9 пост-пассов + точку кон
 ## Запретить паники итд
 
 Разрешить только сейфовые операции и запретить паники, Unwrap, expect
+
+## analyze/transform passes do redundant `find_binding` over already-resolved references
+
+В analyze/transform-проходах, которые ходят по JS AST и держат в руках `IdentifierReference`, у него уже есть `reference_id`, и `ComponentSemantics::symbol_for_identifier_reference(ident)` отдаёт `SymbolId` за O(1) без хеширования и без walking scope chain. Сейчас многие такие проходы зовут `find_binding(scope, ident.name.as_str())` — это redundant work, символ уже разрешён билдером.
+
+Места: `crates/svelte_analyze/src/passes/build_component_semantics.rs:560`, `crates/svelte_analyze/src/passes/template_validation.rs:1253`, `crates/svelte_analyze/src/block_semantics/builder/each.rs:38,53`, `crates/svelte_analyze/src/block_semantics/builder/await_.rs:95`, `crates/svelte_analyze/src/passes/element_flags.rs:234`, `crates/svelte_analyze/src/passes/dynamism.rs:107`, `crates/svelte_transform/src/transformer/props_legacy.rs:49` и аналогичные.
+
+Direction: для call-sites с `&IdentifierReference<'a>` в руках заменить `find_binding(scope, ident.name.as_str())` на `symbol_for_identifier_reference(ident)`. Оставить `find_binding(scope, name)` только там, где имя — голая строка не от ident-а (CSS prune, store-rename `&name[1..]`, `decl.name`, runes-validate by-name lookups).

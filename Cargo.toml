@@ -64,6 +64,11 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = "none"
+
 [profile.test]
 # Local development in this workspace repeatedly rebuilds large compiler crates.
 # Favor incremental test rebuilds and cheaper debug info so `test-compiler` is fast.

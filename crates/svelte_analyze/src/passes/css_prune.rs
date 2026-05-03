@@ -148,7 +148,7 @@ pub(crate) fn prune_and_warn(
         used: &mut used,
         scoped,
         in_global_block: false,
-        rule_lookup,
+        rule_lookup: &rule_lookup,
         rule_stack: Vec::new(),
     };
     pruner.visit_stylesheet(stylesheet);
@@ -209,7 +209,7 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
     scoped: &'b mut NodeBitSet,
     in_global_block: bool,
-    rule_lookup: FxHashMap<CssNodeId, &'s StyleRule>,
+    rule_lookup: &'s FxHashMap<CssNodeId, &'s StyleRule>,
     rule_stack: Vec<CssNodeId>,
 }
 
@@ -225,8 +225,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         let parent_len = self.rule_stack.len();
         self.rule_stack.push(node.id);
         let parent_rules = self.rule_stack[..parent_len].to_vec();
-        let rule_lookup = self.rule_lookup.clone();
-        let rule_ctx = RuleContext::new(node.id, &parent_rules, &rule_lookup);
+        let rule_ctx = RuleContext::new(node.id, &parent_rules, self.rule_lookup);
 
         for complex in &node.prelude.children {
             let plan = build_rule_selector_plan(complex, &rule_ctx);
@@ -1848,108 +1847,147 @@ fn attribute_matches(
     operator: &str,
     case_insensitive: bool,
 ) -> bool {
-    let name_lower = name.to_ascii_lowercase();
+    if pruner.element_facts.has_spread(elem_id) {
+        return true;
+    }
     let Some(attrs) = element_attributes(pruner.component, elem_id) else {
         return false;
     };
+    let name_is_class = name.eq_ignore_ascii_case("class");
+    let name_is_style = name.eq_ignore_ascii_case("style");
 
     for attr in attrs {
-        if matches!(attr, Attribute::SpreadAttribute(_)) {
-            return true;
-        }
-        if matches!(attr, Attribute::BindDirective(bind) if bind.name.eq_ignore_ascii_case(name)) {
-            return true;
-        }
-        if matches!(attr, Attribute::StyleDirective(_) if name_lower == "style") {
-            return true;
-        }
-        if let Attribute::ClassDirective(class_directive) = attr
-            && name_lower == "class"
-        {
-            if operator == "~=" {
-                if expected_value.is_some_and(|value| class_directive.name == value) {
-                    return true;
-                }
-            } else {
+        match attr {
+            Attribute::BindDirective(bind) if bind.name.eq_ignore_ascii_case(name) => {
                 return true;
             }
+            Attribute::StyleDirective(_) if name_is_style => {
+                return true;
+            }
+            Attribute::ClassDirective(class_directive) if name_is_class => {
+                if operator == "~=" {
+                    if expected_value.is_some_and(|value| class_directive.name == value) {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+            _ => {}
         }
+    }
 
-        if !attribute_name_matches_selector(pruner.component, attr, name) {
-            continue;
+    if let Some(idx) = pruner.element_facts.attr_index(elem_id) {
+        for attr in idx.all(attrs, name) {
+            if let Some(result) = scan_value_attr(
+                pruner,
+                attr,
+                expected_value,
+                operator,
+                case_insensitive,
+                name_is_class,
+                name_is_style,
+            ) {
+                return result;
+            }
         }
-
-        match attr {
-            Attribute::BooleanAttribute(_) => {
-                return expected_value.is_none();
+    } else {
+        for attr in attrs {
+            if !attribute_name_matches_selector(pruner.component, attr, name) {
+                continue;
             }
-            Attribute::StringAttribute(attr) => {
-                if expected_value.is_none() {
-                    return true;
-                }
-                let matches = test_attribute(
-                    operator,
-                    expected_value.expect("is_none branch returns above"),
-                    case_insensitive,
-                    attr.value_span.source_text(&pruner.component.source),
-                );
-                if !matches && (name_lower == "class" || name_lower == "style") {
-                    continue;
-                }
-                return matches;
+            if let Some(result) = scan_value_attr(
+                pruner,
+                attr,
+                expected_value,
+                operator,
+                case_insensitive,
+                name_is_class,
+                name_is_style,
+            ) {
+                return result;
             }
-            Attribute::ExpressionAttribute(attr) => {
-                if expected_value.is_none() {
-                    return true;
-                }
-                let Some(chunks) = attribute_chunks_for_expression_attr(pruner, attr) else {
-                    return true;
-                };
-                if match_attribute_chunks(
-                    operator,
-                    expected_value.expect("is_none branch returns above"),
-                    case_insensitive,
-                    &chunks,
-                ) {
-                    return true;
-                }
-                if name_lower == "class" || name_lower == "style" {
-                    continue;
-                }
-                return false;
-            }
-            Attribute::ConcatenationAttribute(attr) => {
-                if expected_value.is_none() {
-                    return true;
-                }
-                let chunks = attribute_chunks_for_concat(pruner, &attr.parts);
-                if match_attribute_chunks(
-                    operator,
-                    expected_value.expect("is_none branch returns above"),
-                    case_insensitive,
-                    &chunks,
-                ) {
-                    return true;
-                }
-                if name_lower == "class" || name_lower == "style" {
-                    continue;
-                }
-                return false;
-            }
-            Attribute::BindDirective(_)
-            | Attribute::LetDirectiveLegacy(_)
-            | Attribute::ClassDirective(_)
-            | Attribute::StyleDirective(_)
-            | Attribute::SpreadAttribute(_)
-            | Attribute::UseDirective(_)
-            | Attribute::OnDirectiveLegacy(_)
-            | Attribute::TransitionDirective(_)
-            | Attribute::AnimateDirective(_)
-            | Attribute::AttachTag(_) => {}
         }
     }
 
     false
+}
+
+fn scan_value_attr(
+    pruner: &PruneVisitor<'_, '_, '_, '_>,
+    attr: &Attribute,
+    expected_value: Option<&str>,
+    operator: &str,
+    case_insensitive: bool,
+    name_is_class: bool,
+    name_is_style: bool,
+) -> Option<bool> {
+    match attr {
+        Attribute::BooleanAttribute(_) => Some(expected_value.is_none()),
+        Attribute::StringAttribute(attr) => {
+            if expected_value.is_none() {
+                return Some(true);
+            }
+            let matches = test_attribute(
+                operator,
+                expected_value.expect("is_none branch returns above"),
+                case_insensitive,
+                attr.value_span.source_text(&pruner.component.source),
+            );
+            if !matches && (name_is_class || name_is_style) {
+                return None;
+            }
+            Some(matches)
+        }
+        Attribute::ExpressionAttribute(attr) => {
+            if expected_value.is_none() {
+                return Some(true);
+            }
+            let Some(chunks) = attribute_chunks_for_expression_attr(pruner, attr) else {
+                return Some(true);
+            };
+            if match_attribute_chunks(
+                operator,
+                expected_value.expect("is_none branch returns above"),
+                case_insensitive,
+                &chunks,
+            ) {
+                return Some(true);
+            }
+            if name_is_class || name_is_style {
+                return None;
+            }
+            Some(false)
+        }
+        Attribute::ConcatenationAttribute(attr) => {
+            if expected_value.is_none() {
+                return Some(true);
+            }
+            let chunks = attribute_chunks_for_concat(pruner, &attr.parts);
+            if match_attribute_chunks(
+                operator,
+                expected_value.expect("is_none branch returns above"),
+                case_insensitive,
+                &chunks,
+            ) {
+                return Some(true);
+            }
+            if name_is_class || name_is_style {
+                return None;
+            }
+            Some(false)
+        }
+        Attribute::BindDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::SpreadAttribute(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => None,
+    }
 }
 
 fn attribute_name_matches_selector(
@@ -2222,19 +2260,63 @@ fn attribute_selector_case_insensitive(
 }
 
 fn test_attribute(operator: &str, expected: &str, case_insensitive: bool, value: &str) -> bool {
-    let (expected, value) = if case_insensitive {
-        (expected.to_lowercase(), value.to_lowercase())
-    } else {
-        (expected.to_owned(), value.to_owned())
+    let eq = |a: &str, b: &str| {
+        if case_insensitive {
+            a.eq_ignore_ascii_case(b)
+        } else {
+            a == b
+        }
+    };
+    let starts_with = |haystack: &str, needle: &str| -> bool {
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        h.len() >= n.len() && {
+            if case_insensitive {
+                h[..n.len()].eq_ignore_ascii_case(n)
+            } else {
+                &h[..n.len()] == n
+            }
+        }
+    };
+    let ends_with = |haystack: &str, needle: &str| -> bool {
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        h.len() >= n.len() && {
+            let off = h.len() - n.len();
+            if case_insensitive {
+                h[off..].eq_ignore_ascii_case(n)
+            } else {
+                &h[off..] == n
+            }
+        }
+    };
+    let contains = |haystack: &str, needle: &str| -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        if !case_insensitive {
+            return haystack.contains(needle);
+        }
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        if h.len() < n.len() {
+            return false;
+        }
+        (0..=h.len() - n.len()).any(|i| h[i..i + n.len()].eq_ignore_ascii_case(n))
     };
 
     match operator {
-        "=" => value == expected,
-        "~=" => value.split_whitespace().any(|part| part == expected),
-        "|=" => format!("{value}-").starts_with(&format!("{expected}-")),
-        "^=" => value.starts_with(expected.as_str()),
-        "$=" => value.ends_with(expected.as_str()),
-        "*=" => value.contains(expected.as_str()),
+        "=" => eq(value, expected),
+        "~=" => value.split_whitespace().any(|part| eq(part, expected)),
+        "|=" => {
+            eq(value, expected)
+                || (value.len() > expected.len()
+                    && value.as_bytes()[expected.len()] == b'-'
+                    && starts_with(value, expected))
+        }
+        "^=" => starts_with(value, expected),
+        "$=" => ends_with(value, expected),
+        "*=" => contains(value, expected),
         _ => false,
     }
 }

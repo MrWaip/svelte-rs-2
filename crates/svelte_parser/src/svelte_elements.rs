@@ -544,52 +544,52 @@ impl<'a> Parser<'a> {
         }
     }
 }
-fn collect_child_fragments(node: &Node, buf: &mut Vec<svelte_ast::FragmentId>) {
+fn for_each_child_fragment(node: &Node, mut f: impl FnMut(svelte_ast::FragmentId)) {
     match node {
-        Node::Element(el) => buf.push(el.fragment),
-        Node::SlotElementLegacy(el) => buf.push(el.fragment),
+        Node::Element(el) => f(el.fragment),
+        Node::SlotElementLegacy(el) => f(el.fragment),
         Node::ComponentNode(cn) => {
-            buf.push(cn.fragment);
+            f(cn.fragment);
             for slot in &cn.legacy_slots {
-                buf.push(slot.fragment);
+                f(slot.fragment);
             }
         }
         Node::IfBlock(block) => {
-            buf.push(block.consequent);
+            f(block.consequent);
             if let Some(alt) = block.alternate {
-                buf.push(alt);
+                f(alt);
             }
         }
         Node::EachBlock(block) => {
-            buf.push(block.body);
+            f(block.body);
             if let Some(fb) = block.fallback {
-                buf.push(fb);
+                f(fb);
             }
         }
-        Node::SnippetBlock(block) => buf.push(block.body),
-        Node::KeyBlock(block) => buf.push(block.fragment),
-        Node::SvelteWindow(window) => buf.push(window.fragment),
-        Node::SvelteDocument(document) => buf.push(document.fragment),
-        Node::SvelteBody(body) => buf.push(body.fragment),
-        Node::SvelteHead(head) => buf.push(head.fragment),
-        Node::SvelteFragmentLegacy(fragment) => buf.push(fragment.fragment),
-        Node::SvelteElement(el) => buf.push(el.fragment),
+        Node::SnippetBlock(block) => f(block.body),
+        Node::KeyBlock(block) => f(block.fragment),
+        Node::SvelteWindow(window) => f(window.fragment),
+        Node::SvelteDocument(document) => f(document.fragment),
+        Node::SvelteBody(body) => f(body.fragment),
+        Node::SvelteHead(head) => f(head.fragment),
+        Node::SvelteFragmentLegacy(fragment) => f(fragment.fragment),
+        Node::SvelteElement(el) => f(el.fragment),
         Node::SvelteComponentLegacy(el) => {
-            buf.push(el.fragment);
+            f(el.fragment);
             for slot in &el.legacy_slots {
-                buf.push(slot.fragment);
+                f(slot.fragment);
             }
         }
-        Node::SvelteBoundary(b) => buf.push(b.fragment),
+        Node::SvelteBoundary(b) => f(b.fragment),
         Node::AwaitBlock(block) => {
             if let Some(pending) = block.pending {
-                buf.push(pending);
+                f(pending);
             }
             if let Some(then) = block.then {
-                buf.push(then);
+                f(then);
             }
             if let Some(catch) = block.catch {
-                buf.push(catch);
+                f(catch);
             }
         }
         Node::Text(_)
@@ -604,9 +604,7 @@ fn collect_child_fragments(node: &Node, buf: &mut Vec<svelte_ast::FragmentId>) {
 }
 
 fn extend_child_node_ids(store: &AstStore, node: &Node, buf: &mut Vec<NodeId>) {
-    let mut frags = Vec::new();
-    collect_child_fragments(node, &mut frags);
-    for fid in frags {
+    for_each_child_fragment(node, |fid| {
         buf.extend_from_slice(&store.fragment(fid).nodes);
-    }
+    });
 }

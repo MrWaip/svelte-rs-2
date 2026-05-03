@@ -1,4 +1,6 @@
+.DS_Store
 /target
+/profile
 /cclsp
 docs/compiler/
 node_modules/
@@ -8,3 +10,4 @@ REVIEW.md
 *.tgz
 *.node
 tasks/quick_check/scratch.svelte
+.claude/settings.local.json

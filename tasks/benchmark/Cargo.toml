@@ -28,6 +28,10 @@ harness = false
 name = "svelte_compile_module_dev"
 harness = false
 
+[[bin]]
+name = "profile"
+path = "src/bin/profile.rs"
+
 [features]
 default = []
 codspeed = ["criterion2/codspeed"]

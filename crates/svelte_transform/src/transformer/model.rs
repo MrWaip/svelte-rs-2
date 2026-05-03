@@ -91,6 +91,7 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) needs_ownership_validator: bool,
     pub(crate) pending_prop_update_validations: FxHashMap<u32, PendingPropMutationValidation<'a>>,
     pub(crate) component_source: &'b str,
+    pub(crate) component_line_index: &'b svelte_span::LineIndex,
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,

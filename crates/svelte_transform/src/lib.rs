@@ -4,9 +4,7 @@ pub mod transformer;
 
 pub use data::TransformData;
 
-pub use transformer::{
-    IgnoreQuery, TransformScriptOutput, compute_line_col, sanitize_location, transform_script,
-};
+pub use transformer::{IgnoreQuery, TransformScriptOutput, sanitize_location, transform_script};
 
 use oxc_syntax::node::NodeId as OxcNodeId;
 
@@ -23,6 +21,7 @@ pub fn transform_component<'a>(
     let analysis = ctx.analysis;
     let parsed: &mut JsAst<'a> = ctx.js_arena;
     let ident_gen: &mut IdentGen = ctx.ident_gen;
+    let line_index = ctx.line_index;
     let dev = options.dev;
     let root_scope = analysis.scoping.root_scope_id();
 
@@ -54,6 +53,7 @@ pub fn transform_component<'a>(
         bind_expr_handles,
         transform_data,
         parsed,
+        line_index,
         dev,
     )
 }
@@ -512,12 +512,14 @@ mod tests {
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
+        let line_index = svelte_span::LineIndex::new(component.source.as_str());
         let mut ctx = svelte_types::CompileContext {
             alloc: &alloc,
             component: &component,
             analysis: &analysis,
             js_arena: &mut parsed,
             ident_gen: &mut ident_gen,
+            line_index: &line_index,
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
@@ -560,12 +562,14 @@ mod tests {
         assert!(diags.is_empty(), "unexpected analyze diags: {diags:?}");
 
         let mut ident_gen = IdentGen::new();
+        let line_index = svelte_span::LineIndex::new(component.source.as_str());
         let mut ctx = svelte_types::CompileContext {
             alloc: &alloc,
             component: &component,
             analysis: &analysis,
             js_arena: &mut parsed,
             ident_gen: &mut ident_gen,
+            line_index: &line_index,
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 

@@ -28,6 +28,7 @@ rustc-hash = { workspace = true }
 smallvec = { workspace = true }
 bitflags = { workspace = true }
 svelte_css = { workspace = true }
+memchr = "2"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

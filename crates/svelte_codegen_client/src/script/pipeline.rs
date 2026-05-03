@@ -1,10 +1,8 @@
 use oxc_allocator::Allocator;
 use oxc_ast::Comment;
 use oxc_ast::ast::{Program, Statement};
-use oxc_parser::Parser as OxcParser;
-use oxc_span::{GetSpan, SourceType};
+use oxc_span::GetSpan;
 use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
-use svelte_ast::ScriptLanguage;
 
 use svelte_ast_builder::Builder;
 use svelte_transform::{IgnoreQuery, transform_script};
@@ -21,17 +19,25 @@ pub struct ScriptOutput<'a> {
     pub program_span_end: u32,
 }
 
+fn empty_script_output<'a>() -> ScriptOutput<'a> {
+    ScriptOutput {
+        imports: vec![],
+        body: vec![],
+        has_tracing: false,
+        needs_ownership_validator: false,
+        comments: vec![],
+        source_text: "",
+        program_span_end: 0,
+    }
+}
+
 pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     if ctx.query.component.instance_script.is_none() {
-        return ScriptOutput {
-            imports: vec![],
-            body: vec![],
-            has_tracing: false,
-            needs_ownership_validator: false,
-            comments: vec![],
-            source_text: "",
-            program_span_end: 0,
-        };
+        return empty_script_output();
+    }
+
+    let Some(program) = ctx.state.parsed.program.take() else {
+        return empty_script_output();
     };
 
     let allocator = ctx.b.ast.allocator;
@@ -46,59 +52,27 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         .start;
     let filename = ctx.state.filename;
     let ignore_query = IgnoreQuery::new(ctx.query.analysis);
-
-    let program = ctx.state.parsed.program.take();
-    if let Some(program) = program {
-        let component_scoping = ctx.query.scoping();
-        return run_transform(
-            allocator,
-            program,
-            Some(ctx.query.analysis),
-            component_scoping,
-            Some(ctx.script_rune_calls()),
-            ctx.instance_script_node_id_offset(),
-            true,
-            dev,
-            component_source,
-            script_content_start,
-            filename,
-            ctx.query.runes(),
-            ctx.query.accessors(),
-            ctx.query.immutable(),
-            ctx.state.experimental_async,
-            ignore_query,
-            false,
-        );
-    }
-
+    let line_index = ctx.state.line_index;
     let component_scoping = ctx.query.scoping();
-    let script = ctx
-        .query
-        .component
-        .instance_script
-        .as_ref()
-        .expect("early return above when instance_script is None");
-    let is_ts = script.language == ScriptLanguage::TypeScript;
-    let script_text = ctx.query.component.source_text(script.content_span);
-    transform_script_text(
+
+    run_transform(
         allocator,
-        script_text,
-        is_ts,
+        program,
         Some(ctx.query.analysis),
         component_scoping,
+        Some(ctx.script_rune_calls()),
+        ctx.instance_script_node_id_offset(),
         true,
         dev,
         component_source,
+        line_index,
         script_content_start,
         filename,
         ctx.query.runes(),
         ctx.query.accessors(),
         ctx.query.immutable(),
-        None,
-        0,
         ctx.state.experimental_async,
         ignore_query,
-        true,
     )
 }
 
@@ -107,6 +81,7 @@ pub fn transform_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> ScriptOutput<'a> {
     run_transform(
@@ -119,6 +94,7 @@ pub fn transform_module_program<'a, 'b>(
         false,
         dev,
         "",
+        line_index,
         0,
         "(unknown)",
         true,
@@ -126,35 +102,6 @@ pub fn transform_module_program<'a, 'b>(
         false,
         false,
         IgnoreQuery::empty(),
-        false,
-    )
-}
-
-pub fn transform_component_module_script<'a>(
-    allocator: &'a Allocator,
-    source: &'a str,
-    is_ts: bool,
-) -> ScriptOutput<'a> {
-    let empty_scoping = ComponentScoping::new_empty();
-    transform_script_text(
-        allocator,
-        source,
-        is_ts,
-        None,
-        &empty_scoping,
-        false,
-        false,
-        source,
-        0,
-        "(unknown)",
-        false,
-        false,
-        false,
-        None,
-        0,
-        false,
-        IgnoreQuery::empty(),
-        true,
     )
 }
 
@@ -164,6 +111,7 @@ pub fn transform_component_module_program<'a, 'b>(
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
     script_rune_calls: Option<&ScriptRuneCalls>,
+    line_index: &'b svelte_span::LineIndex,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -175,6 +123,7 @@ pub fn transform_component_module_program<'a, 'b>(
         false,
         false,
         "",
+        line_index,
         0,
         "(unknown)",
         false,
@@ -182,58 +131,6 @@ pub fn transform_component_module_program<'a, 'b>(
         false,
         false,
         IgnoreQuery::empty(),
-        false,
-    )
-}
-
-fn transform_script_text<'a>(
-    allocator: &'a Allocator,
-    source: &'a str,
-    is_ts: bool,
-    analysis: Option<&'_ AnalysisData<'a>>,
-    component_scoping: &ComponentScoping<'a>,
-    strip_exports: bool,
-    dev: bool,
-    component_source: &str,
-    script_content_start: u32,
-    filename: &str,
-    runes: bool,
-    accessors: bool,
-    immutable: bool,
-    script_rune_calls: Option<&ScriptRuneCalls>,
-    script_node_id_offset: u32,
-    experimental_async: bool,
-    ignore_query: IgnoreQuery<'_, 'a>,
-    prepare_semantic: bool,
-) -> ScriptOutput<'a> {
-    let src_type = if is_ts {
-        SourceType::default()
-            .with_typescript(true)
-            .with_module(true)
-    } else {
-        SourceType::mjs()
-    };
-    let result = OxcParser::new(allocator, source, src_type).parse();
-    let program = result.program;
-
-    run_transform(
-        allocator,
-        program,
-        analysis,
-        component_scoping,
-        script_rune_calls,
-        script_node_id_offset,
-        strip_exports,
-        dev,
-        component_source,
-        script_content_start,
-        filename,
-        runes,
-        accessors,
-        immutable,
-        experimental_async,
-        ignore_query,
-        prepare_semantic,
     )
 }
 
@@ -247,6 +144,7 @@ fn run_transform<'a>(
     strip_exports: bool,
     dev: bool,
     component_source: &str,
+    component_line_index: &svelte_span::LineIndex,
     script_content_start: u32,
     filename: &str,
     runes: bool,
@@ -254,7 +152,6 @@ fn run_transform<'a>(
     immutable: bool,
     experimental_async: bool,
     ignore_query: IgnoreQuery<'_, 'a>,
-    prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
@@ -270,6 +167,7 @@ fn run_transform<'a>(
         strip_exports,
         dev,
         component_source,
+        component_line_index,
         script_content_start,
         filename,
         runes,
@@ -277,7 +175,6 @@ fn run_transform<'a>(
         immutable,
         experimental_async,
         ignore_query,
-        prepare_semantic,
     );
 
     if is_ts {

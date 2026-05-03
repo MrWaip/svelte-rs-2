@@ -3,10 +3,7 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, walker};
 
-use super::{
-    bundles, const_tag_fragments, finalize_component_name, fragment_topology, html_tag_ns_flags,
-    js_analyze, post_resolve,
-};
+use super::{bundles, finalize_component_name, fragment_topology, js_analyze, post_resolve};
 
 fn run_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -115,19 +112,58 @@ pub(crate) fn execute_pass<'a>(
             super::template_side_tables::collect_fragment_facts(component, data);
             super::template_side_tables::collect_rich_content_facts(component, data);
             let mut bundle = bundles::TemplateSideTablesBundle::new(component);
-            let mut visitors = bundle.visitors();
-            run_parsed_template_bundle(
-                component,
-                data,
-                parsed,
-                source,
-                runes,
-                options,
-                diags,
-                &mut visitors,
-            );
+            {
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    data,
+                    parsed,
+                    source,
+                    runes,
+                    options,
+                    diags,
+                    &mut visitors,
+                );
+            }
             data.template.template_elements.finalize();
             super::template_side_tables::collect_fragment_namespaces(component, data);
+
+            for (idx, slot) in bundle.take_const_tag_buckets().into_iter().enumerate() {
+                if let Some(ids) = slot {
+                    data.template
+                        .const_tags
+                        .by_fragment
+                        .insert(svelte_ast::FragmentId(idx as u32), ids);
+                }
+            }
+            for (idx, slot) in bundle.take_debug_tag_buckets().into_iter().enumerate() {
+                if let Some(ids) = slot {
+                    data.template
+                        .debug_tags
+                        .by_fragment
+                        .insert(svelte_ast::FragmentId(idx as u32), ids);
+                }
+            }
+            for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
+                if let Some(ids) = slot {
+                    data.template
+                        .title_elements
+                        .by_fragment
+                        .insert(svelte_ast::FragmentId(idx as u32), ids);
+                }
+            }
+            data.template.expression_tags_by_fragment = bundle.take_expression_tag_buckets();
+            for (tag_id, frag_id) in bundle.take_pending_html_tags() {
+                match data.template.fragment_namespaces.get(frag_id) {
+                    Some(svelte_ast::Namespace::Svg) => {
+                        data.elements.html_tag_in_svg.insert(tag_id);
+                    }
+                    Some(svelte_ast::Namespace::Mathml) => {
+                        data.elements.html_tag_in_mathml.insert(tag_id);
+                    }
+                    _ => {}
+                }
+            }
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
@@ -177,9 +213,6 @@ pub(crate) fn execute_pass<'a>(
                     });
             }
         }
-        super::PassKey::CollectConstTagFragments => {
-            const_tag_fragments::collect(component, data);
-        }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(component, parsed, data);
         }
@@ -195,9 +228,6 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::BuildFragmentTopology => {
             fragment_topology::build(component, data);
-        }
-        super::PassKey::CollectHtmlTagNsFlags => {
-            html_tag_ns_flags::collect(component, data);
         }
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();

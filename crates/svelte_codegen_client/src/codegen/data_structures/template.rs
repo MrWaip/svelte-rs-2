@@ -134,13 +134,12 @@ fn stringify(node: &TemplateNode, out: &mut String) {
         } => {
             let _ = write!(out, "<{name}");
             for (key, value) in attributes {
-                let effective_key = if *is_html {
-                    key.to_lowercase()
-                } else {
-                    key.clone()
-                };
                 out.push(' ');
-                out.push_str(&effective_key);
+                if *is_html {
+                    push_ascii_lower(out, key);
+                } else {
+                    out.push_str(key);
+                }
                 if let Some(val) = value {
                     let _ = write!(out, "=\"{}\"", escape_html_attr(val));
                 }
@@ -154,6 +153,24 @@ fn stringify(node: &TemplateNode, out: &mut String) {
                 }
                 let _ = write!(out, "</{name}>");
             }
+        }
+    }
+}
+
+fn push_ascii_lower(out: &mut String, s: &str) {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let start = i;
+        while i < bytes.len() && !bytes[i].is_ascii_uppercase() {
+            i += 1;
+        }
+        if start < i {
+            out.push_str(&s[start..i]);
+        }
+        if i < bytes.len() {
+            out.push((bytes[i] | 0x20) as char);
+            i += 1;
         }
     }
 }

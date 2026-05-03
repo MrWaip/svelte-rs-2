@@ -4,7 +4,11 @@ use benchmark::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glob::glob;
 
 fn bench_svelte_compiler(criterion: &mut Criterion) {
-    let files = glob("./benches/compiler/**/*.svelte").expect("Не удалось считать компоненты");
+    let pattern = format!(
+        "{}/benches/compiler/**/*.svelte",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let files = glob(&pattern).expect("Не удалось считать компоненты");
 
     let mut group = criterion.benchmark_group("compiler");
 

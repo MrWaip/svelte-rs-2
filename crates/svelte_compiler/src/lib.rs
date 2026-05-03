@@ -174,6 +174,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
         let name = analysis.component_name().to_string();
         let _ = ident_gen.generate(&name);
+        let line_index = svelte_span::LineIndex::new(component.source.as_str());
         let transform_data = {
             let mut compile_ctx = svelte_types::CompileContext {
                 alloc: &js_alloc,
@@ -181,6 +182,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 analysis: &analysis,
                 js_arena: &mut parsed,
                 ident_gen: &mut ident_gen,
+                line_index: &line_index,
             };
             svelte_transform::transform_component(
                 &mut compile_ctx,
@@ -198,6 +200,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             analysis: &analysis,
             js_arena: &mut parsed,
             ident_gen: &mut ident_gen,
+            line_index: &line_index,
         };
         let js = svelte_codegen_client::generate(
             compile_ctx,
@@ -260,8 +263,9 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         .program
         .take()
         .expect("analyze_module produced no program");
+    let line_index = svelte_span::LineIndex::new(source);
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        svelte_codegen_client::generate_module(&js_alloc, program, &analysis, dev)
+        svelte_codegen_client::generate_module(&js_alloc, program, &analysis, &line_index, dev)
     }));
 
     match codegen_result {
