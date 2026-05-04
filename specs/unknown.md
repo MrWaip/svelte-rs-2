@@ -1,19 +1,21 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 0/9 use cases
-- **Tests**: 0/3 green
+- **Working**: 0/10 use cases
+- **Tests**: 0/4 green
 - Last updated: 2026-05-03
 
 ## Source
 
 - User request: create a durable triage spec for problems that do not yet map to one owning feature spec
 - `/diagnose` benchmark component (dev=true, runes=true, customElement=true) — broad repro `diagnose_runes_dev_ce_benchmark`
+- `/diagnose` benchmark component (dev=true only, no runes/customElement overrides) — narrower repro `diagnose_dev_benchmark` exercising the same dev-codegen mismatches without CE/runes noise
 
 ## Use cases
 
-- [ ] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none
-- [ ] `$props()` source-line argument passed to `$.prop($$props, ..., flags, default)` and the location array passed to `$.add_locations(..., [[line, col], ...])` are off (props lines off by 4, `<svelte:head>` array contains a phantom head-root entry); layer: codegen; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: source-maps.md, props-bindable.md, element.md; suggested spec: none
+- [ ] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none
+- [ ] `$props()` source-line argument passed to `$.prop($$props, ..., flags, default)` and the location array passed to `$.add_locations(..., [[line, col], ...])` are off (props lines off by 4, `<svelte:head>` array contains a phantom head-root entry, named-slot inner element location dropped to `[]`); layer: codegen; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: source-maps.md, props-bindable.md, element.md, legacy-slots.md; suggested spec: none
+- [ ] Dev-mode named-slot child arrow on a static component is incorrectly wrapped with `$.wrap_snippet(App, ($$anchor, $$slotProps) => { ... })`; reference emits the bare arrow for `$$slots: { footer: ($$anchor, $$slotProps) => { ... } }` and only wraps the synthesized default-children entry. Inverse of `component_dev_default_children_wrap_snippet`; layer: transform; repro/test: diagnose_dev_benchmark, diagnose_runes_dev_ce_benchmark; candidate specs: legacy-slots.md, component-node.md; suggested spec: legacy-slots.md
 - [ ] `$state.raw({...})` declarator in a script that combines `$props()` rest, dev mode, and `customElement: true` is emitted as a plain object literal instead of `$.tag($.state({...}), "name")`, and the corresponding `$state.snapshot(rawData)` reads `rawData` directly instead of `$.get(rawData)`; not reproducible in isolation, only in the combined benchmark; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: state-rune.md, custom-elements.md; suggested spec: state-rune.md
 - [ ] Dev-mode console method calls referencing reactive state are wrapped via `$.log_if_contains_state(method, ...args)` (e.g. `console.log("count:", count)` → `console.log(...$.log_if_contains_state("log", "count:", $.get(count)))`); currently not emitted on the `.svelte.js` / `.svelte.ts` standalone module path — layer: codegen + transform; repro/test: `module_dev_console_log_wrap`; candidate specs: `inspect-runes.md` (related but only covers `$inspect`), none cover console-method auto-instrumentation; suggested spec: new `dev-console-instrumentation.md` covering `console.{log,debug,info,warn,error,trace,dir,group,groupCollapsed}` dev wrapping for both component scripts and `.svelte.js` modules
 - [ ] `compile_module` (`.svelte.js` / `.svelte.ts`) does not thread `dev` flag into the codegen-side transform pipeline — `svelte_codegen_client::generate_module` discards `dev`, and `script::pipeline::transform_module_program` hardcodes `dev: false` into `run_transform`. Cross-cutting: this is the shared root cause for `module_dev_state_tag` (owned by `state-rune.md`), `module_dev_derived_tag` (owned by `derived-state.md`), and `module_dev_console_log_wrap` (above) — layer: codegen; repro/test: any of the three above; candidate specs: `state-rune.md` + `derived-state.md` already track their slice, this entry tracks the shared infrastructure fix
@@ -46,5 +48,6 @@
 
 ## Test cases
 - [ ] `diagnose_runes_dev_ce_benchmark`
+- [ ] `diagnose_dev_benchmark`
 - [ ] `module_dev_console_log_wrap`
 - [ ] `preserve_whitespace_script_element`
