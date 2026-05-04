@@ -155,10 +155,10 @@ export default function App($$anchor, $$props) {
 	], "rest");
 	let state = $.tag($.state(""), "state");
 	let counter = $.tag($.state(0), "counter");
-	let rawData = {
+	let rawData = $.tag($.state({
 		x: 1,
 		y: 2
-	};
+	}), "rawData");
 	let checked = $.tag($.state(false), "checked");
 	let group = $.tag($.state($.proxy([])), "group");
 	let volume = $.tag($.state(.5), "volume");
@@ -181,7 +181,7 @@ export default function App($$anchor, $$props) {
 	}), "computed");
 	let moduleSummary = $.tag($.derived(() => moduleLabel(title()) + ":" + MODULE_SCALE), "moduleSummary");
 	let storeSummary = $.tag($.derived(() => $metrics().length + ":" + $labelStore()), "storeSummary");
-	let snapshot = $.snapshot(rawData);
+	let snapshot = $.snapshot($.get(rawData));
 	$.user_effect(() => {
 		console.log(...$.log_if_contains_state("log", "Title:", title(), "Count:", count()));
 	});

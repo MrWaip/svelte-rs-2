@@ -346,6 +346,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                             &declarator.id,
                             StateKind::State,
                             init_proxyable,
+                            self.data.script.immutable,
+                            self.data.script.accessors,
                         ),
                     },
                     true,
@@ -364,6 +366,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                             &declarator.id,
                             StateKind::StateRaw,
                             false,
+                            self.data.script.immutable,
+                            self.data.script.accessors,
                         ),
                     },
                     true,
@@ -382,6 +386,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                             &declarator.id,
                             StateKind::StateEager,
                             false,
+                            self.data.script.immutable,
+                            self.data.script.accessors,
                         ),
                     },
                     false,
@@ -580,7 +586,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             _ => true,
         };
 
-        let optimize = require_mutation && !root_is_mutated;
+        let immutable = self.data.script.immutable;
+        let accessors = self.data.script.accessors;
+        let is_state_source = !immutable || root_is_mutated || accessors;
+        let optimize = require_mutation && !is_state_source;
         if optimize {
             let optimized = OptimizedRuneSemantics {
                 kind: semantics.kind,
@@ -979,6 +988,8 @@ fn collect_state_binding_semantics(
     pattern: &BindingPattern<'_>,
     rune_kind: StateKind,
     init_proxyable: bool,
+    immutable: bool,
+    accessors: bool,
 ) -> SmallVec<[StateBindingSemantics; 4]> {
     let mut semantics = SmallVec::new();
     collect_state_binding_semantics_inner(
@@ -986,6 +997,8 @@ fn collect_state_binding_semantics(
         pattern,
         rune_kind,
         init_proxyable,
+        immutable,
+        accessors,
         &mut semantics,
     );
     semantics
@@ -996,15 +1009,22 @@ fn collect_state_binding_semantics_inner(
     pattern: &BindingPattern<'_>,
     rune_kind: StateKind,
     init_proxyable: bool,
+    immutable: bool,
+    accessors: bool,
     semantics: &mut SmallVec<[StateBindingSemantics; 4]>,
 ) {
     match pattern {
         BindingPattern::BindingIdentifier(ident) => {
-            let mutated = ident
+            let reassigned = ident
                 .symbol_id
                 .get()
                 .is_some_and(|sym| scoping.is_mutated(sym));
-            semantics.push(state_binding_semantic(rune_kind, mutated, init_proxyable));
+            let is_state_source = !immutable || reassigned || accessors;
+            semantics.push(state_binding_semantic(
+                rune_kind,
+                is_state_source,
+                init_proxyable,
+            ));
         }
         BindingPattern::ObjectPattern(obj) => {
             for prop in &obj.properties {
@@ -1013,6 +1033,8 @@ fn collect_state_binding_semantics_inner(
                     &prop.value,
                     rune_kind,
                     init_proxyable,
+                    immutable,
+                    accessors,
                     semantics,
                 );
             }
@@ -1022,6 +1044,8 @@ fn collect_state_binding_semantics_inner(
                     &rest.argument,
                     rune_kind,
                     init_proxyable,
+                    immutable,
+                    accessors,
                     semantics,
                 );
             }
@@ -1033,6 +1057,8 @@ fn collect_state_binding_semantics_inner(
                     elem,
                     rune_kind,
                     init_proxyable,
+                    immutable,
+                    accessors,
                     semantics,
                 );
             }
@@ -1042,6 +1068,8 @@ fn collect_state_binding_semantics_inner(
                     &rest.argument,
                     rune_kind,
                     init_proxyable,
+                    immutable,
+                    accessors,
                     semantics,
                 );
             }
@@ -1052,6 +1080,8 @@ fn collect_state_binding_semantics_inner(
                 &assign.left,
                 rune_kind,
                 init_proxyable,
+                immutable,
+                accessors,
                 semantics,
             );
         }
@@ -1060,10 +1090,10 @@ fn collect_state_binding_semantics_inner(
 
 fn state_binding_semantic(
     rune_kind: StateKind,
-    mutated: bool,
+    is_state_source: bool,
     init_proxyable: bool,
 ) -> StateBindingSemantics {
-    match (rune_kind, mutated) {
+    match (rune_kind, is_state_source) {
         (StateKind::State, true) => StateBindingSemantics::StateSignal {
             proxied: init_proxyable,
         },
