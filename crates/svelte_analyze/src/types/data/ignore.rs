@@ -33,8 +33,13 @@ impl IgnoreData {
             .and_then(|&idx| self.snapshots.get(idx as usize))
             .is_some_and(|set| set.contains(code))
     }
-    pub fn scan_program_comments(&mut self, program: &oxc_ast::ast::Program<'_>, runes: bool) {
-        let src = program.source_text;
+    pub fn scan_program_comments(
+        &mut self,
+        program: &oxc_ast::ast::Program<'_>,
+        source: &str,
+        runes: bool,
+    ) {
+        let src = source;
         let mut by_attached: FxHashMap<u32, FxHashSet<String>> = FxHashMap::default();
 
         for comment in program.comments.iter() {
@@ -105,7 +110,7 @@ mod tests {
         let alloc = Allocator::default();
         let result = Parser::new(&alloc, src, SourceType::mjs()).parse();
         let mut ignore = IgnoreData::new();
-        ignore.scan_program_comments(&result.program, true);
+        ignore.scan_program_comments(&result.program, src, true);
         ignore
     }
 

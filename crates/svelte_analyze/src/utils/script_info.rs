@@ -22,7 +22,6 @@ pub const HOST_RUNE_NAME: &str = "$host";
 
 pub fn extract_script_info(
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     source: &str,
     runes: bool,
 ) -> ScriptInfo {
@@ -57,10 +56,9 @@ pub fn extract_script_info(
                         let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
                             unreachable!()
                         };
-                        props_declaration = collect_legacy_export_props(var_decl, offset, source);
+                        props_declaration = collect_legacy_export_props(var_decl, source);
                         collect_declarations_from_declaration(
                             decl,
-                            offset,
                             source,
                             &mut declarations,
                             &mut props_declaration,
@@ -69,7 +67,6 @@ pub fn extract_script_info(
                         collect_export_names_from_declaration(decl, &mut exports);
                         collect_declarations_from_declaration(
                             decl,
-                            offset,
                             source,
                             &mut declarations,
                             &mut props_declaration,
@@ -80,14 +77,13 @@ pub fn extract_script_info(
             Statement::VariableDeclaration(decl) => {
                 collect_var_declarations(
                     decl,
-                    offset,
                     source,
                     &mut declarations,
                     &mut props_declaration,
                 );
             }
             Statement::FunctionDeclaration(func) => {
-                collect_func_declaration(func, offset, &mut declarations);
+                collect_func_declaration(func, &mut declarations);
             }
             _ => {}
         }
@@ -103,7 +99,6 @@ pub fn extract_script_info(
 
 fn collect_legacy_export_props(
     decl: &oxc_ast::ast::VariableDeclaration<'_>,
-    offset: u32,
     source: &str,
 ) -> Option<PropsDeclaration> {
     let mut props = Vec::new();
@@ -117,7 +112,7 @@ fn collect_legacy_export_props(
             if let Some(init) = &declarator.init {
                 let sp = init.span();
                 (
-                    Some(Span::new(sp.start + offset, sp.end + offset)),
+                    Some(Span::new(sp.start, sp.end)),
                     Some(source[sp.start as usize..sp.end as usize].to_string()),
                     false,
                     is_simple_expression(init),
@@ -143,7 +138,7 @@ fn collect_legacy_export_props(
         Some(PropsDeclaration {
             props,
             is_identifier_pattern: false,
-            declaration_spans: vec![Span::new(decl.span.start + offset, decl.span.end + offset)],
+            declaration_spans: vec![Span::new(decl.span.start, decl.span.end)],
             rest_pattern_span: None,
         })
     }
@@ -240,17 +235,16 @@ fn collect_export_names_from_declaration(
 
 fn collect_declarations_from_declaration(
     decl: &oxc_ast::ast::Declaration<'_>,
-    offset: u32,
     source: &str,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
 ) {
     match decl {
         oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
-            collect_var_declarations(var_decl, offset, source, declarations, props_declaration);
+            collect_var_declarations(var_decl, source, declarations, props_declaration);
         }
         oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
-            collect_func_declaration(func, offset, declarations);
+            collect_func_declaration(func, declarations);
         }
         _ => {}
     }
@@ -258,13 +252,12 @@ fn collect_declarations_from_declaration(
 
 fn collect_func_declaration(
     func: &oxc_ast::ast::Function<'_>,
-    offset: u32,
     declarations: &mut Vec<DeclarationInfo>,
 ) {
     if let Some(ident) = &func.id {
         declarations.push(DeclarationInfo {
             name: CompactString::from(ident.name.as_str()),
-            span: Span::new(ident.span.start + offset, ident.span.end + offset),
+            span: Span::new(ident.span.start, ident.span.end),
             kind: DeclarationKind::Function,
             init_span: None,
             is_rune: None,
@@ -276,7 +269,6 @@ fn collect_func_declaration(
 
 fn collect_var_declarations(
     decl: &oxc_ast::ast::VariableDeclaration<'_>,
-    offset: u32,
     source: &str,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
@@ -292,12 +284,12 @@ fn collect_var_declarations(
         match &declarator.id {
             oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
                 let name = CompactString::from(ident.name.as_str());
-                let decl_span = Span::new(ident.span.start + offset, ident.span.end + offset);
+                let decl_span = Span::new(ident.span.start, ident.span.end);
 
                 let (init_span, is_rune, rune_init_refs, init_literal) = if let Some(init) =
                     &declarator.init
                 {
-                    let init_sp = Span::new(init.span().start + offset, init.span().end + offset);
+                    let init_sp = Span::new(init.span().start, init.span().end);
                     let rune = detect_rune(init);
                     let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
                         collect_derived_refs(init)
@@ -327,8 +319,8 @@ fn collect_var_declarations(
                         }],
                         is_identifier_pattern: true,
                         declaration_spans: vec![Span::new(
-                            decl.span.start + offset,
-                            decl.span.end + offset,
+                            decl.span.start,
+                            decl.span.end,
                         )],
                         rest_pattern_span: None,
                     });
@@ -358,9 +350,9 @@ fn collect_var_declarations(
                         let local_name = local_name.unwrap_or_else(|| key_name.clone());
 
                         let (default_span, default_text, is_bindable, is_simple_default) =
-                            extract_prop_default(&prop.value, offset, source);
+                            extract_prop_default(&prop.value, source);
 
-                        let decl_span = Span::new(prop.span.start + offset, prop.span.end + offset);
+                        let decl_span = Span::new(prop.span.start, prop.span.end);
 
                         declarations.push(DeclarationInfo {
                             name: local_name.clone(),
@@ -390,7 +382,7 @@ fn collect_var_declarations(
                     {
                         let rest_name = CompactString::from(ident.name.as_str());
                         let decl_span =
-                            Span::new(ident.span.start + offset, ident.span.end + offset);
+                            Span::new(ident.span.start, ident.span.end);
                         declarations.push(DeclarationInfo {
                             name: rest_name.clone(),
                             span: decl_span,
@@ -410,15 +402,15 @@ fn collect_var_declarations(
                             is_simple_default: true,
                         });
                         rest_pattern_span =
-                            Some(Span::new(rest.span.start + offset, rest.span.end + offset));
+                            Some(Span::new(rest.span.start, rest.span.end));
                     }
 
                     *props_declaration = Some(PropsDeclaration {
                         props,
                         is_identifier_pattern: false,
                         declaration_spans: vec![Span::new(
-                            decl.span.start + offset,
-                            decl.span.end + offset,
+                            decl.span.start,
+                            decl.span.end,
                         )],
                         rest_pattern_span,
                     });
@@ -445,7 +437,7 @@ fn collect_var_declarations(
                         };
                     for name in names {
                         let decl_span =
-                            Span::new(declarator.span.start + offset, declarator.span.end + offset);
+                            Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
                             name: CompactString::from(&name),
                             span: decl_span,
@@ -483,7 +475,7 @@ fn collect_var_declarations(
                         };
                     for name in names {
                         let decl_span =
-                            Span::new(declarator.span.start + offset, declarator.span.end + offset);
+                            Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
                             name: CompactString::from(&name),
                             span: decl_span,
@@ -533,7 +525,6 @@ fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<Co
 
 fn extract_prop_default(
     pattern: &oxc_ast::ast::BindingPattern<'_>,
-    offset: u32,
     source: &str,
 ) -> (Option<Span>, Option<String>, bool, bool) {
     if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
@@ -548,7 +539,7 @@ fn extract_prop_default(
                 let text = &source[sp.start as usize..sp.end as usize];
                 let expr = arg.as_expression().expect("argument should be expression");
                 (
-                    Some(Span::new(sp.start + offset, sp.end + offset)),
+                    Some(Span::new(sp.start, sp.end)),
                     Some(text.to_string()),
                     is_simple_expression(expr),
                 )
@@ -561,7 +552,7 @@ fn extract_prop_default(
         let text = &source[sp.start as usize..sp.end as usize];
         let is_simple = is_simple_expression(right);
         (
-            Some(Span::new(sp.start + offset, sp.end + offset)),
+            Some(Span::new(sp.start, sp.end)),
             Some(text.to_string()),
             false,
             is_simple,

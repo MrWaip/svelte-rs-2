@@ -12,7 +12,7 @@ test-diagnostic-case name:
 
 # Run all compiler integration tests
 test-compiler:
-    cargo test -p compiler_tests --test compiler_tests_v3
+    cargo test -p compiler_tests
 
 # Run a single compiler test case
 test-case name:

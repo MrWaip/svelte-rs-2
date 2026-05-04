@@ -1,12 +1,12 @@
 use std::{
     fs::{File, read_to_string},
     io::Write,
-    path::Path,
 };
 
+use compiler_tests::cases::{load_v3_case, load_v3_module_case, v3_case_dir};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, compile, compile_module};
+use svelte_compiler::{compile, compile_module};
 
 fn normalize_css(s: &str) -> String {
     s.lines()
@@ -23,70 +23,15 @@ fn is_css_comment_line(line: &str) -> bool {
     s.starts_with("/*") && s.ends_with("*/")
 }
 
-fn case_input_and_options(case: &str) -> (String, CompileOptions) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("cases2")
-        .join(case)
-        .join("case.svelte");
-    let input = read_to_string(&path).expect("test invariant");
-
-    let dir = path.parent().expect("test invariant");
-    let config_path = dir.join("config.json");
-    let mut opts = CompileOptions {
-        name: Some("App".into()),
-        ..Default::default()
-    };
-    if config_path.exists() {
-        let config: serde_json::Value =
-            serde_json::from_str(&read_to_string(&config_path).expect("test invariant"))
-                .expect("test invariant");
-        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
-            opts.dev = dev;
-        }
-        if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = Some(runes);
-        }
-        if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
-            opts.custom_element = ce;
-        }
-        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
-            opts.filename = filename.to_string();
-        }
-        if let Some(ns) = config.get("namespace").and_then(|v| v.as_str()) {
-            opts.namespace = match ns {
-                "svg" => Namespace::Svg,
-                "mathml" => Namespace::MathMl,
-                _ => Namespace::Html,
-            };
-        }
-        if let Some(exp) = config.get("experimental")
-            && let Some(async_val) = exp.get("async").and_then(|v| v.as_bool())
-        {
-            opts.experimental.async_ = async_val;
-        }
-        if let Some(pc) = config.get("preserveComments").and_then(|v| v.as_bool()) {
-            opts.preserve_comments = pc;
-        }
-        if let Some(pw) = config.get("preserveWhitespace").and_then(|v| v.as_bool()) {
-            opts.preserve_whitespace = pw;
-        }
-    }
-
-    (input, opts)
-}
-
 fn assert_compiler(case: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("cases2")
-        .join(case)
-        .join("case.svelte");
-    let (input, opts) = case_input_and_options(case);
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_case(case);
     let result = compile(&input, &opts);
-    let js = result
+    let js_output = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile produced no JS"));
+    let js = js_output.code;
 
-    let dir = path.parent().expect("test invariant");
     let expected_js = read_to_string(dir.join("case-svelte.js")).expect("test invariant");
 
     File::create(dir.join("case-rust.js"))
@@ -96,10 +41,22 @@ fn assert_compiler(case: &str) {
 
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
+    if let Some(map) = js_output.map.as_ref() {
+        compiler_tests::sourcemap_invariants::assert_sourcemap_invariants(
+            case,
+            &input,
+            map,
+            svelte_compiler::SourcemapKind::Default,
+        );
+    }
+
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
         let expected_css = read_to_string(&expected_css_path).expect("test invariant");
-        let actual_css = result.css.unwrap_or_default();
+        let actual_css = result
+            .css
+            .map(|out| out.code)
+            .unwrap_or_default();
         File::create(dir.join("case-rust.css"))
             .expect("test invariant")
             .write_all(actual_css.as_bytes())
@@ -1708,31 +1665,14 @@ fn component_dynamic_dotted_props_root() {
 // ---------------------------------------------------------------------------
 
 fn assert_compiler_module(case: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("cases2")
-        .join(case)
-        .join("case.svelte.js");
-    let input = read_to_string(&path).expect("test invariant");
-
-    let dir = path.parent().expect("test invariant");
-    let config_path = dir.join("config.json");
-    let mut opts = ModuleCompileOptions::default();
-    if config_path.exists() {
-        let config: serde_json::Value =
-            serde_json::from_str(&read_to_string(&config_path).expect("test invariant"))
-                .expect("test invariant");
-        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
-            opts.dev = dev;
-        }
-        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
-            opts.filename = filename.to_string();
-        }
-    }
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_module_case(case);
 
     let result = compile_module(&input, &opts);
-    let js = result
+    let js_output = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile_module produced no JS"));
+    let js = js_output.code;
 
     let expected = read_to_string(dir.join("case-svelte.js")).expect("test invariant");
 
@@ -1741,6 +1681,15 @@ fn assert_compiler_module(case: &str) {
         .write_all(js.as_bytes())
         .expect("test invariant");
     assert_eq!(js, expected);
+
+    if let Some(map) = js_output.map.as_ref() {
+        compiler_tests::sourcemap_invariants::assert_sourcemap_invariants(
+            case,
+            &input,
+            map,
+            svelte_compiler::SourcemapKind::Default,
+        );
+    }
 }
 
 #[rstest]
@@ -3419,3 +3368,4 @@ fn diagnose_runes_dev_ce_benchmark() {
 fn component_dev_default_children_wrap_snippet() {
     assert_compiler("component_dev_default_children_wrap_snippet");
 }
+

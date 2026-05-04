@@ -643,8 +643,6 @@ struct ElementEventState {
 }
 
 pub(crate) struct TemplateValidationVisitor {
-    current_expr_offset: u32,
-
     element_event_state: Vec<ElementEventState>,
 
     dialog_depth: u32,
@@ -657,7 +655,6 @@ pub(crate) struct TemplateValidationVisitor {
 impl TemplateValidationVisitor {
     pub(crate) fn new() -> Self {
         Self {
-            current_expr_offset: 0,
             element_event_state: Vec::new(),
             dialog_depth: 0,
             first_legacy_slot_span: None,
@@ -667,10 +664,7 @@ impl TemplateValidationVisitor {
     }
 
     fn oxc_to_svelte(&self, span: oxc_span::Span) -> Span {
-        Span::new(
-            self.current_expr_offset + span.start,
-            self.current_expr_offset + span.end,
-        )
+        Span::new(span.start, span.end)
     }
 
     fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_, '_>) {
@@ -801,7 +795,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         stmt: &Statement<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        validate_const_tag_invalid_reference_stmt(node_id, stmt, self.current_expr_offset, ctx);
+        validate_const_tag_invalid_reference_stmt(node_id, stmt, ctx);
     }
 
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -1658,21 +1652,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn visit_expression(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_, '_>) {
-        self.current_expr_offset = span.start;
-    }
-
-    fn visit_statement(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_, '_>) {
-        self.current_expr_offset = span.start;
-    }
-
     fn visit_js_expression(
         &mut self,
         id: NodeId,
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        validate_const_tag_invalid_reference_expr(id, expr, self.current_expr_offset, ctx);
+        validate_const_tag_invalid_reference_expr(id, expr, ctx);
 
         if !ctx.runes {
             return;
@@ -2623,7 +2609,6 @@ fn is_snippet_param_ref(
 fn validate_const_tag_invalid_reference_expr(
     node_id: NodeId,
     expr: &Expression<'_>,
-    source_offset: u32,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     if !ctx.data.script.experimental_async {
@@ -2631,7 +2616,7 @@ fn validate_const_tag_invalid_reference_expr(
     }
 
     let diagnostics = {
-        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, &*ctx);
+        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, &*ctx);
         visitor.visit_expression(expr);
         visitor.diagnostics
     };
@@ -2641,7 +2626,6 @@ fn validate_const_tag_invalid_reference_expr(
 fn validate_const_tag_invalid_reference_stmt(
     node_id: NodeId,
     stmt: &Statement<'_>,
-    source_offset: u32,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     if !ctx.data.script.experimental_async {
@@ -2649,7 +2633,7 @@ fn validate_const_tag_invalid_reference_stmt(
     }
 
     let diagnostics = {
-        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, &*ctx);
+        let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, &*ctx);
         visitor.visit_statement(stmt);
         visitor.diagnostics
     };
@@ -2658,7 +2642,6 @@ fn validate_const_tag_invalid_reference_stmt(
 
 fn maybe_const_tag_invalid_reference(
     node_id: NodeId,
-    source_offset: u32,
     ident: &IdentifierReference<'_>,
     ctx: &VisitContext<'_, '_>,
 ) -> Option<Diagnostic> {
@@ -2702,10 +2685,7 @@ fn maybe_const_tag_invalid_reference(
                         DiagnosticKind::ConstTagInvalidReference {
                             name: ident.name.to_string(),
                         },
-                        Span::new(
-                            source_offset + ident.span.start,
-                            source_offset + ident.span.end,
-                        ),
+                        Span::new(ident.span.start, ident.span.end),
                     ));
                 }
                 break;
@@ -2720,10 +2700,7 @@ fn maybe_const_tag_invalid_reference(
                         DiagnosticKind::ConstTagInvalidReference {
                             name: ident.name.to_string(),
                         },
-                        Span::new(
-                            source_offset + ident.span.start,
-                            source_offset + ident.span.end,
-                        ),
+                        Span::new(ident.span.start, ident.span.end),
                     ));
                 }
                 break;
@@ -2737,16 +2714,14 @@ fn maybe_const_tag_invalid_reference(
 
 struct ConstTagInvalidReferenceVisitor<'c, 'a> {
     node_id: NodeId,
-    source_offset: u32,
     ctx: &'c VisitContext<'c, 'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'c, 'a> ConstTagInvalidReferenceVisitor<'c, 'a> {
-    fn new(node_id: NodeId, source_offset: u32, ctx: &'c VisitContext<'c, 'a>) -> Self {
+    fn new(node_id: NodeId, ctx: &'c VisitContext<'c, 'a>) -> Self {
         Self {
             node_id,
-            source_offset,
             ctx,
             diagnostics: Vec::new(),
         }
@@ -2755,9 +2730,7 @@ impl<'c, 'a> ConstTagInvalidReferenceVisitor<'c, 'a> {
 
 impl<'a> Visit<'a> for ConstTagInvalidReferenceVisitor<'_, '_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(diag) =
-            maybe_const_tag_invalid_reference(self.node_id, self.source_offset, ident, self.ctx)
-        {
+        if let Some(diag) = maybe_const_tag_invalid_reference(self.node_id, ident, self.ctx) {
             self.diagnostics.push(diag);
         }
     }
@@ -3285,17 +3258,14 @@ fn first_await_span(ctx: &VisitContext<'_, '_>, expression: &ExprRef) -> Option<
     let mut visitor = FirstAwaitVisitor { found: None };
     visitor.visit_expression(expr);
     let s = visitor.found?;
-    Some(Span::new(
-        expression.span.start + s.start,
-        expression.span.start + s.end,
-    ))
+    Some(Span::new(s.start, s.end))
 }
 
-fn first_await_span_in_stmt(stmt: &Statement<'_>, source_offset: u32) -> Option<Span> {
+fn first_await_span_in_stmt(stmt: &Statement<'_>, _source_offset: u32) -> Option<Span> {
     let mut visitor = FirstAwaitVisitor { found: None };
     visitor.visit_statement(stmt);
     let s = visitor.found?;
-    Some(Span::new(source_offset + s.start, source_offset + s.end))
+    Some(Span::new(s.start, s.end))
 }
 
 struct FirstAwaitVisitor {

@@ -8,7 +8,8 @@ fn check(source: &str, expected: &str) {
     let result = compile(source, &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert_eq!(js, expected);
 }
 
@@ -90,7 +91,8 @@ fn compile_filename_derived_name_is_sanitized() {
     let result = compile("", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert_eq!(
         js,
         r#"import * as $ from "svelte/internal/client";
@@ -108,7 +110,8 @@ fn compile_explicit_name_reserved_word_is_deconflicted() {
     let result = compile("", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert_eq!(
         js,
         r#"import * as $ from "svelte/internal/client";
@@ -126,7 +129,8 @@ fn compile_explicit_name_conflict_is_deconflicted() {
     let result = compile("<script>let App = 0;</script>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert_eq!(
         js,
         r#"import * as $ from "svelte/internal/client";
@@ -146,7 +150,8 @@ fn compile_filename_derived_name_conflict_is_deconflicted() {
     let result = compile("<script>let Counter = 0;</script>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert_eq!(
         js,
         r#"import * as $ from "svelte/internal/client";
@@ -166,7 +171,8 @@ fn compile_component_name_ignores_nested_scope_bindings() {
     let result = compile("<script>function demo() { let App = 0; }</script>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("export default function App($$anchor)"),
         "expected nested local binding to not rename component export, got: {js}"
@@ -182,7 +188,8 @@ fn compile_component_name_conflicts_with_module_scope_bindings() {
     let result = compile("<script module>let App = 0;</script>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("export default function App_1($$anchor)"),
         "expected module-scope binding to rename component export, got: {js}"
@@ -403,7 +410,8 @@ function rename() {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("$.create_ownership_validator($$props)"),
         "expected ownership validator setup, got:\n{js}"
@@ -431,7 +439,8 @@ function bump() {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("$$ownership_validator.mutation(\"value\""),
         "expected ownership mutation wrapper to use prop alias, got:\n{js}"
@@ -459,7 +468,8 @@ function bump() {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("$.create_ownership_validator($$props)"),
         "expected ownership validator setup, got:\n{js}"
@@ -491,7 +501,8 @@ function rename() {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         js.contains("$.create_ownership_validator($$props)"),
         "expected ownership validator setup for non-statement mutation, got:\n{js}"
@@ -519,7 +530,8 @@ function bump(local) {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         !js.contains("$.create_ownership_validator($$props)"),
         "unexpected ownership validator setup for shadowed local, got:\n{js}"
@@ -566,7 +578,8 @@ fn css_injected_via_compile_options() {
     let result = compile("<style>p { color: red; }</style><p>hello</p>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
 
     assert!(result.css.is_none(), "css should be None for injected mode");
     assert!(js.contains("$$css"), "expected $$css const in JS output");
@@ -591,7 +604,8 @@ fn inline_css_injected_overrides_external_compile_option() {
     );
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
     assert!(
         result.css.is_none(),
         "inline injected mode should suppress CompileResult.css"
@@ -682,7 +696,8 @@ fn css_injected_keyframes_preserve_semantics() {
     let result = compile(source, &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
 
     let hash = read_js_string_after(&js, "hash:").expect("expected hash literal in $$css const");
     let actual_code =
@@ -709,11 +724,12 @@ fn explicit_external_css_mode_returns_compile_result_css() {
     let result = compile("<style>p { color: red; }</style><p>hello</p>", &opts);
     let js = result
         .js
-        .unwrap_or_else(|| panic!("compile produced no JS"));
-    let css = result
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    let css_output = result
         .css
-        .as_deref()
         .unwrap_or_else(|| panic!("compile produced no CSS"));
+    let css = css_output.code.as_str();
     assert!(
         !js.contains("$.append_styles"),
         "external mode must not inject styles into JS"

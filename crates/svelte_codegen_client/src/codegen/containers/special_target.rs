@@ -254,7 +254,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let expr = self.maybe_wrap_legacy_slots_read(expr);
         let handler =
             self.build_event_handler_s5(attr_id, expr, has_call, &mut state.init, expr_offset);
-        let handler = self.dev_event_handler(attr_id, handler, &event_name, expr_offset)?;
+        let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
         let passive = svelte_analyze::is_passive_event(&event_name);
         let mut args: Vec<Arg<'a, '_>> = vec![

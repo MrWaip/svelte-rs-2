@@ -14,7 +14,6 @@ use crate::utils::script_info::detect_rune_from_call;
 pub(super) fn validate_instance_program(
     data: &AnalysisData<'_>,
     program: &Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     if data.script.experimental_async {
@@ -22,7 +21,6 @@ pub(super) fn validate_instance_program(
     }
     let mut visitor = ExperimentalAsyncValidator {
         diags,
-        offset,
         function_depth: 0,
         expression_active: false,
     };
@@ -31,7 +29,6 @@ pub(super) fn validate_instance_program(
 
 struct ExperimentalAsyncValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     function_depth: u32,
     expression_active: bool,
 }
@@ -83,7 +80,7 @@ impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
         if self.function_depth == 0 || self.expression_active {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::ExperimentalAsync,
-                Span::new(expr.span.start + self.offset, expr.span.end + self.offset),
+                Span::new(expr.span.start, expr.span.end),
             ));
         }
         oxc_ast_visit::walk::walk_await_expression(self, expr);

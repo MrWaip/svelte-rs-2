@@ -107,7 +107,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         self.needs_ownership_validator = true;
 
-        let offset = self.script_content_start + span_start;
+        let offset = span_start;
         let (line, col) = self.component_line_index.line_col(offset);
 
         let mut path: Vec<Expression<'a>> = Vec::with_capacity(1 + segments.len());
@@ -139,7 +139,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         self.needs_ownership_validator = true;
 
-        let offset = self.script_content_start + span_start;
+        let offset = span_start;
         let (line, col) = self.component_line_index.line_col(offset);
 
         let mut path: Vec<Expression<'a>> = Vec::with_capacity(1 + mutation_info.segments.len());
@@ -235,7 +235,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         let fn_name = fn_name.unwrap_or_else(|| unreachable!());
 
-        let offset = self.script_content_start + left_span_start;
+        let offset = left_span_start;
         let (line, col) = self.component_line_index.line_col(offset);
         let loc = format!(
             "{}:{}:{}",
@@ -508,7 +508,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         let fn_name = fn_name.unwrap_or_else(|| unreachable!());
 
-        let offset = self.script_content_start + left_span_start;
+        let offset = left_span_start;
         let (line, col) = self.component_line_index.line_col(offset);
         let loc = format!(
             "{}:{}:{}",

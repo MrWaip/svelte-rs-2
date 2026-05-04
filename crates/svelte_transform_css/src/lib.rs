@@ -4,6 +4,7 @@ use svelte_css::{
     AtRule, Block, BlockChild, ComplexSelector, CssNodeId, Declaration, RelativeSelector, Rule,
     SelectorList, SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
 };
+use svelte_sourcemap::SourceMap;
 use svelte_span::Span;
 
 pub fn transform_css(
@@ -23,6 +24,39 @@ pub fn transform_css_with_usage(
     mut stylesheet: StyleSheet,
     source: &str,
 ) -> String {
+    apply_scoping(hash_class, keyframes, &mut stylesheet, source);
+    if let Some(used_selectors) = used_selectors {
+        svelte_css::Printer::print_with_usage(&stylesheet, source, used_selectors, remove_unused)
+    } else {
+        svelte_css::Printer::print(&stylesheet, source)
+    }
+}
+
+pub fn transform_css_with_sourcemap(
+    hash_class: &str,
+    keyframes: &[CompactString],
+    used_selectors: Option<&FxHashSet<CssNodeId>>,
+    remove_unused: bool,
+    mut stylesheet: StyleSheet,
+    source: &str,
+    filename: &str,
+) -> (String, SourceMap) {
+    apply_scoping(hash_class, keyframes, &mut stylesheet, source);
+    svelte_css::Printer::print_with_sourcemap(
+        &stylesheet,
+        source,
+        filename,
+        used_selectors,
+        remove_unused,
+    )
+}
+
+fn apply_scoping(
+    hash_class: &str,
+    keyframes: &[CompactString],
+    stylesheet: &mut StyleSheet,
+    source: &str,
+) {
     let mut scoper = ScopeSelectors {
         hash_class: CompactString::new(hash_class),
         keyframes,
@@ -33,12 +67,7 @@ pub fn transform_css_with_usage(
         selector_list_depth: 0,
         rule_depth: 0,
     };
-    scoper.visit_stylesheet_mut(&mut stylesheet);
-    if let Some(used_selectors) = used_selectors {
-        svelte_css::Printer::print_with_usage(&stylesheet, source, used_selectors, remove_unused)
-    } else {
-        svelte_css::Printer::print(&stylesheet, source)
-    }
+    scoper.visit_stylesheet_mut(stylesheet);
 }
 
 struct ScopeSelectors<'a> {

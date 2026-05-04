@@ -23,13 +23,31 @@ impl<'a> Builder<'a> {
     }
 
     pub fn static_member(&self, object: Expression<'a>, prop: &str) -> StaticMemberExpression<'a> {
+        self.static_member_at(object, prop, SPAN)
+    }
+
+    pub fn static_member_at(
+        &self,
+        object: Expression<'a>,
+        prop: &str,
+        span: Span,
+    ) -> StaticMemberExpression<'a> {
         let property = self.ast.identifier_name(SPAN, self.ast.atom(prop));
         self.ast
-            .static_member_expression(SPAN, object, property, false)
+            .static_member_expression(span, object, property, false)
     }
 
     pub fn static_member_expr(&self, object: Expression<'a>, prop: &str) -> Expression<'a> {
         Expression::StaticMemberExpression(self.alloc(self.static_member(object, prop)))
+    }
+
+    pub fn static_member_expr_at(
+        &self,
+        object: Expression<'a>,
+        prop: &str,
+        span: Span,
+    ) -> Expression<'a> {
+        Expression::StaticMemberExpression(self.alloc(self.static_member_at(object, prop, span)))
     }
 
     pub fn computed_member_expr(

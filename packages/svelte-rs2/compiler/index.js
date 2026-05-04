@@ -173,14 +173,20 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
   }
 
   return {
-    js: nativeResult.js == null ? null : { code: nativeResult.js, map: null },
+    js:
+      nativeResult.js == null
+        ? null
+        : {
+            code: nativeResult.js.code,
+            map: nativeResult.js.map ?? null
+          },
     css:
       nativeResult.css == null
         ? null
         : {
-            code: nativeResult.css,
-            map: null,
-            hasGlobal: null
+            code: nativeResult.css.code,
+            map: nativeResult.css.map ?? null,
+            hasGlobal: nativeResult.css.hasGlobal ?? null
           },
     warnings,
     metadata: {
@@ -188,7 +194,6 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
       hasCss: nativeResult.css != null,
       unsupported: {
         ast: 'not_returned',
-        sourceMap: 'always_null',
         unsupportedOptions: ['ast', 'sourcemap', 'outputFilename']
       }
     },

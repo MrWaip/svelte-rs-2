@@ -9,6 +9,11 @@ use oxc_syntax::node::NodeId;
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
+use crate::span_shift::{
+    shift_binding_pattern, shift_expression, shift_formal_parameters, shift_program,
+    shift_statement, wrapper_delta,
+};
+
 pub fn parse_expression_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -27,6 +32,7 @@ pub fn parse_expression_with_alloc<'a>(
     if typescript {
         strip_ts_expression(&mut expr, alloc);
     }
+    shift_expression(&mut expr, wrapper_delta(offset, 0, 0));
     Ok(expr)
 }
 
@@ -54,7 +60,9 @@ pub fn parse_script_with_alloc<'a>(
             .collect());
     }
 
-    Ok(result.program)
+    let mut program = result.program;
+    shift_program(&mut program, wrapper_delta(offset, 0, 0));
+    Ok(program)
 }
 
 pub fn parse_const_declaration_with_alloc<'a>(
@@ -63,7 +71,8 @@ pub fn parse_const_declaration_with_alloc<'a>(
     offset: u32,
     typescript: bool,
 ) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
-    let wrapped_owned = format!("const {};", source);
+    const PREFIX: &str = "const ";
+    let wrapped_owned = format!("{PREFIX}{source};");
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
     let src_type = if typescript {
@@ -95,16 +104,20 @@ pub fn parse_const_declaration_with_alloc<'a>(
         strip_ts_expression(init, alloc);
     }
 
+    shift_statement(&mut stmt, wrapper_delta(offset, 0, PREFIX.len() as i64));
     Ok(stmt)
 }
 
 pub(crate) fn parse_each_context_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
     typescript: bool,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const PREFIX: &str = "let ";
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
-    let wrapped_owned = format!("let {} = x;", trimmed);
+    let wrapped_owned = format!("{PREFIX}{trimmed} = x;");
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
     let src_type = if typescript {
@@ -118,15 +131,23 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
         return None;
     }
 
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+    shift_statement(
+        &mut stmt,
+        wrapper_delta(offset, leading_ws, PREFIX.len() as i64),
+    );
+    Some(stmt)
 }
 
 pub(crate) fn parse_each_index_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const PREFIX: &str = "let ";
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
-    let wrapped_owned = format!("let {};", trimmed);
+    let wrapped_owned = format!("{PREFIX}{trimmed};");
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
     let result = OxcParser::new(alloc, wrapped_str, SourceType::default()).parse();
@@ -135,21 +156,31 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
         return None;
     }
 
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+    shift_statement(
+        &mut stmt,
+        wrapper_delta(offset, leading_ws, PREFIX.len() as i64),
+    );
+    Some(stmt)
 }
 
 pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
     typescript: bool,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const PREFIX: &str = "const ";
+    const ASSIGN: &str = " = ";
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
-    let wrapped = if let Some(paren_pos) = trimmed.find('(') {
-        let name = &trimmed[..paren_pos];
-        let params_with_parens = &trimmed[paren_pos..];
-        format!("const {} = {} => {{}}", name, params_with_parens)
+    let paren_pos = trimmed.find('(');
+    let wrapped = if let Some(p) = paren_pos {
+        let name = &trimmed[..p];
+        let params_with_parens = &trimmed[p..];
+        format!("{PREFIX}{name}{ASSIGN}{params_with_parens} => {{}}")
     } else {
-        format!("const {} = () => {{}}", trimmed)
+        format!("{PREFIX}{trimmed}{ASSIGN}() => {{}}")
     };
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped);
     let src_type = if typescript {
@@ -161,7 +192,32 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     if !result.errors.is_empty() {
         return None;
     }
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+
+    let name_prefix = PREFIX.len() as i64;
+    let params_prefix = (PREFIX.len() + ASSIGN.len()) as i64;
+    if let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = &mut stmt
+        && let Some(declarator) = var_decl.declarations.first_mut()
+    {
+        shift_binding_pattern(
+            &mut declarator.id,
+            wrapper_delta(offset, leading_ws, name_prefix),
+        );
+        if paren_pos.is_some()
+            && let Some(Expression::ArrowFunctionExpression(arrow)) = &mut declarator.init
+        {
+            shift_formal_parameters(
+                &mut arrow.params,
+                wrapper_delta(offset, leading_ws, params_prefix),
+            );
+        }
+    }
+
+    Some(stmt)
+}
+
+fn leading_whitespace_len(s: &str) -> usize {
+    s.len() - s.trim_start().len()
 }
 
 pub(crate) fn parse_slot_let_decl_with_alloc<'a>(

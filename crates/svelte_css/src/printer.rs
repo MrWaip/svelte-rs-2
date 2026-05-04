@@ -1,11 +1,24 @@
 use crate::ast::*;
+use memchr::{memchr_iter, memrchr};
 use rustc_hash::FxHashSet;
+use svelte_sourcemap::{SourceMap, SourceMapBuilder};
+use svelte_span::LineIndex;
+
+struct MapState {
+    builder: SourceMapBuilder,
+    line: u32,
+    column: u32,
+    source_id: u32,
+    line_index: LineIndex,
+}
+
 pub struct Printer<'a> {
     output: String,
     indent: usize,
     minify: bool,
     used_selectors: Option<&'a FxHashSet<CssNodeId>>,
     remove_unused: bool,
+    map: Option<MapState>,
 }
 const INDENTS: [&str; 8] = [
     "",
@@ -26,6 +39,7 @@ impl Printer<'_> {
             minify: false,
             used_selectors: None,
             remove_unused: false,
+            map: None,
         }
     }
 
@@ -36,6 +50,7 @@ impl Printer<'_> {
             minify: true,
             used_selectors: None,
             remove_unused: false,
+            map: None,
         }
     }
     pub fn print(stylesheet: &StyleSheet, source: &str) -> String {
@@ -45,6 +60,7 @@ impl Printer<'_> {
             minify: false,
             used_selectors: None,
             remove_unused: false,
+            map: None,
         };
         p.print_stylesheet(stylesheet, source);
         p.output
@@ -62,11 +78,45 @@ impl Printer<'_> {
             minify: false,
             used_selectors: Some(used_selectors),
             remove_unused,
+            map: None,
         };
         p.print_stylesheet(stylesheet, source);
         p.output
     }
+}
 
+impl<'a> Printer<'a> {
+    pub fn print_with_sourcemap(
+        stylesheet: &StyleSheet,
+        source: &str,
+        filename: &str,
+        used_selectors: Option<&'a FxHashSet<CssNodeId>>,
+        remove_unused: bool,
+    ) -> (String, SourceMap) {
+        let mut builder = SourceMapBuilder::default();
+        let source_id = builder.add_source_and_content(filename, source);
+        let line_index = LineIndex::new(source);
+        let mut p = Printer {
+            output: String::with_capacity(source.len()),
+            indent: 0,
+            minify: false,
+            used_selectors,
+            remove_unused,
+            map: Some(MapState {
+                builder,
+                line: 0,
+                column: 0,
+                source_id,
+                line_index,
+            }),
+        };
+        p.print_stylesheet(stylesheet, source);
+        let map_state = p.map.take().expect("map state set above");
+        (p.output, map_state.builder.into_sourcemap())
+    }
+}
+
+impl Printer<'_> {
     pub fn print_stylesheet(&mut self, node: &StyleSheet, source: &str) -> &str {
         if self.output.capacity() == 0 {
             self.output.reserve(128);
@@ -76,18 +126,18 @@ impl Printer<'_> {
             match child {
                 StyleSheetChild::Comment(c) => {
                     if !first && !self.minify {
-                        self.output.push('\n');
+                        self.push_ch('\n');
                     }
                     first = false;
                     self.write_indent();
                     self.push_span(c.span, source);
                     if !self.minify {
-                        self.output.push('\n');
+                        self.push_ch('\n');
                     }
                 }
                 StyleSheetChild::Rule(rule) => {
                     if !first && !self.minify {
-                        self.output.push('\n');
+                        self.push_ch('\n');
                     }
                     if self.print_rule(rule, source) {
                         first = false;
@@ -117,38 +167,42 @@ impl Printer<'_> {
 
         self.write_indent();
         if rule_used {
+            self.register_token(rule.span);
             self.print_selector_list(&rule.prelude, source);
             if self.minify {
-                self.output.push('{');
+                self.push_ch('{');
             } else {
-                self.output.push_str(" {\n");
+                self.push_str(" {\n");
             }
             self.indent += 1;
             self.print_block_children(&rule.block, source);
             self.indent -= 1;
             self.write_indent();
-            self.output.push_str("}\n");
+            self.push_str("}");
+            self.register_token_end(rule.span);
+            self.push_ch('\n');
             true
         } else {
-            self.output.push_str("/* (unused) ");
-            self.output.push_str(rule.span.source_text(source).trim());
-            self.output.push_str("*/\n");
+            self.push_str("/* (unused) ");
+            self.push_str(rule.span.source_text(source).trim());
+            self.push_str("*/\n");
             true
         }
     }
 
     fn print_at_rule(&mut self, rule: &AtRule, source: &str) {
         self.write_indent();
-        self.output.push('@');
-        self.output.push_str(&rule.name);
+        self.register_token(rule.span);
+        self.push_ch('@');
+        self.push_str(&rule.name);
 
         let prelude_text = match &rule.prelude_override {
             Some(ov) => ov.as_str(),
             None => rule.prelude.source_text(source).trim(),
         };
         if !prelude_text.is_empty() {
-            self.output.push(' ');
-            self.output.push_str(prelude_text);
+            self.push_ch(' ');
+            self.push_str(prelude_text);
         }
 
         if let Some(block) = &rule.block {
@@ -160,23 +214,29 @@ impl Printer<'_> {
                     .is_some_and(|(_, rest)| rest == "keyframes");
 
             if is_keyframes {
-                self.output.push(' ');
+                self.push_ch(' ');
                 self.push_span(block.span, source);
-                self.output.push('\n');
+                self.register_token_end(rule.span);
+                self.push_ch('\n');
             } else if self.minify {
-                self.output.push('{');
+                self.push_ch('{');
                 self.print_block_children(block, source);
-                self.output.push('}');
+                self.push_ch('}');
+                self.register_token_end(rule.span);
             } else {
-                self.output.push_str(" {\n");
+                self.push_str(" {\n");
                 self.indent += 1;
                 self.print_block_children(block, source);
                 self.indent -= 1;
                 self.write_indent();
-                self.output.push_str("}\n");
+                self.push_str("}");
+                self.register_token_end(rule.span);
+                self.push_ch('\n');
             }
         } else {
-            self.output.push_str(";\n");
+            self.push_str(";");
+            self.register_token_end(rule.span);
+            self.push_ch('\n');
         }
     }
 
@@ -191,7 +251,7 @@ impl Printer<'_> {
                     self.write_indent();
                     self.push_span(c.span, source);
                     if !self.minify {
-                        self.output.push('\n');
+                        self.push_ch('\n');
                     }
                 }
                 BlockChild::Error(_) => {}
@@ -203,15 +263,16 @@ impl Printer<'_> {
         self.write_indent();
         self.push_span(decl.property, source);
         if self.minify {
-            self.output.push(':');
+            self.push_ch(':');
         } else {
-            self.output.push_str(": ");
+            self.push_str(": ");
         }
         match &decl.value_override {
-            Some(ov) => self.output.push_str(ov),
+            Some(ov) => self.push_str(ov),
             None => self.push_span(decl.value, source),
         }
-        self.output.push_str(";\n");
+        self.register_token_end(decl.value);
+        self.push_str(";\n");
     }
 
     fn print_selector_list(&mut self, list: &SelectorList, source: &str) {
@@ -238,23 +299,23 @@ impl Printer<'_> {
 
         for (group_idx, (used, entries)) in groups.iter().enumerate() {
             if group_idx > 0 {
-                self.output.push(' ');
+                self.push_ch(' ');
             }
             if !*used {
-                self.output.push_str("/* (unused) ");
+                self.push_str("/* (unused) ");
             }
             for (entry_idx, entry) in entries.iter().enumerate() {
                 if entry_idx > 0 {
                     if self.minify {
-                        self.output.push(',');
+                        self.push_ch(',');
                     } else {
-                        self.output.push_str(", ");
+                        self.push_str(", ");
                     }
                 }
-                self.output.push_str(entry);
+                self.push_str(entry);
             }
             if !*used {
-                self.output.push_str("*/");
+                self.push_str("*/");
             }
         }
     }
@@ -423,23 +484,79 @@ impl Printer<'_> {
                 .any(|sel| self.selector_is_used(sel.id))
     }
 
-    #[inline]
+    fn push_str(&mut self, s: &str) {
+        if let Some(m) = self.map.as_mut() {
+            advance_position(&mut m.line, &mut m.column, s);
+        }
+        self.output.push_str(s);
+    }
+
+    fn push_ch(&mut self, ch: char) {
+        if let Some(m) = self.map.as_mut() {
+            if ch == '\n' {
+                m.line += 1;
+                m.column = 0;
+            } else {
+                m.column += 1;
+            }
+        }
+        self.output.push(ch);
+    }
+
     fn push_span(&mut self, span: svelte_span::Span, source: &str) {
-        self.output.push_str(span.source_text(source));
+        self.register_token(span);
+        let text = span.source_text(source);
+        if let Some(m) = self.map.as_mut() {
+            advance_position(&mut m.line, &mut m.column, text);
+        }
+        self.output.push_str(text);
+    }
+
+    fn register_token(&mut self, span: svelte_span::Span) {
+        self.register_byte(span.start);
+    }
+
+    fn register_token_end(&mut self, span: svelte_span::Span) {
+        self.register_byte(span.end);
+    }
+
+    fn register_byte(&mut self, byte: u32) {
+        let Some(m) = self.map.as_mut() else { return };
+        let (src_line, src_col) = m.line_index.line_col(byte);
+        m.builder.add_token(
+            m.line,
+            m.column,
+            src_line.saturating_sub(1) as u32,
+            src_col as u32,
+            Some(m.source_id),
+            None,
+        );
     }
 
     #[inline]
     fn write_indent(&mut self) {
         if !self.minify {
             if self.indent < INDENTS.len() {
-                self.output.push_str(INDENTS[self.indent]);
+                self.push_str(INDENTS[self.indent]);
             } else {
                 for _ in 0..self.indent {
-                    self.output.push_str("  ");
+                    self.push_str("  ");
                 }
             }
         }
     }
+}
+
+fn advance_position(line: &mut u32, column: &mut u32, text: &str) {
+    let bytes = text.as_bytes();
+    let newlines = memchr_iter(b'\n', bytes).count() as u32;
+    if newlines == 0 {
+        *column += bytes.len() as u32;
+        return;
+    }
+    *line += newlines;
+    let last_nl = memrchr(b'\n', bytes).expect("newlines > 0 above");
+    *column = (bytes.len() - last_nl - 1) as u32;
 }
 
 impl Default for Printer<'_> {

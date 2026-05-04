@@ -14,30 +14,27 @@ use crate::AnalysisData;
 pub(super) fn validate_legacy_diagnostics(
     data: &AnalysisData,
     program: &Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     if runes {
-        validate_legacy_export_invalid(program, offset, diags);
-        validate_legacy_props_invalid(data, offset, diags);
-        validate_legacy_rest_props_invalid(data, offset, diags);
+        validate_legacy_export_invalid(program, diags);
+        validate_legacy_props_invalid(data, diags);
+        validate_legacy_rest_props_invalid(data, diags);
     } else {
-        validate_export_let_unused(data, program, offset, diags);
-        validate_reactive_declaration_invalid_placement(program, offset, diags);
-        validate_reactive_declaration_cycle(data, offset, diags);
-        validate_reactive_declaration_module_script_dependency(data, program, offset, diags);
+        validate_export_let_unused(data, program, diags);
+        validate_reactive_declaration_invalid_placement(program, diags);
+        validate_reactive_declaration_cycle(data, diags);
+        validate_reactive_declaration_module_script_dependency(data, program, diags);
     }
 }
 
 fn validate_reactive_declaration_invalid_placement(
     program: &Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     use oxc_ast_visit::Visit;
     struct Visitor<'a> {
-        offset: u32,
         diags: &'a mut Vec<Diagnostic>,
         depth: u32,
     }
@@ -63,14 +60,13 @@ fn validate_reactive_declaration_invalid_placement(
             if self.depth > 0 && stmt.label.name == "$" {
                 self.diags.push(Diagnostic::warning(
                     DiagnosticKind::ReactiveDeclarationInvalidPlacement,
-                    Span::new(stmt.span.start + self.offset, stmt.span.end + self.offset),
+                    Span::new(stmt.span.start, stmt.span.end),
                 ));
             }
             oxc_ast_visit::walk::walk_labeled_statement(self, stmt);
         }
     }
     let mut v = Visitor {
-        offset,
         diags,
         depth: 0,
     };
@@ -79,7 +75,6 @@ fn validate_reactive_declaration_invalid_placement(
 
 fn validate_reactive_declaration_cycle(
     data: &AnalysisData,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let Some(cycle) = data.reactivity.legacy_reactive().cycle_path() else {
@@ -121,14 +116,13 @@ fn validate_reactive_declaration_cycle(
     };
     diags.push(Diagnostic::error(
         DiagnosticKind::ReactiveDeclarationCycle { cycle: cycle_text },
-        Span::new(span.start + offset, span.end + offset),
+        Span::new(span.start, span.end),
     ));
 }
 
 fn validate_reactive_declaration_module_script_dependency(
     data: &AnalysisData,
     program: &Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let Some(module_scope) = data.scoping.module_scope_id() else {
@@ -166,7 +160,7 @@ fn validate_reactive_declaration_module_script_dependency(
             let span = found_span.unwrap_or_else(|| Span::new(body_span.start, body_span.end));
             diags.push(Diagnostic::warning(
                 DiagnosticKind::ReactiveDeclarationModuleScriptDependency,
-                Span::new(span.start + offset, span.end + offset),
+                Span::new(span.start, span.end),
             ));
             break;
         }
@@ -195,7 +189,7 @@ fn collect_module_dep_ref_span(
     f.visit_statement(body);
 }
 
-fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mut Vec<Diagnostic>) {
+fn validate_legacy_export_invalid(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
     for stmt in &program.body {
         let Statement::ExportNamedDeclaration(export) = stmt else {
             continue;
@@ -208,16 +202,15 @@ fn validate_legacy_export_invalid(program: &Program<'_>, offset: u32, diags: &mu
         }
         diags.push(Diagnostic::error(
             DiagnosticKind::LegacyExportInvalid,
-            Span::new(export.span.start + offset, export.span.end + offset),
+            Span::new(export.span.start, export.span.end),
         ));
     }
 }
 
-fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut Vec<Diagnostic>) {
+fn validate_legacy_props_invalid(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
     emit_first_unresolved_read(
         data,
         "$$props",
-        offset,
         diags,
         DiagnosticKind::LegacyPropsInvalid,
     );
@@ -225,13 +218,11 @@ fn validate_legacy_props_invalid(data: &AnalysisData, offset: u32, diags: &mut V
 
 fn validate_legacy_rest_props_invalid(
     data: &AnalysisData,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     emit_first_unresolved_read(
         data,
         "$$restProps",
-        offset,
         diags,
         DiagnosticKind::LegacyRestPropsInvalid,
     );
@@ -240,7 +231,6 @@ fn validate_legacy_rest_props_invalid(
 fn emit_first_unresolved_read(
     data: &AnalysisData,
     name: &str,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
     kind: DiagnosticKind,
 ) {
@@ -257,7 +247,7 @@ fn emit_first_unresolved_read(
     };
     diags.push(Diagnostic::error(
         kind,
-        Span::new(span.start + offset, span.end + offset),
+        Span::new(span.start, span.end),
     ));
 }
 
@@ -271,7 +261,6 @@ fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<
 fn validate_export_let_unused(
     data: &AnalysisData,
     program: &Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let symbols: Vec<oxc_semantic::SymbolId> =
@@ -289,7 +278,7 @@ fn validate_export_let_unused(
         let name = data.scoping.symbol_name(sym).to_string();
         diags.push(Diagnostic::warning(
             DiagnosticKind::ExportLetUnused { name },
-            Span::shifted_from_oxc(offset, span),
+            Span::new(span.start, span.end),
         ));
     }
 }

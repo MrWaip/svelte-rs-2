@@ -1518,3 +1518,84 @@ fn named_slot_fragment_role_is_named_slot() {
         FragmentRole::NamedSlot
     );
 }
+
+#[test]
+fn span_shift_script_spans_are_absolute() {
+    let source = "<script>let x = 1;</script>";
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let stmt = js
+        .program
+        .as_ref()
+        .expect("instance program")
+        .body
+        .first()
+        .expect("at least one statement");
+    let stmt_span = oxc_span::GetSpan::span(stmt);
+    assert_eq!(
+        &source[stmt_span.start as usize..stmt_span.end as usize],
+        "let x = 1;"
+    );
+}
+
+#[test]
+fn span_shift_expression_tag_spans_are_absolute() {
+    let source = "<p>{value}</p>";
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let expr = js
+        .pending_expr(4)
+        .expect("expression at offset of `{value}`");
+    let expr_span = oxc_span::GetSpan::span(expr);
+    assert_eq!(
+        &source[expr_span.start as usize..expr_span.end as usize],
+        "value"
+    );
+}
+
+#[test]
+fn span_shift_snippet_decl_name_and_params_use_distinct_deltas() {
+    let source = "{#snippet row(item, count)}<p>{item}</p>{/snippet}";
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let snippet_decl_span = (0..component.node_count())
+        .find_map(|i| {
+            if let Node::SnippetBlock(b) = component.store.get(svelte_ast::NodeId(i)) {
+                Some(b.decl.span)
+            } else {
+                None
+            }
+        })
+        .expect("snippet block");
+    let stmt = js
+        .pending_stmt(snippet_decl_span.start)
+        .expect("snippet decl stmt");
+    let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = stmt else {
+        panic!("expected VariableDeclaration");
+    };
+    let declarator = var_decl.declarations.first().expect("declarator");
+    let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &declarator.id else {
+        panic!("expected BindingIdentifier")
+    };
+    assert_eq!(
+        &source[id.span.start as usize..id.span.end as usize],
+        "row"
+    );
+    let Some(oxc_ast::ast::Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+        panic!("expected arrow init")
+    };
+    let item_span = arrow.params.items[0].span;
+    let count_span = arrow.params.items[1].span;
+    assert_eq!(
+        &source[item_span.start as usize..item_span.end as usize],
+        "item"
+    );
+    assert_eq!(
+        &source[count_span.start as usize..count_span.end as usize],
+        "count"
+    );
+}
+

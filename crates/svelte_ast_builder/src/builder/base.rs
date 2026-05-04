@@ -16,15 +16,27 @@ impl<'a> Builder<'a> {
     }
 
     pub fn bid(&self, name: &str) -> BindingIdentifier<'a> {
-        self.ast.binding_identifier(SPAN, self.ast.atom(name))
+        self.bid_at(name, SPAN)
+    }
+
+    pub fn bid_at(&self, name: &str, span: Span) -> BindingIdentifier<'a> {
+        self.ast.binding_identifier(span, self.ast.atom(name))
     }
 
     pub fn rid(&self, name: &str) -> IdentifierReference<'a> {
-        self.ast.identifier_reference(SPAN, self.ast.atom(name))
+        self.rid_at(name, SPAN)
+    }
+
+    pub fn rid_at(&self, name: &str, span: Span) -> IdentifierReference<'a> {
+        self.ast.identifier_reference(span, self.ast.atom(name))
     }
 
     pub fn rid_expr(&self, name: &str) -> Expression<'a> {
         Expression::Identifier(self.alloc(self.rid(name)))
+    }
+
+    pub fn rid_expr_at(&self, name: &str, span: Span) -> Expression<'a> {
+        Expression::Identifier(self.alloc(self.rid_at(name, span)))
     }
 
     pub fn bool_expr(&self, value: bool) -> Expression<'a> {
@@ -41,20 +53,36 @@ impl<'a> Builder<'a> {
     }
 
     pub fn num(&self, value: f64) -> NumericLiteral<'a> {
+        self.num_at(value, SPAN)
+    }
+
+    pub fn num_at(&self, value: f64, span: Span) -> NumericLiteral<'a> {
         self.ast
-            .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal)
+            .numeric_literal(span, value, None, ast::NumberBase::Decimal)
     }
 
     pub fn num_expr(&self, value: f64) -> Expression<'a> {
         Expression::NumericLiteral(self.alloc(self.num(value)))
     }
 
+    pub fn num_expr_at(&self, value: f64, span: Span) -> Expression<'a> {
+        Expression::NumericLiteral(self.alloc(self.num_at(value, span)))
+    }
+
     pub fn str_lit(&self, value: &str) -> StringLiteral<'a> {
-        self.ast.string_literal(SPAN, self.ast.atom(value), None)
+        self.str_lit_at(value, SPAN)
+    }
+
+    pub fn str_lit_at(&self, value: &str, span: Span) -> StringLiteral<'a> {
+        self.ast.string_literal(span, self.ast.atom(value), None)
     }
 
     pub fn str_expr(&self, value: &str) -> Expression<'a> {
         Expression::StringLiteral(self.alloc(self.str_lit(value)))
+    }
+
+    pub fn str_expr_at(&self, value: &str, span: Span) -> Expression<'a> {
+        Expression::StringLiteral(self.alloc(self.str_lit_at(value, span)))
     }
 
     pub fn empty_array_expr(&self) -> Expression<'a> {
