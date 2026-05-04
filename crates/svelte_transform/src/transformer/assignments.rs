@@ -4,9 +4,20 @@ use svelte_analyze::{ReferenceSemantics, RuneKind};
 
 use svelte_ast_builder::Arg;
 
+use super::async_check::is_expression_async;
 use super::model::PendingPropMutationValidation;
 
 use super::model::ComponentTransformer;
+
+fn assign_op_literal(op: oxc_ast::ast::AssignmentOperator) -> Option<&'static str> {
+    match op {
+        oxc_ast::ast::AssignmentOperator::Assign => Some("="),
+        oxc_ast::ast::AssignmentOperator::LogicalAnd => Some("&&="),
+        oxc_ast::ast::AssignmentOperator::LogicalOr => Some("||="),
+        oxc_ast::ast::AssignmentOperator::LogicalNullish => Some("??="),
+        _ => None,
+    }
+}
 
 impl<'a> ComponentTransformer<'_, 'a> {
     fn member_root_identifier<'b>(
@@ -169,6 +180,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         bindable: bool,
         source_root_name: Option<String>,
         segments: Vec<Expression<'a>>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         let Expression::AssignmentExpression(assign) = node else {
             unreachable!();
@@ -203,13 +215,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let fn_name = match assign.operator {
-            oxc_ast::ast::AssignmentOperator::Assign => Some("$.assign"),
-            oxc_ast::ast::AssignmentOperator::LogicalAnd => Some("$.assign_and"),
-            oxc_ast::ast::AssignmentOperator::LogicalOr => Some("$.assign_or"),
-            oxc_ast::ast::AssignmentOperator::LogicalNullish => Some("$.assign_nullish"),
-            _ => None,
-        };
+        let op_literal = assign_op_literal(assign.operator);
         let is_static = matches!(
             &assign.left,
             oxc_ast::ast::AssignmentTarget::StaticMemberExpression(_)
@@ -218,7 +224,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             &assign.left,
             oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(_)
         );
-        let should_rewrite_assign = fn_name.is_some() && (is_static || is_computed);
+        let should_rewrite_assign = op_literal.is_some() && (is_static || is_computed);
         if !should_rewrite_assign {
             if let Some(source_root_name) = bindable_prop_source_root_name {
                 self.wrap_bindable_prop_source_mutation(node, &source_root_name);
@@ -233,7 +239,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let fn_name = fn_name.unwrap_or_else(|| unreachable!());
+        let op_literal = op_literal.unwrap_or_else(|| unreachable!());
 
         let offset = left_span_start;
         let (line, col) = self.component_line_index.line_col(offset);
@@ -250,36 +256,56 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let assign = assign_box.unbox();
 
-        if is_static {
+        let needs_lazy_getter = op_literal != "=";
+        let needs_async = needs_lazy_getter && is_expression_async(&assign.right);
+        let fn_name = if needs_async {
+            "$.assign_async"
+        } else {
+            "$.assign"
+        };
+        let scope = ctx.current_scope_id();
+        let value_expr = if needs_lazy_getter {
+            if needs_async {
+                self.b.async_arrow_body_in_scope(assign.right, scope)
+            } else {
+                self.b.arrow_in_scope_expr(
+                    self.b.no_params(),
+                    [self.b.expr_stmt(assign.right)],
+                    scope,
+                )
+            }
+        } else {
+            assign.right
+        };
+
+        let (object, key) = if is_static {
             let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
-            let key = self.b.str_expr(m.property.name.as_str());
-            *node = self.b.call_expr(
-                fn_name,
-                [
-                    Arg::Expr(m.object),
-                    Arg::Expr(key),
-                    Arg::Expr(assign.right),
-                    Arg::Str(loc),
-                ],
-            );
+            (m.object, self.b.str_expr(m.property.name.as_str()))
         } else {
             let oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
-            *node = self.b.call_expr(
-                fn_name,
-                [
-                    Arg::Expr(m.object),
-                    Arg::Expr(m.expression),
-                    Arg::Expr(assign.right),
-                    Arg::Str(loc),
-                ],
-            );
+            (m.object, m.expression)
+        };
+
+        let mut call = self.b.call_expr(
+            fn_name,
+            [
+                Arg::Expr(object),
+                Arg::Expr(key),
+                Arg::Str(op_literal.to_string()),
+                Arg::Expr(value_expr),
+                Arg::Str(loc),
+            ],
+        );
+        if needs_async {
+            call = self.b.await_expr(call);
         }
+        *node = call;
         if let Some(source_root_name) = bindable_prop_source_root_name {
             self.wrap_bindable_prop_source_mutation(node, &source_root_name);
         }
@@ -325,6 +351,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         node: &mut Expression<'a>,
         is_expr_stmt: bool,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Expression::AssignmentExpression(assign) = node else {
             return false;
@@ -379,6 +406,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             semantic_bindable,
             semantic_source_root_name,
             segments,
+            ctx,
         );
         true
     }
@@ -484,13 +512,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = node else {
             return;
         };
-        let fn_name = match assign.operator {
-            oxc_ast::ast::AssignmentOperator::Assign => Some("$.assign"),
-            oxc_ast::ast::AssignmentOperator::LogicalAnd => Some("$.assign_and"),
-            oxc_ast::ast::AssignmentOperator::LogicalOr => Some("$.assign_or"),
-            oxc_ast::ast::AssignmentOperator::LogicalNullish => Some("$.assign_nullish"),
-            _ => None,
-        };
+        let op_literal = assign_op_literal(assign.operator);
         let is_static = matches!(
             &assign.left,
             oxc_ast::ast::AssignmentTarget::StaticMemberExpression(_)
@@ -499,14 +521,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
             &assign.left,
             oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(_)
         );
-        let should_rewrite_assign = fn_name.is_some()
+        let should_rewrite_assign = op_literal.is_some()
             && (is_static || is_computed)
             && crate::rune_refs::should_proxy(&assign.right);
         if !should_rewrite_assign {
             return;
         }
 
-        let fn_name = fn_name.unwrap_or_else(|| unreachable!());
+        let op_literal = op_literal.unwrap_or_else(|| unreachable!());
 
         let offset = left_span_start;
         let (line, col) = self.component_line_index.line_col(offset);
@@ -523,36 +545,56 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let assign = assign_box.unbox();
 
-        if is_static {
+        let needs_lazy_getter = op_literal != "=";
+        let needs_async = needs_lazy_getter && is_expression_async(&assign.right);
+        let fn_name = if needs_async {
+            "$.assign_async"
+        } else {
+            "$.assign"
+        };
+        let scope = ctx.current_scope_id();
+        let value_expr = if needs_lazy_getter {
+            if needs_async {
+                self.b.async_arrow_body_in_scope(assign.right, scope)
+            } else {
+                self.b.arrow_in_scope_expr(
+                    self.b.no_params(),
+                    [self.b.expr_stmt(assign.right)],
+                    scope,
+                )
+            }
+        } else {
+            assign.right
+        };
+
+        let (object, key) = if is_static {
             let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
-            let key = self.b.str_expr(m.property.name.as_str());
-            *node = self.b.call_expr(
-                fn_name,
-                [
-                    Arg::Expr(m.object),
-                    Arg::Expr(key),
-                    Arg::Expr(assign.right),
-                    Arg::Str(loc),
-                ],
-            );
+            (m.object, self.b.str_expr(m.property.name.as_str()))
         } else {
             let oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
-            *node = self.b.call_expr(
-                fn_name,
-                [
-                    Arg::Expr(m.object),
-                    Arg::Expr(m.expression),
-                    Arg::Expr(assign.right),
-                    Arg::Str(loc),
-                ],
-            );
+            (m.object, m.expression)
+        };
+
+        let mut call = self.b.call_expr(
+            fn_name,
+            [
+                Arg::Expr(object),
+                Arg::Expr(key),
+                Arg::Str(op_literal.to_string()),
+                Arg::Expr(value_expr),
+                Arg::Str(loc),
+            ],
+        );
+        if needs_async {
+            call = self.b.await_expr(call);
         }
+        *node = call;
     }
 
     pub(crate) fn transform_update(

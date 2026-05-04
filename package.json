@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "svelte": "5.53.9"
+    "svelte": "5.55.5"
   },
   "devDependencies": {
     "@codspeed/benchmark.js-plugin": "^4.0.0",

@@ -1,4 +1,5 @@
 mod assignments;
+mod async_check;
 mod builders;
 mod derived;
 mod entry;

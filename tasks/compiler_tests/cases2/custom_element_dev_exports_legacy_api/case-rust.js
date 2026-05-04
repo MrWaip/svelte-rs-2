@@ -14,6 +14,7 @@ export default function App($$anchor, $$props) {
 	const VERSION = "1";
 	function helper() {}
 	var $$exports = {
+		...$.legacy_api(),
 		get VERSION() {
 			return VERSION;
 		},
@@ -26,8 +27,7 @@ export default function App($$anchor, $$props) {
 		set x($$value = 0) {
 			x($$value);
 			$.flush();
-		},
-		...$.legacy_api()
+		}
 	};
 	var p = root();
 	var text = $.child(p, true);
