@@ -26,7 +26,7 @@ pub struct ScriptAnalysis {
 }
 
 impl ScriptAnalysis {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             info: None,
             props_id: None,
@@ -52,6 +52,10 @@ impl ScriptAnalysis {
 
     pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
         self.info.as_ref()?.props_declaration.as_ref()
+    }
+
+    pub fn is_state_source(&self, reassigned: bool) -> bool {
+        !self.immutable || reassigned || self.accessors
     }
 }
 

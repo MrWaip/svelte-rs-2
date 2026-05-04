@@ -343,11 +343,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         var_declared,
                         binding_semantics: collect_state_binding_semantics(
                             &self.data.scoping,
+                            &self.data.script,
                             &declarator.id,
                             StateKind::State,
                             init_proxyable,
-                            self.data.script.immutable,
-                            self.data.script.accessors,
                         ),
                     },
                     true,
@@ -363,11 +362,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         var_declared,
                         binding_semantics: collect_state_binding_semantics(
                             &self.data.scoping,
+                            &self.data.script,
                             &declarator.id,
                             StateKind::StateRaw,
                             false,
-                            self.data.script.immutable,
-                            self.data.script.accessors,
                         ),
                     },
                     true,
@@ -383,11 +381,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         var_declared,
                         binding_semantics: collect_state_binding_semantics(
                             &self.data.scoping,
+                            &self.data.script,
                             &declarator.id,
                             StateKind::StateEager,
                             false,
-                            self.data.script.immutable,
-                            self.data.script.accessors,
                         ),
                     },
                     false,
@@ -578,18 +575,17 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         semantics: StateDeclarationSemantics,
         require_mutation: bool,
     ) {
-        let root_is_mutated = match pattern {
-            BindingPattern::BindingIdentifier(ident) => ident
-                .symbol_id
-                .get()
-                .is_some_and(|sym| self.data.scoping.is_mutated_any(sym)),
-            _ => true,
-        };
-
-        let immutable = self.data.script.immutable;
-        let accessors = self.data.script.accessors;
-        let is_state_source = !immutable || root_is_mutated || accessors;
-        let optimize = require_mutation && !is_state_source;
+        let optimize = require_mutation
+            && match pattern {
+                BindingPattern::BindingIdentifier(ident) => {
+                    let reassigned = ident
+                        .symbol_id
+                        .get()
+                        .is_some_and(|sym| self.data.scoping.is_mutated_any(sym));
+                    !self.data.script.is_state_source(reassigned)
+                }
+                _ => false,
+            };
         if optimize {
             let optimized = OptimizedRuneSemantics {
                 kind: semantics.kind,
@@ -985,20 +981,18 @@ fn state_expression_is_proxyable(expr: &Expression<'_>) -> bool {
 
 fn collect_state_binding_semantics(
     scoping: &ComponentScoping<'_>,
+    script: &crate::ScriptAnalysis,
     pattern: &BindingPattern<'_>,
     rune_kind: StateKind,
     init_proxyable: bool,
-    immutable: bool,
-    accessors: bool,
 ) -> SmallVec<[StateBindingSemantics; 4]> {
     let mut semantics = SmallVec::new();
     collect_state_binding_semantics_inner(
         scoping,
+        script,
         pattern,
         rune_kind,
         init_proxyable,
-        immutable,
-        accessors,
         &mut semantics,
     );
     semantics
@@ -1006,11 +1000,10 @@ fn collect_state_binding_semantics(
 
 fn collect_state_binding_semantics_inner(
     scoping: &ComponentScoping<'_>,
+    script: &crate::ScriptAnalysis,
     pattern: &BindingPattern<'_>,
     rune_kind: StateKind,
     init_proxyable: bool,
-    immutable: bool,
-    accessors: bool,
     semantics: &mut SmallVec<[StateBindingSemantics; 4]>,
 ) {
     match pattern {
@@ -1019,10 +1012,9 @@ fn collect_state_binding_semantics_inner(
                 .symbol_id
                 .get()
                 .is_some_and(|sym| scoping.is_mutated(sym));
-            let is_state_source = !immutable || reassigned || accessors;
             semantics.push(state_binding_semantic(
                 rune_kind,
-                is_state_source,
+                script.is_state_source(reassigned),
                 init_proxyable,
             ));
         }
@@ -1030,22 +1022,20 @@ fn collect_state_binding_semantics_inner(
             for prop in &obj.properties {
                 collect_state_binding_semantics_inner(
                     scoping,
+                    script,
                     &prop.value,
                     rune_kind,
                     init_proxyable,
-                    immutable,
-                    accessors,
                     semantics,
                 );
             }
             if let Some(rest) = &obj.rest {
                 collect_state_binding_semantics_inner(
                     scoping,
+                    script,
                     &rest.argument,
                     rune_kind,
                     init_proxyable,
-                    immutable,
-                    accessors,
                     semantics,
                 );
             }
@@ -1054,22 +1044,20 @@ fn collect_state_binding_semantics_inner(
             for elem in arr.elements.iter().flatten() {
                 collect_state_binding_semantics_inner(
                     scoping,
+                    script,
                     elem,
                     rune_kind,
                     init_proxyable,
-                    immutable,
-                    accessors,
                     semantics,
                 );
             }
             if let Some(rest) = &arr.rest {
                 collect_state_binding_semantics_inner(
                     scoping,
+                    script,
                     &rest.argument,
                     rune_kind,
                     init_proxyable,
-                    immutable,
-                    accessors,
                     semantics,
                 );
             }
@@ -1077,11 +1065,10 @@ fn collect_state_binding_semantics_inner(
         BindingPattern::AssignmentPattern(assign) => {
             collect_state_binding_semantics_inner(
                 scoping,
+                script,
                 &assign.left,
                 rune_kind,
                 init_proxyable,
-                immutable,
-                accessors,
                 semantics,
             );
         }

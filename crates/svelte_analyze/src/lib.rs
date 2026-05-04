@@ -253,8 +253,13 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
             && (has_legacy_member_mutated
                 || has_legacy_props_read
                 || has_legacy_reactive_statements));
-    let has_component_exports =
-        has_exports || has_ce_props || (!data.uses_runes() && data.script.accessors) || dev;
+    let has_legacy_accessor_props = !data.uses_runes()
+        && data.script.accessors
+        && data
+            .script
+            .props_declaration()
+            .is_some_and(|d| d.props.iter().any(|p| !p.is_rest && !p.is_reserved()));
+    let has_component_exports = has_exports || has_ce_props || has_legacy_accessor_props || dev;
     let needs_props_param =
         data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
 
@@ -275,6 +280,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         has_bindable,
         has_stores,
         has_ce_props,
+        has_legacy_accessor_props,
         needs_props_param,
         needs_pop_with_return: needs_push && has_component_exports,
         legacy_init,

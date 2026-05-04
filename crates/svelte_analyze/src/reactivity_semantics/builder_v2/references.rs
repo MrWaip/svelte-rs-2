@@ -67,9 +67,7 @@ fn classify_reference_semantics(
             if state.kind == StateKind::StateEager {
                 return None;
             }
-            let is_signal_source = !data.script.immutable
-                || data.scoping.is_mutated(sym)
-                || data.script.accessors;
+            let is_signal_source = data.script.is_state_source(data.scoping.is_mutated(sym));
             if is_write && is_read {
                 Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,

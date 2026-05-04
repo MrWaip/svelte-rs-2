@@ -6212,3 +6212,37 @@ mod svelte_head_title_diagnostics {
         assert_diag_codes(&diags, &[]);
     }
 }
+
+#[cfg(test)]
+mod is_state_source_formula {
+    use crate::types::data::ScriptAnalysis;
+
+    fn build(immutable: bool, accessors: bool) -> ScriptAnalysis {
+        let mut s = ScriptAnalysis::new();
+        s.immutable = immutable;
+        s.accessors = accessors;
+        s
+    }
+
+    #[test]
+    fn non_immutable_always_signal_source() {
+        let s = build(false, false);
+        assert!(s.is_state_source(true));
+        assert!(s.is_state_source(false));
+    }
+
+    #[test]
+    fn immutable_requires_reassignment_or_accessors() {
+        let s = build(true, false);
+        assert!(s.is_state_source(true));
+        assert!(!s.is_state_source(false));
+    }
+
+    #[test]
+    fn accessors_promotes_immutable_non_reassigned() {
+        let s = build(true, true);
+        assert!(s.is_state_source(false));
+        assert!(s.is_state_source(true));
+    }
+}
+
