@@ -7,6 +7,6 @@ export default function App($$anchor) {
 	var h1 = $.first_child(fragment);
 	h1.textContent = "Hello world!";
 	var text = $.sibling(h1);
-	$.template_effect(($0) => $.set_text(text, ` ${$0 ?? ""}`), void 0, [fetch]);
+	$.template_effect(($0) => $.set_text(text, ` ${$0 ?? ""}`), void 0, [() => fetch()]);
 	$.append($$anchor, fragment);
 }

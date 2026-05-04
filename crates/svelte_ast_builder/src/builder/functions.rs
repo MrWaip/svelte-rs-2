@@ -141,6 +141,31 @@ impl<'a> Builder<'a> {
         arrow_expr
     }
 
+    pub fn arrow_in_scope_expr(
+        &self,
+        params: FormalParameters<'a>,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+        scope_id: ScopeId,
+    ) -> Expression<'a> {
+        let expr = self.arrow_expr(params, statements);
+        if let Expression::ArrowFunctionExpression(arrow) = &expr {
+            arrow.scope_id.set(Some(scope_id));
+        }
+        expr
+    }
+
+    pub fn async_arrow_body_in_scope(
+        &self,
+        expr: Expression<'a>,
+        scope_id: ScopeId,
+    ) -> Expression<'a> {
+        let out = self.async_arrow_expr_body(expr);
+        if let Expression::ArrowFunctionExpression(arrow) = &out {
+            arrow.scope_id.set(Some(scope_id));
+        }
+        out
+    }
+
     pub fn thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
         self.arrow_block_expr(self.no_params(), stmts)
     }

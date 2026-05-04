@@ -107,7 +107,7 @@ var root = $.add_locations($.from_html(`<div class="chunk-shell benchmark-reset 
 ]]);
 const $$css = {
 	hash: "svelte-13nvtxg",
-	code: "body {margin:0; font-family:\"IBM Plex Sans\", sans-serif; background:#f5f1e8;}.benchmark-host {color:#3f2a18;}.benchmark-reset {box-sizing:border-box;}@keyframes svelte-13nvtxg-pulse {0% {opacity:0.4; transform:scale(0.98);}100% {opacity:1; transform:scale(1);}}@keyframes marquee {from {transform:translateX(0);}to {transform:translateX(12px);}}.chunk-shell.svelte-13nvtxg {padding:16px; margin:12px 0; border:1px solid #d9c7ab; background:linear-gradient(180deg, #fffdf9 0%, #f4ead9 100%);}.chunk-shell.svelte-13nvtxg :is(.badge:where(.svelte-13nvtxg), .card:where(.svelte-13nvtxg), .summary:where(.svelte-13nvtxg)) {border-radius:10px;}.summary.svelte-13nvtxg span:where(.svelte-13nvtxg) {display:inline-block; margin-right:8px;}.item-less.svelte-13nvtxg {color:#7a4f2a;}[data-index].svelte-13nvtxg {color:var(--custom, #5c4634);}"
+	code: "body {margin:0; font-family:\"IBM Plex Sans\", sans-serif; background:#f5f1e8;}.benchmark-host {color:#3f2a18;}.benchmark-reset {box-sizing:border-box;}@keyframes svelte-13nvtxg-pulse {0% {opacity:0.4; transform:scale(0.98);}100% {opacity:1; transform:scale(1);}}@keyframes marquee {from {transform:translateX(0);}to {transform:translateX(12px);}}.chunk-shell.svelte-13nvtxg {padding:16px; margin:12px 0; border:1px solid #d9c7ab; background:linear-gradient(180deg, #fffdf9 0%, #f4ead9 100%);}.chunk-shell.svelte-13nvtxg :is(.badge:where(.svelte-13nvtxg), .card:where(.svelte-13nvtxg), .summary:where(.svelte-13nvtxg)) {border-radius:10px;}.summary.svelte-13nvtxg span:where(.svelte-13nvtxg) {display:inline-block; margin-right:8px;}.item-less.svelte-13nvtxg {color:#7a4f2a;}[data-index].svelte-13nvtxg {color:var(--custom, #5c4634);}\n/*# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiKHVua25vd24pIl0sInNvdXJjZXNDb250ZW50IjpbIlxuICAgIDpnbG9iYWwoYm9keSkge1xuICAgICAgICBtYXJnaW46IDA7XG4gICAgICAgIGZvbnQtZmFtaWx5OiBcIklCTSBQbGV4IFNhbnNcIiwgc2Fucy1zZXJpZjtcbiAgICAgICAgYmFja2dyb3VuZDogI2Y1ZjFlODtcbiAgICB9XG5cbiAgICA6Z2xvYmFsKC5iZW5jaG1hcmstaG9zdCkge1xuICAgICAgICBjb2xvcjogIzNmMmExODtcbiAgICB9XG5cbiAgICA6Z2xvYmFsIHtcbiAgICAgICAgLmJlbmNobWFyay1yZXNldCB7XG4gICAgICAgICAgICBib3gtc2l6aW5nOiBib3JkZXItYm94O1xuICAgICAgICB9XG4gICAgfVxuXG4gICAgQGtleWZyYW1lcyBwdWxzZSB7XG4gICAgICAgIDAlIHsgb3BhY2l0eTogMC40OyB0cmFuc2Zvcm06IHNjYWxlKDAuOTgpOyB9XG4gICAgICAgIDEwMCUgeyBvcGFjaXR5OiAxOyB0cmFuc2Zvcm06IHNjYWxlKDEpOyB9XG4gICAgfVxuXG4gICAgQGtleWZyYW1lcyAtZ2xvYmFsLW1hcnF1ZWUge1xuICAgICAgICBmcm9tIHsgdHJhbnNmb3JtOiB0cmFuc2xhdGVYKDApOyB9XG4gICAgICAgIHRvIHsgdHJhbnNmb3JtOiB0cmFuc2xhdGVYKDEycHgpOyB9XG4gICAgfVxuXG4gICAgLmNodW5rLXNoZWxsIHtcbiAgICAgICAgcGFkZGluZzogMTZweDtcbiAgICAgICAgbWFyZ2luOiAxMnB4IDA7XG4gICAgICAgIGJvcmRlcjogMXB4IHNvbGlkICNkOWM3YWI7XG4gICAgICAgIGJhY2tncm91bmQ6IGxpbmVhci1ncmFkaWVudCgxODBkZWcsICNmZmZkZjkgMCUsICNmNGVhZDkgMTAwJSk7XG4gICAgfVxuXG4gICAgLmNodW5rLXNoZWxsIDppcyguYmFkZ2UsIC5jYXJkLCAuc3VtbWFyeSkge1xuICAgICAgICBib3JkZXItcmFkaXVzOiAxMHB4O1xuICAgIH1cblxuICAgIC5jaHVuay1zaGVsbC5zdGF0ZSAuc3VtbWFyeSB7XG4gICAgICAgIGFuaW1hdGlvbjogcHVsc2UgMTgwbXMgZWFzZS1vdXQ7XG4gICAgfVxuXG4gICAgLnN1bW1hcnkgc3BhbiB7XG4gICAgICAgIGRpc3BsYXk6IGlubGluZS1ibG9jaztcbiAgICAgICAgbWFyZ2luLXJpZ2h0OiA4cHg7XG4gICAgfVxuXG4gICAgLml0ZW0tbGVzcyB7XG4gICAgICAgIGNvbG9yOiAjN2E0ZjJhO1xuICAgIH1cblxuICAgIFtkYXRhLWluZGV4XSB7XG4gICAgICAgIGNvbG9yOiB2YXIoLS1jdXN0b20sICM1YzQ2MzQpO1xuICAgIH1cbiJdLCJtYXBwaW5ncyI6IkFBQ0k7RUFDSSxRQUFRLENBQUM7RUFDVCxhQUFhLDJCQUEyQjtFQUN4QyxZQUFZLE9BQU87Q0FDdEI7O0FBRUQ7RUFDSSxPQUFPLE9BQU87Q0FDakI7O0FBR0c7RUFDSSxZQUFZLFVBQVU7Q0FDekI7O0FBR0wsZ0NBQWlCOzs7S0FHaEI7O0FBRUQsbUJBQTJCOzs7S0FHMUI7O0FBRUQ7RUFDSSxTQUFTLElBQUk7RUFDYixRQUFRLE1BQU07RUFDZCxRQUFRLGlCQUFpQjtFQUN6QixZQUFZLGlEQUFpRDtDQUNoRTs7QUFFRDtFQUNJLGVBQWUsSUFBSTtDQUN0Qjs7O0FBTUQ7RUFDSSxTQUFTLFlBQVk7RUFDckIsY0FBYyxHQUFHO0NBQ3BCOztBQUVEO0VBQ0ksT0FBTyxPQUFPO0NBQ2pCOztBQUVEO0VBQ0ksT0FBTyxzQkFBc0I7Q0FDaEMifQ== */"
 };
 export default function App($$anchor, $$props) {
 	const propsId = $.props_id();
@@ -216,6 +216,7 @@ export default function App($$anchor, $$props) {
 	}
 	let promise = Promise.resolve(42);
 	var $$exports = {
+		...$.legacy_api(),
 		get APP_VERSION() {
 			return APP_VERSION;
 		},
@@ -263,8 +264,7 @@ export default function App($$anchor, $$props) {
 		set visible($$value = false) {
 			visible($$value);
 			$.flush();
-		},
-		...$.legacy_api()
+		}
 	};
 	var div_1 = root();
 	$.head("q2w0q4", ($$anchor) => {
