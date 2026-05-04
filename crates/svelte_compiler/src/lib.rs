@@ -1,15 +1,15 @@
 mod options;
+mod sourcemap_finalize;
 
 pub use options::{
     CompileOptions, CssMode, ExperimentalOptions, GenerateMode, ModuleCompileOptions, Namespace,
 };
-use svelte_diagnostics::Diagnostic;
+pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
+use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 
-#[derive(serde::Serialize)]
 pub struct CompileResult {
-    pub js: Option<String>,
-
-    pub css: Option<String>,
+    pub js: Option<JsOutput>,
+    pub css: Option<CssOutput>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -87,12 +87,22 @@ fn resolved_css_mode(component: &svelte_ast::Component, options: &CompileOptions
     }
 }
 
+fn validate_compile_options(options: &CompileOptions, diagnostics: &mut Vec<Diagnostic>) {
+    if options.enable_sourcemap.is_some() {
+        diagnostics.push(Diagnostic::warning(
+            DiagnosticKind::OptionsRemovedEnableSourcemap,
+            svelte_span::Span::default(),
+        ));
+    }
+}
+
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let candidate_name = options.component_name();
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (mut component, js_result, mut diagnostics) =
         svelte_parser::parse_with_js(&js_alloc, source);
+    validate_compile_options(options, &mut diagnostics);
     apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);
 
@@ -124,6 +134,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
 
         let mut css_text: Option<String> = None;
+        let mut css_map: Option<svelte_sourcemap::SourceMap> = None;
         if let Some((ss, css_diags)) = css_parsed {
             analyze_diags.extend(css_diags);
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
@@ -141,25 +152,61 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
-            let raw_css = svelte_transform_css::transform_css_with_usage(
-                &analysis.output.css.hash,
-                &analysis.output.css.keyframes,
-                Some(&analysis.output.css.used_selectors),
-                true,
-                ss,
-                css_source,
-            );
-            css_text = if inject_styles {
-                Some(svelte_transform_css::compact_css_for_injection(&raw_css))
+            let needs_map = options.sourcemap_kind.is_enabled()
+                && (!inject_styles || options.dev);
+            if needs_map {
+                let (raw_css, raw_map) = svelte_transform_css::transform_css_with_sourcemap(
+                    &analysis.output.css.hash,
+                    &analysis.output.css.keyframes,
+                    Some(&analysis.output.css.used_selectors),
+                    true,
+                    ss,
+                    css_source,
+                    &options.filename,
+                );
+                if inject_styles {
+                    let mut compacted = svelte_transform_css::compact_css_for_injection(&raw_css);
+                    if options.dev && !compacted.is_empty() {
+                        let sm = svelte_sourcemap::Sourcemap::new(raw_map, css_source);
+                        compacted.push_str(&sm.to_inline_comment());
+                    }
+                    css_text = Some(compacted);
+                } else {
+                    css_text = Some(raw_css);
+                    css_map = Some(sourcemap_finalize::finalize_css(
+                        raw_map,
+                        options.css_output_filename.as_deref(),
+                        &options.filename,
+                    ));
+                }
             } else {
-                Some(raw_css)
-            };
+                let raw_css = svelte_transform_css::transform_css_with_usage(
+                    &analysis.output.css.hash,
+                    &analysis.output.css.keyframes,
+                    Some(&analysis.output.css.used_selectors),
+                    true,
+                    ss,
+                    css_source,
+                );
+                css_text = if inject_styles {
+                    Some(svelte_transform_css::compact_css_for_injection(&raw_css))
+                } else {
+                    Some(raw_css)
+                };
+            }
         }
 
         let (css, injected_css_text) = if analysis.output.css.inject_styles {
             (None, css_text)
         } else {
-            (css_text, None)
+            (
+                css_text.map(|code| svelte_sourcemap::CssOutput {
+                    code,
+                    map: css_map,
+                    has_global: false,
+                }),
+                None,
+            )
         };
 
         let has_errors = has_parse_errors
@@ -194,6 +241,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             dev: options.dev,
             experimental_async: options.experimental.async_,
             filename: options.filename.clone(),
+            sourcemap_kind: options.sourcemap_kind,
         };
         let compile_ctx = svelte_types::CompileContext {
             alloc: &js_alloc,
@@ -216,7 +264,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         Ok((js, css, analyze_diags)) => {
             diagnostics.extend(analyze_diags);
             CompileResult {
-                js,
+                js: js.map(|out| sourcemap_finalize::finalize_js(out, options, source)),
                 css,
                 diagnostics,
             }
@@ -265,13 +313,28 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         .take()
         .expect("analyze_module produced no program");
     let line_index = svelte_span::LineIndex::new(source);
+    let kind = options.sourcemap_kind;
+    let filename = options.filename.clone();
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        svelte_codegen_client::generate_module(&js_alloc, program, &analysis, &line_index, dev)
+        svelte_codegen_client::generate_module(
+            &js_alloc,
+            program,
+            &analysis,
+            &line_index,
+            dev,
+            kind,
+            &filename,
+            source,
+        )
     }));
 
     match codegen_result {
         Ok(js) => CompileResult {
-            js: Some(js),
+            js: Some(sourcemap_finalize::finalize_module_js(
+                js,
+                &options.filename,
+                source,
+            )),
             css: None,
             diagnostics,
         },

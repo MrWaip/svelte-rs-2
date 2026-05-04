@@ -24,7 +24,6 @@ pub fn transform_script<'a, 'b>(
     dev: bool,
     component_source: &str,
     component_line_index: &svelte_span::LineIndex,
-    script_content_start: u32,
     filename: &str,
     runes: bool,
     accessors: bool,
@@ -54,7 +53,6 @@ pub fn transform_script<'a, 'b>(
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source,
         component_line_index,
-        script_content_start,
         filename,
         next_arrow_name: None,
         ident_counter: 0,
@@ -79,7 +77,6 @@ pub fn transform_script<'a, 'b>(
     if !transformer.derived_pending.is_empty() {
         let dev_ctx = dev.then_some(super::derived::DevContext {
             component_line_index,
-            script_content_start,
             filename,
             ignore_query: transformer.ignore_query,
         });

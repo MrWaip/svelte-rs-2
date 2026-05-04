@@ -42,14 +42,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
 
     let allocator = ctx.b.ast.allocator;
     let component_source = &ctx.query.component.source;
-    let script_content_start = ctx
-        .query
-        .component
-        .instance_script
-        .as_ref()
-        .expect("early return above when instance_script is None")
-        .content_span
-        .start;
     let filename = ctx.state.filename;
     let ignore_query = IgnoreQuery::new(ctx.query.analysis);
     let line_index = ctx.state.line_index;
@@ -66,7 +58,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         dev,
         component_source,
         line_index,
-        script_content_start,
         filename,
         ctx.query.runes(),
         ctx.query.accessors(),
@@ -95,7 +86,6 @@ pub fn transform_module_program<'a, 'b>(
         dev,
         "",
         line_index,
-        0,
         "(unknown)",
         true,
         false,
@@ -124,7 +114,6 @@ pub fn transform_component_module_program<'a, 'b>(
         false,
         "",
         line_index,
-        0,
         "(unknown)",
         false,
         false,
@@ -145,7 +134,6 @@ fn run_transform<'a>(
     dev: bool,
     component_source: &str,
     component_line_index: &svelte_span::LineIndex,
-    script_content_start: u32,
     filename: &str,
     runes: bool,
     accessors: bool,
@@ -168,7 +156,6 @@ fn run_transform<'a>(
         dev,
         component_source,
         component_line_index,
-        script_content_start,
         filename,
         runes,
         accessors,

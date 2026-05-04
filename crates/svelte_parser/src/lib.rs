@@ -13,6 +13,7 @@ mod html;
 mod html_entities;
 pub mod parse_js;
 pub mod scanner;
+mod span_shift;
 pub mod types;
 mod walk_js;
 
@@ -72,6 +73,7 @@ struct KeyBlockEntry {
 
 struct ElementEntry {
     name: String,
+    name_span: Span,
     span_start: Span,
     attributes: Vec<Attribute>,
 }
@@ -286,6 +288,7 @@ impl<'a> Parser<'a> {
                                 id: NodeId(0),
                                 span: token.span,
                                 name,
+                                name_span: tag.name_span,
                                 self_closing: true,
                                 attributes: attrs,
                                 fragment,
@@ -296,6 +299,7 @@ impl<'a> Parser<'a> {
                                 id: NodeId(0),
                                 span: token.span,
                                 name,
+                                name_span: tag.name_span,
                                 self_closing: true,
                                 attributes: attrs,
                                 fragment,
@@ -306,6 +310,7 @@ impl<'a> Parser<'a> {
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
                             name: name.to_string(),
+                            name_span: tag.name_span,
                             span_start: token.span,
                             attributes: attrs,
                         }));

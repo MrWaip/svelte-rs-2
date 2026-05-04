@@ -11,6 +11,8 @@ pub struct CompileOptions {
     pub dev: bool,
     pub generate: GenerateMode,
     pub filename: String,
+    pub output_filename: Option<String>,
+    pub css_output_filename: Option<String>,
     pub root_dir: Option<String>,
 
     pub name: Option<String>,
@@ -30,6 +32,10 @@ pub struct CompileOptions {
 
     pub compatibility_component_api: u8,
     pub experimental: ExperimentalOptions,
+
+    pub enable_sourcemap: Option<bool>,
+    #[serde(skip)]
+    pub sourcemap_kind: svelte_sourcemap::SourcemapKind,
 }
 
 impl Default for CompileOptions {
@@ -38,6 +44,8 @@ impl Default for CompileOptions {
             dev: false,
             generate: GenerateMode::default(),
             filename: "(unknown)".to_string(),
+            output_filename: None,
+            css_output_filename: None,
             root_dir: None,
             name: None,
             custom_element: false,
@@ -52,6 +60,8 @@ impl Default for CompileOptions {
             immutable: false,
             compatibility_component_api: 5,
             experimental: ExperimentalOptions::default(),
+            enable_sourcemap: None,
+            sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
         }
     }
 }
@@ -128,6 +138,9 @@ pub struct ModuleCompileOptions {
     pub generate: GenerateMode,
     pub filename: String,
     pub root_dir: Option<String>,
+    pub enable_sourcemap: Option<bool>,
+    #[serde(skip)]
+    pub sourcemap_kind: svelte_sourcemap::SourcemapKind,
 }
 
 impl Default for ModuleCompileOptions {
@@ -137,6 +150,8 @@ impl Default for ModuleCompileOptions {
             generate: GenerateMode::default(),
             filename: "(unknown)".to_string(),
             root_dir: None,
+            enable_sourcemap: None,
+            sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
         }
     }
 }

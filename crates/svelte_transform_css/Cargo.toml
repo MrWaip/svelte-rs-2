@@ -12,5 +12,6 @@ doctest = false
 [dependencies]
 svelte_css = { workspace = true }
 svelte_span = { workspace = true }
+svelte_sourcemap = { workspace = true }
 compact_str = { workspace = true }
 rustc-hash = { workspace = true }

@@ -20,9 +20,23 @@ struct WasmDiagnostic {
 }
 
 #[derive(Serialize)]
+struct WasmJsOutput {
+    code: String,
+    map: Option<String>,
+}
+
+#[derive(Serialize)]
+struct WasmCssOutput {
+    code: String,
+    map: Option<String>,
+    #[serde(rename = "hasGlobal")]
+    has_global: bool,
+}
+
+#[derive(Serialize)]
 struct WasmCompileResult {
-    js: Option<String>,
-    css: Option<String>,
+    js: Option<WasmJsOutput>,
+    css: Option<WasmCssOutput>,
     diagnostics: Vec<WasmDiagnostic>,
 }
 
@@ -54,8 +68,15 @@ fn to_wasm_result(result: CompileResult, source: &str) -> WasmCompileResult {
         .collect();
 
     WasmCompileResult {
-        js: result.js,
-        css: result.css,
+        js: result.js.map(|out| WasmJsOutput {
+            code: out.code,
+            map: out.map.map(|m| m.to_json_string()),
+        }),
+        css: result.css.map(|out| WasmCssOutput {
+            code: out.code,
+            map: out.map.map(|m| m.to_json_string()),
+            has_global: out.has_global,
+        }),
         diagnostics,
     }
 }

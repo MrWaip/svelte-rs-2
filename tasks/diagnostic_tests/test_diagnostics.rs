@@ -54,6 +54,9 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         {
             opts.experimental.async_ = async_val;
         }
+        if let Some(es) = config.get("enableSourcemap").and_then(|v| v.as_bool()) {
+            opts.enable_sourcemap = Some(es);
+        }
     }
 
     (input, opts)
@@ -1085,6 +1088,10 @@ mod options {
     diagnostic_case!(
         validate_custom_element_with_explicit_props_config_no_warn,
         "options/validate_custom_element_with_explicit_props_config_no_warn"
+    );
+    diagnostic_case!(
+        options_removed_enable_sourcemap,
+        "options/options_removed_enable_sourcemap"
     );
 }
 

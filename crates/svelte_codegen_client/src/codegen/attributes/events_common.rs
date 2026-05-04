@@ -51,7 +51,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr_id: NodeId,
         handler: Expression<'a>,
         event_name: &str,
-        expr_offset: u32,
     ) -> Result<Expression<'a>> {
         if !self.ctx.state.dev {
             return Ok(handler);
@@ -94,11 +93,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 std::mem::swap(&mut call.arguments[0], &mut dummy);
                 dummy.into_expression()
             } else {
-                let (line, col) = self
-                    .ctx
-                    .state
-                    .line_index
-                    .line_col(expr_offset + arrow.span.start);
+                let (line, col) = self.ctx.state.line_index.line_col(arrow.span.start);
                 let sanitized = crate::script::sanitize_location(self.ctx.state.filename);
                 let label = format!("trace ({sanitized}:{line}:{col})");
                 self.ctx.b.str_expr(&label)

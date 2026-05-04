@@ -2,7 +2,7 @@
   {
     "severity": "error",
     "code": "module_illegal_default_export",
-    "start": 26,
-    "end": 47
+    "start": 41,
+    "end": 62
   }
 ]

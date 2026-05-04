@@ -9,6 +9,11 @@ use oxc_syntax::node::NodeId;
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
+use crate::span_shift::{
+    shift_binding_pattern, shift_expression, shift_formal_parameters, shift_program,
+    shift_statement, wrapper_delta,
+};
+
 pub fn parse_expression_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -27,6 +32,7 @@ pub fn parse_expression_with_alloc<'a>(
     if typescript {
         strip_ts_expression(&mut expr, alloc);
     }
+    shift_expression(&mut expr, wrapper_delta(offset, 0, 0));
     Ok(expr)
 }
 
@@ -54,7 +60,9 @@ pub fn parse_script_with_alloc<'a>(
             .collect());
     }
 
-    Ok(result.program)
+    let mut program = result.program;
+    shift_program(&mut program, wrapper_delta(offset, 0, 0));
+    Ok(program)
 }
 
 pub fn parse_const_declaration_with_alloc<'a>(
@@ -63,6 +71,7 @@ pub fn parse_const_declaration_with_alloc<'a>(
     offset: u32,
     typescript: bool,
 ) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
+    const PREFIX_LEN: i64 = 6;
     let wrapped_owned = format!("const {};", source);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
@@ -95,14 +104,18 @@ pub fn parse_const_declaration_with_alloc<'a>(
         strip_ts_expression(init, alloc);
     }
 
+    shift_statement(&mut stmt, wrapper_delta(offset, 0, PREFIX_LEN));
     Ok(stmt)
 }
 
 pub(crate) fn parse_each_context_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
     typescript: bool,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const PREFIX_LEN: i64 = 4;
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
     let wrapped_owned = format!("let {} = x;", trimmed);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
@@ -118,13 +131,18 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
         return None;
     }
 
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+    shift_statement(&mut stmt, wrapper_delta(offset, leading_ws, PREFIX_LEN));
+    Some(stmt)
 }
 
 pub(crate) fn parse_each_index_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const PREFIX_LEN: i64 = 4;
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
     let wrapped_owned = format!("let {};", trimmed);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
@@ -135,15 +153,22 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
         return None;
     }
 
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+    shift_statement(&mut stmt, wrapper_delta(offset, leading_ws, PREFIX_LEN));
+    Some(stmt)
 }
 
 pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
+    offset: u32,
     typescript: bool,
 ) -> Option<oxc_ast::ast::Statement<'a>> {
+    const NAME_PREFIX_LEN: i64 = 6;
+    const PARAMS_PREFIX_LEN: i64 = 9;
+    let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
+    let has_params = trimmed.contains('(');
     let wrapped = if let Some(paren_pos) = trimmed.find('(') {
         let name = &trimmed[..paren_pos];
         let params_with_parens = &trimmed[paren_pos..];
@@ -161,7 +186,30 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     if !result.errors.is_empty() {
         return None;
     }
-    result.program.body.into_iter().next()
+    let mut stmt = result.program.body.into_iter().next()?;
+
+    if let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = &mut stmt
+        && let Some(declarator) = var_decl.declarations.first_mut()
+    {
+        shift_binding_pattern(
+            &mut declarator.id,
+            wrapper_delta(offset, leading_ws, NAME_PREFIX_LEN),
+        );
+        if has_params
+            && let Some(Expression::ArrowFunctionExpression(arrow)) = &mut declarator.init
+        {
+            shift_formal_parameters(
+                &mut arrow.params,
+                wrapper_delta(offset, leading_ws, PARAMS_PREFIX_LEN),
+            );
+        }
+    }
+
+    Some(stmt)
+}
+
+fn leading_whitespace_len(s: &str) -> usize {
+    s.len() - s.trim_start().len()
 }
 
 pub(crate) fn parse_slot_let_decl_with_alloc<'a>(

@@ -17,9 +17,22 @@ pub struct NativeDiagnostic {
 }
 
 #[napi(object)]
+pub struct NativeJsOutput {
+    pub code: String,
+    pub map: Option<String>,
+}
+
+#[napi(object)]
+pub struct NativeCssOutput {
+    pub code: String,
+    pub map: Option<String>,
+    pub has_global: bool,
+}
+
+#[napi(object)]
 pub struct NativeCompileResult {
-    pub js: Option<String>,
-    pub css: Option<String>,
+    pub js: Option<NativeJsOutput>,
+    pub css: Option<NativeCssOutput>,
     pub diagnostics: Vec<NativeDiagnostic>,
 }
 
@@ -196,8 +209,15 @@ fn to_node_result(result: CompileResult, source: &str) -> NativeCompileResult {
         .collect();
 
     NativeCompileResult {
-        js: result.js,
-        css: result.css,
+        js: result.js.map(|out| NativeJsOutput {
+            code: out.code,
+            map: out.map.map(|m| m.to_json_string()),
+        }),
+        css: result.css.map(|out| NativeCssOutput {
+            code: out.code,
+            map: out.map.map(|m| m.to_json_string()),
+            has_global: out.has_global,
+        }),
         diagnostics,
     }
 }

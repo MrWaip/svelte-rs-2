@@ -2,7 +2,7 @@
   {
     "severity": "error",
     "code": "experimental_async",
-    "start": 99,
-    "end": 111
+    "start": 93,
+    "end": 105
   }
 ]
