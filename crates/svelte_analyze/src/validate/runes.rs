@@ -29,20 +29,18 @@ fn is_this_member_assign(target: &oxc_ast::ast::AssignmentTarget<'_>) -> bool {
 pub(super) fn validate(
     data: &AnalysisData,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    validate_invalid_lifecycle_imports(program, offset, runes, diags);
-    let mut v = RuneValidator::new(data, diags, offset, runes, true);
+    validate_invalid_lifecycle_imports(program, runes, diags);
+    let mut v = RuneValidator::new(data, diags, runes, true);
     v.visit_program(program);
-    validate_state_referenced_locally_derived(data, program, offset, diags);
-    validate_rest_prop_illegal_access(data, program, offset, diags);
+    validate_state_referenced_locally_derived(data, program, diags);
+    validate_rest_prop_illegal_access(data, program, diags);
 }
 
 fn validate_invalid_lifecycle_imports(
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -73,7 +71,7 @@ fn validate_invalid_lifecycle_imports(
                     DiagnosticKind::RunesModeInvalidImport {
                         name: name.to_string(),
                     },
-                    Span::new(s.span.start + offset, s.span.end + offset),
+                    Span::new(s.span.start, s.span.end),
                 ));
                 break 'outer;
             }
@@ -84,17 +82,15 @@ fn validate_invalid_lifecycle_imports(
 pub(super) fn validate_module_props_runes(
     data: &AnalysisData,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = RuneValidator::new(data, diags, offset, runes, false);
+    let mut v = RuneValidator::new(data, diags, runes, false);
     v.visit_program(program);
 }
 
 struct RuneValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     runes: bool,
     in_var_declarator_init: bool,
     in_class_property_init: bool,
@@ -126,13 +122,11 @@ impl RuneValidator<'_> {
     fn new<'a>(
         data: &AnalysisData,
         diags: &'a mut Vec<Diagnostic>,
-        offset: u32,
         runes: bool,
         is_instance_script: bool,
     ) -> RuneValidator<'a> {
         RuneValidator {
             diags,
-            offset,
             runes,
             in_var_declarator_init: false,
             in_class_property_init: false,
@@ -152,7 +146,7 @@ impl RuneValidator<'_> {
     }
 
     fn span(&self, oxc: oxc_span::Span) -> Span {
-        Span::new(oxc.start + self.offset, oxc.end + self.offset)
+        Span::new(oxc.start, oxc.end)
     }
 
     fn validate_props_pattern(&mut self, pattern: &BindingPattern<'_>) {
@@ -238,7 +232,6 @@ pub(super) fn validate_invalid_exports(
     program: &oxc_ast::ast::Program<'_>,
     check_decl: bool,
     specifier_scope: Option<oxc_semantic::ScopeId>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     if !check_decl && specifier_scope.is_none() {
@@ -253,7 +246,7 @@ pub(super) fn validate_invalid_exports(
                 continue;
             }
             if let Some(kind) = declaration_export_kind(data, decl) {
-                let span = Span::new(export.span.start + offset, export.span.end + offset);
+                let span = Span::new(export.span.start, export.span.end);
                 push_unique(diags, kind, span);
             }
         } else if let Some(scope) = specifier_scope {
@@ -269,7 +262,7 @@ pub(super) fn validate_invalid_exports(
                 let Some(kind) = export_kind_for_symbol(data, sym_id) else {
                     continue;
                 };
-                let span = Span::new(sp.start + offset, sp.end + offset);
+                let span = Span::new(sp.start, sp.end);
                 push_unique(diags, kind, span);
             }
         }
@@ -315,12 +308,10 @@ fn push_unique(diags: &mut Vec<Diagnostic>, kind: DiagnosticKind, span: Span) {
 fn validate_state_referenced_locally_derived(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StateRefLocallyValidator {
         data,
-        offset,
         diags,
         in_state_rune_arg: false,
         call_depth_offset: 0,
@@ -332,11 +323,9 @@ fn validate_state_referenced_locally_derived(
 
 struct StateRefLocallyValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
-    offset: u32,
     diags: &'b mut Vec<Diagnostic>,
 
     in_state_rune_arg: bool,
-
     call_depth_offset: u32,
 
     in_illegal_prop_member_object: bool,
@@ -401,7 +390,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
                 name: name.to_string(),
                 type_: type_.into(),
             },
-            Span::new(ident.span.start + self.offset, ident.span.end + self.offset),
+            Span::new(ident.span.start, ident.span.end),
         ));
     }
 
@@ -866,12 +855,10 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 fn validate_rest_prop_illegal_access(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = RestPropAccessValidator {
         data,
-        offset,
         diags,
         _phantom: std::marker::PhantomData,
     };
@@ -880,7 +867,6 @@ fn validate_rest_prop_illegal_access(
 
 struct RestPropAccessValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
-    offset: u32,
     diags: &'b mut Vec<Diagnostic>,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -893,8 +879,8 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::PropsIllegalName,
                 Span::new(
-                    member.property.span.start + self.offset,
-                    member.property.span.end + self.offset,
+                    member.property.span.start,
+                    member.property.span.end,
                 ),
             ));
         }

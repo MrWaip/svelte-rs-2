@@ -62,7 +62,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let handler_expr = self.maybe_wrap_legacy_slots_read(handler_expr);
             let handler =
                 self.build_event_handler_s5(ev.attr_id, handler_expr, has_call, init, expr_offset);
-            let handler = self.dev_event_handler(ev.attr_id, handler, &ev.name, expr_offset)?;
+            let handler = self.dev_event_handler(ev.attr_id, handler, &ev.name)?;
             let handler = if ev.has_once_modifier {
                 self.ctx
                     .b

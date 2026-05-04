@@ -193,13 +193,13 @@ pub fn analyze_module<'a>(
             scoping.build_template_scope_set();
 
             let mut script_info =
-                utils::script_info::extract_script_info(&program, 0, source, true);
+                utils::script_info::extract_script_info(&program, source, true);
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
             data.scoping = scoping;
             data.script.info = Some(script_info);
             data.script.runes = true;
 
-            validate::validate_standalone_module(&data, &program, 0, true, &mut diags);
+            validate::validate_standalone_module(&data, &program, true, &mut diags);
 
             parsed.program = Some(program);
             let stub_component =

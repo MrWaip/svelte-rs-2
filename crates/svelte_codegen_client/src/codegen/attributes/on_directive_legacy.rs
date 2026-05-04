@@ -43,8 +43,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )
             };
 
-        let handler = if let Some(offset) = expr_offset {
-            self.dev_event_handler(attr_id, handler, &od.name, offset)?
+        let handler = if expr_offset.is_some() {
+            self.dev_event_handler(attr_id, handler, &od.name)?
         } else {
             handler
         };

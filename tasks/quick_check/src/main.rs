@@ -91,7 +91,7 @@ fn run_our_compiler(source: &str) -> OurOutcome {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| compile(source, &opts)));
     match result {
         Ok(res) => match res.js {
-            Some(js) => OurOutcome::Js(js),
+            Some(js) => OurOutcome::Js(js.code),
             None => {
                 let diagnostics = res
                     .diagnostics

@@ -69,12 +69,10 @@ pub(crate) fn execute_pass<'a>(
     match key {
         super::PassKey::AnalyzeScript => {
             let script_info = parsed.program.as_ref().and_then(|program| {
-                let span = parsed.script_content_span?;
-                let source = component.source_text(span);
+                parsed.script_content_span?;
                 Some(crate::utils::script_info::extract_script_info(
                     program,
-                    span.start,
-                    source,
+                    &component.source,
                     options.runes,
                 ))
             });
@@ -94,7 +92,7 @@ pub(crate) fn execute_pass<'a>(
             {
                 data.output
                     .ignore_data
-                    .scan_program_comments(program, runes);
+                    .scan_program_comments(program, &component.source, runes);
             }
         }
         super::PassKey::ExtractCeConfig => {

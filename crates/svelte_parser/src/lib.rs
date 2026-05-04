@@ -13,6 +13,7 @@ mod html;
 mod html_entities;
 pub mod parse_js;
 pub mod scanner;
+mod span_shift;
 pub mod types;
 mod walk_js;
 

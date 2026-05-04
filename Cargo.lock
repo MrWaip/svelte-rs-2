@@ -167,6 +167,7 @@ dependencies = [
  "rstest",
  "serde_json",
  "svelte_compiler",
+ "svelte_sourcemap",
 ]
 
 [[package]]
@@ -1261,6 +1262,7 @@ dependencies = [
  "oxc_parser",
  "oxc_span",
  "oxc_syntax",
+ "svelte_span",
 ]
 
 [[package]]
@@ -1282,6 +1284,7 @@ dependencies = [
  "svelte_ast_builder",
  "svelte_component_semantics",
  "svelte_parser",
+ "svelte_sourcemap",
  "svelte_span",
  "svelte_transform",
  "svelte_types",
@@ -1300,6 +1303,7 @@ dependencies = [
  "svelte_codegen_client",
  "svelte_diagnostics",
  "svelte_parser",
+ "svelte_sourcemap",
  "svelte_span",
  "svelte_transform",
  "svelte_transform_css",
@@ -1328,10 +1332,12 @@ name = "svelte_css"
 version = "0.0.0"
 dependencies = [
  "compact_str",
+ "memchr",
  "pretty_assertions",
  "rustc-hash",
  "smallvec",
  "svelte_diagnostics",
+ "svelte_sourcemap",
  "svelte_span",
 ]
 
@@ -1351,6 +1357,7 @@ dependencies = [
  "memchr",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_ast_visit",
  "oxc_estree",
  "oxc_parser",
  "oxc_span",
@@ -1361,6 +1368,13 @@ dependencies = [
  "svelte_css",
  "svelte_diagnostics",
  "svelte_span",
+]
+
+[[package]]
+name = "svelte_sourcemap"
+version = "0.1.0"
+dependencies = [
+ "oxc_sourcemap",
 ]
 
 [[package]]
@@ -1400,6 +1414,7 @@ dependencies = [
  "compact_str",
  "rustc-hash",
  "svelte_css",
+ "svelte_sourcemap",
  "svelte_span",
 ]
 
@@ -1410,6 +1425,7 @@ dependencies = [
  "oxc_allocator",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_sourcemap",
  "svelte_span",
 ]
 

@@ -5,12 +5,14 @@ mod script;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
-use oxc_codegen::Codegen;
-use oxc_span::{GetSpanMut, Span};
+use oxc_codegen::{Codegen, CodegenOptions as OxcCodegenOptions};
+use oxc_span::Span;
+use std::path::PathBuf;
 
 use svelte_analyze::AnalysisData;
 use svelte_ast::{Attribute, Node};
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
+use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
 
 use context::Ctx;
@@ -20,7 +22,7 @@ pub fn generate<'a>(
     options: &svelte_types::CodegenOptions,
     transform_data: TransformData,
     css_text: Option<&str>,
-) -> String {
+) -> JsOutput {
     let alloc = compile_ctx.alloc;
     let component = compile_ctx.component;
     let analysis = compile_ctx.analysis;
@@ -34,16 +36,13 @@ pub fn generate<'a>(
     let needs_ownership_validator =
         script_output.needs_ownership_validator || analysis.output.needs_component_bind_ownership;
     let mut script_comments = script_output.comments;
-    let mut script_source_text = script_output.source_text;
-    let mut script_span_end = script_output.program_span_end;
 
     let mut module_imports: Vec<Statement<'_>> = Vec::new();
     let mut module_body: Vec<Statement<'_>> = Vec::new();
-    if let Some(module_script) = component.module_script.as_ref()
+    if component.module_script.is_some()
         && let Some(program) = ctx.state.parsed.module_program.take()
     {
-        let module_source = component.source_text(module_script.content_span);
-        let mut module_output = script::transform_component_module_program(
+        let module_output = script::transform_component_module_program(
             alloc,
             program,
             Some(analysis),
@@ -52,26 +51,9 @@ pub fn generate<'a>(
             ctx.state.line_index,
         );
 
-        if script_source_text.is_empty() {
-            script_comments = module_output.comments;
-            script_source_text = module_output.source_text;
-            script_span_end = module_output.program_span_end;
-            module_imports = module_output.imports;
-            module_body = module_output.body;
-        } else {
-            let module_offset = script_span_end + 1;
-            shift_statement_spans(&mut module_output.imports, module_offset);
-            shift_statement_spans(&mut module_output.body, module_offset);
-            shift_comments(&mut module_output.comments, module_offset);
-
-            let combined_source =
-                alloc.alloc_str(&format!("{script_source_text}\n{module_source}"));
-            script_source_text = combined_source;
-            script_span_end = module_offset + module_output.program_span_end;
-            script_comments.extend(module_output.comments);
-            module_imports = module_output.imports;
-            module_body = module_output.body;
-        }
+        script_comments.extend(module_output.comments);
+        module_imports = module_output.imports;
+        module_body = module_output.body;
     }
 
     let codegen_result = codegen::codegen_root_fragment(&mut ctx).expect("codegen failed");
@@ -392,11 +374,12 @@ pub fn generate<'a>(
         b.params(["$$anchor"])
     };
 
-    let body_span = if script_span_end > 0 {
-        Span::new(0, script_span_end + 1)
-    } else {
-        Span::default()
-    };
+    let body_span = component
+        .instance_script
+        .as_ref()
+        .or(component.module_script.as_ref())
+        .map(|s| Span::new(s.content_span.start, s.content_span.end))
+        .unwrap_or_default();
     let fn_decl = b.function_decl(b.bid(ctx.state.name), fn_body, fn_params, body_span);
     let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
         b.alloc(fn_decl),
@@ -465,29 +448,41 @@ pub fn generate<'a>(
         program_body.extend(ce_stmts);
     }
 
-    let program = ctx.b.program(
-        program_body,
-        script_comments,
-        script_source_text,
-        script_span_end,
-    );
+    let full_source: &'a str = component.source.as_str();
+    let span_end = full_source.len() as u32;
+    let program = ctx.b.program(program_body, script_comments, full_source, span_end);
 
-    Codegen::default().build(&program).code
+    build_codegen_output(
+        &program,
+        options.sourcemap_kind,
+        &options.filename,
+        full_source,
+    )
 }
 
-fn shift_statement_spans(stmts: &mut [Statement<'_>], offset: u32) {
-    for stmt in stmts {
-        let span = stmt.span_mut();
-        span.start += offset;
-        span.end += offset;
+fn build_codegen_output(
+    program: &oxc_ast::ast::Program<'_>,
+    kind: SourcemapKind,
+    filename: &str,
+    source_text: &str,
+) -> JsOutput {
+    if !kind.is_enabled() {
+        return JsOutput {
+            code: Codegen::default().build(program).code,
+            map: None,
+        };
     }
-}
-
-fn shift_comments(comments: &mut [oxc_ast::Comment], offset: u32) {
-    for comment in comments {
-        comment.span.start += offset;
-        comment.span.end += offset;
-        comment.attached_to += offset;
+    let cg_options = OxcCodegenOptions {
+        source_map_path: Some(PathBuf::from(filename)),
+        ..OxcCodegenOptions::default()
+    };
+    let ret = Codegen::default()
+        .with_options(cg_options)
+        .with_source_text(source_text)
+        .build(program);
+    JsOutput {
+        code: ret.code,
+        map: ret.map,
     }
 }
 
@@ -618,7 +613,10 @@ pub fn generate_module<'a>(
     analysis: &AnalysisData<'a>,
     line_index: &svelte_span::LineIndex,
     dev: bool,
-) -> String {
+    kind: SourcemapKind,
+    filename: &str,
+    source_text: &str,
+) -> JsOutput {
     let script_output = script::transform_module_program(
         alloc,
         program,
@@ -642,5 +640,5 @@ pub fn generate_module<'a>(
         script_output.source_text,
         script_output.program_span_end,
     );
-    Codegen::default().build(&program).code
+    build_codegen_output(&program, kind, filename, source_text)
 }

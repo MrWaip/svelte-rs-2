@@ -66,8 +66,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         });
         if has_fn_arg {
-            let start = (self.script_content_start + node.callee.span().start) as usize;
-            let end = (self.script_content_start + node.callee.span().end) as usize;
+            let start = (node.callee.span().start) as usize;
+            let end = (node.callee.span().end) as usize;
             if end <= self.component_source.len() {
                 let callee_text = &self.component_source[start..end];
                 self.next_arrow_name = Some(format!("{callee_text}(...)"));

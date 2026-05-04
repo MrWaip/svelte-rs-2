@@ -12,12 +12,10 @@ use crate::{AnalysisData, BindingSemantics};
 pub(super) fn validate(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StoreValidator {
         diags,
-        offset,
         data,
     };
     v.visit_program(program);
@@ -25,15 +23,14 @@ pub(super) fn validate(
 
 struct StoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     data: &'a AnalysisData<'a>,
 }
 
 impl StoreValidator<'_> {
     fn span(&self, oxc_span: oxc_span::Span) -> Span {
         Span {
-            start: oxc_span.start + self.offset,
-            end: oxc_span.end + self.offset,
+            start: oxc_span.start,
+            end: oxc_span.end,
         }
     }
 
@@ -66,12 +63,10 @@ impl StoreValidator<'_> {
 pub(super) fn validate_module(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = ModuleStoreValidator {
         diags,
-        offset,
         data,
     };
     v.visit_program(program);
@@ -80,12 +75,10 @@ pub(super) fn validate_module(
 pub(super) fn validate_standalone_module(
     data: &AnalysisData<'_>,
     program: &oxc_ast::ast::Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StandaloneModuleStoreValidator {
         diags,
-        offset,
         data,
         reported_bindings: FxHashSet::default(),
     };
@@ -94,13 +87,11 @@ pub(super) fn validate_standalone_module(
 
 struct ModuleStoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     data: &'a AnalysisData<'a>,
 }
 
 struct StandaloneModuleStoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     data: &'a AnalysisData<'a>,
     reported_bindings: FxHashSet<oxc_syntax::symbol::SymbolId>,
 }
@@ -108,8 +99,8 @@ struct StandaloneModuleStoreValidator<'a> {
 impl ModuleStoreValidator<'_> {
     fn span(&self, oxc_span: oxc_span::Span) -> Span {
         Span {
-            start: oxc_span.start + self.offset,
-            end: oxc_span.end + self.offset,
+            start: oxc_span.start,
+            end: oxc_span.end,
         }
     }
 }
@@ -117,8 +108,8 @@ impl ModuleStoreValidator<'_> {
 impl StandaloneModuleStoreValidator<'_> {
     fn span(&self, oxc_span: oxc_span::Span) -> Span {
         Span {
-            start: oxc_span.start + self.offset,
-            end: oxc_span.end + self.offset,
+            start: oxc_span.start,
+            end: oxc_span.end,
         }
     }
 }

@@ -606,8 +606,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 .ignore_query
                 .is_ignored_at_span(decl_span_start, "await_waterfall")
             {
-                let full_offset = self.script_content_start + init_span_start;
-                let (line, col) = self.component_line_index.line_col(full_offset);
+                let (line, col) = self.component_line_index.line_col(init_span_start);
                 let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
                 args.push(Arg::Expr(self.b.str_expr(&loc)));
             }

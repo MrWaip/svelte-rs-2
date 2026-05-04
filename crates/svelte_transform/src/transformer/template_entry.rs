@@ -47,7 +47,6 @@ pub(crate) fn run_template<'a, 'b>(
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source: "",
         component_line_index: line_index,
-        script_content_start: 0,
         filename: "",
         next_arrow_name: None,
         ident_counter: 0,

@@ -29,26 +29,23 @@ pub fn validate(
     diags: &mut Vec<Diagnostic>,
 ) {
     if let Some(program) = &parsed.program {
-        let offset = parsed.script_content_span.map_or(0, |s| s.start);
-        validate_program(data, program, offset, runes, diags);
-        runes::validate_invalid_exports(data, program, true, None, offset, diags);
-        validate_illegal_default_export(program, offset, diags);
+        validate_program(data, program, runes, diags);
+        runes::validate_invalid_exports(data, program, true, None, diags);
+        validate_illegal_default_export(program, diags);
     }
 
     validate_module_program(parsed, diags);
     if let Some(module_program) = &parsed.module_program {
-        let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
-        runes::validate_module_props_runes(data, module_program, offset, runes, diags);
+        runes::validate_module_props_runes(data, module_program, runes, diags);
         runes::validate_invalid_exports(
             data,
             module_program,
             false,
             data.scoping.module_scope_id(),
-            offset,
             diags,
         );
-        stores::validate_module(data, module_program, offset, diags);
-        validate_perf_class_warnings(module_program, offset, 0, diags);
+        stores::validate_module(data, module_program, diags);
+        validate_perf_class_warnings(module_program, 0, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, parsed, diags);
@@ -74,15 +71,14 @@ fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<D
 pub fn validate_program(
     data: &AnalysisData,
     program: &Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    legacy::validate_legacy_diagnostics(data, program, offset, runes, diags);
-    runes::validate(data, program, offset, runes, diags);
-    stores::validate(data, program, offset, diags);
-    validate_perf_class_warnings(program, offset, 1, diags);
-    experimental_async::validate_instance_program(data, program, offset, diags);
+    legacy::validate_legacy_diagnostics(data, program, runes, diags);
+    runes::validate(data, program, runes, diags);
+    stores::validate(data, program, diags);
+    validate_perf_class_warnings(program, 1, diags);
+    experimental_async::validate_instance_program(data, program, diags);
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
@@ -92,32 +88,28 @@ pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
 pub fn validate_standalone_module(
     data: &AnalysisData,
     program: &Program<'_>,
-    offset: u32,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    runes::validate(data, program, offset, runes, diags);
+    runes::validate(data, program, runes, diags);
     runes::validate_invalid_exports(
         data,
         program,
         true,
         Some(data.scoping.root_scope_id()),
-        offset,
         diags,
     );
-    stores::validate_standalone_module(data, program, offset, diags);
-    validate_perf_class_warnings(program, offset, 0, diags);
+    stores::validate_standalone_module(data, program, diags);
+    validate_perf_class_warnings(program, 0, diags);
 }
 
 fn validate_perf_class_warnings(
     program: &Program<'_>,
-    offset: u32,
     base_function_depth: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut visitor = PerfClassWarningValidator {
         diags,
-        offset,
         base_function_depth,
         function_depth: base_function_depth,
     };
@@ -126,14 +118,13 @@ fn validate_perf_class_warnings(
 
 struct PerfClassWarningValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    offset: u32,
     base_function_depth: u32,
     function_depth: u32,
 }
 
 impl PerfClassWarningValidator<'_> {
     fn span(&self, span: oxc_span::Span) -> Span {
-        Span::new(span.start + self.offset, span.end + self.offset)
+        Span::new(span.start, span.end)
     }
 }
 
@@ -185,12 +176,11 @@ fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };
-    validate_illegal_default_export(module_program, 0, diags);
+    validate_illegal_default_export(module_program, diags);
 }
 
 fn validate_illegal_default_export(
     program: &Program<'_>,
-    offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
     for stmt in &program.body {
@@ -198,7 +188,7 @@ fn validate_illegal_default_export(
             Statement::ExportDefaultDeclaration(export) => {
                 diags.push(Diagnostic::error(
                     DiagnosticKind::ModuleIllegalDefaultExport,
-                    Span::new(export.span.start + offset, export.span.end + offset),
+                    Span::new(export.span.start, export.span.end),
                 ));
             }
             Statement::ExportNamedDeclaration(export)
@@ -206,7 +196,7 @@ fn validate_illegal_default_export(
             {
                 diags.push(Diagnostic::error(
                     DiagnosticKind::ModuleIllegalDefaultExport,
-                    Span::new(export.span.start + offset, export.span.end + offset),
+                    Span::new(export.span.start, export.span.end),
                 ));
             }
             _ => {}

@@ -143,7 +143,7 @@ fn parse_binding_pattern<'a>(
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
-    if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_source, typescript) {
+    if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_source, span.start, typescript) {
         result.alloc_stmt(span.start, stmt);
     }
 }
@@ -264,7 +264,9 @@ fn walk_node<'a>(
                 let ctx_span = r.span;
                 let ctx_text = component.source_text(ctx_span);
                 let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
-                if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                if let Some(stmt) =
+                    parse_each_context_with_alloc(alloc, arena_ctx, ctx_span.start, typescript)
+                {
                     result.alloc_stmt(ctx_span.start, stmt);
                 }
             }
@@ -273,7 +275,7 @@ fn walk_node<'a>(
                 let idx_span = r.span;
                 let idx_text = component.source_text(idx_span);
                 let arena_idx: &'a str = alloc.alloc_str(idx_text);
-                if let Some(stmt) = parse_each_index_with_alloc(alloc, arena_idx) {
+                if let Some(stmt) = parse_each_index_with_alloc(alloc, arena_idx, idx_span.start) {
                     result.alloc_stmt(idx_span.start, stmt);
                 }
             }
@@ -289,7 +291,9 @@ fn walk_node<'a>(
         Node::SnippetBlock(block) => {
             let expr_text = component.source_text(block.decl.span);
             let arena_text: &'a str = alloc.alloc_str(expr_text);
-            if let Some(stmt) = parse_snippet_decl_with_alloc(alloc, arena_text, typescript) {
+            if let Some(stmt) =
+                parse_snippet_decl_with_alloc(alloc, arena_text, block.decl.span.start, typescript)
+            {
                 result.alloc_stmt(block.decl.span.start, stmt);
             }
             walk_fragment(

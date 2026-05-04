@@ -34,6 +34,7 @@ svelte_component_semantics = { path = "crates/svelte_component_semantics" }
 svelte_types = { path = "crates/svelte_types" }
 svelte_transform_css = { path = "crates/svelte_transform_css" }
 svelte_css = { path = "crates/svelte_css" }
+svelte_sourcemap = { path = "crates/svelte_sourcemap" }
 napi_compiler = { path = "crates/napi_compiler" }
 
 compact_str = "0.9.0"
@@ -47,6 +48,7 @@ oxc_parser = "0.117.0"
 oxc_semantic = "0.117.0"
 oxc_syntax = "0.117.0"
 oxc_span = "0.117.0"
+oxc_sourcemap = "6.0.2"
 oxc_transformer = "0.117.0"
 oxc_traverse = "0.117.0"
 pretty_assertions = "1.4.1"

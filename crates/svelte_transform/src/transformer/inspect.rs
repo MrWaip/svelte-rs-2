@@ -78,8 +78,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             dummy.into_expression()
         } else {
             let func_name = info.name.as_deref().unwrap_or("trace");
-            let full_offset = self.script_content_start + info.span_start;
-            let (line, col) = self.component_line_index.line_col(full_offset);
+            let (line, col) = self.component_line_index.line_col(info.span_start);
             let sanitized = sanitize_location(self.filename);
             let label = format!("{func_name} ({sanitized}:{line}:{col})");
             self.b.str_expr(&label)

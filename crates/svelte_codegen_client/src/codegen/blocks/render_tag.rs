@@ -76,9 +76,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let arguments = unboxed.arguments;
 
         let tag = self.ctx.render_tag(id);
-        let full_source = self.ctx.query.component.source_text(tag.expression.span);
-        let callee_text: &'a str =
-            &full_source[callee_span.start as usize..callee_span.end as usize];
+        let callee_text: &'a str = self
+            .ctx
+            .query
+            .component
+            .source_text(svelte_span::Span::new(callee_span.start, callee_span.end));
 
         let anchor_name = if is_standalone { "$$anchor" } else { "node" };
         let mut sync_memo_count: u32 = 0;

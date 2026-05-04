@@ -103,7 +103,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let handler =
             self.build_event_handler_s5(attr_id, expr, has_call, &mut state.init, expr_offset);
-        let handler = self.dev_event_handler(attr_id, handler, &event_name, expr_offset)?;
+        let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
         match mode {
             EventHandlerMode::Delegated { passive } => {
