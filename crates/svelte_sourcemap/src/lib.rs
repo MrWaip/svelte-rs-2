@@ -48,11 +48,6 @@ impl<'a> Sourcemap<'a> {
         self
     }
 
-    pub fn set_sources(&mut self, sources: &[&str]) -> &mut Self {
-        self.map.set_sources(sources.iter().copied());
-        self
-    }
-
     pub fn to_inline_comment(&self) -> String {
         format!("\n/*# sourceMappingURL={} */", self.map.to_data_url())
     }
@@ -63,36 +58,40 @@ impl<'a> Sourcemap<'a> {
 }
 
 pub fn get_basename(filename: &str) -> &str {
-    let bytes = filename.as_bytes();
-    let mut last_sep = None;
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'/' || b == b'\\' {
-            last_sep = Some(i);
-        }
-    }
-    match last_sep {
-        Some(i) => &filename[i + 1..],
-        None => filename,
-    }
+    filename
+        .rsplit_once(['/', '\\'])
+        .map_or(filename, |(_, base)| base)
 }
 
 pub fn get_relative_path(from: &str, to: &str) -> String {
-    let split = |s: &str| -> Vec<String> { s.split(['/', '\\']).map(str::to_string).collect() };
-    let mut from_parts = split(from);
-    let mut to_parts = split(to);
-    from_parts.pop();
-    while !from_parts.is_empty() && !to_parts.is_empty() && from_parts[0] == to_parts[0] {
-        from_parts.remove(0);
-        to_parts.remove(0);
-    }
-    if !from_parts.is_empty() {
-        let ups: Vec<&str> = from_parts.iter().map(|_| "..").collect();
-        let mut joined = ups;
-        let to_refs: Vec<&str> = to_parts.iter().map(String::as_str).collect();
-        joined.extend(to_refs);
-        joined.join("/")
+    let from_parts: Vec<&str> = from.split(['/', '\\']).collect();
+    let to_parts: Vec<&str> = to.split(['/', '\\']).collect();
+    let from_dirs = &from_parts[..from_parts.len().saturating_sub(1)];
+
+    let common = from_dirs
+        .iter()
+        .zip(to_parts.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    let ups = from_dirs.len() - common;
+    let tail = &to_parts[common..];
+
+    if ups == 0 {
+        let mut out = String::with_capacity(2 + tail.iter().map(|s| s.len() + 1).sum::<usize>());
+        out.push_str("./");
+        for (i, part) in tail.iter().enumerate() {
+            if i > 0 {
+                out.push('/');
+            }
+            out.push_str(part);
+        }
+        out
     } else {
-        format!("./{}", to_parts.join("/"))
+        let mut parts: Vec<&str> = Vec::with_capacity(ups + tail.len());
+        parts.extend(std::iter::repeat_n("..", ups));
+        parts.extend_from_slice(tail);
+        parts.join("/")
     }
 }
 

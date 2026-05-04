@@ -2,7 +2,7 @@ use napi_derive::napi;
 use svelte_compiler::{
     CompileOptions, CompileResult, CssMode, GenerateMode, ModuleCompileOptions, Namespace,
 };
-use svelte_diagnostics::LineIndex;
+use svelte_diagnostics::{Diagnostic, LineIndex};
 
 #[napi(object)]
 pub struct NativeDiagnostic {
@@ -70,7 +70,7 @@ pub struct NativeModuleCompileOptions {
 #[napi]
 pub fn compile(source: String, options: Option<NativeCompileOptions>) -> NativeCompileResult {
     let options = to_compile_options(options.unwrap_or_default());
-    let result = svelte_compiler::compile(&source, &options);
+    let result = catch_compile(|| svelte_compiler::compile(&source, &options));
     to_node_result(result, &source)
 }
 
@@ -80,8 +80,32 @@ pub fn compile_module(
     options: Option<NativeModuleCompileOptions>,
 ) -> NativeCompileResult {
     let options = to_module_compile_options(options.unwrap_or_default());
-    let result = svelte_compiler::compile_module(&source, &options);
+    let result = catch_compile(|| svelte_compiler::compile_module(&source, &options));
     to_node_result(result, &source)
+}
+
+fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = panic_message(&payload);
+            CompileResult {
+                js: None,
+                css: None,
+                diagnostics: vec![Diagnostic::internal_error(message)],
+            }
+        }
+    }
+}
+
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else {
+        "unknown internal error".to_string()
+    }
 }
 
 fn to_compile_options(native: NativeCompileOptions) -> CompileOptions {

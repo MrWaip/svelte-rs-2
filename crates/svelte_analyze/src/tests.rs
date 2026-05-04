@@ -2120,22 +2120,12 @@ fn script_rune_calls_keep_module_and_instance_programs_distinct() {
 </script>"#;
     let (component, data, parsed) = analyze_source_with_parsed(source);
 
-    let module_source = component.source_text(
-        parsed
-            .module_script_content_span
-            .unwrap_or_else(|| panic!("missing module script span")),
-    );
-    let instance_source = component.source_text(
-        parsed
-            .script_content_span
-            .unwrap_or_else(|| panic!("missing instance script span")),
-    );
     let module_call = find_call_node_id(
         parsed
             .module_program
             .as_ref()
             .unwrap_or_else(|| panic!("missing module program")),
-        module_source,
+        &component.source,
         "$effect.root(() => {})",
     )
     .unwrap_or_else(|| panic!("missing module rune call"));
@@ -2144,7 +2134,7 @@ fn script_rune_calls_keep_module_and_instance_programs_distinct() {
             .program
             .as_ref()
             .unwrap_or_else(|| panic!("missing instance program")),
-        instance_source,
+        &component.source,
         "$state(0)",
     )
     .unwrap_or_else(|| panic!("missing instance rune call"));
@@ -2176,19 +2166,15 @@ fn script_rune_calls_survive_template_node_id_activity() {
 {@html html}"#;
     let (component, data, parsed) = analyze_source_with_parsed(source);
 
-    let module_source =
-        component.source_text(parsed.module_script_content_span.expect("test invariant"));
-    let instance_source =
-        component.source_text(parsed.script_content_span.expect("test invariant"));
     let module_call = find_call_node_id(
         parsed.module_program.as_ref().expect("test invariant"),
-        module_source,
+        &component.source,
         "$effect.root(() => {})",
     )
     .expect("missing module rune call");
     let instance_call = find_call_node_id(
         parsed.program.as_ref().expect("test invariant"),
-        instance_source,
+        &component.source,
         "$state(0)",
     )
     .expect("missing instance rune call");

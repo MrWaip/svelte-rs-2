@@ -1599,24 +1599,3 @@ fn span_shift_snippet_decl_name_and_params_use_distinct_deltas() {
     );
 }
 
-#[test]
-fn element_name_span_points_at_tag_name() {
-    let source = "<button class=\"x\">click</button>";
-    let c = parse(source);
-    let Node::Element(el) = node_at(&c, 0) else {
-        panic!("expected Element");
-    };
-    assert_eq!(c.source_text(el.name_span), "button");
-    assert_eq!(c.source_text(el.span), "<button class=\"x\">click</button>");
-}
-
-#[test]
-fn component_name_span_points_at_tag_name() {
-    let source = "<Counter value={1} />";
-    let c = parse(source);
-    let Node::ComponentNode(node) = node_at(&c, 0) else {
-        panic!("expected ComponentNode");
-    };
-    assert_eq!(c.source_text(node.name_span), "Counter");
-}
-

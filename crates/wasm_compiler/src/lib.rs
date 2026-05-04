@@ -4,7 +4,7 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde::Serialize;
 use svelte_compiler::{CompileOptions, CompileResult, ModuleCompileOptions};
-use svelte_diagnostics::LineIndex;
+use svelte_diagnostics::{Diagnostic, LineIndex};
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
@@ -103,7 +103,7 @@ impl WasmCompiler {
         } else {
             serde_wasm_bindgen::from_value(options)?
         };
-        let result = svelte_compiler::compile(source, &opts);
+        let result = catch_compile(|| svelte_compiler::compile(source, &opts));
         serde_wasm_bindgen::to_value(&to_wasm_result(result, source))
     }
 
@@ -118,7 +118,7 @@ impl WasmCompiler {
         } else {
             serde_wasm_bindgen::from_value(options)?
         };
-        let result = svelte_compiler::compile_module(source, &opts);
+        let result = catch_compile(|| svelte_compiler::compile_module(source, &opts));
         serde_wasm_bindgen::to_value(&to_wasm_result(result, source))
     }
 
@@ -134,5 +134,25 @@ impl WasmCompiler {
     pub fn format_css(&self, source: &str) -> String {
         let (stylesheet, _diags) = svelte_css::parse(source);
         svelte_css::Printer::print(&stylesheet, source)
+    }
+}
+
+fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown internal error".to_string()
+            };
+            CompileResult {
+                js: None,
+                css: None,
+                diagnostics: vec![Diagnostic::internal_error(message)],
+            }
+        }
     }
 }

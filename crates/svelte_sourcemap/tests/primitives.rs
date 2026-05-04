@@ -33,15 +33,6 @@ fn set_source_name_writes_file_and_sources() {
 }
 
 #[test]
-fn set_sources_overrides_explicit_list() {
-    let mut sm = Sourcemap::new(empty_map(), "src");
-    sm.set_sources(&["input.svelte.js"]);
-    let map = sm.into_inner();
-    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
-    assert_eq!(sources, vec!["input.svelte.js"]);
-}
-
-#[test]
 fn to_inline_comment_starts_with_known_prefix() {
     let sm = Sourcemap::new(empty_map(), "src");
     let comment = sm.to_inline_comment();

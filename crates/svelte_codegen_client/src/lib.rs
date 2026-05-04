@@ -377,6 +377,7 @@ pub fn generate<'a>(
     let body_span = component
         .instance_script
         .as_ref()
+        .or(component.module_script.as_ref())
         .map(|s| Span::new(s.content_span.start, s.content_span.end))
         .unwrap_or_default();
     let fn_decl = b.function_decl(b.bid(ctx.state.name), fn_body, fn_params, body_span);

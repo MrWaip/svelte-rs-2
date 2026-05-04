@@ -129,7 +129,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         warning_filter: None,
     };
 
-    let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let (js, css, analyze_diags) = {
         let (mut analysis, mut parsed, mut analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
 
@@ -173,11 +173,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                     css_text = Some(compacted);
                 } else {
                     css_text = Some(raw_css);
-                    css_map = Some(sourcemap_finalize::finalize_css(
-                        raw_map,
-                        options.css_output_filename.as_deref(),
-                        &options.filename,
-                    ));
+                    let target = options
+                        .css_output_filename
+                        .as_deref()
+                        .unwrap_or(&options.filename);
+                    css_map = Some(sourcemap_finalize::finalize_css(raw_map, target));
                 }
             } else {
                 let raw_css = svelte_transform_css::transform_css_with_usage(
@@ -215,8 +215,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
         if has_errors {
-            return (None, css, analyze_diags);
-        }
+            (None, css, analyze_diags)
+        } else {
 
         let mut ident_gen =
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
@@ -258,32 +258,16 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             injected_css_text.as_deref(),
         );
         (Some(js), css, analyze_diags)
-    }));
+        }
+    };
 
-    match codegen_result {
-        Ok((js, css, analyze_diags)) => {
-            diagnostics.extend(analyze_diags);
-            CompileResult {
-                js: js.map(|out| sourcemap_finalize::finalize_js(out, options, source)),
-                css,
-                diagnostics,
-            }
-        }
-        Err(panic_payload) => {
-            let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "unknown internal error".to_string()
-            };
-            diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult {
-                js: None,
-                css: None,
-                diagnostics,
-            }
-        }
+    diagnostics.extend(analyze_diags);
+    let source_name =
+        svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
+    CompileResult {
+        js: js.map(|out| sourcemap_finalize::finalize_js(out, source, &source_name)),
+        css,
+        diagnostics,
     }
 }
 
@@ -293,7 +277,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
 
     let js_alloc = oxc_allocator::Allocator::default();
 
-    let (analysis, mut parsed, mut diagnostics) =
+    let (analysis, mut parsed, diagnostics) =
         svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
 
     if options.generate == GenerateMode::False
@@ -315,44 +299,26 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let line_index = svelte_span::LineIndex::new(source);
     let kind = options.sourcemap_kind;
     let filename = options.filename.clone();
-    let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        svelte_codegen_client::generate_module(
-            &js_alloc,
-            program,
-            &analysis,
-            &line_index,
-            dev,
-            kind,
-            &filename,
-            source,
-        )
-    }));
+    let js = svelte_codegen_client::generate_module(
+        &js_alloc,
+        program,
+        &analysis,
+        &line_index,
+        dev,
+        kind,
+        &filename,
+        source,
+    );
 
-    match codegen_result {
-        Ok(js) => CompileResult {
-            js: Some(sourcemap_finalize::finalize_module_js(
-                js,
-                &options.filename,
-                source,
-            )),
-            css: None,
-            diagnostics,
-        },
-        Err(panic_payload) => {
-            let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "unknown internal error".to_string()
-            };
-            diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult {
-                js: None,
-                css: None,
-                diagnostics,
-            }
-        }
+    let source_name = if filename.is_empty() || filename == "(unknown)" {
+        "input.svelte.js".to_string()
+    } else {
+        svelte_sourcemap::get_basename(&filename).to_string()
+    };
+    CompileResult {
+        js: Some(sourcemap_finalize::finalize_js(js, source, &source_name)),
+        css: None,
+        diagnostics,
     }
 }
 
