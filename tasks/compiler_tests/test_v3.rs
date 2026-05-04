@@ -3375,6 +3375,11 @@ fn component_dev_default_children_wrap_snippet() {
 }
 
 #[rstest]
+fn component_dev_named_slot_no_wrap_snippet() {
+    assert_compiler("component_dev_named_slot_no_wrap_snippet");
+}
+
+#[rstest]
 #[ignore = "diagnose: pending fix"]
 fn diagnose_dev_benchmark() {
     assert_compiler("diagnose_dev_benchmark");

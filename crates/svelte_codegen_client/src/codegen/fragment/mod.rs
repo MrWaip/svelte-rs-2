@@ -28,7 +28,6 @@ fn role_needs_text_first_next(role: FragmentRole) -> bool {
             | FragmentRole::EachFallback
             | FragmentRole::SnippetBody
             | FragmentRole::ComponentChildren
-            | FragmentRole::NamedSlot
             | FragmentRole::SvelteBoundaryBody
     )
 }
