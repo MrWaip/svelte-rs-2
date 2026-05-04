@@ -1,7 +1,7 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 4/11 use cases
+- **Working**: 5/11 use cases
 - **Tests**: 1/5 green
 - Last updated: 2026-05-04
 
@@ -13,7 +13,7 @@
 
 ## Use cases
 
-- [ ] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none
+- [x] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none — closed 2026-05-04: implemented in `crates/svelte_transform/src/transformer/equals.rs`, wired into `exit_expression` (script) and `rewrite_template_exit` (template) under `dev` gate; covered by `dev_binary_equals_wrap` (`==`, `===`, `!=`, `!==`)
 - [ ] `$props()` source-line argument passed to `$.prop($$props, ..., flags, default)` and the location array passed to `$.add_locations(..., [[line, col], ...])` are off (props lines off by 4, `<svelte:head>` array contains a phantom head-root entry, named-slot inner element location dropped to `[]`); layer: codegen; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: source-maps.md, props-bindable.md, element.md, legacy-slots.md; suggested spec: none
 - [ ] Dev-mode named-slot child arrow on a static component is incorrectly wrapped with `$.wrap_snippet(App, ($$anchor, $$slotProps) => { ... })`; reference emits the bare arrow for `$$slots: { footer: ($$anchor, $$slotProps) => { ... } }` and only wraps the synthesized default-children entry. Inverse of `component_dev_default_children_wrap_snippet`; layer: transform; repro/test: diagnose_dev_benchmark, diagnose_runes_dev_ce_benchmark; candidate specs: legacy-slots.md, component-node.md; suggested spec: legacy-slots.md
 - [ ] `$state.raw({...})` declarator in a script that combines `$props()` rest, dev mode, and `customElement: true` is emitted as a plain object literal instead of `$.tag($.state({...}), "name")`, and the corresponding `$state.snapshot(rawData)` reads `rawData` directly instead of `$.get(rawData)`; not reproducible in isolation, only in the combined benchmark; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: state-rune.md, custom-elements.md; suggested spec: state-rune.md

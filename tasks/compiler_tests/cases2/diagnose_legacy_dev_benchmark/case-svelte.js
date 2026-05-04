@@ -202,13 +202,13 @@ export default function App($$anchor, $$props) {
 	}
 	let promise = Promise.resolve(42);
 	var $$exports = {
+		...$.legacy_api(),
 		get APP_VERSION() {
 			return APP_VERSION;
 		},
 		get formatTitle() {
 			return formatTitle;
-		},
-		...$.legacy_api()
+		}
 	};
 	$.init();
 	var div_1 = root();

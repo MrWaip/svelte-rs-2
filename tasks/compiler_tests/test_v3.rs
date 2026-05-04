@@ -3380,3 +3380,8 @@ fn component_dev_default_children_wrap_snippet() {
 fn diagnose_dev_benchmark() {
     assert_compiler("diagnose_dev_benchmark");
 }
+
+#[rstest]
+fn dev_binary_equals_wrap() {
+    assert_compiler("dev_binary_equals_wrap");
+}

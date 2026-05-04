@@ -3,6 +3,7 @@ mod async_check;
 mod builders;
 mod derived;
 mod entry;
+mod equals;
 mod inspect;
 pub(crate) mod legacy_reactive;
 mod location;
@@ -368,6 +369,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
                 return;
             }
             self.rewrite_dev_await_tracking(node);
+            equals::wrap_binary_equals_dev(self.b, node);
         }
     }
 }
