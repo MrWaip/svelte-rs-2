@@ -1,8 +1,8 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 5/11 use cases
-- **Tests**: 1/5 green
+- **Working**: 6/11 use cases
+- **Tests**: 2/5 green
 - Last updated: 2026-05-04
 
 ## Source
@@ -22,7 +22,7 @@
 - [x] CSS pipeline emits stylesheet content (the value of `$$css.code`) collapsed onto a single line; reference compiler preserves original source whitespace and comment markers; layer: css-pipeline; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md` — closed 2026-05-04 by project decision: whitespace inside `$$css.code` is intentionally not part of our contract (matches `css-pipeline.md:15`). Reference preserves whitespace as side effect of `MagicString` in-place rewrites; we serialize from CSS AST. Byte-for-byte parity in injected CSS is explicitly out of scope
 - [ ] Instance-script leading JSDoc / line comments on simple declarations (e.g. `/** @type {Function | undefined} */ let show;`) are stripped during script lowering; reference retains them; layer: codegen/script; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: none specifically for comment retention; suggested spec: none — needs new comment-retention spec or extend script lowering doc
 - [x] `validate_options_custom_element_warns_without_compiler_flag` diagnostic emits span 0..0 instead of spanning the `customElement` option attribute as reference does; layer: analyze (validate); repro/test: `validate_options_custom_element_warns_without_compiler_flag`; candidate specs: `diagnostics-infrastructure.md`, `custom-elements.md`; suggested spec: `diagnostics-infrastructure.md` — closed 2026-05-04: `crates/svelte_analyze/src/validate/mod.rs:410-423` builds the warning via `attr.span()`, diagnostic now produces span `16..37` matching reference
-- [ ] `script-tag-with-script-wrapper` — template-level `<script>` element is not wrapped via `$.with_script(...)` and the closing `<!>` anchor is absent from our `from_html` template. Reference: `phases/3-transform/client/transform-template/index.js:47-55` wraps the builder call when `state.template.contains_script_tag` is true; `phases/3-transform/client/transform-template/template.js:12` documents `create_fragment_with_script_from_html` rationale. Repro/test: `preserve_whitespace_script_element` (currently `#[ignore]`); layer: codegen template-builder; suggested spec: new `script-template-emission.md` once audited.
+- [x] `script-tag-with-script-wrapper` — template-level `<script>` element is not wrapped via `$.with_script(...)` and the closing `<!>` anchor is absent from our `from_html` template. Reference: `phases/3-transform/client/transform-template/index.js:47-55` wraps the builder call when `state.template.contains_script_tag` is true; `phases/3-transform/client/transform-template/template.js:12` documents `create_fragment_with_script_from_html` rationale. Repro/test: `preserve_whitespace_script_element` (currently `#[ignore]`); layer: codegen template-builder; suggested spec: new `script-template-emission.md` once audited — closed 2026-05-04: `containers/element.rs` pushes `<!>` after `<script>` pop_element; `fragment/mod.rs::finalize_root_template` wraps `from_html(...)` in `$.with_script(...)` when `contains_script_tag`; ignore removed from `preserve_whitespace_script_element`.
 - [ ] In non-runes mode (`runes:false`), `let x = $derived(expr)` raises `rune_invalid_usage` and aborts JS emission, while reference compiler tolerates `$derived(...)` (and other rune-shaped calls) by falling back to legacy store-subscription codegen — `$derived(expr)` lowers to `$derived()(expr)` where `$derived` is treated as a `$store` getter. Whole component cannot be compiled in legacy+dev mode because the analyzer hard-errors on the first declarator. First diverging diagnostic: `RuneInvalidUsage { rune: "$derived" }` from `crates/svelte_analyze/src/validate/runes.rs:744`. Other runes used in the repro (`$state`, `$state.raw`, `$props`, `$effect`, `$inspect`, `$bindable`) currently do not trigger this analyzer branch in legacy mode but would still need legacy lowering once the hard error is removed. Layer: analyze (validate/runes); repro/test: `diagnose_legacy_dev_benchmark`; candidate specs: `derived-state.md` (claims `[x] rune_invalid_usage in non-runes mode` but reference does not emit it), `legacy-reactivity-system.md`, `store-subscriptions.md`; suggested spec: `legacy-reactivity-system.md` (cross-cutting rune-vs-store fallback in legacy mode).
 
 ## Out of scope
@@ -52,5 +52,5 @@
 - [ ] `diagnose_runes_dev_ce_benchmark`
 - [ ] `diagnose_dev_benchmark`
 - [x] `module_dev_console_log_wrap`
-- [ ] `preserve_whitespace_script_element`
+- [x] `preserve_whitespace_script_element`
 - [ ] `diagnose_legacy_dev_benchmark`

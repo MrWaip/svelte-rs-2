@@ -684,6 +684,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 (StrategyKind::SingleElement, false) => b.call_expr(from_fn, [Arg::Expr(tpl_expr)]),
             }
         };
+        if state.template.contains_script_tag {
+            from_html = self
+                .ctx
+                .state
+                .b
+                .call_expr("$.with_script", [Arg::Expr(from_html)]);
+        }
         if self.ctx.state.dev
             && let Some(locs) = self.build_template_locations(fragment_id)
         {

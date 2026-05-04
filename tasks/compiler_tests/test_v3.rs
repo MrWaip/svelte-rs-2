@@ -1908,7 +1908,6 @@ fn preserve_whitespace_inner_trailing_text() {
 }
 
 #[rstest]
-#[ignore = "missing: <script> child element must force preserve_whitespace=true (codegen)"]
 fn preserve_whitespace_script_element() {
     assert_compiler("preserve_whitespace_script_element");
 }

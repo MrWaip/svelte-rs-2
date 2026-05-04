@@ -176,6 +176,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         state.template.pop_element();
 
+        if el_name_hint == "script" {
+            state.template.push_comment(None);
+        }
+
         Ok(el_name)
     }
 
