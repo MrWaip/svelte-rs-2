@@ -270,7 +270,7 @@ pub fn generate<'a>(
             let legacy_call = ctx
                 .b
                 .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
-            export_props.push(ObjProp::Spread(legacy_call));
+            export_props.insert(0, ObjProp::Spread(legacy_call));
         }
 
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));

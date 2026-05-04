@@ -282,7 +282,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
-                self.rewrite_prop_member_assignment(node, is_expr_stmt)
+                self.rewrite_prop_member_assignment(node, is_expr_stmt, ctx)
             }
             ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
                 self.rewrite_legacy_each_item_member_assignment(node, item_sym, ctx)

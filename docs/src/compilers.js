@@ -170,8 +170,8 @@ export function compileRust(source, mode, options) {
     if (error) {
         return { ok: false, error, js: "// compilation failed", diagnostics: [], ms };
     }
-    const css = result?.css ?? null;
-    const js = result?.js ?? "// no output";
+    const css = result?.css?.code ?? null;
+    const js = result?.js?.code ?? result?.js ?? "// no output";
     const formatted = joinJsCss(formatJs(js), css);
     return {
         ok: true,

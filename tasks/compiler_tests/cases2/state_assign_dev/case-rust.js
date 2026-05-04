@@ -11,13 +11,13 @@ export default function App($$anchor, $$props) {
 		map: null
 	}), "obj");
 	// Non-statement assignment — should use $.assign_nullish in dev
-	$.assign_nullish(obj, "items", [], "(unknown):5:2").push(1);
+	$.assign(obj, "items", "??=", () => [], "(unknown):5:2").push(1);
 	// Non-statement assignment — should use $.assign in dev
-	$.assign(obj, "data", [], "(unknown):8:2").push(2);
+	$.assign(obj, "data", "=", [], "(unknown):8:2").push(2);
 	// Non-statement — $.assign_and
-	$.assign_and(obj, "list", [], "(unknown):11:2").length;
+	$.assign(obj, "list", "&&=", () => [], "(unknown):11:2").length;
 	// Non-statement — $.assign_or
-	$.assign_or(obj, "map", [], "(unknown):14:2").length;
+	$.assign(obj, "map", "||=", () => [], "(unknown):14:2").length;
 	var $$exports = { ...$.legacy_api() };
 	var p = root();
 	var text = $.child(p, true);
