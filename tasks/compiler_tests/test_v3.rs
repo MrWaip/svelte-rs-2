@@ -3380,7 +3380,6 @@ fn component_dev_named_slot_no_wrap_snippet() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_dev_benchmark() {
     assert_compiler("diagnose_dev_benchmark");
 }
@@ -3388,4 +3387,14 @@ fn diagnose_dev_benchmark() {
 #[rstest]
 fn dev_binary_equals_wrap() {
     assert_compiler("dev_binary_equals_wrap");
+}
+
+#[rstest]
+fn add_locations_svelte_head_skips_hoisted_title() {
+    assert_compiler("add_locations_svelte_head_skips_hoisted_title");
+}
+
+#[rstest]
+fn add_locations_named_slot_wrapper() {
+    assert_compiler("add_locations_named_slot_wrapper");
 }

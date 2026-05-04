@@ -1,8 +1,8 @@
 # Unknown problems
 
 ## Current state
-- **Working**: 7/11 use cases
-- **Tests**: 2/5 green
+- **Working**: 9/12 use cases
+- **Tests**: 5/7 green
 - Last updated: 2026-05-04
 
 ## Source
@@ -14,7 +14,8 @@
 ## Use cases
 
 - [x] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none — closed 2026-05-04: implemented in `crates/svelte_transform/src/transformer/equals.rs`, wired into `exit_expression` (script) and `rewrite_template_exit` (template) under `dev` gate; covered by `dev_binary_equals_wrap` (`==`, `===`, `!=`, `!==`)
-- [ ] `$props()` source-line argument passed to `$.prop($$props, ..., flags, default)` and the location array passed to `$.add_locations(..., [[line, col], ...])` are off (props lines off by 4, `<svelte:head>` array contains a phantom head-root entry, named-slot inner element location dropped to `[]`); layer: codegen; repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark; candidate specs: source-maps.md, props-bindable.md, element.md, legacy-slots.md; suggested spec: none
+- [x] `<svelte:head>` `add_locations` array contains a phantom leading entry for the dynamic `<title>` that codegen hoists into `$.head(...)` and removes from the static `from_html` template; reference omits any element absent from the rendered template literal; layer: codegen (fragment); repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark, add_locations_svelte_head_skips_hoisted_title; candidate specs: source-maps.md, svelte-head-title.md; suggested spec: none — closed 2026-05-04: `push_node_locations` (`crates/svelte_codegen_client/src/codegen/fragment/mod.rs`) now skips nodes that `prepare` would have hoisted out of the rendered template via `is_hoisted_out_of_template`, including dynamic `<title>` inside `<svelte:head>`; covered by `add_locations_svelte_head_skips_hoisted_title`
+- [x] Named-slot standalone fragment `add_locations` is `[]` instead of `[[slot_wrapper_line, col]]`; the slot's root fragment is built from the wrapper element's children fragment, so the wrapper `<div slot="...">` (which IS in the slot template's `from_html` literal) never contributes its own location; layer: codegen (fragment/legacy_slot_fragment); repro/test: diagnose_runes_dev_ce_benchmark, diagnose_dev_benchmark, add_locations_named_slot_wrapper; candidate specs: legacy-slots.md, source-maps.md; suggested spec: legacy-slots.md — closed 2026-05-04: `finalize_slot_root_template` now threads `slot_el_id` to a dedicated `build_slot_root_locations` that wraps the slot element's own line/col around its child locations; covered by `add_locations_named_slot_wrapper`
 - [x] Dev-mode named-slot child arrow on a static component is incorrectly wrapped with `$.wrap_snippet(App, ($$anchor, $$slotProps) => { ... })`; reference emits the bare arrow for `$$slots: { footer: ($$anchor, $$slotProps) => { ... } }` and only wraps the synthesized default-children entry. Inverse of `component_dev_default_children_wrap_snippet`; layer: transform; repro/test: diagnose_dev_benchmark, diagnose_runes_dev_ce_benchmark; candidate specs: legacy-slots.md, component-node.md; suggested spec: legacy-slots.md — closed 2026-05-04: removed `maybe_wrap_slot_snippet_dev` for named slots in `containers/component.rs:98-107` and dropped `FragmentRole::NamedSlot` from `role_needs_text_first_next` (`fragment/mod.rs:23`), since `$.next()` was tied to the wrap; covered by `component_dev_named_slot_no_wrap_snippet`
 - [ ] `$state.raw({...})` declarator in a script that combines `$props()` rest, dev mode, and `customElement: true` is emitted as a plain object literal instead of `$.tag($.state({...}), "name")`, and the corresponding `$state.snapshot(rawData)` reads `rawData` directly instead of `$.get(rawData)`; not reproducible in isolation, only in the combined benchmark; layer: transform; repro/test: diagnose_runes_dev_ce_benchmark; candidate specs: state-rune.md, custom-elements.md; suggested spec: state-rune.md
 - [x] Dev-mode console method calls referencing reactive state are wrapped via `$.log_if_contains_state(method, ...args)` (e.g. `console.log("count:", count)` → `console.log(...$.log_if_contains_state("log", "count:", $.get(count)))`); currently not emitted on the `.svelte.js` / `.svelte.ts` standalone module path — layer: codegen + transform; repro/test: `module_dev_console_log_wrap`; candidate specs: `inspect-runes.md` (related but only covers `$inspect`), none cover console-method auto-instrumentation; suggested spec: new `dev-console-instrumentation.md` covering `console.{log,debug,info,warn,error,trace,dir,group,groupCollapsed}` dev wrapping for both component scripts and `.svelte.js` modules — closed 2026-05-04: `module_dev_console_log_wrap` passes; module-side console wrapping is emitted via the threaded `dev` flag from use case below
@@ -50,7 +51,9 @@
 
 ## Test cases
 - [ ] `diagnose_runes_dev_ce_benchmark`
-- [ ] `diagnose_dev_benchmark`
+- [x] `diagnose_dev_benchmark`
 - [x] `module_dev_console_log_wrap`
 - [x] `preserve_whitespace_script_element`
 - [ ] `diagnose_legacy_dev_benchmark`
+- [x] `add_locations_svelte_head_skips_hoisted_title`
+- [x] `add_locations_named_slot_wrapper`

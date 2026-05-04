@@ -13,8 +13,8 @@ const badge = $.wrap_snippet(App, function($$anchor, text = $.noop, variant = $.
 	$.reset(span);
 	$.template_effect(() => {
 		classes = $.set_class(span, 1, "badge svelte-13nvtxg", null, classes, {
-			primary: variant() === "primary",
-			secondary: variant() === "secondary"
+			primary: $.strict_equals(variant(), "primary"),
+			secondary: $.strict_equals(variant(), "secondary")
 		});
 		$.set_text(text_1, text());
 	});
@@ -43,11 +43,7 @@ export const MODULE_SCALE = 3;
 export function moduleLabel(name) {
 	return `${BENCHMARK_KIND}:${name}`;
 }
-var root_1 = $.add_locations($.from_html(`<meta name="description" content="Benchmark component" class="svelte-13nvtxg"/> <link rel="canonical" href="/benchmark" class="svelte-13nvtxg"/>`, 1), App[$.FILENAME], [
-	[155, 4],
-	[156, 4],
-	[157, 4]
-]);
+var root_1 = $.add_locations($.from_html(`<meta name="description" content="Benchmark component" class="svelte-13nvtxg"/> <link rel="canonical" href="/benchmark" class="svelte-13nvtxg"/>`, 1), App[$.FILENAME], [[156, 4], [157, 4]]);
 var root_2 = $.add_locations($.from_html(`<span> </span>`), App[$.FILENAME], [[165, 4]]);
 var root_3 = $.add_locations($.from_html(`<div class="card svelte-13nvtxg"><h3 class="svelte-13nvtxg"> </h3> <p class="svelte-13nvtxg"> </p> <!></div>`), App[$.FILENAME], [[
 	171,
@@ -76,7 +72,7 @@ var root_15 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), Ap
 var root_16 = $.add_locations($.from_html(`<p class="svelte-13nvtxg">Loading chunk 0...</p>`), App[$.FILENAME], [[250, 8]]);
 var root_17 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[258, 8]]);
 var root_19 = $.add_locations($.from_html(`<strong class="svelte-13nvtxg"> </strong>`), App[$.FILENAME], [[280, 8]]);
-var root_20 = $.add_locations($.from_html(`<div slot="footer" class="svelte-13nvtxg"> </div>`), App[$.FILENAME], []);
+var root_20 = $.add_locations($.from_html(`<div slot="footer" class="svelte-13nvtxg"> </div>`), App[$.FILENAME], [[281, 8]]);
 var root_21 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[295, 12]]);
 var root_22 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[293, 8]]);
 var root = $.add_locations($.from_html(`<div class="chunk-shell benchmark-reset benchmark-host svelte-13nvtxg" data-kind="chunk-0"> <p class="svelte-13nvtxg"> </p> <p class="svelte-13nvtxg"> </p> <!> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
@@ -339,7 +335,7 @@ export default function App($$anchor, $$props) {
 				};
 				$.add_svelte_meta(() => $.if(node_5, ($$render) => {
 					if ($.get(counter) > 30) $$render(consequent_1);
-					else if ($.get(counter) == 100) $$render(consequent_2, 1);
+					else if ($.equals($.get(counter), 100)) $$render(consequent_2, 1);
 					else $$render(alternate, -1);
 				}), "if", App, 224, 12);
 			}
@@ -463,13 +459,13 @@ export default function App($$anchor, $$props) {
 			}),
 			$$slots: {
 				default: true,
-				footer: $.wrap_snippet(App, ($$anchor, $$slotProps) => {
+				footer: ($$anchor, $$slotProps) => {
 					var div_8 = root_20();
 					var text_18 = $.child(div_8);
 					$.reset(div_8);
 					$.template_effect(() => $.set_text(text_18, `Footer chunk 0: ${$.get(counter) ?? ""}`));
 					$.append($$anchor, div_8);
-				})
+				}
 			}
 		}), ($$value) => componentRef = $$value, () => componentRef), "component", App, 279, 4, { componentTag: "ChildComponent" });
 	}

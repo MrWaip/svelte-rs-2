@@ -329,8 +329,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )
     }
 
+    fn build_slot_root_locations(
+        &self,
+        ctx: &FragmentCtx<'a>,
+        slot_el_id: NodeId,
+    ) -> Option<oxc_ast::ast::Expression<'a>> {
+        let node = self.ctx.query.component.store.get(slot_el_id);
+        let (span_start, fragment_id) = match node {
+            svelte_ast::Node::Element(el) => (el.span.start, el.fragment),
+            svelte_ast::Node::SlotElementLegacy(el) => (el.span.start, el.fragment),
+            svelte_ast::Node::SvelteFragmentLegacy(el) => (el.span.start, el.fragment),
+            _ => return None,
+        };
+        let single = self.build_single_element_loc(ctx, span_start, fragment_id);
+        Some(self.ctx.b.array_expr(vec![single]))
+    }
+
     fn build_template_locations(
         &self,
+        ctx: &FragmentCtx<'a>,
         fragment_id: svelte_ast::FragmentId,
     ) -> Option<oxc_ast::ast::Expression<'a>> {
         let mut locs: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
@@ -343,15 +360,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .nodes
             .clone();
         for id in nodes {
-            self.push_node_locations(id, &mut locs);
+            self.push_node_locations(ctx, id, &mut locs);
         }
         Some(self.ctx.b.array_expr(locs))
     }
 
-    fn push_node_locations(&self, node_id: NodeId, out: &mut Vec<oxc_ast::ast::Expression<'a>>) {
-        match self.ctx.query.component.store.get(node_id) {
+    fn push_node_locations(
+        &self,
+        ctx: &FragmentCtx<'a>,
+        node_id: NodeId,
+        out: &mut Vec<oxc_ast::ast::Expression<'a>>,
+    ) {
+        let node = self.ctx.query.component.store.get(node_id);
+        if self.is_hoisted_out_of_template(ctx, node) {
+            return;
+        }
+        match node {
             svelte_ast::Node::Element(el) => {
-                out.push(self.build_single_element_loc(el.span.start, el.fragment));
+                out.push(self.build_single_element_loc(ctx, el.span.start, el.fragment));
             }
             svelte_ast::Node::SvelteFragmentLegacy(el) => {
                 let nodes = self
@@ -363,15 +389,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .nodes
                     .clone();
                 for id in nodes {
-                    self.push_node_locations(id, out);
+                    self.push_node_locations(ctx, id, out);
                 }
             }
             _ => {}
         }
     }
 
+    fn is_hoisted_out_of_template(&self, ctx: &FragmentCtx<'a>, node: &svelte_ast::Node) -> bool {
+        match node {
+            svelte_ast::Node::Error(_)
+            | svelte_ast::Node::SnippetBlock(_)
+            | svelte_ast::Node::ConstTag(_)
+            | svelte_ast::Node::DebugTag(_)
+            | svelte_ast::Node::SvelteHead(_)
+            | svelte_ast::Node::SvelteWindow(_)
+            | svelte_ast::Node::SvelteDocument(_)
+            | svelte_ast::Node::SvelteBody(_) => true,
+            svelte_ast::Node::Element(el) if ctx.inside_head && el.name == "title" => true,
+            _ => false,
+        }
+    }
+
     fn build_single_element_loc(
         &self,
+        ctx: &FragmentCtx<'a>,
         span_start: u32,
         fragment_id: svelte_ast::FragmentId,
     ) -> oxc_ast::ast::Expression<'a> {
@@ -389,7 +431,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .nodes
             .clone();
         for id in nodes {
-            self.push_node_locations(id, &mut child_locs);
+            self.push_node_locations(ctx, id, &mut child_locs);
         }
         if !child_locs.is_empty() {
             inner.push(b.array_expr(child_locs));
@@ -643,15 +685,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         init_len_before: usize,
         tpl_name: String,
+        slot_el_id: NodeId,
         fragment_id: svelte_ast::FragmentId,
     ) -> Result<()> {
-        self.finalize_root_template(
+        self.finalize_root_template_inner(
             state,
             ctx,
             StrategyKind::SingleElement,
             init_len_before,
             tpl_name,
             fragment_id,
+            Some(slot_el_id),
         )
     }
 
@@ -663,6 +707,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         init_len_before: usize,
         tpl_name: String,
         fragment_id: svelte_ast::FragmentId,
+    ) -> Result<()> {
+        self.finalize_root_template_inner(
+            state,
+            ctx,
+            strategy_kind,
+            init_len_before,
+            tpl_name,
+            fragment_id,
+            None,
+        )
+    }
+
+    fn finalize_root_template_inner(
+        &mut self,
+        state: &mut EmitState<'a>,
+        ctx: &FragmentCtx<'a>,
+        strategy_kind: StrategyKind,
+        init_len_before: usize,
+        tpl_name: String,
+        fragment_id: svelte_ast::FragmentId,
+        slot_root_id: Option<NodeId>,
     ) -> Result<()> {
         let from_fn = self.template_from_fn(ctx, fragment_id, strategy_kind);
         let html_str = state.template.as_html();
@@ -690,10 +755,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .call_expr("$.with_script", [Arg::Expr(from_html)]);
         }
-        if self.ctx.state.dev
-            && let Some(locs) = self.build_template_locations(fragment_id)
-        {
-            from_html = self.wrap_add_locations(from_html, locs);
+        if self.ctx.state.dev {
+            let locs = match slot_root_id {
+                Some(id) => self.build_slot_root_locations(ctx, id),
+                None => self.build_template_locations(ctx, fragment_id),
+            };
+            if let Some(locs) = locs {
+                from_html = self.wrap_add_locations(from_html, locs);
+            }
         }
         let tpl_stmt = self.ctx.state.b.var_stmt(&tpl_name, from_html);
         self.hoist(tpl_stmt);
