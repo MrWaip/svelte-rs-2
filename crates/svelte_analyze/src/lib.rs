@@ -214,6 +214,7 @@ pub fn analyze_module<'a>(
                     accessors: false,
                 },
             );
+            passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
         }
         Err(errs) => diags.extend(errs),
     }

@@ -51,6 +51,10 @@
           {
             "type": "command",
             "command": "echo 'use mcp.'"
+          },
+          {
+            "type": "command",
+            "command": "echo 'Answer questions directly — no preambles, no echoing my question, no closing summary. Do not edit code unless I explicitly tell you to.'"
           }
         ]
       }

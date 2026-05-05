@@ -413,9 +413,6 @@ impl<'a> Ctx<'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()
     }
-    pub fn script_rune_calls(&self) -> &svelte_analyze::ScriptRuneCalls {
-        self.query.view.script_rune_calls()
-    }
     pub fn instance_script_node_id_offset(&self) -> u32 {
         self.query.view.instance_script_node_id_offset()
     }

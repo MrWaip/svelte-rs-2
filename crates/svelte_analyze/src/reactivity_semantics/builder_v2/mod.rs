@@ -329,6 +329,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 
     fn record_rune_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
+        if !self.data.script.runes() {
+            return;
+        }
         let Some((call, rune_kind)) = rune_call(declarator) else {
             return;
         };

@@ -1878,6 +1878,16 @@ fn smoke_legacy_contextual_mutations_all() {
 }
 
 #[rstest]
+fn smoke_legacy_rune_fallback_all() {
+    assert_compiler("smoke_legacy_rune_fallback_all");
+}
+
+#[rstest]
+fn derived_non_runes_invalid_usage() {
+    assert_compiler("derived_non_runes_invalid_usage");
+}
+
+#[rstest]
 fn smoke_runes_declarator_gaps_all() {
     assert_compiler("smoke_runes_declarator_gaps_all");
 }

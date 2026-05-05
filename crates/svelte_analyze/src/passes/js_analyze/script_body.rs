@@ -12,7 +12,8 @@ pub(crate) fn analyze_script(
     mut script_info: ScriptInfo,
     program: &oxc_ast::ast::Program<'_>,
 ) {
-    let body = analyze_script_body(program, &script_info);
+    let uses_runes = data.reactivity.uses_runes();
+    let body = analyze_script_body(program, &script_info, uses_runes);
     let has_class_state_fields = body.has_class_state_fields;
     data.script.has_store_member_mutations = body.has_store_member_mutations;
     data.script.proxy_state_inits = body.proxy_state_inits;
@@ -26,8 +27,9 @@ pub(crate) fn needs_context_for_program(
     program: &oxc_ast::ast::Program<'_>,
     scoping: &ComponentScoping,
     script_info: &ScriptInfo,
+    uses_runes: bool,
 ) -> bool {
-    let body = analyze_script_body(program, script_info);
+    let body = analyze_script_body(program, script_info, uses_runes);
     body.has_effects
         || body.has_class_state_fields
         || super::needs_context::NeedsContextVisitor::check(program, scoping, script_info)
@@ -36,8 +38,10 @@ pub(crate) fn needs_context_for_program(
 pub(crate) fn analyze_script_body<'s>(
     program: &oxc_ast::ast::Program<'_>,
     script_info: &'s ScriptInfo,
+    uses_runes: bool,
 ) -> ScriptBodyAnalyzer<'s> {
     let mut analyzer = ScriptBodyAnalyzer {
+        uses_runes,
         has_effects: false,
         has_class_state_fields: false,
         has_store_member_mutations: false,
@@ -49,6 +53,7 @@ pub(crate) fn analyze_script_body<'s>(
 }
 
 pub(crate) struct ScriptBodyAnalyzer<'s> {
+    uses_runes: bool,
     pub(crate) has_effects: bool,
     pub(crate) has_class_state_fields: bool,
     pub(crate) has_store_member_mutations: bool,
@@ -68,7 +73,8 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 
         match stmt {
             Statement::ExpressionStatement(es) => {
-                if let Expression::CallExpression(call) = &es.expression
+                if self.uses_runes
+                    && let Expression::CallExpression(call) = &es.expression
                     && matches!(
                         detect_rune_from_call(call),
                         Some(RuneKind::Effect | RuneKind::EffectPre)

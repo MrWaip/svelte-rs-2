@@ -3921,6 +3921,57 @@ fn runtime_plan_store_subscriptions_do_not_force_push() {
 }
 
 #[test]
+fn runtime_plan_synthetic_store_subscriptions_do_not_force_push() {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let source = r#"<script>
+    let stateBase = 0;
+    let derivedBase = 1;
+    let propsBase = {};
+    let effectFn = () => {};
+    let inspectVal = "x";
+    let bindableDefault = false;
+
+    let s = $state(stateBase);
+    let r = $state.raw(propsBase);
+    let snap = $state.snapshot(propsBase);
+    let d = $derived(derivedBase);
+    let db = $derived.by(() => derivedBase);
+    let p = $props();
+    let pid = $props.id();
+    let t = $effect.tracking();
+    $effect(effectFn);
+    $effect.pre(effectFn);
+    $inspect(inspectVal);
+    let b = $bindable(bindableDefault);
+</script>"#;
+    let (component, js_result, _parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    let (data, _parsed, _diags) = analyze_with_options(
+        &component,
+        js_result,
+        &AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let plan = data.output.runtime_plan;
+
+    assert!(plan.has_stores, "synthetic store bindings expected");
+    assert!(
+        !data.script.has_store_member_mutations,
+        "no real store member mutations in source"
+    );
+    assert!(
+        !data.output.needs_context,
+        "needs_context must stay false: synthetic store callees should not be classified as unsafe by NeedsContextVisitor"
+    );
+    assert!(
+        !plan.needs_push,
+        "synthetic store subscriptions in non-runes must not force push"
+    );
+    assert!(!plan.needs_props_param);
+}
+
+#[test]
 fn legacy_export_let_becomes_props_when_runes_disabled() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let count = 1;</script><p>{count}</p>",

@@ -1248,13 +1248,11 @@ mod runes {
     );
     diagnostic_case!(
         validate_derived_rune_invalid_usage_in_non_runes_mode,
-        "runes/validate_derived_rune_invalid_usage_in_non_runes_mode",
-        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for $derived in non-runes mode on this repro"
+        "runes/validate_derived_rune_invalid_usage_in_non_runes_mode"
     );
     diagnostic_case!(
         validate_derived_destructured_rune_invalid_usage_in_non_runes_mode,
-        "runes/validate_derived_destructured_rune_invalid_usage_in_non_runes_mode",
-        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for destructured $derived in non-runes mode on this repro"
+        "runes/validate_derived_destructured_rune_invalid_usage_in_non_runes_mode"
     );
     diagnostic_case!(
         validate_derived_rune_allowed_in_runes_mode,

@@ -33,8 +33,10 @@ pub(super) fn validate(
     diags: &mut Vec<Diagnostic>,
 ) {
     validate_invalid_lifecycle_imports(program, runes, diags);
-    let mut v = RuneValidator::new(data, diags, runes, true);
-    v.visit_program(program);
+    if runes {
+        let mut v = RuneValidator::new(data, diags, true);
+        v.visit_program(program);
+    }
     validate_state_referenced_locally_derived(data, program, diags);
     validate_rest_prop_illegal_access(data, program, diags);
 }
@@ -85,13 +87,15 @@ pub(super) fn validate_module_props_runes(
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = RuneValidator::new(data, diags, runes, false);
+    if !runes {
+        return;
+    }
+    let mut v = RuneValidator::new(data, diags, false);
     v.visit_program(program);
 }
 
 struct RuneValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    runes: bool,
     in_var_declarator_init: bool,
     in_class_property_init: bool,
     in_constructor_body: bool,
@@ -122,12 +126,10 @@ impl RuneValidator<'_> {
     fn new<'a>(
         data: &AnalysisData,
         diags: &'a mut Vec<Diagnostic>,
-        runes: bool,
         is_instance_script: bool,
     ) -> RuneValidator<'a> {
         RuneValidator {
             diags,
-            runes,
             in_var_declarator_init: false,
             in_class_property_init: false,
             in_constructor_body: false,
@@ -731,19 +733,6 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
-        if !self.runes
-            && let Some(Expression::CallExpression(call)) = &it.init
-            && let Expression::Identifier(ident) = &call.callee
-            && ident.name == "$derived"
-        {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidUsage {
-                    rune: "$derived".into(),
-                },
-                self.span(call.span),
-            ));
-        }
-
         let is_props_init = it
             .init
             .as_ref()

@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::Comment;
 use oxc_ast::ast::{Program, Statement};
 use oxc_span::GetSpan;
-use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
+use svelte_analyze::{AnalysisData, ComponentScoping};
 
 use svelte_ast_builder::Builder;
 use svelte_transform::{IgnoreQuery, transform_script};
@@ -52,7 +52,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         program,
         Some(ctx.query.analysis),
         component_scoping,
-        Some(ctx.script_rune_calls()),
         ctx.instance_script_node_id_offset(),
         true,
         dev,
@@ -80,7 +79,6 @@ pub fn transform_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
-        None,
         0,
         false,
         dev,
@@ -100,7 +98,6 @@ pub fn transform_component_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
-    script_rune_calls: Option<&ScriptRuneCalls>,
     line_index: &'b svelte_span::LineIndex,
 ) -> ScriptOutput<'a> {
     run_transform(
@@ -108,7 +105,6 @@ pub fn transform_component_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
-        script_rune_calls,
         0,
         false,
         false,
@@ -128,7 +124,6 @@ fn run_transform<'a>(
     mut program: Program<'a>,
     analysis: Option<&'_ AnalysisData<'a>>,
     component_scoping: &ComponentScoping<'a>,
-    script_rune_calls: Option<&ScriptRuneCalls>,
     script_node_id_offset: u32,
     strip_exports: bool,
     dev: bool,
@@ -143,6 +138,7 @@ fn run_transform<'a>(
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
+    let script_rune_calls = analysis.map(|a| a.script_rune_calls());
 
     let out = transform_script(
         allocator,
