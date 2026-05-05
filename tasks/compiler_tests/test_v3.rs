@@ -3402,3 +3402,24 @@ fn add_locations_svelte_head_skips_hoisted_title() {
 fn add_locations_named_slot_wrapper() {
     assert_compiler("add_locations_named_slot_wrapper");
 }
+
+#[rstest]
+fn auto_softlegacy_member_read() {
+    assert_compiler("auto_softlegacy_member_read");
+}
+
+#[rstest]
+#[ignore = "missing: HardLegacy template-expression coarse-grained sequence wrap (transform/codegen)"]
+fn auto_hardlegacy_member_read_explicit() {
+    assert_compiler("auto_hardlegacy_member_read_explicit");
+}
+
+#[rstest]
+fn auto_softlegacy_simple_template() {
+    assert_compiler("auto_softlegacy_simple_template");
+}
+
+#[rstest]
+fn auto_softlegacy_const_only() {
+    assert_compiler("auto_softlegacy_const_only");
+}

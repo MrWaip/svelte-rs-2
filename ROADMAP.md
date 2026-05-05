@@ -95,6 +95,7 @@
 
 ## Legacy Svelte 4
 
+- [ ] Auto-mode detection (runes vs legacy) — [spec](specs/auto-mode-detection.md)
 - [ ] Legacy reactivity system: `let var = ''` — [spec](specs/legacy-reactivity-system.md)
 - [x] `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute` + `$$slots` — [spec](specs/legacy-slots.md)
 - [ ] `<svelte:self>` — [spec](specs/svelte-self.md)

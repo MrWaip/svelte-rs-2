@@ -21,7 +21,7 @@ pub(super) fn classify_export_named_declaration<'a>(
     data: &mut AnalysisData<'a>,
     export: &ExportNamedDeclaration<'a>,
 ) {
-    if data.script.runes {
+    if data.script.runes() {
         return;
     }
     if let Some(decl) = &export.declaration {
@@ -121,7 +121,7 @@ fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags 
 }
 
 pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>) {
-    if data.script.runes {
+    if data.script.runes() {
         return;
     }
     let unresolved = data.scoping.root_unresolved_references().clone();
@@ -154,7 +154,7 @@ pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>
 }
 
 pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
-    if data.script.runes {
+    if data.script.runes() {
         return;
     }
     let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();

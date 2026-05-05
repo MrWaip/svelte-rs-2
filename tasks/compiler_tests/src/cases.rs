@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace};
+use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, RunesOption};
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const V3_BASE: &str = "cases2";
@@ -71,14 +71,20 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
 
     let mut opts = CompileOptions {
         name: Some("App".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     if let Some(config) = read_config(&dir) {
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
-        if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = Some(runes);
+        if let Some(runes_val) = config.get("runes") {
+            opts.runes = match runes_val.as_bool() {
+                Some(true) => RunesOption::Runes,
+                Some(false) => RunesOption::Legacy,
+                None if runes_val.is_null() => RunesOption::Auto,
+                _ => opts.runes,
+            };
         }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;

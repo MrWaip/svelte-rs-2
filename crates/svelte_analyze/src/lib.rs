@@ -23,7 +23,7 @@ pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindTargetSemantics,
     BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
     CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
-    ConstTagData, ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
+    ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
     ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
@@ -76,7 +76,8 @@ use svelte_diagnostics::{Diagnostic, Severity};
 pub struct AnalyzeOptions {
     pub custom_element: bool,
     pub experimental_async: bool,
-    pub runes: bool,
+    pub runes: svelte_ast::RunesOption,
+    pub inline_runes: Option<bool>,
     pub accessors: bool,
     pub immutable: bool,
     pub preserve_whitespace: bool,
@@ -92,7 +93,8 @@ impl Default for AnalyzeOptions {
         Self {
             custom_element: false,
             experimental_async: false,
-            runes: true,
+            runes: svelte_ast::RunesOption::Runes,
+            inline_runes: None,
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
@@ -120,8 +122,6 @@ pub fn analyze_with_options<'a>(
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty(component.node_count());
-    data.script.runes = options.runes;
-    data.script.immutable = options.runes || options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
     data.script.preserve_comments = options.preserve_comments;
     data.script.dev = options.dev;
@@ -132,8 +132,6 @@ pub fn analyze_with_options<'a>(
             .as_ref()
             .and_then(|opts| opts.custom_element.as_ref())
             .is_some();
-    data.script.accessors = data.output.is_custom_element_target
-        || (!options.runes && options.accessors);
     data.output.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
     debug_assert_eq!(
@@ -198,14 +196,24 @@ pub fn analyze_module<'a>(
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
             data.scoping = scoping;
             data.script.info = Some(script_info);
-            data.script.runes = true;
+            data.script.runes_mode = svelte_ast::RunesMode::Runes;
 
             validate::validate_standalone_module(&data, &program, true, &mut diags);
 
             parsed.program = Some(program);
             let stub_component =
                 svelte_ast::Component::dummy_for_standalone_module(source.to_string());
-            reactivity_semantics::build_v2(&stub_component, &parsed, &mut data);
+            reactivity_semantics::build_v2(
+                &stub_component,
+                &parsed,
+                &mut data,
+                reactivity_semantics::ReactivityInputs {
+                    inline_runes: None,
+                    compile_runes: svelte_ast::RunesOption::Runes,
+                    immutable: false,
+                    accessors: false,
+                },
+            );
         }
         Err(errs) => diags.extend(errs),
     }

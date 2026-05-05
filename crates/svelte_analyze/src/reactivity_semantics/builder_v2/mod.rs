@@ -38,8 +38,31 @@ use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 const JS_UNDEFINED_NAME: &str = "undefined";
 
-pub(crate) fn build_v2<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut AnalysisData<'a>) {
-    data.reactivity.set_uses_runes(data.script.runes);
+pub(crate) struct ReactivityInputs {
+    pub inline_runes: Option<bool>,
+    pub compile_runes: svelte_ast::RunesOption,
+    pub immutable: bool,
+    pub accessors: bool,
+}
+
+pub(crate) fn build_v2<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+    inputs: ReactivityInputs,
+) {
+    let runes_mode = super::mode_resolution::resolve(
+        &data.scoping,
+        parsed,
+        inputs.inline_runes,
+        inputs.compile_runes,
+    );
+    data.script.runes_mode = runes_mode;
+    let runes = runes_mode.is_runes();
+    data.script.immutable = runes || inputs.immutable;
+    data.script.accessors = data.output.is_custom_element_target || (!runes && inputs.accessors);
+
+    data.reactivity.set_uses_runes(runes);
     let lr_collected = build_script_semantics_v2(
         parsed,
         data,
@@ -79,19 +102,8 @@ fn compute_const_tag_reactivity<'a>(
     use super::data::{BindingSemantics, ConstBindingSemantics};
     use svelte_component_semantics::walk_bindings;
 
-    let tag_ids: Vec<svelte_ast::NodeId> = data
-        .template
-        .const_tags
-        .by_fragment
-        .values()
-        .flatten()
-        .copied()
-        .collect();
-    if tag_ids.is_empty() {
-        return;
-    }
-    for tag_id in tag_ids {
-        let svelte_ast::Node::ConstTag(tag) = component.store.get(tag_id) else {
+    for node in component.store.iter_nodes() {
+        let svelte_ast::Node::ConstTag(tag) = node else {
             continue;
         };
         let Some(stmt) = parsed.stmt(tag.decl.id()) else {
@@ -438,7 +450,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 
     fn record_legacy_state_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        if self.data.script.runes {
+        if self.data.script.runes() {
             return;
         }
         let Some(kind) = self.current_decl_kind else {

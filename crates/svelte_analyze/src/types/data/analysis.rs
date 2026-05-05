@@ -11,7 +11,7 @@ pub struct ScriptAnalysis {
     pub module_node_id_offset: u32,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
-    pub runes: bool,
+    pub runes_mode: svelte_ast::RunesMode,
     pub accessors: bool,
     pub immutable: bool,
     pub preserve_whitespace: bool,
@@ -35,7 +35,7 @@ impl ScriptAnalysis {
             module_node_id_offset: 0,
             has_class_state_fields: false,
             has_store_member_mutations: false,
-            runes: true,
+            runes_mode: svelte_ast::RunesMode::Runes,
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
@@ -56,6 +56,14 @@ impl ScriptAnalysis {
 
     pub fn is_state_source(&self, reassigned: bool) -> bool {
         !self.immutable || reassigned || self.accessors
+    }
+
+    pub fn runes(&self) -> bool {
+        self.runes_mode.is_runes()
+    }
+
+    pub fn maybe_runes(&self) -> bool {
+        self.runes_mode.is_maybe_runes()
     }
 }
 
@@ -85,7 +93,6 @@ pub struct TemplateAnalysis {
     pub rich_content_facts: RichContentFacts,
     pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
-    pub const_tags: ConstTagData,
     pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
     pub template_topology: TemplateTopology,
@@ -103,7 +110,6 @@ impl TemplateAnalysis {
             rich_content_facts: RichContentFacts::new(),
             fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
-            const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             template_topology: TemplateTopology::new(node_count),
