@@ -118,7 +118,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Node::SvelteFragmentLegacy(el) => el.fragment,
             _ => return Ok(()),
         };
-        self.finalize_slot_root_template(state, ctx, init_len_before, tpl_name, slot_fragment)?;
+        self.finalize_slot_root_template(
+            state,
+            ctx,
+            init_len_before,
+            tpl_name,
+            slot_el_id,
+            slot_fragment,
+        )?;
         let insert_pos = init_len_before + 1;
         for (i, stmt) in let_stmts.into_iter().enumerate() {
             state.init.insert(insert_pos + i, stmt);

@@ -213,7 +213,8 @@ pub fn generate<'a>(
         fn_body.extend(script_body);
     }
 
-    let has_explicit_exports = runtime.has_exports || runtime.has_ce_props || ctx.query.accessors();
+    let has_explicit_exports =
+        runtime.has_exports || runtime.has_ce_props || runtime.has_legacy_accessor_props;
     let dev_legacy_only = ctx.state.dev && runtime.needs_push;
     if has_explicit_exports || dev_legacy_only {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();

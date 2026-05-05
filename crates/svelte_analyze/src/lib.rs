@@ -121,8 +121,7 @@ pub fn analyze_with_options<'a>(
 
     let mut data = AnalysisData::new_empty(component.node_count());
     data.script.runes = options.runes;
-    data.script.accessors = options.accessors;
-    data.script.immutable = options.immutable;
+    data.script.immutable = options.runes || options.immutable;
     data.script.preserve_whitespace = options.preserve_whitespace;
     data.script.preserve_comments = options.preserve_comments;
     data.script.dev = options.dev;
@@ -133,6 +132,8 @@ pub fn analyze_with_options<'a>(
             .as_ref()
             .and_then(|opts| opts.custom_element.as_ref())
             .is_some();
+    data.script.accessors = data.output.is_custom_element_target
+        || (!options.runes && options.accessors);
     data.output.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
     debug_assert_eq!(
@@ -245,14 +246,20 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         || has_exports
         || has_ce_props
         || data.output.needs_context
-        || data.script.accessors
+        || (!data.uses_runes() && data.script.accessors)
         || (!data.uses_runes() && data.script.immutable)
         || dev
         || (!data.uses_runes()
             && (has_legacy_member_mutated
                 || has_legacy_props_read
                 || has_legacy_reactive_statements));
-    let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
+    let has_legacy_accessor_props = !data.uses_runes()
+        && data.script.accessors
+        && data
+            .script
+            .props_declaration()
+            .is_some_and(|d| d.props.iter().any(|p| !p.is_rest && !p.is_reserved()));
+    let has_component_exports = has_exports || has_ce_props || has_legacy_accessor_props || dev;
     let needs_props_param =
         data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
 
@@ -273,6 +280,7 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
         has_bindable,
         has_stores,
         has_ce_props,
+        has_legacy_accessor_props,
         needs_props_param,
         needs_pop_with_return: needs_push && has_component_exports,
         legacy_init,

@@ -99,7 +99,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             match self.emit_slot_fragment_legacy_component_only_dont_use(ctx, el_id, slot_el_id)? {
                 SlotFragmentOutcome::Empty => continue,
                 SlotFragmentOutcome::Arrow(arrow) => {
-                    let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
                     let key = self.ctx.b.alloc_str(&slot_name);
                     slot_entries.push(ObjProp::KeyValue(key, arrow));
                 }

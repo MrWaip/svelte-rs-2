@@ -32,6 +32,10 @@ harness = false
 name = "profile"
 path = "src/bin/profile.rs"
 
+[[bin]]
+name = "bench_once"
+path = "src/bin/bench_once.rs"
+
 [features]
 default = []
 codspeed = ["criterion2/codspeed"]
