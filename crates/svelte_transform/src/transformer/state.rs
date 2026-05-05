@@ -359,15 +359,19 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
                 let name = id.name.as_str();
                 let sym_id = id.symbol_id.get();
-                let is_mutated = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
+                let reassigned = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
+                let is_signal_source = self
+                    .analysis
+                    .as_ref()
+                    .is_some_and(|a| a.script.is_state_source(reassigned));
 
                 let is_proxy = matches!(rune_kind, RuneKind::State)
                     && crate::rune_refs::should_proxy(&accessor);
 
-                let final_value = self.wrap_state_value(accessor, rune_kind, is_mutated);
+                let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
 
                 let final_value = if self.dev {
-                    if is_mutated {
+                    if is_signal_source {
                         self.b.call_expr(
                             "$.tag",
                             [Arg::Expr(final_value), Arg::Str(name.to_string())],
@@ -534,7 +538,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         value: Expression<'a>,
         rune_kind: RuneKind,
-        is_mutated: bool,
+        is_signal_source: bool,
     ) -> Expression<'a> {
         match rune_kind {
             RuneKind::State => {
@@ -543,14 +547,14 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 } else {
                     value
                 };
-                if is_mutated {
+                if is_signal_source {
                     self.b.call_expr("$.state", [Arg::Expr(proxied)])
                 } else {
                     proxied
                 }
             }
             RuneKind::StateRaw => {
-                if is_mutated {
+                if is_signal_source {
                     self.b.call_expr("$.state", [Arg::Expr(value)])
                 } else {
                     value

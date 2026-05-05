@@ -1,6 +1,7 @@
 use oxc_ast::ast::Expression;
 use oxc_traverse::TraverseCtx;
 
+use super::equals::wrap_binary_equals_dev;
 use super::model::ComponentTransformer;
 
 pub(crate) fn rewrite_template_enter<'a>(
@@ -84,4 +85,8 @@ pub(crate) fn rewrite_template_exit<'a>(
 
     let suppress_proxy = t.in_bind_setter_traverse;
     t.dispatch_identifier_assignment(it, suppress_proxy);
+
+    if t.dev {
+        wrap_binary_equals_dev(t.b, it);
+    }
 }

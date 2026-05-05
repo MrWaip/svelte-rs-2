@@ -95,7 +95,7 @@
 
 ## Legacy Svelte 4
 
-- [x] Legacy reactivity system: `let var = ''` — [spec](specs/legacy-reactivity-system.md)
+- [ ] Legacy reactivity system: `let var = ''` — [spec](specs/legacy-reactivity-system.md)
 - [x] `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute` + `$$slots` — [spec](specs/legacy-slots.md)
 - [ ] `<svelte:self>` — [spec](specs/svelte-self.md)
 - [x] `<svelte:component>` — [spec](specs/svelte-component.md)
@@ -113,12 +113,8 @@
 
 ## Source Maps
 
-- Shared spec for this bucket: [specs/source-maps.md](specs/source-maps.md)
-- [ ] JS source maps
-- [ ] CSS source maps
-- [ ] Preprocessor / upstream map composition
-- [ ] Source map validation fixtures
+- Source maps js/css: [specs/source-maps.md](specs/source-maps.md)
 
 ## Unknown / Triage
 
-- [ ] Unknown or not-yet-owned repros — [spec](specs/unknown.md)
+- [x] Unknown or not-yet-owned repros — [spec](specs/unknown.md)

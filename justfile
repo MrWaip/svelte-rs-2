@@ -58,6 +58,11 @@ bench-walltime-all:
 bench-node:
     node tasks/benchmark/bench.mjs
 
+# Walltime comparison: rust vs svelte/compiler. Time-budgeted per side, mean/median/speedup table. Flags: --seconds T --warmup W --min-iters N --filter SUBSTR.
+bench-compare-walltime *flags:
+    cargo build --release -p benchmark --bin bench_once
+    node tasks/benchmark/scripts/compare-walltime.mjs {{flags}}
+
 # Run a single bench by substring filter (criterion mean ms).
 bench-case filter:
     cargo bench -p benchmark --bench svelte_compiler -- '{{filter}}'

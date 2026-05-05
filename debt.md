@@ -111,3 +111,11 @@ Scope большой, трогает 9 пост-пассов + точку кон
 Места: `crates/svelte_analyze/src/passes/build_component_semantics.rs:560`, `crates/svelte_analyze/src/passes/template_validation.rs:1253`, `crates/svelte_analyze/src/block_semantics/builder/each.rs:38,53`, `crates/svelte_analyze/src/block_semantics/builder/await_.rs:95`, `crates/svelte_analyze/src/passes/element_flags.rs:234`, `crates/svelte_analyze/src/passes/dynamism.rs:107`, `crates/svelte_transform/src/transformer/props_legacy.rs:49` и аналогичные.
 
 Direction: для call-sites с `&IdentifierReference<'a>` в руках заменить `find_binding(scope, ident.name.as_str())` на `symbol_for_identifier_reference(ident)`. Оставить `find_binding(scope, name)` только там, где имя — голая строка не от ident-а (CSS prune, store-rename `&name[1..]`, `decl.name`, runes-validate by-name lookups).
+
+## Class-field state не классифицируется в analyze
+
+`ReactivitySemantics::record_state_root_declaration` обрабатывает только top-level variable declarators. Class-field `count = $state(0)` внутри тела класса сейчас не получает `BindingFacts::State` — в `runes.rs::rewrite_class_field_rune_init` транформ-сторона синтезирует `StateBindingSemantics` через хелпер `class_field_state_binding_semantic`, читая `is_mutated` напрямую из `ComponentScoping`. Это нарушение "smart analyze, dumb transform" из ARCHITECTURE.md §3,4 — формула `is_state_source` зовётся через единый `ScriptAnalysis::is_state_source`, но решение про класс-филды берётся в transform.
+
+Места: `crates/svelte_transform/src/transformer/runes.rs::class_field_state_binding_semantic`, `detect_class_field_rune_kind` в `state.rs:283`.
+
+Direction: в analyze добавить отдельный walk class-bodies (через тот же reactivity-builder), записывать `BindingFacts::State` для класс-филд символов с `StateDeclarationSemantics { binding_semantics: [<single-leaf>] }`. Тогда трансформ читает `binding_semantics_for_symbol(sym)` для класс-филда так же, как для top-level декларатора, и `class_field_state_binding_semantic` вместе с `detect_class_field_rune_kind` уходят полностью.

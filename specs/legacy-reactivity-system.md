@@ -1,12 +1,13 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 8/8 use cases
-- **Tests**: 8/8 green
-- Last updated: 2026-05-01
+- **Working**: 8/16 use cases (rune-in-legacy fallback set added 2026-05-04, all unchecked)
+- **Tests**: 8/8 green for landed legacy-state lowering; rune-in-legacy fallback set has no passing tests yet
+- Last updated: 2026-05-04
 - Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
 - Member-target legacy state mutations inside template expressions (`{obj.x++}`, `{obj.x += n}`) lower through `rewrite_legacy_state_member_update` / `rewrite_legacy_state_member_assignment`, dispatched from `template_rewrites::rewrite_template_enter` alongside the existing deep-store member rewrites. Same helpers serve script-body traversal, ensuring identical lowering across both contexts.
 - Each-item indirect propagation lives in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::promote_each_sources_to_legacy_state` (`EachSourcePromoter::visit_each_block`): when an each-item is mutated, collection symbols are promoted to legacy state and indirect links are recorded via `add_each_item_indirect_source`, so member-mutations emit `$.invalidate_inner_signals(() => $.get(items))` through the existing legacy coarse-wrap path.
+- Rune-in-legacy fallback set (moved from `specs/unknown.md` on 2026-05-04): in non-runes components reference compiler treats rune-shaped calls as ordinary identifiers — `$derived` resolves as a store getter and `$derived(expr)` lowers to `$derived()(expr)`. Our compiler currently hard-errors at `crates/svelte_analyze/src/validate/runes.rs:744` for `$derived` and never reaches codegen for `diagnose_legacy_dev_benchmark`. Implementation must follow `.claude/skills/legacy-conventions` (Legacy suffix + `LEGACY(svelte4):` doc-comment on every new struct/function, isolated codepaths).
 
 ## Source
 
@@ -62,6 +63,21 @@
 - [x] Compound member assignment to a top-level legacy state inside a template expression (`{obj.x += 5}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x += 5)))` via the same template-enter dispatch into `rewrite_legacy_state_member_assignment` (test: `legacy_state_member_compound_in_template`).
 - [x] Each-item member mutation through `{#each items as item}` propagates an indirect-binding back to the iterated collection. Collection declarator upgrades from `let items = [...]` to `let items = $.mutable_source([...])` and member-mutations in the template effect emit `$.invalidate_inner_signals(() => $.get(items))` (mirrors reference `legacy_indirect_bindings`). Owning area: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::EachSourcePromoter` + standard legacy coarse-wrap codegen (test: `smoke_legacy_contextual_mutations_all`).
 
+### Rune-in-legacy fallback (moved from specs/unknown.md on 2026-05-04)
+
+Reference compiler does not treat `$state`, `$derived`, `$props`, `$effect`, `$inspect`, `$bindable` (or their member forms) as runes when `runes:false`. Instead they degrade to ordinary identifier references — typically resolving to legacy store-getters (`$name → $.store_get(name)`). No `rune_invalid_usage` diagnostic is emitted. Repro/test: `diagnose_legacy_dev_benchmark`. Owning layer is split: hard-error removal in analyze (`validate/runes.rs:744`), call-site lowering in transform/codegen. All new code must follow `.claude/skills/legacy-conventions`.
+
+- [ ] Remove the `runes:false` hard-error for `$derived` at `crates/svelte_analyze/src/validate/runes.rs:744`. Reference does not emit `rune_invalid_usage` in non-runes mode; tests `validate_derived_rune_invalid_usage_in_non_runes_mode`, `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode`, `derived_non_runes_invalid_usage` are false-positive snapshots and must be re-baselined or moved.
+- [ ] `$derived(expr)` in non-runes mode lowers to `$derived()(expr)` where `$derived` resolves as a legacy store getter (no `$.derived(() => expr)` wrapping).
+- [ ] `$derived.by(fn)` in non-runes mode lowers to `$derived().by(() => fn)` (member-access on the store value).
+- [ ] `$state(initial)` in non-runes mode passes through as a plain function call to a `$state` store getter; no `$.mutable_source(...)` wrap is generated.
+- [ ] `$state.raw(initial)` and `$state.snapshot(value)` in non-runes mode pass through as plain member calls without rune-specific wrapping.
+- [ ] `$props()`, `$props.id()` in non-runes mode degrade to legacy props read (or store-getter pass-through), not to the runes `$.props()` machinery.
+- [ ] `$effect(fn)`, `$effect.pre(fn)`, `$effect.tracking()` in non-runes mode are not wrapped with `$.user_effect` / `$.user_pre_effect`; they pass through as plain identifier calls (resolving to legacy store-getters).
+- [ ] `$inspect(...)` in non-runes mode passes through as a plain identifier call without dev `$.inspect(...)` wrapping.
+- [ ] `$bindable(default)` in non-runes mode passes through as plain identifier call without `$.bindable` wrapping.
+- [ ] After fallback emission lands, `diagnose_legacy_dev_benchmark` must produce JS matching reference `case-svelte.js` byte-for-byte under `runes:false, dev:true`.
+
 ## Out of scope
 
 - `$:` reactive statements and their dependency graph (`specs/legacy-reactive-assignments.md`)
@@ -108,3 +124,4 @@
 - [x] `legacy_state_member_update_in_template`
 - [x] `legacy_state_member_compound_in_template`
 - [x] e2e smoke: `smoke_legacy_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for legacy state identifier and member targets — including static (`obj.x`), computed string (`obj["x"]`), and computed dynamic (`obj[key]`) member access — in both script body and template expressions, alongside legacy bindable, store, and deep-store paths.
+- [ ] `diagnose_legacy_dev_benchmark` — currently `#[ignore]`d; tracks rune-in-legacy fallback set above.

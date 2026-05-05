@@ -190,6 +190,16 @@ fn script_module_exports_ordering_with_snippets() {
 }
 
 #[rstest]
+fn script_jsdoc_preserve() {
+    assert_compiler("script_jsdoc_preserve");
+}
+
+#[rstest]
+fn state_raw_dev_ce_with_props_rest() {
+    assert_compiler("state_raw_dev_ce_with_props_rest");
+}
+
+#[rstest]
 fn warn_attr_avoid_is() {
     assert_compiler("warn_attr_avoid_is");
 }
@@ -1908,7 +1918,6 @@ fn preserve_whitespace_inner_trailing_text() {
 }
 
 #[rstest]
-#[ignore = "missing: <script> child element must force preserve_whitespace=true (codegen)"]
 fn preserve_whitespace_script_element() {
     assert_compiler("preserve_whitespace_script_element");
 }
@@ -3360,12 +3369,6 @@ fn diagnose_component_default_and_named_slot_expr() {
 
 #[rstest]
 #[ignore = "diagnose: pending fix"]
-fn diagnose_runes_dev_ce_benchmark() {
-    assert_compiler("diagnose_runes_dev_ce_benchmark");
-}
-
-#[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_dev_benchmark() {
     assert_compiler("diagnose_legacy_dev_benchmark");
 }
@@ -3376,7 +3379,26 @@ fn component_dev_default_children_wrap_snippet() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
+fn component_dev_named_slot_no_wrap_snippet() {
+    assert_compiler("component_dev_named_slot_no_wrap_snippet");
+}
+
+#[rstest]
 fn diagnose_dev_benchmark() {
     assert_compiler("diagnose_dev_benchmark");
+}
+
+#[rstest]
+fn dev_binary_equals_wrap() {
+    assert_compiler("dev_binary_equals_wrap");
+}
+
+#[rstest]
+fn add_locations_svelte_head_skips_hoisted_title() {
+    assert_compiler("add_locations_svelte_head_skips_hoisted_title");
+}
+
+#[rstest]
+fn add_locations_named_slot_wrapper() {
+    assert_compiler("add_locations_named_slot_wrapper");
 }

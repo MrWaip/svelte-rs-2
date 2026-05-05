@@ -6,6 +6,7 @@ pub struct RuntimePlan {
     pub has_bindable: bool,
     pub has_stores: bool,
     pub has_ce_props: bool,
+    pub has_legacy_accessor_props: bool,
     pub needs_props_param: bool,
     pub needs_pop_with_return: bool,
 
