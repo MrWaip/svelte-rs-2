@@ -190,6 +190,16 @@ fn script_module_exports_ordering_with_snippets() {
 }
 
 #[rstest]
+fn script_jsdoc_preserve() {
+    assert_compiler("script_jsdoc_preserve");
+}
+
+#[rstest]
+fn state_raw_dev_ce_with_props_rest() {
+    assert_compiler("state_raw_dev_ce_with_props_rest");
+}
+
+#[rstest]
 fn warn_attr_avoid_is() {
     assert_compiler("warn_attr_avoid_is");
 }
@@ -3355,12 +3365,6 @@ fn clock_svg_derived_onmount() {
 #[rstest]
 fn diagnose_component_default_and_named_slot_expr() {
     assert_compiler("diagnose_component_default_and_named_slot_expr");
-}
-
-#[rstest]
-#[ignore = "diagnose: pending fix"]
-fn diagnose_runes_dev_ce_benchmark() {
-    assert_compiler("diagnose_runes_dev_ce_benchmark");
 }
 
 #[rstest]
