@@ -182,7 +182,10 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
                     .data
                     .scoping
                     .find_binding(root, base)
-                    .is_some_and(|sym_id| !is_rune_or_prop_origin(self.data, sym_id))
+                    .is_some_and(|sym_id| {
+                        !is_rune_or_prop_origin(self.data, sym_id)
+                            && !is_synthetic_store_binding(self.data, sym_id)
+                    })
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {
@@ -196,6 +199,16 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
 
         walk_call_expression(self, call);
     }
+}
+
+fn is_synthetic_store_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
+    matches!(
+        data.scoping.symbol_owner(sym_id),
+        svelte_component_semantics::SymbolOwner::Synthetic
+    ) && matches!(
+        data.reactivity.binding_semantics(sym_id),
+        BindingSemantics::Store(_)
+    )
 }
 
 fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {

@@ -390,12 +390,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
-    pub fn const_tags_for_fragment_by_id(
-        &self,
-        id: svelte_ast::FragmentId,
-    ) -> Option<&Vec<NodeId>> {
-        self.data.template.const_tags.by_fragment_id(id)
-    }
     pub fn debug_tags_for_fragment_by_id(
         &self,
         id: svelte_ast::FragmentId,

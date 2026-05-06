@@ -1878,6 +1878,16 @@ fn smoke_legacy_contextual_mutations_all() {
 }
 
 #[rstest]
+fn smoke_legacy_rune_fallback_all() {
+    assert_compiler("smoke_legacy_rune_fallback_all");
+}
+
+#[rstest]
+fn derived_non_runes_invalid_usage() {
+    assert_compiler("derived_non_runes_invalid_usage");
+}
+
+#[rstest]
 fn smoke_runes_declarator_gaps_all() {
     assert_compiler("smoke_runes_declarator_gaps_all");
 }
@@ -3401,4 +3411,25 @@ fn add_locations_svelte_head_skips_hoisted_title() {
 #[rstest]
 fn add_locations_named_slot_wrapper() {
     assert_compiler("add_locations_named_slot_wrapper");
+}
+
+#[rstest]
+fn auto_softlegacy_member_read() {
+    assert_compiler("auto_softlegacy_member_read");
+}
+
+#[rstest]
+#[ignore = "missing: HardLegacy template-expression coarse-grained sequence wrap (transform/codegen)"]
+fn auto_hardlegacy_member_read_explicit() {
+    assert_compiler("auto_hardlegacy_member_read_explicit");
+}
+
+#[rstest]
+fn auto_softlegacy_simple_template() {
+    assert_compiler("auto_softlegacy_simple_template");
+}
+
+#[rstest]
+fn auto_softlegacy_const_only() {
+    assert_compiler("auto_softlegacy_const_only");
 }

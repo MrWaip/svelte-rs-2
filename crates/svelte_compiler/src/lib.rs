@@ -3,6 +3,7 @@ mod sourcemap_finalize;
 
 pub use options::{
     CompileOptions, CssMode, ExperimentalOptions, GenerateMode, ModuleCompileOptions, Namespace,
+    RunesOption,
 };
 pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -43,13 +44,8 @@ fn apply_compile_options_to_component(
     }
 }
 
-fn resolved_runes_option(component: &svelte_ast::Component, options: &CompileOptions) -> bool {
-    component
-        .options
-        .as_ref()
-        .and_then(|opts| opts.runes)
-        .or(options.runes)
-        .unwrap_or(true)
+fn inline_runes_option(component: &svelte_ast::Component) -> Option<bool> {
+    component.options.as_ref().and_then(|opts| opts.runes)
 }
 
 fn resolved_accessors_option(component: &svelte_ast::Component, options: &CompileOptions) -> bool {
@@ -113,7 +109,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let analyze_opts = svelte_analyze::AnalyzeOptions {
         custom_element: options.custom_element,
         experimental_async: options.experimental.async_,
-        runes: resolved_runes_option(&component, options),
+        runes: options.runes,
+        inline_runes: inline_runes_option(&component),
         accessors: resolved_accessors_option(&component, options),
         immutable: resolved_immutable_option(&component, options),
         preserve_whitespace: resolved_preserve_whitespace_option(&component, options),

@@ -1,5 +1,6 @@
 pub(crate) mod builder_v2;
 pub(crate) mod data;
 pub mod legacy_reactive;
+mod mode_resolution;
 
-pub(crate) use builder_v2::build_v2;
+pub(crate) use builder_v2::{ReactivityInputs, build_v2};

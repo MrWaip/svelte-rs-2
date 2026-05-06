@@ -17,7 +17,6 @@ impl<'c> TemplateSideTablesBundle<'c> {
             side_tables: template_side_tables::TemplateSideTablesVisitor {
                 component,
                 pending_html_tags: Vec::new(),
-                const_tag_buckets: Vec::new(),
                 debug_tag_buckets: Vec::new(),
                 title_buckets: Vec::new(),
                 expression_tag_buckets: Vec::new(),
@@ -33,10 +32,6 @@ impl<'c> TemplateSideTablesBundle<'c> {
         &mut self,
     ) -> Vec<(svelte_ast::NodeId, svelte_ast::FragmentId)> {
         std::mem::take(&mut self.side_tables.pending_html_tags)
-    }
-
-    pub(crate) fn take_const_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {
-        std::mem::take(&mut self.side_tables.const_tag_buckets)
     }
 
     pub(crate) fn take_debug_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {

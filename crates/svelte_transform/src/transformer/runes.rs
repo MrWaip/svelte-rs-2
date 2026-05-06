@@ -57,7 +57,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 let Some(init) = node.init.as_mut() else {
                     return;
                 };
-                let Some(kind) = Self::detect_class_field_rune_kind(init) else {
+                let Some(kind) = self.rune_kind_from_expr(init) else {
                     return;
                 };
                 self.rewrite_class_field_rune_init(node, binding_name, kind, sym_id);
@@ -279,13 +279,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     pub(crate) fn rewrite_call_expression(&mut self, node: &mut oxc_ast::ast::Expression<'a>) {
-        let oxc_ast::ast::Expression::CallExpression(call) = node else {
+        let Some(rune_kind) = self.rune_kind_from_expr(node) else {
             return;
         };
 
-        if let oxc_ast::ast::Expression::Identifier(id) = &call.callee
-            && id.name.as_str() == "$host"
-        {
+        if matches!(rune_kind, RuneKind::Host) {
             *node = self
                 .b
                 .static_member_expr(self.b.rid_expr("$$props"), "$$host");
@@ -298,25 +296,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let oxc_ast::ast::Expression::CallExpression(call) = &*node else {
-            return;
-        };
-        let new_callee = match &call.callee {
-            oxc_ast::ast::Expression::Identifier(id) if id.name.as_str() == "$effect" => {
-                Some("$.user_effect")
-            }
-            oxc_ast::ast::Expression::StaticMemberExpression(member) => {
-                if let oxc_ast::ast::Expression::Identifier(obj) = &member.object {
-                    match (obj.name.as_str(), member.property.name.as_str()) {
-                        ("$effect", "pre") => Some("$.user_pre_effect"),
-                        ("$effect", "root") => Some("$.effect_root"),
-                        ("$effect", "tracking") => Some("$.effect_tracking"),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
+        let new_callee = match rune_kind {
+            RuneKind::Effect => Some("$.user_effect"),
+            RuneKind::EffectPre => Some("$.user_pre_effect"),
+            RuneKind::EffectRoot => Some("$.effect_root"),
+            RuneKind::EffectTracking => Some("$.effect_tracking"),
             _ => None,
         };
         if let Some(callee_name) = new_callee {

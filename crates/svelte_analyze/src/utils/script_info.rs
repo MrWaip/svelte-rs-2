@@ -60,6 +60,7 @@ pub fn extract_script_info(
                         collect_declarations_from_declaration(
                             decl,
                             source,
+                            runes,
                             &mut declarations,
                             &mut props_declaration,
                         );
@@ -68,6 +69,7 @@ pub fn extract_script_info(
                         collect_declarations_from_declaration(
                             decl,
                             source,
+                            runes,
                             &mut declarations,
                             &mut props_declaration,
                         );
@@ -78,6 +80,7 @@ pub fn extract_script_info(
                 collect_var_declarations(
                     decl,
                     source,
+                    runes,
                     &mut declarations,
                     &mut props_declaration,
                 );
@@ -144,6 +147,10 @@ fn collect_legacy_export_props(
     }
 }
 
+fn detect_rune_in_runes_mode(expr: &Expression<'_>, runes: bool) -> Option<RuneKind> {
+    if runes { detect_rune(expr) } else { None }
+}
+
 pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr {
         return detect_rune_from_call(call);
@@ -170,6 +177,7 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
                     (DERIVED_RUNE_NAME, "by") => Some(RuneKind::DerivedBy),
                     (STATE_RUNE_NAME, "raw") => Some(RuneKind::StateRaw),
                     (STATE_RUNE_NAME, "eager") => Some(RuneKind::StateEager),
+                    (STATE_RUNE_NAME, "snapshot") => Some(RuneKind::StateSnapshot),
                     (EFFECT_RUNE_NAME, "pre") => Some(RuneKind::EffectPre),
                     (EFFECT_RUNE_NAME, "root") => Some(RuneKind::EffectRoot),
                     (EFFECT_RUNE_NAME, "tracking") => Some(RuneKind::EffectTracking),
@@ -236,12 +244,13 @@ fn collect_export_names_from_declaration(
 fn collect_declarations_from_declaration(
     decl: &oxc_ast::ast::Declaration<'_>,
     source: &str,
+    runes: bool,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
 ) {
     match decl {
         oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
-            collect_var_declarations(var_decl, source, declarations, props_declaration);
+            collect_var_declarations(var_decl, source, runes, declarations, props_declaration);
         }
         oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
             collect_func_declaration(func, declarations);
@@ -270,6 +279,7 @@ fn collect_func_declaration(
 fn collect_var_declarations(
     decl: &oxc_ast::ast::VariableDeclaration<'_>,
     source: &str,
+    runes: bool,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
 ) {
@@ -290,7 +300,7 @@ fn collect_var_declarations(
                     &declarator.init
                 {
                     let init_sp = Span::new(init.span().start, init.span().end);
-                    let rune = detect_rune(init);
+                    let rune = detect_rune_in_runes_mode(init, runes);
                     let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
                         collect_derived_refs(init)
                     } else {
@@ -337,7 +347,10 @@ fn collect_var_declarations(
                 });
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
-                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
+                let rune = declarator
+                    .init
+                    .as_ref()
+                    .and_then(|init| detect_rune_in_runes_mode(init, runes));
 
                 if rune == Some(RuneKind::Props) {
                     let mut props = Vec::new();
@@ -451,7 +464,10 @@ fn collect_var_declarations(
                 }
             }
             oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
-                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
+                let rune = declarator
+                    .init
+                    .as_ref()
+                    .and_then(|init| detect_rune_in_runes_mode(init, runes));
                 if let Some(rune_kind) = rune
                     && matches!(
                         rune_kind,

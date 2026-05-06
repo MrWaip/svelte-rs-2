@@ -26,16 +26,20 @@ for (const file of files) {
     continue;
   }
 
+  const compileConfig = {
+    discloseVersion: false,
+    dev: false,
+    name: "App",
+    modernAst: true,
+    runes: true,
+    ...caseConfig,
+  };
+  if (compileConfig.runes === null) {
+    delete compileConfig.runes;
+  }
   const result = isModule
     ? compileModule(text, { dev: false, ...caseConfig })
-    : compile(text, {
-        discloseVersion: false,
-        dev: false,
-        name: "App",
-        modernAst: true,
-        runes: true,
-        ...caseConfig,
-      });
+    : compile(text, compileConfig);
   let code = result.js.code;
   // Strip version comment from module output (we don't emit it)
   if (isModule) {
@@ -46,15 +50,19 @@ for (const file of files) {
 console.log(JSON.stringify(results));
 
 function generateDiagnostics(source, caseConfig) {
+  const compileConfig = {
+    discloseVersion: false,
+    dev: false,
+    name: "App",
+    modernAst: true,
+    runes: true,
+    ...caseConfig,
+  };
+  if (compileConfig.runes === null) {
+    delete compileConfig.runes;
+  }
   try {
-    const result = compile(source, {
-      discloseVersion: false,
-      dev: false,
-      name: "App",
-      modernAst: true,
-      runes: true,
-      ...caseConfig,
-    });
+    const result = compile(source, compileConfig);
     return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
   } catch (error) {
     return [normalizeDiagnostic(error, "error")];

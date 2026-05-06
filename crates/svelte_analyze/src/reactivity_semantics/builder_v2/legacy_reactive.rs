@@ -96,7 +96,7 @@ pub(super) fn build_from_collected<'a>(
     implicit_names: Vec<CompactString>,
     mutated_imports: SmallVec<[SymbolId; 2]>,
 ) {
-    if data.script.runes {
+    if data.script.runes() {
         return;
     }
     if !mutated_imports.is_empty() {

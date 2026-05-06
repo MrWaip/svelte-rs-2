@@ -2,7 +2,7 @@ use std::{fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{CompileOptions, Namespace, compile};
+use svelte_compiler::{CompileOptions, Namespace, RunesOption, compile};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -24,6 +24,7 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
     let config_path = dir.join("config.json");
     let mut opts = CompileOptions {
         name: Some("App".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     if config_path.exists() {
@@ -34,7 +35,7 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
             opts.dev = dev;
         }
         if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = Some(runes);
+            opts.runes = if runes { RunesOption::Runes } else { RunesOption::Legacy };
         }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;
@@ -1247,13 +1248,11 @@ mod runes {
     );
     diagnostic_case!(
         validate_derived_rune_invalid_usage_in_non_runes_mode,
-        "runes/validate_derived_rune_invalid_usage_in_non_runes_mode",
-        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for $derived in non-runes mode on this repro"
+        "runes/validate_derived_rune_invalid_usage_in_non_runes_mode"
     );
     diagnostic_case!(
         validate_derived_destructured_rune_invalid_usage_in_non_runes_mode,
-        "runes/validate_derived_destructured_rune_invalid_usage_in_non_runes_mode",
-        ignore = "known mismatch: npm svelte/compiler does not report rune_invalid_usage for destructured $derived in non-runes mode on this repro"
+        "runes/validate_derived_destructured_rune_invalid_usage_in_non_runes_mode"
     );
     diagnostic_case!(
         validate_derived_rune_allowed_in_runes_mode,

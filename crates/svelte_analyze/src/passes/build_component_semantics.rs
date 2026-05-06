@@ -10,7 +10,6 @@ use svelte_component_semantics::{
 
 use crate::scope::ComponentScoping;
 use crate::types::data::{AnalysisData, JsAst};
-use crate::utils::script_info;
 
 pub(crate) fn build<'d, 'a>(
     component: &'d Component,
@@ -49,27 +48,6 @@ pub(crate) fn build<'d, 'a>(
 
     let mut scoping = ComponentScoping::from_semantics(builder.finish());
     scoping.build_template_scope_set();
-
-    if let Some(script) = data.script.info.as_mut() {
-        script_info::enrich_from_component_scoping(&scoping, script);
-        if let Some(program) = parsed.program.as_ref() {
-            data.output.needs_context =
-                crate::passes::js_analyze::needs_context_for_program(program, &scoping, script);
-        }
-    }
-
-    if let Some(module_program) = parsed.module_program.as_ref()
-        && parsed.module_script_content_span.is_some()
-    {
-        let mut module_info =
-            script_info::extract_script_info(module_program, &component.source, true);
-        script_info::enrich_from_component_scoping(&scoping, &mut module_info);
-        data.output.needs_context |= crate::passes::js_analyze::needs_context_for_program(
-            module_program,
-            &scoping,
-            &module_info,
-        );
-    }
     data.scoping = scoping;
 }
 

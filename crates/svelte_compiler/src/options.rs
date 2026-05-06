@@ -5,6 +5,8 @@ pub struct ExperimentalOptions {
     pub async_: bool,
 }
 
+pub use svelte_ast::RunesOption;
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CompileOptions {
@@ -20,7 +22,8 @@ pub struct CompileOptions {
     pub namespace: Namespace,
     pub css: CssMode,
 
-    pub runes: Option<bool>,
+    #[serde(skip)]
+    pub runes: RunesOption,
     pub preserve_comments: bool,
     pub preserve_whitespace: bool,
     pub disclose_version: bool,
@@ -51,7 +54,7 @@ impl Default for CompileOptions {
             custom_element: false,
             namespace: Namespace::default(),
             css: CssMode::default(),
-            runes: None,
+            runes: RunesOption::default(),
             preserve_comments: false,
             preserve_whitespace: false,
             disclose_version: true,
