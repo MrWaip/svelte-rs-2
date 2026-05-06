@@ -41,6 +41,8 @@ pub struct EachBlockSemantics {
     pub async_kind: EachAsyncKind,
 
     pub collection_kind: EachCollectionKind,
+
+    pub collection_store: Option<crate::scope::SymbolId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

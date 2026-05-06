@@ -121,10 +121,51 @@ impl<'a> ComponentTransformer<'_, 'a> {
         )
     }
 
-    pub(crate) fn make_store_set(&self, base_name: &str, value: Expression<'a>) -> Expression<'a> {
+    pub(crate) fn make_store_unsub(
+        &self,
+        inner: Expression<'a>,
+        dollar_name: &str,
+    ) -> Expression<'a> {
+        let ast = self.b.ast;
+        let callee = self.make_dollar_member("store_unsub");
+        let inner_arg = Argument::from(inner);
+        let label_arg = Argument::from(ast.expression_string_literal(
+            SPAN,
+            ast.atom(dollar_name),
+            None,
+        ));
+        let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
+        ast.expression_call(
+            SPAN,
+            callee,
+            NONE,
+            ast.vec_from_array([inner_arg, label_arg, stores_arg]),
+            false,
+        )
+    }
+
+    pub(crate) fn make_store_set(
+        &self,
+        base_name: &str,
+        value: Expression<'a>,
+        base_via_legacy_state: bool,
+    ) -> Expression<'a> {
         let ast = self.b.ast;
         let callee = self.make_dollar_member("store_set");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
+        let base_ident = ast.expression_identifier(SPAN, ast.atom(base_name));
+        let name_expr = if base_via_legacy_state {
+            let get_callee = self.make_dollar_member("get");
+            ast.expression_call(
+                SPAN,
+                get_callee,
+                NONE,
+                ast.vec1(Argument::from(base_ident)),
+                false,
+            )
+        } else {
+            base_ident
+        };
+        let name_arg = Argument::from(name_expr);
         let value_arg = Argument::from(value);
         ast.expression_call(
             SPAN,
@@ -175,23 +216,54 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
     }
 
+    pub(crate) fn make_invalidate_store_seq(
+        &self,
+        mutation: Expression<'a>,
+        dollar_name: &str,
+    ) -> Expression<'a> {
+        let ast = self.b.ast;
+        let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
+        let label_arg = Argument::from(ast.expression_string_literal(
+            SPAN,
+            ast.atom(dollar_name),
+            None,
+        ));
+        let invalidate = ast.expression_call(
+            SPAN,
+            self.make_dollar_member("invalidate_store"),
+            NONE,
+            ast.vec_from_array([stores_arg, label_arg]),
+            false,
+        );
+        ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
+    }
+
     pub(crate) fn make_each_item_invalidate_seq(
         &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
         mutation: Expression<'a>,
         source_syms: &[svelte_component_semantics::SymbolId],
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
+        let make_source_read =
+            |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
+                let name = self.component_scoping.symbol_name(sym);
+                if matches!(
+                    analysis.binding_semantics(sym),
+                    svelte_analyze::BindingSemantics::Store(_)
+                ) {
+                    self.make_thunk_call(name)
+                } else {
+                    self.make_rune_get(name)
+                }
+            };
         let body_expr = match source_syms {
-            [single] => {
-                let name = self.component_scoping.symbol_name(*single);
-                self.make_rune_get(name)
-            }
+            [single] => make_source_read(*single),
             many => {
                 let mut elems = ast.vec_with_capacity(many.len());
                 for &sym in many {
-                    let name = self.component_scoping.symbol_name(sym);
-                    elems.push(self.make_rune_get(name));
+                    elems.push(make_source_read(sym));
                 }
                 ast.expression_sequence(SPAN, elems)
             }
@@ -204,7 +276,31 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ast.vec1(Argument::from(thunk)),
             false,
         );
-        ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
+        let mut seq_elems = ast.vec_from_array([mutation, invalidate]);
+        if let Some(store_sym) = source_syms.iter().copied().find(|&sym| {
+            matches!(
+                analysis.binding_semantics(sym),
+                svelte_analyze::BindingSemantics::Store(_)
+            )
+        }) {
+            let store_name = self.component_scoping.symbol_name(store_sym);
+            let stores_arg =
+                Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
+            let label_arg = Argument::from(ast.expression_string_literal(
+                SPAN,
+                ast.atom(store_name),
+                None,
+            ));
+            let invalidate_store = ast.expression_call(
+                SPAN,
+                self.make_dollar_member("invalidate_store"),
+                NONE,
+                ast.vec_from_array([stores_arg, label_arg]),
+                false,
+            );
+            seq_elems.push(invalidate_store);
+        }
+        ast.expression_sequence(SPAN, seq_elems)
     }
 
     pub(crate) fn make_legacy_state_mutate(

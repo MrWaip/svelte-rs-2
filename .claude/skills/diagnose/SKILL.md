@@ -1,6 +1,7 @@
 ---
 name: diagnose
 description: Diagnose a Svelte component, playground repro, or component file by isolating the first owning failure, turning it into focused persistent tests, and recording the follow-up in the owning spec or in `specs/unknown.md`. Use when a broad repro is failing and the next step is not yet reduced to one named failing test or one approved spec slice.
+disable-model-invocation: true
 ---
 
 # Diagnose

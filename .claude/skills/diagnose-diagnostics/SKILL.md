@@ -1,6 +1,7 @@
 ---
 name: diagnose-diagnostics
 description: Diagnose a diagnostic mismatch or suspected false positive/negative against npm `svelte/compiler` by isolating the first owning failure, capturing it in `tasks/diagnostic_tests`, and recording the follow-up in the owning spec or in `specs/unknown.md`. Use when the problem is diagnostic parity rather than JS/CSS output parity.
+disable-model-invocation: true
 ---
 
 # Diagnose Diagnostics

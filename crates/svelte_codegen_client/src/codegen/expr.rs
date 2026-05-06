@@ -152,10 +152,11 @@ fn build_reactive_dep_expr_legacy<'a>(
         )),
 
         BindingSemantics::Store(store) => {
-            let base_name = ctx.query.symbol_name(store.base_symbol);
-            let dollar_name = format!("${}", base_name);
-            let dollar: &str = ctx.b.alloc_str(&dollar_name);
-            Some(ctx.b.call_expr(dollar, std::iter::empty::<Arg<'a, '_>>()))
+            let dollar_name = ctx.query.symbol_name(store.store_symbol);
+            Some(
+                ctx.b
+                    .call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>()),
+            )
         }
         BindingSemantics::LegacyState(state) => {
             let helper = if state.var_declared {

@@ -1,8 +1,21 @@
 use crate::scope::SymbolId;
-use crate::types::data::{AnalysisData, BindTargetSemantics};
+use crate::types::data::{AnalysisData, BindSource, BindTargetSemantics};
 use crate::walker::{TemplateVisitor, VisitContext};
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, ClassDirective, Element, StyleDirective};
+
+fn bind_store_subscription(dir: &BindDirective, data: &AnalysisData) -> Option<SymbolId> {
+    let info = data.attr_expression(dir.id)?;
+    if !info.is_identifier_or_member_expression() {
+        return None;
+    }
+    let sym = info.ref_symbols().first().copied()?;
+    matches!(
+        data.binding_semantics(sym),
+        crate::BindingSemantics::Store(_)
+    )
+    .then_some(sym)
+}
 
 pub(crate) struct BindSemanticsVisitor<'s> {
     source: &'s str,
@@ -54,9 +67,12 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
-        if let Some(semantics) = data.parent(dir.id).and_then(|parent| {
+        if let Some(mut semantics) = data.parent(dir.id).and_then(|parent| {
             BindTargetSemantics::from_parent_kind_and_name(parent.kind, dir.name.as_str())
         }) {
+            if let Some(store_symbol) = bind_store_subscription(dir, data) {
+                semantics.set_source(BindSource::StoreSubscription { store_symbol });
+            }
             data.template
                 .bind_semantics
                 .target_semantics

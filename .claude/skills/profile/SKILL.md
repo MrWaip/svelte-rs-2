@@ -3,6 +3,7 @@ name: profile
 description: Профайлинг компилятора и анализ горячих точек. Только по явному вызову `/profile`.
 argument-hint: "[fresh]"
 allowed-tools: Bash, Read, Grep, Glob, mcp__narsil-mcp__*
+disable-model-invocation: true
 ---
 
 # Задача

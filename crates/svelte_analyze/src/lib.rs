@@ -20,8 +20,8 @@ pub use block_semantics::{
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindTargetSemantics,
-    BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
+    AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
+    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
     CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
     ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,

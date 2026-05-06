@@ -1,1 +1,57 @@
-{}
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://host.docker.internal:3456/notify -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"Claude Code\\\",\\\"message\\\":\\\"Task completed in $(basename \"$PWD\")\\\"}\" --max-time 3 >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://host.docker.internal:3456/notify -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"Claude Code\\\",\\\"message\\\":\\\"Notification in $(basename \"$PWD\")\\\"}\" --max-time 3 >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://host.docker.internal:3456/notify -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"Claude Code\\\",\\\"message\\\":\\\"Permission required in $(basename \"$PWD\")\\\"}\" --max-time 3 >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://host.docker.internal:3456/notify -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"Claude Code\\\",\\\"message\\\":\\\"Question in $(basename \"$PWD\")\\\"}\" --max-time 3 >/dev/null 2>&1 || true"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://host.docker.internal:3456/notify -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"Claude Code\\\",\\\"message\\\":\\\"Plan ready for review in $(basename \"$PWD\")\\\"}\" --max-time 3 >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

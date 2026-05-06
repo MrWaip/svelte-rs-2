@@ -6,6 +6,7 @@ ARG NODE_VERSION=22.13.0
 ARG JUST_VERSION=1.46.0
 ARG NARSIL_VERSION=1.6.1
 ARG CLAUDE_VERSION=2.1.126
+ARG WASM_PACK_VERSION=0.13.1
 
 ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
@@ -18,8 +19,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-        build-essential pkg-config libssl-dev cmake git curl ca-certificates \
-        clang lld jq ripgrep fd-find python3 python3-pip
+        build-essential pkg-config libssl-dev cmake git git-lfs curl ca-certificates \
+        clang lld jq ripgrep fd-find python3 python3-pip \
+    && git lfs install --system --skip-repo
 
 # 2. nvm + node — LTS bumps only
 RUN mkdir -p ${NVM_DIR} \
@@ -32,7 +34,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
         sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} \
                   --component rustfmt --component clippy --component rust-src --component rust-analyzer \
-    && cargo install just@${JUST_VERSION} cargo-sweep cargo-nextest samply --locked
+    && cargo install just@${JUST_VERSION} cargo-sweep cargo-nextest samply \
+                     wasm-pack@${WASM_PACK_VERSION} --locked
 
 
 # 5. narsil-mcp — bumps with upstream

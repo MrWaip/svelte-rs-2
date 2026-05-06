@@ -2,7 +2,6 @@ import { saveOptions, saveTheme, DEFAULT_OPTIONS } from "./state.js";
 
 const PRESETS = {
     default: { ...DEFAULT_OPTIONS },
-    legacy: { ...DEFAULT_OPTIONS, runes: false, hmr: false },
     ssr: { ...DEFAULT_OPTIONS, generate: "server" },
 };
 
@@ -18,7 +17,11 @@ function countOverrides(options, keys = Object.keys(DEFAULT_OPTIONS)) {
 }
 
 function sectionKeys(section) {
-    return Array.from(section.querySelectorAll("[data-opt]")).map((el) => el.dataset.opt);
+    const keys = Array.from(section.querySelectorAll("[data-opt]")).map((el) => el.dataset.opt);
+    Array.from(section.querySelectorAll("[data-opt-tristate]")).forEach((el) => {
+        keys.push(el.dataset.optTristate);
+    });
+    return keys;
 }
 
 export function bindModeTabs(app, store) {
@@ -76,9 +79,17 @@ export function bindSettings(app, store) {
     });
 
     const inputs = drawer.querySelectorAll("[data-opt]");
+    const tristates = drawer.querySelectorAll("[data-opt-tristate]");
     const presetChips = drawer.querySelectorAll(".preset-chip");
     const sectionEls = drawer.querySelectorAll("[data-section]");
     const overridesMeta = drawer.querySelector("[data-overrides-count]");
+
+    const tristateButtonValue = (btn) => {
+        const v = btn.dataset.value;
+        if (v === "true") return true;
+        if (v === "false") return false;
+        return null;
+    };
 
     const sync = (options) => {
         inputs.forEach((input) => {
@@ -89,6 +100,13 @@ export function bindSettings(app, store) {
             } else {
                 input.value = value ?? "";
             }
+        });
+        tristates.forEach((group) => {
+            const key = group.dataset.optTristate;
+            const value = options[key];
+            group.querySelectorAll("button[data-value]").forEach((btn) => {
+                btn.toggleAttribute("data-active", tristateButtonValue(btn) === value);
+            });
         });
 
         const activePreset = detectPreset(options);
@@ -132,6 +150,18 @@ export function bindSettings(app, store) {
             }
             store.set({ options: next });
             saveOptions(next);
+        });
+    });
+
+    tristates.forEach((group) => {
+        const key = group.dataset.optTristate;
+        group.querySelectorAll("button[data-value]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const next = { ...store.get().options };
+                next[key] = tristateButtonValue(btn);
+                store.set({ options: next });
+                saveOptions(next);
+            });
         });
     });
 

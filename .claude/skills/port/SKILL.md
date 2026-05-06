@@ -1,6 +1,7 @@
 ---
 name: port
 description: Port the next explicit unchecked use case from a Svelte compiler spec to the Rust implementation. Use when a feature already has a spec and Claude should fully close one use case, or a small group of use cases that naturally close together, while keeping strict parser/analyze/codegen boundaries. If the selected use case is too large to close cleanly, decompose it in the spec and stop.
+disable-model-invocation: true
 ---
 
 # Port Use Cases To Closure

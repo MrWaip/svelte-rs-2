@@ -64,9 +64,10 @@ pub use runtime::LegacyInit;
 pub use runtime::RuntimePlan;
 pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
-    BindHostKind, BindPropertyKind, BindSemanticsData, BindTargetSemantics, ContentEditableKind,
-    DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind, MediaBindKind,
-    ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData, WindowBindKind,
+    BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
+    ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
+    MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData,
+    WindowBindKind,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

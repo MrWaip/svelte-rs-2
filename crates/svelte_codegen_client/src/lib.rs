@@ -152,24 +152,38 @@ pub fn generate<'a>(
 
     if runtime.has_stores {
         let scoping = ctx.query.scoping();
-        let store_names: Vec<&str> = ctx
+        let stores: Vec<(&str, &str, bool)> = ctx
             .query
             .view
             .iter_store_bindings()
-            .map(|(_, store)| scoping.symbol_name(store.base_symbol))
+            .map(|(_, store)| {
+                let base_via_legacy_state = matches!(
+                    ctx.query.view.binding_semantics(store.base_symbol),
+                    svelte_analyze::BindingSemantics::LegacyState(_)
+                );
+                (
+                    scoping.symbol_name(store.base_symbol),
+                    scoping.symbol_name(store.store_symbol),
+                    base_via_legacy_state,
+                )
+            })
             .collect();
 
-        for base_name in &store_names {
-            let mut dollar_name = String::with_capacity(1 + base_name.len());
-            dollar_name.push('$');
-            dollar_name.push_str(base_name);
-            let dollar_name_str: &str = ctx.b.alloc_str(&dollar_name);
+        for (base_name, dollar_name, base_via_legacy_state) in &stores {
+            let dollar_name_str: &str = ctx.b.alloc_str(dollar_name);
             let base_str: &str = ctx.b.alloc_str(base_name);
+            let make_base_arg = || -> Arg<'_, '_> {
+                if *base_via_legacy_state {
+                    Arg::Expr(ctx.b.call_expr("$.get", [Arg::Ident(base_str)]))
+                } else {
+                    Arg::Ident(base_str)
+                }
+            };
             let store_get = ctx.b.call_expr(
                 "$.store_get",
                 [
-                    Arg::Ident(base_str),
-                    Arg::Str(dollar_name.clone()),
+                    make_base_arg(),
+                    Arg::StrRef(dollar_name_str),
                     Arg::Ident("$$stores"),
                 ],
             );
@@ -178,7 +192,7 @@ pub fn generate<'a>(
                 let validate = ctx.b.call_expr(
                     "$.validate_store",
                     [
-                        Arg::Ident(base_str),
+                        make_base_arg(),
                         Arg::StrRef(ctx.b.alloc_str(base_name)),
                     ],
                 );

@@ -18,7 +18,7 @@ export function createStore(initial) {
 
 export const DEFAULT_OPTIONS = {
     dev: false,
-    runes: true,
+    runes: null,
     discloseVersion: false,
     hmr: false,
     customElement: false,
@@ -30,7 +30,7 @@ export const DEFAULT_OPTIONS = {
     name: "App",
 };
 
-const STORAGE_KEY = "playground:options:v1";
+const STORAGE_KEY = "playground:options:v2";
 
 export function loadOptions() {
     try {

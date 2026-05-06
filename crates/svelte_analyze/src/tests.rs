@@ -2346,6 +2346,92 @@ fn store_ref_detected_in_template() {
 }
 
 #[test]
+fn store_synthetic_symbol_holds_store_binding_facts() {
+    let (_c, data) =
+        analyze_source(r#"<script>import { count } from './store';</script>{$count}"#);
+
+    let count_sym = data
+        .scoping
+        .find_binding_in_any_scope("count")
+        .expect("count binding");
+    let dollar_sym = data
+        .scoping
+        .find_binding_in_any_scope("$count")
+        .expect("synthetic $count binding");
+
+    assert_eq!(
+        symbol_declaration_semantics(&data, "$count"),
+        BindingSemantics::Store(StoreBindingSemantics {
+            base_symbol: count_sym,
+            store_symbol: dollar_sym,
+        }),
+        "$count synthetic must own Store facts"
+    );
+
+    assert!(
+        !matches!(
+            symbol_declaration_semantics(&data, "count"),
+            BindingSemantics::Store(_)
+        ),
+        "base count must NOT carry Store facts"
+    );
+
+    let store_pairs: Vec<_> = data.iter_store_bindings().collect();
+    assert_eq!(store_pairs.len(), 1, "exactly one store binding");
+    let (sym, store) = store_pairs[0];
+    assert_eq!(sym, dollar_sym, "iter_store_bindings yields synthetic sym");
+    assert_eq!(store.base_symbol, count_sym);
+    assert_eq!(store.store_symbol, dollar_sym);
+}
+
+#[test]
+fn store_bind_value_does_not_emit_bind_invalid_value() {
+    let (_c, _data, diags) = analyze_source_with_diags(
+        r#"<script>
+import { count } from './stores';
+import Component from './Component.svelte';
+</script>
+<Component bind:value={$count} />"#,
+    );
+    let bind_errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.kind.code() == "bind_invalid_value")
+        .collect();
+    assert!(
+        bind_errors.is_empty(),
+        "bind:value={{$count}} must not produce bind_invalid_value: {diags:?}"
+    );
+}
+
+#[test]
+fn store_synthetic_symbol_when_base_does_not_exist_in_legacy() {
+    let (_c, data) = analyze_source_with_options(
+        r#"<svelte:options runes={false} /><script></script>{$count}"#,
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..Default::default()
+        },
+    );
+
+    let count_sym = data
+        .scoping
+        .find_binding_in_any_scope("count")
+        .expect("synthetic count binding");
+    let dollar_sym = data
+        .scoping
+        .find_binding_in_any_scope("$count")
+        .expect("synthetic $count binding");
+
+    assert_eq!(
+        symbol_declaration_semantics(&data, "$count"),
+        BindingSemantics::Store(StoreBindingSemantics {
+            base_symbol: count_sym,
+            store_symbol: dollar_sym,
+        })
+    );
+}
+
+#[test]
 fn no_store_ref_for_regular_var() {
     let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
     assert_expr_tag_no_store_ref(&data, &c, "count");
@@ -3281,10 +3367,15 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         .scoping
         .find_binding_in_any_scope("store")
         .expect("missing binding 'store'");
+    let dollar_store_sym = data
+        .scoping
+        .find_binding_in_any_scope("$store")
+        .expect("missing synthetic binding '$store'");
     assert_eq!(
-        symbol_declaration_semantics(&data, "store"),
+        symbol_declaration_semantics(&data, "$store"),
         BindingSemantics::Store(StoreBindingSemantics {
             base_symbol: store_sym,
+            store_symbol: dollar_store_sym,
         })
     );
 }

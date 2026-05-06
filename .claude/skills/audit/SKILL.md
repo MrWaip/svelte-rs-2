@@ -1,6 +1,7 @@
 ---
 name: audit
 description: Gap analysis for an existing feature vs reference Svelte compiler. Use when the user asks what is missing in our implementation of a feature, asks to audit a feature, or wants to check feature completeness against the reference compiler.
+disable-model-invocation: true
 ---
 
 # Audit Feature
