@@ -7,6 +7,18 @@ pub struct ExperimentalOptions {
 
 pub use svelte_ast::RunesOption;
 
+fn deserialize_runes<'de, D>(deserializer: D) -> Result<RunesOption, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    Ok(match Option::<bool>::deserialize(deserializer)? {
+        None => RunesOption::Auto,
+        Some(true) => RunesOption::Runes,
+        Some(false) => RunesOption::Legacy,
+    })
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CompileOptions {
@@ -22,7 +34,7 @@ pub struct CompileOptions {
     pub namespace: Namespace,
     pub css: CssMode,
 
-    #[serde(skip)]
+    #[serde(default, deserialize_with = "deserialize_runes")]
     pub runes: RunesOption,
     pub preserve_comments: bool,
     pub preserve_whitespace: bool,
@@ -334,6 +346,33 @@ mod tests {
         let json = r#"{"rootDir": "/home/user/project"}"#;
         let opts: CompileOptions = serde_json::from_str(json).expect("test invariant");
         assert_eq!(opts.root_dir.as_deref(), Some("/home/user/project"));
+    }
+
+    #[test]
+    fn serde_runes_missing_is_auto() {
+        let opts: CompileOptions = serde_json::from_str("{}").expect("test invariant");
+        assert_eq!(opts.runes, RunesOption::Auto);
+    }
+
+    #[test]
+    fn serde_runes_null_is_auto() {
+        let opts: CompileOptions =
+            serde_json::from_str(r#"{"runes": null}"#).expect("test invariant");
+        assert_eq!(opts.runes, RunesOption::Auto);
+    }
+
+    #[test]
+    fn serde_runes_true_is_runes() {
+        let opts: CompileOptions =
+            serde_json::from_str(r#"{"runes": true}"#).expect("test invariant");
+        assert_eq!(opts.runes, RunesOption::Runes);
+    }
+
+    #[test]
+    fn serde_runes_false_is_legacy() {
+        let opts: CompileOptions =
+            serde_json::from_str(r#"{"runes": false}"#).expect("test invariant");
+        assert_eq!(opts.runes, RunesOption::Legacy);
     }
 
     #[test]

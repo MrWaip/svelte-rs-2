@@ -1,5 +1,6 @@
 mod contextual;
 
+mod import_subscribed;
 mod legacy;
 mod legacy_reactive;
 mod references;
@@ -75,7 +76,6 @@ pub(crate) fn build_v2<'a>(
         data,
         lr_collected.labeled_nodes,
         lr_collected.implicit_names,
-        lr_collected.mutated_imports,
     );
 
     let reference_count = data.scoping.references_len();
@@ -86,12 +86,12 @@ pub(crate) fn build_v2<'a>(
     legacy::classify_unresolved_legacy_identifiers(data);
     legacy::finalize_legacy_aggregates(data);
     legacy_reactive::classify_mutated_import_references(data);
+    import_subscribed::classify_import_subscribed_reads(data);
 }
 
 pub(super) struct LegacyReactiveCollected {
     pub labeled_nodes: Vec<OxcNodeId>,
     pub implicit_names: Vec<compact_str::CompactString>,
-    pub mutated_imports: SmallVec<[SymbolId; 2]>,
 }
 
 fn compute_const_tag_reactivity<'a>(
@@ -189,12 +189,10 @@ fn build_script_semantics_v2<'a>(
     }
     let labeled_nodes = std::mem::take(&mut collector.legacy_reactive_labeled_nodes);
     let implicit_names = std::mem::take(&mut collector.legacy_reactive_implicit_names);
-    let mutated_imports = std::mem::take(&mut collector.legacy_reactive_mutated_imports);
     collector.finish();
     LegacyReactiveCollected {
         labeled_nodes,
         implicit_names,
-        mutated_imports,
     }
 }
 
@@ -268,6 +266,15 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             .record_prop_member_mutation_root_refs(std::mem::take(
                 &mut self.prop_member_mutation_root_refs,
             ));
+
+        {
+            let imports = self.legacy_reactive_mutated_imports.clone();
+            let lr = self.data.reactivity.legacy_reactive_mut();
+            for sym in &imports {
+                lr.add_mutated_import(*sym);
+            }
+        }
+
         store::collect_store_declarations(self.data);
         self.compute_derived_reactivity();
     }
@@ -303,7 +310,15 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     }
 
     fn is_reference_reactive(&self, ref_id: ReferenceId) -> bool {
-        use super::data::{BindingSemantics, ConstBindingSemantics};
+        use super::data::{BindingSemantics, ConstBindingSemantics, ReferenceSemantics};
+        if matches!(
+            self.data.reactivity.reference_semantics(ref_id),
+            ReferenceSemantics::StoreRead { .. }
+                | ReferenceSemantics::StoreWrite { .. }
+                | ReferenceSemantics::StoreUpdate { .. }
+        ) {
+            return true;
+        }
         let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
             return false;
         };

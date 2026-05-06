@@ -15,12 +15,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tag_name: &str,
     ) -> Result<Option<BindPlacement<'a>>> {
         let bind_attr = svelte_ast::Attribute::BindDirective(bind.clone());
+        let root_ref_sem = self.ctx.directive_root_reference_semantics(&bind_attr);
         let is_rune = matches!(
-            self.ctx.directive_root_reference_semantics(&bind_attr),
+            root_ref_sem,
             ReferenceSemantics::SignalWrite { .. }
                 | ReferenceSemantics::SignalUpdate { .. }
                 | ReferenceSemantics::SignalRead { .. }
         );
+        let store_symbol = match root_ref_sem {
+            ReferenceSemantics::StoreRead { symbol }
+            | ReferenceSemantics::StoreWrite { symbol }
+            | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+            _ => None,
+        };
         let var_name = if bind.shorthand {
             bind.name.clone()
         } else {
@@ -64,11 +71,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        let setter = self
-            .ctx
-            .b
-            .bind_this_setter_arrow(&var_name, is_rune, tag_name.is_empty());
-        let getter = self.ctx.b.bind_this_getter_arrow(&var_name, is_rune);
+        let (setter, getter) = if let Some(sym) = store_symbol {
+            let dollar_name = self.ctx.symbol_name(sym);
+            let base_name = self.ctx.b.alloc_str(&dollar_name[1..]);
+            let dollar_alloc = self.ctx.b.alloc_str(dollar_name);
+            let setter_body = self.ctx.b.call_expr(
+                "$.store_set",
+                [Arg::Ident(base_name), Arg::Ident("$$value")],
+            );
+            let setter = self
+                .ctx
+                .b
+                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(setter_body)]);
+            let getter_body = self
+                .ctx
+                .b
+                .call_expr_callee(self.ctx.b.rid_expr(dollar_alloc), std::iter::empty::<Arg>());
+            let getter = self
+                .ctx
+                .b
+                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(getter_body)]);
+            (setter, getter)
+        } else {
+            (
+                self.ctx
+                    .b
+                    .bind_this_setter_arrow(&var_name, is_rune, tag_name.is_empty()),
+                self.ctx.b.bind_this_getter_arrow(&var_name, is_rune),
+            )
+        };
         let stmt = self.ctx.b.call_stmt(
             "$.bind_this",
             [Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter)],

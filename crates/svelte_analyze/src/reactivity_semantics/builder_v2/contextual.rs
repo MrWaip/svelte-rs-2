@@ -281,9 +281,6 @@ pub(super) fn promote_each_sources_to_legacy_state<'a>(
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
-    if data.script.runes() {
-        return;
-    }
     let root = data.scoping.root_scope_id();
     let component_name = data.output.component_name.clone();
     let mut ctx = VisitContext::with_parsed(
@@ -306,6 +303,7 @@ struct EachSourcePromoter;
 impl TemplateVisitor for EachSourcePromoter {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         let Some(parsed) = ctx.parsed else { return };
+        let runes = ctx.data.script.runes();
 
         let item_syms: Vec<SymbolId> = {
             let Some(stmt) = block.context.as_ref().and_then(|r| parsed.stmt(r.id())) else {
@@ -334,8 +332,33 @@ impl TemplateVisitor for EachSourcePromoter {
         collector.visit_expression(expr);
 
         let immutable = ctx.data.script.immutable;
+        let store_candidate_refs: rustc_hash::FxHashSet<svelte_component_semantics::ReferenceId> =
+            ctx.data
+                .scoping
+                .store_candidate_refs()
+                .iter()
+                .map(|(_, ref_id)| *ref_id)
+                .collect();
         let mut promoted_sources: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+        let mut collection_store: Option<svelte_component_semantics::SymbolId> = None;
         for ref_id in collector.refs {
+            if store_candidate_refs.contains(&ref_id) {
+                let Some(base_sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+                    continue;
+                };
+                if let Some(store_sym) = ctx.data.reactivity.store_shadow_of_internal(base_sym) {
+                    if collection_store.is_none() {
+                        collection_store = Some(store_sym);
+                    }
+                    if !runes {
+                        promoted_sources.push(store_sym);
+                    }
+                }
+                continue;
+            }
+            if runes {
+                continue;
+            }
             let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
                 continue;
             };
@@ -362,6 +385,14 @@ impl TemplateVisitor for EachSourcePromoter {
                         .reactivity
                         .add_each_item_indirect_source(*item_sym, source_sym);
                 }
+            }
+        }
+
+        if let Some(store_sym) = collection_store {
+            for &item_sym in &item_syms {
+                ctx.data
+                    .reactivity
+                    .set_each_item_collection_store(item_sym, store_sym);
             }
         }
     }

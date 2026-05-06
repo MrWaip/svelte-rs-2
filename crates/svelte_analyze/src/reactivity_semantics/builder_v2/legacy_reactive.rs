@@ -94,16 +94,9 @@ pub(super) fn build_from_collected<'a>(
     data: &mut AnalysisData<'a>,
     labeled_nodes: Vec<OxcNodeId>,
     implicit_names: Vec<CompactString>,
-    mutated_imports: SmallVec<[SymbolId; 2]>,
 ) {
     if data.script.runes() {
         return;
-    }
-    if !mutated_imports.is_empty() {
-        let lr = data.reactivity.legacy_reactive_mut();
-        for sym in &mutated_imports {
-            lr.add_mutated_import(*sym);
-        }
     }
     if labeled_nodes.is_empty() {
         return;

@@ -120,6 +120,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     };
     let has_external = collection_facts.has_external;
     let uses_store = collection_facts.uses_store;
+    let collection_store = collection_facts.collection_store;
     let async_kind = if collection_facts.has_await || !collection_facts.blockers.is_empty() {
         EachAsyncKind::Async {
             has_await: collection_facts.has_await,
@@ -176,6 +177,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             shadows_outer,
             async_kind,
             collection_kind,
+            collection_store,
         }),
     );
 }
@@ -217,6 +219,7 @@ fn collection_expression_facts<'a>(
 
     let mut has_external = false;
     let mut uses_store = false;
+    let mut collection_store: Option<crate::scope::SymbolId> = None;
     let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
     for ref_id in &collector.refs {
         let sem = ctx.reactivity.reference_semantics(*ref_id);
@@ -227,15 +230,16 @@ fn collection_expression_facts<'a>(
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
             _ => ctx.semantics.get_reference(*ref_id).symbol_id(),
         };
-        if !uses_store
-            && matches!(
-                sem,
-                ReferenceSemantics::StoreRead { .. }
-                    | ReferenceSemantics::StoreWrite { .. }
-                    | ReferenceSemantics::StoreUpdate { .. }
-            )
-        {
+        if matches!(
+            sem,
+            ReferenceSemantics::StoreRead { .. }
+                | ReferenceSemantics::StoreWrite { .. }
+                | ReferenceSemantics::StoreUpdate { .. }
+        ) {
             uses_store = true;
+            if collection_store.is_none() {
+                collection_store = effective_sym;
+            }
         }
         if let Some(sym) = effective_sym {
             if !has_external {
@@ -255,6 +259,7 @@ fn collection_expression_facts<'a>(
     CollectionExprFacts {
         has_external,
         uses_store,
+        collection_store,
         has_await: collector.has_await,
         blockers,
     }
@@ -281,6 +286,7 @@ fn body_has_direct_animate(ctx: &Ctx<'_, '_>, nodes: &[NodeId]) -> bool {
 struct CollectionExprFacts {
     has_external: bool,
     uses_store: bool,
+    collection_store: Option<crate::scope::SymbolId>,
     has_await: bool,
     blockers: SmallVec<[u32; 2]>,
 }

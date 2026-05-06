@@ -172,10 +172,6 @@
                             <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                             Default
                         </button>
-                        <button class="preset-chip" data-preset="legacy" role="tab">
-                            <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                            Legacy
-                        </button>
                         <button class="preset-chip" data-preset="ssr" role="tab">
                             <svg class="preset-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                             SSR
@@ -217,7 +213,14 @@
                             <span class="legend-count" data-section-count></span>
                             <span class="legend-mod" data-section-mod hidden></span>
                         </legend>
-                        <label class="toggle"><input type="checkbox" data-opt="runes" checked> <span>runes</span></label>
+                        <div class="segmented" data-opt-tristate="runes" role="radiogroup" aria-label="runes mode">
+                            <span class="segmented-label">runes</span>
+                            <div class="segmented-buttons">
+                                <button type="button" data-value="auto" role="radio">auto</button>
+                                <button type="button" data-value="true" role="radio">runes</button>
+                                <button type="button" data-value="false" role="radio">legacy</button>
+                            </div>
+                        </div>
                         <label class="toggle"><input type="checkbox" data-opt="customElement"> <span>customElement</span></label>
                         <label class="toggle"><input type="checkbox" data-opt="preserveComments"> <span>preserveComments</span></label>
                         <label class="toggle"><input type="checkbox" data-opt="preserveWhitespace"> <span>preserveWhitespace</span></label>

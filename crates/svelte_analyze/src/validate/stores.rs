@@ -123,12 +123,11 @@ impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
         if is_rune_name(name) {
             return;
         }
-        let base = &name[1..];
         let root = self.data.scoping.root_scope_id();
         if self
             .data
             .scoping
-            .find_binding(root, base)
+            .find_binding(root, name)
             .is_some_and(|sym| {
                 matches!(self.data.binding_semantics(sym), BindingSemantics::Store(_),)
             })
@@ -178,14 +177,20 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
             if is_rune_name(name) && name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];
                 let root = self.data.scoping.root_scope_id();
-                if self
+                let dollar_is_store = self
                     .data
                     .scoping
-                    .find_binding(root, base)
-                    .is_some_and(|sym_id| {
-                        !is_rune_or_prop_origin(self.data, sym_id)
-                            && !is_synthetic_store_binding(self.data, sym_id)
-                    })
+                    .find_binding(root, name)
+                    .is_some_and(|sym_id| is_synthetic_store_binding(self.data, sym_id));
+                if !dollar_is_store
+                    && self
+                        .data
+                        .scoping
+                        .find_binding(root, base)
+                        .is_some_and(|sym_id| {
+                            !is_rune_or_prop_origin(self.data, sym_id)
+                                && !is_synthetic_store_binding(self.data, sym_id)
+                        })
                 {
                     self.diags.push(Diagnostic::warning(
                         DiagnosticKind::StoreRuneConflict {

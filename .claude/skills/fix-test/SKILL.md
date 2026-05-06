@@ -1,6 +1,7 @@
 ---
 name: fix-test
 description: Triage one failing compiler test to decide whether it should be fixed locally, escalated into a slice for port, or sent back to audit/spec work. Use when a failing test may hide a larger architectural or feature-completeness gap and Claude should classify the work before implementing.
+disable-model-invocation: true
 ---
 
 # Triage Failing Test
