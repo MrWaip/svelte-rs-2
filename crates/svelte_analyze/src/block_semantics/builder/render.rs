@@ -3,6 +3,7 @@ use super::super::{
 };
 use super::walker::Ctx;
 use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+use crate::ReferenceSemantics;
 use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
 use smallvec::SmallVec;
@@ -57,7 +58,20 @@ fn callee_symbol(callee: &Expression<'_>, ctx: &Ctx<'_, '_>) -> Option<SymbolId>
         return None;
     };
     let ref_id = ident.reference_id.get()?;
+    if let Some(store_sym) = store_reference_symbol(ctx, ref_id) {
+        return Some(store_sym);
+    }
     ctx.semantics.get_reference(ref_id).symbol_id()
+}
+
+fn store_reference_symbol(ctx: &Ctx<'_, '_>, ref_id: ReferenceId) -> Option<SymbolId> {
+    match ctx.reactivity.reference_semantics(ref_id) {
+        ReferenceSemantics::StoreRead { symbol }
+        | ReferenceSemantics::StoreWrite { symbol }
+        | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+        ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
+        _ => None,
+    }
 }
 
 fn is_reactive_symbol(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {

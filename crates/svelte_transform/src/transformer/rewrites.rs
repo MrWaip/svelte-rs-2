@@ -4,13 +4,20 @@ use svelte_ast_builder::Arg;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
-    CarrierMemberReadSemantics, ContextualReadKind, ContextualReadSemantics,
-    PropReferenceSemantics, ReferenceSemantics, StateKind,
+    AnalysisData, BindingSemantics, CarrierMemberReadSemantics, ContextualReadKind,
+    ContextualReadSemantics, PropReferenceSemantics, ReferenceSemantics, StateKind,
 };
 use svelte_component_semantics::SymbolId;
 
 use super::model::ComponentTransformer;
 use crate::rune_refs;
+
+fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> SymbolId {
+    match analysis.binding_semantics(store_sym) {
+        BindingSemantics::Store(facts) => facts.base_symbol,
+        _ => store_sym,
+    }
+}
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn identifier_is_store_read(
@@ -107,6 +114,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
+            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
+            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => {
+                let dollar_name: &str = self.b.alloc_str(analysis.scoping.symbol_name(store_symbol));
+                *expr = self.make_thunk_call(dollar_name);
+                true
+            }
             ReferenceSemantics::LegacyReactiveImportRead => {
                 let import_name: &str = self
                     .b
@@ -155,8 +168,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
             | ReferenceSemantics::RestPropMemberRewrite
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -190,6 +206,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy)
             }
+            ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
+                if !self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy) {
+                    return false;
+                }
+                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
+                let inner = self.b.move_expr(node);
+                *node = self.make_store_unsub(inner, &dollar_name);
+                true
+            }
             ReferenceSemantics::PropMutation { .. } => {
                 self.rewrite_prop_identifier_assignment(node)
             }
@@ -207,10 +233,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyPropsIdentifierRead
             | ReferenceSemantics::LegacyRestPropsIdentifierRead
             | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -238,6 +267,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_update(node)
             }
+            ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
+                if !self.rewrite_signal_or_store_identifier_update(node) {
+                    return false;
+                }
+                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
+                let inner = self.b.move_expr(node);
+                *node = self.make_store_unsub(inner, &dollar_name);
+                true
+            }
             ReferenceSemantics::PropMutation { .. } => self.rewrite_prop_identifier_update(node),
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
@@ -256,10 +294,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyRestPropsIdentifierRead
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
             | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -303,6 +345,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
                 self.rewrite_legacy_each_item_member_assignment(node, item_sym, ctx)
             }
+            ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
+                collection_store, ..
+            } => self.rewrite_each_item_member_store_invalidate_assignment(node, collection_store),
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -321,7 +366,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -364,6 +413,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
                 self.rewrite_legacy_each_item_member_update(node, item_sym, ctx)
             }
+            ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
+                collection_store, ..
+            } => self.rewrite_each_item_member_store_invalidate_update(node, collection_store),
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -382,10 +434,82 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
+    }
+
+    fn rewrite_each_item_member_store_invalidate_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        collection_store: SymbolId,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let item_name = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            let Some(member) = assign.left.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            root.name
+        };
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
+        rune_refs::replace_expr_root_in_assign_target(
+            &mut assign.left,
+            self.make_rune_get(item_name.as_str()),
+        );
+        let dollar_name = analysis.scoping.symbol_name(collection_store).to_string();
+        let placeholder = self.make_rune_get("");
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.make_invalidate_store_seq(mutation, &dollar_name);
+        true
+    }
+
+    fn rewrite_each_item_member_store_invalidate_update(
+        &self,
+        node: &mut Expression<'a>,
+        collection_store: SymbolId,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let item_name = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let Some(member) = upd.argument.as_member_expression() else {
+                return false;
+            };
+            let Some(root) = rune_refs::find_expr_root_identifier(member.object()) else {
+                return false;
+            };
+            root.name
+        };
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
+        rune_refs::replace_expr_root_in_simple_target(
+            &mut upd.argument,
+            self.make_rune_get(item_name.as_str()),
+        );
+        let dollar_name = analysis.scoping.symbol_name(collection_store).to_string();
+        let placeholder = self.make_rune_get("");
+        let mutation = std::mem::replace(node, placeholder);
+        *node = self.make_invalidate_store_seq(mutation, &dollar_name);
+        true
     }
 
     pub(crate) fn rewrite_signal_or_store_identifier_assignment(
@@ -414,7 +538,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         match semantics {
             ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => {
-                let base_name = analysis.scoping.symbol_name(symbol);
+                let base_sym = store_base_symbol(analysis, symbol);
+                let base_name = analysis.scoping.symbol_name(base_sym);
+                let base_via_legacy_state = matches!(
+                    analysis.binding_semantics(base_sym),
+                    BindingSemantics::LegacyState(_)
+                );
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
@@ -422,7 +551,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
                 let left_read = self.make_thunk_call(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_store_set(base_name, value);
+                *node = self.make_store_set(base_name, value, base_via_legacy_state);
                 true
             }
             ReferenceSemantics::SignalWrite { kind } => {
@@ -483,6 +612,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *node = self.make_rune_set(name.as_str(), value, false);
                 true
             }
+            ReferenceSemantics::LegacyStateSubscribedWrite { .. } => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
+                let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
+                let left_read = self.make_rune_get(name.as_str());
+                let value = self.build_compound_value(operator, left_read, right);
+                *node = self.make_rune_set(name.as_str(), value, false);
+                true
+            }
+            ReferenceSemantics::LegacyStateSubscribedUpdate { safe, .. } => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
+                let right = std::mem::replace(&mut assign.right, self.make_rune_get(""));
+                let left_read = if safe {
+                    self.make_rune_safe_get(name.as_str())
+                } else {
+                    self.make_rune_get(name.as_str())
+                };
+                let value = self.build_compound_value(operator, left_read, right);
+                *node = self.make_rune_set(name.as_str(), value, false);
+                true
+            }
             _ => false,
         }
     }
@@ -516,7 +669,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         match analysis.reference_semantics(ref_id) {
             ReferenceSemantics::StoreUpdate { symbol } => {
-                let base_name = analysis.scoping.symbol_name(symbol);
+                let base_sym = store_base_symbol(analysis, symbol);
+                let base_name = analysis.scoping.symbol_name(base_sym);
                 *node = self.make_store_update(base_name, name.as_str(), is_prefix, is_increment);
                 true
             }
@@ -529,6 +683,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
 
             ReferenceSemantics::LegacyStateUpdate { .. } => {
+                *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
+                true
+            }
+            ReferenceSemantics::LegacyStateSubscribedUpdate { .. } => {
                 *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
                 true
             }
@@ -639,7 +797,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ReferenceSemantics::StoreRead { symbol } = analysis.reference_semantics(ref_id) else {
             return false;
         };
-        let base_name = analysis.scoping.symbol_name(symbol);
+        let base_sym = store_base_symbol(analysis, symbol);
+        let base_name = analysis.scoping.symbol_name(base_sym);
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
@@ -850,7 +1009,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
         true
     }
 
@@ -890,7 +1049,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = std::mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
         true
     }
 
@@ -916,7 +1075,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ReferenceSemantics::StoreRead { symbol } = analysis.reference_semantics(ref_id) else {
             return false;
         };
-        let base_name = analysis.scoping.symbol_name(symbol);
+        let base_sym = store_base_symbol(analysis, symbol);
+        let base_name = analysis.scoping.symbol_name(base_sym);
         let Expression::UpdateExpression(upd) = &mut *node else {
             unreachable!()
         };

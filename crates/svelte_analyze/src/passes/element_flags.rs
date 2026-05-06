@@ -317,9 +317,8 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 && trimmed.len() > 1
                                 && !trimmed.starts_with("$$")
                                 && {
-                                    let base = &trimmed[1..];
                                     let root = data.scoping.root_scope_id();
-                                    data.scoping.find_binding(root, base).is_some_and(|sym| {
+                                    data.scoping.find_binding(root, trimmed).is_some_and(|sym| {
                                         matches!(
                                             data.binding_semantics(sym),
                                             crate::types::data::BindingSemantics::Store(_),

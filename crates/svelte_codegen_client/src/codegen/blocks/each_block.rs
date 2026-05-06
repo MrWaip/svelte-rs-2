@@ -166,8 +166,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let needs_group_index = matches!(sem.flavor, EachFlavor::BindGroup);
         let needs_collection_id = sem.shadows_outer;
+        let needs_store_index = sem.collection_store.is_some()
+            && match &sem.item {
+                EachItemKind::Identifier(sym) => self.ctx.query.scoping().is_member_mutated(*sym),
+                _ => false,
+            };
 
-        let render_index_name = if !(body_uses_index || needs_group_index || needs_collection_id) {
+        let render_index_name = if !(body_uses_index
+            || needs_group_index
+            || needs_collection_id
+            || needs_store_index)
+        {
             None
         } else if let Some(name) = &user_index_name {
             Some(name.clone())

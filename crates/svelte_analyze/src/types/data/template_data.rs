@@ -451,10 +451,17 @@ impl BindPropertyKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BindSource {
+    Expression,
+    StoreSubscription { store_symbol: crate::scope::SymbolId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BindTargetSemantics {
     host: BindHostKind,
     property: BindPropertyKind,
     requires_mutable_target: bool,
+    source: BindSource,
 }
 
 impl BindTargetSemantics {
@@ -470,6 +477,7 @@ impl BindTargetSemantics {
             host,
             property,
             requires_mutable_target: property.requires_mutable_target(),
+            source: BindSource::Expression,
         }
     }
 
@@ -483,6 +491,14 @@ impl BindTargetSemantics {
 
     pub fn requires_mutable_target(self) -> bool {
         self.requires_mutable_target
+    }
+
+    pub fn source(self) -> BindSource {
+        self.source
+    }
+
+    pub(crate) fn set_source(&mut self, source: BindSource) {
+        self.source = source;
     }
 
     pub fn is_this(&self) -> bool {

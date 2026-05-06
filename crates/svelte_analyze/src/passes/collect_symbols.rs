@@ -5,7 +5,8 @@ use svelte_ast::{Attribute, NodeId, RenderTag, StyleDirectiveValue};
 use svelte_span::Span;
 
 use crate::passes::js_analyze;
-use crate::scope::{ComponentScoping, SymbolId};
+use crate::reactivity_semantics::data::ReferenceSemantics;
+use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, ExpressionInfo, ExpressionKind};
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -33,7 +34,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let mut info = build_expression_info(expr, &mut ctx.data.scoping);
+        let mut info = build_expression_info(expr, ctx.data);
         if info.uses_legacy_slots() {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
@@ -64,7 +65,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
                     _ => None,
                 });
         if let Some(init_expr) = init_expr {
-            let info = build_expression_info(init_expr, &mut ctx.data.scoping);
+            let info = build_expression_info(init_expr, ctx.data);
             ctx.data.expressions.insert(tag.id, info);
         }
     }
@@ -94,18 +95,18 @@ impl TemplateVisitor for CollectSymbolsVisitor {
 
 pub(crate) fn build_expression_info(
     expr: &Expression<'_>,
-    scoping: &mut ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> ExpressionInfo {
     let mut info = js_analyze::analyze_expression(expr);
-    info.set_ref_symbols(collect_ref_symbols(expr, scoping));
+    info.set_ref_symbols(collect_ref_symbols(expr, data));
     info
 }
 
 fn collect_ref_symbols(
     expr: &Expression<'_>,
-    scoping: &mut ComponentScoping,
+    data: &AnalysisData<'_>,
 ) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols(scoping, |collector| {
+    collect_resolved_ref_symbols(data, |collector| {
         collector.visit_expression(expr);
     })
 }
@@ -205,15 +206,27 @@ fn merge_concat_expression_info(
     ctx.data.attr_expressions.insert(parent_id, merged);
 }
 
-struct ResolvedRefCollector<'s, 'a> {
-    scoping: &'s mut ComponentScoping<'a>,
+struct ResolvedRefCollector<'d, 'a> {
+    data: &'d AnalysisData<'a>,
     symbols: SmallVec<[SymbolId; 2]>,
 }
 
 impl<'a> Visit<'a> for ResolvedRefCollector<'_, '_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(ref_id) = ident.reference_id.get()
-            && let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id()
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        let sym_id = match self.data.reference_semantics(ref_id) {
+            ReferenceSemantics::StoreRead { symbol }
+            | ReferenceSemantics::StoreWrite { symbol }
+            | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }
+            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
+            _ => self.data.scoping.get_reference(ref_id).symbol_id(),
+        };
+        if let Some(sym_id) = sym_id
             && !self.symbols.contains(&sym_id)
         {
             self.symbols.push(sym_id);
@@ -222,11 +235,11 @@ impl<'a> Visit<'a> for ResolvedRefCollector<'_, '_> {
 }
 
 fn collect_resolved_ref_symbols(
-    scoping: &mut ComponentScoping<'_>,
+    data: &AnalysisData<'_>,
     visit: impl FnOnce(&mut ResolvedRefCollector<'_, '_>),
 ) -> SmallVec<[SymbolId; 2]> {
     let mut collector = ResolvedRefCollector {
-        scoping,
+        data,
         symbols: SmallVec::new(),
     };
     visit(&mut collector);

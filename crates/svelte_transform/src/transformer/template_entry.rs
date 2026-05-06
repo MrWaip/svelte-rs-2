@@ -123,6 +123,10 @@ pub(crate) fn run_template<'a, 'b>(
         };
 
         let setter_lhs_expr = orig.clone_in_with_semantic_ids(alloc);
+        let bind_source = analysis
+            .bind_target_semantics(owner)
+            .map(|sem| sem.source())
+            .unwrap_or(svelte_analyze::BindSource::Expression);
 
         transformer.template_owner_node = Some(owner);
 
@@ -158,7 +162,50 @@ pub(crate) fn run_template<'a, 'b>(
         };
         let setter_body = es.unbox().expression;
 
-        let (getter, setter) = if dev {
+        let (getter, setter) = if let svelte_analyze::BindSource::StoreSubscription {
+            store_symbol,
+        } = bind_source
+        {
+            let dollar_name: &str = b.alloc_str(analysis.scoping.symbol_name(store_symbol));
+            let base_via_legacy_state =
+                if let svelte_analyze::BindingSemantics::Store(facts) =
+                    analysis.binding_semantics(store_symbol)
+                {
+                    matches!(
+                        analysis.binding_semantics(facts.base_symbol),
+                        svelte_analyze::BindingSemantics::LegacyState(_)
+                    )
+                } else {
+                    false
+                };
+            let getter_expr = if base_via_legacy_state {
+                let thunk_call = b.call_expr_callee(
+                    b.rid_expr(dollar_name),
+                    std::iter::empty::<svelte_ast_builder::Arg<'_, '_>>(),
+                );
+                b.named_function_expr(
+                    "get",
+                    b.no_params(),
+                    vec![b.return_stmt(thunk_call)],
+                    false,
+                )
+            } else {
+                b.rid_expr(dollar_name)
+            };
+            (
+                getter_expr,
+                if dev {
+                    b.named_function_expr(
+                        "set",
+                        b.params(["$$value"]),
+                        vec![b.expr_stmt(setter_body)],
+                        false,
+                    )
+                } else {
+                    b.arrow_expr(b.params(["$$value"]), [b.expr_stmt(setter_body)])
+                },
+            )
+        } else if dev {
             (
                 b.named_function_expr(
                     "get",

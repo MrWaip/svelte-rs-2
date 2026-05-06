@@ -155,6 +155,7 @@ pub enum PropDefaultLowering {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StoreBindingSemantics {
     pub base_symbol: SymbolId,
+    pub store_symbol: SymbolId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -294,6 +295,20 @@ pub enum ReferenceSemantics {
         safe: bool,
     },
 
+    LegacyStateSubscribedRead {
+        safe: bool,
+        store_symbol: SymbolId,
+    },
+
+    LegacyStateSubscribedWrite {
+        store_symbol: SymbolId,
+    },
+
+    LegacyStateSubscribedUpdate {
+        safe: bool,
+        store_symbol: SymbolId,
+    },
+
     LegacyStateMemberMutationRoot {
         symbol: SymbolId,
     },
@@ -304,8 +319,17 @@ pub enum ReferenceSemantics {
         symbol: SymbolId,
     },
 
+    ImportSubscribedRead {
+        store_symbol: SymbolId,
+    },
+
     LegacyEachItemMemberMutationRoot {
         item_sym: SymbolId,
+    },
+
+    EachItemMemberMutationStoreInvalidate {
+        item_sym: SymbolId,
+        collection_store: SymbolId,
     },
 
     IllegalWrite,
@@ -432,6 +456,17 @@ pub(crate) enum ReferenceFacts {
     LegacyStateUpdate {
         safe: bool,
     },
+    LegacyStateSubscribedRead {
+        safe: bool,
+        store_symbol: SymbolId,
+    },
+    LegacyStateSubscribedWrite {
+        store_symbol: SymbolId,
+    },
+    LegacyStateSubscribedUpdate {
+        safe: bool,
+        store_symbol: SymbolId,
+    },
     LegacyStateMemberMutationRoot {
         symbol: SymbolId,
     },
@@ -442,8 +477,17 @@ pub(crate) enum ReferenceFacts {
         symbol: SymbolId,
     },
 
+    ImportSubscribedRead {
+        store_symbol: SymbolId,
+    },
+
     LegacyEachItemMemberMutationRoot {
         item_sym: SymbolId,
+    },
+
+    EachItemMemberMutationStoreInvalidate {
+        item_sym: SymbolId,
+        collection_store: SymbolId,
     },
 
     IllegalWrite,
@@ -477,6 +521,10 @@ pub struct ReactivitySemantics {
 
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
+    each_item_collection_store: FxHashMap<SymbolId, SymbolId>,
+
+    base_to_store: FxHashMap<SymbolId, SymbolId>,
+
     const_alias_owner: FxHashMap<SymbolId, NodeId>,
 
     uses_runes: bool,
@@ -497,6 +545,8 @@ impl ReactivitySemantics {
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
             each_item_indirect_sources: FxHashMap::default(),
+            each_item_collection_store: FxHashMap::default(),
+            base_to_store: FxHashMap::default(),
             const_alias_owner: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             legacy_bindable_prop_symbols: Vec::new(),
@@ -653,11 +703,33 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyStateUpdate { safe }) => {
                 ReferenceSemantics::LegacyStateUpdate { safe: *safe }
             }
+            Some(ReferenceFacts::LegacyStateSubscribedRead { safe, store_symbol }) => {
+                ReferenceSemantics::LegacyStateSubscribedRead {
+                    safe: *safe,
+                    store_symbol: *store_symbol,
+                }
+            }
+            Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol }) => {
+                ReferenceSemantics::LegacyStateSubscribedWrite {
+                    store_symbol: *store_symbol,
+                }
+            }
+            Some(ReferenceFacts::LegacyStateSubscribedUpdate { safe, store_symbol }) => {
+                ReferenceSemantics::LegacyStateSubscribedUpdate {
+                    safe: *safe,
+                    store_symbol: *store_symbol,
+                }
+            }
             Some(ReferenceFacts::LegacyStateMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyStateMemberMutationRoot { symbol: *symbol }
             }
             Some(ReferenceFacts::LegacyReactiveImportRead) => {
                 ReferenceSemantics::LegacyReactiveImportRead
+            }
+            Some(ReferenceFacts::ImportSubscribedRead { store_symbol }) => {
+                ReferenceSemantics::ImportSubscribedRead {
+                    store_symbol: *store_symbol,
+                }
             }
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
@@ -667,6 +739,13 @@ impl ReactivitySemantics {
                     item_sym: *item_sym,
                 }
             }
+            Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
+                item_sym,
+                collection_store,
+            }) => ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
+                item_sym: *item_sym,
+                collection_store: *collection_store,
+            },
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
@@ -741,8 +820,15 @@ impl ReactivitySemantics {
     }
 
     pub(crate) fn record_store_binding(&mut self, sym: SymbolId, semantics: StoreBindingSemantics) {
+        let base = semantics.base_symbol;
+        let store = semantics.store_symbol;
         self.write_binding(sym, BindingFacts::Store(semantics));
         self.store_declaration_symbols.push(sym);
+        self.base_to_store.insert(base, store);
+    }
+
+    pub(crate) fn store_shadow_of_internal(&self, base: SymbolId) -> Option<SymbolId> {
+        self.base_to_store.get(&base).copied()
     }
 
     pub(crate) fn record_const_binding(&mut self, sym: SymbolId, destructured: bool) {
@@ -795,6 +881,10 @@ impl ReactivitySemantics {
             .and_then(|slot| slot.as_ref())
     }
 
+    pub(crate) fn reference_facts(&self, ref_id: ReferenceId) -> Option<&ReferenceFacts> {
+        self.lookup_reference_facts(ref_id)
+    }
+
     pub(crate) fn record_contextual_owner(&mut self, sym: SymbolId, owner_node: NodeId) {
         self.contextual_owner.insert(sym, owner_node);
     }
@@ -818,6 +908,18 @@ impl ReactivitySemantics {
         self.each_item_indirect_sources
             .get(&item_sym)
             .map(|v| v.as_slice())
+    }
+
+    pub(crate) fn set_each_item_collection_store(
+        &mut self,
+        item_sym: SymbolId,
+        store_sym: SymbolId,
+    ) {
+        self.each_item_collection_store.insert(item_sym, store_sym);
+    }
+
+    pub(crate) fn each_item_collection_store(&self, item_sym: SymbolId) -> Option<SymbolId> {
+        self.each_item_collection_store.get(&item_sym).copied()
     }
 
     pub(crate) fn record_const_alias_owner(&mut self, sym: SymbolId, owner_node: NodeId) {

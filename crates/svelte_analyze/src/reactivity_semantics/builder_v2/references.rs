@@ -21,6 +21,14 @@ pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
             .iter()
             .copied()
             .filter_map(|ref_id| {
+                if matches!(
+                    data.reactivity.reference_facts(ref_id),
+                    Some(super::super::data::ReferenceFacts::StoreRead { .. })
+                        | Some(super::super::data::ReferenceFacts::StoreWrite { .. })
+                        | Some(super::super::data::ReferenceFacts::StoreUpdate { .. })
+                ) {
+                    return None;
+                }
                 let reference = data.scoping.get_reference(ref_id);
                 let is_member_mutation_root =
                     data.reactivity.is_prop_member_mutation_root_ref(ref_id);
@@ -179,9 +187,18 @@ fn classify_reference_semantics(
             if !is_read {
                 return None;
             }
-            if is_member_mutation_root && data.reactivity.each_item_indirect_sources(sym).is_some()
-            {
-                return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_sym: sym });
+            if is_member_mutation_root {
+                if data.reactivity.each_item_indirect_sources(sym).is_some() {
+                    return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
+                        item_sym: sym,
+                    });
+                }
+                if let Some(collection_store) = data.reactivity.each_item_collection_store(sym) {
+                    return Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
+                        item_sym: sym,
+                        collection_store,
+                    });
+                }
             }
             let owner_node = data.reactivity.contextual_owner(sym)?;
             let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind);
@@ -193,18 +210,37 @@ fn classify_reference_semantics(
         }
 
         BindingFacts::LegacyState(state) => {
+            let store_shadow = data.reactivity.store_shadow_of_internal(sym);
             if is_member_mutation_root {
                 Some(ReferenceFacts::LegacyStateMemberMutationRoot { symbol: sym })
             } else if is_write && is_read {
-                Some(ReferenceFacts::LegacyStateUpdate {
-                    safe: state.var_declared,
-                })
+                if let Some(store_symbol) = store_shadow {
+                    Some(ReferenceFacts::LegacyStateSubscribedUpdate {
+                        safe: state.var_declared,
+                        store_symbol,
+                    })
+                } else {
+                    Some(ReferenceFacts::LegacyStateUpdate {
+                        safe: state.var_declared,
+                    })
+                }
             } else if is_write {
-                Some(ReferenceFacts::LegacyStateWrite)
+                if let Some(store_symbol) = store_shadow {
+                    Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol })
+                } else {
+                    Some(ReferenceFacts::LegacyStateWrite)
+                }
             } else if is_read {
-                Some(ReferenceFacts::LegacyStateRead {
-                    safe: state.var_declared,
-                })
+                if let Some(store_symbol) = store_shadow {
+                    Some(ReferenceFacts::LegacyStateSubscribedRead {
+                        safe: state.var_declared,
+                        store_symbol,
+                    })
+                } else {
+                    Some(ReferenceFacts::LegacyStateRead {
+                        safe: state.var_declared,
+                    })
+                }
             } else {
                 None
             }
