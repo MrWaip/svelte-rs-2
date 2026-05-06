@@ -3,6 +3,7 @@ use super::*;
 fn check(source: &str, expected: &str) {
     let opts = CompileOptions {
         name: Some("App".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     let result = compile(source, &opts);
@@ -15,21 +16,129 @@ fn check(source: &str, expected: &str) {
 
 #[test]
 fn inline_runes_option_overrides_compile_option() {
-    let js_alloc = oxc_allocator::Allocator::default();
-    let (mut component, _, diags) =
-        svelte_parser::parse_with_js(&js_alloc, "<svelte:options runes={false} /><p />");
-    assert!(
-        diags.is_empty(),
-        "unexpected parser diagnostics for inline runes test: {diags:?}"
-    );
-
     let options = CompileOptions {
-        runes: Some(true),
+        name: Some("App".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
-    apply_compile_options_to_component(&mut component, &options);
+    let result = compile(
+        "<svelte:options runes={false} /><script>let count = 0;</script><p>{count}</p>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        js.contains("svelte/internal/flags/legacy"),
+        "expected legacy flag import (inline runes={{false}} must beat compile runes), got:\n{js}"
+    );
+}
 
-    assert!(!resolved_runes_option(&component, &options));
+#[test]
+fn auto_mode_no_signals_resolves_to_legacy() {
+    let options = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Auto,
+        ..Default::default()
+    };
+    let result = compile(
+        "<script>let count = 0;</script><p>{count}</p>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        js.contains("svelte/internal/flags/legacy"),
+        "auto mode without rune signals must resolve to legacy, got:\n{js}"
+    );
+}
+
+#[test]
+fn auto_mode_state_rune_resolves_to_runes() {
+    let options = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Auto,
+        ..Default::default()
+    };
+    let result = compile(
+        "<script>let count = $state(0);</script><p>{count}</p>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        !js.contains("svelte/internal/flags/legacy"),
+        "auto mode with $state must resolve to runes, got:\n{js}"
+    );
+}
+
+#[test]
+fn auto_mode_effect_rune_resolves_to_runes() {
+    let options = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Auto,
+        ..Default::default()
+    };
+    let result = compile(
+        "<script>$effect(() => { console.log('tick'); });</script>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        !js.contains("svelte/internal/flags/legacy"),
+        "auto mode with $effect must resolve to runes, got:\n{js}"
+    );
+}
+
+#[test]
+fn auto_mode_shadowed_rune_name_stays_legacy() {
+    let options = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Auto,
+        ..Default::default()
+    };
+    let result = compile(
+        "<script>function $state(x) { return x; } let v = $state(0);</script><p>{v}</p>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        js.contains("svelte/internal/flags/legacy"),
+        "auto mode must treat shadowed rune name as a regular function, got:\n{js}"
+    );
+}
+
+#[test]
+fn auto_mode_top_level_await_in_module_resolves_to_runes() {
+    let options = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Auto,
+        experimental: ExperimentalOptions { async_: true },
+        ..Default::default()
+    };
+    let result = compile(
+        "<script module>const data = await fetch('/api');</script><p>ok</p>",
+        &options,
+    );
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"))
+        .code;
+    assert!(
+        !js.contains("svelte/internal/flags/legacy"),
+        "auto mode with top-level await in module must resolve to runes, got:\n{js}"
+    );
 }
 
 #[test]
@@ -86,6 +195,7 @@ fn error_recovery_returns_diagnostics() {
 fn compile_filename_derived_name_is_sanitized() {
     let opts = CompileOptions {
         filename: "src/routes/+page.svelte".into(),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -105,6 +215,7 @@ export default function _page($$anchor) {}
 fn compile_explicit_name_reserved_word_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("class".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -124,6 +235,7 @@ export default function class_1($$anchor) {}
 fn compile_explicit_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("App".into()),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     let result = compile("<script>let App = 0;</script>", &opts);
@@ -145,6 +257,7 @@ export default function App_1($$anchor) {
 fn compile_filename_derived_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         filename: "src/routes/counter.svelte".into(),
+        runes: RunesOption::Runes,
         ..Default::default()
     };
     let result = compile("<script>let Counter = 0;</script>", &opts);

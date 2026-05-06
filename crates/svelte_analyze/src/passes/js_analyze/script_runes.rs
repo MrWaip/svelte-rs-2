@@ -5,7 +5,15 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 
 use crate::types::data::{AnalysisData, JsAst};
 
+fn rune_classification_disabled_legacy(data: &AnalysisData<'_>) -> bool {
+    !data.reactivity.uses_runes()
+}
+
 pub(crate) fn collect_script_rune_call_kinds(parsed: &JsAst<'_>, data: &mut AnalysisData<'_>) {
+    if rune_classification_disabled_legacy(data) {
+        return;
+    }
+
     struct Collector<'d, 'a> {
         data: &'d mut AnalysisData<'a>,
         node_id_offset: u32,

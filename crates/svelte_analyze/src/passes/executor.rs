@@ -63,7 +63,7 @@ pub(crate) fn execute_pass<'a>(
     options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let runes = options.runes;
+    let runes = data.script.runes();
     let source = &component.source;
 
     match key {
@@ -73,7 +73,7 @@ pub(crate) fn execute_pass<'a>(
                 Some(crate::utils::script_info::extract_script_info(
                     program,
                     &component.source,
-                    options.runes,
+                    runes,
                 ))
             });
             if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {
@@ -82,6 +82,9 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::BuildComponentSemantics => {
             super::build_component_semantics::build(component, parsed, data);
+        }
+        super::PassKey::EnrichScriptInfo => {
+            super::enrich_script_info::run(component, parsed, data);
         }
         super::PassKey::FinalizeComponentName => {
             finalize_component_name::run(data);
@@ -126,14 +129,6 @@ pub(crate) fn execute_pass<'a>(
             data.template.template_elements.finalize();
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
-            for (idx, slot) in bundle.take_const_tag_buckets().into_iter().enumerate() {
-                if let Some(ids) = slot {
-                    data.template
-                        .const_tags
-                        .by_fragment
-                        .insert(svelte_ast::FragmentId(idx as u32), ids);
-                }
-            }
             for (idx, slot) in bundle.take_debug_tag_buckets().into_iter().enumerate() {
                 if let Some(ids) = slot {
                     data.template
@@ -212,7 +207,17 @@ pub(crate) fn execute_pass<'a>(
             }
         }
         super::PassKey::BuildReactivitySemantics => {
-            crate::reactivity_semantics::build_v2(component, parsed, data);
+            crate::reactivity_semantics::build_v2(
+                component,
+                parsed,
+                data,
+                crate::reactivity_semantics::ReactivityInputs {
+                    inline_runes: options.inline_runes,
+                    compile_runes: options.runes,
+                    immutable: options.immutable,
+                    accessors: options.accessors,
+                },
+            );
         }
         super::PassKey::BuildBlockSemantics => {
             data.block_semantics_store = crate::block_semantics::build(

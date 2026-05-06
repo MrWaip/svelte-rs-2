@@ -281,7 +281,7 @@ pub(super) fn promote_each_sources_to_legacy_state<'a>(
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
-    if data.script.runes {
+    if data.script.runes() {
         return;
     }
     let root = data.scoping.root_scope_id();

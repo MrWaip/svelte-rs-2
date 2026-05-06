@@ -135,7 +135,11 @@ fn to_compile_options(native: NativeCompileOptions) -> CompileOptions {
         options.css = parse_css_mode(&value);
     }
     if let Some(value) = native.runes {
-        options.runes = Some(value);
+        options.runes = if value {
+            svelte_compiler::RunesOption::Runes
+        } else {
+            svelte_compiler::RunesOption::Legacy
+        };
     }
     if let Some(value) = native.preserve_comments {
         options.preserve_comments = value;

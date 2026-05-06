@@ -13,6 +13,22 @@ use super::model::ComponentTransformer;
 use crate::rune_refs;
 
 impl<'a> ComponentTransformer<'_, 'a> {
+    pub(crate) fn identifier_is_store_read(
+        &self,
+        ident: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Some(ref_id) = ident.reference_id.get() else {
+            return false;
+        };
+        matches!(
+            analysis.reference_semantics(ref_id),
+            ReferenceSemantics::StoreRead { .. }
+        )
+    }
+
     pub(crate) fn dispatch_identifier_read(&self, expr: &mut Expression<'a>) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -929,6 +945,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::Identifier(obj) = &member.object else {
             return false;
         };
+        if self.identifier_is_store_read(obj) {
+            return false;
+        }
         match (obj.name.as_str(), member.property.name.as_str()) {
             ("$state", "eager") => {
                 if let Expression::CallExpression(call) =

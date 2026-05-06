@@ -47,7 +47,6 @@ pub fn generate<'a>(
             program,
             Some(analysis),
             &analysis.scoping,
-            Some(analysis.script_rune_calls()),
             ctx.state.line_index,
         );
 

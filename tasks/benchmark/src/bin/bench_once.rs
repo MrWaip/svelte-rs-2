@@ -18,8 +18,8 @@ fn main() {
     let mut mode: Option<Mode> = None;
 
     let mut positional = 0usize;
-    let mut args = env::args().skip(1);
-    while let Some(arg) = args.next() {
+    let args = env::args().skip(1);
+    for arg in args {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,

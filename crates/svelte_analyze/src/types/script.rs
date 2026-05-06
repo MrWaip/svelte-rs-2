@@ -92,6 +92,7 @@ pub enum RuneKind {
     InspectTrace,
     Host,
     PropsId,
+    StateSnapshot,
 }
 
 impl RuneKind {
@@ -104,6 +105,7 @@ impl RuneKind {
             RuneKind::State => "$state",
             RuneKind::StateRaw => "$state.raw",
             RuneKind::StateEager => "$state.eager",
+            RuneKind::StateSnapshot => "$state.snapshot",
             RuneKind::Derived => "$derived",
             RuneKind::DerivedBy => "$derived.by",
             RuneKind::Effect => "$effect",

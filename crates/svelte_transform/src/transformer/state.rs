@@ -93,16 +93,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     pub(crate) fn rune_kind_from_expr(&self, expr: &Expression<'_>) -> Option<RuneKind> {
-        if let Some(kind) = Self::detect_class_field_rune_kind(expr) {
-            return Some(kind);
-        }
-        if let Some(index) = self.script_rune_calls
-            && let Some(kind) = script_rune_call_node_id(expr, self.script_node_id_offset)
-                .and_then(|node| index.kind(node))
-        {
-            return Some(kind);
-        }
-        None
+        let index = self.script_rune_calls?;
+        let node = script_rune_call_node_id(expr, self.script_node_id_offset)?;
+        index.kind(node)
     }
 
     fn first_binding_symbol(
@@ -278,29 +271,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 this.gen_state_destructuring(&declarator.id, value, rune_kind, decl_kind)
             },
         );
-    }
-
-    pub(crate) fn detect_class_field_rune_kind(expr: &Expression<'_>) -> Option<RuneKind> {
-        if let Expression::CallExpression(call) = expr {
-            match &call.callee {
-                Expression::Identifier(id) => match id.name.as_str() {
-                    "$state" => return Some(RuneKind::State),
-                    "$derived" => return Some(RuneKind::Derived),
-                    _ => {}
-                },
-                Expression::StaticMemberExpression(member) => {
-                    if let Expression::Identifier(obj) = &member.object {
-                        match (obj.name.as_str(), member.property.name.as_str()) {
-                            ("$state", "raw") => return Some(RuneKind::StateRaw),
-                            ("$derived", "by") => return Some(RuneKind::DerivedBy),
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
     }
 
     fn gen_state_destructuring(

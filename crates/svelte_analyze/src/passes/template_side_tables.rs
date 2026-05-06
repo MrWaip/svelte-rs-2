@@ -22,7 +22,6 @@ fn push_into_bucket(buckets: &mut FragmentBuckets, frag_id: FragmentId, node_id:
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
     pub(crate) pending_html_tags: Vec<(NodeId, FragmentId)>,
-    pub(crate) const_tag_buckets: FragmentBuckets,
     pub(crate) debug_tag_buckets: FragmentBuckets,
     pub(crate) title_buckets: FragmentBuckets,
     pub(crate) expression_tag_buckets: FragmentBuckets,
@@ -660,11 +659,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-        push_into_bucket(
-            &mut self.const_tag_buckets,
-            ctx.current_fragment_id(),
-            tag.id,
-        );
     }
 
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {

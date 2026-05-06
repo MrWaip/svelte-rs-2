@@ -2837,7 +2837,7 @@ fn slot_element_legacy_root_fragment_uses_dedicated_lowered_item() {
     let (component, _data) = analyze_source_with_options(
         r#"<slot><p>fallback</p></slot>"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -2858,7 +2858,7 @@ fn legacy_slots_template_reads_require_sanitized_slots_binding() {
     let (_component, data) = analyze_source_with_options(
         r#"{#if $$slots.description}<slot name="description" />{/if}"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -2871,7 +2871,7 @@ fn legacy_slot_elements_do_not_require_sanitized_slots_binding() {
     let (_component, data) = analyze_source_with_options(
         r#"<slot name="description" />"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -2884,7 +2884,7 @@ fn legacy_slots_script_reads_require_sanitized_slots_binding() {
     let (_component, data) = analyze_source_with_options(
         r#"<script>const has_description = !!$$slots.description;</script>"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -2917,7 +2917,7 @@ fn component_named_slot_mapping_uses_svelte_fragment_legacy_wrapper_id() {
     let (component, data) = analyze_source_with_options(
         r#"<Comp><svelte:fragment slot="footer"><p>footer</p></svelte:fragment></Comp>"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -2976,7 +2976,7 @@ fn component_child_slot_attribute_lowers_child_component_into_named_slot() {
     let (component, _data) = analyze_source_with_options(
         r#"<Outer><Inner slot="footer" /></Outer>"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -3029,7 +3029,7 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
     let (component, data) = analyze_source_with_options(
         r#"<Nested let:count><p>{count}</p><p slot="bar">{count}</p></Nested>"#,
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -3298,7 +3298,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
     count = 1;
 </script>"#,
         AnalyzeOptions {
-            runes: true,
+            runes: svelte_ast::RunesOption::Runes,
             ..Default::default()
         },
     );
@@ -3325,7 +3325,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
     let { value = $bindable({ answer: 42 }) } = $props();
 </script>"#,
         AnalyzeOptions {
-            runes: true,
+            runes: svelte_ast::RunesOption::Runes,
             ..Default::default()
         },
     );
@@ -3865,7 +3865,8 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
         AnalyzeOptions {
             custom_element: true,
             experimental_async: false,
-            runes: true,
+            runes: svelte_ast::RunesOption::Runes,
+            inline_runes: None,
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
@@ -3920,11 +3921,62 @@ fn runtime_plan_store_subscriptions_do_not_force_push() {
 }
 
 #[test]
+fn runtime_plan_synthetic_store_subscriptions_do_not_force_push() {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let source = r#"<script>
+    let stateBase = 0;
+    let derivedBase = 1;
+    let propsBase = {};
+    let effectFn = () => {};
+    let inspectVal = "x";
+    let bindableDefault = false;
+
+    let s = $state(stateBase);
+    let r = $state.raw(propsBase);
+    let snap = $state.snapshot(propsBase);
+    let d = $derived(derivedBase);
+    let db = $derived.by(() => derivedBase);
+    let p = $props();
+    let pid = $props.id();
+    let t = $effect.tracking();
+    $effect(effectFn);
+    $effect.pre(effectFn);
+    $inspect(inspectVal);
+    let b = $bindable(bindableDefault);
+</script>"#;
+    let (component, js_result, _parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    let (data, _parsed, _diags) = analyze_with_options(
+        &component,
+        js_result,
+        &AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let plan = data.output.runtime_plan;
+
+    assert!(plan.has_stores, "synthetic store bindings expected");
+    assert!(
+        !data.script.has_store_member_mutations,
+        "no real store member mutations in source"
+    );
+    assert!(
+        !data.output.needs_context,
+        "needs_context must stay false: synthetic store callees should not be classified as unsafe by NeedsContextVisitor"
+    );
+    assert!(
+        !plan.needs_push,
+        "synthetic store subscriptions in non-runes must not force push"
+    );
+    assert!(!plan.needs_props_param);
+}
+
+#[test]
 fn legacy_export_let_becomes_props_when_runes_disabled() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let count = 1;</script><p>{count}</p>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -3977,7 +4029,7 @@ fn assert_legacy_bindable_prop(
 
 fn legacy_options() -> AnalyzeOptions {
     AnalyzeOptions {
-        runes: false,
+        runes: svelte_ast::RunesOption::Legacy,
         ..AnalyzeOptions::default()
     }
 }
@@ -4200,7 +4252,7 @@ fn legacy_state_classifies_top_level_let_used_in_template() {
     let (_c, data) = analyze_source_with_options(
         "<script>let count = 0; function inc() { count += 1; }</script><button onclick={inc}>{count}</button>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -4222,7 +4274,7 @@ fn legacy_state_classifies_top_level_var_with_safe_get_flag() {
     let (_c, data) = analyze_source_with_options(
         "<script>var count = 0; function inc() { count += 1; }</script><button onclick={inc}>{count}</button>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -4246,7 +4298,7 @@ fn legacy_state_skipped_in_runes_mode() {
     let (_c, data) = analyze_source_with_options(
         "<script>let count = $state(0); function inc() { count += 1; }</script><button onclick={inc}>{count}</button>",
         AnalyzeOptions {
-            runes: true,
+            runes: svelte_ast::RunesOption::Runes,
             ..AnalyzeOptions::default()
         },
     );
@@ -4267,7 +4319,7 @@ fn legacy_state_skipped_when_not_mutated() {
     let (_c, data) = analyze_source_with_options(
         "<script>let count = 0;</script><p>{count}</p>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             ..AnalyzeOptions::default()
         },
     );
@@ -4616,7 +4668,7 @@ fn runtime_plan_accessors_require_push_and_exports() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let count = 1;</script><p>{count}</p>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             accessors: true,
             ..AnalyzeOptions::default()
         },
@@ -4634,7 +4686,7 @@ fn runtime_plan_immutable_legacy_requires_push() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let items = [1, 2];</script><p>{items.length}</p>",
         AnalyzeOptions {
-            runes: false,
+            runes: svelte_ast::RunesOption::Legacy,
             immutable: true,
             ..AnalyzeOptions::default()
         },
@@ -6210,6 +6262,138 @@ mod svelte_head_title_diagnostics {
     fn title_outside_head_is_not_validated_as_special() {
         let (_, _, diags) = analyze_source_with_diags(r#"<title class="x"><span>x</span></title>"#);
         assert_diag_codes(&diags, &[]);
+    }
+}
+
+#[cfg(test)]
+mod maybe_runes_resolution {
+    use super::analyze_source_with_options;
+    use crate::AnalyzeOptions;
+    use svelte_ast::RunesOption;
+
+    fn opts(compile: RunesOption, inline: Option<bool>) -> AnalyzeOptions {
+        AnalyzeOptions {
+            runes: compile,
+            inline_runes: inline,
+            ..AnalyzeOptions::default()
+        }
+    }
+
+    #[test]
+    fn auto_no_signals_no_inline_sets_maybe_runes_true() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let count = 0;</script><p>{count}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(data.script.maybe_runes());
+    }
+
+    #[test]
+    fn auto_no_signals_empty_template_sets_maybe_runes_true() {
+        let (_, data) = analyze_source_with_options(r#"<p>hello</p>"#, opts(RunesOption::Auto, None));
+        assert!(!data.script.runes());
+        assert!(data.script.maybe_runes());
+    }
+
+    #[test]
+    fn inline_runes_false_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let count = 0;</script><p>{count}</p>"#,
+            opts(RunesOption::Auto, Some(false)),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn compile_legacy_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let count = 0;</script><p>{count}</p>"#,
+            opts(RunesOption::Legacy, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn compile_runes_does_not_set_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let count = $state(0);</script><p>{count}</p>"#,
+            opts(RunesOption::Runes, None),
+        );
+        assert!(data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn auto_with_state_resolves_runes_does_not_set_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let count = $state(0);</script><p>{count}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn export_let_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>export let foo = 0;</script><p>{foo}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn reactive_label_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let n = 0; $: doubled = n * 2;</script><p>{doubled}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn dollar_props_ref_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>const all = $$props;</script><p>{all.x}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn dollar_rest_props_ref_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>const rest = $$restProps;</script><p>{rest.x}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn export_named_let_blocks_maybe_runes() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>let foo = 0; export { foo };</script><p>{foo}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(!data.script.maybe_runes());
+    }
+
+    #[test]
+    fn shadowed_rune_name_keeps_legacy_with_maybe_runes_true() {
+        let (_, data) = analyze_source_with_options(
+            r#"<script>function $state(v) { return v; } let n = $state(0);</script><p>{n}</p>"#,
+            opts(RunesOption::Auto, None),
+        );
+        assert!(!data.script.runes());
+        assert!(data.script.maybe_runes());
     }
 }
 

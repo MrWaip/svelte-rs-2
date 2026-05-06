@@ -192,6 +192,35 @@ pub fn is_rune_name(name: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RunesOption {
+    #[default]
+    Auto,
+    Runes,
+    Legacy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunesMode {
+    Runes,
+    SoftLegacy,
+    HardLegacy,
+}
+
+impl RunesMode {
+    pub fn is_runes(self) -> bool {
+        matches!(self, Self::Runes)
+    }
+
+    pub fn is_maybe_runes(self) -> bool {
+        matches!(self, Self::SoftLegacy)
+    }
+
+    pub fn is_legacy(self) -> bool {
+        matches!(self, Self::SoftLegacy | Self::HardLegacy)
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
 

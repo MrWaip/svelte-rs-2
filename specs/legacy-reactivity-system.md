@@ -1,9 +1,18 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 8/16 use cases (rune-in-legacy fallback set added 2026-05-04, all unchecked)
-- **Tests**: 8/8 green for landed legacy-state lowering; rune-in-legacy fallback set has no passing tests yet
-- Last updated: 2026-05-04
+- **Working**: 17/18 use cases (8 base + 9 rune-in-legacy fallback). Only `diagnose_legacy_dev_benchmark` byte-for-byte parity remains open (use case №9).
+- **Tests**: 8/8 green for landed legacy-state lowering; diagnostic snapshots `validate_derived_rune_invalid_usage_in_non_runes_mode` / `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode` pass; e2e fixtures `derived_non_runes_invalid_usage` and `smoke_legacy_rune_fallback_all` register without `#[ignore]` and match reference byte-for-byte.
+- **Synthetic store_sub mechanism (closed 2026-05-05)**: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/store.rs::collect_store_declarations` declares a synthetic `SymbolId` for every unresolved `$name` reference in non-runes mode (sorted by source order via the first reference's `ReferenceId`). The synthetic binding lives on the root scope with `SymbolOwner::Synthetic`; downstream `unresolved_store_base` finds it and `record_store_binding` activates the legacy store fallback pipeline (`iter_store_bindings` → `lib.rs:154-201` thunks + `setup_stores` + `$$cleanup`) and `dispatch_identifier_read::StoreRead` on rune-shaped callees.
+- **Mode-aware rune classification**: rune-shape recognition is fully gated on `uses_runes()` in analyze. Transform never re-detects rune kind from AST shape; instead it consults:
+  - `crates/svelte_analyze/src/passes/js_analyze/script_runes.rs::collect_script_rune_call_kinds` — empty `script_rune_calls` in non-runes; `transformer/state.rs::rune_kind_from_expr` reads only this index (no `detect_class_field_rune_kind` AST fallback).
+  - `crates/svelte_analyze/src/reactivity_semantics/builder_v2/mod.rs::record_rune_declarator` — early-return in non-runes.
+  - `crates/svelte_analyze/src/utils/script_info.rs::collect_var_declarations` — receives `runes: bool`, suppresses `is_rune` classification (and `props_declaration` population from `$props()` calls) in non-runes.
+  - `crates/svelte_analyze/src/passes/post_resolve.rs::analyze_declarations` — `data.script.props_id` is only set from rune declarations.
+  - `crates/svelte_analyze/src/passes/js_analyze/script_body.rs::needs_context_for_program` — `body.has_effects` (from `$effect` rune-shaped callees) is gated by `uses_runes` so synthetic store-sub fallback in non-runes does not leak `needs_context = true` and does not force `$.push`/`$.pop`.
+  - `crates/svelte_analyze/src/validate/stores.rs::is_synthetic_origin` — `StoreRuneConflict` warning skips synthetic store_sub bindings (they are analyzer-created, not user-declared, so they cannot conflict).
+  - `crates/svelte_transform/src/transformer/rewrites.rs::identifier_is_store_read` — single helper consulted by `rewrite_call_expression` and `rewrite_shared_call` to skip `$effect.*` / `$state.snapshot` / `$state.eager` / `$effect.pending` / `$host` rewrites when the callee identifier is classified as `StoreRead` by analyze. No `self.runes` mode-flag stitching in transform.
+- Last updated: 2026-05-05
 - Unified reactivity dependency status: satisfied. Future legacy-reactivity work should build on the landed `ReactivitySemantics` model while keeping explicit legacy-only hooks for containment and removability.
 - Member-target legacy state mutations inside template expressions (`{obj.x++}`, `{obj.x += n}`) lower through `rewrite_legacy_state_member_update` / `rewrite_legacy_state_member_assignment`, dispatched from `template_rewrites::rewrite_template_enter` alongside the existing deep-store member rewrites. Same helpers serve script-body traversal, ensuring identical lowering across both contexts.
 - Each-item indirect propagation lives in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::promote_each_sources_to_legacy_state` (`EachSourcePromoter::visit_each_block`): when an each-item is mutated, collection symbols are promoted to legacy state and indirect links are recorded via `add_each_item_indirect_source`, so member-mutations emit `$.invalidate_inner_signals(() => $.get(items))` through the existing legacy coarse-wrap path.
@@ -67,15 +76,15 @@
 
 Reference compiler does not treat `$state`, `$derived`, `$props`, `$effect`, `$inspect`, `$bindable` (or their member forms) as runes when `runes:false`. Instead they degrade to ordinary identifier references — typically resolving to legacy store-getters (`$name → $.store_get(name)`). No `rune_invalid_usage` diagnostic is emitted. Repro/test: `diagnose_legacy_dev_benchmark`. Owning layer is split: hard-error removal in analyze (`validate/runes.rs:744`), call-site lowering in transform/codegen. All new code must follow `.claude/skills/legacy-conventions`.
 
-- [ ] Remove the `runes:false` hard-error for `$derived` at `crates/svelte_analyze/src/validate/runes.rs:744`. Reference does not emit `rune_invalid_usage` in non-runes mode; tests `validate_derived_rune_invalid_usage_in_non_runes_mode`, `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode`, `derived_non_runes_invalid_usage` are false-positive snapshots and must be re-baselined or moved.
-- [ ] `$derived(expr)` in non-runes mode lowers to `$derived()(expr)` where `$derived` resolves as a legacy store getter (no `$.derived(() => expr)` wrapping).
-- [ ] `$derived.by(fn)` in non-runes mode lowers to `$derived().by(() => fn)` (member-access on the store value).
-- [ ] `$state(initial)` in non-runes mode passes through as a plain function call to a `$state` store getter; no `$.mutable_source(...)` wrap is generated.
-- [ ] `$state.raw(initial)` and `$state.snapshot(value)` in non-runes mode pass through as plain member calls without rune-specific wrapping.
-- [ ] `$props()`, `$props.id()` in non-runes mode degrade to legacy props read (or store-getter pass-through), not to the runes `$.props()` machinery.
-- [ ] `$effect(fn)`, `$effect.pre(fn)`, `$effect.tracking()` in non-runes mode are not wrapped with `$.user_effect` / `$.user_pre_effect`; they pass through as plain identifier calls (resolving to legacy store-getters).
-- [ ] `$inspect(...)` in non-runes mode passes through as a plain identifier call without dev `$.inspect(...)` wrapping.
-- [ ] `$bindable(default)` in non-runes mode passes through as plain identifier call without `$.bindable` wrapping.
+- [x] Remove the `runes:false` hard-error for `$derived` at `crates/svelte_analyze/src/validate/runes.rs:744`. Reference does not emit `rune_invalid_usage` in non-runes mode; tests `validate_derived_rune_invalid_usage_in_non_runes_mode`, `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode` are baselined empty and registered without `#[ignore]`.
+- [x] `$derived(expr)` in non-runes mode lowers to `$derived()(expr)` where `$derived` resolves as a synthetic store getter (no `$.derived(() => expr)` wrapping). Test: `derived_non_runes_invalid_usage`.
+- [x] `$derived.by(fn)` in non-runes mode lowers to `$derived().by(() => fn)` (member-access on the store value). Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$state(initial)` in non-runes mode passes through as `$state()(initial)`; no `$.state(...)` / `$.proxy(...)` wrapping is generated. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$state.raw(initial)` and `$state.snapshot(value)` in non-runes mode lower to `$state().raw(initial)` / `$state().snapshot(value)` — plain member calls on the store value. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$props()`, `$props.id()` in non-runes mode degrade to `$props()()` and `$props().id()`; no `props_declaration`, `props_id`, `$.props_id()` hoist, `$$props` parameter, or `$.push`/`$.pop`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$effect(fn)`, `$effect.pre(fn)`, `$effect.tracking()` in non-runes mode lower to `$effect()(fn)` / `$effect().pre(fn)` / `$effect().tracking()`; no `$.user_effect` / `$.user_pre_effect` / `$.effect_tracking` wrapping; `body.has_effects` flag does not propagate to `needs_context`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$inspect(...)` in non-runes mode lowers to `$inspect()(value)` — plain store-thunk call. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$bindable(default)` in non-runes mode lowers to `$bindable()(default)` — plain store-thunk call. Test: `smoke_legacy_rune_fallback_all`.
 - [ ] After fallback emission lands, `diagnose_legacy_dev_benchmark` must produce JS matching reference `case-svelte.js` byte-for-byte under `runes:false, dev:true`.
 
 ## Out of scope

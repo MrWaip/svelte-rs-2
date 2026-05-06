@@ -61,26 +61,6 @@ impl FragmentNodeList {
     pub(crate) fn get_by_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
         self.entries.get(id.0 as usize)?.as_ref()
     }
-
-    pub fn values(&self) -> impl Iterator<Item = &Vec<NodeId>> {
-        self.entries.iter().filter_map(|slot| slot.as_ref())
-    }
-}
-
-pub struct ConstTagData {
-    pub(crate) by_fragment: FragmentNodeList,
-}
-
-impl ConstTagData {
-    pub fn new(_node_count: u32) -> Self {
-        Self {
-            by_fragment: FragmentNodeList::default(),
-        }
-    }
-
-    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get_by_id(id)
-    }
 }
 
 pub struct DebugTagData {
