@@ -1166,6 +1166,141 @@ fn store_basic() {
 }
 
 #[rstest]
+fn store_legacy_let_synthetic_reassign() {
+    assert_compiler("store_legacy_let_synthetic_reassign");
+}
+
+#[rstest]
+fn store_legacy_each_invalidate() {
+    assert_compiler("store_legacy_each_invalidate");
+}
+
+#[rstest]
+fn store_bind_value_thunk_arrow() {
+    assert_compiler("store_bind_value_thunk_arrow");
+}
+
+#[rstest]
+fn store_legacy_var_basic() {
+    assert_compiler("store_legacy_var_basic");
+}
+
+#[rstest]
+fn store_legacy_member_mutation() {
+    assert_compiler("store_legacy_member_mutation");
+}
+
+#[rstest]
+fn store_runes_id_assign_ops() {
+    assert_compiler("store_runes_id_assign_ops");
+}
+
+#[rstest]
+fn store_runes_id_ops_template() {
+    assert_compiler("store_runes_id_ops_template");
+}
+
+#[rstest]
+fn store_runes_member_ops_script() {
+    assert_compiler("store_runes_member_ops_script");
+}
+
+#[rstest]
+fn store_runes_member_ops_template() {
+    assert_compiler("store_runes_member_ops_template");
+}
+
+#[rstest]
+fn store_runes_computed_member() {
+    assert_compiler("store_runes_computed_member");
+}
+
+#[rstest]
+fn store_runes_dev_smoke() {
+    assert_compiler("store_runes_dev_smoke");
+}
+
+#[rstest]
+fn store_runes_each_member_mutation() {
+    assert_compiler("store_runes_each_member_mutation");
+}
+
+#[rstest]
+fn store_legacy_id_assign_ops() {
+    assert_compiler("store_legacy_id_assign_ops");
+}
+
+#[rstest]
+fn store_legacy_id_ops_template() {
+    assert_compiler("store_legacy_id_ops_template");
+}
+
+#[rstest]
+fn store_legacy_member_ops_script() {
+    assert_compiler("store_legacy_member_ops_script");
+}
+
+#[rstest]
+fn store_legacy_dev_smoke() {
+    assert_compiler("store_legacy_dev_smoke");
+}
+
+#[rstest]
+fn store_legacy_bind_value() {
+    assert_compiler("store_legacy_bind_value");
+}
+
+#[rstest]
+fn legacy_dev_synthetic_store_thunk() {
+    assert_compiler("legacy_dev_synthetic_store_thunk");
+}
+
+#[rstest]
+fn legacy_dev_writable_no_mutable_source() {
+    assert_compiler("legacy_dev_writable_no_mutable_source");
+}
+
+#[rstest]
+fn legacy_dev_store_thunk_call_read() {
+    assert_compiler("legacy_dev_store_thunk_call_read");
+}
+
+#[rstest]
+fn legacy_dev_store_set_assignment() {
+    assert_compiler("legacy_dev_store_set_assignment");
+}
+
+#[rstest]
+fn legacy_dev_bind_store_unsub() {
+    assert_compiler("legacy_dev_bind_store_unsub");
+}
+
+#[rstest]
+fn store_if_block_condition() {
+    assert_compiler("store_if_block_condition");
+}
+
+#[rstest]
+fn store_key_block_expression() {
+    assert_compiler("store_key_block_expression");
+}
+
+#[rstest]
+fn store_await_block_promise() {
+    assert_compiler("store_await_block_promise");
+}
+
+#[rstest]
+fn store_render_tag_snippet() {
+    assert_compiler("store_render_tag_snippet");
+}
+
+#[rstest]
+fn store_bind_this_element_ref() {
+    assert_compiler("store_bind_this_element_ref");
+}
+
+#[rstest]
 fn store_write() {
     assert_compiler("store_write");
 }
