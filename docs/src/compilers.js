@@ -102,9 +102,8 @@ function buildRustOptions(mode, options) {
             generate: options.generate,
         };
     }
-    return {
+    const out = {
         dev: options.dev,
-        runes: options.runes,
         discloseVersion: options.discloseVersion,
         hmr: options.hmr,
         customElement: options.customElement,
@@ -115,6 +114,8 @@ function buildRustOptions(mode, options) {
         name: options.name || "App",
         experimental: { async: !!options.experimentalAsync },
     };
+    if (options.runes != null) out.runes = options.runes;
+    return out;
 }
 
 function buildSvelteOptions(mode, options) {
@@ -124,9 +125,8 @@ function buildSvelteOptions(mode, options) {
             generate: options.generate,
         };
     }
-    return {
+    const out = {
         dev: options.dev,
-        runes: options.runes,
         discloseVersion: options.discloseVersion,
         hmr: options.hmr,
         customElement: options.customElement,
@@ -138,6 +138,8 @@ function buildSvelteOptions(mode, options) {
         modernAst: true,
         experimental: { async: !!options.experimentalAsync },
     };
+    if (options.runes != null) out.runes = options.runes;
+    return out;
 }
 
 function timeIt(fn) {
