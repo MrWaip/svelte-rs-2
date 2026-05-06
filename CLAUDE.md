@@ -70,4 +70,12 @@ After completed task run `just test-compiler` and `just test-diagnostics` and `j
 - leaf
 - leaves
 - plan
+- shape
+- shadow
 - lowering / lower
+
+# Agent skills
+
+## Domain docs
+
+Single-context. `CONTEXT.md` индексирует доменные документы (`ARCHITECTURE.md`, `CODEBASE_MAP.md`, `ROADMAP.md`, `debt.md`, `specs/`). ADR не ведём. См. `docs/agents/domain.md`.
