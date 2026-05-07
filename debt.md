@@ -2,6 +2,18 @@
 
 Every unfixed problem spotted mid-work goes here. New section per item. Describe what is wrong and where.
 
+## `HtmlTagSemantics.parent_strategy` без `is_controlled`
+
+`BlockSemantics::HtmlTag(HtmlTagSemantics)` payload (`crates/svelte_analyze/src/block_semantics/data.rs`) хранит только `parent_strategy: HtmlTagNamespace` (Html / Svg / MathMl). `is_controlled` (controlled-fragment shape — `{@html}` единственный ребёнок RegularElement) остался в codegen `crates/svelte_codegen_client/src/codegen/blocks/html_tag.rs::emit_html_tag` как `match &ctx.anchor { FragmentAnchor::Child { .. } => true, _ => false }`.
+
+Логически controlled-fact — это fragment-shape, не block-semantics. Должен переехать в `FragmentSemanticsStore` (спека `specs/analyzer-target-design/06-fragment-semantics-store.md`). Когда туда переедет, решить: либо `parent_strategy` расширяется флагом, либо controlled-fact живёт отдельно в fragment-кластере.
+
+## `BlockSemanticsBuilder` зависит от `dev: bool`
+
+`crates/svelte_analyze/src/block_semantics/builder/mod.rs::build` принимает `dev: bool` и запекает его в `HtmlTagSemantics.hydration_html_changed_ignored = dev && ignore_data.is_ignored(...)`. Это значит, что `BlockSemanticsStore` зависит от compile-time-режима — один `analyze` результат не переиспользовать между dev и prod codegen-проходами.
+
+Сейчас на одну компиляцию один codegen-режим, поэтому ок. Если в будущем потребуется reuse analyze-результата (например, IDE с инкрементальным анализом для multiple build targets), либо вынести `dev` обратно в codegen, либо дублировать analyze.
+
 ## Parser performs semantic analysis it does not own
 
 Parser must produce AST + lexical/syntactic diagnostics only. Semantic checks (which attributes a tag accepts, which value shapes are valid for a given attribute kind, whether `on*` attribute values must be expressions, etc.) belong to `svelte_analyze`.

@@ -381,12 +381,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
-    pub fn debug_tags_for_fragment_by_id(
-        &self,
-        id: svelte_ast::FragmentId,
-    ) -> Option<&Vec<NodeId>> {
-        self.data.template.debug_tags.by_fragment_id(id)
-    }
     pub fn title_elements_for_fragment_by_id(
         &self,
         id: svelte_ast::FragmentId,
@@ -407,12 +401,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn known_value(&self, name: &str) -> Option<&str> {
         self.data.known_value(name)
-    }
-    pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
-        self.data.html_tag_in_svg(id)
-    }
-    pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
-        self.data.html_tag_in_mathml(id)
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.data.nearest_element(id)

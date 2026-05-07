@@ -1,3 +1,4 @@
+use svelte_analyze::block_semantics::{HtmlTagNamespace, HtmlTagSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -35,16 +36,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
         id: NodeId,
+        sem: HtmlTagSemantics,
     ) -> Result<()> {
         let (anchor_name, is_controlled) = match &ctx.anchor {
             FragmentAnchor::Child { parent_var } => (parent_var.clone(), true),
             _ => (self.comment_anchor_node_name(state, ctx)?, false),
         };
 
-        let is_svg = !is_controlled && self.ctx.query.view.html_tag_in_svg(id);
-        let is_mathml = !is_controlled && self.ctx.query.view.html_tag_in_mathml(id);
-        let hydration_ignored =
-            self.ctx.state.dev && self.ctx.query.view.is_ignored(id, "hydration_html_changed");
+        let is_svg = !is_controlled && matches!(sem.parent_strategy, HtmlTagNamespace::Svg);
+        let is_mathml = !is_controlled && matches!(sem.parent_strategy, HtmlTagNamespace::MathMl);
+        let hydration_ignored = sem.hydration_html_changed_ignored;
 
         let plan = AsyncEmissionPlan::for_node(self.ctx, id);
 

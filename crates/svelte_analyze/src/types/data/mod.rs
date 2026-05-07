@@ -64,7 +64,7 @@ pub use runtime::LegacyInit;
 pub use runtime::RuntimePlan;
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
-    ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
+    ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
     MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData,
     WindowBindKind,
 };

@@ -65,8 +65,6 @@ pub struct ElementAnalysis {
     pub(crate) facts: ElementFacts,
     pub flags: ElementFlags,
     pub directive_modifiers: DirectiveModifierFlags,
-    pub(crate) html_tag_in_svg: NodeBitSet,
-    pub(crate) html_tag_in_mathml: NodeBitSet,
 }
 
 impl ElementAnalysis {
@@ -75,8 +73,6 @@ impl ElementAnalysis {
             facts: ElementFacts::new(node_count),
             flags: ElementFlags::new(node_count),
             directive_modifiers: DirectiveModifierFlags::new(node_count),
-            html_tag_in_svg: NodeBitSet::new(node_count),
-            html_tag_in_mathml: NodeBitSet::new(node_count),
         }
     }
 }
@@ -87,7 +83,6 @@ pub struct TemplateAnalysis {
     pub rich_content_facts: RichContentFacts,
     pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
-    pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
@@ -104,7 +99,6 @@ impl TemplateAnalysis {
             rich_content_facts: RichContentFacts::new(),
             fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
-            debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
@@ -208,12 +202,6 @@ impl<'a> AnalysisData<'a> {
 impl<'a> AnalysisData<'a> {
     pub(crate) fn record_element_facts(&mut self, id: NodeId, entry: ElementFactsEntry) {
         self.elements.facts.record_entry(id, entry);
-    }
-    pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
-        self.elements.html_tag_in_svg.contains(&id)
-    }
-    pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
-        self.elements.html_tag_in_mathml.contains(&id)
     }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data

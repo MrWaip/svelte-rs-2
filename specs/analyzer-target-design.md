@@ -184,7 +184,7 @@ Phase 6  checker (crate svelte_check)
 
 8. **`ExpressionTag` владелец — `ExpressionSemantics`.** Это пятый кластер. Ключевой потребитель — codegen. Используется и для standalone `{expr}` в фрагменте, и для expression внутри атрибута (Attribute payload содержит NodeId, тянет факты отсюда), и для collection `{#each expr as ...}`, и для аргумента `{@render fn(arg)}`. Transform expression-узлы как единицы не классифицирует — продолжает работать per-reference через ReactivitySemantics.
 
-9. **`{@debug}` и `{@html}` — варианты `BlockSemantics`.** Логически они block-теги (форма `{@...}`), payload каждого нетривиален: `DebugTagSemantics { identifiers: SmallVec<[NodeId; 4]>, dev_only: bool }`, `HtmlTagSemantics { expression_node_id, parent_strategy }`. Документация `SEMANTIC_LAYER_ARCHITECTURE.md` (раздел про out-of-scope строки 162–163) обновляется.
+9. **`{@html}` — variant `BlockSemantics`. `{@debug}` — нет.** `{@html}` несёт нетривиальный pre-computed payload: `HtmlTagSemantics { parent_strategy: HtmlTagNamespace, hydration_html_changed_ignored: bool }`. `{@debug}` AST-узел самодостаточен (`identifier_refs: Vec<ExprRef>` напрямую покрывает codegen-нужды), pre-compute нечего, поэтому variant не создаётся. `is_controlled` (controlled-fragment shape) остаётся в codegen до перехода в `FragmentSemanticsStore`. Документация `SEMANTIC_LAYER_ARCHITECTURE.md` (раздел про out-of-scope строки 162–163) обновляется.
 
 10. **Async — поле кластерного payload, не peer-кластер.** Подтверждение существующего решения в SEMANTIC_LAYER_ARCHITECTURE.md. `EachAsyncKind`, `IfAsyncKind`, `AwaitAsyncKind`, etc. — поля в существующих вариантах. Top-level `await` в script и async-mode runtime harness живут в `BlockerData`, не в cluster payload.
 
@@ -221,7 +221,7 @@ Phase 6  checker (crate svelte_check)
 
 20. **`ElementFacts`, `ElementFlags`, `html_tag_in_svg/mathml`, `TitleElementData`** растворяются в `ElementSemantics` payload.
 
-21. **`SnippetData`, `DebugTagData`** растворяются в `BlockSemantics` payload (соответствующие variants).
+21. **`SnippetData`** растворяется в `BlockSemantics::Snippet` payload. **`DebugTagData`** удаляется как мёртвый side-table — codegen `emit_hoisted_debug_tag` читает AST напрямую, variant в `BlockSemantics` не создаётся (см. Decision 9).
 
 22. **`FragmentFacts`, `RichContentFacts`, `FragmentNamespaces`, `fragment_blockers`** сворачиваются в `children_summary` payload-а родителя fragment-а (Element / Block / Component-root).
 

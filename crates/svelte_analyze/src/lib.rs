@@ -25,7 +25,7 @@ pub use types::data::{
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
-    ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,
+    ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
     ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,

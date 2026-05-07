@@ -162,35 +162,35 @@ Unit-тесты в `crates/svelte_analyze/src/tests.rs` — новый моду�
 
 ## Acceptance criteria
 
-- [ ] `BlockSemantics::HtmlTag(HtmlTagSemantics)` вариант существует
-- [ ] `HtmlTagSemantics { parent_strategy: HtmlTagNamespace, hydration_html_changed_ignored: bool }` определён
-- [ ] `HtmlTagNamespace { Html, Svg, MathMl }` определён
-- [ ] `block_semantics::build()` принимает `&FragmentNamespaces`, `&IgnoreData`, `dev: bool`
-- [ ] `BuildBlockSemantics` pass пробрасывает новые аргументы
-- [ ] Walker `Ctx` отслеживает `current_fragment_id`
-- [ ] `block_semantics/builder/html_tag.rs::populate` вычисляет namespace из `fragment_namespaces` и ignore-fact c запечённым `dev`
-- [ ] `dispatch.rs` обрабатывает `Node::HtmlTag` через `match BlockSemantics::HtmlTag` (как Each/If/etc.)
-- [ ] `emit_html_tag` принимает `sem: HtmlTagSemantics` параметром, читает `sem.parent_strategy` и `sem.hydration_html_changed_ignored`
-- [ ] 0 вхождений `is_ignored(_, "hydration_html_changed")` в `crates/svelte_codegen_client/`
-- [ ] 0 вхождений `view.html_tag_in_svg` / `view.html_tag_in_mathml` в `crates/svelte_codegen_client/`
-- [ ] `data.elements.html_tag_in_svg`, `data.elements.html_tag_in_mathml` (поля + методы) удалены
-- [ ] `codegen_view.rs::html_tag_in_svg`, `html_tag_in_mathml` accessors удалены
-- [ ] `pending_html_tags` поле visitor'а + `take_pending_html_tags` + post-walk join в `executor.rs` удалены
-- [ ] `DebugTagData` struct удалён
-- [ ] `analysis.rs::template.debug_tags` поле удалено
-- [ ] `codegen_view.rs::debug_tags_for_fragment_by_id` удалён
-- [ ] `debug_tag_buckets` field + `take_debug_tag_buckets` + `visit_debug_tag` (если станет пустым) + post-walk join удалены
-- [ ] Все re-exports `DebugTagData` (`lib.rs`, `types/mod.rs`, `types/data/mod.rs`) удалены
-- [ ] Существующий тест `html_tag_namespace_flags_preserved` переписан на `BlockSemantics::HtmlTag.parent_strategy`
-- [ ] Тест `tests.rs:2750-2753` (assert на bitsets) удалён
-- [ ] Тест `debug_tag_ids_collected_for_fragment` удалён
-- [ ] Unit-тесты `block_semantics_html_tag_tests` (7 кейсов из списка выше) добавлены и зелёные
-- [ ] `SEMANTIC_LAYER_ARCHITECTURE.md` строки 162–163 обновлены (HtmlTag → in-scope; DebugTag — пояснение «AST-only, side-table удалён»)
-- [ ] `analyzer-target-design.md` Decision 9 и Decision 21 переформулированы согласно реальному решению (DebugTag-variant не создаётся)
-- [ ] `debt.md` дополнен двумя записями (`is_controlled` в codegen; `BlockSemanticsBuilder` зависит от `dev`)
-- [ ] `just test-compiler` зелёный
-- [ ] `just test-diagnostics` зелёный
-- [ ] `just clippy-strict` зелёный
+- [x] `BlockSemantics::HtmlTag(HtmlTagSemantics)` вариант существует
+- [x] `HtmlTagSemantics { parent_strategy: HtmlTagNamespace, hydration_html_changed_ignored: bool }` определён
+- [x] `HtmlTagNamespace { Html, Svg, MathMl }` определён
+- [x] `block_semantics::build()` принимает `&FragmentNamespaces`, `&IgnoreData`, `dev: bool`
+- [x] `BuildBlockSemantics` pass пробрасывает новые аргументы
+- [x] Walker `Ctx` отслеживает `current_fragment_id`
+- [x] `block_semantics/builder/html_tag.rs::populate` вычисляет namespace из `fragment_namespaces` и ignore-fact c запечённым `dev`
+- [x] `dispatch.rs` обрабатывает `Node::HtmlTag` через `match BlockSemantics::HtmlTag` (как Each/If/etc.)
+- [x] `emit_html_tag` принимает `sem: HtmlTagSemantics` параметром, читает `sem.parent_strategy` и `sem.hydration_html_changed_ignored`
+- [x] 0 вхождений `is_ignored(_, "hydration_html_changed")` в `crates/svelte_codegen_client/`
+- [x] 0 вхождений `view.html_tag_in_svg` / `view.html_tag_in_mathml` в `crates/svelte_codegen_client/`
+- [x] `data.elements.html_tag_in_svg`, `data.elements.html_tag_in_mathml` (поля + методы) удалены
+- [x] `codegen_view.rs::html_tag_in_svg`, `html_tag_in_mathml` accessors удалены
+- [x] `pending_html_tags` поле visitor'а + `take_pending_html_tags` + post-walk join в `executor.rs` удалены
+- [x] `DebugTagData` struct удалён
+- [x] `analysis.rs::template.debug_tags` поле удалено
+- [x] `codegen_view.rs::debug_tags_for_fragment_by_id` удалён
+- [x] `debug_tag_buckets` field + `take_debug_tag_buckets` + `visit_debug_tag` (если станет пустым) + post-walk join удалены
+- [x] Все re-exports `DebugTagData` (`lib.rs`, `types/mod.rs`, `types/data/mod.rs`) удалены
+- [x] Существующий тест `html_tag_namespace_flags_preserved` переписан на `BlockSemantics::HtmlTag.parent_strategy`
+- [x] Тест `tests.rs:2750-2753` (assert на bitsets) удалён
+- [x] Тест `debug_tag_ids_collected_for_fragment` удалён
+- [x] Unit-тесты `block_semantics_html_tag_tests` (7 кейсов из списка выше) добавлены и зелёные
+- [x] `SEMANTIC_LAYER_ARCHITECTURE.md` строки 162–163 обновлены (HtmlTag → in-scope; DebugTag — пояснение «AST-only, side-table удалён»)
+- [x] `analyzer-target-design.md` Decision 9 и Decision 21 переформулированы согласно реальному решению (DebugTag-variant не создаётся)
+- [x] `debt.md` дополнен двумя записями (`is_controlled` в codegen; `BlockSemanticsBuilder` зависит от `dev`)
+- [x] `just test-compiler` зелёный
+- [x] `just test-diagnostics` зелёный
+- [x] `just clippy-strict` зелёный
 
 ## Blocked by
 

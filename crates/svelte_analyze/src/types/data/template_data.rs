@@ -63,28 +63,6 @@ impl FragmentNodeList {
     }
 }
 
-pub struct DebugTagData {
-    pub(crate) by_fragment: FragmentNodeList,
-}
-
-impl Default for DebugTagData {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DebugTagData {
-    pub fn new() -> Self {
-        Self {
-            by_fragment: FragmentNodeList::default(),
-        }
-    }
-
-    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get_by_id(id)
-    }
-}
-
 pub struct TitleElementData {
     pub(crate) by_fragment: FragmentNodeList,
 }

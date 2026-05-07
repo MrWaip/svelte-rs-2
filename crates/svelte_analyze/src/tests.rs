@@ -2698,26 +2698,6 @@ let b = await fetch('/b');
 }
 
 #[test]
-fn debug_tag_ids_collected_for_fragment() {
-    let (component, data) =
-        analyze_source(r#"<script>let a = 1; let b = 2;</script>{@debug a}{@debug b}"#);
-    let expected: Vec<NodeId> = component
-        .store
-        .fragment(component.root)
-        .nodes
-        .iter()
-        .filter_map(|&id| match component.store.get(id) {
-            Node::DebugTag(tag) => Some(tag.id),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        data.template.debug_tags.by_fragment_id(component.root),
-        Some(&expected)
-    );
-}
-
-#[test]
 fn title_elements_collected_for_svelte_head_fragment() {
     let (component, data) = analyze_source(
         r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#,
@@ -2736,21 +2716,6 @@ fn title_elements_collected_for_svelte_head_fragment() {
             .by_fragment_id(head_fragment_id),
         Some(&vec![title.id])
     );
-}
-
-#[test]
-fn html_tag_namespace_flags_preserved() {
-    let (component, data) = analyze_source(
-        r#"<script>let svgContent = ''; let mathContent = '';</script><svg>{@html svgContent}</svg><math>{@html mathContent}</math>"#,
-    );
-    let svg_tag = find_html_tag_id(component.root, &component, "svgContent")
-        .unwrap_or_else(|| panic!("no svg html tag"));
-    let math_tag = find_html_tag_id(component.root, &component, "mathContent")
-        .unwrap_or_else(|| panic!("no mathml html tag"));
-    assert!(data.html_tag_in_svg(svg_tag));
-    assert!(!data.html_tag_in_mathml(svg_tag));
-    assert!(data.html_tag_in_mathml(math_tag));
-    assert!(!data.html_tag_in_svg(math_tag));
 }
 
 #[test]
@@ -6831,5 +6796,100 @@ let a = new A();
             )),
             "expected StateFieldDuplicate diagnostic, got {diags:?}"
         );
+    }
+}
+
+mod block_semantics_html_tag_tests {
+    use super::{analyze_source, analyze_source_with_options, find_html_tag_id};
+    use crate::AnalyzeOptions;
+    use crate::block_semantics::{BlockSemantics, HtmlTagNamespace, HtmlTagSemantics};
+
+    fn html_tag_semantics<'a>(
+        component: &'a svelte_ast::Component,
+        data: &'a crate::AnalysisData<'_>,
+        expr_text: &str,
+    ) -> &'a HtmlTagSemantics {
+        let id = find_html_tag_id(component.root, component, expr_text)
+            .expect("expected {@html} tag in component");
+        match data.block_semantics(id) {
+            BlockSemantics::HtmlTag(sem) => sem,
+            other => panic!("expected BlockSemantics::HtmlTag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plain_div_emits_html_namespace_no_ignore() {
+        let (component, data) = analyze_source(
+            r#"<script>let content = '';</script><div>{@html content}</div>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert_eq!(sem.parent_strategy, HtmlTagNamespace::Html);
+        assert!(!sem.hydration_html_changed_ignored);
+    }
+
+    #[test]
+    fn svg_parent_emits_svg_namespace() {
+        let (component, data) = analyze_source(
+            r#"<script>let content = '';</script><svg>{@html content}</svg>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert_eq!(sem.parent_strategy, HtmlTagNamespace::Svg);
+    }
+
+    #[test]
+    fn mathml_parent_emits_mathml_namespace() {
+        let (component, data) = analyze_source(
+            r#"<script>let content = '';</script><math>{@html content}</math>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert_eq!(sem.parent_strategy, HtmlTagNamespace::MathMl);
+    }
+
+    #[test]
+    fn svg_foreignobject_emits_html_namespace() {
+        let (component, data) = analyze_source(
+            r#"<script>let content = '';</script><svg><foreignObject>{@html content}</foreignObject></svg>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert_eq!(sem.parent_strategy, HtmlTagNamespace::Html);
+    }
+
+    #[test]
+    fn ignore_pragma_in_dev_sets_ignored_true() {
+        let source = r#"<script>let content = '';</script>
+<!-- svelte-ignore hydration_html_changed -->
+<div>{@html content}</div>"#;
+        let (component, data) = analyze_source_with_options(
+            source,
+            AnalyzeOptions {
+                dev: true,
+                ..AnalyzeOptions::default()
+            },
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert!(sem.hydration_html_changed_ignored);
+    }
+
+    #[test]
+    fn ignore_pragma_without_dev_keeps_ignored_false() {
+        let source = r#"<script>let content = '';</script>
+<!-- svelte-ignore hydration_html_changed -->
+<div>{@html content}</div>"#;
+        let (component, data) = analyze_source(source);
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert!(!sem.hydration_html_changed_ignored);
+    }
+
+    #[test]
+    fn dev_without_ignore_pragma_keeps_ignored_false() {
+        let (component, data) = analyze_source_with_options(
+            r#"<script>let content = '';</script><div>{@html content}</div>"#,
+            AnalyzeOptions {
+                dev: true,
+                ..AnalyzeOptions::default()
+            },
+        );
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert!(!sem.hydration_html_changed_ignored);
     }
 }

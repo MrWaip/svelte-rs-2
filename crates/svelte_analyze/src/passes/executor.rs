@@ -129,14 +129,6 @@ pub(crate) fn execute_pass<'a>(
             data.template.template_elements.finalize();
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
-            for (idx, slot) in bundle.take_debug_tag_buckets().into_iter().enumerate() {
-                if let Some(ids) = slot {
-                    data.template
-                        .debug_tags
-                        .by_fragment
-                        .insert(svelte_ast::FragmentId(idx as u32), ids);
-                }
-            }
             for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
                 if let Some(ids) = slot {
                     data.template
@@ -146,17 +138,6 @@ pub(crate) fn execute_pass<'a>(
                 }
             }
             data.template.expression_tags_by_fragment = bundle.take_expression_tag_buckets();
-            for (tag_id, frag_id) in bundle.take_pending_html_tags() {
-                match data.template.fragment_namespaces.get(frag_id) {
-                    Some(svelte_ast::Namespace::Svg) => {
-                        data.elements.html_tag_in_svg.insert(tag_id);
-                    }
-                    Some(svelte_ast::Namespace::Mathml) => {
-                        data.elements.html_tag_in_mathml.insert(tag_id);
-                    }
-                    _ => {}
-                }
-            }
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
@@ -223,6 +204,9 @@ pub(crate) fn execute_pass<'a>(
                 data.scoping.semantics(),
                 &data.reactivity,
                 &data.script.blocker_data,
+                &data.template.fragment_namespaces,
+                &data.output.ignore_data,
+                data.script.dev,
                 component.node_count(),
             );
         }

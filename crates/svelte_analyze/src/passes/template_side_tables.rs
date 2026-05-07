@@ -1,7 +1,7 @@
 use oxc_ast::ast::{BindingPattern, Statement, VariableDeclarator};
 use svelte_ast::{
-    Attribute, ComponentNode, ConstTag, DebugTag, EachBlock, Element, FragmentId, FragmentRole,
-    HtmlTag, Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
+    Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, FragmentRole, HtmlTag,
+    Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
     SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg, is_void,
 };
 
@@ -21,8 +21,6 @@ fn push_into_bucket(buckets: &mut FragmentBuckets, frag_id: FragmentId, node_id:
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
-    pub(crate) pending_html_tags: Vec<(NodeId, FragmentId)>,
-    pub(crate) debug_tag_buckets: FragmentBuckets,
     pub(crate) title_buckets: FragmentBuckets,
     pub(crate) expression_tag_buckets: FragmentBuckets,
 }
@@ -582,8 +580,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-        self.pending_html_tags
-            .push((tag.id, ctx.current_fragment_id()));
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
@@ -659,14 +655,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_topology
             .record_node_parent(tag.id, ctx.parent());
-    }
-
-    fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {
-        push_into_bucket(
-            &mut self.debug_tag_buckets,
-            ctx.current_fragment_id(),
-            tag.id,
-        );
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
