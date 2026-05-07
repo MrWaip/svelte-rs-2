@@ -49,7 +49,7 @@ if !info.needs_legacy_coarse_wrap()
 ```text
 AnalysisData
 ├── scoping              ComponentSemantics
-├── reactivity           ReactivitySemantics        (+ rune_calls() accessor)
+├── reactivity           ReactivitySemantics
 ├── blocks               BlockSemanticsStore        (+ ignore-флаги для влияющих на JS-output кодов)
 ├── attributes           AttributeSemanticsStore
 ├── elements             ElementSemanticsStore     (+ slot_target / wrapped_in_css_container и т.д.)
@@ -67,7 +67,7 @@ AnalysisData
 
 `FragmentSemanticsStore` — utility store рядом с `TemplateTopology` / `TemplateElementIndex`. Не «кластер per Svelte kind» (Decision 1 не нарушается). Хранит per-fragment контекст-bundle: `preserve_ws`, `inside_pre`, `inside_textarea`, `inside_script`, `inside_head`, `namespace`, `parent_tag`, `needs_text_first_next`. Codegen читает один лукап вместо протаскивания флагов через рекурсивный `FragmentCtx`.
 
-`ScriptTargets` (отдельное поле для transform-rewrite-таргетов) НЕ создаётся: текущий публичный API `ReactivitySemantics` (с Decision 13: `rune_calls()` accessor) + AST-shape матч для one-node решений достаточен. Transform остаётся single-match consumer-ом.
+`ScriptTargets` (отдельное поле для transform-rewrite-таргетов) НЕ создаётся: для declaration-site rune-классификации достаточно `binding_semantics(sym)` (variable declarators) и `declarator_semantics(node)` (class fields, constructor `this.x = ...` — Decision 13); для свободных rune-call-ов transform локально использует чистую функцию `detect_rune_from_call`. Transform остаётся single-match consumer-ом.
 
 Pipeline:
 
@@ -80,7 +80,9 @@ Phase 1  scope & scripts
   CustomElementInfoBuilder
 
 Phase 2  reactivity
-  ReactivitySemanticsBuilder         (включает rune-call map; pub fn rune_calls() accessor для transform)
+  ReactivitySemanticsBuilder         (включает class-field rune-семантику в DeclaratorSemantics:
+                                      ClassFieldState / ClassFieldDerived варианты;
+                                      эмиттит state_field_duplicate diagnostic при collision)
 
 Phase 3  template-walk indices
   TemplateIndicesBuilder             (TemplateTopology + TemplateElementIndex, один walk)
@@ -126,7 +128,7 @@ Phase 6  checker (crate svelte_check)
 9. Как разработчик codegen, я хочу, чтобы `parent_each_blocks(id)` исчезла как helper, а each-context-vars лежали явным полем в `AttributeSemantics::HtmlBind { each_context_vars }` и других payload-ах, использующих этот факт.
 10. Как разработчик codegen, я хочу, чтобы все факты для одного expression-узла (legacy_wrap, async_kind, memoization, role, references, is_pickled_await) лежали в одном `ExpressionSemantics`, чтобы любое expression-решение было одним матчем без чтения `ExpressionInfo`.
 11. Как разработчик codegen, я хочу, чтобы codegen больше не читал `passes/dynamism.rs`, `passes/element_flags.rs`, `ExpressionInfo` или другие internal-структуры analyze, чтобы граница интерфейса между крейтами была явной.
-12. Как разработчик transform, я хочу, чтобы `ScriptRuneCalls` стал side-output `ReactivitySemantics`, чтобы один pass классифицировал rune-call-узлы для rewrite-ов, а не два независимых.
+12. Как разработчик transform, я хочу, чтобы class-field rune-семантика жила в `DeclaratorSemantics` (новые варианты `ClassFieldState` / `ClassFieldDerived`), чтобы classification class-state-fields и constructor-`this.x = $state(...)`-присваиваний шла через тот же accessor, что и для variable-declarator-ов, и pass `passes/js_analyze/script_runes.rs` исчез.
 13. Как разработчик transform, я хочу читать `data.expressions.get(node_id).is_pickled_await` вместо `is_pickled_await(span.start)`, чтобы лукап шёл по NodeId как и остальные expression-факты.
 14. Как разработчик transform, я хочу продолжить работать per-reference через `data.reactivity.reference_semantics(ref_id)` без необходимости знать про template-кластеры, чтобы трансформер оставался узким на rewrite-ы JS identifier-ов.
 15. Как разработчик checker, я хочу читать готовую `AnalysisData` через публичный API без доступа к `pub(crate)` internals analyze, чтобы валидационные правила не зависели от internal представления.
@@ -154,7 +156,7 @@ Phase 6  checker (crate svelte_check)
 37. Как разработчик codegen, я хочу читать `data.runtime.bare_imports` (bitflags) и `data.runtime.exports_flags` (bitflags) вместо 4-х/3-х независимых bool-проверок для prelude-импортов и экспортов, чтобы каждое решение шло одним bit-тестом.
 38. Как разработчик codegen, я хочу, чтобы `data.runtime.stores_setup: Option<StoresSetup>` нёс уже enriched per-store факт `base_via_legacy_state: bool`, чтобы codegen не делал per-store повторный лукап `binding_semantics(base_symbol)`.
 39. Как разработчик codegen, я хочу, чтобы `has_bubble_events` и `has_legacy_slots` НЕ были полями `RuntimePlan` (они нужны только для вычисления `ParamsShape`), чтобы публичный API не содержал нечитаемых нигде bool-ов.
-40. Как разработчик transform, я хочу, чтобы classification rune-call-узлов (включая class-state-fields, `$inspect`-calls, rune-инициализаторов в declarators) шла через единственный API `data.reactivity.rune_calls().kind(oxc_node_id)`, чтобы transform не делал AST-walks для классификации и не повторял работу analyzer-а.
+40. Как разработчик transform, я хочу, чтобы declaration-site rune-классификация (variable declarators, class fields, constructor `this.x = $state(...)`) шла через `binding_semantics(sym)` / `declarator_semantics(node)`, а свободные rune-вызовы (`$effect`, `$inspect`, `$host`, `$state.snapshot`) распознавались локально через чистую функцию `detect_rune_from_call(call)`, чтобы transform не делал AST-walks для классификации и `ScriptRuneCalls`-кэш исчез как структура.
 41. Как разработчик transform, я хочу, чтобы решение «оборачивать ли `for-of await` в `$.for_await_track_reactivity_loss`» шло через узкое поле `data.blockers.await_reactivity_loss_ignored: FxHashSet<OxcNodeId>` вместо чтения внутренней `IgnoreData` со строковым ключом, чтобы граница analyze→check→transform была чёткой и не делилась за свою сторону.
 42. Как разработчик transform, я хочу, чтобы решения уровня AST-shape (assign vs assign_async, console.log dev wrap, binary equals dev wrap) делались transform-ом single-match без предсчёта в analyzer, чтобы analyzer не предсчитывал тривиально-derive-уемые факты.
 43. Как разработчик checker, я хочу, чтобы `IgnoreData` (`<!-- svelte-ignore -->` сканер) был приватной частью `svelte_check`, не утекал в `AnalysisData`, чтобы codegen и transform не имели соблазна читать ignore-коды как строки.
@@ -197,7 +199,7 @@ Phase 6  checker (crate svelte_check)
     - `BlockerDataBuilder` — async barriers, per-symbol map. Два потребителя в разных доменах (codegen для script body splitting; ExpressionSemantics для per-expression rollup).
     - `CustomElementInfoBuilder` — `is_custom_element_target`, `custom_element_compile_flag`, `ce_config` (parsed `<svelte:options customElement>`), `custom_element_slot_names`.
 
-13. **Phase 2 — reactivity.** `ReactivitySemanticsBuilder` остаётся как есть, дополняется side-output-ом `ScriptRuneCalls` (per-OxcNodeId rune-classification). Старый `passes/js_analyze/script_runes.rs` удаляется; `ScriptRuneCalls` перестаёт быть top-level полем `AnalysisData` и становится приватной структурой внутри `ReactivitySemantics`. Появляется новый pub-метод `ReactivitySemantics::rune_calls(&self) -> &ScriptRuneCalls` (либо узкий `rune_kind_at(node) -> Option<RuneKind>`). Через этот accessor transform делает classification всех rune-зависимых сайтов: class-state-fields в class body, `this.x = $state(...)` в конструкторах, rune-инициализаторов в declarators, `$inspect`-calls. Никаких classification AST-walks transform-side не остаётся.
+13. **Phase 2 — reactivity.** `ReactivitySemanticsBuilder` расширяется `visit_class`-обходом, который заполняет `DeclaratorSemantics` для class-state-fields и constructor-`this.x = $state(...)`-присваиваний через два новых варианта: `ClassFieldState(ClassFieldStateSemantics)` и `ClassFieldDerived(ClassFieldDerivedSemantics)`. Ключ — `OxcNodeId` `PropertyDefinition` (для синтаксических полей) или `OxcNodeId` `AssignmentExpression` (для constructor-присваиваний). Edge-cases (static, computed-non-literal, non-constructor-`this.x =`, collision) обрабатываются 1-в-1 как `reference/compiler/phases/2-analyze/visitors/ClassBody.js`; collision-case эмиттит `Diagnostic::StateFieldDuplicate`. Структура `ScriptRuneCalls`, pass `passes/js_analyze/script_runes.rs` и весь связанный offset-плумбинг (`instance_node_id_offset`, `module_node_id_offset`, `script_node_id_offset` плюс accessors / pipeline-проброс) удаляются — это симметричный двойной сдвиг записи/чтения, не дающий полезного эффекта после того, как `JsSemanticVisitor::set_node_id` записывает сквозные глобальные `NodeId`-ы. Свободные rune-вызовы (`$effect`/`$inspect`/`$host`/`$state.snapshot`) распознаются transform-ом локально через `pub`-экспорт `detect_rune_from_call(call)` из `svelte_analyze` — чистая функция от `&CallExpression`. Подробности — `specs/analyzer-target-design/01-script-rune-calls-side-output.md`.
 
 14. **Phase 3 — template-walk indices.** Два builder-а с одним walk-ом каждый:
     - `TemplateIndicesBuilder` — `TemplateTopology` (parent / ancestor граф) + `TemplateElementIndex` (селектор-индекс tag/class/id для CSS pruning). Поглощает `passes/fragment_topology.rs` и часть `passes/template_side_tables.rs`.
@@ -303,11 +305,13 @@ Phase 6  checker (crate svelte_check)
 ### Transform single-match consumer
 
 49. **Transform — single-match consumer `ReactivitySemantics` + AST-shape, без classification AST-walks.** Конкретно:
-    - **Rune-classification по AST-узлу** идёт через `data.reactivity.rune_calls().kind(oxc_node_id)`. Этого хватает для: class-state-fields scan, `this.x = $state(...)` в конструкторах, rune-инициализаторов в declarators, `$inspect`-call recognition. Никаких AST-walks с `rune_kind_from_expr`-помощниками внутри transform-а не остаётся.
+    - **Variable-declarator rune-init** (`let x = $state()` / `$derived()` / etc.) — через `binding_semantics(sym)`. Никакого fallback на expression-классификацию: если builder_v2 пропустил binding — это дефект analyzer-а, fix там.
+    - **Class-field rune-init** (`class A { x = $state() }` и `class A { constructor() { this.x = $state() } }`) — через `declarator_semantics(node)`, матч по `ClassFieldState` / `ClassFieldDerived` (Decision 13). Ключ — `OxcNodeId` `PropertyDefinition` или `AssignmentExpression`.
+    - **Свободные rune-вызовы** (`$effect`/`$effect.pre`/`$effect.root`/`$effect.tracking`/`$inspect`/`$inspect.with`/`$host`/`$state.snapshot` как expression-уровня) — локально через `detect_rune_from_call(call)`, `pub`-экспорт из `svelte_analyze`. Чистая функция от `&CallExpression`, без кэша. Это единственный сайт, где нужна call-уровневая классификация без declarator-context-а.
     - **Per-reference rewrite** идёт через `data.reactivity.reference_semantics(ref_id)` — как сейчас.
     - **AST-shape decisions** (assign vs assign_async по `is_expression_async(right)`, `wrap_binary_equals_dev` по форме `BinaryExpression with == or ===`, `console.log` rewrite) делаются transform-ом single-match на одном узле без предсчёта в analyzer. Эти решения не композируют ≥2 источника, и предсчёт не даёт выгоды.
     - **Backing-private-имена** для class-state-fields (`#count` / `#_count` если коллизия) генерируются transform-state-side; analyzer не генерирует JS-идентификаторы.
-    - Никакого нового поля `ScriptTargets` / `ScriptRewritePlan` в `AnalysisData` не вводится. Текущего публичного API `ReactivitySemantics` (с расширением Decision 13: `rune_calls()` accessor) достаточно для всех transform-сценариев.
+    - Никакого нового поля `ScriptTargets` / `ScriptRewritePlan` / `ScriptRuneCalls` в `AnalysisData` не вводится. Текущего публичного API `ReactivitySemantics` (с расширением Decision 13: `ClassFieldState`/`ClassFieldDerived` варианты `DeclaratorSemantics`) достаточно для всех declaration-site сценариев.
 
 ### Cluster precompute правило
 
@@ -388,7 +392,7 @@ Phase 6  checker (crate svelte_check)
 - 0 helper-методов с префиксами `is_` / `has_` / `needs_` / `class_` / `static_` / `attr_` / `bind_` / `expr_` / `directive_` на `Ctx`/`AnalysisData` (Decision 52)
 - 0 чтений `IgnoreData` (как типа) из `svelte_codegen_client` / `svelte_transform`. `IgnoreData` доступна только внутри `svelte_check`. Decision 48
 - 0 случаев `view.is_ignored(id, "code-string")` в codegen / transform; runtime-влияющие ignore-коды читаются как поля payload (`hydration_html_changed_ignored`, `await_reactivity_loss_ignored`)
-- 0 AST-classification walks в `svelte_transform` для rune-распознавания; rune-classification идёт исключительно через `data.reactivity.rune_calls()` (Decision 49)
+- 0 AST-classification walks в `svelte_transform` для rune-распознавания declaration sites (variable declarators, class fields, constructor `this.x = ...`); всё через `binding_semantics(sym)` / `declarator_semantics(node)` (Decision 49). Свободные rune-вызовы — единственный локальный `detect_rune_from_call(call)`-сайт. `ScriptRuneCalls` структуры не существует.
 - 0 ИЛИ-цепочек в `svelte_codegen_client/src/lib.rs::generate` для решений уровня "shape компонент-функции"; вместо них — матч по `RuntimePlan::fn_params` / `epilogue` / bitflags / `stores_setup` (Decision 47)
 - 0 AST-walks в codegen за component-level фактами (`has_bubble_events`, `has_legacy_slots` определялись через walk root fragment / all nodes — теперь приватные intermediates `RuntimePlanBuilder`-а, в публичный API не попадают)
 - `crates/svelte_analyze/src/validate/` каталог удалён, `crates/svelte_check/` существует и содержит все правила (включая `IgnoreData`-сканер и `warning_filter`)
@@ -406,7 +410,7 @@ Phase 6  checker (crate svelte_check)
 
 5. **Изменение публичного API `svelte_diagnostics`.** Checker-крейт использует существующие `Diagnostic` / `Severity` типы.
 
-6. **Миграция transform-а как самостоятельный документ.** Transform работает per-reference через `ReactivitySemantics` и не классифицирует expression-узлы как единицы. Изменения transform-крейта в рамках этого PRD узкие: (a) точечный rewrite-а `is_pickled_await(span.start)` → лукап по NodeId (decision 24); (b) переход на `data.reactivity.rune_calls()` для rune-classification вместо локальных AST-walks (decision 49); (c) чтение `await_reactivity_loss_ignored` множества из `BlockerData` вместо обращения к `IgnoreData` по строковому коду (decision 48). Не входит в этот PRD: ScriptTargets-store как отдельное поле `AnalysisData` — решено, что не нужен (текущего публичного API `ReactivitySemantics` достаточно). Decisions уровня AST-shape (assign vs assign_async, dev wraps, console.log rewrite) делаются transform-ом single-match без предсчёта.
+6. **Миграция transform-а как самостоятельный документ.** Transform работает per-reference через `ReactivitySemantics` и не классифицирует expression-узлы как единицы. Изменения transform-крейта в рамках этого PRD узкие: (a) точечный rewrite-а `is_pickled_await(span.start)` → лукап по NodeId (decision 24); (b) переход sites 1, 6 (variable-declarator) на чистый `binding_semantics(sym)`, sites 2-5 (class fields, constructor) на `declarator_semantics(node)` с матчем по `ClassFieldState`/`ClassFieldDerived`, site 7 (свободные rune-calls) на локальный `detect_rune_from_call(call)`; удаление `ScriptRuneCalls` / `script_runes.rs` / offset-плумбинга (decision 49 + спека 01); (c) чтение `await_reactivity_loss_ignored` множества из `BlockerData` вместо обращения к `IgnoreData` по строковому коду (decision 48). Не входит в этот PRD: ScriptTargets-store как отдельное поле `AnalysisData` — решено, что не нужен. Decisions уровня AST-shape (assign vs assign_async, dev wraps, console.log rewrite) делаются transform-ом single-match без предсчёта.
 
 7. **Полный перенос codegen `prepare`/`hoist` в analyzer.** Рассматривался; отвергнут. `prepare.rs` и hoisting эффективны за один проход в codegen, перенос целиком даёт перенос работы без сокращения. Анализатор пред-вычисляет узкие факты, помогающие codegen-prepare-pipeline-у (slot_target, wrapped_in_css_container, FragmentSemantics — context-bundle), но walk фрагмента остаётся в codegen.
 
@@ -455,7 +459,7 @@ Phase 6  checker (crate svelte_check)
 - Количество `&&`-цепочек, читающих ≥2 стора, в `svelte_codegen_client`: текущая base-line → 0.
 - Количество ИЛИ-цепочек ≥3 источников в `svelte_codegen_client/src/lib.rs::generate` (`fn_params`, exports composition, prelude imports): текущая base-line → 0 (Decision 47).
 - Количество AST-walks в codegen за component-level фактами (`has_bubble_events`, `has_legacy_slots`): 2 → 0 (поглощены `RuntimePlanBuilder`).
-- Количество AST-walks в transform за rune-classification: текущая base-line → 0 (Decision 49; всё через `data.reactivity.rune_calls()`).
+- Количество AST-walks в transform за rune-classification declaration sites: текущая base-line → 0 (Decision 49; всё через `binding_semantics(sym)` / `declarator_semantics(node)`). `ScriptRuneCalls`-структура удалена. Свободные rune-вызовы остаются один локальный `detect_rune_from_call`-вызов.
 - Количество `view.is_ignored(id, "code-string")`-вызовов в codegen + transform: текущая base-line (2: hydration_html_changed, await_reactivity_loss) → 0 (Decision 48).
 - Количество template walks в analyze: текущая (≥6) → ≤ 6 (по одному на cluster Phase 4 + один на TemplateIndices + один на FragmentSemantics в Phase 3).
 
