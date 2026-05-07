@@ -52,8 +52,6 @@ pub(crate) fn run_template<'a, 'b>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
-        script_rune_calls: None,
-        script_node_id_offset: 0,
         experimental_async: false,
         ignore_query: IgnoreQuery::empty(),
         enclosing_stmt_start: Vec::new(),

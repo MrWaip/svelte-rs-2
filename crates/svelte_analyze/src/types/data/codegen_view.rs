@@ -94,15 +94,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.data.script.ce_config.as_ref()
     }
-    pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
-        self.data.script_rune_calls()
-    }
-    pub fn instance_script_node_id_offset(&self) -> u32 {
-        self.data.script.instance_node_id_offset
-    }
-    pub fn module_script_node_id_offset(&self) -> u32 {
-        self.data.script.module_node_id_offset
-    }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.data.scoping.symbol_name(sym)
     }

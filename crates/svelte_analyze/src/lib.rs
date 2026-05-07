@@ -21,8 +21,9 @@ pub use block_semantics::{
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
-    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
+    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
     ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
@@ -34,7 +35,7 @@ pub use types::data::{
     PickledAwaitOffsets, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
     PropLoweringMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls,
+    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
     SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
     StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
@@ -42,7 +43,7 @@ pub use types::data::{
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
-pub use utils::script_info::BINDABLE_RUNE_NAME;
+pub use utils::script_info::{BINDABLE_RUNE_NAME, detect_rune_from_call};
 
 bitflags::bitflags! {
 
@@ -214,7 +215,6 @@ pub fn analyze_module<'a>(
                     accessors: false,
                 },
             );
-            passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
         }
         Err(errs) => diags.extend(errs),
     }

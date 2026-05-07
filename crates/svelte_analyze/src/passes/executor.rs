@@ -175,9 +175,6 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);
-            if runes {
-                js_analyze::collect_script_rune_call_kinds(parsed, data);
-            }
             js_analyze::classify_pickled_awaits(parsed, data);
         }
         super::PassKey::ClassifyNeedsContext => {

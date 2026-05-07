@@ -413,9 +413,6 @@ impl<'a> Ctx<'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()
     }
-    pub fn instance_script_node_id_offset(&self) -> u32 {
-        self.query.view.instance_script_node_id_offset()
-    }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }

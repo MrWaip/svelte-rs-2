@@ -21,8 +21,6 @@ pub(crate) fn build<'d, 'a>(
     if let Some(module_program) = parsed.module_program.as_ref() {
         builder.add_module_program(module_program);
     }
-    data.script.module_node_id_offset = 0;
-    data.script.instance_node_id_offset = builder.next_node_id();
 
     if let Some(program) = parsed.program.as_ref() {
         builder.add_instance_program(program);

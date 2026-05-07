@@ -7,8 +7,6 @@ pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
-    pub instance_node_id_offset: u32,
-    pub module_node_id_offset: u32,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
     pub runes_mode: svelte_ast::RunesMode,
@@ -22,7 +20,6 @@ pub struct ScriptAnalysis {
     pub proxy_state_inits: ProxyStateInits,
     pub pickled_await_offsets: PickledAwaitOffsets,
     pub blocker_data: BlockerData,
-    pub script_rune_calls: ScriptRuneCalls,
 }
 
 impl ScriptAnalysis {
@@ -31,8 +28,6 @@ impl ScriptAnalysis {
             info: None,
             props_id: None,
             exports: Vec::new(),
-            instance_node_id_offset: 0,
-            module_node_id_offset: 0,
             has_class_state_fields: false,
             has_store_member_mutations: false,
             runes_mode: svelte_ast::RunesMode::Runes,
@@ -46,7 +41,6 @@ impl ScriptAnalysis {
             proxy_state_inits: ProxyStateInits::new(),
             pickled_await_offsets: PickledAwaitOffsets::new(),
             blocker_data: BlockerData::default(),
-            script_rune_calls: ScriptRuneCalls::new(),
         }
     }
 
@@ -223,9 +217,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
-    }
-    pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
-        &self.script.script_rune_calls
     }
     pub fn is_pickled_await(&self, offset: u32) -> bool {
         self.script.pickled_await_offsets.contains_offset(offset)

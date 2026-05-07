@@ -2,8 +2,7 @@ use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, RuneKind, ScriptRuneCalls,
-    StateKind,
+    AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, RuneKind, StateKind,
 };
 
 use svelte_ast_builder::Builder;
@@ -97,8 +96,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) ident_counter: u32,
     pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,
-    pub(crate) script_rune_calls: Option<&'b ScriptRuneCalls>,
-    pub(crate) script_node_id_offset: u32,
     pub(crate) experimental_async: bool,
 
     pub(crate) ignore_query: IgnoreQuery<'b, 'a>,

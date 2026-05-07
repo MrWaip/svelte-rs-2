@@ -969,8 +969,10 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             if prop.r#static || prop.computed {
                 continue;
             }
-            let PropertyKey::StaticIdentifier(name_id) = &prop.key else {
-                continue;
+            let name = match &prop.key {
+                PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+                PropertyKey::PrivateIdentifier(id) => id.name.as_str(),
+                _ => continue,
             };
             let Some(value) = prop.value.as_ref() else {
                 continue;
@@ -982,7 +984,7 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
                 continue;
             };
             if let Some(semantics) = class_field_rune_semantics(rune_kind, call) {
-                prop_record_by_name.insert(name_id.name.as_str(), prop.node_id());
+                prop_record_by_name.insert(name, prop.node_id());
                 self.data
                     .reactivity
                     .record_declarator_semantics(prop.node_id(), semantics);

@@ -26,15 +26,15 @@ mod pickled_await_offsets;
 mod proxy_state_inits;
 mod rich_content_facts;
 mod runtime;
-mod script_rune_calls;
 mod template_data;
 mod template_element_index;
 pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
-    BindingSemantics, CarrierMemberReadSemantics, ConstBindingSemantics,
-    ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy,
+    BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
+    ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
+    ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics, DerivedDeclarationSemantics,
+    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy,
     LegacyBindablePropSemantics, OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics,
     PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, ReactivitySemantics,
     ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
@@ -62,7 +62,6 @@ pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::LegacyInit;
 pub use runtime::RuntimePlan;
-pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
     ContentEditableKind, DebugTagData, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
