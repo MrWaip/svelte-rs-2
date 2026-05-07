@@ -1,0 +1,8 @@
+[
+  {
+    "code": "state_field_duplicate",
+    "end": 82,
+    "severity": "error",
+    "start": 64
+  }
+]

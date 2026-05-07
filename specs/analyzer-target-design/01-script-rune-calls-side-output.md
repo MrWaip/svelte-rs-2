@@ -50,7 +50,7 @@ pub struct ClassFieldDerivedSemantics {
   - `PropertyDefinition` с `computed == true` (включая `["x"] = $state()`): не регистрируется.
   - В constructor `this[<expr>] = $state()`: регистрируется **только** если `<expr>` — string literal (имя берётся из literal-value); иначе игнорируется.
 - **`this.x = ...` вне constructor body** (в обычном методе, в arrow внутри constructor-а, во вложенных блоках): игнорируется. Регистрируются ровно top-level `ExpressionStatement`-ы тела constructor-а с формой `this.<key> = <expr>`.
-- **Collision (case 3)** — rune-init и в `PropertyDefinition`, и в `this.x = $state()` с тем же именем: эмиттится `Diagnostic::StateFieldDuplicate { name }` (тип уже определён в `svelte_diagnostics`, но до этой спеки нигде не эмиттился). Recovery — последняя запись побеждает (constructor перезаписывает PropertyDefinition в `declarator_semantics`), как в reference. Observable — диагностика; behavior после неё — UB-recovery.
+- **Collision (case 3)** — rune-init и в `PropertyDefinition`, и в `this.x = $state()` с тем же именем: эмиттится `Diagnostic::StateFieldDuplicate { name }` (тип уже определён в `svelte_diagnostics`, но до этой спеки нигде не эмиттился). Recovery — builder пишет `ClassFieldState`/`Derived` на `assign.node_id()` и одновременно `DeclaratorSemantics::None` на `prop.node_id()` (last-wins на имя), чтобы transform не получал двух semantic-entry-ей для одного логического слота. **Diagnostic эмиттится не из builder_v2, а из validator-а `validate/class_state_fields.rs`** — отдельный walk по классам, ищет collision. Соответствует Decision 44 парент-спеки («cluster builders диагностики не эмитят»).
 - **Sub-cases без коллизии**:
   - Только PropertyDefinition с rune-init (case 1) → `ClassFieldState`/`Derived` пишется на `prop.node_id()`.
   - Только constructor `this.x = $state()` (PropertyDefinition отсутствует или есть как пустой placeholder `x;`) → `ClassFieldState`/`Derived` пишется на `assign.node_id()`. Placeholder PropertyDefinition `x;` остаётся без семантики (`None`); transform позже удалит его (`state.rs:947-950`).
@@ -59,15 +59,20 @@ pub struct ClassFieldDerivedSemantics {
 
 Один cohesive `visit_class`-метод (а не sub-pass), потому что:
 - Данные пишутся в `declarator_semantics`, владельцем которого является `builder_v2`.
-- Diagnostic-коллизии требует видеть **сразу** все PropertyDefinitions и constructor body — отдельный sub-pass раздробил бы этот контекст.
-- Единственный обход AST, без дублирующего walker-а.
+- Last-wins-логику коллизии (constructor перезаписывает PropertyDefinition) удобно делать в одном месте, видя оба источника одновременно.
+- Единственный обход AST для записи фактов, без дублирующего walker-а.
 
-Алгоритм:
-1. Собрать `placeholder_names` (PropertyDefinition с `value.is_none()`, non-static, non-computed-non-literal).
-2. Пройти `PropertyDefinition`-ы с rune-init: на каждом подходящем (non-static, computed-rules) записать `ClassFieldState`/`Derived` на `prop.node_id()`, имя — в `declared_names`.
-3. Найти constructor-метод (если есть). Пройти top-level `ExpressionStatement`-ы. Для `this.<key> = <expr>` (computed-rules) с rune-init:
-   - Если `name ∈ declared_names` → эмиттить `StateFieldDuplicate`, перезаписать `declarator_semantics[assign.node_id()]`.
+Алгоритм builder_v2:
+1. Пройти `PropertyDefinition`-ы с rune-init (non-static, non-computed): записать `ClassFieldState`/`Derived` на `prop.node_id()`, имя → `prop.node_id()` в локальный `prop_record_by_name`.
+2. Найти constructor-метод (если есть). Пройти top-level `ExpressionStatement`-ы. Для `this.<key> = <expr>` (computed-rules как в reference) с rune-init:
+   - Если `name ∈ prop_record_by_name` → перезаписать `declarator_semantics[prior_prop_node] = None`, затем записать `ClassFieldState`/`Derived` на `assign.node_id()` (last-wins).
    - Иначе → записать `ClassFieldState`/`Derived` на `assign.node_id()`.
+
+Diagnostic-эмиссия отдельно — в `validate/class_state_fields.rs`. Этот validator делает свой проход по классам и эмиттит `StateFieldDuplicate` при обнаружении collision-имени между PropertyDefinition rune-init и constructor `this.x =` rune-init. Builder-у диагностики не передаются.
+
+### Добавляемый validator
+
+`crates/svelte_analyze/src/validate/class_state_fields.rs` — новый файл. Регистрируется в `validate/mod.rs`, вызывается из `validate_program` при `runes == true`. Walk по классам: PropertyDefinition rune-init собирает в `declared_names`; для constructor `this.<key> = $state(...)` rune-init проверяет `declared_names.contains(name)` → если да, эмиттит `Diagnostic::error(StateFieldDuplicate { name }, assign.span)`.
 
 ### Удаляемые сущности
 
@@ -89,7 +94,6 @@ pub struct ClassFieldDerivedSemantics {
 - class field `$state.raw(0)` → `ClassFieldState { kind: StateRaw, proxied: false }`.
 - class field `$derived(...)` → `ClassFieldDerived { kind: Derived, lowering: Sync }`.
 - class field `$derived.by(...)` → `ClassFieldDerived { kind: DerivedBy, lowering: Sync }`.
-- async derived (`$derived(await ...)`) → `ClassFieldDerived { lowering: Async }`.
 - constructor case 2: `x;` placeholder + `this.x = $state()` → `ClassFieldState` на `assign.node_id()`, на `prop.node_id()` — `None`.
 - collision case 3: rune-init в обоих → `Diagnostic::StateFieldDuplicate { name: "x" }` эмиттится; последняя запись (constructor) сохраняется в `declarator_semantics`.
 - static field — `declarator_semantics(node)` возвращает `None`.
@@ -98,26 +102,26 @@ pub struct ClassFieldDerivedSemantics {
 
 ## Acceptance criteria
 
-- [ ] `DeclaratorSemantics` расширен вариантами `ClassFieldState(ClassFieldStateSemantics)`, `ClassFieldDerived(ClassFieldDerivedSemantics)`. Без строковых полей. Без дублирования AST-флагов (`is_private`, `is_static`).
-- [ ] `builder_v2::visit_class` реализован, поведение точно зеркалит reference (`reference/compiler/phases/2-analyze/visitors/ClassBody.js`) для static / computed / non-constructor / collision случаев.
-- [ ] `Diagnostic::StateFieldDuplicate` эмиттится из `builder_v2` при collision-case 3 (первая emission-точка в кодовой базе).
-- [ ] `passes/js_analyze/script_runes.rs` удалён.
-- [ ] `ScriptRuneCalls` struct, модуль, и все `pub use`-ы удалены.
-- [ ] Поля `script.script_rune_calls`, `script.instance_node_id_offset`, `script.module_node_id_offset` + соответствующие сеттеры удалены.
-- [ ] Accessors `data.script_rune_calls()`, `codegen_view.rs::script_rune_calls()`, `instance_script_node_id_offset()`, `module_script_node_id_offset()`, `Context::instance_script_node_id_offset()` удалены.
-- [ ] `script_node_id_offset`, `script_rune_calls`-плумбинг через `svelte_codegen_client/src/script/pipeline.rs`, `svelte_transform/src/transformer/{entry,model,template_entry}.rs` удалён.
-- [ ] `script_rune_call_node_id`, `rune_kind_from_expr` в `svelte_transform/src/transformer/state.rs` удалены.
-- [ ] `rune_kind_for_declarator` упрощён до symbol-only (без expression-fallback).
-- [ ] `detect_rune_from_call` экспортирован как `pub` из `svelte_analyze`.
-- [ ] Transform sites 1, 6 (`state.rs:91`, `runes.rs:60`): без fallback на expression-классификацию.
-- [ ] Transform sites 2, 3, 4, 5 (`state.rs:816, 861, 940, 1002`): читают `declarator_semantics(node)` и матчатся по `ClassFieldState`/`ClassFieldDerived`.
-- [ ] Transform site 7 (`runes.rs:282`): локальный `detect_rune_from_call(call)`.
-- [ ] Старые тесты `script_rune_calls_keep_module_and_instance_programs_distinct`, `script_rune_calls_survive_template_node_id_activity` удалены.
-- [ ] Новые unit-тесты на `ReactivitySemantics` (см. список выше) добавлены и зелёные.
-- [ ] `just test-compiler` зелёный.
-- [ ] `just test-diagnostics` зелёный (включая diagnostic-кейс на `state_field_duplicate`).
-- [ ] `just clippy-strict` зелёный.
-- [ ] `debt.md` обновлён: запись про `ScriptRuneCalls` снята; offset-инфраструктура снята.
+- [x] `DeclaratorSemantics` расширен вариантами `ClassFieldState(ClassFieldStateSemantics)`, `ClassFieldDerived(ClassFieldDerivedSemantics)`. Без строковых полей. Без дублирования AST-флагов (`is_private`, `is_static`).
+- [x] `builder_v2::visit_class` реализован, поведение точно зеркалит reference (`reference/compiler/phases/2-analyze/visitors/ClassBody.js`) для static / computed / non-constructor / collision случаев.
+- [x] `Diagnostic::StateFieldDuplicate` эмиттится из `validate/class_state_fields.rs` при collision-case 3 (первая emission-точка в кодовой базе). По Decision 44 парент-спеки cluster builders диагностики не эмитят — collision-detection делает отдельный validator-walk.
+- [x] `passes/js_analyze/script_runes.rs` удалён.
+- [x] `ScriptRuneCalls` struct, модуль, и все `pub use`-ы удалены.
+- [x] Поля `script.script_rune_calls`, `script.instance_node_id_offset`, `script.module_node_id_offset` + соответствующие сеттеры удалены.
+- [x] Accessors `data.script_rune_calls()`, `codegen_view.rs::script_rune_calls()`, `instance_script_node_id_offset()`, `module_script_node_id_offset()`, `Context::instance_script_node_id_offset()` удалены.
+- [x] `script_node_id_offset`, `script_rune_calls`-плумбинг через `svelte_codegen_client/src/script/pipeline.rs`, `svelte_transform/src/transformer/{entry,model,template_entry}.rs` удалён.
+- [x] `script_rune_call_node_id`, `rune_kind_from_expr` в `svelte_transform/src/transformer/state.rs` удалены.
+- [x] `rune_kind_for_declarator` упрощён до symbol-only (без expression-fallback).
+- [x] `detect_rune_from_call` экспортирован как `pub` из `svelte_analyze`.
+- [x] Transform sites 1, 6 (`state.rs:91`, `runes.rs:60`): без fallback на expression-классификацию.
+- [x] Transform sites 2, 3, 4, 5 (`state.rs:816, 861, 940, 1002`): читают `declarator_semantics(node)` и матчатся по `ClassFieldState`/`ClassFieldDerived`.
+- [x] Transform site 7 (`runes.rs:282`): локальный `detect_rune_from_call(call)`.
+- [x] Старые тесты `script_rune_calls_keep_module_and_instance_programs_distinct`, `script_rune_calls_survive_template_node_id_activity` удалены.
+- [x] Новые unit-тесты на `ReactivitySemantics` (см. список выше) добавлены и зелёные.
+- [x] `just test-compiler` зелёный.
+- [x] `just test-diagnostics` зелёный (включая parity-case `tasks/diagnostic_tests/cases/runes/state_field_duplicate/` против reference `svelte/compiler`).
+- [x] `just clippy-strict` зелёный.
+- [x] `debt.md` обновлён: запись про `ScriptRuneCalls` снята; offset-инфраструктура снята.
 
 ## Blocked by
 

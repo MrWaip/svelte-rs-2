@@ -1270,6 +1270,7 @@ mod runes {
         validate_derived_invalid_default_export,
         "runes/validate_derived_invalid_default_export"
     );
+    diagnostic_case!(state_field_duplicate, "runes/state_field_duplicate");
     diagnostic_case!(
         validate_state_invalid_placement_bare_expr,
         "runes/validate_state_invalid_placement_bare_expr"
