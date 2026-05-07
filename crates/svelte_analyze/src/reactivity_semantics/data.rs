@@ -221,6 +221,22 @@ pub enum DeclaratorSemantics {
     LetCarrier {
         carrier_symbol: SymbolId,
     },
+
+    ClassFieldState(ClassFieldStateSemantics),
+
+    ClassFieldDerived(ClassFieldDerivedSemantics),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClassFieldStateSemantics {
+    pub kind: StateKind,
+    pub proxied: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClassFieldDerivedSemantics {
+    pub kind: DerivedKind,
+    pub lowering: DerivedLowering,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

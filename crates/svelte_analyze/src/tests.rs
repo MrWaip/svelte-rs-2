@@ -647,6 +647,7 @@ fn analyze_source_with_options(
     (component, data)
 }
 
+
 fn analyze_source_with_css(source: &str) -> (Component, AnalysisData<'static>) {
     let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
     assert!(
@@ -6521,3 +6522,424 @@ mod is_state_source_formula {
     }
 }
 
+mod class_field_rune_semantics {
+    use super::*;
+    use crate::reactivity_semantics::data::{
+        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedKind,
+        DerivedLowering, StateKind,
+    };
+    use oxc_ast::ast::{ClassElement, Expression, PropertyKey, Statement};
+    use oxc_ast_visit::walk;
+
+    fn find_class_property_node_id(
+        program: &Program<'_>,
+        class_name: &str,
+        field_name: &str,
+    ) -> Option<OxcNodeId> {
+        struct Finder<'s> {
+            class_name: &'s str,
+            field_name: &'s str,
+            found: Option<OxcNodeId>,
+        }
+
+        impl<'a> Visit<'a> for Finder<'_> {
+            fn visit_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+                let matches = class
+                    .id
+                    .as_ref()
+                    .is_some_and(|id| id.name.as_str() == self.class_name);
+                if matches {
+                    for el in &class.body.body {
+                        if let ClassElement::PropertyDefinition(prop) = el
+                            && let PropertyKey::StaticIdentifier(id) = &prop.key
+                            && id.name.as_str() == self.field_name
+                        {
+                            self.found = Some(prop.node_id());
+                            return;
+                        }
+                    }
+                }
+                walk::walk_class(self, class);
+            }
+        }
+
+        let mut finder = Finder {
+            class_name,
+            field_name,
+            found: None,
+        };
+        finder.visit_program(program);
+        finder.found
+    }
+
+    #[test]
+    fn class_field_state_init_registers_class_field_state_semantics() {
+        let source = r#"<script>
+class A {
+    x = $state(0);
+}
+let a = new A();
+</script>"#;
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed
+                .program
+                .as_ref()
+                .expect("missing instance program"),
+            "A",
+            "x",
+        )
+        .expect("missing class property A.x");
+
+        let semantics = data.declarator_semantics(prop_node_id);
+        let DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics { kind, proxied }) =
+            semantics
+        else {
+            panic!("expected ClassFieldState, got {semantics:?}");
+        };
+        assert_eq!(kind, StateKind::State);
+        assert!(!proxied, "$state(0) literal init must not be proxied");
+    }
+
+    #[test]
+    fn class_field_state_raw_init_registers_state_raw_kind() {
+        let source = r#"<script>
+class A {
+    x = $state.raw({});
+}
+</script>"#;
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "x",
+        )
+        .expect("missing class property A.x");
+
+        let semantics = data.declarator_semantics(prop_node_id);
+        let DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics { kind, proxied }) =
+            semantics
+        else {
+            panic!("expected ClassFieldState, got {semantics:?}");
+        };
+        assert_eq!(kind, StateKind::StateRaw);
+        assert!(!proxied, "$state.raw(...) must never be proxied");
+    }
+
+    #[test]
+    fn class_field_derived_init_registers_class_field_derived_semantics() {
+        let source = r#"<script>
+class A {
+    x = 1;
+    y = $derived(this.x * 2);
+}
+</script>"#;
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "y",
+        )
+        .expect("missing class property A.y");
+
+        let semantics = data.declarator_semantics(prop_node_id);
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+            semantics
+        else {
+            panic!("expected ClassFieldDerived, got {semantics:?}");
+        };
+        assert_eq!(kind, DerivedKind::Derived);
+        assert_eq!(lowering, DerivedLowering::Sync);
+    }
+
+    #[test]
+    fn class_field_derived_by_init_registers_derived_by_kind() {
+        let source = r#"<script>
+class A {
+    x = 1;
+    y = $derived.by(() => this.x * 2);
+}
+</script>"#;
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "y",
+        )
+        .expect("missing class property A.y");
+
+        let semantics = data.declarator_semantics(prop_node_id);
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+            semantics
+        else {
+            panic!("expected ClassFieldDerived, got {semantics:?}");
+        };
+        assert_eq!(kind, DerivedKind::DerivedBy);
+        assert_eq!(lowering, DerivedLowering::Sync);
+    }
+
+    fn find_ctor_assign_node_id(
+        program: &Program<'_>,
+        class_name: &str,
+        member_name: &str,
+    ) -> Option<OxcNodeId> {
+        struct Finder<'s> {
+            class_name: &'s str,
+            member_name: &'s str,
+            found: Option<OxcNodeId>,
+        }
+
+        impl<'a> Visit<'a> for Finder<'_> {
+            fn visit_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+                let matches = class
+                    .id
+                    .as_ref()
+                    .is_some_and(|id| id.name.as_str() == self.class_name);
+                if !matches {
+                    walk::walk_class(self, class);
+                    return;
+                }
+                for el in &class.body.body {
+                    let ClassElement::MethodDefinition(method) = el else {
+                        continue;
+                    };
+                    if method.kind != oxc_ast::ast::MethodDefinitionKind::Constructor {
+                        continue;
+                    }
+                    let Some(body) = &method.value.body else {
+                        continue;
+                    };
+                    for stmt in &body.statements {
+                        let Statement::ExpressionStatement(es) = stmt else {
+                            continue;
+                        };
+                        let Expression::AssignmentExpression(assign) = &es.expression else {
+                            continue;
+                        };
+                        let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) =
+                            &assign.left
+                        else {
+                            continue;
+                        };
+                        if !matches!(&member.object, Expression::ThisExpression(_)) {
+                            continue;
+                        }
+                        if member.property.name.as_str() != self.member_name {
+                            continue;
+                        }
+                        self.found = Some(assign.node_id());
+                        return;
+                    }
+                }
+            }
+        }
+
+        let mut finder = Finder {
+            class_name,
+            member_name,
+            found: None,
+        };
+        finder.visit_program(program);
+        finder.found
+    }
+
+    #[test]
+    fn constructor_this_assignment_registers_class_field_state() {
+        let source = r#"<script>
+class A {
+    x;
+    constructor() {
+        this.x = $state(0);
+    }
+}
+let a = new A();
+</script>"#;
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "x",
+        )
+        .expect("missing class property placeholder A.x");
+        let assign_node_id = find_ctor_assign_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "x",
+        )
+        .expect("missing constructor assignment to this.x");
+
+        assert_eq!(
+            data.declarator_semantics(prop_node_id),
+            DeclaratorSemantics::None,
+            "placeholder PropertyDefinition must not carry rune semantics"
+        );
+
+        let assign_sem = data.declarator_semantics(assign_node_id);
+        let DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics { kind, proxied }) =
+            assign_sem
+        else {
+            panic!("expected ClassFieldState on constructor assignment, got {assign_sem:?}");
+        };
+        assert_eq!(kind, StateKind::State);
+        assert!(!proxied);
+    }
+
+    #[test]
+    fn static_class_field_with_state_init_is_not_registered() {
+        let source = r#"<script>
+let global = $state(0);
+class A {
+    static x = $state(0);
+}
+let a = new A();
+</script>"#;
+        let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+        let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+        assert!(parse_diags.is_empty(), "parse: {parse_diags:?}");
+        let (data, parsed, _diags) = analyze(&component, js_result);
+
+        let prop_node_id = find_class_property_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "x",
+        )
+        .expect("missing static class property A.x");
+
+        assert_eq!(
+            data.declarator_semantics(prop_node_id),
+            DeclaratorSemantics::None,
+            "static class field with rune-init must not be registered"
+        );
+    }
+
+    #[test]
+    fn constructor_computed_non_literal_assignment_is_not_registered() {
+        let source = r#"<script>
+function key() { return "x" }
+class A {
+    constructor() {
+        this[key()] = $state(0);
+    }
+}
+let a = new A();
+</script>"#;
+        let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+        let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+        assert!(parse_diags.is_empty(), "parse: {parse_diags:?}");
+        let (data, parsed, _diags) = analyze(&component, js_result);
+
+        struct AssignFinder<'s> {
+            source: &'s str,
+            found: Option<OxcNodeId>,
+        }
+        impl<'a> Visit<'a> for AssignFinder<'_> {
+            fn visit_assignment_expression(
+                &mut self,
+                expr: &oxc_ast::ast::AssignmentExpression<'a>,
+            ) {
+                if self.found.is_none()
+                    && expr.span.source_text(self.source).starts_with("this[key()]")
+                {
+                    self.found = Some(expr.node_id());
+                    return;
+                }
+                oxc_ast_visit::walk::walk_assignment_expression(self, expr);
+            }
+        }
+        let mut f = AssignFinder {
+            source: &component.source,
+            found: None,
+        };
+        f.visit_program(parsed.program.as_ref().expect("missing instance program"));
+        let assign_node_id = f.found.expect("missing computed assignment");
+
+        assert_eq!(
+            data.declarator_semantics(assign_node_id),
+            DeclaratorSemantics::None,
+            "computed-non-literal `this[expr] = ...` must not be registered"
+        );
+    }
+
+    #[test]
+    fn non_constructor_this_assignment_is_not_registered() {
+        let source = r#"<script>
+class A {
+    setup() {
+        this.x = $state(0);
+    }
+}
+let a = new A();
+</script>"#;
+        let (component, _data, _) = analyze_source_with_diags(source);
+        let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+        let (component2, js_result, _) = svelte_parser::parse_with_js(alloc, &component.source);
+        assert!(component.source == component2.source);
+        let (data, parsed, _) = analyze(&component2, js_result);
+
+        let assign_node_id = find_ctor_assign_node_id(
+            parsed.program.as_ref().expect("missing instance program"),
+            "A",
+            "x",
+        );
+        assert!(
+            assign_node_id.is_none(),
+            "constructor finder must not match method body assignments"
+        );
+
+        struct AssignFinder<'s> {
+            source: &'s str,
+            found: Option<OxcNodeId>,
+        }
+        impl<'a> Visit<'a> for AssignFinder<'_> {
+            fn visit_assignment_expression(
+                &mut self,
+                expr: &oxc_ast::ast::AssignmentExpression<'a>,
+            ) {
+                if self.found.is_none() && expr.span.source_text(self.source).starts_with("this.x")
+                {
+                    self.found = Some(expr.node_id());
+                    return;
+                }
+                oxc_ast_visit::walk::walk_assignment_expression(self, expr);
+            }
+        }
+        let mut f = AssignFinder {
+            source: &component2.source,
+            found: None,
+        };
+        f.visit_program(parsed.program.as_ref().expect("missing instance program"));
+        let method_assign = f.found.expect("missing method body assignment");
+
+        assert_eq!(
+            data.declarator_semantics(method_assign),
+            DeclaratorSemantics::None,
+            "method body `this.x = $state(...)` must not be registered"
+        );
+    }
+
+    #[test]
+    fn collision_emits_state_field_duplicate_diagnostic() {
+        let source = r#"<script>
+class A {
+    x = $state(0);
+    constructor() {
+        this.x = $state(1);
+    }
+}
+let a = new A();
+</script>"#;
+        let (_component, _data, diags) = analyze_source_with_diags(source);
+        assert!(
+            diags.iter().any(|d| matches!(
+                &d.kind,
+                svelte_diagnostics::DiagnosticKind::StateFieldDuplicate { name } if name == "x"
+            )),
+            "expected StateFieldDuplicate diagnostic, got {diags:?}"
+        );
+    }
+}
