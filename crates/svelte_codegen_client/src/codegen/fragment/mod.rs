@@ -4,7 +4,7 @@ mod process_children;
 mod types;
 
 use svelte_ast::{FragmentRole, NodeId};
-use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
+use svelte_ast_builder::Arg;
 
 use crate::codegen::fragment::prepare::prepare;
 use crate::codegen::fragment::types::{Child, ContentStrategy, HoistedBucket, StrategyKind};
@@ -20,7 +20,27 @@ pub(crate) enum FragmentEmitKind {
     Rendered,
 }
 
-fn role_needs_text_first_next(role: FragmentRole) -> bool {
+fn single_fragment_anchor<'a>(
+    ctx: &FragmentCtx<'a>,
+) -> Result<crate::codegen::concatenation::ConcatenationAnchor> {
+    use crate::codegen::concatenation::ConcatenationAnchor;
+    match &ctx.anchor {
+        FragmentAnchor::Root => Ok(ConcatenationAnchor::SingleFragmentRoot),
+        FragmentAnchor::CallbackParam { append_inside, .. } => Ok(
+            ConcatenationAnchor::SingleFragmentCallbackParam {
+                append_inside: *append_inside,
+            },
+        ),
+        FragmentAnchor::Child { parent_var } => Ok(ConcatenationAnchor::SingleFragmentChild {
+            parent_var: parent_var.clone(),
+        }),
+        FragmentAnchor::SiblingVar { .. } => {
+            CodegenError::unexpected_child("Single", "SiblingVar anchor")
+        }
+    }
+}
+
+pub(in crate::codegen) fn role_needs_text_first_next(role: FragmentRole) -> bool {
     matches!(
         role,
         FragmentRole::Root
@@ -221,12 +241,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             },
             ContentStrategy::SingleExpr(id) => {
-                self.emit_expr_node_in_fragment(state, ctx, id)?;
+                let anchor = single_fragment_anchor(ctx)?;
+                self.emit_concatenation(
+                    state,
+                    ctx,
+                    anchor,
+                    &[ConcatPart::Expr(id)],
+                )?;
                 needs_reset = state.last_fragment_needs_reset;
             }
             ContentStrategy::SingleConcat => match children.first() {
                 Some(Child::Concat(parts)) => {
-                    self.emit_concat_node_in_fragment(state, ctx, parts)?;
+                    let anchor = single_fragment_anchor(ctx)?;
+                    self.emit_concatenation(state, ctx, anchor, parts)?;
                     needs_reset = state.last_fragment_needs_reset;
                 }
                 _ => {
@@ -850,295 +877,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
     ) -> Result<()> {
         self.comment_anchor_node_name(state, ctx).map(drop)
-    }
-
-    fn emit_expr_node_in_fragment(
-        &mut self,
-        state: &mut EmitState<'a>,
-        ctx: &FragmentCtx<'a>,
-        id: NodeId,
-    ) -> Result<()> {
-        let has_const_tag_blocker = {
-            let info = self.ctx.expression(id);
-            info.is_some_and(|i| {
-                i.ref_symbols()
-                    .iter()
-                    .any(|s| self.ctx.const_tag_blockers.contains_key(s))
-            })
-        };
-        let is_dyn = self.ctx.is_dynamic(id)
-            || self.ctx.expr_has_await(id)
-            || self.ctx.expr_has_blockers(id)
-            || has_const_tag_blocker;
-        let expr = self.take_node_expr(id)?;
-
-        if !is_dyn && let FragmentAnchor::Child { parent_var } = &ctx.anchor {
-            let final_expr = match self.try_resolve_known_from_expr(&expr) {
-                Some(s) => self.ctx.state.b.str_expr(&s),
-                None => expr,
-            };
-            let b = &self.ctx.state.b;
-            let member = b.static_member(b.rid_expr(parent_var), "textContent");
-            state
-                .init
-                .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
-            state.last_fragment_needs_reset = false;
-            return Ok(());
-        }
-
-        let name = self.ctx.state.gen_ident("text");
-        let b = &self.ctx.state.b;
-
-        match &ctx.anchor {
-            FragmentAnchor::Root
-            | FragmentAnchor::CallbackParam {
-                append_inside: false,
-                ..
-            } => {
-                if role_needs_text_first_next(ctx.role) {
-                    state
-                        .init
-                        .push(b.call_stmt("$.next", std::iter::empty::<Arg<'a, '_>>()));
-                }
-                state.init.push(b.var_stmt(
-                    &name,
-                    b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
-                ));
-                state.root_var = Some(name.clone());
-            }
-            FragmentAnchor::CallbackParam {
-                append_inside: true,
-                ..
-            } => {
-                state.init.push(b.var_stmt(
-                    &name,
-                    b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
-                ));
-                state.root_var = Some(name.clone());
-            }
-            FragmentAnchor::Child { parent_var } => {
-                state.template.push_text(" ");
-                state.init.push(b.var_stmt(
-                    &name,
-                    b.call_expr("$.child", [Arg::Ident(parent_var), Arg::Bool(true)]),
-                ));
-            }
-            FragmentAnchor::SiblingVar { .. } => {
-                return CodegenError::unexpected_child("SingleExpr", "SiblingVar anchor");
-            }
-        }
-
-        if is_dyn {
-            let needs_memo = self.ctx.needs_expr_memoization(id);
-            if needs_memo {
-                state.memo_attrs.push(super::data_structures::MemoAttr {
-                    attr_id: id,
-                    el_name: name.clone(),
-                    update: super::data_structures::MemoAttrUpdate::Call {
-                        setter_fn: "$.set_text",
-                        attr_name: None,
-                    },
-                    expr,
-                    is_node_site: true,
-                });
-            } else {
-                let info = self.ctx.expression(id).cloned();
-                let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
-                let extra = self.ctx.const_tag_blocker_exprs(id);
-                let b = &self.ctx.state.b;
-                if !extra.is_empty() {
-                    state.extra_blockers.extend(extra);
-                }
-                state
-                    .update
-                    .push(b.call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(wrapped)]));
-            }
-        } else {
-            let b = &self.ctx.state.b;
-            let member = b.static_member(b.rid_expr(&name), "nodeValue");
-            state
-                .init
-                .push(b.assign_stmt(AssignLeft::StaticMember(member), expr));
-        }
-
-        Ok(())
-    }
-
-    fn emit_concat_node_in_fragment(
-        &mut self,
-        state: &mut EmitState<'a>,
-        ctx: &FragmentCtx<'a>,
-        parts: &[ConcatPart],
-    ) -> Result<()> {
-        use crate::codegen::data_structures::TemplateMemoState;
-        use svelte_analyze::ExprSite;
-
-        let is_dyn = parts.iter().any(|p| match p {
-            ConcatPart::Expr(id) => self.ctx.is_dynamic(*id),
-            _ => false,
-        });
-
-        let needs_memo = parts.iter().any(|p| match p {
-            ConcatPart::Expr(id) => self
-                .ctx
-                .expr_deps(ExprSite::Node(*id))
-                .is_some_and(|d| d.needs_memo),
-            _ => false,
-        });
-
-        let mut memo_deps = TemplateMemoState::default();
-        let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(parts.len());
-        for part in parts {
-            if let Some(s) = ctx.static_text_of(part) {
-                if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                    prev.push_str(s);
-                } else {
-                    tpl_parts.push(TemplatePart::Str(s.to_string()));
-                }
-            } else if let ConcatPart::Expr(id) = part {
-                let expr = self.take_node_expr(*id)?;
-                if let Some(known) = self.try_resolve_known_from_expr(&expr) {
-                    if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                        prev.push_str(&known);
-                    } else {
-                        tpl_parts.push(TemplatePart::Str(known));
-                    }
-                } else {
-                    let defined = self.is_node_expr_definitely_defined(*id, &expr);
-                    let info = self.ctx.expression(*id).cloned();
-                    let expr = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
-                    let effective_expr = if needs_memo {
-                        let node_deps_needs_memo = self
-                            .ctx
-                            .expr_deps(ExprSite::Node(*id))
-                            .is_some_and(|d| d.needs_memo);
-                        if node_deps_needs_memo {
-                            memo_deps.push_node_deps(self.ctx, *id);
-                            let has_await = self
-                                .ctx
-                                .expr_deps(ExprSite::Node(*id))
-                                .is_some_and(|d| d.has_await());
-                            let cloned = self.ctx.b.clone_expr(&expr);
-                            if has_await {
-                                let index = memo_deps.async_values_push(cloned);
-                                memo_deps.async_param_expr(self.ctx, index)
-                            } else {
-                                let index = memo_deps.sync_values_push(cloned);
-                                memo_deps.sync_param_expr(self.ctx, index)
-                            }
-                        } else {
-                            expr
-                        }
-                    } else {
-                        expr
-                    };
-                    tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
-                }
-            }
-        }
-
-        let all_static = tpl_parts.iter().all(|p| matches!(p, TemplatePart::Str(_)));
-        let single_str: Option<String> = if all_static && tpl_parts.len() == 1 {
-            match tpl_parts.first() {
-                Some(TemplatePart::Str(s)) => Some(s.clone()),
-                _ => None,
-            }
-        } else {
-            None
-        };
-
-        let b = &self.ctx.state.b;
-        let tpl_expr = match single_str {
-            Some(s) => b.str_expr(&s),
-            None => b.template_parts_expr(tpl_parts),
-        };
-
-        if !is_dyn && let FragmentAnchor::Child { parent_var } = &ctx.anchor {
-            let member = b.static_member(b.rid_expr(parent_var), "textContent");
-            state
-                .init
-                .push(b.assign_stmt(AssignLeft::StaticMember(member), tpl_expr));
-            state.last_fragment_needs_reset = false;
-            return Ok(());
-        }
-
-        let name = self.ctx.state.gen_ident("text");
-        let b = &self.ctx.state.b;
-
-        match &ctx.anchor {
-            FragmentAnchor::Root
-            | FragmentAnchor::CallbackParam {
-                append_inside: false,
-                ..
-            } => {
-                if role_needs_text_first_next(ctx.role) {
-                    state
-                        .init
-                        .push(b.call_stmt("$.next", std::iter::empty::<Arg<'a, '_>>()));
-                }
-                state.init.push(b.var_stmt(
-                    &name,
-                    b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
-                ));
-                state.root_var = Some(name.clone());
-            }
-            FragmentAnchor::CallbackParam {
-                append_inside: true,
-                ..
-            } => {
-                state.init.push(b.var_stmt(
-                    &name,
-                    b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
-                ));
-                state.root_var = Some(name.clone());
-            }
-            FragmentAnchor::Child { parent_var } => {
-                state.template.push_text(" ");
-                state
-                    .init
-                    .push(b.var_stmt(&name, b.call_expr("$.child", [Arg::Ident(parent_var)])));
-            }
-            FragmentAnchor::SiblingVar { .. } => {
-                return CodegenError::unexpected_child("SingleConcat", "SiblingVar anchor");
-            }
-        }
-
-        if is_dyn && !state.bound_contenteditable {
-            if memo_deps.has_deps() {
-                let param_names = memo_deps.param_names();
-                let params = if param_names.is_empty() {
-                    self.ctx.b.no_params()
-                } else {
-                    self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-                };
-                let set_text = self
-                    .ctx
-                    .b
-                    .call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(tpl_expr)]);
-                let callback = self.ctx.b.arrow_expr(params, [set_text]);
-
-                crate::codegen::effect::emit_effect_call_extern(
-                    self.ctx,
-                    "$.template_effect",
-                    callback,
-                    &mut memo_deps,
-                    &mut state.after_update,
-                );
-            } else {
-                let b = &self.ctx.state.b;
-                state
-                    .update
-                    .push(b.call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(tpl_expr)]));
-            }
-        } else {
-            let b = &self.ctx.state.b;
-            let member = b.static_member(b.rid_expr(&name), "nodeValue");
-            state
-                .init
-                .push(b.assign_stmt(AssignLeft::StaticMember(member), tpl_expr));
-        }
-
-        Ok(())
     }
 
     fn emit_element_in_fragment(

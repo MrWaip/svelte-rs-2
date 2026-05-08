@@ -170,6 +170,7 @@ impl OutputPlanData {
 pub struct AnalysisData<'a> {
     pub expressions: NodeTable<ExpressionInfo>,
     pub attr_expressions: NodeTable<ExpressionInfo>,
+    pub expressions_v2: crate::expression_semantics::ExpressionSemanticsStore,
     pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
@@ -186,6 +187,7 @@ impl<'a> AnalysisData<'a> {
         Self {
             expressions: NodeTable::new(node_count),
             attr_expressions: NodeTable::new(node_count),
+            expressions_v2: crate::expression_semantics::ExpressionSemanticsStore::new(node_count),
             scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),
@@ -205,6 +207,9 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
+    }
+    pub fn pickled_await_offsets(&self) -> &PickledAwaitOffsets {
+        &self.script.pickled_await_offsets
     }
     pub fn is_pickled_await(&self, offset: u32) -> bool {
         self.script.pickled_await_offsets.contains_offset(offset)

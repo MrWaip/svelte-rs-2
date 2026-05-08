@@ -6893,3 +6893,489 @@ mod block_semantics_html_tag_tests {
         assert!(!sem.hydration_html_changed_ignored);
     }
 }
+
+mod expression_semantics_tests {
+    use super::*;
+    use crate::expression_semantics::{
+        ExprKind, ExpressionSemantics, LegacyWrap, Memoization, build,
+    };
+
+    #[test]
+    fn t12_pickled_await_non_tail_position() {
+        let source = r#"<script>
+async function foo(a, b) { return a + b; }
+async function bar() { return 1; }
+async function baz() { return 2; }
+</script>
+<p>{await foo(await bar(), await baz())}</p>"#;
+        let (component, data, _parsed) = analyze_with_async(source);
+        let tag_id =
+            find_expr_tag(component.root, &component, "await foo(await bar(), await baz())")
+                .expect("ExpressionTag not found");
+
+        match data.expressions_v2.get(tag_id) {
+            ExpressionSemantics::Expression(expr_data) => match &expr_data.kind {
+                ExprKind::Async {
+                    has_await,
+                    is_pickled,
+                    ..
+                } => {
+                    assert!(*has_await, "has_await");
+                    assert!(*is_pickled, "non-tail await must be pickled");
+                }
+                other => panic!("expected Async, got {other:?}"),
+            },
+            _ => panic!("expected Expression"),
+        }
+    }
+
+    #[test]
+    fn t12_pickled_await_tail_position_not_pickled() {
+        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
+        let (component, data, _parsed) = analyze_with_async(source);
+        let tag_id = find_expr_tag(component.root, &component, "await p")
+            .expect("ExpressionTag not found");
+
+        match data.expressions_v2.get(tag_id) {
+            ExpressionSemantics::Expression(expr_data) => match &expr_data.kind {
+                ExprKind::Async { is_pickled, .. } => {
+                    assert!(!*is_pickled, "tail-position await must not be pickled");
+                }
+                _ => panic!("expected Async"),
+            },
+            _ => panic!("expected Expression"),
+        }
+    }
+
+    #[test]
+    fn analyze_pipeline_populates_expressions_store() {
+        let source = "<script>let { x } = $props();</script><p>{x}</p>";
+        let (component, data, _parsed) = analyze_source_with_parsed(source);
+        let tag_id = find_expr_tag(component.root, &component, "x")
+            .expect("ExpressionTag with source 'x' not found");
+
+        let sem = data.expressions_v2.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(expr_data) => {
+                assert_eq!(expr_data.kind, ExprKind::Dynamic);
+            }
+            ExpressionSemantics::NonSpecial => {
+                panic!("analyze() must populate expressions_v2 — got NonSpecial")
+            }
+        }
+    }
+
+    #[test]
+    fn t1_literal_in_fragment_is_static() {
+        let source = "<p>{42}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        let tag_id = find_expr_tag(component.root, &component, "42")
+            .expect("ExpressionTag with source '42' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        let sem = store.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(data) => {
+                assert_eq!(data.kind, ExprKind::Static, "kind");
+                assert_eq!(data.legacy_wrap, LegacyWrap::None, "legacy_wrap");
+                assert_eq!(data.memoization, Memoization::None, "memoization");
+                assert!(data.references.is_empty(), "references");
+            }
+            ExpressionSemantics::NonSpecial => {
+                panic!("expected Expression(...), got NonSpecial for literal {{42}}")
+            }
+        }
+    }
+
+    fn analyze_with_async(
+        source: &'static str,
+    ) -> (Component, AnalysisData<'static>, JsAst<'static>) {
+        analyze_with_opts(
+            source,
+            AnalyzeOptions {
+                experimental_async: true,
+                ..AnalyzeOptions::default()
+            },
+        )
+    }
+
+    fn analyze_with_opts(
+        source: &'static str,
+        options: AnalyzeOptions,
+    ) -> (Component, AnalysisData<'static>, JsAst<'static>) {
+        let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+        let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+        assert!(parse_diags.is_empty(), "parse: {parse_diags:?}");
+        let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+        assert!(diags.is_empty(), "analyze: {diags:?}");
+        (component, data, parsed)
+    }
+
+    fn legacy_opts() -> AnalyzeOptions {
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        }
+    }
+
+    fn assert_legacy_wrap(
+        component: &Component,
+        data: &AnalysisData<'static>,
+        parsed: &JsAst<'static>,
+        expr_text: &str,
+        expected: LegacyWrap,
+    ) {
+        let tag_id = find_expr_tag(component.root, component, expr_text)
+            .unwrap_or_else(|| panic!("ExpressionTag with source '{expr_text}' not found"));
+        let store = build(
+            component,
+            parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+        match store.get(tag_id) {
+            ExpressionSemantics::Expression(expr_data) => {
+                assert_eq!(
+                    expr_data.legacy_wrap, expected,
+                    "legacy_wrap for '{expr_text}'"
+                );
+            }
+            ExpressionSemantics::NonSpecial => {
+                panic!("expected Expression for '{expr_text}', got NonSpecial")
+            }
+        }
+    }
+
+    #[test]
+    fn t5e1_runes_mode_member_no_wrap() {
+        let source =
+            "<svelte:options runes={true} /><script>let x = $state({ a: 1 });</script><p>{x.a}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        assert_legacy_wrap(&component, &data, &parsed, "x.a", LegacyWrap::None);
+    }
+
+    #[test]
+    fn t5e3_legacy_update_is_coarse_wrap() {
+        let source = "<script>let x = 0;</script><p>{x++}</p>";
+        let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
+        assert_legacy_wrap(&component, &data, &parsed, "x++", LegacyWrap::CoarseWrap);
+    }
+
+    #[test]
+    fn t5e4_legacy_call_is_coarse_wrap() {
+        let source = "<script>function fn() { return 1; }</script><p>{fn()}</p>";
+        let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
+        assert_legacy_wrap(&component, &data, &parsed, "fn()", LegacyWrap::CoarseWrap);
+    }
+
+    #[test]
+    fn t5e5_legacy_sanitized_props_only() {
+        let source = "<p>{$$props}</p>";
+        let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
+        assert_legacy_wrap(&component, &data, &parsed, "$$props", LegacyWrap::SanitizedProps);
+    }
+
+    #[test]
+    fn t5e6_legacy_coarse_and_sanitized() {
+        let source = "<p>{$$props.foo}</p>";
+        let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
+        assert_legacy_wrap(
+            &component,
+            &data,
+            &parsed,
+            "$$props.foo",
+            LegacyWrap::CoarseAndSanitized,
+        );
+    }
+
+    fn assert_memoization(
+        component: &Component,
+        data: &AnalysisData<'static>,
+        parsed: &JsAst<'static>,
+        expr_text: &str,
+        expected: Memoization,
+    ) {
+        let tag_id = find_expr_tag(component.root, component, expr_text)
+            .unwrap_or_else(|| panic!("ExpressionTag with source '{expr_text}' not found"));
+        let store = build(
+            component,
+            parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+        match store.get(tag_id) {
+            ExpressionSemantics::Expression(expr_data) => {
+                assert_eq!(
+                    expr_data.memoization, expected,
+                    "memoization for '{expr_text}'"
+                );
+            }
+            ExpressionSemantics::NonSpecial => {
+                panic!("expected Expression for '{expr_text}', got NonSpecial")
+            }
+        }
+    }
+
+    #[test]
+    fn t9_references_dedup_in_encounter_order() {
+        let source = "<script>let a = 1; let b = 2;</script><p>{a + b + a}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        let tag_id = find_expr_tag(component.root, &component, "a + b + a")
+            .expect("ExpressionTag with source 'a + b + a' not found");
+        let root_scope = data.scoping.root_scope_id();
+        let a_sym = data
+            .scoping
+            .find_binding(root_scope, "a")
+            .expect("symbol 'a' not found");
+        let b_sym = data
+            .scoping
+            .find_binding(root_scope, "b")
+            .expect("symbol 'b' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        match store.get(tag_id) {
+            ExpressionSemantics::Expression(expr_data) => {
+                let refs: Vec<_> = expr_data.references.iter().copied().collect();
+                assert_eq!(refs, vec![a_sym, b_sym], "references encounter order + dedup");
+            }
+            ExpressionSemantics::NonSpecial => panic!("expected Expression"),
+        }
+    }
+
+    #[test]
+    fn t7_each_block_id_is_nonspecial() {
+        let source = "<script>let items = $state([1, 2]);</script>{#each items as item}{item}{/each}";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        let each_block = find_each_block(component.root, &component, "items")
+            .expect("EachBlock with collection 'items' not found");
+        let item_tag_id = find_expr_tag(each_block.body, &component, "item")
+            .expect("ExpressionTag with source 'item' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        assert_eq!(
+            store.get(each_block.id),
+            &ExpressionSemantics::NonSpecial,
+            "EachBlock NodeId out of scope"
+        );
+        match store.get(item_tag_id) {
+            ExpressionSemantics::Expression(_) => {}
+            ExpressionSemantics::NonSpecial => {
+                panic!("ExpressionTag {{item}} inside each-body must have entry")
+            }
+        }
+    }
+
+    #[test]
+    fn t6_memoization_none_for_simple_identifier() {
+        let source = "<script>let x = $state(0);</script><p>{x}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        assert_memoization(&component, &data, &parsed, "x", Memoization::None);
+    }
+
+    #[test]
+    fn t6_memoization_sync_for_call() {
+        let source = "<script>function fn() { return 1; }</script><p>{fn()}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        assert_memoization(&component, &data, &parsed, "fn()", Memoization::SyncMemo);
+    }
+
+    #[test]
+    fn t6_memoization_async_for_await() {
+        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
+        let (component, data, parsed) = analyze_with_async(source);
+        assert_memoization(&component, &data, &parsed, "await p", Memoization::AsyncMemo);
+    }
+
+    #[test]
+    fn t5e2_legacy_member_expr_is_coarse_wrap() {
+        let source = "<script>let x = { a: 1 };</script><p>{x.a}</p>";
+        let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
+        let tag_id = find_expr_tag(component.root, &component, "x.a")
+            .expect("ExpressionTag with source 'x.a' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        let sem = store.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(expr_data) => {
+                assert_eq!(expr_data.legacy_wrap, LegacyWrap::CoarseWrap);
+            }
+            ExpressionSemantics::NonSpecial => panic!("expected Expression"),
+        }
+    }
+
+    #[test]
+    fn t4_reference_behind_script_blocker() {
+        let source = r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#;
+        let (component, data, parsed) = analyze_with_async(source);
+        let tag_id = find_expr_tag(component.root, &component, "data")
+            .expect("ExpressionTag with source 'data' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        let sem = store.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(expr_data) => {
+                match &expr_data.kind {
+                    ExprKind::Async {
+                        has_await,
+                        is_pickled,
+                    } => {
+                        assert!(!*has_await, "has_await false");
+                        assert!(!*is_pickled);
+                    }
+                    other => panic!("expected Async, got {other:?}"),
+                }
+                assert_eq!(expr_data.blockers.as_slice(), &[0u32], "blockers");
+            }
+            ExpressionSemantics::NonSpecial => panic!("expected Expression, got NonSpecial"),
+        }
+    }
+
+    #[test]
+    fn t3_inline_await_is_async() {
+        let source = r#"<script>let promise = Promise.resolve(1);</script><p>{await promise}</p>"#;
+        let (component, data, parsed) = analyze_with_async(source);
+        let tag_id = find_expr_tag(component.root, &component, "await promise")
+            .expect("ExpressionTag with source 'await promise' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        let sem = store.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(expr_data) => {
+                match &expr_data.kind {
+                    ExprKind::Async {
+                        has_await,
+                        is_pickled,
+                    } => {
+                        assert!(*has_await, "has_await");
+                        assert!(!*is_pickled, "is_pickled false");
+                    }
+                    other => panic!("expected Async, got {other:?}"),
+                }
+                assert!(expr_data.blockers.is_empty(), "blockers should be empty");
+            }
+            ExpressionSemantics::NonSpecial => panic!("expected Expression, got NonSpecial"),
+        }
+    }
+
+    #[test]
+    fn t2_state_identifier_in_fragment_is_dynamic() {
+        let source = "<script>let { x } = $props();</script><p>{x}</p>";
+        let (component, data, parsed) = analyze_source_with_parsed(source);
+        let tag_id = find_expr_tag(component.root, &component, "x")
+            .expect("ExpressionTag with source 'x' not found");
+        let root_scope = data.scoping.root_scope_id();
+        let x_sym = data
+            .scoping
+            .find_binding(root_scope, "x")
+            .expect("symbol 'x' not found");
+
+        let store = build(
+            &component,
+            &parsed,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.scoping,
+            &data.expressions,
+            data.script.has_class_state_fields,
+            data.blocker_data(),
+            data.pickled_await_offsets(),
+            component.node_count(),
+        );
+
+        let sem = store.get(tag_id);
+        match sem {
+            ExpressionSemantics::Expression(expr_data) => {
+                assert_eq!(expr_data.kind, ExprKind::Dynamic, "kind");
+                let refs: Vec<_> = expr_data.references.iter().copied().collect();
+                assert_eq!(refs, vec![x_sym], "references");
+            }
+            ExpressionSemantics::NonSpecial => {
+                panic!("expected Expression(...), got NonSpecial for {{x}}")
+            }
+        }
+    }
+}

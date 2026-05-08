@@ -1,7 +1,13 @@
 pub mod block_semantics;
 pub(crate) mod css;
+pub mod expression_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
+
+pub use expression_semantics::{
+    ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
+    Memoization,
+};
 
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
@@ -170,6 +176,19 @@ pub fn analyze_with_options<'a>(
     }
 
     data.output.runtime_plan = build_runtime_plan(&data, options.dev);
+
+    data.expressions_v2 = expression_semantics::build(
+        component,
+        &parsed,
+        data.scoping.semantics(),
+        &data.reactivity,
+        &data.scoping,
+        &data.expressions,
+        data.script.has_class_state_fields,
+        data.blocker_data(),
+        &data.script.pickled_await_offsets,
+        component.node_count(),
+    );
 
     (data, parsed, diags)
 }

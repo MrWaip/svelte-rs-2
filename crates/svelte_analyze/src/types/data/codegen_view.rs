@@ -38,6 +38,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.dynamism.is_dynamic_node(id)
     }
+    pub fn expression_semantics(
+        &self,
+        id: NodeId,
+    ) -> &crate::expression_semantics::ExpressionSemantics {
+        self.data.expressions_v2.get(id)
+    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }

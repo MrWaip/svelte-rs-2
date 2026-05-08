@@ -434,10 +434,6 @@ impl<'a> Ctx<'a> {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.query.view.attr_expression(id)
     }
-    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.needs_memo)
-    }
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.query.view.symbol_blocker(sym)
     }

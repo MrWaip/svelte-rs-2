@@ -185,6 +185,15 @@ fn classify_template_info(info: &ExpressionInfo, data: &AnalysisData<'_>) -> boo
     )
 }
 
+pub(crate) fn classify_template_info_pub(
+    info: &ExpressionInfo,
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+    has_class_state_fields: bool,
+) -> bool {
+    is_dynamic_template(info, scoping, reactivity, has_class_state_fields)
+}
+
 pub(crate) fn is_symbol_dynamic(
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,

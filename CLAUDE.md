@@ -73,6 +73,8 @@ After completed task run `just test-compiler` and `just test-diagnostics` and `j
 - shape
 - shadow
 - lowering / lower
+- tpl
+- dyn
 
 # Agent skills
 

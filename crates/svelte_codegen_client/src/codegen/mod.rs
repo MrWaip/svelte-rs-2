@@ -3,6 +3,7 @@ mod async_plan;
 mod attributes;
 mod blocks;
 mod component_props;
+mod concatenation;
 mod containers;
 pub(in crate::codegen) mod data_structures;
 mod dev;

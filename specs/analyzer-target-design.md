@@ -182,7 +182,7 @@ Phase 6  checker (crate svelte_check)
 
 7. **Cluster traversal budget.** Каждый cluster builder использует не более 1 walk instance script + 1 walk module script + 1 walk template. Sub-walks по template-owned subtrees разрешены, если факт не достижим через `ComponentSemantics`. Re-walking тех же узлов внутри одного кластера запрещён.
 
-8. **`ExpressionTag` владелец — `ExpressionSemantics`.** Это пятый кластер. Ключевой потребитель — codegen. Используется и для standalone `{expr}` в фрагменте, и для expression внутри атрибута (Attribute payload содержит NodeId, тянет факты отсюда), и для collection `{#each expr as ...}`, и для аргумента `{@render fn(arg)}`. Transform expression-узлы как единицы не классифицирует — продолжает работать per-reference через ReactivitySemantics.
+8. **`ExpressionTag` владелец — `ExpressionSemantics`.** Это пятый кластер. Ключевой потребитель — codegen. Используется для standalone `{expr}` в фрагменте, для expression внутри атрибута (Attribute payload содержит NodeId, тянет факты отсюда), для collection `{#each expr as ...}`, и для аргумента `{@render fn(arg)}`. Transform expression-узлы как единицы не классифицирует — продолжает работать per-reference через ReactivitySemantics. **Migration staging:** spec 03 ограничивает scope первой стадии **только fragment-child ExpressionTag** (consumer-сайты `emit_text_set` и concat-parts); attribute/directive value-expressions, attribute concat-parts, block-defining expressions остаются на старой инфраструктуре (`ExpressionInfo`, `expr_*`-helpers, `PickledAwaitOffsets`) до spec 04, где scope расширяется до полного покрытия.
 
 9. **`{@html}` — variant `BlockSemantics`. `{@debug}` — нет.** `{@html}` несёт нетривиальный pre-computed payload: `HtmlTagSemantics { parent_strategy: HtmlTagNamespace, hydration_html_changed_ignored: bool }`. `{@debug}` AST-узел самодостаточен (`identifier_refs: Vec<ExprRef>` напрямую покрывает codegen-нужды), pre-compute нечего, поэтому variant не создаётся. `is_controlled` (controlled-fragment shape) остаётся в codegen до перехода в `FragmentSemanticsStore`. Документация `SEMANTIC_LAYER_ARCHITECTURE.md` (раздел про out-of-scope строки 162–163) обновляется.
 
@@ -215,7 +215,7 @@ Phase 6  checker (crate svelte_check)
 
 ### Обработка текущих side-tables
 
-18. **`ExpressionInfo` (per-expression bag-of-facts) исчезает.** Поля переезжают в `ExpressionSemantics` payload как enum / bitflags / поля.
+18. **`ExpressionInfo` (per-expression bag-of-facts) исчезает.** Поля переезжают в `ExpressionSemantics` payload как enum / bitflags / поля. **Staged removal:** spec 03 переносит факты только для fragment-child ExpressionTag-сайтов, тип `ExpressionInfo` остаётся как backing store для attribute/directive value-expressions; финальное удаление типа и связанных `expr_*`-helper-ов делается в spec 04 (атрибуты).
 
 19. **`BindSemanticsData`, `TemplateSemanticsData`, `DirectiveModifierFlags`** растворяются в `AttributeSemantics` payload (поля `target`, `each_context_vars`, `event_modifiers`).
 
@@ -227,7 +227,7 @@ Phase 6  checker (crate svelte_check)
 
 23. **`DynamismData`** распадается на bit `dynamism: bool` в payload-ах Element / Attribute / Expression. Сама таблица удаляется.
 
-24. **`PickledAwaitOffsets`** становится полем `is_pickled_await: bool` в `ExpressionSemantics` для тех expressions, что содержат `await`. Transform (`template_rewrites.rs`) переписывается на лукап по NodeId вместо span. Текущая offset-таблица удаляется.
+24. **`PickledAwaitOffsets`** становится полем `is_pickled_await: bool` в `ExpressionSemantics` для тех expressions, что содержат `await`. Transform (`template_rewrites.rs`) переписывается на лукап по NodeId вместо span. Текущая offset-таблица удаляется. **Staged removal:** spec 03 кладёт `is_pickled` только для fragment-child ExpressionTag-сайтов и оставляет `PickledAwaitOffsets` как backing store для attribute/directive value-expressions; полное удаление таблицы и миграция transform — в spec 04.
 
 25. **`ProxyStateInits`, `has_class_state_fields`, `has_store_member_mutations`** удаляются полностью. У `ProxyStateInits` нет внешних потребителей. Остальные были derivation steps для RuntimePlan — пересчитываются inline в `RuntimePlanBuilder`.
 

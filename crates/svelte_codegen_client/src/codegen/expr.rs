@@ -47,20 +47,37 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         expr: Expression<'a>,
         info: Option<&svelte_analyze::ExpressionInfo>,
     ) -> Expression<'a> {
-        use svelte_ast_builder::Arg;
         let Some(info) = info else { return expr };
         if self.ctx.query.runes() {
             return expr;
         }
-        if !info.needs_legacy_coarse_wrap() && !info.uses_legacy_sanitized_props() {
+        let needs_coarse = info.needs_legacy_coarse_wrap();
+        let needs_sanitized = info.uses_legacy_sanitized_props();
+        let wrap = match (needs_coarse, needs_sanitized) {
+            (false, false) => return expr,
+            (true, false) => svelte_analyze::LegacyWrap::CoarseWrap,
+            (false, true) => svelte_analyze::LegacyWrap::SanitizedProps,
+            (true, true) => svelte_analyze::LegacyWrap::CoarseAndSanitized,
+        };
+        self.apply_legacy_wrap(expr, wrap, info.ref_symbols())
+    }
+
+    pub(in crate::codegen) fn apply_legacy_wrap(
+        &self,
+        expr: Expression<'a>,
+        wrap: svelte_analyze::LegacyWrap,
+        refs: &[svelte_analyze::scope::SymbolId],
+    ) -> Expression<'a> {
+        use svelte_analyze::LegacyWrap;
+        use svelte_ast_builder::Arg;
+        if matches!(wrap, LegacyWrap::None) {
             return expr;
         }
         let mut seq_parts: Vec<Expression<'a>> = Vec::new();
-        for &sym in info.ref_symbols() {
+        for &sym in refs {
             let Some(getter) = build_reactive_dep_expr_legacy(self.ctx, sym) else {
                 continue;
             };
-
             let getter = if uses_deep_read_state(self.ctx, sym) {
                 self.ctx
                     .b
@@ -70,13 +87,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
             seq_parts.push(getter);
         }
-
-        if info.uses_legacy_sanitized_props() {
-            let getter = self
-                .ctx
-                .b
-                .call_expr("$.deep_read_state", [Arg::Ident("$$sanitized_props")]);
-            seq_parts.push(getter);
+        if matches!(
+            wrap,
+            LegacyWrap::SanitizedProps | LegacyWrap::CoarseAndSanitized
+        ) {
+            seq_parts.push(
+                self.ctx
+                    .b
+                    .call_expr("$.deep_read_state", [Arg::Ident("$$sanitized_props")]),
+            );
         }
         if seq_parts.is_empty() {
             return expr;
