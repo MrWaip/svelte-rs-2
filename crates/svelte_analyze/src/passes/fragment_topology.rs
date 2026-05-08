@@ -14,8 +14,10 @@ pub(crate) fn build(component: &Component, data: &mut AnalysisData) {
         let Some(expr_ids) = slot else { continue };
         let mut blockers = SmallVec::<[u32; 2]>::new();
         for &id in expr_ids {
-            for blk in data.expression_blockers(id) {
-                blockers.push(blk);
+            if let Some(d) = data.expression_data(id) {
+                for &blk in d.blockers.iter() {
+                    blockers.push(blk);
+                }
             }
         }
         if !blockers.is_empty() {

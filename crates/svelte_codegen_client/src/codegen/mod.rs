@@ -82,16 +82,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if !matches!(expr, oxc_ast::ast::Expression::Identifier(_)) {
             return false;
         }
-        let Some(info) = self.ctx.expression(nid) else {
+        let oxc_ast::ast::Expression::Identifier(_) = expr else {
             return false;
         };
-        if !info.is_identifier() {
+        let Some(data) = self.ctx.expression_data(nid) else {
+            return false;
+        };
+        if data.references.len() != 1 {
             return false;
         }
-        if info.ref_symbols().len() != 1 {
-            return false;
-        }
-        self.ctx.is_each_index_sym(info.ref_symbols()[0])
+        self.ctx.is_each_index_sym(data.references[0])
     }
 
     pub(in crate::codegen) fn pack_body(

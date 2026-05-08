@@ -75,6 +75,7 @@ After completed task run `just test-compiler` and `just test-diagnostics` and `j
 - lowering / lower
 - tpl
 - dyn
+- sym
 
 # Agent skills
 

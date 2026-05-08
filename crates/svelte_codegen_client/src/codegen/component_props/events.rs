@@ -49,10 +49,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             else {
                 return CodegenError::missing_expression(ev.attr_id);
             };
-            let has_call = self
-                .ctx
-                .attr_expression(ev.attr_id)
-                .is_some_and(|info| info.has_call());
+            let handler_emit = match self.ctx.query.analysis.attributes.get(ev.attr_id) {
+                svelte_analyze::AttributeSemantics::Event(esem) => match &esem.emit {
+                    svelte_analyze::EventEmit::HtmlDelegated { handler }
+                    | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
+                    | svelte_analyze::EventEmit::Component { handler } => *handler,
+                    svelte_analyze::EventEmit::HtmlBubble => svelte_analyze::HandlerEmit::Direct,
+                },
+                _ => svelte_analyze::HandlerEmit::Direct,
+            };
             let Some(expr_id) = ev.expr_id else {
                 return CodegenError::missing_expression(ev.attr_id);
             };
@@ -60,8 +65,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 return CodegenError::missing_expression(ev.attr_id);
             };
             let handler_expr = self.maybe_wrap_legacy_slots_read(handler_expr);
-            let handler =
-                self.build_event_handler_s5(ev.attr_id, handler_expr, has_call, init, expr_offset);
+            let handler = self.build_event_handler_s5(
+                ev.attr_id,
+                handler_expr,
+                handler_emit,
+                init,
+                expr_offset,
+            );
             let handler = self.dev_event_handler(ev.attr_id, handler, &ev.name)?;
             let handler = if ev.has_once_modifier {
                 self.ctx

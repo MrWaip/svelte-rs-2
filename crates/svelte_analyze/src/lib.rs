@@ -1,9 +1,18 @@
+pub mod attribute_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
 pub mod expression_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
 
+pub use attribute_semantics::{
+    AttributeSemantics, AttributeSemanticsStore, BoundaryPropEmit, BoundaryPropSemantics,
+    ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
+    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
+    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, HandlerEmit, HtmlBindKind, WindowBindSemantics,
+};
 pub use expression_semantics::{
     ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
     Memoization,
@@ -32,13 +41,13 @@ pub use types::data::{
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
     ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
-    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
-    ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts, FragmentFactsEntry,
+    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier,
+    FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
-    PickledAwaitOffsets, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
+    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
     PropLoweringMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
     RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
@@ -156,9 +165,37 @@ pub fn analyze_with_options<'a>(
     for &key in passes::POST_TEMPLATE_ANALYSIS_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
+
+    let expressions_v2 = expression_semantics::build(
+        component,
+        &parsed,
+        data.scoping.semantics(),
+        &data.reactivity,
+        &data.scoping,
+        data.script.has_class_state_fields,
+        data.blocker_data(),
+        component.node_count(),
+    );
+    if !data.output.needs_context && expressions_v2.is_context_required() {
+        data.output.needs_context = true;
+    }
+    data.expressions_v2 = expressions_v2;
+
+    data.attributes = attribute_semantics::build(
+        component,
+        &parsed,
+        data.scoping.semantics(),
+        &data.reactivity,
+        data.blocker_data(),
+        &data.output.ignore_data,
+        options.dev,
+        component.node_count(),
+    );
+
     for &key in passes::TEMPLATE_EXECUTION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
+
     for &key in passes::VALIDATION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
@@ -176,19 +213,6 @@ pub fn analyze_with_options<'a>(
     }
 
     data.output.runtime_plan = build_runtime_plan(&data, options.dev);
-
-    data.expressions_v2 = expression_semantics::build(
-        component,
-        &parsed,
-        data.scoping.semantics(),
-        &data.reactivity,
-        &data.scoping,
-        &data.expressions,
-        data.script.has_class_state_fields,
-        data.blocker_data(),
-        &data.script.pickled_await_offsets,
-        component.node_count(),
-    );
 
     (data, parsed, diags)
 }

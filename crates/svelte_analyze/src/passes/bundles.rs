@@ -1,7 +1,7 @@
 use svelte_ast::Component;
 
 use crate::passes::{
-    bind_semantics, collect_symbols, content_types, dynamism, element_flags, template_side_tables,
+    collect_symbols, content_types, dynamism, element_flags, template_side_tables,
     template_validation,
 };
 use crate::types::data::AnalysisData;
@@ -69,7 +69,6 @@ impl ReactivityBundle {
 
 pub(crate) struct TemplateClassificationBundle<'s> {
     element_flags: element_flags::ElementFlagsVisitor<'s>,
-    bind_semantics: bind_semantics::BindSemanticsVisitor<'s>,
     content_types: content_types::ContentAndVarVisitor,
 }
 
@@ -77,17 +76,12 @@ impl<'s> TemplateClassificationBundle<'s> {
     pub(crate) fn new(_component: &'s Component, _data: &AnalysisData, source: &'s str) -> Self {
         Self {
             element_flags: element_flags::ElementFlagsVisitor::new(source),
-            bind_semantics: bind_semantics::BindSemanticsVisitor::new(source),
             content_types: content_types::ContentAndVarVisitor,
         }
     }
 
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 3] {
-        [
-            &mut self.bind_semantics,
-            &mut self.element_flags,
-            &mut self.content_types,
-        ]
+    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 2] {
+        [&mut self.element_flags, &mut self.content_types]
     }
 
     pub(crate) fn finish(self, _data: &mut AnalysisData) {}

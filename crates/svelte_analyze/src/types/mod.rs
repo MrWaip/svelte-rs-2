@@ -8,7 +8,7 @@ pub use data::{
     BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ContentEditableKind,
     DocumentBindKind, ElementAnalysis, ElementFlags, ElementSizeKind,
-    EventHandlerMode, ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts,
+    EventHandlerMode, FragmentFacts,
     FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, OutputPlanData,
     ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
     TemplateSemanticsData, TitleElementData, WindowBindKind,

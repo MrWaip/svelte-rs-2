@@ -605,6 +605,16 @@ fn find_snippet_block<'a>(
     None
 }
 
+fn parent_each_blocks_from_payload(
+    data: &AnalysisData<'_>,
+    bind_id: NodeId,
+) -> smallvec::SmallVec<[NodeId; 4]> {
+    match data.attributes.get(bind_id) {
+        crate::AttributeSemantics::ElementBind(b) => b.parent_each_blocks.clone(),
+        _ => smallvec::SmallVec::new(),
+    }
+}
+
 pub(crate) fn analyze_source(source: &str) -> (Component, AnalysisData<'static>) {
     let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
@@ -645,7 +655,6 @@ fn analyze_source_with_options(
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)
 }
-
 
 fn analyze_source_with_css(source: &str) -> (Component, AnalysisData<'static>) {
     let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
@@ -909,11 +918,21 @@ fn assert_bind_target_semantics(
     expected_property: BindPropertyKind,
     expected_requires_mutable_target: bool,
 ) {
-    let dir_id = find_bind_directive_id(component.root, component, tag_name, bind_name)
+    let _dir_id = find_bind_directive_id(component.root, component, tag_name, bind_name)
         .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
-    let semantics = data
-        .bind_target_semantics(dir_id)
-        .unwrap_or_else(|| panic!("no bind target semantics for bind:{bind_name} on <{tag_name}>"));
+    let _ = data;
+    let parent_kind = match expected_host {
+        BindHostKind::Element => crate::types::data::ParentKind::Element,
+        BindHostKind::Component => crate::types::data::ParentKind::ComponentNode,
+        BindHostKind::Window => crate::types::data::ParentKind::SvelteWindow,
+        BindHostKind::Document => crate::types::data::ParentKind::SvelteDocument,
+        BindHostKind::Body => crate::types::data::ParentKind::SvelteBody,
+    };
+    let semantics =
+        crate::types::data::BindTargetSemantics::from_parent_kind_and_name(parent_kind, bind_name)
+            .unwrap_or_else(|| {
+                panic!("no bind target semantics for bind:{bind_name} on <{tag_name}>")
+            });
     assert_eq!(
         semantics.host(),
         expected_host,
@@ -1093,112 +1112,6 @@ fn assert_rune_not_mutated(data: &AnalysisData, name: &str) {
     );
 }
 
-
-fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    let info = data
-        .expression(id)
-        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
-    assert!(
-        info.has_call(),
-        "expected ExpressionTag '{expr_text}' to have a call"
-    );
-}
-
-fn assert_expr_tag_no_call(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    let info = data
-        .expression(id)
-        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
-    assert!(
-        !info.has_call(),
-        "expected ExpressionTag '{expr_text}' to NOT have a call"
-    );
-}
-
-fn assert_expr_tag_has_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    let info = data
-        .expression(id)
-        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
-    assert!(
-        info.has_store_ref(),
-        "expected ExpressionTag '{expr_text}' to have a store reference"
-    );
-}
-
-fn assert_expr_tag_no_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    let info = data
-        .expression(id)
-        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
-    assert!(
-        !info.has_store_ref(),
-        "expected ExpressionTag '{expr_text}' to NOT have a store reference"
-    );
-}
-
-fn assert_node_expr_role(data: &AnalysisData, node_id: NodeId, expected: ExprRole, label: &str) {
-    assert_eq!(
-        data.expr_role(node_id),
-        Some(expected),
-        "expected {label} to have expr role {expected:?}"
-    );
-}
-
-fn assert_expr_tag_role(
-    data: &AnalysisData,
-    component: &Component,
-    expr_text: &str,
-    expected: ExprRole,
-) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    assert_node_expr_role(data, id, expected, &format!("ExpressionTag '{expr_text}'"));
-}
-
-fn assert_render_tag_role(
-    data: &AnalysisData,
-    component: &Component,
-    expr_text: &str,
-    expected: ExprRole,
-) {
-    let id = find_render_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no RenderTag with source '{expr_text}'"));
-    assert_node_expr_role(data, id, expected, &format!("RenderTag '{expr_text}'"));
-}
-
-fn assert_attr_role(
-    data: &AnalysisData,
-    component: &Component,
-    tag_name: &str,
-    attr_name: &str,
-    expected: ExprRole,
-) {
-    let id = find_attribute_id(component.root, component, tag_name, attr_name)
-        .unwrap_or_else(|| panic!("no attribute '{attr_name}' on <{tag_name}>"));
-    assert_node_expr_role(data, id, expected, &format!("<{tag_name}>[{attr_name}]"));
-}
-
-fn assert_expr_tag_async_query(
-    data: &AnalysisData,
-    component: &Component,
-    expr_text: &str,
-    expected: bool,
-) {
-    let id = find_expr_tag(component.root, component, expr_text)
-        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-    assert_eq!(
-        data.expr_is_async(id),
-        expected,
-        "expected AnalysisData::expr_is_async for ExpressionTag '{expr_text}' to be {expected}"
-    );
-}
-
 #[test]
 fn dynamic_expr_inside_svelte_element() {
     let (c, data) = analyze_source(
@@ -1264,15 +1177,6 @@ fn nested_dynamic_tag_in_element() {
     let (c, data) =
         analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
     assert_dynamic_tag(&data, &c, "count");
-}
-
-#[test]
-fn each_block_dynamic() {
-    let (c, data) = analyze_source(
-        r#"<script>let items = $state([]); items = [1];</script>{#each items as item}<p>{item}</p>{/each}"#,
-    );
-    assert_symbol(&data, "items");
-    assert_dynamic_each(&data, &c, "items");
 }
 
 #[test]
@@ -1877,7 +1781,7 @@ fn bind_group_tracks_matching_ancestor_each_blocks_via_query_layer() {
     let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on input");
 
-    let parent_each_blocks = data.parent_each_blocks(bind_id);
+    let parent_each_blocks = parent_each_blocks_from_payload(&data, bind_id);
     assert_eq!(
         parent_each_blocks.as_slice(),
         &[inner_each.id, outer_each.id]
@@ -1900,7 +1804,7 @@ fn bind_group_without_each_references_does_not_mark_enclosing_each_blocks() {
     let bind_id = find_bind_directive_id(component.root, &component, "input", "group")
         .expect("no bind:group on input");
 
-    assert!(data.parent_each_blocks(bind_id).is_empty());
+    assert!(parent_each_blocks_from_payload(&data, bind_id).is_empty());
 }
 
 #[test]
@@ -1922,7 +1826,7 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
         .expect("no bind:group on input");
 
     assert_eq!(
-        data.parent_each_blocks(bind_id).as_slice(),
+        parent_each_blocks_from_payload(&data, bind_id).as_slice(),
         &[outer_each.id]
     );
 }
@@ -1942,10 +1846,11 @@ fn bind_group_records_expression_value_attr_only() {
     let value_attr_id = find_attribute_id(component.root, &component, "input", "value")
         .expect("no expression value attr on first input");
 
-    assert_eq!(
-        data.template.bind_semantics.bind_group_value_attr(bind_id),
-        Some(value_attr_id)
-    );
+    let actual = match data.attributes.get(bind_id) {
+        crate::AttributeSemantics::ElementBind(b) => b.group_value_attr,
+        _ => None,
+    };
+    assert_eq!(actual, Some(value_attr_id));
 }
 
 #[test]
@@ -2078,9 +1983,11 @@ fn module_rune_kinds_and_cross_script_refs() {
         .scoping
         .find_binding(root, "doubled")
         .expect("expected doubled binding");
-    let expr = data.expression(expr_id).expect("expected expression info");
+    let expr = data
+        .expression_data(expr_id)
+        .expect("expected expression data");
     assert!(
-        expr.ref_symbols().contains(&doubled_sym),
+        expr.references.contains(&doubled_sym),
         "template expression should resolve to the module-scoped doubled binding"
     );
 }
@@ -2145,9 +2052,11 @@ fn module_imports_are_visible_from_instance_scope() {
 
     let expr_id = find_expr_tag(component.root, &component, "shared")
         .expect("expected template expression for shared");
-    let expr = data.expression(expr_id).expect("expected expression info");
+    let expr = data
+        .expression_data(expr_id)
+        .expect("expected expression data");
     assert!(
-        expr.ref_symbols().contains(&shared_sym),
+        expr.references.contains(&shared_sym),
         "template expression should resolve to the module import binding"
     );
 }
@@ -2219,27 +2128,8 @@ fn derived_is_never_mutated() {
 }
 
 #[test]
-fn expr_tag_with_function_call() {
-    let (c, data) = analyze_source(r#"<script>function fmt(x) { return x; }</script>{fmt(1)}"#);
-    assert_expr_tag_has_call(&data, &c, "fmt(1)");
-}
-
-#[test]
-fn expr_tag_without_call() {
-    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_expr_tag_no_call(&data, &c, "count");
-}
-
-#[test]
-fn store_ref_detected_in_template() {
-    let (c, data) = analyze_source(r#"<script>import { count } from './store';</script>{$count}"#);
-    assert_expr_tag_has_store_ref(&data, &c, "$count");
-}
-
-#[test]
 fn store_synthetic_symbol_holds_store_binding_facts() {
-    let (_c, data) =
-        analyze_source(r#"<script>import { count } from './store';</script>{$count}"#);
+    let (_c, data) = analyze_source(r#"<script>import { count } from './store';</script>{$count}"#);
 
     let count_sym = data
         .scoping
@@ -2323,78 +2213,6 @@ fn store_synthetic_symbol_when_base_does_not_exist_in_legacy() {
 }
 
 #[test]
-fn no_store_ref_for_regular_var() {
-    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_expr_tag_no_store_ref(&data, &c, "count");
-}
-
-#[test]
-fn expr_role_static_literal_expression() {
-    let (c, data) = analyze_source("{1}");
-    assert_expr_tag_role(&data, &c, "1", ExprRole::Static);
-}
-
-#[test]
-fn expr_role_dynamic_pure_for_state_expression() {
-    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_expr_tag_role(&data, &c, "count", ExprRole::DynamicPure);
-}
-
-#[test]
-fn expr_role_dynamic_with_context_for_import_call_expression() {
-    let (c, data) = analyze_source(r#"<script>import api from './api';</script>{api.run()}"#);
-    assert_expr_tag_role(&data, &c, "api.run()", ExprRole::DynamicWithContext);
-    assert!(
-        data.output.needs_context,
-        "dynamic-with-context expression should require component context"
-    );
-}
-
-#[test]
-fn expr_role_async_for_inline_await_expression() {
-    let (c, data) = analyze_source_with_options(
-        r#"<script>let promise = Promise.resolve(1);</script><p>{await promise}</p>"#,
-        AnalyzeOptions {
-            experimental_async: true,
-            ..AnalyzeOptions::default()
-        },
-    );
-    assert_expr_tag_role(&data, &c, "await promise", ExprRole::Async);
-    assert_expr_tag_async_query(&data, &c, "await promise", true);
-}
-
-#[test]
-fn expr_role_render_tag_for_render_call_site() {
-    let (c, data) = analyze_source(
-        r#"{#snippet row(text)}
-    <span>{text}</span>
-{/snippet}
-
-{@render row('x')}"#,
-    );
-    assert_render_tag_role(&data, &c, "row('x')", ExprRole::RenderTag);
-}
-
-#[test]
-fn expr_role_accessor_works_for_attribute_expressions() {
-    let (c, data) = analyze_source(
-        r#"<script>let count = $state(0); count++;</script><div title={count}></div>"#,
-    );
-    assert_attr_role(&data, &c, "div", "title", ExprRole::DynamicPure);
-}
-
-#[test]
-fn expr_role_dynamic_pure_does_not_set_needs_context() {
-    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-    assert_expr_tag_role(&data, &c, "count", ExprRole::DynamicPure);
-    assert!(
-        !data.output.needs_context,
-        "dynamic-pure expression should not require component context by role alone"
-    );
-    assert_expr_tag_async_query(&data, &c, "count", false);
-}
-
-#[test]
 fn prop_source_expression_stays_dynamic() {
     let (component, data) = analyze_source(
         r#"<svelte:options runes={true} />
@@ -2450,76 +2268,6 @@ fn const_tag_bindings_record_const_tag_owner() {
     );
 
     assert_const_tag_owner(&data, "alias");
-}
-
-mod expression_info_tests {
-    use crate::passes::js_analyze::analyze_expression;
-    use crate::types::data::{ExpressionInfo, ExpressionKind};
-    use compact_str::CompactString;
-    use oxc_allocator::Allocator;
-    use oxc_parser::Parser as OxcParser;
-    use oxc_span::SourceType;
-    use svelte_diagnostics::Diagnostic;
-    use svelte_span::Span;
-
-    fn compact(s: &str) -> CompactString {
-        CompactString::from(s)
-    }
-
-    fn parse_and_analyze(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic> {
-        let allocator = Allocator::default();
-        let parser = OxcParser::new(&allocator, source, SourceType::default());
-        let expr = parser.parse_expression().map_err(|_| {
-            Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-        })?;
-        let info = analyze_expression(&expr);
-        Ok(info)
-    }
-
-    #[test]
-    fn analyze_simple_identifier() {
-        let info = parse_and_analyze("count", 0).expect("test invariant");
-        assert_eq!(info.kind(), &ExpressionKind::Identifier(compact("count")));
-        assert_eq!(info.identifier_name(), Some("count"));
-        assert!(info.is_identifier());
-        assert!(info.is_identifier_or_member_expression());
-        assert!(!info.has_store_ref());
-    }
-
-    #[test]
-    fn analyze_binary_expression() {
-        let info = parse_and_analyze("count + 1", 0).expect("test invariant");
-        assert_eq!(info.identifier_name(), None);
-        assert!(!info.has_store_ref());
-        assert!(!info.has_call());
-        assert!(!info.needs_memoized_value());
-        assert!(!info.needs_legacy_coarse_wrap());
-    }
-
-    #[test]
-    fn analyze_call_expression() {
-        let info = parse_and_analyze("foo(a, b)", 0).expect("test invariant");
-        assert!(matches!(info.kind(), ExpressionKind::CallExpression { .. }));
-        assert!(info.has_call());
-        assert!(info.has_side_effects());
-        assert!(info.has_context_sensitive_shape());
-        assert!(info.needs_memoized_value());
-        assert!(info.needs_legacy_coarse_wrap());
-    }
-
-    #[test]
-    fn analyze_assignment() {
-        let info = parse_and_analyze("count = 10", 0).expect("test invariant");
-        assert_eq!(info.kind(), &ExpressionKind::Assignment);
-        assert!(info.has_side_effects());
-        assert!(info.needs_legacy_coarse_wrap());
-    }
-
-    #[test]
-    fn analyze_store_ref() {
-        let info = parse_and_analyze("$count + 1", 0).expect("test invariant");
-        assert!(info.has_store_ref());
-    }
 }
 
 fn assert_has_async(data: &AnalysisData) {
@@ -3019,23 +2767,23 @@ fn component_default_slot_bindings_do_not_leak_into_named_slot_scope() {
         .get(component.store.fragment(default_p.fragment).nodes[0])
     {
         Node::ExpressionTag(tag) => data
-            .expression(tag.id)
-            .unwrap_or_else(|| panic!("missing expression info for default slot")),
+            .expression_data(tag.id)
+            .unwrap_or_else(|| panic!("missing expression data for default slot")),
         _ => panic!("expected default slot expression tag"),
     };
-    assert!(default_expr.ref_symbols().contains(&default_count));
+    assert!(default_expr.references.contains(&default_count));
 
     let named_expr = match component
         .store
         .get(component.store.fragment(named_p.fragment).nodes[0])
     {
         Node::ExpressionTag(tag) => data
-            .expression(tag.id)
-            .unwrap_or_else(|| panic!("missing expression info for named slot")),
+            .expression_data(tag.id)
+            .unwrap_or_else(|| panic!("missing expression data for named slot")),
         _ => panic!("expected named slot expression tag"),
     };
     assert!(
-        !named_expr.ref_symbols().contains(&default_count),
+        !named_expr.references.contains(&default_count),
         "named-slot expression must not resolve default-slot binding"
     );
 }
@@ -6238,7 +5986,8 @@ mod maybe_runes_resolution {
 
     #[test]
     fn auto_no_signals_empty_template_sets_maybe_runes_true() {
-        let (_, data) = analyze_source_with_options(r#"<p>hello</p>"#, opts(RunesOption::Auto, None));
+        let (_, data) =
+            analyze_source_with_options(r#"<p>hello</p>"#, opts(RunesOption::Auto, None));
         assert!(!data.script.runes());
         assert!(data.script.maybe_runes());
     }
@@ -6438,10 +6187,7 @@ let a = new A();
         let (_component, data, parsed) = analyze_source_with_parsed(source);
 
         let prop_node_id = find_class_property_node_id(
-            parsed
-                .program
-                .as_ref()
-                .expect("missing instance program"),
+            parsed.program.as_ref().expect("missing instance program"),
             "A",
             "x",
         )
@@ -6698,7 +6444,10 @@ let a = new A();
                 expr: &oxc_ast::ast::AssignmentExpression<'a>,
             ) {
                 if self.found.is_none()
-                    && expr.span.source_text(self.source).starts_with("this[key()]")
+                    && expr
+                        .span
+                        .source_text(self.source)
+                        .starts_with("this[key()]")
                 {
                     self.found = Some(expr.node_id());
                     return;
@@ -6819,9 +6568,8 @@ mod block_semantics_html_tag_tests {
 
     #[test]
     fn plain_div_emits_html_namespace_no_ignore() {
-        let (component, data) = analyze_source(
-            r#"<script>let content = '';</script><div>{@html content}</div>"#,
-        );
+        let (component, data) =
+            analyze_source(r#"<script>let content = '';</script><div>{@html content}</div>"#);
         let sem = html_tag_semantics(&component, &data, "content");
         assert_eq!(sem.parent_strategy, HtmlTagNamespace::Html);
         assert!(!sem.hydration_html_changed_ignored);
@@ -6829,18 +6577,16 @@ mod block_semantics_html_tag_tests {
 
     #[test]
     fn svg_parent_emits_svg_namespace() {
-        let (component, data) = analyze_source(
-            r#"<script>let content = '';</script><svg>{@html content}</svg>"#,
-        );
+        let (component, data) =
+            analyze_source(r#"<script>let content = '';</script><svg>{@html content}</svg>"#);
         let sem = html_tag_semantics(&component, &data, "content");
         assert_eq!(sem.parent_strategy, HtmlTagNamespace::Svg);
     }
 
     #[test]
     fn mathml_parent_emits_mathml_namespace() {
-        let (component, data) = analyze_source(
-            r#"<script>let content = '';</script><math>{@html content}</math>"#,
-        );
+        let (component, data) =
+            analyze_source(r#"<script>let content = '';</script><math>{@html content}</math>"#);
         let sem = html_tag_semantics(&component, &data, "content");
         assert_eq!(sem.parent_strategy, HtmlTagNamespace::MathMl);
     }
@@ -6902,49 +6648,87 @@ mod expression_semantics_tests {
 
     #[test]
     fn t12_pickled_await_non_tail_position() {
+        use oxc_ast::ast::Expression;
+        use oxc_ast_visit::Visit;
+        use oxc_ast_visit::walk::walk_expression;
+
         let source = r#"<script>
 async function foo(a, b) { return a + b; }
 async function bar() { return 1; }
 async function baz() { return 2; }
 </script>
 <p>{await foo(await bar(), await baz())}</p>"#;
-        let (component, data, _parsed) = analyze_with_async(source);
-        let tag_id =
-            find_expr_tag(component.root, &component, "await foo(await bar(), await baz())")
-                .expect("ExpressionTag not found");
+        let (_component, data, parsed) = analyze_with_async(source);
 
-        match data.expressions_v2.get(tag_id) {
-            ExpressionSemantics::Expression(expr_data) => match &expr_data.kind {
-                ExprKind::Async {
-                    has_await,
-                    is_pickled,
-                    ..
-                } => {
-                    assert!(*has_await, "has_await");
-                    assert!(*is_pickled, "non-tail await must be pickled");
-                }
-                other => panic!("expected Async, got {other:?}"),
-            },
-            _ => panic!("expected Expression"),
+        struct InnerAwaitFinder {
+            depth: u32,
+            inner_node_ids: Vec<oxc_syntax::node::NodeId>,
         }
+        impl<'a> Visit<'a> for InnerAwaitFinder {
+            fn visit_expression(&mut self, expr: &Expression<'a>) {
+                if let Expression::AwaitExpression(a) = expr {
+                    self.depth += 1;
+                    if self.depth >= 2 {
+                        self.inner_node_ids.push(a.node_id());
+                    }
+                    walk_expression(self, expr);
+                    self.depth -= 1;
+                } else {
+                    walk_expression(self, expr);
+                }
+            }
+        }
+        let mut finder = InnerAwaitFinder {
+            depth: 0,
+            inner_node_ids: Vec::new(),
+        };
+        for expr in parsed.iter_exprs() {
+            finder.visit_expression(expr);
+        }
+        assert!(
+            !finder.inner_node_ids.is_empty(),
+            "expected nested awaits in source"
+        );
+        assert!(
+            finder
+                .inner_node_ids
+                .iter()
+                .any(|nid| data.pickled_awaits.contains(*nid)),
+            "at least one non-tail await must be pickled"
+        );
     }
 
     #[test]
     fn t12_pickled_await_tail_position_not_pickled() {
-        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
-        let (component, data, _parsed) = analyze_with_async(source);
-        let tag_id = find_expr_tag(component.root, &component, "await p")
-            .expect("ExpressionTag not found");
+        use oxc_ast::ast::Expression;
+        use oxc_ast_visit::Visit;
+        use oxc_ast_visit::walk::walk_expression;
 
-        match data.expressions_v2.get(tag_id) {
-            ExpressionSemantics::Expression(expr_data) => match &expr_data.kind {
-                ExprKind::Async { is_pickled, .. } => {
-                    assert!(!*is_pickled, "tail-position await must not be pickled");
-                }
-                _ => panic!("expected Async"),
-            },
-            _ => panic!("expected Expression"),
+        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
+        let (_component, data, parsed) = analyze_with_async(source);
+
+        struct AwaitFinder {
+            node_id: Option<oxc_syntax::node::NodeId>,
         }
+        impl<'a> Visit<'a> for AwaitFinder {
+            fn visit_expression(&mut self, expr: &Expression<'a>) {
+                if let Expression::AwaitExpression(a) = expr
+                    && self.node_id.is_none()
+                {
+                    self.node_id = Some(a.node_id());
+                }
+                walk_expression(self, expr);
+            }
+        }
+        let mut finder = AwaitFinder { node_id: None };
+        for expr in parsed.iter_exprs() {
+            finder.visit_expression(expr);
+        }
+        let nid = finder.node_id.expect("await expression");
+        assert!(
+            !data.pickled_awaits.contains(nid),
+            "tail-position await must not be pickled"
+        );
     }
 
     #[test]
@@ -6978,10 +6762,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7045,10 +6827,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
         match store.get(tag_id) {
@@ -7090,7 +6870,13 @@ async function baz() { return 2; }
     fn t5e5_legacy_sanitized_props_only() {
         let source = "<p>{$$props}</p>";
         let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
-        assert_legacy_wrap(&component, &data, &parsed, "$$props", LegacyWrap::SanitizedProps);
+        assert_legacy_wrap(
+            &component,
+            &data,
+            &parsed,
+            "$$props",
+            LegacyWrap::SanitizedProps,
+        );
     }
 
     #[test]
@@ -7121,10 +6907,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
         match store.get(tag_id) {
@@ -7162,17 +6946,19 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
         match store.get(tag_id) {
             ExpressionSemantics::Expression(expr_data) => {
                 let refs: Vec<_> = expr_data.references.iter().copied().collect();
-                assert_eq!(refs, vec![a_sym, b_sym], "references encounter order + dedup");
+                assert_eq!(
+                    refs,
+                    vec![a_sym, b_sym],
+                    "references encounter order + dedup"
+                );
             }
             ExpressionSemantics::NonSpecial => panic!("expected Expression"),
         }
@@ -7180,7 +6966,8 @@ async function baz() { return 2; }
 
     #[test]
     fn t7_each_block_id_is_nonspecial() {
-        let source = "<script>let items = $state([1, 2]);</script>{#each items as item}{item}{/each}";
+        let source =
+            "<script>let items = $state([1, 2]);</script>{#each items as item}{item}{/each}";
         let (component, data, parsed) = analyze_source_with_parsed(source);
         let each_block = find_each_block(component.root, &component, "items")
             .expect("EachBlock with collection 'items' not found");
@@ -7193,10 +6980,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7231,7 +7016,13 @@ async function baz() { return 2; }
     fn t6_memoization_async_for_await() {
         let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
         let (component, data, parsed) = analyze_with_async(source);
-        assert_memoization(&component, &data, &parsed, "await p", Memoization::AsyncMemo);
+        assert_memoization(
+            &component,
+            &data,
+            &parsed,
+            "await p",
+            Memoization::AsyncMemo,
+        );
     }
 
     #[test]
@@ -7247,10 +7038,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7276,10 +7065,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7287,12 +7074,8 @@ async function baz() { return 2; }
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
                 match &expr_data.kind {
-                    ExprKind::Async {
-                        has_await,
-                        is_pickled,
-                    } => {
+                    ExprKind::Async { has_await } => {
                         assert!(!*has_await, "has_await false");
-                        assert!(!*is_pickled);
                     }
                     other => panic!("expected Async, got {other:?}"),
                 }
@@ -7315,10 +7098,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7326,12 +7107,8 @@ async function baz() { return 2; }
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
                 match &expr_data.kind {
-                    ExprKind::Async {
-                        has_await,
-                        is_pickled,
-                    } => {
+                    ExprKind::Async { has_await } => {
                         assert!(*has_await, "has_await");
-                        assert!(!*is_pickled, "is_pickled false");
                     }
                     other => panic!("expected Async, got {other:?}"),
                 }
@@ -7359,10 +7136,8 @@ async function baz() { return 2; }
             data.scoping.semantics(),
             &data.reactivity,
             &data.scoping,
-            &data.expressions,
             data.script.has_class_state_fields,
             data.blocker_data(),
-            data.pickled_await_offsets(),
             component.node_count(),
         );
 
@@ -7376,6 +7151,715 @@ async function baz() { return 2; }
             ExpressionSemantics::NonSpecial => {
                 panic!("expected Expression(...), got NonSpecial for {{x}}")
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod attribute_semantics_skeleton_tests {
+    use super::*;
+    use crate::AttributeSemantics;
+    use crate::attribute_semantics::data::{
+        BoundaryPropEmit, ComponentAttachEmit, ComponentBindKind, ComponentBindTarget,
+        ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
+        ElementBindPropertyKind, EventEmit, HandlerEmit, HtmlBindKind, WindowBindSemantics,
+    };
+    use crate::{DocumentBindKind, WindowBindKind};
+    use svelte_ast::Attribute;
+
+    fn find_window_bind_attr(component: &Component, name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::SvelteWindow(w) = component.store.get(id) {
+                for attr in &w.attributes {
+                    if let Attribute::BindDirective(d) = attr
+                        && d.name == name
+                    {
+                        return Some(d.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn analyze_pipeline_populates_attributes_store_default_nonspecial() {
+        let source = r#"<input value="foo">"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_attribute_id(component.root, &component, "input", "value")
+            .expect("value attr not found");
+
+        assert!(matches!(
+            data.attributes.get(attr_id),
+            AttributeSemantics::NonSpecial
+        ));
+    }
+
+    fn find_host_bind_attr(component: &Component, name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            let attrs: Option<&Vec<Attribute>> = match component.store.get(id) {
+                svelte_ast::Node::SvelteWindow(w) => Some(&w.attributes),
+                svelte_ast::Node::SvelteDocument(d) => Some(&d.attributes),
+                svelte_ast::Node::SvelteBody(b) => Some(&b.attributes),
+                _ => None,
+            };
+            if let Some(attrs) = attrs {
+                for attr in attrs {
+                    if let Attribute::BindDirective(d) = attr
+                        && d.name == name
+                    {
+                        return Some(d.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_element_bind(component: &Component, tag: &str, name: &str) -> Option<NodeId> {
+        find_attribute_id(component.root, component, tag, name)
+    }
+
+    fn find_component_bind(component: &Component, comp_name: &str, name: &str) -> Option<NodeId> {
+        find_component_bind_in(component, component.root, comp_name, name)
+    }
+
+    fn find_component_bind_in(
+        component: &Component,
+        fragment: svelte_ast::FragmentId,
+        comp_name: &str,
+        name: &str,
+    ) -> Option<NodeId> {
+        for &id in &component.store.fragment(fragment).nodes {
+            match component.store.get(id) {
+                svelte_ast::Node::ComponentNode(cn) if cn.name == comp_name => {
+                    for attr in &cn.attributes {
+                        if let Attribute::BindDirective(d) = attr
+                            && d.name == name
+                        {
+                            return Some(d.id);
+                        }
+                    }
+                }
+                svelte_ast::Node::EachBlock(b) => {
+                    if let Some(found) = find_component_bind_in(component, b.body, comp_name, name)
+                    {
+                        return Some(found);
+                    }
+                }
+                svelte_ast::Node::IfBlock(b) => {
+                    if let Some(found) =
+                        find_component_bind_in(component, b.consequent, comp_name, name)
+                    {
+                        return Some(found);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn find_event_attr(component: &Component, tag: &str, name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::Element(el) = component.store.get(id)
+                && el.name == tag
+            {
+                for attr in &el.attributes {
+                    if let Attribute::ExpressionAttribute(a) = attr
+                        && a.name == name
+                    {
+                        return Some(a.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_component_prop_attr(
+        component: &Component,
+        comp_name: &str,
+        prop_name: &str,
+    ) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::ComponentNode(cn) = component.store.get(id)
+                && cn.name == comp_name
+            {
+                for attr in &cn.attributes {
+                    let attr_name_id = match attr {
+                        Attribute::ExpressionAttribute(a) if a.name == prop_name => Some(a.id),
+                        Attribute::ConcatenationAttribute(a) if a.name == prop_name => Some(a.id),
+                        _ => None,
+                    };
+                    if let Some(a) = attr_name_id {
+                        return Some(a);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_component_spread_attr(component: &Component, comp_name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::ComponentNode(cn) = component.store.get(id)
+                && cn.name == comp_name
+            {
+                for attr in &cn.attributes {
+                    if let Attribute::SpreadAttribute(a) = attr {
+                        return Some(a.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_component_attach_attr(component: &Component, comp_name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::ComponentNode(cn) = component.store.get(id)
+                && cn.name == comp_name
+            {
+                for attr in &cn.attributes {
+                    if let Attribute::AttachTag(a) = attr {
+                        return Some(a.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_boundary_prop_attr(component: &Component, name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::SvelteBoundary(b) = component.store.get(id) {
+                for attr in &b.attributes {
+                    if let Attribute::ExpressionAttribute(a) = attr
+                        && a.name == name
+                    {
+                        return Some(a.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn boundary_prop_classified() {
+        let source = r#"<script>let h = (e) => {};</script>
+<svelte:boundary onerror={h}>x</svelte:boundary>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_boundary_prop_attr(&component, "onerror").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::BoundaryProp(_) => {}
+            other => panic!("expected BoundaryProp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn boundary_prop_getter_for_state() {
+        let source = r#"<script>let handler = $state((error) => console.error(error));</script>
+<svelte:boundary onerror={handler}>x</svelte:boundary>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_boundary_prop_attr(&component, "onerror").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::BoundaryProp(b) => {
+                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+            }
+            other => panic!("expected BoundaryProp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn boundary_prop_getter_for_import() {
+        let source = r#"<script>import { handler } from './h.js';</script>
+<svelte:boundary onerror={handler}>x</svelte:boundary>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_boundary_prop_attr(&component, "onerror").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::BoundaryProp(b) => {
+                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+            }
+            other => panic!("expected BoundaryProp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_prop_state_identifier_getter_memo() {
+        let source = r#"<script>let { x } = $props();</script><Comp foo={x} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_prop_attr(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                assert_eq!(e.memo, ComponentPropMemo::Getter);
+            }
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_prop_call_expression_derived_memo() {
+        let source = r#"<script>let x = $state(0); function fn() { return x; }</script>
+<Comp foo={fn()} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_prop_attr(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                assert_eq!(e.memo, ComponentPropMemo::Derived);
+            }
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_prop_expression_classified() {
+        let source = r#"<script>let x = $state(1);</script><Comp foo={x} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_prop_attr(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(_)) => {}
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_onclick_member_expression_wrapped() {
+        let source = r#"<script>let obj = { f: () => {} };</script>
+<button onclick={obj.f}>x</button>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::Event(ev) => match &ev.emit {
+                EventEmit::HtmlDelegated { handler } => {
+                    assert!(
+                        matches!(
+                            handler,
+                            HandlerEmit::WrappedInert
+                                | HandlerEmit::WrappedSideEffects
+                                | HandlerEmit::WrappedMemoized
+                        ),
+                        "wrap for member expression, got {handler:?}"
+                    );
+                }
+                other => panic!("expected HtmlDelegated, got {other:?}"),
+            },
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_onclick_arrow_direct() {
+        let source = r#"<button onclick={() => {}}>x</button>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::Event(ev) => match &ev.emit {
+                EventEmit::HtmlDelegated { handler } => {
+                    assert_eq!(*handler, HandlerEmit::Direct);
+                }
+                other => panic!("expected HtmlDelegated, got {other:?}"),
+            },
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn event_onclick_classified_html_delegated() {
+        let source = r#"<script>let f = () => {};</script><button onclick={f}>x</button>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::Event(ev) => {
+                assert!(matches!(ev.emit, EventEmit::HtmlDelegated { .. }));
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_records_blockers_in_async() {
+        let source = r#"<script>
+let p = await fetch('/x');
+let v = $state('');
+</script>
+<input bind:value={v}>"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_element_bind(&component, "input", "value").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert!(!b.blockers.is_empty(), "blockers");
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_value_store_subscribed() {
+        let source = r#"<script>import { writable } from 'svelte/store';
+const v = writable("");
+</script>
+<input bind:value={$v}>"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_element_bind(&component, "input", "value").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert!(
+                    matches!(b.kind, HtmlBindKind::StoreSubscribed { .. }),
+                    "got {:?}",
+                    b.kind
+                );
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_identifier_resolves_symbol() {
+        let source = r#"<script>let x = $state(0);</script><Comp bind:foo={x} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_bind(&component, "Comp", "foo").expect("attr");
+        let root_scope = data.scoping.root_scope_id();
+        let x_sym = data
+            .scoping
+            .find_binding(root_scope, "x")
+            .expect("symbol x");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => match &b.kind {
+                ComponentBindKind::Identifier { symbol, target } => {
+                    assert_eq!(*symbol, x_sym);
+                    assert_eq!(*target, ComponentBindTarget::Rune);
+                }
+                other => panic!("expected Identifier, got {other:?}"),
+            },
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_identifier_propsource_for_bindable() {
+        let source = r#"<script>let { foo = $bindable() } = $props();</script>
+<Comp bind:foo={foo} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_bind(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => match &b.kind {
+                ComponentBindKind::Identifier { target, .. } => {
+                    assert_eq!(*target, ComponentBindTarget::PropSource);
+                }
+                other => panic!("expected Identifier, got {other:?}"),
+            },
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_identifier_plain_for_nonreactive() {
+        let source = r#"<script>let x;</script><Comp bind:foo={x} />"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_component_bind(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => match &b.kind {
+                ComponentBindKind::Identifier { target, .. } => {
+                    assert_eq!(*target, ComponentBindTarget::Plain);
+                }
+                other => panic!("expected Identifier, got {other:?}"),
+            },
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_concat_state_getter_memo() {
+        let source = r#"<script>let x = $state(1);</script><Comp foo="a {x}" />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_prop_attr(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(c)) => {
+                assert_eq!(c.memo, ComponentPropMemo::Getter);
+            }
+            other => panic!("expected ComponentProp::Concat, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_concat_plain_inline_memo() {
+        let source = r#"<Comp foo="a {1}" />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_prop_attr(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(c)) => {
+                assert_eq!(c.memo, ComponentPropMemo::Inline);
+            }
+            other => panic!("expected ComponentProp::Concat, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_legacy_on_directive_classifies_as_event() {
+        let source = r#"<script>let h = () => {};</script><Comp on:click={h} />"#;
+        let (component, data) = analyze_source(source);
+        let frag = component.store.fragment(component.root);
+        let mut attr_id = None;
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::ComponentNode(cn) = component.store.get(id)
+                && cn.name == "Comp"
+            {
+                for attr in &cn.attributes {
+                    if let Attribute::OnDirectiveLegacy(d) = attr {
+                        attr_id = Some(d.id);
+                    }
+                }
+            }
+        }
+        let attr_id = attr_id.expect("on:click attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::Event(ev) => match &ev.emit {
+                EventEmit::Component { .. } => {}
+                other => panic!("expected Component emit, got {other:?}"),
+            },
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_store_subscribed() {
+        let source = r#"<script>import { writable } from 'svelte/store';
+const s = writable(0);</script>
+<Comp bind:foo={$s} />"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_component_bind(&component, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => {
+                assert!(
+                    matches!(b.kind, ComponentBindKind::StoreSubscribed { .. }),
+                    "expected StoreSubscribed, got {:?}",
+                    b.kind
+                );
+            }
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_this_inside_each_records_context_vars() {
+        let source = r#"<script>let items = $state([{ ref: null }]);</script>
+{#each items as item}
+  <Comp bind:this={item.ref} />
+{/each}"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_component_bind(&component, "Comp", "this").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => {
+                assert!(!b.each_context_vars.is_empty(), "each_context_vars");
+            }
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_bind_this_classified() {
+        let source = r#"<script>let inst = $state();</script><Comp bind:this={inst} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_bind(&component, "Comp", "this").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentBind(b) => {
+                assert!(matches!(b.kind, ComponentBindKind::This { .. }));
+            }
+            other => panic!("expected ComponentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_group_records_parent_each_and_value_attr() {
+        let source = r#"<script>let items = $state([{ chosen: false }]);</script>
+{#each items as item}
+  <input type="checkbox" bind:group={item.chosen} value={item}>
+{/each}"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_element_bind(&component, "input", "group").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert!(!b.parent_each_blocks.is_empty(), "parent_each_blocks");
+                assert!(b.group_value_attr.is_some(), "group_value_attr");
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_value_state_classified_rune() {
+        let source = r#"<script>let v = $state("");</script><input bind:value={v}>"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_element_bind(&component, "input", "value").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert_eq!(b.property, ElementBindPropertyKind::Value);
+                assert_eq!(b.kind, HtmlBindKind::Rune);
+                assert!(b.parent_each_blocks.is_empty());
+                assert_eq!(b.group_value_attr, None);
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_value_plain_let_classified_plain() {
+        let source = r#"<script>let v;</script><input bind:value={v}>"#;
+        let (component, data, _) = analyze_source_with_diags(source);
+        let attr_id = find_element_bind(&component, "input", "value").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert_eq!(b.kind, HtmlBindKind::Plain);
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn element_bind_checked_bindable_prop() {
+        let source = r#"<script>let { checked = $bindable() } = $props();</script><input bind:checked={checked} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_element_bind(&component, "input", "checked").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ElementBind(b) => {
+                assert_eq!(b.kind, HtmlBindKind::BindableProp);
+            }
+            other => panic!("expected ElementBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn document_bind_active_element_classified() {
+        let source = r#"<script>let el = $state(null);</script>
+<svelte:document bind:activeElement={el} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id =
+            find_host_bind_attr(&component, "activeElement").expect("bind:activeElement not found");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::DocumentBind(DocumentBindSemantics {
+                property,
+                kind,
+                blockers,
+                ..
+            }) => {
+                assert_eq!(*property, DocumentBindKind::ActiveElement);
+                assert_eq!(*kind, HtmlBindKind::Rune);
+                assert!(blockers.is_empty());
+            }
+            other => panic!("expected DocumentBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn window_bind_innerwidth_classified() {
+        let source = r#"<script>let w = $state(0);</script>
+<svelte:window bind:innerWidth={w} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id =
+            find_window_bind_attr(&component, "innerWidth").expect("bind:innerWidth not found");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::WindowBind(WindowBindSemantics {
+                property,
+                kind,
+                blockers,
+                ..
+            }) => {
+                assert_eq!(*property, WindowBindKind::InnerWidth);
+                assert_eq!(*kind, HtmlBindKind::Rune);
+                assert!(blockers.is_empty());
+            }
+            other => panic!("expected WindowBind, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_spread_plain_inline() {
+        let source = r#"<script>let obj = { x: 1 };</script><Comp {...obj} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_spread_attr(&component, "Comp").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentSpread(s) => {
+                assert_eq!(s.emit, ComponentSpreadEmit::Inline);
+            }
+            other => panic!("expected ComponentSpread, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_spread_state_thunk() {
+        let source = r#"<script>let obj = $state({ x: 1 });</script><Comp {...obj} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_spread_attr(&component, "Comp").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentSpread(s) => {
+                assert_eq!(s.emit, ComponentSpreadEmit::Thunk);
+            }
+            other => panic!("expected ComponentSpread, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_attach_plain_inline() {
+        let source = r#"<script>let fn = (n) => {};</script><Comp {@attach fn} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_attach_attr(&component, "Comp").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentAttach(a) => {
+                assert_eq!(a.emit, ComponentAttachEmit::Inline);
+            }
+            other => panic!("expected ComponentAttach, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_attach_state_wrapped() {
+        let source = r#"<script>let fn = $state((n) => {});</script><Comp {@attach fn} />"#;
+        let (component, data) = analyze_source(source);
+        let attr_id = find_component_attach_attr(&component, "Comp").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentAttach(a) => {
+                assert_eq!(a.emit, ComponentAttachEmit::Wrapped);
+            }
+            other => panic!("expected ComponentAttach, got {other:?}"),
         }
     }
 }

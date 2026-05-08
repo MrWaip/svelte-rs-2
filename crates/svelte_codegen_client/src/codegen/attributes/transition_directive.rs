@@ -15,13 +15,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let attr_id = td.id;
         let blockers = self.attr_blockers(attr_id);
 
-        let mut flags: u32 = if self
-            .ctx
-            .query
-            .view
-            .event_modifiers(attr_id)
-            .contains(svelte_analyze::EventModifier::GLOBAL)
-        {
+        let mut flags: u32 = if td.modifiers.iter().any(|m| m == "global") {
             4
         } else {
             0

@@ -25,6 +25,11 @@ pub(crate) enum CodegenError {
         node_id: NodeId,
         feature: &'static str,
     },
+
+    SemanticMismatch {
+        node_id: NodeId,
+        reason: &'static str,
+    },
 }
 
 impl CodegenError {
@@ -50,6 +55,10 @@ impl CodegenError {
 
     pub(crate) fn not_implemented<T>(node_id: NodeId, feature: &'static str) -> Result<T> {
         Err(Self::NotImplemented { node_id, feature })
+    }
+
+    pub(crate) fn semantic_mismatch<T>(node_id: NodeId, reason: &'static str) -> Result<T> {
+        Err(Self::SemanticMismatch { node_id, reason })
     }
 }
 
@@ -78,6 +87,12 @@ impl std::fmt::Display for CodegenError {
                 write!(
                     f,
                     "codegen: {feature} not implemented yet (node {node_id:?})"
+                )
+            }
+            CodegenError::SemanticMismatch { node_id, reason } => {
+                write!(
+                    f,
+                    "codegen: attribute semantic mismatch at node {node_id:?}: {reason}"
                 )
             }
         }

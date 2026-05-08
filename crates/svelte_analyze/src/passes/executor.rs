@@ -159,30 +159,10 @@ pub(crate) fn execute_pass<'a>(
             js_analyze::classify_pickled_awaits(parsed, data);
         }
         super::PassKey::ClassifyNeedsContext => {
-            js_analyze::classify_expression_needs_context(data);
-            if !data.output.needs_context {
-                data.output.needs_context = data
-                    .expressions
-                    .values()
-                    .chain(data.attr_expressions.values())
-                    .any(|info| info.is_dynamic_with_context_role());
-            }
+            let _ = data;
         }
         super::PassKey::PostResolve => {
             post_resolve::run_post_resolve_passes(data);
-            if !data.output.needs_context {
-                data.output.needs_context = data
-                    .expressions
-                    .values()
-                    .chain(data.attr_expressions.values())
-                    .any(|info| {
-                        info.has_context_sensitive_shape()
-                            && info
-                                .ref_symbols()
-                                .iter()
-                                .any(|&sym| data.scoping.is_rest_prop(sym))
-                    });
-            }
         }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(
@@ -216,16 +196,16 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
             let mut visitors = bundle.visitors();
-            run_template_bundle(
+            run_parsed_template_bundle(
                 component,
                 data,
+                parsed,
                 source,
                 runes,
                 options,
                 diags,
                 &mut visitors,
             );
-            super::dynamism::populate_expr_roles(data);
         }
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);

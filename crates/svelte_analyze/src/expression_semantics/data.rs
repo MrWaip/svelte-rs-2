@@ -42,7 +42,7 @@ pub enum ExprKind {
     Folded(CompactString),
     Static,
     Dynamic,
-    Async { has_await: bool, is_pickled: bool },
+    Async { has_await: bool },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

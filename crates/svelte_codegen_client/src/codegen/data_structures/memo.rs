@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{ExprSite, ExpressionInfo};
+use svelte_analyze::{ExpressionData, Memoization};
 use svelte_ast::NodeId;
 
 use crate::context::Ctx;
@@ -24,12 +24,12 @@ impl<'a> TemplateMemoState<'a> {
         }
     }
 
-    pub(crate) fn push_expr_info(&mut self, ctx: &Ctx<'a>, info: &ExpressionInfo) {
-        for sym in info.ref_symbols() {
-            if let Some(idx) = ctx.symbol_blocker(*sym) {
+    pub(crate) fn push_expression_data(&mut self, ctx: &Ctx<'a>, data: &ExpressionData) {
+        for &sym in data.references.iter() {
+            if let Some(idx) = ctx.symbol_blocker(sym) {
                 self.push_script_blocker(idx);
             }
-            if let Some(expr) = ctx.const_tag_symbol_blocker_expr(*sym) {
+            if let Some(expr) = ctx.const_tag_symbol_blocker_expr(sym) {
                 self.extra_blockers.push(expr);
             }
         }
@@ -37,8 +37,8 @@ impl<'a> TemplateMemoState<'a> {
 
     pub(crate) fn push_node_deps(&mut self, ctx: &mut Ctx<'a>, id: NodeId) {
         let blockers = ctx
-            .expr_deps(ExprSite::Node(id))
-            .map(|deps| deps.blockers)
+            .expression_data(id)
+            .map(|d| d.blockers.clone())
             .unwrap_or_default();
         for idx in blockers {
             self.push_script_blocker(idx);
@@ -49,23 +49,22 @@ impl<'a> TemplateMemoState<'a> {
     pub(crate) fn add_memoized_expr(
         &mut self,
         ctx: &Ctx<'a>,
-        info: &ExpressionInfo,
+        data: &ExpressionData,
         expr: Expression<'a>,
     ) -> Option<MemoValueRef> {
-        self.push_expr_info(ctx, info);
-
-        if !info.needs_memoized_value() {
-            return None;
-        }
-
-        if info.has_await() {
-            let index = self.async_values.len();
-            self.async_values.push(expr);
-            Some(MemoValueRef::Async(index))
-        } else {
-            let index = self.sync_values.len();
-            self.sync_values.push(expr);
-            Some(MemoValueRef::Sync(index))
+        self.push_expression_data(ctx, data);
+        match data.memoization {
+            Memoization::None => None,
+            Memoization::AsyncMemo => {
+                let index = self.async_values.len();
+                self.async_values.push(expr);
+                Some(MemoValueRef::Async(index))
+            }
+            Memoization::SyncMemo => {
+                let index = self.sync_values.len();
+                self.sync_values.push(expr);
+                Some(MemoValueRef::Sync(index))
+            }
         }
     }
 

@@ -45,21 +45,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn maybe_wrap_legacy_coarse_expr(
         &self,
         expr: Expression<'a>,
-        info: Option<&svelte_analyze::ExpressionInfo>,
+        data: Option<&svelte_analyze::ExpressionData>,
     ) -> Expression<'a> {
-        let Some(info) = info else { return expr };
+        let Some(data) = data else { return expr };
         if self.ctx.query.runes() {
             return expr;
         }
-        let needs_coarse = info.needs_legacy_coarse_wrap();
-        let needs_sanitized = info.uses_legacy_sanitized_props();
-        let wrap = match (needs_coarse, needs_sanitized) {
-            (false, false) => return expr,
-            (true, false) => svelte_analyze::LegacyWrap::CoarseWrap,
-            (false, true) => svelte_analyze::LegacyWrap::SanitizedProps,
-            (true, true) => svelte_analyze::LegacyWrap::CoarseAndSanitized,
-        };
-        self.apply_legacy_wrap(expr, wrap, info.ref_symbols())
+        if matches!(data.legacy_wrap, svelte_analyze::LegacyWrap::None) {
+            return expr;
+        }
+        self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references)
     }
 
     pub(in crate::codegen) fn apply_legacy_wrap(

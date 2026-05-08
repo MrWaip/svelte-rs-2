@@ -74,11 +74,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let expr = self.take_attr_expr(attr_id, &a.expression)?;
-                    let has_call = self
-                        .ctx
-                        .attr_expression(attr_id)
-                        .is_some_and(|i| i.has_call());
-                    if has_call {
+                    let needs_derived = matches!(
+                        self.ctx.query.analysis.attributes.get(attr_id),
+                        svelte_analyze::AttributeSemantics::ComponentProp(
+                            svelte_analyze::ComponentPropSemantics::Expression(
+                                svelte_analyze::ComponentPropExpressionSemantics {
+                                    memo: svelte_analyze::ComponentPropMemo::Derived,
+                                    ..
+                                },
+                            ),
+                        )
+                    );
+                    if needs_derived {
                         let name = format!("${}", memo_stmts.len());
                         let name_ref = self.ctx.b.alloc_str(&name);
                         let untrack = self

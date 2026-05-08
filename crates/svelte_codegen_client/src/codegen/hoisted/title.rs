@@ -72,9 +72,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 ConcatPart::Expr(eid) => {
                     expr_count += 1;
+                    let data = self.ctx.expression_data(*eid);
                     if self.ctx.is_dynamic(*eid)
-                        || self.ctx.expr_has_await(*eid)
-                        || self.ctx.expr_has_blockers(*eid)
+                        || data.is_some_and(|d| d.has_await() || !d.blockers.is_empty())
                     {
                         has_state = true;
                     }
@@ -88,10 +88,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         continue;
                     }
                     let defined = self.is_node_expr_definitely_defined(*eid, &expr);
-                    let info_clone = self.ctx.expression(*eid).cloned();
-                    if let Some(info) = info_clone {
+                    let data_clone = self.ctx.expression_data(*eid).cloned();
+                    if let Some(data) = data_clone {
                         let cloned_expr = self.ctx.b.clone_expr(&expr);
-                        match memo.add_memoized_expr(self.ctx, &info, cloned_expr) {
+                        match memo.add_memoized_expr(self.ctx, &data, cloned_expr) {
                             Some(MemoValueRef::Sync(idx)) => {
                                 built_parts.push(TitlePart::SyncMemo(idx, defined));
                             }

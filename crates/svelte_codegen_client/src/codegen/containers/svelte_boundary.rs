@@ -1,6 +1,9 @@
 use oxc_ast::ast::{Expression, Statement};
 use rustc_hash::FxHashSet;
-use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics};
+use svelte_analyze::{
+    AttributeSemantics, BlockSemantics, BoundaryPropEmit, BoundaryPropSemantics,
+    ConstTagBlockSemantics,
+};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -75,38 +78,50 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             })
             .collect();
 
-        let attr_infos: Vec<(String, NodeId, oxc_syntax::node::NodeId, bool, bool)> = boundary
+        let attr_infos: Vec<(String, NodeId, oxc_syntax::node::NodeId, BoundaryPropEmit)> = boundary
             .attributes
             .iter()
-            .filter_map(|attr| match attr {
-                Attribute::ExpressionAttribute(a) => {
-                    let is_dynamic = self.ctx.is_dynamic_attr(a.id);
-                    let is_import = self.ctx.attr_is_import(a.id);
-                    Some((
-                        a.name.to_string(),
-                        a.id,
-                        a.expression.id(),
-                        is_dynamic,
-                        is_import,
-                    ))
+            .map(|attr| {
+                let attr_id = attr.id();
+                match self.ctx.query.analysis.attributes.get(attr_id) {
+                    AttributeSemantics::BoundaryProp(BoundaryPropSemantics { emit }) => {
+                        match attr {
+                            Attribute::ExpressionAttribute(a) => Ok(Some((
+                                a.name.to_string(),
+                                a.id,
+                                a.expression.id(),
+                                *emit,
+                            ))),
+                            _ => crate::codegen::CodegenError::semantic_mismatch(
+                                attr_id,
+                                "BoundaryProp payload requires ExpressionAttribute",
+                            ),
+                        }
+                    }
+                    AttributeSemantics::NonSpecial => Ok(None),
+                    _ => crate::codegen::CodegenError::semantic_mismatch(
+                        attr_id,
+                        "non-boundary semantics on <svelte:boundary>",
+                    ),
                 }
-                _ => None,
             })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for (name, attr_id, expr_id, is_dynamic, is_import) in attr_infos {
+        for (name, attr_id, expr_id, emit) in attr_infos {
             let key = self.ctx.b.alloc_str(&name);
             let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                 return crate::codegen::CodegenError::missing_expression(attr_id);
             };
             let expr = self.maybe_wrap_legacy_slots_read(expr);
-            if is_dynamic || is_import {
-                props.push(ObjProp::Getter(key, expr));
-            } else {
-                props.push(ObjProp::KeyValue(key, expr));
+            match emit {
+                BoundaryPropEmit::Getter => props.push(ObjProp::Getter(key, expr)),
+                BoundaryPropEmit::KeyValue => props.push(ObjProp::KeyValue(key, expr)),
             }
         }
         for (_, snippet_name) in &snippet_children {

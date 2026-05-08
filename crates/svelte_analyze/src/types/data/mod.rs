@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
@@ -18,11 +17,10 @@ mod css;
 mod directive_modifier_flags;
 mod element_facts;
 mod elements;
-mod expr;
 mod fragment_facts;
 mod fragment_namespaces;
 mod ignore;
-mod pickled_await_offsets;
+mod pickled_awaits;
 mod proxy_state_inits;
 mod rich_content_facts;
 mod runtime;
@@ -47,17 +45,16 @@ pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
 pub use codegen_view::CodegenView;
 pub use css::CssAnalysis;
-pub use directive_modifier_flags::{DirectiveModifierFlags, EventModifier};
+pub use directive_modifier_flags::EventModifier;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
     EventHandlerMode,
 };
-pub use expr::{ExprDeps, ExprRole, ExprSite, ExpressionInfo, ExpressionKind};
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;
 pub use ignore::IgnoreData;
-pub use pickled_await_offsets::PickledAwaitOffsets;
+pub use pickled_awaits::PickledAwaits;
 pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::LegacyInit;

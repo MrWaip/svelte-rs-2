@@ -1,5 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{ExprSite, NamespaceKind};
+use svelte_analyze::NamespaceKind;
 use svelte_ast::{Attribute, Element, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -28,8 +28,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     pub(super) fn attr_blockers(&self, attr_id: NodeId) -> Vec<u32> {
         self.ctx
-            .expr_deps(ExprSite::Attr(attr_id))
-            .map(|deps| deps.blockers.into_iter().collect())
+            .expression_data(attr_id)
+            .map(|d| d.blockers.iter().copied().collect())
             .unwrap_or_default()
     }
 
@@ -232,13 +232,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         continue;
                     }
 
-                    let info = self
-                        .ctx
-                        .attr_expression(*part_id)
-                        .or_else(|| self.ctx.expression(*part_id))
-                        .cloned();
+                    let data = self.ctx.expression_data(*part_id).cloned();
                     let defined = self.is_node_expr_definitely_defined(*part_id, &expr);
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
+                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref());
                     tpl_parts.push(TemplatePart::Expr(wrapped, defined));
                 }
             }

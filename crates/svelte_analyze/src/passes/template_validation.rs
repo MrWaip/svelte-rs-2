@@ -17,7 +17,7 @@ use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::data::{BindHostKind, BindPropertyKind};
+use crate::types::data::{BindHostKind, BindPropertyKind, BindTargetSemantics};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier};
 
@@ -591,6 +591,7 @@ struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
     attrs: Vec<Attribute>,
+    parent_kind: crate::types::data::ParentKind,
 }
 
 enum BindExpressionShape {
@@ -1231,8 +1232,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
     ) {
         if ctx
             .data
-            .attr_expression(attr.id)
-            .is_some_and(|info| info.has_await())
+            .expression_data(attr.id)
+            .is_some_and(|d| d.has_await())
         {
             emit_template_await_experimental(ctx, &attr.expression);
         }
@@ -1271,9 +1272,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let is_identifier_target = if dir.shorthand {
             true
         } else {
-            ctx.data
-                .attr_expression(dir.id)
-                .is_some_and(|info| info.is_identifier())
+            ctx.parsed()
+                .and_then(|p| p.expr(dir.expression.id()))
+                .is_some_and(|expr| matches!(expr, Expression::Identifier(_)))
         };
 
         let shape = bind_expression_shape(dir, ctx);
@@ -1308,8 +1309,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if !shape_invalid
             && ctx
                 .data
-                .attr_expression(dir.id)
-                .is_some_and(|info| info.has_await())
+                .expression_data(dir.id)
+                .is_some_and(|d| d.has_await())
         {
             emit_directive_await_diagnostic(ctx, &dir.expression);
         }
@@ -1346,8 +1347,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         if ctx
             .data
-            .attr_expression(dir.id)
-            .is_some_and(|info| info.has_await())
+            .expression_data(dir.id)
+            .is_some_and(|d| d.has_await())
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1399,8 +1400,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if let Some(expression) = dir.expression.as_ref()
             && ctx
                 .data
-                .attr_expression(dir.id)
-                .is_some_and(|info| info.has_await())
+                .expression_data(dir.id)
+                .is_some_and(|d| d.has_await())
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1429,7 +1430,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 }
             }
 
-            let flags = ctx.data.event_modifiers(dir.id);
+            let flags = match ctx.data.attributes.get(dir.id) {
+                crate::AttributeSemantics::Event(ev) => ev.modifiers,
+                _ => EventModifier::empty(),
+            };
             let has_passive = flags.contains(EventModifier::PASSIVE);
             let has_nonpassive = flags.contains(EventModifier::NONPASSIVE);
             if has_passive && has_nonpassive {
@@ -1515,8 +1519,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         if ctx
             .data
-            .expression(tag.id)
-            .is_some_and(|info| info.has_await())
+            .expression_data(tag.id)
+            .is_some_and(|d| d.has_await())
         {
             emit_template_await_experimental(ctx, &tag.expression);
         }
@@ -1533,8 +1537,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_attach_tag(&mut self, tag: &AttachTag, ctx: &mut VisitContext<'_, '_>) {
         if ctx
             .data
-            .attr_expression(tag.id)
-            .is_some_and(|info| info.has_await())
+            .expression_data(tag.id)
+            .is_some_and(|d| d.has_await())
         {
             emit_directive_await_diagnostic(ctx, &tag.expression);
         }
@@ -1606,8 +1610,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if let Some(expression) = dir.expression.as_ref()
             && ctx
                 .data
-                .attr_expression(dir.id)
-                .is_some_and(|info| info.has_await())
+                .expression_data(dir.id)
+                .is_some_and(|d| d.has_await())
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1703,36 +1707,43 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
 fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<BindParentInfo> {
     let parent = ctx.data.parent(bind_id)?;
+    use crate::types::data::ParentKind;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
             id: el.id,
             name: el.name.clone(),
             attrs: el.attributes.clone(),
+            parent_kind: ParentKind::Element,
         }),
         Node::ComponentNode(node) => Some(BindParentInfo {
             id: node.id,
             name: node.name.clone(),
             attrs: node.attributes.clone(),
+            parent_kind: ParentKind::ComponentNode,
         }),
         Node::SvelteElement(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_ELEMENT.to_string(),
             attrs: el.attributes.clone(),
+            parent_kind: ParentKind::SvelteElement,
         }),
         Node::SvelteWindow(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_WINDOW.to_string(),
             attrs: el.attributes.clone(),
+            parent_kind: ParentKind::SvelteWindow,
         }),
         Node::SvelteDocument(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_DOCUMENT.to_string(),
             attrs: el.attributes.clone(),
+            parent_kind: ParentKind::SvelteDocument,
         }),
         Node::SvelteBody(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_BODY.to_string(),
             attrs: el.attributes.clone(),
+            parent_kind: ParentKind::SvelteBody,
         }),
         _ => None,
     }
@@ -1775,7 +1786,9 @@ fn validate_bind_name_and_target(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    let Some(bind_semantics) = ctx.data.bind_target_semantics(dir.id).copied() else {
+    let Some(bind_semantics) =
+        BindTargetSemantics::from_parent_kind_and_name(parent.parent_kind, dir.name.as_str())
+    else {
         let explanation =
             fuzzymatch(dir.name.as_str(), BindPropertyKind::KNOWN_NAMES).and_then(|suggestion| {
                 BindPropertyKind::from_host_and_name(BindHostKind::Element, suggestion)
@@ -1854,7 +1867,8 @@ fn validate_bind_parent_specifics(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    let bind_semantics = ctx.data.bind_target_semantics(dir.id).copied();
+    let bind_semantics =
+        BindTargetSemantics::from_parent_kind_and_name(parent.parent_kind, dir.name.as_str());
     let bind_property = bind_semantics.map(|semantics| semantics.property());
 
     if parent.name == "input" && bind_semantics.is_none_or(|semantics| !semantics.is_this()) {
@@ -1922,10 +1936,9 @@ fn validate_input_bindings(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    let bind_property = ctx
-        .data
-        .bind_target_semantics(dir.id)
-        .map(|semantics| semantics.property());
+    let bind_property =
+        BindTargetSemantics::from_parent_kind_and_name(parent.parent_kind, dir.name.as_str())
+            .map(|semantics| semantics.property());
     let Some(type_attr) = ctx.data.attribute(parent.id, &parent.attrs, "type") else {
         return;
     };
@@ -1979,11 +1992,7 @@ fn validate_bind_sequence_expression(
     has_parens: bool,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    if ctx
-        .data
-        .bind_target_semantics(dir.id)
-        .is_some_and(|semantics| semantics.is_group())
-    {
+    if dir.name.as_str() == "group" {
         emit_bind_error(
             ctx,
             dir.expression.span,
@@ -2013,11 +2022,7 @@ fn validate_bind_sequence_expression(
 }
 
 fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
-    if ctx
-        .data
-        .bind_target_semantics(dir.id)
-        .is_some_and(|semantics| !semantics.requires_mutable_target())
-    {
+    if dir.name.as_str() == "this" {
         return;
     }
 
@@ -2050,11 +2055,7 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
 }
 
 fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
-    if !ctx
-        .data
-        .bind_target_semantics(dir.id)
-        .is_some_and(|semantics| semantics.is_group())
-    {
+    if dir.name.as_str() != "group" {
         return;
     }
 
@@ -2091,10 +2092,17 @@ fn bind_base_symbol(
         return ctx.data.shorthand_symbol(dir.id);
     }
 
-    let info = ctx.data.attr_expression(dir.id)?;
-    info.is_identifier_or_member_expression()
-        .then(|| info.ref_symbols().first().copied())
-        .flatten()
+    let expr = ctx.parsed()?.expr(dir.expression.id())?;
+    if !matches!(
+        expr,
+        Expression::Identifier(_)
+            | Expression::StaticMemberExpression(_)
+            | Expression::ComputedMemberExpression(_)
+    ) {
+        return None;
+    }
+    let data = ctx.data.expression_data(dir.id)?;
+    data.references.first().copied()
 }
 
 fn bind_targets_each_context(
@@ -3037,11 +3045,12 @@ fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_
             | Attribute::LetDirectiveLegacy(_)
             | Attribute::AttachTag(_) => {}
             Attribute::OnDirectiveLegacy(dir) => {
-                let has_only_once = dir.modifiers.len() == 1
-                    && ctx
-                        .data
-                        .event_modifiers(dir.id)
-                        .contains(EventModifier::ONCE);
+                let modifiers = match ctx.data.attributes.get(dir.id) {
+                    crate::AttributeSemantics::Event(ev) => ev.modifiers,
+                    _ => EventModifier::empty(),
+                };
+                let has_only_once =
+                    dir.modifiers.len() == 1 && modifiers.contains(EventModifier::ONCE);
                 if !dir.modifiers.is_empty() && !has_only_once {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::EventHandlerInvalidComponentModifier,

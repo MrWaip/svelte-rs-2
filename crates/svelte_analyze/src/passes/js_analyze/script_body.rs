@@ -1,7 +1,9 @@
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, MemberExpression, SimpleAssignmentTarget};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{
+    walk_member_expression, walk_simple_assignment_target, walk_update_expression,
+};
 
-use crate::passes::js_analyze::expression_info::analyze_expression;
 use crate::scope::ComponentScoping;
 use crate::types::data::{AnalysisData, ProxyStateInits};
 use crate::types::script::{RuneKind, ScriptInfo};
@@ -82,7 +84,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 {
                     self.has_effects = true;
                 }
-                if analyze_expression(&es.expression).has_store_member_mutation() {
+                if expression_has_store_member_mutation(&es.expression) {
                     self.has_store_member_mutations = true;
                 }
             }
@@ -192,4 +194,63 @@ fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
         return false;
     }
     true
+}
+
+fn expression_has_store_member_mutation(expr: &Expression<'_>) -> bool {
+    struct Probe {
+        has: bool,
+        in_write_position: bool,
+    }
+    impl<'a> Visit<'a> for Probe {
+        fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
+            self.in_write_position = true;
+            walk_simple_assignment_target(self, it);
+        }
+        fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
+            self.in_write_position = true;
+            walk_update_expression(self, upd);
+        }
+        fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+            if self.in_write_position {
+                let root_expr = match expr {
+                    MemberExpression::StaticMemberExpression(m) => Some(&m.object),
+                    MemberExpression::ComputedMemberExpression(m) => Some(&m.object),
+                    _ => None,
+                };
+                if root_expr.is_some_and(member_root_is_store) {
+                    self.has = true;
+                }
+            }
+            self.in_write_position = false;
+            walk_member_expression(self, expr);
+        }
+        fn visit_identifier_reference(
+            &mut self,
+            _ident: &oxc_ast::ast::IdentifierReference<'a>,
+        ) {
+            self.in_write_position = false;
+        }
+    }
+    let mut p = Probe {
+        has: false,
+        in_write_position: false,
+    };
+    p.visit_expression(expr);
+    p.has
+}
+
+fn member_root_is_store(expr: &Expression<'_>) -> bool {
+    let mut node = expr;
+    loop {
+        match node {
+            Expression::StaticMemberExpression(m) => node = &m.object,
+            Expression::ComputedMemberExpression(m) => node = &m.object,
+            _ => break,
+        }
+    }
+    if let Expression::Identifier(id) = node {
+        id.name.starts_with('$') && id.name.len() > 1
+    } else {
+        false
+    }
 }

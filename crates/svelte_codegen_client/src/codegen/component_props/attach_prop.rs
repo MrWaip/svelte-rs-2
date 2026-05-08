@@ -1,4 +1,5 @@
 use oxc_syntax::node::NodeId as OxcNodeId;
+use svelte_analyze::ComponentAttachEmit;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -10,7 +11,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         attr_id: NodeId,
         expr_id: OxcNodeId,
-        is_dynamic: bool,
+        emit: ComponentAttachEmit,
         items: &mut Vec<PropOrSpread<'a>>,
     ) -> Result<()> {
         let key_expr = self.ctx.b.call_expr("$.attachment", []);
@@ -18,15 +19,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::missing_expression(attr_id);
         };
         let expr = self.maybe_wrap_legacy_slots_read(expr);
-        if is_dynamic {
-            let call = self.ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);
-            let wrapper = self
-                .ctx
-                .b
-                .arrow_expr(self.ctx.b.params(["$$node"]), [self.ctx.b.expr_stmt(call)]);
-            items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, wrapper)));
-        } else {
-            items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, expr)));
+        match emit {
+            ComponentAttachEmit::Wrapped => {
+                let call = self.ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);
+                let wrapper = self
+                    .ctx
+                    .b
+                    .arrow_expr(self.ctx.b.params(["$$node"]), [self.ctx.b.expr_stmt(call)]);
+                items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, wrapper)));
+            }
+            ComponentAttachEmit::Inline => {
+                items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, expr)));
+            }
         }
         Ok(())
     }

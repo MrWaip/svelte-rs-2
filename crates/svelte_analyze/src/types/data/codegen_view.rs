@@ -44,6 +44,15 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> &crate::expression_semantics::ExpressionSemantics {
         self.data.expressions_v2.get(id)
     }
+    pub fn expression_data(
+        &self,
+        id: NodeId,
+    ) -> Option<&crate::expression_semantics::ExpressionData> {
+        match self.expression_semantics(id) {
+            crate::expression_semantics::ExpressionSemantics::Expression(d) => Some(d),
+            crate::expression_semantics::ExpressionSemantics::NonSpecial => None,
+        }
+    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
@@ -118,9 +127,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.data.blocker_data().symbol_blocker(sym)
     }
-    pub fn is_pickled_await(&self, offset: u32) -> bool {
-        self.data.is_pickled_await(offset)
-    }
     pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
         self.data.output.ignore_data.is_ignored(node_id, code)
     }
@@ -129,9 +135,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .output
             .ignore_data
             .is_ignored_at_span(span_start, code)
-    }
-    pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
-        self.data.expr_deps(site)
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
         self.data.expr_has_blockers(id)
@@ -147,15 +150,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn expr_is_async(&self, id: NodeId) -> bool {
         self.data.expr_is_async(id)
-    }
-    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.data.attr_expression(id)
-    }
-    pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.data.attr_is_import(attr_id)
-    }
-    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
-        self.data.attr_is_function(attr_id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
@@ -260,9 +254,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_custom_element(&self, id: NodeId) -> bool {
         self.data.is_custom_element(id)
-    }
-    pub fn event_modifiers(&self, id: NodeId) -> EventModifier {
-        self.data.event_modifiers(id)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_class_directives(id)
@@ -372,21 +363,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)
     }
-    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
-        self.data.template.bind_semantics.bind_group_value_attr(id)
-    }
-    pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
-        self.data.parent_each_blocks(id)
-    }
-    pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
-        self.data.template.bind_semantics.bind_blockers(id)
-    }
-    pub fn bind_target_semantics(&self, id: NodeId) -> Option<BindTargetSemantics> {
-        self.data.bind_target_semantics(id).copied()
-    }
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.data.bind_each_context(id)
-    }
     pub fn title_elements_for_fragment_by_id(
         &self,
         id: svelte_ast::FragmentId,
@@ -401,9 +377,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
 
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.data.block_semantics_store.is_each_index_sym(sym)
-    }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.data.expression(id)
     }
     pub fn known_value(&self, name: &str) -> Option<&str> {
         self.data.known_value(name)
