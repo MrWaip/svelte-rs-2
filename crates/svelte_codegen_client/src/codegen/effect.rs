@@ -1,5 +1,4 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::ExprSite;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -144,16 +143,12 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
             }
         }
 
-        let site = if is_node_site {
-            ExprSite::Node(attr_id)
-        } else {
-            ExprSite::Attr(attr_id)
-        };
-        let Some(attr_deps) = ctx.expr_deps(site) else {
+        let _ = is_node_site;
+        let Some(attr_data) = ctx.expression_data(attr_id) else {
             return CodegenError::missing_expression_deps(attr_id);
         };
-        deps.push_expr_info(ctx, attr_deps.info);
-        if attr_deps.has_await() {
+        deps.push_expression_data(ctx, attr_data);
+        if attr_data.has_await() {
             deps.async_values.push(expr);
         } else {
             deps.sync_values.push(expr);

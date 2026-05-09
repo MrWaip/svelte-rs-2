@@ -156,10 +156,11 @@ owned by template semantics proper.
 
 In scope:
 - `{#each}`, `{#if}`, `{#await}`, `{#key}`, `{#snippet}`, `{@const}`,
-  `{@render}`
+  `{@render}`, `{@html}`
 
 Out of scope:
-- `{@html}`, `{@debug}` — direct emission, no block semantics
+- `{@debug}` — AST node is self-contained (`identifier_refs: Vec<ExprRef>`);
+  no semantic decision to pre-compute, codegen reads AST directly
 - Special elements — they live in ElementShape Semantics
 
 Identity: block `NodeId`.
@@ -178,6 +179,7 @@ pub enum BlockSemantics {
     Snippet(SnippetBlockSemantics),
     ConstTag(ConstTagSemantics),
     Render(RenderTagSemantics),
+    HtmlTag(HtmlTagSemantics),
 
     Unresolved,
 }

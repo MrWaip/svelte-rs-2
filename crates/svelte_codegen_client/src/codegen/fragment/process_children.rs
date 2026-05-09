@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 use svelte_ast::{Node, NodeId};
-use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
+use svelte_ast_builder::Arg;
 
 use crate::codegen::data_structures::{ConcatPart, EmitState, FragmentAnchor, FragmentCtx};
 use crate::codegen::fragment::types::{Child, ChildAnchor};
@@ -64,7 +64,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         true,
                         "text",
                     )?;
-                    emit_text_set(self, state, &node_name, *id)?;
+                    self.emit_concatenation(
+                        state,
+                        ctx,
+                        crate::codegen::concatenation::ConcatenationAnchor::SiblingTextNode {
+                            node_var: node_name,
+                        },
+                        &[ConcatPart::Expr(*id)],
+                    )?;
                 }
                 Child::Concat(parts) => {
                     state.template.push_text(" ");
@@ -79,7 +86,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         is_standalone_expr,
                         "text",
                     )?;
-                    emit_concat_set(self, state, ctx, &node_name, parts)?;
+                    self.emit_concatenation(
+                        state,
+                        ctx,
+                        crate::codegen::concatenation::ConcatenationAnchor::SiblingTextNode {
+                            node_var: node_name,
+                        },
+                        parts,
+                    )?;
                 }
                 Child::Node(id) => {
                     emit_child_node(
@@ -194,142 +208,6 @@ fn emit_child_node<'a, 'ctx>(
         }
         _ => CodegenError::unexpected_node(id, "Element or block-like child"),
     }
-}
-
-fn emit_text_set<'a, 'ctx>(
-    cg: &mut Codegen<'a, 'ctx>,
-    state: &mut EmitState<'a>,
-    node_name: &str,
-    id: NodeId,
-) -> Result<()> {
-    let is_dyn = cg.ctx.is_dynamic(id);
-    let expr = cg.take_node_expr(id)?;
-    let b = &cg.ctx.state.b;
-    if is_dyn {
-        state
-            .update
-            .push(b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]));
-    } else {
-        let final_expr = match cg.try_resolve_known_from_expr(&expr) {
-            Some(s) => b.str_expr(&s),
-            None => expr,
-        };
-        let member = b.static_member(b.rid_expr(node_name), "nodeValue");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
-    }
-    Ok(())
-}
-
-fn emit_concat_set<'a, 'ctx>(
-    cg: &mut Codegen<'a, 'ctx>,
-    state: &mut EmitState<'a>,
-    ctx: &FragmentCtx<'a>,
-    node_name: &str,
-    parts: &[ConcatPart],
-) -> Result<()> {
-    use crate::codegen::data_structures::TemplateMemoState;
-    use svelte_analyze::ExprSite;
-
-    let mut is_dyn = false;
-    let mut memo_deps = TemplateMemoState::default();
-    let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(parts.len());
-
-    for part in parts {
-        if let Some(s) = ctx.static_text_of(part) {
-            if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                prev.push_str(s);
-            } else {
-                tpl_parts.push(TemplatePart::Str(s.to_string()));
-            }
-            continue;
-        }
-        let ConcatPart::Expr(id) = part else { continue };
-
-        if cg.ctx.is_dynamic(*id) {
-            is_dyn = true;
-        }
-
-        let expr = cg.take_node_expr(*id)?;
-        if let Some(known) = cg.try_resolve_known_from_expr(&expr) {
-            if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                prev.push_str(&known);
-            } else {
-                tpl_parts.push(TemplatePart::Str(known));
-            }
-            continue;
-        }
-
-        let defined = cg.is_node_expr_definitely_defined(*id, &expr);
-        let info = cg.ctx.expression(*id).cloned();
-        let expr = cg.maybe_wrap_legacy_coarse_expr(expr, info.as_ref());
-
-        let (needs_memo, has_await) = cg
-            .ctx
-            .expr_deps(ExprSite::Node(*id))
-            .map(|d| (d.needs_memo, d.has_await()))
-            .unwrap_or((false, false));
-
-        let effective_expr = if needs_memo {
-            memo_deps.push_node_deps(cg.ctx, *id);
-            let cloned = cg.ctx.b.clone_expr(&expr);
-            if has_await {
-                let index = memo_deps.async_values_push(cloned);
-                memo_deps.async_param_expr(cg.ctx, index)
-            } else {
-                let index = memo_deps.sync_values_push(cloned);
-                memo_deps.sync_param_expr(cg.ctx, index)
-            }
-        } else {
-            expr
-        };
-        tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
-    }
-
-    let b = &cg.ctx.state.b;
-    let all_static = tpl_parts.iter().all(|p| matches!(p, TemplatePart::Str(_)));
-    let tpl_expr = if all_static && tpl_parts.len() == 1 {
-        match tpl_parts.into_iter().next() {
-            Some(TemplatePart::Str(s)) => b.str_expr(&s),
-            _ => b.template_parts_expr(Vec::new()),
-        }
-    } else {
-        b.template_parts_expr(tpl_parts)
-    };
-
-    if is_dyn {
-        if memo_deps.has_deps() {
-            let param_names = memo_deps.param_names();
-            let params = if param_names.is_empty() {
-                cg.ctx.b.no_params()
-            } else {
-                cg.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-            };
-            let set_text = cg
-                .ctx
-                .b
-                .call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(tpl_expr)]);
-            let callback = cg.ctx.b.arrow_expr(params, [set_text]);
-            crate::codegen::effect::emit_effect_call_extern(
-                cg.ctx,
-                "$.template_effect",
-                callback,
-                &mut memo_deps,
-                &mut state.after_update,
-            );
-        } else {
-            state
-                .update
-                .push(b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(tpl_expr)]));
-        }
-    } else {
-        let member = b.static_member(b.rid_expr(node_name), "nodeValue");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(member), tpl_expr));
-    }
-    Ok(())
 }
 
 fn flush_sibling_var<'a, 'ctx>(

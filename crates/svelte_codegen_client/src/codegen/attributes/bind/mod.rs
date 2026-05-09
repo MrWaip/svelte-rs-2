@@ -3,7 +3,7 @@ mod group;
 mod placement;
 mod this;
 
-use svelte_analyze::{BindPropertyKind, PropReferenceSemantics, ReferenceSemantics};
+use svelte_analyze::{AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -11,6 +11,24 @@ use super::super::data_structures::EmitState;
 use super::super::{Codegen, CodegenError, Result};
 
 use placement::BindPlacement;
+
+fn property_to_bind_kind(p: ElementBindPropertyKind) -> BindPropertyKind {
+    match p {
+        ElementBindPropertyKind::Value => BindPropertyKind::Value,
+        ElementBindPropertyKind::Checked => BindPropertyKind::Checked,
+        ElementBindPropertyKind::Group => BindPropertyKind::Group,
+        ElementBindPropertyKind::Files => BindPropertyKind::Files,
+        ElementBindPropertyKind::Indeterminate => BindPropertyKind::Indeterminate,
+        ElementBindPropertyKind::Open => BindPropertyKind::Open,
+        ElementBindPropertyKind::This => BindPropertyKind::This,
+        ElementBindPropertyKind::ContentEditable(k) => BindPropertyKind::ContentEditable(k),
+        ElementBindPropertyKind::ElementSize(k) => BindPropertyKind::ElementSize(k),
+        ElementBindPropertyKind::ResizeObserver(k) => BindPropertyKind::ResizeObserver(k),
+        ElementBindPropertyKind::Media(k) => BindPropertyKind::Media(k),
+        ElementBindPropertyKind::ImageNaturalSize(k) => BindPropertyKind::ImageNaturalSize(k),
+        ElementBindPropertyKind::Focused => BindPropertyKind::Focused,
+    }
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_bind_directive(
@@ -21,11 +39,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_var: &str,
         bind: &BindDirective,
     ) -> Result<()> {
-        let Some(semantics) = self.ctx.bind_target_semantics(bind.id) else {
-            return Ok(());
+        let AttributeSemantics::ElementBind(payload) =
+            self.ctx.query.analysis.attributes.get(bind.id)
+        else {
+            return CodegenError::semantic_mismatch(
+                bind.id,
+                "emit_bind_directive requires ElementBind",
+            );
         };
+        let payload = payload.clone();
 
-        if semantics.property() == BindPropertyKind::Value
+        let bind_property = property_to_bind_kind(payload.property);
+
+        if matches!(payload.property, ElementBindPropertyKind::Value)
             && owner_tag == "textarea"
             && !self.ctx.needs_textarea_value_lowering(owner_id)
         {
@@ -37,23 +63,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let has_use = self.ctx.has_use_directive(owner_id);
-        let bind_property = semantics.property();
-        let bind_blockers = self.ctx.bind_blockers(bind.id).to_vec();
+        let bind_blockers = payload.blockers.to_vec();
 
-        let placement = if !semantics.is_this()
-            && matches!(bind_property, BindPropertyKind::Checked)
+        let placement = if matches!(payload.property, ElementBindPropertyKind::Checked)
+            && matches!(payload.kind, HtmlBindKind::BindableProp)
         {
-            let bind_attr = svelte_ast::Attribute::BindDirective(bind.clone());
-            let is_bindable_prop_source = matches!(
-                self.ctx.directive_root_reference_semantics(&bind_attr),
-                ReferenceSemantics::PropRead(PropReferenceSemantics::Source { bindable: true, .. })
-                    | ReferenceSemantics::PropMutation { bindable: true, .. }
-            );
-            if is_bindable_prop_source {
-                self.emit_bind_checked_shorthand(bind, owner_var, has_use, &bind_blockers)?
-            } else {
-                self.gen_bind_placement(bind, bind_property, owner_var, owner_tag, has_use)?
-            }
+            self.emit_bind_checked_shorthand(bind, owner_var, has_use, &bind_blockers)?
         } else {
             self.gen_bind_placement(bind, bind_property, owner_var, owner_tag, has_use)?
         };
@@ -65,7 +80,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         match placement {
             BindPlacement::AfterUpdate(stmt) => state.after_update.push(stmt),
             BindPlacement::Init(stmt) => {
-                if semantics.is_this() {
+                if matches!(payload.property, ElementBindPropertyKind::This) {
                     state.pending_bind_this.push(stmt);
                 } else {
                     state.init.push(stmt);
@@ -83,13 +98,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tag_name: &str,
         has_use_directive: bool,
     ) -> Result<Option<BindPlacement<'a>>> {
-        let bind_blockers = self.ctx.bind_blockers(bind.id).to_vec();
-        let semantics = match self.ctx.bind_target_semantics(bind.id) {
-            Some(s) => s,
-            None => return Ok(None),
+        let payload = match self.ctx.query.analysis.attributes.get(bind.id) {
+            AttributeSemantics::ElementBind(b) => b.clone(),
+            _ => return Ok(None),
         };
+        let bind_blockers = payload.blockers.to_vec();
+        let is_this = matches!(payload.property, ElementBindPropertyKind::This);
 
-        if !semantics.is_this()
+        if !is_this
             && let Some(stmt) =
                 self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
         {

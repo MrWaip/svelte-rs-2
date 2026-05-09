@@ -6,12 +6,14 @@
   "runArgs": [
     "--cap-add=SYS_PTRACE",
     "--cap-add=PERFMON",
-    "--security-opt", "seccomp=unconfined"
+    "--security-opt",
+    "seccomp=unconfined"
   ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/svelte-rs-2,type=bind,consistency=delegated",
   "workspaceFolder": "/workspaces/svelte-rs-2",
   "mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached",
     "source=${localWorkspaceFolder}/.devcontainer/settings.local.json,target=/workspaces/svelte-rs-2/.claude/settings.local.json,type=bind",
     "source=svelte-rs-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
     "source=svelte-rs-cargo-registry,target=/usr/local/cargo/registry,type=volume",
@@ -19,6 +21,7 @@
     "source=svelte-rs-target,target=/workspaces/svelte-rs-2/target,type=volume",
     "source=svelte-rs-node-modules,target=/workspaces/svelte-rs-2/node_modules,type=volume"
   ],
+  "remoteEnv": { "GH_TOKEN": "${localEnv:GH_TOKEN}" },
   "containerEnv": {
     "CARGO_HOME": "/usr/local/cargo",
     "RUSTUP_HOME": "/usr/local/rustup",
@@ -30,6 +33,9 @@
     "TERM": "xterm-256color",
     "COLORTERM": "truecolor"
   },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -37,7 +43,8 @@
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
         "skellock.just",
-        "anthropic.claude-code"
+        "anthropic.claude-code",
+        "eamodio.gitlens"
       ],
       "settings": {
         "rust-analyzer.server.path": "/usr/local/cargo/bin/rust-analyzer",

@@ -1,5 +1,5 @@
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{BlockerData, JsAst};
+use crate::types::data::{BlockerData, FragmentNamespaces, IgnoreData, JsAst};
 
 use super::super::BlockSemanticsStore;
 use super::common::declarator_from_stmt;
@@ -9,7 +9,7 @@ use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, BindDirective, Component, EachBlock, Node, NodeId};
+use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentId, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId, walk_bindings};
 
 pub(super) fn populate(
@@ -18,6 +18,9 @@ pub(super) fn populate(
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
     blockers: &BlockerData,
+    fragment_namespaces: &FragmentNamespaces,
+    ignore_data: &IgnoreData,
+    dev: bool,
     store: &mut BlockSemanticsStore,
 ) {
     let mut ctx = Ctx {
@@ -26,6 +29,10 @@ pub(super) fn populate(
         semantics,
         reactivity,
         blockers,
+        fragment_namespaces,
+        ignore_data,
+        dev,
+        current_fragment_id: component.root,
         non_root_depth: 0,
         snippet_scopes: Vec::new(),
         snippet_name_syms: FxHashSet::default(),
@@ -109,6 +116,10 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) blockers: &'c BlockerData,
+    pub(super) fragment_namespaces: &'c FragmentNamespaces,
+    pub(super) ignore_data: &'c IgnoreData,
+    pub(super) dev: bool,
+    pub(super) current_fragment_id: FragmentId,
 
     pub(super) non_root_depth: u32,
 
@@ -151,6 +162,7 @@ impl<'a> Ctx<'_, 'a> {
             Node::ConstTag(tag) => super::const_tag::populate(self, tag),
             Node::RenderTag(tag) => super::render::populate(self, tag),
             Node::KeyBlock(block) => super::key::populate(self, block),
+            Node::HtmlTag(tag) => super::html_tag::populate(self, tag),
             Node::SvelteHead(el) => self.visit_fragment(el.fragment),
             Node::SvelteFragmentLegacy(el) => self.visit_fragment(el.fragment),
             Node::SvelteElement(el) => {
@@ -164,11 +176,14 @@ impl<'a> Ctx<'_, 'a> {
 
     pub(super) fn visit_fragment(&mut self, fragment_id: svelte_ast::FragmentId) {
         self.non_root_depth += 1;
+        let prev_fragment_id = self.current_fragment_id;
+        self.current_fragment_id = fragment_id;
         let len = self.component.fragment_nodes(fragment_id).len();
         for i in 0..len {
             let id = self.component.fragment_nodes(fragment_id)[i];
             self.visit_node(id);
         }
+        self.current_fragment_id = prev_fragment_id;
         self.non_root_depth -= 1;
     }
 

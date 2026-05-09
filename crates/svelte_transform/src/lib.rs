@@ -270,16 +270,11 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 continue;
             }
 
-            let is_window_or_document =
-                ctx.analysis
-                    .bind_target_semantics(attr.id())
-                    .is_some_and(|sem| {
-                        matches!(
-                            sem.property(),
-                            svelte_analyze::BindPropertyKind::Window(_)
-                                | svelte_analyze::BindPropertyKind::Document(_)
-                        )
-                    });
+            let is_window_or_document = matches!(
+                ctx.analysis.attributes.get(attr.id()),
+                svelte_analyze::AttributeSemantics::WindowBind(_)
+                    | svelte_analyze::AttributeSemantics::DocumentBind(_)
+            );
             if is_window_or_document {
                 continue;
             }

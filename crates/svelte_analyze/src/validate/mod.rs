@@ -1,3 +1,4 @@
+mod class_state_fields;
 mod experimental_async;
 mod legacy;
 mod non_reactive_update;
@@ -79,6 +80,9 @@ pub fn validate_program(
     stores::validate(data, program, diags);
     validate_perf_class_warnings(program, 1, diags);
     experimental_async::validate_instance_program(data, program, diags);
+    if runes {
+        class_state_fields::validate(program, diags);
+    }
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {

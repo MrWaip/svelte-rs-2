@@ -1,5 +1,8 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{BindPropertyKind, DocumentBindKind, ReferenceSemantics, WindowBindKind};
+use svelte_analyze::{
+    AttributeSemantics, DocumentBindKind, DocumentBindSemantics, HtmlBindKind, WindowBindKind,
+    WindowBindSemantics,
+};
 use svelte_ast::{Attribute, BindDirective, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -91,17 +94,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_var: &str,
         bind: &BindDirective,
     ) -> Result<()> {
-        let Some(bind_semantics) = self.ctx.bind_target_semantics(bind.id) else {
-            return Ok(());
+        enum HostProp {
+            Window(WindowBindKind),
+            Document(DocumentBindKind),
+        }
+        let (host_prop, is_rune) = match self.ctx.query.analysis.attributes.get(bind.id) {
+            AttributeSemantics::WindowBind(WindowBindSemantics {
+                property, kind, ..
+            }) => (HostProp::Window(*property), matches!(kind, HtmlBindKind::Rune)),
+            AttributeSemantics::DocumentBind(DocumentBindSemantics {
+                property, kind, ..
+            }) => (HostProp::Document(*property), matches!(kind, HtmlBindKind::Rune)),
+            _ => return Ok(()),
         };
-
-        let bind_attr = svelte_ast::Attribute::BindDirective(bind.clone());
-        let is_rune = matches!(
-            self.ctx.directive_root_reference_semantics(&bind_attr),
-            ReferenceSemantics::SignalWrite { .. }
-                | ReferenceSemantics::SignalUpdate { .. }
-                | ReferenceSemantics::SignalRead { .. }
-        );
 
         let var_name = if bind.shorthand {
             bind.name.clone()
@@ -115,8 +120,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
 
-        let stmt = match bind_semantics.property() {
-            BindPropertyKind::Window(WindowBindKind::ScrollX) => {
+        let stmt = match host_prop {
+            HostProp::Window(WindowBindKind::ScrollX) => {
                 let getter = self.build_binding_getter(&var_name, is_rune);
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.ctx.b.call_stmt(
@@ -124,7 +129,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     [Arg::StrRef("x"), Arg::Expr(getter), Arg::Expr(setter)],
                 )
             }
-            BindPropertyKind::Window(WindowBindKind::ScrollY) => {
+            HostProp::Window(WindowBindKind::ScrollY) => {
                 let getter = self.build_binding_getter(&var_name, is_rune);
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.ctx.b.call_stmt(
@@ -132,7 +137,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     [Arg::StrRef("y"), Arg::Expr(getter), Arg::Expr(setter)],
                 )
             }
-            BindPropertyKind::Window(
+            HostProp::Window(
                 kind @ (WindowBindKind::InnerWidth
                 | WindowBindKind::InnerHeight
                 | WindowBindKind::OuterWidth
@@ -144,25 +149,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     [Arg::StrRef(kind.name()), Arg::Expr(setter)],
                 )
             }
-            BindPropertyKind::Window(WindowBindKind::Online) => {
+            HostProp::Window(WindowBindKind::Online) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.ctx.b.call_stmt("$.bind_online", [Arg::Expr(setter)])
             }
-            BindPropertyKind::Window(WindowBindKind::DevicePixelRatio) => {
+            HostProp::Window(WindowBindKind::DevicePixelRatio) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.bind_property_stmt("devicePixelRatio", "resize", owner_var, setter)
             }
-            BindPropertyKind::Document(DocumentBindKind::ActiveElement) => {
+            HostProp::Document(DocumentBindKind::ActiveElement) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.ctx
                     .b
                     .call_stmt("$.bind_active_element", [Arg::Expr(setter)])
             }
-            BindPropertyKind::Document(DocumentBindKind::FullscreenElement) => {
+            HostProp::Document(DocumentBindKind::FullscreenElement) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.bind_property_stmt("fullscreenElement", "fullscreenchange", owner_var, setter)
             }
-            BindPropertyKind::Document(DocumentBindKind::PointerLockElement) => {
+            HostProp::Document(DocumentBindKind::PointerLockElement) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.bind_property_stmt(
                     "pointerLockElement",
@@ -171,11 +176,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     setter,
                 )
             }
-            BindPropertyKind::Document(DocumentBindKind::VisibilityState) => {
+            HostProp::Document(DocumentBindKind::VisibilityState) => {
                 let setter = self.build_binding_setter_silent(&var_name, is_rune);
                 self.bind_property_stmt("visibilityState", "visibilitychange", owner_var, setter)
             }
-            _ => return Ok(()),
         };
 
         state.init.push(stmt);
@@ -244,16 +248,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 (raw_event_name.to_string(), false)
             };
 
-        let has_call = self
-            .ctx
-            .attr_expression(attr_id)
-            .is_some_and(|info| info.has_call());
+        let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
+            svelte_analyze::AttributeSemantics::Event(ev) => match &ev.emit {
+                svelte_analyze::EventEmit::HtmlDelegated { handler }
+                | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
+                | svelte_analyze::EventEmit::Component { handler } => *handler,
+                svelte_analyze::EventEmit::HtmlBubble => svelte_analyze::HandlerEmit::Direct,
+            },
+            _ => svelte_analyze::HandlerEmit::Direct,
+        };
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return crate::codegen::CodegenError::missing_expression(attr_id);
         };
         let expr = self.maybe_wrap_legacy_slots_read(expr);
-        let handler =
-            self.build_event_handler_s5(attr_id, expr, has_call, &mut state.init, expr_offset);
+        let handler = self.build_event_handler_s5(
+            attr_id,
+            expr,
+            handler_emit,
+            &mut state.init,
+            expr_offset,
+        );
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
         let passive = svelte_analyze::is_passive_event(&event_name);

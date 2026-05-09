@@ -1,7 +1,7 @@
 use svelte_ast::Component;
 
 use crate::passes::{
-    bind_semantics, collect_symbols, content_types, dynamism, element_flags, template_side_tables,
+    collect_symbols, content_types, dynamism, element_flags, template_side_tables,
     template_validation,
 };
 use crate::types::data::AnalysisData;
@@ -16,8 +16,6 @@ impl<'c> TemplateSideTablesBundle<'c> {
         Self {
             side_tables: template_side_tables::TemplateSideTablesVisitor {
                 component,
-                pending_html_tags: Vec::new(),
-                debug_tag_buckets: Vec::new(),
                 title_buckets: Vec::new(),
                 expression_tag_buckets: Vec::new(),
             },
@@ -26,16 +24,6 @@ impl<'c> TemplateSideTablesBundle<'c> {
 
     pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
         [&mut self.side_tables]
-    }
-
-    pub(crate) fn take_pending_html_tags(
-        &mut self,
-    ) -> Vec<(svelte_ast::NodeId, svelte_ast::FragmentId)> {
-        std::mem::take(&mut self.side_tables.pending_html_tags)
-    }
-
-    pub(crate) fn take_debug_tag_buckets(&mut self) -> template_side_tables::FragmentBuckets {
-        std::mem::take(&mut self.side_tables.debug_tag_buckets)
     }
 
     pub(crate) fn take_title_buckets(&mut self) -> template_side_tables::FragmentBuckets {
@@ -81,7 +69,6 @@ impl ReactivityBundle {
 
 pub(crate) struct TemplateClassificationBundle<'s> {
     element_flags: element_flags::ElementFlagsVisitor<'s>,
-    bind_semantics: bind_semantics::BindSemanticsVisitor<'s>,
     content_types: content_types::ContentAndVarVisitor,
 }
 
@@ -89,17 +76,12 @@ impl<'s> TemplateClassificationBundle<'s> {
     pub(crate) fn new(_component: &'s Component, _data: &AnalysisData, source: &'s str) -> Self {
         Self {
             element_flags: element_flags::ElementFlagsVisitor::new(source),
-            bind_semantics: bind_semantics::BindSemanticsVisitor::new(source),
             content_types: content_types::ContentAndVarVisitor,
         }
     }
 
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 3] {
-        [
-            &mut self.bind_semantics,
-            &mut self.element_flags,
-            &mut self.content_types,
-        ]
+    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 2] {
+        [&mut self.element_flags, &mut self.content_types]
     }
 
     pub(crate) fn finish(self, _data: &mut AnalysisData) {}

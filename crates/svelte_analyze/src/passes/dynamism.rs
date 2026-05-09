@@ -1,12 +1,13 @@
+use oxc_ast::ast::Expression;
 use svelte_ast::{
     Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SVELTE_COMPONENT, SlotElementLegacy,
 };
-use svelte_span::Span;
 
+use crate::expression_semantics::ExpressionData;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
-    AnalysisData, BindingSemantics, ExpressionInfo, ExpressionKind, ParentKind, PropBindingKind,
-    PropBindingSemantics, ReactivitySemantics,
+    AnalysisData, BindingSemantics, ParentKind, PropBindingKind, PropBindingSemantics,
+    ReactivitySemantics,
 };
 use crate::types::node_table::NodeBitSet;
 use crate::walker::{TemplateVisitor, VisitContext};
@@ -76,10 +77,10 @@ impl TemplateVisitor for DynamismVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        let Some(info) = ctx.data.expressions.get(tag.id) else {
+        let Some(data) = ctx.data.expression_data(tag.id) else {
             return;
         };
-        if classify_template_info(info, ctx.data) {
+        if data.is_dynamic() {
             ctx.data.dynamism.mark_dynamic_node(tag.id);
         }
     }
@@ -118,7 +119,12 @@ impl TemplateVisitor for DynamismVisitor {
         }
     }
 
-    fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_js_expression(
+        &mut self,
+        node_id: NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         let parent = ctx.data.expr_parent(node_id);
         let parent_kind = parent.map(|p| p.kind);
 
@@ -131,14 +137,14 @@ impl TemplateVisitor for DynamismVisitor {
                 )
             });
 
-            let Some(info) = ctx.data.attr_expressions.get(node_id) else {
+            let Some(data) = ctx.data.expression_data(node_id) else {
                 return;
             };
 
             let scoping = &ctx.data.scoping;
             let reactivity = &ctx.data.reactivity;
-            let is_dyn_element = is_dynamic_element_attr(info, scoping, reactivity);
-            let has_state_component = has_state_component_attr(info, scoping, reactivity);
+            let is_dyn_element = is_dynamic_element_attr(data, scoping, reactivity);
+            let has_state_component = has_state_component_attr(expr, data, scoping, reactivity);
 
             let classified_dynamic = if in_component {
                 has_state_component
@@ -166,23 +172,14 @@ impl TemplateVisitor for DynamismVisitor {
         } else if !(matches!(parent_kind, Some(ParentKind::SvelteElement))
             && parent.is_some_and(|p| p.id == node_id))
         {
-            let Some(info) = ctx.data.expressions.get(node_id) else {
+            let Some(data) = ctx.data.expression_data(node_id) else {
                 return;
             };
-            if classify_template_info(info, ctx.data) {
+            if data.is_dynamic() {
                 ctx.data.dynamism.mark_dynamic_node(node_id);
             }
         }
     }
-}
-
-fn classify_template_info(info: &ExpressionInfo, data: &AnalysisData<'_>) -> bool {
-    is_dynamic_template(
-        info,
-        &data.scoping,
-        &data.reactivity,
-        data.script.has_class_state_fields,
-    )
 }
 
 pub(crate) fn is_symbol_dynamic(
@@ -212,57 +209,15 @@ pub(crate) fn is_symbol_dynamic(
     }
 }
 
-fn is_dynamic_template(
-    info: &ExpressionInfo,
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-    has_class_state_fields: bool,
-) -> bool {
-    if info.has_await() || info.has_state_rune() || info.needs_context() {
-        return true;
-    }
-
-    if matches!(info.kind(), ExpressionKind::CallExpression { .. }) {
-        return info.has_store_ref()
-            || info.ref_symbols().iter().any(|&sym_id| {
-                is_symbol_dynamic(scoping, reactivity, sym_id)
-                    || (scoping.is_component_top_level_symbol(sym_id) && !scoping.is_import(sym_id))
-            });
-    }
-
-    if matches!(info.kind(), ExpressionKind::MemberExpression) {
-        return info.has_store_ref() || !info.ref_symbols().is_empty();
-    }
-
-    if info.has_store_ref() {
-        return true;
-    }
-    info.ref_symbols().iter().any(|&sym_id| {
-        if is_symbol_dynamic(scoping, reactivity, sym_id) {
-            return true;
-        }
-        if is_unified_prop_source(scoping, reactivity, sym_id) {
-            return true;
-        }
-        if has_class_state_fields
-            && scoping.is_component_top_level_symbol(sym_id)
-            && is_unified_plain_symbol(scoping, reactivity, sym_id)
-        {
-            return true;
-        }
-        false
-    })
-}
-
 fn is_dynamic_element_attr(
-    info: &ExpressionInfo,
+    data: &ExpressionData,
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if info.has_await() {
+    if data.has_await() {
         return true;
     }
-    attr_symbols(info, scoping).any(|sym_id| {
+    attr_symbols_data(data, None, scoping).any(|sym_id| {
         matches!(
             reactivity.binding_semantics(sym_id),
             BindingSemantics::Prop(PropBindingSemantics {
@@ -274,47 +229,39 @@ fn is_dynamic_element_attr(
 }
 
 fn has_state_component_attr(
-    info: &ExpressionInfo,
+    expr: &Expression<'_>,
+    data: &ExpressionData,
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if info.has_await() {
+    if data.has_await() {
         return true;
     }
-    if matches!(info.kind(), ExpressionKind::ArrowFunction) {
+    if matches!(expr, Expression::ArrowFunctionExpression(_)) {
         return false;
     }
-    attr_symbols(info, scoping).any(|sym_id| {
+    attr_symbols_data(data, Some(expr), scoping).any(|sym_id| {
         !scoping.is_component_top_level_symbol(sym_id)
             || !is_unified_plain_symbol(scoping, reactivity, sym_id)
     })
 }
 
-fn attr_symbols<'a>(
-    info: &'a ExpressionInfo,
+fn attr_symbols_data<'a>(
+    data: &'a ExpressionData,
+    expr: Option<&'a Expression<'_>>,
     scoping: &'a ComponentScoping,
 ) -> impl Iterator<Item = SymbolId> + 'a {
-    let fallback = if info.ref_symbols().is_empty() {
-        info.identifier_name()
-            .and_then(|name| scoping.find_binding(scoping.root_scope_id(), name))
+    let fallback = if data.references.is_empty() {
+        match expr {
+            Some(Expression::Identifier(ident)) => {
+                scoping.find_binding(scoping.root_scope_id(), ident.name.as_str())
+            }
+            _ => None,
+        }
     } else {
         None
     };
-    info.ref_symbols().iter().copied().chain(fallback)
-}
-
-fn is_unified_prop_source(
-    _scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-    sym_id: SymbolId,
-) -> bool {
-    matches!(
-        reactivity.binding_semantics(sym_id),
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. },
-            ..
-        })
-    )
+    data.references.iter().copied().chain(fallback)
 }
 
 fn is_unified_plain_symbol(
@@ -335,32 +282,3 @@ fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool
     )
 }
 
-pub(crate) fn populate_expr_roles(data: &mut AnalysisData<'_>) {
-    if data.script.blocker_data.has_async {
-        let blocked_node_ids: Vec<NodeId> = data
-            .expressions
-            .iter()
-            .filter_map(|(id, info)| {
-                if data.dynamism.is_dynamic_node(id) {
-                    return None;
-                }
-                info.ref_symbols()
-                    .iter()
-                    .any(|sym| data.script.blocker_data.symbol_blockers.contains_key(sym))
-                    .then_some(id)
-            })
-            .collect();
-        for id in blocked_node_ids {
-            data.dynamism.mark_dynamic_node(id);
-        }
-    }
-
-    let dynamism = &data.dynamism;
-    for (id, info) in data.expressions.iter_mut() {
-        info.set_expr_role_from_dynamism(dynamism.is_dynamic_node(id));
-    }
-    for (id, info) in data.attr_expressions.iter_mut() {
-        let is_dynamic = dynamism.is_dynamic_attr(id) || dynamism.has_state_attr(id);
-        info.set_expr_role_from_dynamism(is_dynamic);
-    }
-}

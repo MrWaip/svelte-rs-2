@@ -6,9 +6,9 @@ pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
-    KeyBlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
-    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
+    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgLowering, RenderAsyncKind,
+    RenderCalleeShape, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 
 use crate::scope::SymbolId;

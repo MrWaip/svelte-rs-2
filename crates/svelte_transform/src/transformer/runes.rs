@@ -2,6 +2,7 @@ use oxc_traverse::{Ancestor, TraverseCtx};
 
 use svelte_analyze::{
     BindingSemantics, DerivedKind, RuneKind, RuntimeRuneKind, StateBindingSemantics, StateKind,
+    detect_rune_from_call,
 };
 
 use super::model::AsyncDerivedMode;
@@ -48,20 +49,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
             Some(BindingSemantics::Derived(derived)) => {
                 self.rewrite_derived_binding_init(node, binding_name, derived.kind, sym_id);
             }
+            Some(BindingSemantics::OptimizedRune(opt)) => {
+                let binding_semantic = match opt.kind {
+                    StateKind::State => StateBindingSemantics::NonReactive {
+                        proxied: opt.proxy_init,
+                    },
+                    StateKind::StateRaw | StateKind::StateEager => {
+                        StateBindingSemantics::NonReactive { proxied: false }
+                    }
+                };
+                self.rewrite_state_binding_init(
+                    node,
+                    binding_name,
+                    opt.kind,
+                    Some(binding_semantic),
+                );
+            }
             Some(BindingSemantics::RuntimeRune {
                 kind: RuntimeRuneKind::EffectPending,
             }) => {
                 self.rewrite_effect_pending_init(node);
             }
-            _ => {
-                let Some(init) = node.init.as_mut() else {
-                    return;
-                };
-                let Some(kind) = self.rune_kind_from_expr(init) else {
-                    return;
-                };
-                self.rewrite_class_field_rune_init(node, binding_name, kind, sym_id);
-            }
+            _ => {}
         }
     }
 
@@ -219,67 +228,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
     }
 
-    fn rewrite_class_field_rune_init(
-        &mut self,
-        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
-        binding_name: &'a str,
-        kind: RuneKind,
-        sym_id: Option<oxc_semantic::SymbolId>,
-    ) {
-        match kind {
-            RuneKind::State | RuneKind::StateRaw => {
-                let state_kind = if matches!(kind, RuneKind::State) {
-                    StateKind::State
-                } else {
-                    StateKind::StateRaw
-                };
-                let binding_semantic =
-                    self.class_field_state_binding_semantic(state_kind, node, sym_id);
-                self.rewrite_state_binding_init(node, binding_name, state_kind, binding_semantic);
-            }
-            RuneKind::Derived => {
-                self.rewrite_derived_binding_init(node, binding_name, DerivedKind::Derived, sym_id);
-            }
-            RuneKind::DerivedBy => {
-                self.rewrite_derived_binding_init(
-                    node,
-                    binding_name,
-                    DerivedKind::DerivedBy,
-                    sym_id,
-                );
-            }
-            _ => {}
-        }
-    }
-
-    fn class_field_state_binding_semantic(
-        &self,
-        state_kind: StateKind,
-        node: &oxc_ast::ast::VariableDeclarator<'a>,
-        sym_id: Option<oxc_semantic::SymbolId>,
-    ) -> Option<StateBindingSemantics> {
-        let proxied = node
-            .init
-            .as_ref()
-            .and_then(|init| match init {
-                oxc_ast::ast::Expression::CallExpression(c) => c.arguments.first()?.as_expression(),
-                _ => None,
-            })
-            .is_some_and(crate::rune_refs::should_proxy);
-        let reassigned = sym_id.is_some_and(|sym| self.component_scoping.is_mutated(sym));
-        let is_signal_source = self.analysis.as_ref()?.script.is_state_source(reassigned);
-        Some(match (state_kind, is_signal_source) {
-            (StateKind::State, true) => StateBindingSemantics::StateSignal { proxied },
-            (StateKind::State, false) => StateBindingSemantics::NonReactive { proxied },
-            (StateKind::StateRaw, true) => StateBindingSemantics::StateRawSignal,
-            (StateKind::StateRaw, false) | (StateKind::StateEager, _) => {
-                StateBindingSemantics::NonReactive { proxied: false }
-            }
-        })
-    }
-
     pub(crate) fn rewrite_call_expression(&mut self, node: &mut oxc_ast::ast::Expression<'a>) {
-        let Some(rune_kind) = self.rune_kind_from_expr(node) else {
+        if !self
+            .analysis
+            .as_ref()
+            .is_some_and(|a| a.uses_runes())
+        {
+            return;
+        }
+        let oxc_ast::ast::Expression::CallExpression(call) = &*node else {
+            return;
+        };
+        let Some(rune_kind) = detect_rune_from_call(call) else {
             return;
         };
 

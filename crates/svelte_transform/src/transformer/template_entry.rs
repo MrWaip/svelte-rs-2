@@ -52,8 +52,6 @@ pub(crate) fn run_template<'a, 'b>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
-        script_rune_calls: None,
-        script_node_id_offset: 0,
         experimental_async: false,
         ignore_query: IgnoreQuery::empty(),
         enclosing_stmt_start: Vec::new(),
@@ -123,10 +121,28 @@ pub(crate) fn run_template<'a, 'b>(
         };
 
         let setter_lhs_expr = orig.clone_in_with_semantic_ids(alloc);
-        let bind_source = analysis
-            .bind_target_semantics(owner)
-            .map(|sem| sem.source())
-            .unwrap_or(svelte_analyze::BindSource::Expression);
+        let store_base_symbol: Option<oxc_semantic::SymbolId> =
+            match analysis.attributes.get(owner) {
+                svelte_analyze::AttributeSemantics::ElementBind(b) => match &b.kind {
+                    svelte_analyze::HtmlBindKind::StoreSubscribed { base_symbol } => {
+                        Some(*base_symbol)
+                    }
+                    _ => None,
+                },
+                svelte_analyze::AttributeSemantics::WindowBind(b) => match &b.kind {
+                    svelte_analyze::HtmlBindKind::StoreSubscribed { base_symbol } => {
+                        Some(*base_symbol)
+                    }
+                    _ => None,
+                },
+                svelte_analyze::AttributeSemantics::DocumentBind(b) => match &b.kind {
+                    svelte_analyze::HtmlBindKind::StoreSubscribed { base_symbol } => {
+                        Some(*base_symbol)
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
 
         transformer.template_owner_node = Some(owner);
 
@@ -162,22 +178,13 @@ pub(crate) fn run_template<'a, 'b>(
         };
         let setter_body = es.unbox().expression;
 
-        let (getter, setter) = if let svelte_analyze::BindSource::StoreSubscription {
-            store_symbol,
-        } = bind_source
-        {
-            let dollar_name: &str = b.alloc_str(analysis.scoping.symbol_name(store_symbol));
-            let base_via_legacy_state =
-                if let svelte_analyze::BindingSemantics::Store(facts) =
-                    analysis.binding_semantics(store_symbol)
-                {
-                    matches!(
-                        analysis.binding_semantics(facts.base_symbol),
-                        svelte_analyze::BindingSemantics::LegacyState(_)
-                    )
-                } else {
-                    false
-                };
+        let (getter, setter) = if let Some(base_symbol) = store_base_symbol {
+            let base_name = analysis.scoping.symbol_name(base_symbol);
+            let dollar_name: &str = b.alloc_str(&format!("${base_name}"));
+            let base_via_legacy_state = matches!(
+                analysis.binding_semantics(base_symbol),
+                svelte_analyze::BindingSemantics::LegacyState(_)
+            );
             let getter_expr = if base_via_legacy_state {
                 let thunk_call = b.call_expr_callee(
                     b.rid_expr(dollar_name),

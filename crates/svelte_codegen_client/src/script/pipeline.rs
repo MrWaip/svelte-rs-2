@@ -52,7 +52,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         program,
         Some(ctx.query.analysis),
         component_scoping,
-        ctx.instance_script_node_id_offset(),
         true,
         dev,
         component_source,
@@ -79,7 +78,6 @@ pub fn transform_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
-        0,
         false,
         dev,
         "",
@@ -105,7 +103,6 @@ pub fn transform_component_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
-        0,
         false,
         false,
         "",
@@ -124,7 +121,6 @@ fn run_transform<'a>(
     mut program: Program<'a>,
     analysis: Option<&'_ AnalysisData<'a>>,
     component_scoping: &ComponentScoping<'a>,
-    script_node_id_offset: u32,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -138,7 +134,6 @@ fn run_transform<'a>(
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
-    let script_rune_calls = analysis.map(|a| a.script_rune_calls());
 
     let out = transform_script(
         allocator,
@@ -146,8 +141,6 @@ fn run_transform<'a>(
         &b,
         analysis,
         component_scoping,
-        script_rune_calls,
-        script_node_id_offset,
         strip_exports,
         dev,
         component_source,

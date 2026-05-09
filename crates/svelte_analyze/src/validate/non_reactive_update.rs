@@ -219,10 +219,15 @@ impl<'a> TemplateValidator<'a, '_> {
                     StyleDirectiveValue::String(_) => {}
                 },
                 Attribute::BindDirective(attr) => {
-                    let bind_this = self
-                        .data
-                        .bind_target_semantics(attr.id)
-                        .is_some_and(|semantics| semantics.is_this());
+                    let bind_this = match self.data.attributes.get(attr.id) {
+                        crate::AttributeSemantics::ElementBind(b) => {
+                            matches!(b.property, crate::ElementBindPropertyKind::This)
+                        }
+                        crate::AttributeSemantics::ComponentBind(b) => {
+                            matches!(b.kind, crate::ComponentBindKind::This { .. })
+                        }
+                        _ => false,
+                    };
                     self.visit_expr_ref(&attr.expression, bind_this, in_dynamic_block);
                 }
                 Attribute::LetDirectiveLegacy(attr) => {

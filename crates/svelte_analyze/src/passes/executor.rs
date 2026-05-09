@@ -129,14 +129,6 @@ pub(crate) fn execute_pass<'a>(
             data.template.template_elements.finalize();
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
-            for (idx, slot) in bundle.take_debug_tag_buckets().into_iter().enumerate() {
-                if let Some(ids) = slot {
-                    data.template
-                        .debug_tags
-                        .by_fragment
-                        .insert(svelte_ast::FragmentId(idx as u32), ids);
-                }
-            }
             for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
                 if let Some(ids) = slot {
                     data.template
@@ -146,17 +138,6 @@ pub(crate) fn execute_pass<'a>(
                 }
             }
             data.template.expression_tags_by_fragment = bundle.take_expression_tag_buckets();
-            for (tag_id, frag_id) in bundle.take_pending_html_tags() {
-                match data.template.fragment_namespaces.get(frag_id) {
-                    Some(svelte_ast::Namespace::Svg) => {
-                        data.elements.html_tag_in_svg.insert(tag_id);
-                    }
-                    Some(svelte_ast::Namespace::Mathml) => {
-                        data.elements.html_tag_in_mathml.insert(tag_id);
-                    }
-                    _ => {}
-                }
-            }
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
@@ -175,36 +156,13 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);
-            if runes {
-                js_analyze::collect_script_rune_call_kinds(parsed, data);
-            }
             js_analyze::classify_pickled_awaits(parsed, data);
         }
         super::PassKey::ClassifyNeedsContext => {
-            js_analyze::classify_expression_needs_context(data);
-            if !data.output.needs_context {
-                data.output.needs_context = data
-                    .expressions
-                    .values()
-                    .chain(data.attr_expressions.values())
-                    .any(|info| info.is_dynamic_with_context_role());
-            }
+            let _ = data;
         }
         super::PassKey::PostResolve => {
             post_resolve::run_post_resolve_passes(data);
-            if !data.output.needs_context {
-                data.output.needs_context = data
-                    .expressions
-                    .values()
-                    .chain(data.attr_expressions.values())
-                    .any(|info| {
-                        info.has_context_sensitive_shape()
-                            && info
-                                .ref_symbols()
-                                .iter()
-                                .any(|&sym| data.scoping.is_rest_prop(sym))
-                    });
-            }
         }
         super::PassKey::BuildReactivitySemantics => {
             crate::reactivity_semantics::build_v2(
@@ -226,6 +184,9 @@ pub(crate) fn execute_pass<'a>(
                 data.scoping.semantics(),
                 &data.reactivity,
                 &data.script.blocker_data,
+                &data.template.fragment_namespaces,
+                &data.output.ignore_data,
+                data.script.dev,
                 component.node_count(),
             );
         }
@@ -235,16 +196,16 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
             let mut visitors = bundle.visitors();
-            run_template_bundle(
+            run_parsed_template_bundle(
                 component,
                 data,
+                parsed,
                 source,
                 runes,
                 options,
                 diags,
                 &mut visitors,
             );
-            super::dynamism::populate_expr_roles(data);
         }
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);

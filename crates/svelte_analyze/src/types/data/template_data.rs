@@ -63,28 +63,6 @@ impl FragmentNodeList {
     }
 }
 
-pub struct DebugTagData {
-    pub(crate) by_fragment: FragmentNodeList,
-}
-
-impl Default for DebugTagData {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DebugTagData {
-    pub fn new() -> Self {
-        Self {
-            by_fragment: FragmentNodeList::default(),
-        }
-    }
-
-    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get_by_id(id)
-    }
-}
-
 pub struct TitleElementData {
     pub(crate) by_fragment: FragmentNodeList,
 }
@@ -497,10 +475,6 @@ impl BindTargetSemantics {
         self.source
     }
 
-    pub(crate) fn set_source(&mut self, source: BindSource) {
-        self.source = source;
-    }
-
     pub fn is_this(&self) -> bool {
         self.property.is_this()
     }
@@ -631,39 +605,17 @@ impl DocumentBindKind {
 }
 
 pub struct BindSemanticsData {
-    pub(crate) target_semantics: NodeTable<BindTargetSemantics>,
     pub(crate) has_bind_group: NodeBitSet,
-    pub(crate) bind_group_value_attr: NodeTable<NodeId>,
-    pub(crate) bind_blockers: NodeTable<SmallVec<[u32; 2]>>,
-    pub(crate) bind_this_each_context: NodeTable<SmallVec<[SymbolId; 4]>>,
 }
 
 impl BindSemanticsData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            target_semantics: NodeTable::new(node_count),
             has_bind_group: NodeBitSet::new(node_count),
-            bind_group_value_attr: NodeTable::new(node_count),
-            bind_blockers: NodeTable::new(node_count),
-            bind_this_each_context: NodeTable::new(node_count),
         }
     }
 
-    pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
-        self.target_semantics.get(id)
-    }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.has_bind_group.contains(&id)
-    }
-    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
-        self.bind_group_value_attr.get(id).copied()
-    }
-    pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
-        self.bind_blockers.get(id).map_or(&[], |v| v.as_slice())
-    }
-    pub fn bind_this_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.bind_this_each_context
-            .get(id)
-            .map(|syms| syms.as_slice())
     }
 }

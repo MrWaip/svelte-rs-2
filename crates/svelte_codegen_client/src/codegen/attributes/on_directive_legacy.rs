@@ -1,4 +1,5 @@
 use oxc_ast::ast::Expression;
+use svelte_analyze::{AttributeSemantics, EventEmit, HandlerEmit};
 use svelte_ast::{NodeId, OnDirectiveLegacy};
 use svelte_ast_builder::Arg;
 
@@ -15,15 +16,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         let attr_id = od.id;
         let expr_offset = od.expression.as_ref().map(|r| r.span.start);
-        let has_call = self
-            .ctx
-            .attr_expression(attr_id)
-            .is_some_and(|e| e.has_call());
+        let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
+            AttributeSemantics::Event(ev) => match &ev.emit {
+                EventEmit::HtmlDelegated { handler }
+                | EventEmit::HtmlDirect { handler, .. }
+                | EventEmit::Component { handler } => *handler,
+                EventEmit::HtmlBubble => HandlerEmit::Direct,
+            },
+            _ => HandlerEmit::Direct,
+        };
 
         let handler: Expression<'a> =
             if let (Some(offset), Some(expr_ref)) = (expr_offset, od.expression.as_ref()) {
                 let expr = self.take_attr_expr(attr_id, expr_ref)?;
-                self.build_event_handler_s5(attr_id, expr, has_call, &mut state.init, offset)
+                self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, offset)
             } else {
                 let bubble_call = self
                     .ctx

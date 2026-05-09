@@ -47,7 +47,7 @@ pub(crate) fn rewrite_template_exit<'a>(
                 .ignore_data
                 .is_ignored(id, "await_reactivity_loss")
         });
-        let is_pickled = analysis.is_pickled_await(await_expr.span.start);
+        let is_pickled = analysis.pickled_awaits.contains(await_expr.node_id());
 
         let ast = t.b.ast;
         let arg = std::mem::replace(

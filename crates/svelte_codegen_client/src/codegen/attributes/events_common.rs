@@ -1,4 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
+use svelte_analyze::HandlerEmit;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -9,24 +10,24 @@ use super::super::{Codegen, CodegenError, Result};
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_event_handler_s5(
         &mut self,
-        attr_id: NodeId,
+        _attr_id: NodeId,
         handler: Expression<'a>,
-        has_call: bool,
+        emit: HandlerEmit,
         init: &mut Vec<Statement<'a>>,
         expr_offset: u32,
     ) -> Expression<'a> {
-        if should_return_event_handler_directly(self.ctx, attr_id, &handler) {
+        if matches!(emit, HandlerEmit::Direct) {
             return handler;
         }
 
-        let has_side_effects = self
-            .ctx
-            .attr_expression(attr_id)
-            .is_some_and(|info| info.has_side_effects());
+        let has_side_effects = matches!(
+            emit,
+            HandlerEmit::WrappedSideEffects | HandlerEmit::WrappedMemoized,
+        );
         let remove_parens = remove_parens_hint(&handler);
         let mut handler = handler;
 
-        if has_call {
+        if matches!(emit, HandlerEmit::WrappedMemoized) {
             let id = self.ctx.state.gen_ident("event_handler");
             let thunk = self.ctx.b.thunk(handler);
             init.push(
@@ -123,19 +124,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .named_function_expr(event_name, arrow.params.unbox(), stmts, arrow.r#async))
-    }
-}
-
-fn should_return_event_handler_directly<'a>(
-    ctx: &Ctx<'a>,
-    attr_id: NodeId,
-    handler: &Expression<'a>,
-) -> bool {
-    match handler {
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
-        Expression::Identifier(_) if ctx.attr_is_function(attr_id) => true,
-        Expression::Identifier(_) if !ctx.state.dev && !ctx.attr_is_import(attr_id) => true,
-        _ => false,
     }
 }
 

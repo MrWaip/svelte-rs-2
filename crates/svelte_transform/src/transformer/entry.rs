@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 use oxc_traverse::traverse_mut;
 
-use svelte_analyze::{AnalysisData, ComponentScoping, ScriptRuneCalls};
+use svelte_analyze::{AnalysisData, ComponentScoping};
 use svelte_ast_builder::Builder;
 
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
@@ -18,8 +18,6 @@ pub fn transform_script<'a, 'b>(
     b: &'b Builder<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
-    script_rune_calls: Option<&ScriptRuneCalls>,
-    script_node_id_offset: u32,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -58,8 +56,6 @@ pub fn transform_script<'a, 'b>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
-        script_rune_calls,
-        script_node_id_offset,
         experimental_async,
         ignore_query,
         enclosing_stmt_start: Vec::new(),

@@ -1,9 +1,12 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::ComponentPropKind;
-use svelte_ast::{NodeId, SVELTE_COMPONENT};
+use svelte_analyze::{
+    AttributeSemantics, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
+    ComponentPropSemantics, ComponentSpreadSemantics, EventEmit, EventModifier, EventSemantics,
+};
+use svelte_ast::{Attribute, NodeId, SVELTE_COMPONENT};
 use svelte_ast_builder::{Arg, ObjProp};
 
-use super::super::{Codegen, Result};
+use super::super::{Codegen, CodegenError, Result};
 
 pub(in super::super) enum PropOrSpread<'a> {
     Prop(ObjProp<'a>),
@@ -24,7 +27,6 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub events: Vec<EventRaw>,
     pub svelte_component_this: Option<Expression<'a>>,
     pub memo_decls: Vec<Statement<'a>>,
-
     pub ownership_bindings: Vec<OwnershipBinding<'a>>,
 }
 
@@ -39,13 +41,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         cn_name: &str,
     ) -> Result<ComponentPropsOutput<'a>> {
-        let prop_infos: Vec<(ComponentPropKind, bool)> = self
-            .ctx
-            .component_props(el_id)
-            .iter()
-            .map(|p| (p.kind.clone(), p.is_dynamic))
-            .collect();
-
         let mut out = ComponentPropsOutput {
             items: Vec::new(),
             bind_this: None,
@@ -56,96 +51,141 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let mut memo_counter: u32 = 0;
 
-        for (kind, is_dynamic) in prop_infos {
-            match kind {
-                ComponentPropKind::String { name, value_span } => {
-                    self.emit_component_prop_string(&name, value_span, &mut out.items);
+        let attrs: Vec<Attribute> = match self
+            .ctx
+            .query
+            .component
+            .store
+            .get(el_id)
+            .as_component_like()
+        {
+            Some(view) => view.attributes.to_vec(),
+            None => {
+                return CodegenError::semantic_mismatch(el_id, "component-like node expected");
+            }
+        };
+
+        for attr in &attrs {
+            let attr_id: NodeId = attr.id();
+            if attr.name().is_some_and(|n| n.starts_with("--")) {
+                continue;
+            }
+            match self.ctx.query.analysis.attributes.get(attr_id) {
+                AttributeSemantics::ComponentBind(b) => {
+                    self.dispatch_component_bind(el_id, b, attr, &mut out)?;
                 }
-                ComponentPropKind::Boolean { name } => {
-                    self.emit_component_prop_boolean(&name, &mut out.items);
+                AttributeSemantics::ComponentSpread(ComponentSpreadSemantics { emit }) => {
+                    let Attribute::SpreadAttribute(sa) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "ComponentSpread requires SpreadAttribute",
+                        );
+                    };
+                    self.emit_component_prop_spread(
+                        sa.id,
+                        sa.expression.id(),
+                        *emit,
+                        &mut out.items,
+                    )?;
                 }
-                ComponentPropKind::Expression {
-                    name,
-                    attr_id,
-                    expr_id,
-                    shorthand,
-                    needs_memo,
-                } => {
-                    if cn_name == SVELTE_COMPONENT && name == "this" {
+                AttributeSemantics::ComponentAttach(ComponentAttachSemantics { emit }) => {
+                    let Attribute::AttachTag(at) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "ComponentAttach requires AttachTag",
+                        );
+                    };
+                    self.emit_component_prop_attach(
+                        at.id,
+                        at.expression.id(),
+                        *emit,
+                        &mut out.items,
+                    )?;
+                }
+                AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                    let Attribute::ExpressionAttribute(ea) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "ComponentProp::Expression requires ExpressionAttribute",
+                        );
+                    };
+                    if cn_name == SVELTE_COMPONENT && ea.name == "this" {
                         let expr = self
                             .ctx
                             .state
                             .parsed
-                            .take_expr(expr_id)
-                            .ok_or(crate::codegen::CodegenError::MissingExpression(attr_id))?;
+                            .take_expr(ea.expression.id())
+                            .ok_or(CodegenError::MissingExpression(ea.id))?;
                         out.svelte_component_this = Some(expr);
                         continue;
                     }
                     self.emit_component_prop_expression(
-                        &name,
-                        attr_id,
-                        expr_id,
-                        shorthand,
-                        needs_memo,
-                        is_dynamic,
+                        &ea.name,
+                        ea.id,
+                        ea.expression.id(),
+                        e.shorthand,
+                        e.memo,
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
                     )?;
                 }
-                ComponentPropKind::Spread { attr_id, expr_id } => {
-                    self.emit_component_prop_spread(attr_id, expr_id, is_dynamic, &mut out.items)?;
-                }
-                ComponentPropKind::Concatenation {
-                    name,
-                    attr_id,
-                    parts,
-                } => {
+                AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(c)) => {
+                    let Attribute::ConcatenationAttribute(ca) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "ComponentProp::Concat requires ConcatenationAttribute",
+                        );
+                    };
                     self.emit_component_prop_concat(
-                        &name,
-                        attr_id,
-                        &parts,
-                        is_dynamic,
+                        &ca.name,
+                        ca.id,
+                        &ca.parts,
+                        c.memo,
                         &mut out.items,
                     )?;
                 }
-                ComponentPropKind::Bind {
-                    name,
-                    mode,
-                    expr_name,
-                    requires_ownership_emit,
-                    ..
-                } => {
-                    self.emit_component_prop_bind(
-                        el_id,
-                        &name,
-                        mode,
-                        expr_name,
-                        requires_ownership_emit,
-                        &mut out.items,
-                        &mut out.ownership_bindings,
-                    )?;
-                }
-                ComponentPropKind::BindThis { bind_id, .. } => {
-                    out.bind_this = Some(bind_id);
-                }
-                ComponentPropKind::Attach { attr_id, expr_id } => {
-                    self.emit_component_prop_attach(attr_id, expr_id, is_dynamic, &mut out.items)?;
-                }
-                ComponentPropKind::Event {
-                    name,
-                    attr_id,
-                    expr_id,
-                    has_expression,
-                    has_once_modifier,
-                } => {
+                AttributeSemantics::Event(EventSemantics { modifiers, emit }) => {
+                    let EventEmit::Component { .. } = emit else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "non-Component Event variant on ComponentNode",
+                        );
+                    };
+                    let Attribute::OnDirectiveLegacy(d) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "Component Event requires OnDirectiveLegacy",
+                        );
+                    };
                     out.events.push(EventRaw {
-                        name,
-                        attr_id,
-                        expr_id,
-                        has_expression,
-                        has_once_modifier,
+                        name: d.name.clone(),
+                        attr_id: d.id,
+                        expr_id: d.expression.as_ref().map(|r| r.id()),
+                        has_expression: d.expression.is_some(),
+                        has_once_modifier: modifiers.contains(EventModifier::ONCE),
                     });
+                }
+                AttributeSemantics::NonSpecial => match attr {
+                    Attribute::StringAttribute(a) => {
+                        self.emit_component_prop_string(&a.name, a.value_span, &mut out.items);
+                    }
+                    Attribute::BooleanAttribute(a) => {
+                        self.emit_component_prop_boolean(&a.name, &mut out.items);
+                    }
+                    Attribute::LetDirectiveLegacy(_) => continue,
+                    _ => {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "unsupported NonSpecial attribute on ComponentNode",
+                        );
+                    }
+                },
+                _ => {
+                    return CodegenError::semantic_mismatch(
+                        attr_id,
+                        "non-component semantics on ComponentNode",
+                    );
                 }
             }
         }
@@ -190,5 +230,47 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         self.ctx.b.call_expr("$.spread_props", args)
+    }
+
+    fn dispatch_component_bind(
+        &mut self,
+        el_id: NodeId,
+        bind: &ComponentBindSemantics,
+        attr: &Attribute,
+        out: &mut ComponentPropsOutput<'a>,
+    ) -> Result<()> {
+        let Attribute::BindDirective(d) = attr else {
+            return CodegenError::semantic_mismatch(
+                attr.id(),
+                "ComponentBind requires BindDirective",
+            );
+        };
+        match &bind.kind {
+            ComponentBindKind::This { .. } => {
+                out.bind_this = Some(d.id);
+                Ok(())
+            }
+            ComponentBindKind::Expression => {
+                self.emit_bind_plain(&d.name, &d.name, &mut out.items);
+                Ok(())
+            }
+            ComponentBindKind::Identifier { symbol, target } => {
+                let symbol_name = self.ctx.query.view.symbol_name(*symbol).to_string();
+                self.emit_bind_identifier(
+                    el_id,
+                    &d.name,
+                    &symbol_name,
+                    *target,
+                    &mut out.items,
+                    &mut out.ownership_bindings,
+                );
+                Ok(())
+            }
+            ComponentBindKind::StoreSubscribed { base_symbol } => {
+                let base_name = self.ctx.query.view.symbol_name(*base_symbol).to_string();
+                self.emit_bind_store(&d.name, &base_name, &mut out.items);
+                Ok(())
+            }
+        }
     }
 }

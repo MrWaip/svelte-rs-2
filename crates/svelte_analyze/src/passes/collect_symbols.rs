@@ -1,25 +1,19 @@
 use oxc_ast::ast::{Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
-use smallvec::SmallVec;
 use svelte_ast::{Attribute, NodeId, RenderTag, StyleDirectiveValue};
 use svelte_span::Span;
 
-use crate::passes::js_analyze;
-use crate::reactivity_semantics::data::ReferenceSemantics;
-use crate::scope::SymbolId;
-use crate::types::data::{AnalysisData, ExpressionInfo, ExpressionKind};
+use crate::types::data::AnalysisData;
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) fn make_visitor(_scoping: crate::types::markers::ScopingBuilt) -> CollectSymbolsVisitor {
     CollectSymbolsVisitor {
-        pending_render_tag: None,
         pending_shorthand: None,
         pending_clsx: false,
     }
 }
 
 pub(crate) struct CollectSymbolsVisitor {
-    pending_render_tag: Option<NodeId>,
     pending_shorthand: Option<(NodeId, String)>,
     pending_clsx: bool,
 }
@@ -34,89 +28,32 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let mut info = build_expression_info(expr, ctx.data);
-        if info.uses_legacy_slots() {
+        if expression_uses_legacy_slots(expr) {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
         classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
-        classify_render_tag(
-            node_id,
-            expr,
-            &mut info,
-            &mut self.pending_render_tag,
-            ctx.data,
-        );
-        store_expression_info(node_id, info, ctx);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, _ctx: &mut VisitContext<'_, '_>) {
-        self.pending_render_tag = Some(tag.id);
-    }
-
-    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        let init_expr =
-            ctx.parsed
-                .and_then(|p| p.stmt(tag.decl.id()))
-                .and_then(|stmt| match stmt {
-                    oxc_ast::ast::Statement::VariableDeclaration(decl) => {
-                        decl.declarations.first().and_then(|d| d.init.as_ref())
-                    }
-                    _ => None,
-                });
-        if let Some(init_expr) = init_expr {
-            let info = build_expression_info(init_expr, ctx.data);
-            ctx.data.expressions.insert(tag.id, info);
-        }
-    }
+    fn visit_render_tag(&mut self, _tag: &RenderTag, _ctx: &mut VisitContext<'_, '_>) {}
 
     fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_, '_>) {
         set_pending_flags(attr, &mut self.pending_shorthand, &mut self.pending_clsx);
     }
+}
 
-    fn leave_concatenation_attribute(
-        &mut self,
-        attr: &svelte_ast::ConcatenationAttribute,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
-        merge_concat_expression_info(&attr.parts, attr.id, ctx);
-    }
-
-    fn leave_style_directive(
-        &mut self,
-        dir: &svelte_ast::StyleDirective,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
-        if let StyleDirectiveValue::Concatenation(parts) = &dir.value {
-            merge_concat_expression_info(parts, dir.id, ctx);
+fn expression_uses_legacy_slots(expr: &Expression<'_>) -> bool {
+    struct Probe(bool);
+    impl<'a> Visit<'a> for Probe {
+        fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+            if ident.name.as_str() == "$$slots" {
+                self.0 = true;
+            }
         }
     }
-}
-
-pub(crate) fn build_expression_info(
-    expr: &Expression<'_>,
-    data: &AnalysisData<'_>,
-) -> ExpressionInfo {
-    let mut info = js_analyze::analyze_expression(expr);
-    info.set_ref_symbols(collect_ref_symbols(expr, data));
-    info
-}
-
-fn collect_ref_symbols(
-    expr: &Expression<'_>,
-    data: &AnalysisData<'_>,
-) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols(data, |collector| {
-        collector.visit_expression(expr);
-    })
-}
-
-fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_, '_>) {
-    if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
-        ctx.data.attr_expressions.insert(node_id, info);
-    } else {
-        ctx.data.expressions.insert(node_id, info);
-    }
+    let mut p = Probe(false);
+    p.visit_expression(expr);
+    p.0
 }
 
 fn classify_shorthand(
@@ -153,18 +90,6 @@ fn classify_clsx(
     }
 }
 
-fn classify_render_tag(
-    node_id: NodeId,
-    _expr: &Expression<'_>,
-    info: &mut ExpressionInfo,
-    pending: &mut Option<NodeId>,
-    _data: &mut AnalysisData,
-) {
-    if pending.take() == Some(node_id) {
-        info.mark_render_tag();
-    }
-}
-
 fn set_pending_flags(
     attr: &Attribute,
     pending_shorthand: &mut Option<(NodeId, String)>,
@@ -187,61 +112,4 @@ fn set_pending_flags(
         }
         _ => {}
     }
-}
-
-fn merge_concat_expression_info(
-    parts: &[svelte_ast::ConcatPart],
-    parent_id: NodeId,
-    ctx: &mut VisitContext<'_, '_>,
-) {
-    let mut merged = ExpressionInfo::new(ExpressionKind::Other);
-    for part in parts {
-        if let svelte_ast::ConcatPart::Dynamic { id, .. } = part
-            && let Some(info) = ctx.data.attr_expressions.get(*id)
-        {
-            merged.merge_in(info);
-        }
-    }
-
-    ctx.data.attr_expressions.insert(parent_id, merged);
-}
-
-struct ResolvedRefCollector<'d, 'a> {
-    data: &'d AnalysisData<'a>,
-    symbols: SmallVec<[SymbolId; 2]>,
-}
-
-impl<'a> Visit<'a> for ResolvedRefCollector<'_, '_> {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        let Some(ref_id) = ident.reference_id.get() else {
-            return;
-        };
-        let sym_id = match self.data.reference_semantics(ref_id) {
-            ReferenceSemantics::StoreRead { symbol }
-            | ReferenceSemantics::StoreWrite { symbol }
-            | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
-            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
-            | ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
-            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }
-            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
-            _ => self.data.scoping.get_reference(ref_id).symbol_id(),
-        };
-        if let Some(sym_id) = sym_id
-            && !self.symbols.contains(&sym_id)
-        {
-            self.symbols.push(sym_id);
-        }
-    }
-}
-
-fn collect_resolved_ref_symbols(
-    data: &AnalysisData<'_>,
-    visit: impl FnOnce(&mut ResolvedRefCollector<'_, '_>),
-) -> SmallVec<[SymbolId; 2]> {
-    let mut collector = ResolvedRefCollector {
-        data,
-        symbols: SmallVec::new(),
-    };
-    visit(&mut collector);
-    collector.symbols
 }
