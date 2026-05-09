@@ -1,0 +1,185 @@
+use crate::scope::SymbolId;
+use crate::types::data::{
+    ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, ImageNaturalSizeKind,
+    MediaBindKind, ResizeObserverKind, WindowBindKind,
+};
+use smallvec::SmallVec;
+use svelte_ast::NodeId;
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum AttributeSemantics {
+    #[default]
+    NonSpecial,
+
+    ElementBind(ElementBindSemantics),
+    WindowBind(WindowBindSemantics),
+    DocumentBind(DocumentBindSemantics),
+    ComponentBind(ComponentBindSemantics),
+
+    Event(EventSemantics),
+    ComponentProp(ComponentPropSemantics),
+    ComponentSpread(ComponentSpreadSemantics),
+    ComponentAttach(ComponentAttachSemantics),
+    BoundaryProp(BoundaryPropSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentSpreadSemantics {
+    pub emit: ComponentSpreadEmit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentSpreadEmit {
+    Inline,
+    Thunk,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentAttachSemantics {
+    pub emit: ComponentAttachEmit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentAttachEmit {
+    Inline,
+    Wrapped,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoundaryPropSemantics {
+    pub emit: BoundaryPropEmit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoundaryPropEmit {
+    KeyValue,
+    Getter,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentPropSemantics {
+    Expression(ComponentPropExpressionSemantics),
+    Concat(ComponentPropConcatSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentPropExpressionSemantics {
+    pub memo: ComponentPropMemo,
+    pub shorthand: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentPropConcatSemantics {
+    pub memo: ComponentPropMemo,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentPropMemo {
+    Inline,
+    Getter,
+    Derived,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EventSemantics {
+    pub modifiers: EventModifier,
+    pub emit: EventEmit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EventEmit {
+    HtmlDelegated { handler: HandlerEmit },
+    HtmlDirect {
+        capture: bool,
+        passive: Option<bool>,
+        handler: HandlerEmit,
+    },
+    HtmlBubble,
+    Component { handler: HandlerEmit },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandlerEmit {
+    Direct,
+    WrappedInert,
+    WrappedSideEffects,
+    WrappedMemoized,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentBindSemantics {
+    pub kind: ComponentBindKind,
+    pub each_context_vars: SmallVec<[SymbolId; 4]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentBindKind {
+    Expression,
+    Identifier {
+        symbol: SymbolId,
+        target: ComponentBindTarget,
+    },
+    StoreSubscribed {
+        base_symbol: SymbolId,
+    },
+    This {
+        symbol: Option<SymbolId>,
+        target: ComponentBindTarget,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentBindTarget {
+    Plain,
+    Rune,
+    PropSource,
+    PropSourceOwned,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ElementBindSemantics {
+    pub property: ElementBindPropertyKind,
+    pub kind: HtmlBindKind,
+    pub blockers: SmallVec<[u32; 2]>,
+    pub parent_each_blocks: SmallVec<[NodeId; 4]>,
+    pub group_value_attr: Option<NodeId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ElementBindPropertyKind {
+    Value,
+    Checked,
+    Group,
+    Files,
+    Indeterminate,
+    Open,
+    This,
+    ContentEditable(ContentEditableKind),
+    ElementSize(ElementSizeKind),
+    ResizeObserver(ResizeObserverKind),
+    Media(MediaBindKind),
+    ImageNaturalSize(ImageNaturalSizeKind),
+    Focused,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowBindSemantics {
+    pub property: WindowBindKind,
+    pub kind: HtmlBindKind,
+    pub blockers: SmallVec<[u32; 2]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentBindSemantics {
+    pub property: DocumentBindKind,
+    pub kind: HtmlBindKind,
+    pub blockers: SmallVec<[u32; 2]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlBindKind {
+    Plain,
+    Rune,
+    BindableProp,
+    StoreSubscribed { base_symbol: SymbolId },
+}

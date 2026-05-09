@@ -2,7 +2,6 @@ use oxc_ast::ast::{Expression, MemberExpression};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::types::data::{AnalysisData, BindingSemantics, PropBindingKind, PropBindingSemantics};
 use crate::types::script::{RuneKind, ScriptInfo};
 
 pub(crate) struct NeedsContextVisitor<'a> {
@@ -111,30 +110,5 @@ impl<'a> Visit<'a> for NeedsContextVisitor<'a> {
         if !self.needs_context {
             walk_member_expression(self, it);
         }
-    }
-}
-
-pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
-    let scoping = &data.scoping;
-    let reactivity = &data.reactivity;
-    for info in data
-        .expressions
-        .values_mut()
-        .chain(data.attr_expressions.values_mut())
-    {
-        let needs_context = info.has_context_sensitive_shape()
-            && info.ref_symbols().iter().any(|&sym| {
-                if scoping.is_import(sym) {
-                    return true;
-                }
-                matches!(
-                    reactivity.binding_semantics(sym),
-                    BindingSemantics::Prop(PropBindingSemantics {
-                        kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-                        ..
-                    })
-                )
-            });
-        info.set_needs_context(needs_context);
     }
 }

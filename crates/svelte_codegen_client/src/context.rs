@@ -4,10 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{
-    AnalysisData, BindTargetSemantics, CodegenView, ComponentPropInfo, EventHandlerMode, ExprDeps,
-    ExprSite, ExpressionInfo, IdentGen, JsAst, RuntimePlan,
-};
+use svelte_analyze::{AnalysisData, CodegenView, IdentGen, JsAst, RuntimePlan};
 use svelte_ast::{
     AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag,
     SvelteBoundary, SvelteElement,
@@ -57,13 +54,6 @@ impl<'a> CodegenQuery<'a> {
     }
     pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag {
         self.component.store.debug_tag(id)
-    }
-
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.view.expression(id)
-    }
-    pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
-        self.view.expr_deps(site)
     }
 
     pub fn runtime_plan(&self) -> RuntimePlan {
@@ -229,51 +219,6 @@ impl<'a> Ctx<'a> {
         self.query.view.is_dynamic(id)
     }
 
-    pub fn directive_root_ref_id(
-        &self,
-        attr: &svelte_ast::Attribute,
-    ) -> Option<oxc_syntax::reference::ReferenceId> {
-        let expr_ref = match attr {
-            svelte_ast::Attribute::ExpressionAttribute(a) => Some(&a.expression),
-            svelte_ast::Attribute::ClassDirective(a) => Some(&a.expression),
-            svelte_ast::Attribute::StyleDirective(a) => match &a.value {
-                svelte_ast::StyleDirectiveValue::Expression => Some(&a.expression),
-                _ => None,
-            },
-            svelte_ast::Attribute::BindDirective(a) => Some(&a.expression),
-            svelte_ast::Attribute::SpreadAttribute(a) => Some(&a.expression),
-            svelte_ast::Attribute::AttachTag(a) => Some(&a.expression),
-            svelte_ast::Attribute::UseDirective(a) => a.expression.as_ref(),
-            svelte_ast::Attribute::OnDirectiveLegacy(a) => a.expression.as_ref(),
-            svelte_ast::Attribute::TransitionDirective(a) => a.expression.as_ref(),
-            svelte_ast::Attribute::AnimateDirective(a) => a.expression.as_ref(),
-            _ => None,
-        }?;
-        let expr = self.state.parsed.expr(expr_ref.id())?;
-        let mut current = expr;
-        loop {
-            match current {
-                oxc_ast::ast::Expression::StaticMemberExpression(m) => current = &m.object,
-                oxc_ast::ast::Expression::ComputedMemberExpression(m) => current = &m.object,
-                oxc_ast::ast::Expression::Identifier(id) => return id.reference_id.get(),
-                _ => return None,
-            }
-        }
-    }
-
-    pub fn directive_root_reference_semantics(
-        &self,
-        attr: &svelte_ast::Attribute,
-    ) -> svelte_analyze::ReferenceSemantics {
-        match self.directive_root_ref_id(attr) {
-            Some(ref_id) => self.query.view.reference_semantics(ref_id),
-            None => svelte_analyze::ReferenceSemantics::NonReactive,
-        }
-    }
-
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.query.view.bind_each_context(id)
-    }
     pub fn attr_index(&self, id: NodeId) -> Option<&svelte_analyze::AttrIndex> {
         self.query.view.attr_index(id)
     }
@@ -283,17 +228,8 @@ impl<'a> Ctx<'a> {
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.query.view.is_each_index_sym(sym)
     }
-    pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.query.view.attr_is_import(attr_id)
-    }
-    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
-        self.query.view.attr_is_function(attr_id)
-    }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.query.expression(id)
-    }
-    pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
-        self.query.expr_deps(site)
+    pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
+        self.query.view.expression_data(id)
     }
     pub fn const_tag_symbol_blocker_expr(&self, sym: SymbolId) -> Option<Expression<'a>> {
         let (name, idx) = self.const_tag_blockers.get(&sym)?;
@@ -302,27 +238,18 @@ impl<'a> Ctx<'a> {
                 .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
         )
     }
-    pub fn expr_has_await(&self, id: NodeId) -> bool {
-        self.query.view.expr_is_async(id)
-    }
-
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.query.runtime_plan()
-    }
-
-    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.has_blockers())
     }
 
     pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {
         if self.const_tag_blockers.is_empty() {
             return Vec::new();
         }
-        let Some(info) = self.expression(id) else {
+        let Some(data) = self.expression_data(id) else {
             return Vec::new();
         };
-        let ref_symbols = info.ref_symbols().to_vec();
+        let ref_symbols: Vec<SymbolId> = data.references.iter().copied().collect();
         let mut result = Vec::new();
         for sym in &ref_symbols {
             if let Some(expr) = self.const_tag_symbol_blocker_expr(*sym) {
@@ -392,9 +319,6 @@ impl<'a> Ctx<'a> {
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.query.view.is_expression_shorthand(id)
     }
-    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
-        self.query.view.component_props(id)
-    }
     pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
         self.query.view.component_binding_sym(id)
     }
@@ -407,39 +331,14 @@ impl<'a> Ctx<'a> {
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.query.view.is_dynamic_component(id)
     }
-    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
-        self.query.view.event_handler_mode(attr_id)
-    }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()
-    }
-    pub fn instance_script_node_id_offset(&self) -> u32 {
-        self.query.view.instance_script_node_id_offset()
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.query.view.has_bind_group(id)
-    }
-    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
-        self.query.view.bind_group_value_attr(id)
-    }
-    pub fn parent_each_blocks(&self, id: NodeId) -> Vec<NodeId> {
-        self.query.view.parent_each_blocks(id).into_iter().collect()
-    }
-    pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
-        self.query.view.bind_blockers(id)
-    }
-    pub fn bind_target_semantics(&self, id: NodeId) -> Option<BindTargetSemantics> {
-        self.query.view.bind_target_semantics(id)
-    }
-    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.query.view.attr_expression(id)
-    }
-    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.needs_memo)
     }
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.query.view.symbol_blocker(sym)

@@ -1,6 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::ExprSite;
 use svelte_ast::NodeId;
 
 use super::super::async_plan::emit_async_call_stmt;
@@ -13,15 +12,15 @@ pub(crate) struct AsyncEmissionPlan {
 
 impl AsyncEmissionPlan {
     pub(crate) fn for_node(ctx: &Ctx<'_>, id: NodeId) -> Self {
-        let Some(deps) = ctx.expr_deps(ExprSite::Node(id)) else {
+        let Some(data) = ctx.expression_data(id) else {
             return Self {
                 has_await: false,
                 blockers: Vec::new(),
             };
         };
         Self {
-            has_await: deps.has_await(),
-            blockers: deps.blockers.to_vec(),
+            has_await: data.has_await(),
+            blockers: data.blockers.to_vec(),
         }
     }
 

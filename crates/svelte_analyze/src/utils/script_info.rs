@@ -158,7 +158,7 @@ pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     None
 }
 
-pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+pub fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
             STATE_RUNE_NAME => Some(RuneKind::State),

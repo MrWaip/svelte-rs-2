@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::ReferenceSemantics;
+use svelte_analyze::{AttributeSemantics, HtmlBindKind};
 use svelte_ast::BindDirective;
 use svelte_ast_builder::Arg;
 
@@ -14,19 +14,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         tag_name: &str,
     ) -> Result<Option<BindPlacement<'a>>> {
-        let bind_attr = svelte_ast::Attribute::BindDirective(bind.clone());
-        let root_ref_sem = self.ctx.directive_root_reference_semantics(&bind_attr);
-        let is_rune = matches!(
-            root_ref_sem,
-            ReferenceSemantics::SignalWrite { .. }
-                | ReferenceSemantics::SignalUpdate { .. }
-                | ReferenceSemantics::SignalRead { .. }
-        );
-        let store_symbol = match root_ref_sem {
-            ReferenceSemantics::StoreRead { symbol }
-            | ReferenceSemantics::StoreWrite { symbol }
-            | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
-            _ => None,
+        let (is_rune, store_base) = match self.ctx.query.analysis.attributes.get(bind.id) {
+            AttributeSemantics::ElementBind(b) => match &b.kind {
+                HtmlBindKind::Rune => (true, None),
+                HtmlBindKind::StoreSubscribed { base_symbol } => (false, Some(*base_symbol)),
+                HtmlBindKind::Plain | HtmlBindKind::BindableProp => (false, None),
+            },
+            _ => (false, None),
         };
         let var_name = if bind.shorthand {
             bind.name.clone()
@@ -71,10 +65,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        let (setter, getter) = if let Some(sym) = store_symbol {
-            let dollar_name = self.ctx.symbol_name(sym);
-            let base_name = self.ctx.b.alloc_str(&dollar_name[1..]);
-            let dollar_alloc = self.ctx.b.alloc_str(dollar_name);
+        let (setter, getter) = if let Some(sym) = store_base {
+            let base_name_owned = self.ctx.symbol_name(sym).to_string();
+            let dollar_name_owned = format!("${base_name_owned}");
+            let base_name = self.ctx.b.alloc_str(&base_name_owned);
+            let dollar_alloc = self.ctx.b.alloc_str(&dollar_name_owned);
             let setter_body = self.ctx.b.call_expr(
                 "$.store_set",
                 [Arg::Ident(base_name), Arg::Ident("$$value")],

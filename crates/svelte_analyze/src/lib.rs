@@ -1,7 +1,22 @@
+pub mod attribute_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
+pub mod expression_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
+
+pub use attribute_semantics::{
+    AttributeSemantics, AttributeSemanticsStore, BoundaryPropEmit, BoundaryPropSemantics,
+    ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
+    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
+    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, HandlerEmit, HtmlBindKind, WindowBindSemantics,
+};
+pub use expression_semantics::{
+    ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
+    Memoization,
+};
 
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
@@ -21,20 +36,21 @@ pub use block_semantics::{
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
-    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics, ClassDirectiveInfo,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
+    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
-    ContextualReadSemantics, CssAnalysis, DebugTagData, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, DirectiveModifierFlags,
+    ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
-    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, ExprDeps,
-    ExprRole, ExprSite, ExpressionInfo, ExpressionKind, FragmentFacts, FragmentFactsEntry,
+    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier,
+    FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
-    PickledAwaitOffsets, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
+    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
     PropLoweringMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis, ScriptRuneCalls,
+    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
     SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
     StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
@@ -42,7 +58,7 @@ pub use types::data::{
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
-pub use utils::script_info::BINDABLE_RUNE_NAME;
+pub use utils::script_info::{BINDABLE_RUNE_NAME, detect_rune_from_call};
 
 bitflags::bitflags! {
 
@@ -149,9 +165,37 @@ pub fn analyze_with_options<'a>(
     for &key in passes::POST_TEMPLATE_ANALYSIS_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
+
+    let expressions_v2 = expression_semantics::build(
+        component,
+        &parsed,
+        data.scoping.semantics(),
+        &data.reactivity,
+        &data.scoping,
+        data.script.has_class_state_fields,
+        data.blocker_data(),
+        component.node_count(),
+    );
+    if !data.output.needs_context && expressions_v2.is_context_required() {
+        data.output.needs_context = true;
+    }
+    data.expressions_v2 = expressions_v2;
+
+    data.attributes = attribute_semantics::build(
+        component,
+        &parsed,
+        data.scoping.semantics(),
+        &data.reactivity,
+        data.blocker_data(),
+        &data.output.ignore_data,
+        options.dev,
+        component.node_count(),
+    );
+
     for &key in passes::TEMPLATE_EXECUTION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
+
     for &key in passes::VALIDATION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
@@ -214,7 +258,6 @@ pub fn analyze_module<'a>(
                     accessors: false,
                 },
             );
-            passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
         }
         Err(errs) => diags.extend(errs),
     }

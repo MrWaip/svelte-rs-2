@@ -67,18 +67,7 @@ fn aggregate_store_needs_context(data: &mut AnalysisData) {
     if data.output.needs_context {
         return;
     }
-
-    let has_deep = data
-        .expressions
-        .values()
-        .any(|i| i.has_store_member_mutation())
-        || data
-            .attr_expressions
-            .values()
-            .any(|i| i.has_store_member_mutation())
-        || data.script.has_store_member_mutations;
-
-    if has_deep {
+    if data.script.has_store_member_mutations {
         data.output.needs_context = true;
     }
 }

@@ -1,14 +1,11 @@
 use super::*;
 use crate::types::script::PropsDeclaration;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
-use svelte_component_semantics::SymbolFlags;
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
-    pub instance_node_id_offset: u32,
-    pub module_node_id_offset: u32,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
     pub runes_mode: svelte_ast::RunesMode,
@@ -20,9 +17,7 @@ pub struct ScriptAnalysis {
     pub dev: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
     pub proxy_state_inits: ProxyStateInits,
-    pub pickled_await_offsets: PickledAwaitOffsets,
     pub blocker_data: BlockerData,
-    pub script_rune_calls: ScriptRuneCalls,
 }
 
 impl ScriptAnalysis {
@@ -31,8 +26,6 @@ impl ScriptAnalysis {
             info: None,
             props_id: None,
             exports: Vec::new(),
-            instance_node_id_offset: 0,
-            module_node_id_offset: 0,
             has_class_state_fields: false,
             has_store_member_mutations: false,
             runes_mode: svelte_ast::RunesMode::Runes,
@@ -44,9 +37,7 @@ impl ScriptAnalysis {
             dev: false,
             ce_config: None,
             proxy_state_inits: ProxyStateInits::new(),
-            pickled_await_offsets: PickledAwaitOffsets::new(),
             blocker_data: BlockerData::default(),
-            script_rune_calls: ScriptRuneCalls::new(),
         }
     }
 
@@ -70,9 +61,6 @@ impl ScriptAnalysis {
 pub struct ElementAnalysis {
     pub(crate) facts: ElementFacts,
     pub flags: ElementFlags,
-    pub directive_modifiers: DirectiveModifierFlags,
-    pub(crate) html_tag_in_svg: NodeBitSet,
-    pub(crate) html_tag_in_mathml: NodeBitSet,
 }
 
 impl ElementAnalysis {
@@ -80,9 +68,6 @@ impl ElementAnalysis {
         Self {
             facts: ElementFacts::new(node_count),
             flags: ElementFlags::new(node_count),
-            directive_modifiers: DirectiveModifierFlags::new(node_count),
-            html_tag_in_svg: NodeBitSet::new(node_count),
-            html_tag_in_mathml: NodeBitSet::new(node_count),
         }
     }
 }
@@ -93,7 +78,6 @@ pub struct TemplateAnalysis {
     pub rich_content_facts: RichContentFacts,
     pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
-    pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
@@ -110,7 +94,6 @@ impl TemplateAnalysis {
             rich_content_facts: RichContentFacts::new(),
             fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
-            debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
@@ -180,8 +163,9 @@ impl OutputPlanData {
 }
 
 pub struct AnalysisData<'a> {
-    pub expressions: NodeTable<ExpressionInfo>,
-    pub attr_expressions: NodeTable<ExpressionInfo>,
+    pub expressions_v2: crate::expression_semantics::ExpressionSemanticsStore,
+    pub attributes: crate::attribute_semantics::AttributeSemanticsStore,
+    pub pickled_awaits: PickledAwaits,
     pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
@@ -196,8 +180,9 @@ pub struct AnalysisData<'a> {
 impl<'a> AnalysisData<'a> {
     pub(crate) fn new_empty(node_count: u32) -> Self {
         Self {
-            expressions: NodeTable::new(node_count),
-            attr_expressions: NodeTable::new(node_count),
+            expressions_v2: crate::expression_semantics::ExpressionSemanticsStore::new(node_count),
+            attributes: crate::attribute_semantics::AttributeSemanticsStore::new(node_count),
+            pickled_awaits: PickledAwaits::new(),
             scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),
@@ -215,20 +200,8 @@ impl<'a> AnalysisData<'a> {
     pub(crate) fn record_element_facts(&mut self, id: NodeId, entry: ElementFactsEntry) {
         self.elements.facts.record_entry(id, entry);
     }
-    pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
-        self.elements.html_tag_in_svg.contains(&id)
-    }
-    pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
-        self.elements.html_tag_in_mathml.contains(&id)
-    }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
-    }
-    pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
-        &self.script.script_rune_calls
-    }
-    pub fn is_pickled_await(&self, offset: u32) -> bool {
-        self.script.pickled_await_offsets.contains_offset(offset)
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.dynamism.is_dynamic_node(id)
@@ -244,21 +217,14 @@ impl<'a> AnalysisData<'a> {
     pub fn component_name(&self) -> &str {
         &self.output.component_name
     }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.expressions.get(id)
-    }
-    pub fn expr_role(&self, id: NodeId) -> Option<ExprRole> {
-        self.expressions
-            .get(id)
-            .and_then(|info| info.expr_role())
-            .or_else(|| {
-                self.attr_expressions
-                    .get(id)
-                    .and_then(|info| info.expr_role())
-            })
+    pub fn expression_data(&self, id: NodeId) -> Option<&crate::expression_semantics::ExpressionData> {
+        match self.expressions_v2.get(id) {
+            crate::expression_semantics::ExpressionSemantics::Expression(d) => Some(d),
+            crate::expression_semantics::ExpressionSemantics::NonSpecial => None,
+        }
     }
     pub fn expr_is_async(&self, id: NodeId) -> bool {
-        self.expr_role(id) == Some(ExprRole::Async)
+        self.expression_data(id).is_some_and(|d| d.has_await())
     }
     pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
         self.scoping.binding_origin_key(sym)
@@ -486,9 +452,6 @@ impl<'a> AnalysisData<'a> {
     pub fn is_custom_element(&self, id: NodeId) -> bool {
         self.elements.facts.is_custom_element(id)
     }
-    pub fn event_modifiers(&self, id: NodeId) -> EventModifier {
-        self.elements.directive_modifiers.get(id)
-    }
     pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
         self.template.template_topology.parent(id)
     }
@@ -580,28 +543,6 @@ impl<'a> AnalysisData<'a> {
                 if matches!(sem.item, crate::block_semantics::EachItemKind::Pattern(_)),
         )
     }
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.template.bind_semantics.bind_this_each_context(id)
-    }
-    pub fn bind_target_semantics(&self, id: NodeId) -> Option<&BindTargetSemantics> {
-        self.template.bind_semantics.bind_target_semantics(id)
-    }
-
-    pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
-        let Some(info) = self.attr_expressions.get(id) else {
-            return SmallVec::new();
-        };
-        let ref_symbols = info.ref_symbols();
-        self.ancestors(id)
-            .filter(|parent| parent.kind == ParentKind::EachBlock)
-            .filter_map(|parent| {
-                ref_symbols
-                    .iter()
-                    .any(|&sym| self.reactivity.contextual_owner(sym) == Some(parent.id))
-                    .then_some(parent.id)
-            })
-            .collect()
-    }
     pub fn css_hash(&self) -> &str {
         &self.output.css.hash
     }
@@ -610,9 +551,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn inject_styles(&self) -> bool {
         self.output.css.inject_styles
-    }
-    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
-        self.attr_expressions.get(id)
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template.template_semantics.node_ref_symbols(id)
@@ -625,107 +563,37 @@ impl<'a> AnalysisData<'a> {
             .copied()
     }
     pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
-        self.attr_expressions
-            .get(id)
-            .and_then(|info| {
-                info.is_identifier()
-                    .then(|| info.ref_symbols().first().copied())
-            })
-            .flatten()
-            .or_else(|| self.shorthand_symbol(id))
-    }
-    pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(attr_id).is_some_and(|info| {
-            info.ref_symbols()
-                .first()
-                .copied()
-                .or_else(|| {
-                    info.identifier_name().and_then(|name| {
-                        self.scoping
-                            .find_binding(self.scoping.root_scope_id(), name)
-                    })
-                })
-                .is_some_and(|sym| self.scoping.is_import(sym))
-        })
-    }
-    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(attr_id).is_some_and(|info| {
-            info.ref_symbols()
-                .first()
-                .copied()
-                .or_else(|| {
-                    info.identifier_name().and_then(|name| {
-                        self.scoping
-                            .find_binding(self.scoping.root_scope_id(), name)
-                    })
-                })
-                .is_some_and(|sym| {
-                    self.scoping
-                        .symbol_flags(sym)
-                        .contains(SymbolFlags::Function)
-                })
-        })
-    }
-    pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
-        match site {
-            ExprSite::Node(id) => {
-                let info = self.expressions.get(id)?;
-                let blockers = self.collect_blockers(info.ref_symbols());
-                Some(ExprDeps {
-                    info,
-                    blockers,
-                    needs_memo: info.needs_memoized_value()
-                        && (info.has_await() || !info.ref_symbols().is_empty()),
-                })
-            }
-            ExprSite::Attr(id) => {
-                let info = self.attr_expressions.get(id)?;
-                let blockers = self.collect_blockers(info.ref_symbols());
-                Some(ExprDeps {
-                    info,
-                    blockers,
-                    needs_memo: self.dynamism.is_dynamic_attr(id) && info.needs_memoized_value(),
-                })
-            }
-        }
+        self.shorthand_symbol(id)
     }
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(attr_id).is_some_and(|e| {
-            e.has_call() || (!e.is_simple_shape() && self.dynamism.is_dynamic_attr(attr_id))
-        })
+        use crate::attribute_semantics::data::{
+            AttributeSemantics, ComponentPropMemo, ComponentPropSemantics,
+        };
+        matches!(
+            self.attributes.get(attr_id),
+            AttributeSemantics::ComponentProp(
+                ComponentPropSemantics::Expression(s),
+            ) if matches!(s.memo, ComponentPropMemo::Getter | ComponentPropMemo::Derived),
+        )
     }
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.needs_memo)
+        self.expression_data(id).is_some_and(|d| {
+            !matches!(d.memoization, crate::expression_semantics::Memoization::None)
+        })
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
-        self.expr_deps(ExprSite::Node(id))
-            .is_some_and(|deps| deps.has_blockers())
+        self.expression_data(id)
+            .is_some_and(|d| !d.blockers.is_empty())
     }
     pub fn expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
-        self.expr_deps(ExprSite::Node(id))
-            .map(|deps| deps.blockers)
+        self.expression_data(id)
+            .map(|d| d.blockers.clone())
             .unwrap_or_default()
     }
     pub fn attr_expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
-        self.expr_deps(ExprSite::Attr(id))
-            .map(|deps| deps.blockers)
+        self.expression_data(id)
+            .map(|d| d.blockers.clone())
             .unwrap_or_default()
-    }
-    fn collect_blockers(&self, ref_symbols: &[SymbolId]) -> SmallVec<[u32; 2]> {
-        let mut result = SmallVec::new();
-        if !self.script.blocker_data.has_async {
-            return result;
-        }
-        for sym in ref_symbols {
-            if let Some(&idx) = self.script.blocker_data.symbol_blockers.get(sym)
-                && !result.contains(&idx)
-            {
-                result.push(idx);
-            }
-        }
-        result.sort_unstable();
-        result
     }
     pub fn known_value(&self, name: &str) -> Option<&str> {
         let root = self.scoping.root_scope_id();
@@ -833,8 +701,7 @@ impl<'a> AnalysisData<'a> {
         false
     }
     fn node_expr_references_syms(&self, id: NodeId, syms: &FxHashSet<SymbolId>) -> bool {
-        self.expressions
-            .get(id)
-            .is_some_and(|info| info.ref_symbols().iter().any(|s| syms.contains(s)))
+        self.expression_data(id)
+            .is_some_and(|d| d.references.iter().any(|s| syms.contains(s)))
     }
 }

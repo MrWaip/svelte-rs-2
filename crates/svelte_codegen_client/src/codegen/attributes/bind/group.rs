@@ -15,7 +15,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<Statement<'a>> {
         self.ctx.state.needs_binding_group = true;
 
-        let parent_eaches = self.ctx.parent_each_blocks(bind.id);
+        let parent_eaches: smallvec::SmallVec<[svelte_ast::NodeId; 4]> =
+            match self.ctx.query.analysis.attributes.get(bind.id) {
+                svelte_analyze::AttributeSemantics::ElementBind(b) => b.parent_each_blocks.clone(),
+                _ => smallvec::SmallVec::new(),
+            };
         let index_array = if parent_eaches.is_empty() {
             self.ctx.b.empty_array_expr()
         } else {
@@ -36,7 +40,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.array_expr(indexes)
         };
 
-        let getter = if let Some(val_attr_id) = self.ctx.bind_group_value_attr(bind.id) {
+        let group_value_attr = match self.ctx.query.analysis.attributes.get(bind.id) {
+            svelte_analyze::AttributeSemantics::ElementBind(b) => b.group_value_attr,
+            _ => None,
+        };
+        let getter = if let Some(val_attr_id) = group_value_attr {
             let val_expr = {
                 let store = &self.ctx.query.component.store;
                 let mut found_id: Option<oxc_syntax::node::NodeId> = None;

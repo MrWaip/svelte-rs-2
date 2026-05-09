@@ -41,18 +41,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .to_string()
         };
 
-        let bind_attr = Attribute::BindDirective(bind.clone());
-        let is_rune = matches!(
-            self.ctx.directive_root_reference_semantics(&bind_attr),
-            svelte_analyze::ReferenceSemantics::SignalWrite { .. }
-                | svelte_analyze::ReferenceSemantics::SignalUpdate { .. }
-                | svelte_analyze::ReferenceSemantics::SignalRead { .. }
-        );
+        let is_rune = match self.ctx.query.analysis.attributes.get(bind_id) {
+            svelte_analyze::AttributeSemantics::ComponentBind(b) => match &b.kind {
+                svelte_analyze::ComponentBindKind::This { target, .. } => {
+                    matches!(target, svelte_analyze::ComponentBindTarget::Rune)
+                }
+                _ => false,
+            },
+            _ => false,
+        };
 
         let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
 
         if !svelte_analyze::is_simple_identifier(&var_name) {
-            let each_context_syms = self.ctx.bind_each_context(bind_id).unwrap_or(&[]).to_vec();
+            let each_context_syms: Vec<oxc_semantic::SymbolId> = match self
+                .ctx
+                .query
+                .analysis
+                .attributes
+                .get(bind_id)
+            {
+                svelte_analyze::AttributeSemantics::ComponentBind(b) => {
+                    b.each_context_vars.iter().copied().collect()
+                }
+                _ => Vec::new(),
+            };
             let each_context: Vec<String> = each_context_syms
                 .iter()
                 .map(|&sym| self.ctx.symbol_name(sym).to_string())

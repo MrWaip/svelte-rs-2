@@ -13,19 +13,19 @@ use util::{
 };
 
 use super::data::{
-    BindingFacts, DeclaratorSemantics, DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
-    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
-    PropLoweringMode, ReferenceFacts, RuntimeRuneKind, StateBindingSemantics,
-    StateDeclarationSemantics, StateKind,
+    BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedKind, DerivedLowering, OptimizedRuneSemantics,
+    PropBindingKind, PropBindingSemantics, PropDefaultLowering, PropLoweringMode, ReferenceFacts,
+    RuntimeRuneKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
-    AssignmentExpression, BindingPattern, CallExpression, Expression, Statement,
-    StaticMemberExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
-    VariableDeclarator,
+    AssignmentExpression, BindingPattern, CallExpression, Class, ClassElement, Expression,
+    PropertyKey, Statement, StaticMemberExpression, UpdateExpression, VariableDeclaration,
+    VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -950,6 +950,126 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     fn visit_static_member_expression(&mut self, member: &StaticMemberExpression<'a>) {
         self.classify_rest_prop_member_rewrite(member);
         walk_static_member_expression(self, member);
+    }
+
+    fn visit_class(&mut self, class: &Class<'a>) {
+        self.classify_class_fields(class);
+        oxc_ast_visit::walk::walk_class(self, class);
+    }
+}
+
+impl<'a> ScriptSemanticCollector<'_, 'a> {
+    fn classify_class_fields(&mut self, class: &Class<'a>) {
+        let mut prop_record_by_name: FxHashMap<&'a str, OxcNodeId> = FxHashMap::default();
+
+        for element in &class.body.body {
+            let ClassElement::PropertyDefinition(prop) = element else {
+                continue;
+            };
+            if prop.r#static || prop.computed {
+                continue;
+            }
+            let name = match &prop.key {
+                PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+                PropertyKey::PrivateIdentifier(id) => id.name.as_str(),
+                _ => continue,
+            };
+            let Some(value) = prop.value.as_ref() else {
+                continue;
+            };
+            let Expression::CallExpression(call) = value else {
+                continue;
+            };
+            let Some(rune_kind) = detect_rune_from_call(call) else {
+                continue;
+            };
+            if let Some(semantics) = class_field_rune_semantics(rune_kind, call) {
+                prop_record_by_name.insert(name, prop.node_id());
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(prop.node_id(), semantics);
+            }
+        }
+
+        let Some(constructor) = class.body.body.iter().find_map(|el| match el {
+            ClassElement::MethodDefinition(m)
+                if m.kind == oxc_ast::ast::MethodDefinitionKind::Constructor =>
+            {
+                Some(m)
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        let Some(body) = &constructor.value.body else {
+            return;
+        };
+        for stmt in &body.statements {
+            let Statement::ExpressionStatement(es) = stmt else {
+                continue;
+            };
+            let Expression::AssignmentExpression(assign) = &es.expression else {
+                continue;
+            };
+            let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) = &assign.left
+            else {
+                continue;
+            };
+            if !matches!(&member.object, Expression::ThisExpression(_)) {
+                continue;
+            }
+            let name = member.property.name.as_str();
+            let Expression::CallExpression(call) = &assign.right else {
+                continue;
+            };
+            let Some(rune_kind) = detect_rune_from_call(call) else {
+                continue;
+            };
+            let Some(semantics) = class_field_rune_semantics(rune_kind, call) else {
+                continue;
+            };
+            if let Some(prior_prop_node) = prop_record_by_name.remove(name) {
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(prior_prop_node, DeclaratorSemantics::None);
+            }
+            self.data
+                .reactivity
+                .record_declarator_semantics(assign.node_id(), semantics);
+        }
+    }
+}
+
+fn class_field_rune_semantics(
+    rune_kind: RuneKind,
+    call: &CallExpression<'_>,
+) -> Option<DeclaratorSemantics> {
+    match rune_kind {
+        RuneKind::State => Some(DeclaratorSemantics::ClassFieldState(
+            ClassFieldStateSemantics {
+                kind: StateKind::State,
+                proxied: state_initializer_is_proxyable(call),
+            },
+        )),
+        RuneKind::StateRaw => Some(DeclaratorSemantics::ClassFieldState(
+            ClassFieldStateSemantics {
+                kind: StateKind::StateRaw,
+                proxied: false,
+            },
+        )),
+        RuneKind::Derived => Some(DeclaratorSemantics::ClassFieldDerived(
+            ClassFieldDerivedSemantics {
+                kind: DerivedKind::Derived,
+                lowering: derived_lowering(call, RuneKind::Derived),
+            },
+        )),
+        RuneKind::DerivedBy => Some(DeclaratorSemantics::ClassFieldDerived(
+            ClassFieldDerivedSemantics {
+                kind: DerivedKind::DerivedBy,
+                lowering: derived_lowering(call, RuneKind::DerivedBy),
+            },
+        )),
+        _ => None,
     }
 }
 

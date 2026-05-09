@@ -22,6 +22,21 @@ pub enum BlockSemantics {
     If(IfBlockSemantics),
 
     Key(KeyBlockSemantics),
+
+    HtmlTag(HtmlTagSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HtmlTagSemantics {
+    pub parent_strategy: HtmlTagNamespace,
+    pub hydration_html_changed_ignored: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HtmlTagNamespace {
+    Html,
+    Svg,
+    MathMl,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

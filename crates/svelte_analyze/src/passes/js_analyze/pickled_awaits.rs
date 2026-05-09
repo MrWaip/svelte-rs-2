@@ -7,6 +7,7 @@ use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_expression, walk_function};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
+use svelte_component_semantics::OxcNodeId;
 
 use crate::types::data::{AnalysisData, JsAst};
 
@@ -14,14 +15,12 @@ pub(crate) fn classify_pickled_awaits(parsed: &JsAst<'_>, data: &mut AnalysisDat
     for expr in parsed.iter_exprs() {
         let mut collector = PickledAwaitCollector::new();
         collector.visit_expression(expr);
-        data.script
-            .pickled_await_offsets
-            .extend_offsets(collector.offsets);
+        data.pickled_awaits.extend_node_ids(collector.node_ids);
     }
 }
 
 struct PickledAwaitCollector {
-    offsets: SmallVec<[u32; 4]>,
+    node_ids: SmallVec<[OxcNodeId; 4]>,
     last_stack: Vec<bool>,
     fn_depth: u32,
 }
@@ -29,7 +28,7 @@ struct PickledAwaitCollector {
 impl PickledAwaitCollector {
     fn new() -> Self {
         Self {
-            offsets: SmallVec::new(),
+            node_ids: SmallVec::new(),
             last_stack: vec![true],
             fn_depth: 0,
         }
@@ -58,7 +57,7 @@ impl<'a> Visit<'a> for PickledAwaitCollector {
             && self.fn_depth == 0
             && !self.current_is_last()
         {
-            self.offsets.push(await_expr.span.start);
+            self.node_ids.push(await_expr.node_id());
         }
         walk_expression(self, expr);
     }

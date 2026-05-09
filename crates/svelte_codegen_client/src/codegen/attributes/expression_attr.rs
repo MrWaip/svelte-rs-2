@@ -1,4 +1,6 @@
-use svelte_analyze::{EventHandlerMode, ExprSite, normalize_regular_attribute_name};
+use svelte_analyze::{
+    AttributeSemantics, EventEmit, EventSemantics, Memoization, normalize_regular_attribute_name,
+};
 use svelte_ast::{ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -18,8 +20,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        if let Some(raw_event_name) = attr.event_name.as_deref() {
-            return self.emit_event_attribute(state, owner_var, attr, raw_event_name);
+        if let AttributeSemantics::Event(EventSemantics { emit, .. }) =
+            self.ctx.query.analysis.attributes.get(attr.id)
+        {
+            let raw_event_name = attr
+                .event_name
+                .as_deref()
+                .expect("Event semantics requires event_name on AST node");
+            return self.emit_event_attribute(state, owner_var, attr, raw_event_name, emit);
         }
 
         if attr.name == "autofocus" {
@@ -49,9 +57,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_memo = is_dyn
             && self
                 .ctx
-                .expr_deps(ExprSite::Attr(attr_id))
-                .map(|deps| deps.needs_memo)
-                .unwrap_or(false);
+                .expression_data(attr_id)
+                .is_some_and(|d| !matches!(d.memoization, Memoization::None));
 
         let expr = self.take_attr_expr(attr_id, &attr.expression)?;
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
@@ -84,29 +91,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_var: &str,
         attr: &ExpressionAttribute,
         raw_event_name: &str,
+        emit: &EventEmit,
     ) -> Result<()> {
         let attr_id = attr.id;
-        let Some(mode) = self.ctx.event_handler_mode(attr_id) else {
-            return Ok(());
-        };
-
         let event_name = svelte_analyze::strip_capture_event(raw_event_name)
             .unwrap_or(raw_event_name)
             .to_string();
 
-        let has_call = self
-            .ctx
-            .attr_expression(attr_id)
-            .is_some_and(|info| info.has_call());
+        let handler_emit = match emit {
+            EventEmit::HtmlDelegated { handler } | EventEmit::HtmlDirect { handler, .. } => {
+                *handler
+            }
+            EventEmit::HtmlBubble | EventEmit::Component { .. } => return Ok(()),
+        };
+
         let expr_offset = attr.expression.span.start;
         let expr = self.take_attr_expr(attr_id, &attr.expression)?;
 
         let handler =
-            self.build_event_handler_s5(attr_id, expr, has_call, &mut state.init, expr_offset);
+            self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
-        match mode {
-            EventHandlerMode::Delegated { passive } => {
+        match emit {
+            EventEmit::HtmlDelegated { .. } => {
+                let passive = matches!(emit, EventEmit::HtmlDelegated { .. })
+                    && svelte_analyze::is_passive_event(&event_name);
                 let mut args: Vec<Arg<'a, '_>> = vec![
                     Arg::StrRef(&event_name),
                     Arg::Ident(owner_var),
@@ -121,7 +130,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(self.ctx.b.call_stmt("$.delegated", args));
                 self.ctx.add_delegated_event(event_name);
             }
-            EventHandlerMode::Direct { capture, passive } => {
+            EventEmit::HtmlDirect { capture, passive, .. } => {
+                let capture = *capture;
+                let passive = passive.unwrap_or(false);
                 let mut args: Vec<Arg<'a, '_>> = vec![
                     Arg::Str(event_name),
                     Arg::Ident(owner_var),
@@ -141,6 +152,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .after_update
                     .push(self.ctx.b.call_stmt("$.event", args));
             }
+            EventEmit::HtmlBubble | EventEmit::Component { .. } => {}
         }
         Ok(())
     }

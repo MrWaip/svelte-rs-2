@@ -102,6 +102,30 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if el.name == "selectedcontent" {
             ctx.data.elements.flags.is_selectedcontent.insert(el.id);
         }
+
+        let has_group = el.attributes.iter().any(|attr| {
+            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
+        });
+        if has_group {
+            ctx.data
+                .template
+                .bind_semantics
+                .has_bind_group
+                .insert(el.id);
+        }
+
+        let has_contenteditable =
+            ctx.data
+                .has_true_boolean_attribute(el.id, &el.attributes, "contenteditable", self.source);
+        let has_content_bind = el.attributes.iter().any(|attr| {
+            matches!(attr, Attribute::BindDirective(d) if matches!(
+                d.name.as_str(),
+                "innerHTML" | "innerText" | "textContent",
+            ))
+        });
+        if has_contenteditable && has_content_bind {
+            ctx.data.elements.flags.bound_contenteditable.insert(el.id);
+        }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
@@ -181,25 +205,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::BindDirective(bd) => {
                 if ctx.element_name() == Some("input")
-                    && ctx
-                        .data
-                        .bind_target_semantics(bd.id)
-                        .is_some_and(|semantics| semantics.property().marks_input_defaults())
+                    && matches!(bd.name.as_str(), "value" | "checked" | "group")
                 {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
-            }
-            Attribute::OnDirectiveLegacy(dir) => {
-                ctx.data
-                    .elements
-                    .directive_modifiers
-                    .record(dir.id, Self::modifier_flags(&dir.modifiers));
-            }
-            Attribute::TransitionDirective(dir) => {
-                ctx.data
-                    .elements
-                    .directive_modifiers
-                    .record(dir.id, Self::modifier_flags(&dir.modifiers));
             }
             Attribute::UseDirective(_) => {
                 ctx.data.elements.flags.has_use_directive.insert(el_id);
@@ -403,7 +412,6 @@ impl<'src> ElementFlagsVisitor<'src> {
                 },
                 Attribute::OnDirectiveLegacy(a) => {
                     let flags = Self::modifier_flags(&a.modifiers);
-                    data.elements.directive_modifiers.record(a.id, flags);
                     ComponentPropKind::Event {
                         name: a.name.clone(),
                         attr_id: a.id,

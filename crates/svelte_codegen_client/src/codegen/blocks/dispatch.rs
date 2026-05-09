@@ -96,7 +96,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 self.emit_snippet_block(state, ctx, id, sem)
             }
-            Node::HtmlTag(_) => self.emit_html_tag(state, ctx, id),
+            Node::HtmlTag(_) => {
+                let sem = match self.ctx.query.analysis.block_semantics(id) {
+                    svelte_analyze::BlockSemantics::HtmlTag(s) => s.clone(),
+                    _ => {
+                        return CodegenError::unexpected_block_semantics(
+                            id,
+                            "HtmlTag expected HtmlTag",
+                        );
+                    }
+                };
+                self.emit_html_tag(state, ctx, id, sem)
+            }
             Node::ConstTag(_) => CodegenError::unexpected_block_semantics(
                 id,
                 "ConstTag must be hoisted via prepare::HoistedBucket, not dispatched through emit_fragment_child",

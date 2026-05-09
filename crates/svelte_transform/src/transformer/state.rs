@@ -82,20 +82,30 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         declarator: &oxc_ast::ast::VariableDeclarator<'a>,
     ) -> Option<RuneKind> {
-        Self::first_binding_symbol(&declarator.id)
-            .and_then(|sym| self.rune_for_symbol(sym))
-            .or_else(|| {
-                declarator
-                    .init
-                    .as_ref()
-                    .and_then(|init| self.rune_kind_from_expr(init))
-            })
+        Self::first_binding_symbol(&declarator.id).and_then(|sym| self.rune_for_symbol(sym))
     }
 
-    pub(crate) fn rune_kind_from_expr(&self, expr: &Expression<'_>) -> Option<RuneKind> {
-        let index = self.script_rune_calls?;
-        let node = script_rune_call_node_id(expr, self.script_node_id_offset)?;
-        index.kind(node)
+    pub(crate) fn class_field_rune_kind(&self, node: OxcNodeId) -> Option<RuneKind> {
+        use svelte_analyze::{
+            ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
+        };
+        let analysis = self.analysis.as_ref()?;
+        match analysis.declarator_semantics(node) {
+            DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics { kind, .. }) => {
+                Some(match kind {
+                    svelte_analyze::StateKind::State => RuneKind::State,
+                    svelte_analyze::StateKind::StateRaw => RuneKind::StateRaw,
+                    svelte_analyze::StateKind::StateEager => RuneKind::StateEager,
+                })
+            }
+            DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, .. }) => {
+                Some(match kind {
+                    svelte_analyze::DerivedKind::Derived => RuneKind::Derived,
+                    svelte_analyze::DerivedKind::DerivedBy => RuneKind::DerivedBy,
+                })
+            }
+            _ => None,
+        }
     }
 
     fn first_binding_symbol(
@@ -812,8 +822,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 {
                     placeholder_public_names.insert(id.name.to_string());
                 }
-                let Some(value) = &prop.value else { continue };
-                let Some(rune_kind) = self.rune_kind_from_expr(value) else {
+                if prop.value.is_none() {
+                    continue;
+                }
+                let Some(rune_kind) = self.class_field_rune_kind(prop.node_id()) else {
                     continue;
                 };
 
@@ -858,7 +870,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         && let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) =
                             &assign.left
                         && let Expression::ThisExpression(_) = &member.object
-                        && let Some(rune_kind) = self.rune_kind_from_expr(&assign.right)
+                        && let Some(rune_kind) = self.class_field_rune_kind(assign.node_id())
                     {
                         let name = member.property.name.to_string();
                         if body_public_names.contains(&name)
@@ -934,10 +946,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         for element in old_elements {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
-                    let is_rune_prop = prop
-                        .value
-                        .as_ref()
-                        .is_some_and(|v| self.rune_kind_from_expr(v).is_some());
+                    let is_rune_prop = prop.value.is_some()
+                        && self.class_field_rune_kind(prop.node_id()).is_some();
                     if !is_rune_prop {
                         let is_ctor_placeholder = prop.value.is_none()
                             && match &prop.key {
@@ -996,10 +1006,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     fn rewrite_private_field_callee(&self, prop: &mut oxc_ast::ast::PropertyDefinition<'a>) {
-        let rune_kind = prop
-            .value
-            .as_ref()
-            .and_then(|v| self.rune_kind_from_expr(v));
+        let rune_kind = self.class_field_rune_kind(prop.node_id());
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
             match rune_kind {
                 Some(RuneKind::State | RuneKind::StateRaw) => {
@@ -1231,29 +1238,5 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             .and_then(|n| n.as_deref())
             .unwrap_or("[class]");
         format!("{}.{}", class_name, field_name)
-    }
-}
-
-fn script_rune_call_node_id(expr: &Expression<'_>, node_id_offset: u32) -> Option<OxcNodeId> {
-    match expr {
-        Expression::CallExpression(call) => Some(OxcNodeId::from_usize(
-            call.node_id().index() + node_id_offset as usize,
-        )),
-        Expression::TSAsExpression(expr) => {
-            script_rune_call_node_id(&expr.expression, node_id_offset)
-        }
-        Expression::TSSatisfiesExpression(expr) => {
-            script_rune_call_node_id(&expr.expression, node_id_offset)
-        }
-        Expression::TSNonNullExpression(expr) => {
-            script_rune_call_node_id(&expr.expression, node_id_offset)
-        }
-        Expression::TSTypeAssertion(expr) => {
-            script_rune_call_node_id(&expr.expression, node_id_offset)
-        }
-        Expression::TSInstantiationExpression(expr) => {
-            script_rune_call_node_id(&expr.expression, node_id_offset)
-        }
-        _ => None,
     }
 }

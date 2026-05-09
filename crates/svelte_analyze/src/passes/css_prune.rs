@@ -16,9 +16,10 @@ use super::css_prune_index::{
 };
 use crate::AnalysisData;
 use crate::scope::SymbolId;
+use crate::expression_semantics::ExpressionData;
 use crate::types::data::{
-    BindingSemantics, ElementFacts, ExpressionInfo, ExpressionKind, NamespaceKind, ParentKind,
-    TemplateAnalysis, TemplateElementIndex,
+    BindingSemantics, ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis,
+    TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
 
@@ -131,7 +132,7 @@ pub(crate) fn prune_and_warn(
 ) {
     let elements = &data.template.template_elements;
     let element_facts = &data.elements.facts;
-    let index = build_css_prune_index(component, data);
+    let index = build_css_prune_index(component, parsed, data);
     let template = &data.template;
     let mut used = FxHashSet::default();
     let scoped = &mut data.output.css.scoped_elements;
@@ -267,15 +268,20 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
     }
 }
 
-fn build_css_prune_index(component: &SvelteComponent, data: &AnalysisData) -> CssPruneIndex {
+fn build_css_prune_index(
+    component: &SvelteComponent,
+    parsed: &JsAst<'_>,
+    data: &AnalysisData,
+) -> CssPruneIndex {
     let mut index = CssPruneIndex::new(component.store.len());
-    collect_css_prune_edges_in_fragment(component.root, component, data, &mut index);
+    collect_css_prune_edges_in_fragment(component.root, component, parsed, data, &mut index);
     index
 }
 
 fn collect_css_prune_edges_in_fragment(
     fragment_id: svelte_ast::FragmentId,
     component: &SvelteComponent,
+    parsed: &JsAst<'_>,
     data: &AnalysisData,
     edges: &mut CssPruneIndex,
 ) {
@@ -283,59 +289,60 @@ fn collect_css_prune_edges_in_fragment(
     for id in nodes {
         match component.store.get(id) {
             Node::Element(el) => {
-                collect_css_prune_edges_in_fragment(el.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(el.fragment, component, parsed, data, edges);
             }
             Node::SlotElementLegacy(el) => {
-                collect_css_prune_edges_in_fragment(el.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(el.fragment, component, parsed, data, edges);
             }
             Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
                 if let Some(view) = component.store.get(id).as_component_like() {
-                    let snippets = component_possible_snippets(view.id, view.attributes, data);
+                    let snippets =
+                        component_possible_snippets(view.id, view.attributes, parsed, data);
                     let cn_id = view.id;
                     let f = view.fragment;
                     record_possible_snippets(cn_id, &snippets, edges, true);
-                    collect_css_prune_edges_in_fragment(f, component, data, edges);
+                    collect_css_prune_edges_in_fragment(f, component, parsed, data, edges);
                 }
             }
             Node::IfBlock(block) => {
-                collect_css_prune_edges_in_fragment(block.consequent, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.consequent, component, parsed, data, edges);
                 if let Some(alt) = block.alternate {
-                    collect_css_prune_edges_in_fragment(alt, component, data, edges);
+                    collect_css_prune_edges_in_fragment(alt, component, parsed, data, edges);
                 }
             }
             Node::EachBlock(block) => {
-                collect_css_prune_edges_in_fragment(block.body, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.body, component, parsed, data, edges);
                 if let Some(fallback) = block.fallback {
-                    collect_css_prune_edges_in_fragment(fallback, component, data, edges);
+                    collect_css_prune_edges_in_fragment(fallback, component, parsed, data, edges);
                 }
             }
             Node::SnippetBlock(block) => {
-                collect_css_prune_edges_in_fragment(block.body, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.body, component, parsed, data, edges);
             }
             Node::KeyBlock(block) => {
-                collect_css_prune_edges_in_fragment(block.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(block.fragment, component, parsed, data, edges);
             }
             Node::SvelteHead(head) => {
-                collect_css_prune_edges_in_fragment(head.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(head.fragment, component, parsed, data, edges);
             }
             Node::SvelteFragmentLegacy(node) => {
-                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, parsed, data, edges);
             }
             Node::SvelteElement(node) => {
-                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, parsed, data, edges);
             }
             Node::SvelteBoundary(node) => {
-                collect_css_prune_edges_in_fragment(node.fragment, component, data, edges);
+                collect_css_prune_edges_in_fragment(node.fragment, component, parsed, data, edges);
             }
             Node::AwaitBlock(block) => {
                 if let Some(pending) = block.pending {
-                    collect_css_prune_edges_in_fragment(pending, component, data, edges);
+                    collect_css_prune_edges_in_fragment(pending, component, parsed, data, edges);
                 }
                 if let Some(then) = block.then {
-                    collect_css_prune_edges_in_fragment(then, component, data, edges);
+                    collect_css_prune_edges_in_fragment(then, component, parsed, data, edges);
                 }
                 if let Some(catch) = block.catch {
-                    collect_css_prune_edges_in_fragment(catch, component, data, edges);
+                    collect_css_prune_edges_in_fragment(catch, component, parsed, data, edges);
                 }
             }
             Node::RenderTag(tag) => {
@@ -397,6 +404,7 @@ fn render_tag_possible_snippets(id: NodeId, data: &AnalysisData) -> Vec<NodeId> 
 fn component_possible_snippets(
     node_id: NodeId,
     attributes: &[Attribute],
+    parsed: &JsAst<'_>,
     data: &AnalysisData,
 ) -> Vec<NodeId> {
     let mut resolved = true;
@@ -408,8 +416,11 @@ fn component_possible_snippets(
                 resolved = false;
             }
             Attribute::ExpressionAttribute(attr) => {
-                if let Some(info) = data.attr_expression(attr.id) {
-                    resolved &= collect_component_attr_snippets(data, info, &mut snippets);
+                if let Some(expr) = parsed.expr(attr.expression.id()) {
+                    let data_opt = data.expression_data(attr.id);
+                    resolved &= collect_component_attr_snippets(
+                        data, expr, data_opt, &mut snippets,
+                    );
                 } else {
                     resolved = false;
                 }
@@ -442,14 +453,18 @@ fn component_possible_snippets(
 
 fn collect_component_attr_snippets(
     data: &AnalysisData,
-    info: &ExpressionInfo,
+    expr: &oxc_ast::ast::Expression<'_>,
+    expr_data: Option<&ExpressionData>,
     snippets: &mut Vec<NodeId>,
 ) -> bool {
-    if let Some(name) = info.identifier_name() {
-        let sym_id = info.ref_symbols().first().copied().or_else(|| {
-            data.scoping
-                .find_binding(data.scoping.root_scope_id(), name)
-        });
+    if let oxc_ast::ast::Expression::Identifier(ident) = expr {
+        let name = ident.name.as_str();
+        let sym_id = expr_data
+            .and_then(|d| d.references.first().copied())
+            .or_else(|| {
+                data.scoping
+                    .find_binding(data.scoping.root_scope_id(), name)
+            });
         let Some(sym_id) = sym_id else {
             return true;
         };
@@ -462,7 +477,13 @@ fn collect_component_attr_snippets(
             is_resolved_snippet_symbol(data, sym_id)
         }
     } else {
-        matches!(info.kind(), ExpressionKind::Literal)
+        matches!(
+            expr,
+            oxc_ast::ast::Expression::StringLiteral(_)
+                | oxc_ast::ast::Expression::NumericLiteral(_)
+                | oxc_ast::ast::Expression::BooleanLiteral(_)
+                | oxc_ast::ast::Expression::NullLiteral(_),
+        )
     }
 }
 
