@@ -1,68 +1,67 @@
-use oxc_ast::ast::{ArrowFunctionExpression, Expression, Statement, VariableDeclarator};
+use oxc_allocator::Vec as OxcVec;
+use oxc_ast::ast::{
+    AccessorProperty, Argument, ArrowFunctionExpression, AssignmentTarget, BindingPattern,
+    CallExpression, CatchParameter, ChainElement, Class, ClassBody, ClassElement,
+    Expression, FormalParameter, FormalParameterRest, Function, ImportDeclarationSpecifier,
+    MethodDefinition, MethodDefinitionType, NewExpression, ObjectProperty, PropertyDefinition,
+    PropertyDefinitionType, PropertyKey, PropertyKind, SimpleAssignmentTarget, Statement,
+    TaggedTemplateExpression, VariableDeclarator, match_member_expression,
+};
 use oxc_span::GetSpan;
 
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn strip_ts_class_members(&self, node: &mut oxc_ast::ast::ClassBody<'a>) {
-        if self.is_ts {
-            node.body.retain(|member| match member {
-                oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
-                    !prop.declare
-                        && prop.r#type
-                            != oxc_ast::ast::PropertyDefinitionType::TSAbstractPropertyDefinition
-                }
-                oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                    method.r#type != oxc_ast::ast::MethodDefinitionType::TSAbstractMethodDefinition
-                }
-                oxc_ast::ast::ClassElement::TSIndexSignature(_) => false,
-                _ => true,
-            });
-        }
+    pub(crate) fn strip_ts_class_members(&self, node: &mut ClassBody<'a>) {
+        node.body.retain(|member| match member {
+            ClassElement::PropertyDefinition(prop) => {
+                !prop.declare
+                    && prop.r#type != PropertyDefinitionType::TSAbstractPropertyDefinition
+            }
+            ClassElement::MethodDefinition(method) => {
+                method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+            }
+            ClassElement::TSIndexSignature(_) => false,
+            _ => true,
+        });
     }
 
-    pub(crate) fn strip_ts_function_bits(&self, node: &mut oxc_ast::ast::Function<'a>) {
-        if self.is_ts {
-            node.type_parameters = None;
-            node.return_type = None;
-            node.this_param = None;
-        }
+    pub(crate) fn strip_ts_function_bits(&self, node: &mut Function<'a>) {
+        node.type_parameters = None;
+        node.return_type = None;
+        node.this_param = None;
     }
 
     pub(crate) fn strip_ts_arrow_bits(&self, node: &mut ArrowFunctionExpression<'a>) {
-        if self.is_ts {
-            node.type_parameters = None;
-            node.return_type = None;
-        }
+        node.type_parameters = None;
+        node.return_type = None;
     }
 
-    pub(crate) fn strip_ts_formal_parameter(&self, node: &mut oxc_ast::ast::FormalParameter<'a>) {
-        if self.is_ts {
-            node.type_annotation = None;
-            node.accessibility = None;
-            node.readonly = false;
-            node.r#override = false;
-        }
+    pub(crate) fn strip_ts_formal_parameter(&self, node: &mut FormalParameter<'a>) {
+        node.type_annotation = None;
+        node.accessibility = None;
+        node.readonly = false;
+        node.r#override = false;
+        node.optional = false;
     }
 
-    pub(crate) fn strip_ts_catch_parameter(&self, node: &mut oxc_ast::ast::CatchParameter<'a>) {
-        if self.is_ts {
-            node.type_annotation = None;
-        }
+    pub(crate) fn strip_ts_catch_parameter(&self, node: &mut CatchParameter<'a>) {
+        node.type_annotation = None;
     }
 
-    pub(crate) fn strip_ts_call_bits(&self, node: &mut oxc_ast::ast::CallExpression<'a>) {
-        if self.is_ts {
-            node.type_arguments = None;
-        }
+    pub(crate) fn strip_ts_formal_parameter_rest(&self, node: &mut FormalParameterRest<'a>) {
+        node.type_annotation = None;
     }
 
-    pub(crate) fn capture_call_label_name(&mut self, node: &oxc_ast::ast::CallExpression<'a>) {
+    pub(crate) fn strip_ts_call_bits(&self, node: &mut CallExpression<'a>) {
+        node.type_arguments = None;
+    }
+
+    pub(crate) fn capture_call_label_name(&mut self, node: &CallExpression<'a>) {
         let has_fn_arg = node.arguments.iter().any(|arg| {
             matches!(
                 arg,
-                oxc_ast::ast::Argument::ArrowFunctionExpression(_)
-                    | oxc_ast::ast::Argument::FunctionExpression(_)
+                Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
             )
         });
         if has_fn_arg {
@@ -75,139 +74,160 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    pub(crate) fn strip_ts_new_bits(&self, node: &mut oxc_ast::ast::NewExpression<'a>) {
-        if self.is_ts {
-            node.type_arguments = None;
-        }
+    pub(crate) fn strip_ts_new_bits(&self, node: &mut NewExpression<'a>) {
+        node.type_arguments = None;
     }
 
-    pub(crate) fn strip_ts_tagged_template_bits(
+    pub(crate) fn strip_ts_tagged_template_bits(&self, node: &mut TaggedTemplateExpression<'a>) {
+        node.type_arguments = None;
+    }
+
+    pub(crate) fn strip_ts_class_bits(&self, node: &mut Class<'a>) {
+        node.type_parameters = None;
+        node.super_type_arguments = None;
+        node.implements.clear();
+        node.r#abstract = false;
+    }
+
+    pub(crate) fn strip_ts_property_definition_bits(&self, node: &mut PropertyDefinition<'a>) {
+        node.type_annotation = None;
+        node.accessibility = None;
+        node.readonly = false;
+        node.r#override = false;
+        node.optional = false;
+        node.definite = false;
+    }
+
+    pub(crate) fn strip_ts_accessor_property_bits(&self, node: &mut AccessorProperty<'a>) {
+        node.type_annotation = None;
+        node.accessibility = None;
+        node.r#override = false;
+        node.definite = false;
+    }
+
+    pub(crate) fn normalize_object_property_method_shorthand(
         &self,
-        node: &mut oxc_ast::ast::TaggedTemplateExpression<'a>,
+        node: &mut ObjectProperty<'a>,
     ) {
-        if self.is_ts {
-            node.type_arguments = None;
+        if node.method || node.kind != PropertyKind::Init {
+            return;
+        }
+        if matches!(&node.value, Expression::FunctionExpression(_)) {
+            node.method = true;
         }
     }
 
-    pub(crate) fn strip_ts_class_bits(&self, node: &mut oxc_ast::ast::Class<'a>) {
-        if self.is_ts {
-            node.type_parameters = None;
-            node.super_type_arguments = None;
-            node.implements.clear();
-            node.r#abstract = false;
-        }
-    }
-
-    pub(crate) fn strip_ts_property_definition_bits(
-        &self,
-        node: &mut oxc_ast::ast::PropertyDefinition<'a>,
-    ) {
-        if self.is_ts {
-            node.type_annotation = None;
-            node.accessibility = None;
-            node.readonly = false;
-            node.r#override = false;
-            node.optional = false;
-            node.definite = false;
-        }
-    }
-
-    pub(crate) fn strip_ts_accessor_property_bits(
-        &self,
-        node: &mut oxc_ast::ast::AccessorProperty<'a>,
-    ) {
-        if self.is_ts {
-            node.type_annotation = None;
-            node.accessibility = None;
-            node.r#override = false;
-            node.definite = false;
-        }
-    }
-
-    pub(crate) fn capture_object_property_label_name(
-        &mut self,
-        node: &oxc_ast::ast::ObjectProperty<'a>,
-    ) {
+    pub(crate) fn capture_object_property_label_name(&mut self, node: &ObjectProperty<'a>) {
         if !node.computed {
             let is_fn_value = matches!(
                 &node.value,
                 Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
             );
             if (is_fn_value || node.method)
-                && let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &node.key
+                && let PropertyKey::StaticIdentifier(id) = &node.key
             {
                 self.next_arrow_name = Some(id.name.to_string());
             }
         }
     }
 
-    pub(crate) fn strip_ts_method_definition_bits(
-        &self,
-        node: &mut oxc_ast::ast::MethodDefinition<'a>,
-    ) {
-        if self.is_ts {
-            node.accessibility = None;
-            node.r#override = false;
-            node.optional = false;
-        }
+    pub(crate) fn strip_ts_method_definition_bits(&self, node: &mut MethodDefinition<'a>) {
+        node.accessibility = None;
+        node.r#override = false;
+        node.optional = false;
     }
 
     pub(crate) fn strip_ts_variable_declarator_bits(&self, node: &mut VariableDeclarator<'a>) {
-        if self.is_ts {
-            node.type_annotation = None;
-            node.definite = false;
-        }
+        node.type_annotation = None;
+        node.definite = false;
     }
 
     pub(crate) fn capture_variable_arrow_name(&mut self, node: &VariableDeclarator<'a>) {
         if let Some(Expression::ArrowFunctionExpression(_)) = &node.init
-            && let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id
+            && let BindingPattern::BindingIdentifier(id) = &node.id
         {
             self.next_arrow_name = Some(id.name.to_string());
         }
     }
 
-    pub(crate) fn strip_ts_expression_wrappers(&self, node: &mut Expression<'a>) {
-        if self.is_ts {
-            #[allow(clippy::while_let_loop)]
-            loop {
-                match node {
-                    Expression::TSAsExpression(_)
-                    | Expression::TSSatisfiesExpression(_)
-                    | Expression::TSNonNullExpression(_)
-                    | Expression::TSTypeAssertion(_)
-                    | Expression::TSInstantiationExpression(_) => {
-                        let inner = match self.b.move_expr(node) {
-                            Expression::TSAsExpression(ts) => ts.unbox().expression,
-                            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
-                            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
-                            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
-                            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
-                            _ => unreachable!(),
-                        };
-                        *node = inner;
-                    }
-                    _ => break,
-                }
+    pub(crate) fn replace_ts_only_body_with_empty(&self, stmt: &mut Statement<'a>) {
+        if stmt.is_typescript_syntax() {
+            let span = stmt.span();
+            *stmt = self.b.ast.statement_empty(span);
+        }
+    }
+
+    pub(crate) fn strip_ts_only_alternate(&self, alternate: &mut Option<Statement<'a>>) {
+        if let Some(stmt) = alternate.as_mut() {
+            self.replace_ts_only_body_with_empty(stmt);
+        }
+    }
+
+    pub(crate) fn strip_ts_simple_assignment_target(
+        &self,
+        node: &mut SimpleAssignmentTarget<'a>,
+    ) {
+        let Some(expr) = node.get_expression_mut() else {
+            return;
+        };
+        let inner = self.b.move_expr(expr.get_inner_expression_mut());
+        match inner {
+            Expression::Identifier(id) => {
+                *node = SimpleAssignmentTarget::AssignmentTargetIdentifier(id);
             }
+            expr @ match_member_expression!(Expression) => {
+                *node = SimpleAssignmentTarget::from(expr.into_member_expression());
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn strip_ts_assignment_target(&self, node: &mut AssignmentTarget<'a>) {
+        let Some(expr) = node.get_expression_mut() else {
+            return;
+        };
+        let inner = self.b.move_expr(expr.get_inner_expression_mut());
+        match inner {
+            Expression::Identifier(id) => {
+                *node = AssignmentTarget::AssignmentTargetIdentifier(id);
+            }
+            expr @ match_member_expression!(Expression) => {
+                *node = AssignmentTarget::from(expr.into_member_expression());
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn strip_ts_expression_wrappers(&self, node: &mut Expression<'a>) {
+        if node.is_typescript_syntax() {
+            let inner = self.b.move_expr(node.get_inner_expression_mut());
+            *node = inner;
+        }
+    }
+
+    pub(crate) fn strip_ts_chain_element_wrappers(&self, node: &mut ChainElement<'a>) {
+        if let ChainElement::TSNonNullExpression(ts) = node {
+            let inner = self.b.move_expr(ts.expression.get_inner_expression_mut());
+            *node = match inner {
+                Expression::CallExpression(c) => ChainElement::CallExpression(c),
+                expr @ match_member_expression!(Expression) => {
+                    ChainElement::from(expr.into_member_expression())
+                }
+                _ => unreachable!("TSNonNullExpression inside ChainExpression must wrap member/call"),
+            };
         }
     }
 
     pub(crate) fn strip_ts_specifiers_and_statements(
         &self,
-        stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
     ) {
-        if !self.is_ts {
-            return;
-        }
-
         for stmt in stmts.iter_mut() {
             match stmt {
                 Statement::ImportDeclaration(import) => {
                     if let Some(specs) = &mut import.specifiers {
                         specs.retain(|spec| {
-                            !matches!(spec, oxc_ast::ast::ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
+                            !matches!(spec, ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
                         });
                     }
                 }
@@ -218,24 +238,22 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
         }
 
-        stmts.retain(|stmt| match stmt {
-            Statement::TSTypeAliasDeclaration(_)
-            | Statement::TSInterfaceDeclaration(_)
-            | Statement::TSModuleDeclaration(_)
-            | Statement::TSEnumDeclaration(_) => false,
-            Statement::VariableDeclaration(decl) if decl.declare => false,
-            Statement::FunctionDeclaration(func) if func.declare => false,
-            Statement::ClassDeclaration(class) if class.declare => false,
-            Statement::ImportDeclaration(import) if import.import_kind.is_type() => false,
-            Statement::ExportNamedDeclaration(export) if export.export_kind.is_type() => false,
-            Statement::ExportAllDeclaration(export) if export.export_kind.is_type() => false,
-            Statement::ImportDeclaration(import) => {
-                import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
+        stmts.retain(|stmt| {
+            if stmt.is_typescript_syntax() {
+                return false;
             }
-            Statement::ExportNamedDeclaration(export) => {
-                export.declaration.is_some() || !export.specifiers.is_empty()
+            match stmt {
+                Statement::ImportDeclaration(import) => {
+                    if import.import_kind.is_type() {
+                        return false;
+                    }
+                    import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
+                }
+                Statement::ExportNamedDeclaration(export) => {
+                    export.declaration.is_some() || !export.specifiers.is_empty()
+                }
+                _ => true,
             }
-            _ => true,
         });
     }
 }

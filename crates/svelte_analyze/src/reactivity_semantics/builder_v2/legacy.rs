@@ -1,7 +1,7 @@
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, ExportNamedDeclaration, Expression, VariableDeclaration,
+        BindingPattern, Declaration, ExportNamedDeclaration, Expression, VariableDeclaration,
         VariableDeclarationKind,
     },
 };
@@ -11,7 +11,7 @@ use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::utils::{is_let_or_var, is_simple_expression};
 
-use super::super::data::{LegacyBindablePropSemantics, PropDefaultLowering, ReferenceFacts};
+use super::super::data::{LegacyBindablePropSemantics, PropDefaultEmit, ReferenceFacts};
 use crate::PropsFlags;
 
 const PROPS_NAME: &str = "$$props";
@@ -25,7 +25,7 @@ pub(super) fn classify_export_named_declaration<'a>(
         return;
     }
     if let Some(decl) = &export.declaration {
-        let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
+        let Declaration::VariableDeclaration(var_decl) = decl else {
             return;
         };
         if !is_let_or_var(var_decl.kind) {
@@ -49,9 +49,9 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
 
         walk_bindings(&declarator.id, |visit| {
             let default_lowering = if pattern_has_outer {
-                PropDefaultLowering::Lazy
+                PropDefaultEmit::Lazy
             } else {
-                init_default.unwrap_or(PropDefaultLowering::None)
+                init_default.unwrap_or(PropDefaultEmit::None)
             };
             let updated_any = data.scoping.is_mutated_any(visit.symbol);
             let reassigned = data.scoping.is_mutated(visit.symbol);
@@ -89,7 +89,7 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         }
         let default_lowering = match init {
             Some(init_expr) => classify_expression_default(init_expr),
-            None => PropDefaultLowering::None,
+            None => PropDefaultEmit::None,
         };
 
         let updated = if data.script.immutable {
@@ -169,11 +169,11 @@ fn is_destructured_pattern(pat: &BindingPattern<'_>) -> bool {
     !matches!(pat, BindingPattern::BindingIdentifier(_))
 }
 
-fn classify_expression_default(init: &Expression<'_>) -> PropDefaultLowering {
+fn classify_expression_default(init: &Expression<'_>) -> PropDefaultEmit {
     if is_simple_expression(init) {
-        PropDefaultLowering::Eager
+        PropDefaultEmit::Eager
     } else {
-        PropDefaultLowering::Lazy
+        PropDefaultEmit::Lazy
     }
 }
 

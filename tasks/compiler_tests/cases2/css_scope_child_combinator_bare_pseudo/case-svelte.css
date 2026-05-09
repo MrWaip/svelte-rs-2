@@ -1,0 +1,8 @@
+
+    .benefit.svelte-1vvtp4y {
+        display: flex;
+    }
+
+    .benefit.svelte-1vvtp4y > :where(.svelte-1vvtp4y):first-child {
+        flex-shrink: 0;
+    }

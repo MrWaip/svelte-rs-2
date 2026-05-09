@@ -1,11 +1,11 @@
 use super::super::{
-    BlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape, RenderTagBlockSemantics,
+    BlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind, RenderTagBlockSemantics,
 };
 use super::walker::Ctx;
 use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
 use crate::ReferenceSemantics;
-use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, Expression, IdentifierReference};
-use oxc_ast_visit::Visit;
+use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, ChainElement, Expression, IdentifierReference};
+use oxc_ast_visit::{Visit, walk};
 use smallvec::SmallVec;
 use svelte_ast::RenderTag;
 use svelte_component_semantics::{ReferenceId, SymbolId};
@@ -17,7 +17,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
 
     let (is_chain, call) = match expr {
         Expression::ChainExpression(chain) => match &chain.expression {
-            oxc_ast::ast::ChainElement::CallExpression(call) => (true, call.as_ref()),
+            ChainElement::CallExpression(call) => (true, call.as_ref()),
             _ => return,
         },
         Expression::CallExpression(call) => (false, call.as_ref()),
@@ -25,7 +25,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     };
 
     let callee_sym = callee_symbol(&call.callee, ctx);
-    let callee_shape = classify_callee_shape(ctx, is_chain, callee_sym);
+    let callee_shape = classify_callee_kind(ctx, is_chain, callee_sym);
     let (args, async_kind) = classify_args_and_async(ctx, &call.arguments);
 
     ctx.store.set(
@@ -39,17 +39,17 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     );
 }
 
-fn classify_callee_shape(
+fn classify_callee_kind(
     ctx: &Ctx<'_, '_>,
     is_chain: bool,
     callee_sym: Option<SymbolId>,
-) -> RenderCalleeShape {
+) -> RenderCalleeKind {
     let is_dynamic = callee_sym.is_none_or(|sym| is_reactive_symbol(ctx, sym));
     match (is_dynamic, is_chain) {
-        (false, false) => RenderCalleeShape::Static,
-        (false, true) => RenderCalleeShape::StaticChain,
-        (true, false) => RenderCalleeShape::Dynamic,
-        (true, true) => RenderCalleeShape::DynamicChain,
+        (false, false) => RenderCalleeKind::Static,
+        (false, true) => RenderCalleeKind::StaticChain,
+        (true, false) => RenderCalleeKind::Dynamic,
+        (true, true) => RenderCalleeKind::DynamicChain,
     }
 }
 
@@ -77,15 +77,17 @@ fn store_reference_symbol(ctx: &Ctx<'_, '_>, ref_id: ReferenceId) -> Option<Symb
 fn is_reactive_symbol(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
     !matches!(
         ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
+        BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved,
     )
 }
 
 fn classify_args_and_async<'a>(
     ctx: &Ctx<'_, 'a>,
     arguments: &oxc_allocator::Vec<'a, Argument<'a>>,
-) -> (SmallVec<[RenderArgLowering; 4]>, RenderAsyncKind) {
-    let mut args: SmallVec<[RenderArgLowering; 4]> = SmallVec::new();
+) -> (SmallVec<[RenderArgEmit; 4]>, RenderAsyncKind) {
+    let mut args: SmallVec<[RenderArgEmit; 4]> = SmallVec::new();
     let mut any_await = false;
     let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
 
@@ -94,7 +96,7 @@ fn classify_args_and_async<'a>(
             let expr = arg.to_expression();
 
             if let Some(sym) = prop_source_arg(ctx, expr) {
-                args.push(RenderArgLowering::PropSource { sym });
+                args.push(RenderArgEmit::PropSource { sym });
                 continue;
             }
 
@@ -103,15 +105,15 @@ fn classify_args_and_async<'a>(
             any_await |= facts.has_await;
 
             args.push(match (facts.has_await, facts.has_call) {
-                (true, _) => RenderArgLowering::MemoAsync,
-                (false, true) => RenderArgLowering::MemoSync,
-                (false, false) => RenderArgLowering::Plain,
+                (true, _) => RenderArgEmit::MemoAsync,
+                (false, true) => RenderArgEmit::MemoSync,
+                (false, false) => RenderArgEmit::Plain,
             });
             let _ = arg_blockers_found;
             continue;
         };
 
-        args.push(RenderArgLowering::Plain);
+        args.push(RenderArgEmit::Plain);
     }
     blockers.sort_unstable();
 
@@ -189,11 +191,11 @@ struct ArgFactsCollector {
 impl<'a> Visit<'a> for ArgFactsCollector {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         self.has_call = true;
-        oxc_ast_visit::walk::walk_call_expression(self, expr);
+        walk::walk_call_expression(self, expr);
     }
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         self.has_await = true;
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk::walk_await_expression(self, expr);
     }
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         if let Some(ref_id) = ident.reference_id.get() {
@@ -206,7 +208,7 @@ impl<'a> Visit<'a> for ArgFactsCollector {
 mod tests {
     use crate::tests::analyze_source;
     use crate::{
-        BlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
+        BlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind,
         RenderTagBlockSemantics,
     };
     use svelte_ast::{Component, Node, NodeId, RenderTag};
@@ -221,6 +223,7 @@ mod tests {
                 let child_fragment = match node {
                     Node::Element(el) => Some(el.fragment),
                     Node::ComponentNode(cn) => Some(cn.fragment),
+                    Node::SvelteSelf(cn) => Some(cn.fragment),
                     Node::IfBlock(b) => {
                         let cons = component.fragment_nodes(b.consequent).to_vec();
                         if let Some(r) = walk(component, &cons) {
@@ -266,7 +269,7 @@ mod tests {
         assert_render(
             r#"{#snippet row()}<span></span>{/snippet}{@render row()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeShape::Static);
+                assert_eq!(sem.callee_shape, RenderCalleeKind::Static);
                 assert_eq!(sem.args.len(), 0);
                 assert!(matches!(sem.async_kind, RenderAsyncKind::Sync));
             },
@@ -278,7 +281,7 @@ mod tests {
         assert_render(
             r#"{#snippet row()}<span></span>{/snippet}{@render row?.()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeShape::StaticChain);
+                assert_eq!(sem.callee_shape, RenderCalleeKind::StaticChain);
             },
         );
     }
@@ -288,7 +291,7 @@ mod tests {
         assert_render(
             r#"<script>let { row } = $props();</script>{@render row()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeShape::Dynamic);
+                assert_eq!(sem.callee_shape, RenderCalleeKind::Dynamic);
             },
         );
     }
@@ -298,7 +301,7 @@ mod tests {
         assert_render(
             r#"<script>let { row } = $props();</script>{@render row?.()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeShape::DynamicChain);
+                assert_eq!(sem.callee_shape, RenderCalleeKind::DynamicChain);
             },
         );
     }
@@ -310,7 +313,7 @@ mod tests {
             |sem| {
                 assert_eq!(sem.args.len(), 1);
                 assert!(
-                    matches!(sem.args[0], RenderArgLowering::PropSource { .. }),
+                    matches!(sem.args[0], RenderArgEmit::PropSource { .. }),
                     "expected PropSource, got {:?}",
                     sem.args[0]
                 );
@@ -324,7 +327,7 @@ mod tests {
             r#"<script>let { row } = $props(); function label(x) { return x; }</script>{@render row(label(1))}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
-                assert_eq!(sem.args[0], RenderArgLowering::MemoSync);
+                assert_eq!(sem.args[0], RenderArgEmit::MemoSync);
             },
         );
     }
@@ -335,7 +338,7 @@ mod tests {
             r#"<script>let { row } = $props(); const x = 1;</script>{@render row(x)}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
-                assert_eq!(sem.args[0], RenderArgLowering::Plain);
+                assert_eq!(sem.args[0], RenderArgEmit::Plain);
             },
         );
     }

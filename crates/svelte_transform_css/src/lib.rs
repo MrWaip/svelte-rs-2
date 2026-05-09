@@ -1,8 +1,14 @@
+use std::mem;
+
 use compact_str::CompactString;
 use rustc_hash::FxHashSet;
 use svelte_css::{
+    visit::{
+        walk_at_rule_mut, walk_complex_selector_mut, walk_selector_list_mut,
+        walk_simple_selector_args_mut, walk_style_rule_mut,
+    },
     AtRule, Block, BlockChild, ComplexSelector, CssNodeId, Declaration, RelativeSelector, Rule,
-    SelectorList, SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
+    SelectorList, SimpleSelector, StyleRule, StyleSheet, StyleSheetChild, VisitMut,
 };
 use svelte_sourcemap::SourceMap;
 use svelte_span::Span;
@@ -83,7 +89,7 @@ struct ScopeSelectors<'a> {
 
 impl VisitMut for ScopeSelectors<'_> {
     fn visit_stylesheet_mut(&mut self, node: &mut StyleSheet) {
-        let children = std::mem::take(&mut node.children);
+        let children = mem::take(&mut node.children);
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
             match child {
@@ -111,7 +117,7 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_block_mut(&mut self, node: &mut Block) {
-        let children = std::mem::take(&mut node.children);
+        let children = mem::take(&mut node.children);
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
             match child {
@@ -134,9 +140,9 @@ impl VisitMut for ScopeSelectors<'_> {
         node.children = new_children;
     }
 
-    fn visit_style_rule_mut(&mut self, node: &mut svelte_css::StyleRule) {
+    fn visit_style_rule_mut(&mut self, node: &mut StyleRule) {
         self.rule_depth += 1;
-        svelte_css::visit::walk_style_rule_mut(self, node);
+        walk_style_rule_mut(self, node);
         self.rule_depth -= 1;
     }
 
@@ -156,8 +162,10 @@ impl VisitMut for ScopeSelectors<'_> {
             return;
         }
 
-        svelte_css::visit::walk_complex_selector_mut(self, node);
-        let children = std::mem::take(&mut node.children);
+        expand_inline_global_with_combinators(node);
+
+        walk_complex_selector_mut(self, node);
+        let children = mem::take(&mut node.children);
         node.children.extend(
             children
                 .into_iter()
@@ -175,7 +183,7 @@ impl VisitMut for ScopeSelectors<'_> {
         if should_reset {
             self.specificity_bumped = false;
         }
-        svelte_css::visit::walk_selector_list_mut(self, node);
+        walk_selector_list_mut(self, node);
         self.selector_list_depth -= 1;
         self.specificity_bumped = was_specificity_bumped;
     }
@@ -235,7 +243,23 @@ impl VisitMut for ScopeSelectors<'_> {
             }
         }
 
-        if has_local_scopable && !scope_inserted {
+        if !has_local_scopable
+            && !suppress_scoping
+            && !unscoped_tail
+            && !has_nesting_selector
+            && !new_selectors.is_empty()
+            && new_selectors.iter().all(|s| {
+                matches!(
+                    s,
+                    SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_)
+                )
+            })
+            && pseudo_only_compound_is_scopable(&new_selectors)
+        {
+            has_local_scopable = true;
+        }
+
+        if has_local_scopable && !scope_inserted && !has_nesting_selector {
             let mut insert_pos = new_selectors.len();
             while insert_pos > 0 {
                 match &new_selectors[insert_pos - 1] {
@@ -272,7 +296,7 @@ impl VisitMut for ScopeSelectors<'_> {
 
             return;
         }
-        svelte_css::visit::walk_at_rule_mut(self, node);
+        walk_at_rule_mut(self, node);
     }
 
     fn visit_simple_selector_mut(&mut self, node: &mut SimpleSelector) {
@@ -286,11 +310,11 @@ impl VisitMut for ScopeSelectors<'_> {
                             .is_some_and(|args| not_args_stay_unscoped(args))
                     {
                         self.suppress_scoping_depth += 1;
-                        svelte_css::visit::walk_simple_selector_args_mut(self, node);
+                        walk_simple_selector_args_mut(self, node);
                         self.suppress_scoping_depth -= 1;
                         return;
                     }
-                    svelte_css::visit::walk_simple_selector_args_mut(self, node);
+                    walk_simple_selector_args_mut(self, node);
                 }
                 _ => {}
             }
@@ -432,6 +456,82 @@ fn is_entirely_global(complex: &ComplexSelector) -> bool {
         )
 }
 
+fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
+    let needs_expand = node.children.iter().any(|rel| {
+        rel.selectors.len() == 1
+            && matches!(
+                &rel.selectors[0],
+                SimpleSelector::Global { args: Some(args), .. }
+                    if args.children.len() == 1 && args.children[0].children.len() > 1
+            )
+    });
+    if !needs_expand {
+        return;
+    }
+
+    let mut out = svelte_css::RelativeSelectorVec::new();
+    for mut rel in mem::take(&mut node.children) {
+        let is_expandable = rel.selectors.len() == 1
+            && matches!(
+                &rel.selectors[0],
+                SimpleSelector::Global { args: Some(args), .. }
+                    if args.children.len() == 1 && args.children[0].children.len() > 1
+            );
+        if !is_expandable {
+            out.push(rel);
+            continue;
+        }
+        let outer_combinator = rel.combinator;
+        let SimpleSelector::Global {
+            span: global_span,
+            args: Some(mut args),
+        } = rel.selectors.remove(0)
+        else {
+            unreachable!()
+        };
+        let args_span = args.span;
+        let inner_complex = args.children.remove(0);
+        for (i, inner_rel) in inner_complex.children.into_iter().enumerate() {
+                let combinator = if i == 0 {
+                    outer_combinator
+                } else {
+                    inner_rel.combinator
+                };
+                let inner_span = inner_rel.span;
+                let inner_id = inner_rel.id;
+                let mut inner_children = svelte_css::RelativeSelectorVec::new();
+                inner_children.push(RelativeSelector {
+                    id: inner_id,
+                    span: inner_span,
+                    combinator: None,
+                    selectors: inner_rel.selectors,
+                });
+                let mut list_children = svelte_css::SelectorVec::new();
+                list_children.push(ComplexSelector {
+                    id: CssNodeId::DUMMY,
+                    span: inner_span,
+                    children: inner_children,
+                });
+                let wrapped_global = SimpleSelector::Global {
+                    span: global_span,
+                    args: Some(Box::new(SelectorList {
+                        span: args_span,
+                        children: list_children,
+                    })),
+                };
+                let mut new_selectors = svelte_css::SimpleSelectorVec::new();
+                new_selectors.push(wrapped_global);
+                out.push(RelativeSelector {
+                    id: inner_id,
+                    span: inner_span,
+                    combinator,
+                    selectors: new_selectors,
+                });
+        }
+    }
+    node.children = out;
+}
+
 fn unwrap_global(complex: &mut ComplexSelector) {
     let sel = complex.children[0].selectors.remove(0);
     if let SimpleSelector::Global {
@@ -446,6 +546,20 @@ fn unwrap_global(complex: &mut ComplexSelector) {
     }
 }
 
+fn pseudo_only_compound_is_scopable(selectors: &[SimpleSelector]) -> bool {
+    let SimpleSelector::PseudoClass(first) = &selectors[0] else {
+        return true;
+    };
+    let name = first.name.as_str();
+    if matches!(name, "root" | "host") {
+        return false;
+    }
+    if selectors.len() == 1 && matches!(name, "is" | "where") {
+        return false;
+    }
+    true
+}
+
 fn is_scopable(sel: &SimpleSelector) -> bool {
     matches!(
         sel,
@@ -453,7 +567,6 @@ fn is_scopable(sel: &SimpleSelector) -> bool {
             | SimpleSelector::Class { .. }
             | SimpleSelector::Id { .. }
             | SimpleSelector::Attribute(_)
-            | SimpleSelector::PseudoElement(_)
     )
 }
 

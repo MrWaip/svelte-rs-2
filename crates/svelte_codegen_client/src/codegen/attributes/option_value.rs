@@ -1,3 +1,5 @@
+use std::iter;
+
 use oxc_ast::ast::{BinaryOperator, Expression};
 use svelte_ast_builder::AssignLeft;
 
@@ -35,7 +37,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         prefix.push_str("_value");
         let cache_name = self.ctx.state.gen_ident(&prefix);
 
-        let init = self.ctx.b.object_expr(std::iter::empty());
+        let init = self.ctx.b.object_expr(iter::empty());
         state.init.push(self.ctx.b.var_stmt(&cache_name, init));
 
         let val_expr2 = self.ctx.b.clone_expr(&val_expr);

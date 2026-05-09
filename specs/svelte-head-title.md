@@ -1,9 +1,9 @@
 # `<svelte:head>` / `<title>`
 
 ## Current state
-- **Working**: 10/10 use cases
-- **Tests**: 15/15 green
-- Last updated: 2026-05-01
+- **Working**: 12/12 use cases
+- **Tests**: 17/17 green
+- Last updated: 2026-05-14
 
 ## Source
 
@@ -37,6 +37,8 @@
 - [x] Reject attributes or directives on `<svelte:head>` with `svelte_head_illegal_attribute`.
 - [x] Reject attributes or directives on `<title>` inside `<svelte:head>` with `title_illegal_attribute`.
 - [x] Reject non-text / non-expression children inside `<title>` with `title_invalid_content`.
+- [x] Emit body template-fragment declaration (`var fragment = $.comment();` and analogues) BEFORE the `$.head(...)` call when component body root resolves to a `$.comment()` fragment (multi-root body, body that starts with `{#if}`/`{#each}`/`{#await}`/`{#key}`/`{#snippet}` consumer, etc.).
+- [x] Do not emit a stray `var fragment = $.comment();` after `var fragment = root();` when the component body mixes a `from_html` root template with a top-level `{@render ...}` snippet call and `<svelte:head>` is present — only the single `root()` fragment declaration should appear.
 
 ## Out of scope
 
@@ -59,7 +61,7 @@
 - Rust analyze fragment traversal: `crates/svelte_analyze/src/walker/traverse.rs`
 - Rust client codegen: `crates/svelte_codegen_client/src/template/svelte_head.rs`
 - Rust client codegen: `crates/svelte_codegen_client/src/template/title_element.rs`
-- Existing compiler cases: `tasks/compiler_tests/cases2/svelte_head_basic`, `tasks/compiler_tests/cases2/svelte_head_reactive`, `tasks/compiler_tests/cases2/svelte_head_with_content`, `tasks/compiler_tests/cases2/title_variants`, `tasks/compiler_tests/cases2/async_title_basic`, `tasks/compiler_tests/cases2/svelte_head_title_meta`, `tasks/compiler_tests/cases2/title_entity_decoding`, `tasks/compiler_tests/cases2/head_with_special_elements`, `tasks/compiler_tests/cases2/head_with_snippets`, `tasks/compiler_tests/cases2/head_position_with_body`
+- Existing compiler cases: `tasks/compiler_tests/cases2/svelte_head_basic`, `tasks/compiler_tests/cases2/svelte_head_reactive`, `tasks/compiler_tests/cases2/svelte_head_with_content`, `tasks/compiler_tests/cases2/title_variants`, `tasks/compiler_tests/cases2/async_title_basic`, `tasks/compiler_tests/cases2/svelte_head_title_meta`, `tasks/compiler_tests/cases2/title_entity_decoding`, `tasks/compiler_tests/cases2/head_with_special_elements`, `tasks/compiler_tests/cases2/head_with_snippets`, `tasks/compiler_tests/cases2/head_position_with_body`, `tasks/compiler_tests/cases2/head_with_if_body`
 
 ## Test cases
 
@@ -80,3 +82,5 @@
 - [x] `title_invalid_content`
 - [x] `svelte_meta_duplicate_head`
 - [x] `svelte_meta_invalid_placement_head`
+- [x] `head_with_if_body`
+- [x] `head_with_render_and_component`

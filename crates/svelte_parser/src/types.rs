@@ -1,13 +1,13 @@
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{Expression, Program, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 use rustc_hash::FxHashMap;
 use svelte_span::Span;
 
 pub struct JsAst<'a> {
-    pub program: Option<oxc_ast::ast::Program<'a>>,
+    pub program: Option<Program<'a>>,
 
-    pub module_program: Option<oxc_ast::ast::Program<'a>>,
+    pub module_program: Option<Program<'a>>,
 
     pending_exprs: FxHashMap<u32, Expression<'a>>,
 
@@ -157,7 +157,7 @@ impl<'a> JsAst<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CeShadowMode {
+pub enum CeDomMode {
     Open,
     None,
 }
@@ -173,7 +173,7 @@ pub struct CePropConfig {
 #[derive(Debug, Clone)]
 pub struct ParsedCeConfig {
     pub tag: Option<String>,
-    pub shadow: CeShadowMode,
+    pub shadow: CeDomMode,
     pub delegates_focus: bool,
 
     pub props: Vec<CePropConfig>,

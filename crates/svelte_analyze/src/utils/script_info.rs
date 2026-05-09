@@ -1,5 +1,8 @@
 use compact_str::CompactString;
-use oxc_ast::ast::{CallExpression, Expression};
+use oxc_ast::ast::{
+    BindingPattern, CallExpression, Declaration, Expression, Function, IdentifierReference,
+    Program, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
+};
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
 
@@ -11,6 +14,7 @@ use crate::types::script::{
 };
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::utils::is_simple_expression;
+use crate::utils::property_key_static_name;
 
 pub const STATE_RUNE_NAME: &str = "$state";
 pub const DERIVED_RUNE_NAME: &str = "$derived";
@@ -21,7 +25,7 @@ pub const INSPECT_RUNE_NAME: &str = "$inspect";
 pub const HOST_RUNE_NAME: &str = "$host";
 
 pub fn extract_script_info(
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     source: &str,
     runes: bool,
 ) -> ScriptInfo {
@@ -30,7 +34,7 @@ pub fn extract_script_info(
     let mut exports = Vec::new();
 
     for stmt in &program.body {
-        use oxc_ast::ast::Statement;
+        use Statement;
 
         match stmt {
             Statement::ExportNamedDeclaration(export) => {
@@ -49,11 +53,11 @@ pub fn extract_script_info(
                         && props_declaration.is_none()
                         && matches!(
                             decl,
-                            oxc_ast::ast::Declaration::VariableDeclaration(var_decl)
-                                if var_decl.kind == oxc_ast::ast::VariableDeclarationKind::Let
+                            Declaration::VariableDeclaration(var_decl)
+                                if var_decl.kind == VariableDeclarationKind::Let
                         )
                     {
-                        let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
+                        let Declaration::VariableDeclaration(var_decl) = decl else {
                             unreachable!()
                         };
                         props_declaration = collect_legacy_export_props(var_decl, source);
@@ -101,7 +105,7 @@ pub fn extract_script_info(
 }
 
 fn collect_legacy_export_props(
-    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    decl: &VariableDeclaration<'_>,
     source: &str,
 ) -> Option<PropsDeclaration> {
     let mut props = Vec::new();
@@ -152,7 +156,7 @@ fn detect_rune_in_runes_mode(expr: &Expression<'_>, runes: bool) -> Option<RuneK
 }
 
 pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
-    if let Expression::CallExpression(call) = expr {
+    if let Expression::CallExpression(call) = expr.get_inner_expression() {
         return detect_rune_from_call(call);
     }
     None
@@ -207,13 +211,13 @@ pub fn is_rune_name(name: &str) -> bool {
 }
 
 fn collect_export_names_from_declaration(
-    decl: &oxc_ast::ast::Declaration<'_>,
+    decl: &Declaration<'_>,
     exports: &mut Vec<ExportInfo>,
 ) {
     match decl {
-        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
+        Declaration::VariableDeclaration(var_decl) => {
             for declarator in &var_decl.declarations {
-                if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
+                if let BindingPattern::BindingIdentifier(ident) = &declarator.id {
                     exports.push(ExportInfo {
                         name: CompactString::from(ident.name.as_str()),
                         alias: None,
@@ -221,7 +225,7 @@ fn collect_export_names_from_declaration(
                 }
             }
         }
-        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
+        Declaration::FunctionDeclaration(func) => {
             if let Some(ident) = &func.id {
                 exports.push(ExportInfo {
                     name: CompactString::from(ident.name.as_str()),
@@ -229,7 +233,7 @@ fn collect_export_names_from_declaration(
                 });
             }
         }
-        oxc_ast::ast::Declaration::ClassDeclaration(cls) => {
+        Declaration::ClassDeclaration(cls) => {
             if let Some(ident) = &cls.id {
                 exports.push(ExportInfo {
                     name: CompactString::from(ident.name.as_str()),
@@ -242,17 +246,17 @@ fn collect_export_names_from_declaration(
 }
 
 fn collect_declarations_from_declaration(
-    decl: &oxc_ast::ast::Declaration<'_>,
+    decl: &Declaration<'_>,
     source: &str,
     runes: bool,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
 ) {
     match decl {
-        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
+        Declaration::VariableDeclaration(var_decl) => {
             collect_var_declarations(var_decl, source, runes, declarations, props_declaration);
         }
-        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
+        Declaration::FunctionDeclaration(func) => {
             collect_func_declaration(func, declarations);
         }
         _ => {}
@@ -260,7 +264,7 @@ fn collect_declarations_from_declaration(
 }
 
 fn collect_func_declaration(
-    func: &oxc_ast::ast::Function<'_>,
+    func: &Function<'_>,
     declarations: &mut Vec<DeclarationInfo>,
 ) {
     if let Some(ident) = &func.id {
@@ -272,31 +276,34 @@ fn collect_func_declaration(
             is_rune: None,
             rune_init_refs: vec![],
             init_literal: None,
+            init_known: true,
         });
     }
 }
 
 fn collect_var_declarations(
-    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    decl: &VariableDeclaration<'_>,
     source: &str,
     runes: bool,
     declarations: &mut Vec<DeclarationInfo>,
     props_declaration: &mut Option<PropsDeclaration>,
 ) {
     let kind = match decl.kind {
-        oxc_ast::ast::VariableDeclarationKind::Let => DeclarationKind::Let,
-        oxc_ast::ast::VariableDeclarationKind::Const => DeclarationKind::Const,
-        oxc_ast::ast::VariableDeclarationKind::Var => DeclarationKind::Var,
+        VariableDeclarationKind::Let => DeclarationKind::Let,
+        VariableDeclarationKind::Const => DeclarationKind::Const,
+        VariableDeclarationKind::Var => DeclarationKind::Var,
         _ => DeclarationKind::Var,
     };
 
     for declarator in &decl.declarations {
         match &declarator.id {
-            oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
+            BindingPattern::BindingIdentifier(ident) => {
                 let name = CompactString::from(ident.name.as_str());
                 let decl_span = Span::new(ident.span.start, ident.span.end);
 
-                let (init_span, is_rune, rune_init_refs, init_literal) = if let Some(init) =
+                let (init_span, is_rune, rune_init_refs, init_literal, init_known) = if let Some(
+                    init,
+                ) =
                     &declarator.init
                 {
                     let init_sp = Span::new(init.span().start, init.span().end);
@@ -311,9 +318,10 @@ fn collect_var_declarations(
                     } else {
                         extract_literal(init)
                     };
-                    (Some(init_sp), rune, refs, literal)
+                    let known = rune.is_none() && extract_init_known(init);
+                    (Some(init_sp), rune, refs, literal, known)
                 } else {
-                    (None, None, vec![], None)
+                    (None, None, vec![], None, false)
                 };
 
                 if is_rune == Some(RuneKind::Props) {
@@ -344,9 +352,10 @@ fn collect_var_declarations(
                     is_rune,
                     rune_init_refs,
                     init_literal,
+                    init_known,
                 });
             }
-            oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
+            BindingPattern::ObjectPattern(obj_pat) => {
                 let rune = declarator
                     .init
                     .as_ref()
@@ -375,6 +384,7 @@ fn collect_var_declarations(
                             is_rune: Some(RuneKind::Props),
                             rune_init_refs: vec![],
                             init_literal: None,
+                            init_known: false,
                         });
 
                         props.push(PropInfo {
@@ -390,7 +400,7 @@ fn collect_var_declarations(
 
                     let mut rest_pattern_span = None;
                     if let Some(rest) = &obj_pat.rest
-                        && let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) =
+                        && let BindingPattern::BindingIdentifier(ident) =
                             &rest.argument
                     {
                         let rest_name = CompactString::from(ident.name.as_str());
@@ -404,6 +414,7 @@ fn collect_var_declarations(
                             is_rune: Some(RuneKind::Props),
                             rune_init_refs: vec![],
                             init_literal: None,
+                            init_known: false,
                         });
                         props.push(PropInfo {
                             local_name: rest_name.clone(),
@@ -459,11 +470,12 @@ fn collect_var_declarations(
                             is_rune: rune,
                             rune_init_refs: rune_init_refs.clone(),
                             init_literal: None,
+                            init_known: false,
                         });
                     }
                 }
             }
-            oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
+            BindingPattern::ArrayPattern(_) => {
                 let rune = declarator
                     .init
                     .as_ref()
@@ -500,6 +512,7 @@ fn collect_var_declarations(
                             is_rune: Some(rune_kind),
                             rune_init_refs: rune_init_refs.clone(),
                             init_literal: None,
+                            init_known: false,
                         });
                     }
                 }
@@ -529,21 +542,42 @@ fn extract_call_arg_literal(expr: &Expression<'_>) -> Option<CompactString> {
     extract_literal(arg_expr)
 }
 
-fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<CompactString> {
-    crate::utils::property_key_static_name(key).map(CompactString::from)
+fn extract_init_known(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_) => true,
+        Expression::TemplateLiteral(t) => t.expressions.is_empty(),
+        Expression::UnaryExpression(u) => extract_init_known(&u.argument),
+        Expression::BinaryExpression(b) => {
+            extract_init_known(&b.left) && extract_init_known(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            extract_init_known(&l.left) && extract_init_known(&l.right)
+        }
+        Expression::ParenthesizedExpression(p) => extract_init_known(&p.expression),
+        _ => false,
+    }
 }
 
-fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<CompactString> {
+fn extract_property_key_name(key: &PropertyKey<'_>) -> Option<CompactString> {
+    property_key_static_name(key).map(CompactString::from)
+}
+
+fn extract_binding_name(pattern: &BindingPattern<'_>) -> Option<CompactString> {
     pattern
         .get_binding_identifier()
         .map(|id| CompactString::from(id.name.as_str()))
 }
 
 fn extract_prop_default(
-    pattern: &oxc_ast::ast::BindingPattern<'_>,
+    pattern: &BindingPattern<'_>,
     source: &str,
 ) -> (Option<Span>, Option<String>, bool, bool) {
-    if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
+    if let BindingPattern::AssignmentPattern(assign) = pattern {
         let right = &assign.right;
         if let Expression::CallExpression(call) = right
             && let Expression::Identifier(ident) = &call.callee
@@ -579,7 +613,7 @@ fn extract_prop_default(
 }
 
 fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
-    let Expression::CallExpression(call) = expr else {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return vec![];
     };
     if call.arguments.is_empty() {
@@ -600,7 +634,7 @@ struct IdentCollector {
 }
 
 impl<'a> Visit<'a> for IdentCollector {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let name = ident.name.as_str();
         if !name.starts_with('$') {
             self.refs.push(CompactString::from(name));

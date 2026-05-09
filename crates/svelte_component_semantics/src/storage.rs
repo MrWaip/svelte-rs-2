@@ -1,3 +1,7 @@
+use std::{borrow::Cow, mem};
+
+use crate::symbol::state as sym_state;
+
 use compact_str::CompactString;
 use oxc_ast::{AstKind, ast::IdentifierReference};
 use oxc_span::{GetSpan, Span};
@@ -64,7 +68,7 @@ impl<'a> JsStorage<'a> {
 
         if let Some(existing) = self.nodes[index] {
             debug_assert!(
-                std::mem::discriminant(&existing.kind()) == std::mem::discriminant(&kind)
+                mem::discriminant(&existing.kind()) == mem::discriminant(&kind)
                     && existing.kind().span() == kind.span()
                     && existing.scope_id() == scope_id
                     && self.parent_ids[index] == parent_id,
@@ -227,7 +231,7 @@ impl<'a> ComponentSemantics<'a> {
         self.symbols.symbol_scope_id(id)
     }
 
-    pub fn symbol_declaration(&self, id: SymbolId) -> oxc_syntax::node::NodeId {
+    pub fn symbol_declaration(&self, id: SymbolId) -> OxcNodeId {
         self.symbols.symbol_declaration(id)
     }
 
@@ -335,12 +339,12 @@ impl<'a> ComponentSemantics<'a> {
 
     pub fn mark_symbol_member_mutated(&mut self, symbol_id: SymbolId) {
         self.symbols
-            .set_state(symbol_id, crate::symbol::state::MEMBER_MUTATED);
+            .set_state(symbol_id, sym_state::MEMBER_MUTATED);
     }
 
     pub fn is_member_mutated(&self, id: SymbolId) -> bool {
         self.symbols
-            .has_state(id, crate::symbol::state::MEMBER_MUTATED)
+            .has_state(id, sym_state::MEMBER_MUTATED)
     }
 
     pub fn is_mutated_any(&self, id: SymbolId) -> bool {
@@ -393,8 +397,8 @@ impl<'a> ComponentSemantics<'a> {
                         return None;
                     }
                     return match prop.key.static_name()? {
-                        std::borrow::Cow::Borrowed(name) => Some(name),
-                        std::borrow::Cow::Owned(_) => None,
+                        Cow::Borrowed(name) => Some(name),
+                        Cow::Owned(_) => None,
                     };
                 }
                 AstKind::BindingRestElement(_) => return None,
@@ -494,6 +498,7 @@ impl<'a> ComponentSemantics<'a> {
     pub fn collect_component_top_level_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbol_ids()
             .filter(|&sym| self.is_component_top_level_symbol(sym))
+            .filter(|&sym| !self.symbols.symbol_flags(sym).contains(SymbolFlags::TypeImport))
             .map(|sym| CompactString::from(self.symbol_name(sym)))
             .collect()
     }

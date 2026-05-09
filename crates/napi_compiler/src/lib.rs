@@ -1,3 +1,6 @@
+use std::any::Any;
+use std::panic;
+
 use napi_derive::napi;
 use svelte_compiler::{
     CompileOptions, CompileResult, CssMode, GenerateMode, ModuleCompileOptions, Namespace,
@@ -85,7 +88,7 @@ pub fn compile_module(
 }
 
 fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+    match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
         Ok(result) => result,
         Err(payload) => {
             let message = panic_message(&payload);
@@ -98,7 +101,7 @@ fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
     }
 }
 
-fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+fn panic_message(payload: &Box<dyn Any + Send>) -> String {
     if let Some(s) = payload.downcast_ref::<String>() {
         s.clone()
     } else if let Some(s) = payload.downcast_ref::<&str>() {

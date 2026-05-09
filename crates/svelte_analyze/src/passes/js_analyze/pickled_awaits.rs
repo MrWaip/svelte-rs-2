@@ -1,6 +1,7 @@
 use oxc_ast::ast::{
-    Argument, ArrayExpression, AssignmentExpression, AwaitExpression, CallExpression,
-    ConditionalExpression, Expression, MemberExpression, NewExpression, ObjectExpression,
+    Argument, ArrowFunctionExpression, ArrayExpression, AssignmentExpression, AwaitExpression,
+    BinaryExpression, CallExpression, ConditionalExpression, Expression, Function,
+    LogicalExpression, MemberExpression, NewExpression, ObjectExpression, ObjectPropertyKind,
     SequenceExpression, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc_ast_visit::Visit;
@@ -120,10 +121,10 @@ impl<'a> Visit<'a> for PickledAwaitCollector {
         let last = expr.properties.len().saturating_sub(1);
         for (index, prop) in expr.properties.iter().enumerate() {
             match prop {
-                oxc_ast::ast::ObjectPropertyKind::ObjectProperty(prop) => {
+                ObjectPropertyKind::ObjectProperty(prop) => {
                     self.visit_child(&prop.value, self.current_is_last() && index == last);
                 }
-                oxc_ast::ast::ObjectPropertyKind::SpreadProperty(prop) => {
+                ObjectPropertyKind::SpreadProperty(prop) => {
                     self.visit_child(&prop.argument, self.current_is_last() && index == last);
                 }
             }
@@ -149,26 +150,26 @@ impl<'a> Visit<'a> for PickledAwaitCollector {
         }
     }
 
-    fn visit_binary_expression(&mut self, expr: &oxc_ast::ast::BinaryExpression<'a>) {
+    fn visit_binary_expression(&mut self, expr: &BinaryExpression<'a>) {
         self.visit_child(&expr.left, false);
         self.visit_child(&expr.right, self.current_is_last());
     }
 
-    fn visit_logical_expression(&mut self, expr: &oxc_ast::ast::LogicalExpression<'a>) {
+    fn visit_logical_expression(&mut self, expr: &LogicalExpression<'a>) {
         self.visit_child(&expr.left, false);
         self.visit_child(&expr.right, self.current_is_last());
     }
 
     fn visit_arrow_function_expression(
         &mut self,
-        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        arrow: &ArrowFunctionExpression<'a>,
     ) {
         self.fn_depth += 1;
         walk_arrow_function_expression(self, arrow);
         self.fn_depth -= 1;
     }
 
-    fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: ScopeFlags) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         self.fn_depth += 1;
         walk_function(self, func, flags);
         self.fn_depth -= 1;

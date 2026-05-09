@@ -1,9 +1,9 @@
 # `<svelte:window>` / `<svelte:document>` / `<svelte:body>`
 
 ## Current state
-- **Working**: 13/13 use cases
-- **Tests**: 32/32 green
-- Last updated: 2026-04-11
+- **Working**: 14/14 use cases
+- **Tests**: 35/35 green
+- Last updated: 2026-05-14
 
 ## Source
 
@@ -57,6 +57,7 @@
 - [x] Generate `<svelte:body>` event listeners for both Svelte 5 event attributes and legacy `on:` directives.
 - [x] Generate `use:` actions on `<svelte:body>`.
 - [x] Preserve mixed special-element output when `<svelte:head>`, `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` coexist in one component.
+- [x] Event-attribute handler on `<svelte:window>` / `<svelte:document>` / `<svelte:body>` whose identifier resolves to a `$props()` binding emits `$.event(name, target, function(...$$args) { $$props.<name>?.apply(this, $$args); })`, matching the `HandlerEmit::WrappedInert` rule already enforced for `$.delegated` on regular elements (see `specs/events.md`).
 
 ## Out of scope
 
@@ -149,3 +150,6 @@
 - [x] `svelte_window_invalid_content`
 - [x] `svelte_document_invalid_content`
 - [x] `svelte_body_invalid_content`
+- [x] `svelte_window_event_attr_props_handler`
+- [x] `svelte_document_event_attr_props_handler`
+- [x] `svelte_body_event_attr_props_handler`

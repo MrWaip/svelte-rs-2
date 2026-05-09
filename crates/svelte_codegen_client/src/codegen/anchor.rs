@@ -85,9 +85,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         if let Some(frag_name) = pre.frag_name {
             let b = &self.ctx.state.b;
-            state
-                .init
-                .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+            if state.anchor_comment_pre_emitted {
+                state.anchor_comment_pre_emitted = false;
+            } else {
+                state
+                    .init
+                    .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+            }
             state.init.push(b.var_stmt(
                 &pre.node_name,
                 b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
@@ -126,7 +130,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ..
             } => {
                 debug_assert!(
-                    state.root_var.is_none(),
+                    state.root_var.is_none() || state.anchor_comment_pre_emitted,
                     "comment_anchor_node_name would overwrite existing root_var — \
                      caller must not have set it yet (Multi with blocks needs a different path)"
                 );
@@ -140,9 +144,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 };
                 let b = &self.ctx.state.b;
-                state
-                    .init
-                    .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+                if state.anchor_comment_pre_emitted {
+                    state.anchor_comment_pre_emitted = false;
+                } else {
+                    state
+                        .init
+                        .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+                }
                 state.init.push(b.var_stmt(
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
@@ -202,9 +210,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 };
                 let b = &self.ctx.state.b;
-                state
-                    .init
-                    .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+                if state.anchor_comment_pre_emitted {
+                    state.anchor_comment_pre_emitted = false;
+                } else {
+                    state
+                        .init
+                        .push(b.var_stmt(&frag_name, b.call_expr("$.comment", [])));
+                }
                 state.init.push(b.var_stmt(
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),

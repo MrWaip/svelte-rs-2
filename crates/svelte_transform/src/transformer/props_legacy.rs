@@ -1,10 +1,11 @@
 use oxc_allocator::Vec as OxcVec;
+use svelte_analyze::scope::SymbolId;
 use oxc_ast::ast::{
     BindingPattern, Declaration, Expression, ModuleExportName, Statement, VariableDeclaration,
 };
 use oxc_span::{GetSpan, GetSpanMut};
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, LegacyBindablePropSemantics, PropDefaultLowering, PropsFlags,
+    AnalysisData, BindingSemantics, LegacyBindablePropSemantics, PropDefaultEmit, PropsFlags,
     is_let_or_var, property_key_static_name,
 };
 use svelte_ast_builder::Arg;
@@ -133,7 +134,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let kind = decl.kind;
         let mut declarators: Vec<(&'a str, Expression<'a>)> = Vec::new();
         for declarator in &mut decl.declarations {
-            let leaves = collect_destructure_leaves(self.b, analysis, &declarator.id);
+            let leaves = collect_destructure_bindings(self.b, analysis, &declarator.id);
             if leaves.is_empty() {
                 return None;
             }
@@ -174,7 +175,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     fn lower_destructured_legacy_export(
         &mut self,
-        leaves: Vec<DestructureLeafDescriptor<'a>>,
+        leaves: Vec<DestructureBindingDescriptor<'a>>,
         init: Expression<'a>,
     ) -> Option<Vec<(&'a str, Expression<'a>)>> {
         let analysis = self.analysis?;
@@ -299,24 +300,25 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let prop_key = alias.unwrap_or(local).to_string();
         let mut runtime_flags = legacy.flags;
-        if matches!(legacy.default_lowering, PropDefaultLowering::Lazy) {
+        if matches!(legacy.default_lowering, PropDefaultEmit::Lazy) {
             runtime_flags |= PropsFlags::LAZY_INITIAL;
         }
         let flags_bits = runtime_flags.bits();
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Str(prop_key)];
+        let default_init = default_init.map(unwrap_paren_and_ts);
         match legacy.default_lowering {
-            PropDefaultLowering::None => {
+            PropDefaultEmit::None => {
                 if !runtime_flags.is_empty() {
                     args.push(Arg::Num(flags_bits as f64));
                 }
             }
-            PropDefaultLowering::Eager => {
+            PropDefaultEmit::Eager => {
                 args.push(Arg::Num(flags_bits as f64));
                 let default_expr = default_init
                     .unwrap_or_else(|| panic!("eager default missing for legacy prop {local}"));
                 args.push(Arg::Expr(default_expr));
             }
-            PropDefaultLowering::Lazy => {
+            PropDefaultEmit::Lazy => {
                 args.push(Arg::Num(flags_bits as f64));
                 let default_expr = default_init
                     .unwrap_or_else(|| panic!("lazy default missing for legacy prop {local}"));
@@ -328,29 +330,39 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 }
 
+fn unwrap_paren_and_ts<'a>(expr: Expression<'a>) -> Expression<'a> {
+    let mut inner = expr.into_inner_expression();
+    match &mut inner {
+        Expression::ArrowFunctionExpression(arrow) => arrow.pife = false,
+        Expression::FunctionExpression(func) => func.pife = false,
+        _ => {}
+    }
+    inner
+}
+
 struct ArrayHelper<'a> {
     object_path: Vec<String>,
     name: &'a str,
     len: u32,
 }
 
-struct DestructureLeafDescriptor<'a> {
+struct DestructureBindingDescriptor<'a> {
     local_name: String,
-    symbol: svelte_analyze::scope::SymbolId,
+    symbol: SymbolId,
     object_path: Vec<String>,
     array_index: Option<u32>,
     default_expr: Option<Expression<'a>>,
 }
 
-fn collect_destructure_leaves<'a>(
+fn collect_destructure_bindings<'a>(
     builder: &svelte_ast_builder::Builder<'a>,
     analysis: &AnalysisData<'a>,
     pattern: &BindingPattern<'_>,
-) -> Vec<DestructureLeafDescriptor<'a>> {
+) -> Vec<DestructureBindingDescriptor<'a>> {
     use oxc_allocator::CloneIn;
     use svelte_component_semantics::{Access, walk_bindings};
     let allocator = builder.ast.allocator;
-    let mut out: Vec<DestructureLeafDescriptor<'a>> = Vec::new();
+    let mut out: Vec<DestructureBindingDescriptor<'a>> = Vec::new();
     walk_bindings(pattern, |visit| {
         let mut object_path: Vec<String> = Vec::new();
         let mut array_index: Option<u32> = None;
@@ -373,7 +385,7 @@ fn collect_destructure_leaves<'a>(
                 }
             }
         }
-        out.push(DestructureLeafDescriptor {
+        out.push(DestructureBindingDescriptor {
             local_name: analysis.scoping.symbol_name(visit.symbol).to_string(),
             symbol: visit.symbol,
             object_path,

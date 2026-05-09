@@ -1,9 +1,9 @@
 # Element
 
 ## Current state
-- **Working**: 14/14 use cases
-- **Tests**: 32/32 green
-- Last updated: 2026-05-01
+- **Working**: 15/15 use cases
+- **Tests**: 33/33 green
+- Last updated: 2026-05-14
 
 ## Source
 
@@ -48,6 +48,7 @@
 - [x] Customizable select subtree handling — `is_customizable_select` flag in ElementFlags; codegen emits `$.customizable_select(el, callback)` with separate hoisted template; `<selectedcontent>` emits `$.selectedcontent(el, setter)` (tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`)
 - [x] `autofocus` helper path on regular elements — `$.autofocus(el, expr)` emitted from `attributes.rs` (test: `element_autofocus`)
 - [x] Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching and MathML/reset-boundary fragment factory selection — SVG child-template parity for ambiguous regular elements now works in nested `{#if}` / `{#each}` fragments, plain HTML descendants in MathML-root components fall back to `$.from_html(...)`, and `annotation-xml` / `foreignObject` reset child fragments to HTML (tests: `svg_fragment_ambiguous_a`, `svg_fragment_ambiguous_title`, `mathml_root_html_fragment`, `mathml_annotation_xml_fragment_html`, `svg_foreignobject_fragment_html`)
+- [x] Local-ident counter (`<tag>_N`) for bound regular elements at a fragment level counts only elements that need a JS binding, ignoring deeply-nested non-bound descendants of previous siblings (test: `diagnose_sibling_after_deep_nested_elements`)
 ## Out of scope
 - Legacy slot ownership moved to `specs/legacy-slots.md`
 - CSS-scoped element metadata and pruning live in `specs/css-pipeline.md`
@@ -108,3 +109,4 @@
 - [x] `mathml_root_html_fragment`
 - [x] `mathml_annotation_xml_fragment_html`
 - [x] `svg_foreignobject_fragment_html`
+- [x] `diagnose_sibling_after_deep_nested_elements`

@@ -9,6 +9,8 @@ use svelte_component_semantics::{OxcNodeId, ReferenceId};
 pub enum BindingSemantics {
     NonReactive,
 
+    MaybeReactive,
+
     State(StateDeclarationSemantics),
 
     Derived(DerivedDeclarationSemantics),
@@ -83,7 +85,7 @@ pub struct OptimizedRuneSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedLowering,
+    pub lowering: DerivedEmit,
     pub reactive: bool,
 }
 
@@ -95,20 +97,28 @@ pub enum DerivedKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DerivedLowering {
+pub enum DerivedEmit {
     Sync,
 
     Async,
+
+    DestructuredInlineSource,
+
+    DestructuredInlinePropsSource,
+
+    DestructuredBoxedSync,
+
+    DestructuredBoxedAsync,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PropBindingSemantics {
-    pub lowering_mode: PropLoweringMode,
+    pub lowering_mode: PropEmitMode,
     pub kind: PropBindingKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropLoweringMode {
+pub enum PropEmitMode {
     Standard,
 
     CustomElement,
@@ -121,7 +131,7 @@ pub enum PropBindingKind {
     Source {
         bindable: bool,
         updated: bool,
-        default_lowering: PropDefaultLowering,
+        default_lowering: PropDefaultEmit,
 
         default_needs_proxy: bool,
     },
@@ -133,7 +143,7 @@ pub enum PropBindingKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LegacyBindablePropSemantics {
-    pub default_lowering: PropDefaultLowering,
+    pub default_lowering: PropDefaultEmit,
     pub flags: crate::PropsFlags,
 }
 
@@ -144,7 +154,7 @@ pub struct LegacyStateSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropDefaultLowering {
+pub enum PropDefaultEmit {
     None,
 
     Eager,
@@ -201,17 +211,26 @@ pub enum SnippetParamStrategy {
     Signal,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PropsDeclKind {
+    Const,
+    Let,
+    Var,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
 
     PropsIdentifier {
         sym: SymbolId,
+        kind: PropsDeclKind,
     },
 
     PropsObject {
         leaves: SmallVec<[SymbolId; 4]>,
         has_rest: bool,
+        kind: PropsDeclKind,
     },
 
     LegacyStateDestructure {
@@ -236,7 +255,7 @@ pub struct ClassFieldStateSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedLowering,
+    pub lowering: DerivedEmit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,6 +277,8 @@ pub enum ReferenceSemantics {
         kind: StateKind,
         safe: bool,
     },
+
+    DerivedWrite,
 
     StoreRead {
         symbol: SymbolId,
@@ -391,7 +412,7 @@ pub struct CarrierMemberReadSemantics {
 pub enum PropReferenceSemantics {
     Source {
         bindable: bool,
-        lowering_mode: PropLoweringMode,
+        lowering_mode: PropEmitMode,
         symbol: SymbolId,
     },
 
@@ -431,6 +452,7 @@ pub(crate) enum ReferenceFacts {
         kind: StateKind,
         safe: bool,
     },
+    DerivedWrite,
     StoreRead {
         symbol: SymbolId,
     },
@@ -527,6 +549,8 @@ pub struct ReactivitySemantics {
 
     each_rest_symbols: FxHashSet<SymbolId>,
 
+    maybe_reactive_symbols: FxHashSet<SymbolId>,
+
     legacy_bindable_prop_symbols: Vec<SymbolId>,
 
     legacy_uses_props: bool,
@@ -549,7 +573,7 @@ pub struct ReactivitySemantics {
 }
 
 impl ReactivitySemantics {
-    pub fn new(node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
         let mut declarators: IndexVec<OxcNodeId, Option<DeclaratorSemantics>> =
             IndexVec::with_capacity(node_count as usize);
         declarators.resize_with(node_count as usize, || None);
@@ -565,6 +589,7 @@ impl ReactivitySemantics {
             base_to_store: FxHashMap::default(),
             const_alias_owner: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
+            maybe_reactive_symbols: FxHashSet::default(),
             legacy_bindable_prop_symbols: Vec::new(),
             legacy_uses_props: false,
             legacy_uses_rest_props: false,
@@ -585,9 +610,17 @@ impl ReactivitySemantics {
     }
 
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
-        self.lookup_binding_facts(sym)
-            .map(Self::binding_semantics_from_facts)
-            .unwrap_or(BindingSemantics::NonReactive)
+        if let Some(facts) = self.lookup_binding_facts(sym) {
+            return Self::binding_semantics_from_facts(facts);
+        }
+        if self.maybe_reactive_symbols.contains(&sym) {
+            return BindingSemantics::MaybeReactive;
+        }
+        BindingSemantics::NonReactive
+    }
+
+    pub(crate) fn record_maybe_reactive_symbol(&mut self, sym: SymbolId) {
+        self.maybe_reactive_symbols.insert(sym);
     }
 
     pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
@@ -669,6 +702,7 @@ impl ReactivitySemantics {
                 kind: *kind,
                 safe: *safe,
             },
+            Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }
             }

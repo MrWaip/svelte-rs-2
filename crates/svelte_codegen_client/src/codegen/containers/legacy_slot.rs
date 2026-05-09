@@ -41,7 +41,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         let mut spreads: Vec<Expression<'a>> = Vec::new();
         let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
-        let runes = self.ctx.query.runes();
+        let derived_fn = self.ctx.query.view.derived_helper();
 
         for attr in &attrs {
             let attr_id = attr.id();
@@ -92,11 +92,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .ctx
                             .b
                             .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]);
-                        let derived_fn = if runes {
-                            "$.derived"
-                        } else {
-                            "$.derived_safe_equal"
-                        };
                         let derived = self
                             .ctx
                             .b
@@ -141,9 +136,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.call_expr("$.spread_props", args)
         };
 
-        let fallback = self.build_legacy_slot_fallback(ctx, el_id)?;
-
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
+
+        let fallback = self.build_legacy_slot_fallback(ctx, el_id)?;
 
         let slot_stmt = self.ctx.b.call_stmt(
             "$.slot",

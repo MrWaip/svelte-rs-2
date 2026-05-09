@@ -2,6 +2,7 @@
 /target
 /profile
 /cclsp
+/_diagnose_tmp/
 docs/compiler/
 node_modules/
 REVIEW.md

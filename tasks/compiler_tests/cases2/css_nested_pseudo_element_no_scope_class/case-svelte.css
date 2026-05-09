@@ -1,0 +1,8 @@
+
+  .container.svelte-f7z729 {
+    display: flex;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }

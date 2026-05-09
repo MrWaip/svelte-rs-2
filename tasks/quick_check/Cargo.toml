@@ -8,6 +8,7 @@ workspace = true
 
 [dependencies]
 svelte_compiler = { workspace = true }
+svelte_transform_css = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_codegen = { workspace = true }
 oxc_parser = { workspace = true }

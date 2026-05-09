@@ -1,6 +1,10 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
+use crate::reactivity_semantics::{ReactivityInputs, build_v2};
+use crate::block_semantics;
+use crate::types::markers::ScopingBuilt;
+use crate::utils::{ce_config, script_info};
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, walker};
 
 use super::{bundles, finalize_component_name, fragment_topology, js_analyze, post_resolve};
@@ -70,7 +74,7 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::AnalyzeScript => {
             let script_info = parsed.program.as_ref().and_then(|program| {
                 parsed.script_content_span?;
-                Some(crate::utils::script_info::extract_script_info(
+                Some(script_info::extract_script_info(
                     program,
                     &component.source,
                     runes,
@@ -105,7 +109,7 @@ pub(crate) fn execute_pass<'a>(
                 .and_then(|o| o.custom_element.as_ref())
                 && let Some(expr) = parsed.pending_expr(span.start)
             {
-                let config = crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
+                let config = ce_config::extract_ce_config_from_expr(expr, span.start);
                 data.script.ce_config = Some(config);
             }
         }
@@ -141,7 +145,7 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
-                bundles::SymbolCollectionBundle::new(crate::types::markers::ScopingBuilt::new());
+                bundles::SymbolCollectionBundle::new(ScopingBuilt::new());
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
                 component,
@@ -165,11 +169,11 @@ pub(crate) fn execute_pass<'a>(
             post_resolve::run_post_resolve_passes(data);
         }
         super::PassKey::BuildReactivitySemantics => {
-            crate::reactivity_semantics::build_v2(
+            build_v2(
                 component,
                 parsed,
                 data,
-                crate::reactivity_semantics::ReactivityInputs {
+                ReactivityInputs {
                     inline_runes: options.inline_runes,
                     compile_runes: options.runes,
                     immutable: options.immutable,
@@ -178,7 +182,7 @@ pub(crate) fn execute_pass<'a>(
             );
         }
         super::PassKey::BuildBlockSemantics => {
-            data.block_semantics_store = crate::block_semantics::build(
+            data.block_semantics_store = block_semantics::build(
                 component,
                 parsed,
                 data.scoping.semantics(),

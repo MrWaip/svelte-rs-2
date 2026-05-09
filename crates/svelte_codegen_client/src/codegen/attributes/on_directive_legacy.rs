@@ -10,7 +10,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_on_directive_legacy(
         &mut self,
         state: &mut EmitState<'a>,
-        _owner_id: NodeId,
+        owner_id: NodeId,
         owner_var: &str,
         od: &OnDirectiveLegacy,
     ) -> Result<()> {
@@ -78,9 +78,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             args.push(Arg::Bool(p));
         }
 
-        state
-            .after_update
-            .push(self.ctx.b.call_stmt("$.event", args));
+        let stmt = self.ctx.b.call_stmt("$.event", args);
+        if self.ctx.has_use_directive(owner_id) {
+            let effect_body = self.ctx.b.arrow_expr(self.ctx.b.no_params(), [stmt]);
+            let wrapped = self
+                .ctx
+                .b
+                .call_stmt("$.effect", [Arg::Expr(effect_body)]);
+            state.pending_element_init.push(wrapped);
+        } else {
+            state.after_update.push(stmt);
+        }
         Ok(())
     }
 }

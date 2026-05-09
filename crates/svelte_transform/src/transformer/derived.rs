@@ -1,6 +1,12 @@
+use std::{iter, mem};
+
+use oxc_allocator::Vec as OxcVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{
+    Argument, BindingPattern, Class, ClassElement, Declaration, Expression, Program, Statement,
+};
+use oxc_semantic::SymbolId;
 
 use super::location::sanitize_location;
 use super::model::AsyncDerivedMode;
@@ -23,9 +29,9 @@ impl DevContext<'_> {
 
 pub(crate) fn wrap_derived_thunks<'a>(
     b: &Builder<'a>,
-    program: &mut oxc_ast::ast::Program<'a>,
-    pending: &FxHashSet<oxc_semantic::SymbolId>,
-    async_pending: &FxHashMap<oxc_semantic::SymbolId, AsyncDerivedMode>,
+    program: &mut Program<'a>,
+    pending: &FxHashSet<SymbolId>,
+    async_pending: &FxHashMap<SymbolId, AsyncDerivedMode>,
     dev_ctx: Option<&DevContext<'_>>,
 ) {
     wrap_derived_thunks_in_stmts(b, &mut program.body, pending, async_pending, dev_ctx);
@@ -33,9 +39,9 @@ pub(crate) fn wrap_derived_thunks<'a>(
 
 fn wrap_derived_thunks_in_stmts<'a>(
     b: &Builder<'a>,
-    stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
-    pending: &FxHashSet<oxc_semantic::SymbolId>,
-    async_pending: &FxHashMap<oxc_semantic::SymbolId, AsyncDerivedMode>,
+    stmts: &mut OxcVec<'a, Statement<'a>>,
+    pending: &FxHashSet<SymbolId>,
+    async_pending: &FxHashMap<SymbolId, AsyncDerivedMode>,
     dev_ctx: Option<&DevContext<'_>>,
 ) {
     for stmt in stmts.iter_mut() {
@@ -43,8 +49,15 @@ fn wrap_derived_thunks_in_stmts<'a>(
             Statement::VariableDeclaration(decl) => {
                 let decl_start = decl.span.start;
                 for declarator in decl.declarations.iter_mut() {
+                    recurse_into_function_init(
+                        b,
+                        declarator.init.as_mut(),
+                        pending,
+                        async_pending,
+                        dev_ctx,
+                    );
                     let sym_id = match &declarator.id {
-                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                        BindingPattern::BindingIdentifier(id) => {
                             match id.symbol_id.get() {
                                 Some(s) => s,
                                 None => continue,
@@ -58,8 +71,8 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     if let Some(Expression::CallExpression(call)) = &mut declarator.init
                         && !call.arguments.is_empty()
                     {
-                        let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
-                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        let mut dummy = Argument::from(b.cheap_expr());
+                        mem::swap(&mut call.arguments[0], &mut dummy);
                         let arg_expr = dummy.into_expression();
 
                         let async_mode = async_pending.get(&sym_id).copied();
@@ -67,7 +80,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             || async_mode.is_some();
 
                         let var_name = match &declarator.id {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                            BindingPattern::BindingIdentifier(id) => {
                                 id.name.to_string()
                             }
                             _ => String::new(),
@@ -83,21 +96,21 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                 b.async_arrow_expr_body(arg_expr)
                             };
 
-                            let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
+                            let mut extra_args: Vec<Argument<'a>> = Vec::new();
                             if let Some(ctx) = dev_ctx {
                                 extra_args
-                                    .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
+                                    .push(Argument::from(b.str_expr(&var_name)));
 
                                 if !ctx
                                     .ignore_query
                                     .is_ignored_at_span(decl_start, "await_waterfall")
                                 {
                                     let loc = ctx.locate(init_span_start);
-                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                    extra_args.push(Argument::from(b.str_expr(&loc)));
                                 }
                             }
 
-                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                            call.arguments[0] = Argument::from(thunk);
                             for arg in extra_args {
                                 call.arguments.push(arg);
                             }
@@ -115,13 +128,13 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                         let saved = b.call_expr("$.save", [Arg::Expr(call_expr)]);
                                         b.call_expr_callee(
                                             b.await_expr(saved),
-                                            std::iter::empty::<Arg<'a, '_>>(),
+                                            iter::empty::<Arg<'a, '_>>(),
                                         )
                                     }
                                 });
                         } else {
                             let thunk = b.thunk(arg_expr);
-                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                            call.arguments[0] = Argument::from(thunk);
 
                             if dev_ctx.is_some() {
                                 let derived_expr = b.move_expr(
@@ -150,22 +163,109 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     );
                 }
             }
-            Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) =
-                    &mut export.declaration
-                    && let Some(body) = &mut func.body
-                {
-                    wrap_derived_thunks_in_stmts(
+            Statement::ClassDeclaration(class) => {
+                wrap_derived_thunks_in_class(b, class, pending, async_pending, dev_ctx);
+            }
+            Statement::ExportNamedDeclaration(export) => match &mut export.declaration {
+                Some(Declaration::FunctionDeclaration(func)) => {
+                    if let Some(body) = &mut func.body {
+                        wrap_derived_thunks_in_stmts(
+                            b,
+                            &mut body.statements,
+                            pending,
+                            async_pending,
+                            dev_ctx,
+                        );
+                    }
+                }
+                Some(Declaration::ClassDeclaration(class)) => {
+                    wrap_derived_thunks_in_class(b, class, pending, async_pending, dev_ctx);
+                }
+                Some(Declaration::VariableDeclaration(decl)) => {
+                    for declarator in decl.declarations.iter_mut() {
+                        recurse_into_function_init(
+                            b,
+                            declarator.init.as_mut(),
+                            pending,
+                            async_pending,
+                            dev_ctx,
+                        );
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+fn wrap_derived_thunks_in_class<'a>(
+    b: &Builder<'a>,
+    class: &mut Class<'a>,
+    pending: &FxHashSet<SymbolId>,
+    async_pending: &FxHashMap<SymbolId, AsyncDerivedMode>,
+    dev_ctx: Option<&DevContext<'_>>,
+) {
+    for element in class.body.body.iter_mut() {
+        if let ClassElement::MethodDefinition(method) = element
+            && let Some(body) = &mut method.value.body
+        {
+            wrap_derived_thunks_in_stmts(
+                b,
+                &mut body.statements,
+                pending,
+                async_pending,
+                dev_ctx,
+            );
+        }
+    }
+}
+
+fn recurse_into_function_init<'a>(
+    b: &Builder<'a>,
+    init: Option<&mut Expression<'a>>,
+    pending: &FxHashSet<SymbolId>,
+    async_pending: &FxHashMap<SymbolId, AsyncDerivedMode>,
+    dev_ctx: Option<&DevContext<'_>>,
+) {
+    let Some(expr) = init else {
+        return;
+    };
+    match expr {
+        Expression::ArrowFunctionExpression(arrow) => {
+            wrap_derived_thunks_in_stmts(
+                b,
+                &mut arrow.body.statements,
+                pending,
+                async_pending,
+                dev_ctx,
+            );
+        }
+        Expression::FunctionExpression(func) => {
+            if let Some(body) = &mut func.body {
+                wrap_derived_thunks_in_stmts(
+                    b,
+                    &mut body.statements,
+                    pending,
+                    async_pending,
+                    dev_ctx,
+                );
+            }
+        }
+        Expression::CallExpression(call) => {
+            for arg in call.arguments.iter_mut() {
+                if let Some(arg_expr) = arg.as_expression_mut() {
+                    recurse_into_function_init(
                         b,
-                        &mut body.statements,
+                        Some(arg_expr),
                         pending,
                         async_pending,
                         dev_ctx,
                     );
                 }
             }
-            _ => {}
         }
+        _ => {}
     }
 }
 

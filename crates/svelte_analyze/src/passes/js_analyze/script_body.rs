@@ -1,18 +1,26 @@
-use oxc_ast::ast::{Expression, MemberExpression, SimpleAssignmentTarget};
+use std::mem::take;
+
+use oxc_allocator::Vec as OxcVec;
+use oxc_ast::ast::{
+    BindingPattern, Class, Declaration, Expression, IdentifierReference, MemberExpression,
+    MethodDefinition, MethodDefinitionKind, Program, PropertyDefinition, SimpleAssignmentTarget,
+    Statement, UpdateExpression, VariableDeclarator,
+};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_member_expression, walk_simple_assignment_target, walk_update_expression,
 };
 
+use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::ComponentScoping;
 use crate::types::data::{AnalysisData, ProxyStateInits};
 use crate::types::script::{RuneKind, ScriptInfo};
-use crate::utils::script_info::detect_rune_from_call;
+use crate::utils::script_info::{detect_rune, detect_rune_from_call};
 
 pub(crate) fn analyze_script(
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
 ) {
     let uses_runes = data.reactivity.uses_runes();
     let body = analyze_script_body(program, &script_info, uses_runes);
@@ -20,25 +28,26 @@ pub(crate) fn analyze_script(
     data.script.has_store_member_mutations = body.has_store_member_mutations;
     data.script.proxy_state_inits = body.proxy_state_inits;
 
-    data.script.exports = std::mem::take(&mut script_info.exports);
+    data.script.exports = take(&mut script_info.exports);
     data.script.has_class_state_fields = has_class_state_fields;
     data.script.info = Some(script_info);
 }
 
 pub(crate) fn needs_context_for_program(
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
     script_info: &ScriptInfo,
     uses_runes: bool,
 ) -> bool {
     let body = analyze_script_body(program, script_info, uses_runes);
     body.has_effects
         || body.has_class_state_fields
-        || super::needs_context::NeedsContextVisitor::check(program, scoping, script_info)
+        || super::needs_context::NeedsContextVisitor::check(program, scoping, reactivity)
 }
 
 pub(crate) fn analyze_script_body<'s>(
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     script_info: &'s ScriptInfo,
     uses_runes: bool,
 ) -> ScriptBodyAnalyzer<'s> {
@@ -64,15 +73,13 @@ pub(crate) struct ScriptBodyAnalyzer<'s> {
 }
 
 impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
-    fn visit_program(&mut self, program: &oxc_ast::ast::Program<'a>) {
+    fn visit_program(&mut self, program: &Program<'a>) {
         for stmt in &program.body {
             self.visit_statement(stmt);
         }
     }
 
-    fn visit_statement(&mut self, stmt: &oxc_ast::ast::Statement<'a>) {
-        use oxc_ast::ast::Statement;
-
+    fn visit_statement(&mut self, stmt: &Statement<'a>) {
         match stmt {
             Statement::ExpressionStatement(es) => {
                 if self.uses_runes
@@ -95,8 +102,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 self.check_proxy_state_inits(&decl.declarations);
             }
             Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration
-                {
+                if let Some(Declaration::VariableDeclaration(d)) = &export.declaration {
                     self.check_proxy_state_inits(&d.declarations);
                 }
             }
@@ -104,32 +110,32 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
         }
     }
 
-    fn visit_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+    fn visit_class(&mut self, class: &Class<'a>) {
         for element in &class.body.body {
             self.visit_class_element(element);
         }
     }
 
-    fn visit_property_definition(&mut self, prop: &oxc_ast::ast::PropertyDefinition<'a>) {
+    fn visit_property_definition(&mut self, prop: &PropertyDefinition<'a>) {
         if let Some(value) = &prop.value
-            && let Some(kind) = crate::utils::script_info::detect_rune(value)
+            && let Some(kind) = detect_rune(value)
             && matches!(kind, RuneKind::State | RuneKind::StateRaw)
         {
             self.has_class_state_fields = true;
         }
     }
 
-    fn visit_method_definition(&mut self, method: &oxc_ast::ast::MethodDefinition<'a>) {
-        if method.kind != oxc_ast::ast::MethodDefinitionKind::Constructor {
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
+        if method.kind != MethodDefinitionKind::Constructor {
             return;
         }
         let Some(body) = &method.value.body else {
             return;
         };
         for stmt in &body.statements {
-            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt
+            if let Statement::ExpressionStatement(es) = stmt
                 && let Expression::AssignmentExpression(assign) = &es.expression
-                && let Some(kind) = crate::utils::script_info::detect_rune(&assign.right)
+                && let Some(kind) = detect_rune(&assign.right)
                 && matches!(kind, RuneKind::State | RuneKind::StateRaw)
             {
                 self.has_class_state_fields = true;
@@ -141,16 +147,16 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 impl ScriptBodyAnalyzer<'_> {
     fn check_proxy_state_inits(
         &mut self,
-        declarations: &oxc_allocator::Vec<'_, oxc_ast::ast::VariableDeclarator<'_>>,
+        declarations: &OxcVec<'_, VariableDeclarator<'_>>,
     ) {
         for declarator in declarations.iter() {
-            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
+            let BindingPattern::BindingIdentifier(ident) = &declarator.id else {
                 continue;
             };
             let Some(init) = &declarator.init else {
                 continue;
             };
-            let rune = crate::utils::script_info::detect_rune(init);
+            let rune = detect_rune(init);
             if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
                 continue;
             }
@@ -206,7 +212,7 @@ fn expression_has_store_member_mutation(expr: &Expression<'_>) -> bool {
             self.in_write_position = true;
             walk_simple_assignment_target(self, it);
         }
-        fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
+        fn visit_update_expression(&mut self, upd: &UpdateExpression<'a>) {
             self.in_write_position = true;
             walk_update_expression(self, upd);
         }
@@ -226,7 +232,7 @@ fn expression_has_store_member_mutation(expr: &Expression<'_>) -> bool {
         }
         fn visit_identifier_reference(
             &mut self,
-            _ident: &oxc_ast::ast::IdentifierReference<'a>,
+            _ident: &IdentifierReference<'a>,
         ) {
             self.in_write_position = false;
         }

@@ -1,4 +1,10 @@
+use oxc_ast::ast::IdentifierReference;
+use svelte_component_semantics::{OxcNodeId as SemOxcNodeId, ReferenceId};
+
 use super::*;
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
+use crate::passes::fragment_topology::fragment_items;
+use crate::types::data::{ComponentCssProp, ComponentPropKind, DeclaratorSemantics};
 use crate::types::script::PropsDeclaration;
 
 #[derive(Clone, Copy)]
@@ -17,6 +23,13 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn runes(&self) -> bool {
         self.data.uses_runes()
     }
+    pub fn derived_helper(&self) -> &'static str {
+        if self.runes() {
+            "$.derived"
+        } else {
+            "$.derived_safe_equal"
+        }
+    }
     pub fn accessors(&self) -> bool {
         self.data.script.accessors
     }
@@ -29,7 +42,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn preserve_comments(&self) -> bool {
         self.data.script.preserve_comments
     }
-    pub fn runtime_plan(&self) -> RuntimePlan {
+    pub fn runtime_plan(&self) -> RuntimeInfo {
         self.data.output.runtime_plan
     }
     pub fn component_name(&self) -> &str {
@@ -41,16 +54,16 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn expression_semantics(
         &self,
         id: NodeId,
-    ) -> &crate::expression_semantics::ExpressionSemantics {
+    ) -> &ExpressionSemantics {
         self.data.expressions_v2.get(id)
     }
     pub fn expression_data(
         &self,
         id: NodeId,
-    ) -> Option<&crate::expression_semantics::ExpressionData> {
+    ) -> Option<&ExpressionData> {
         match self.expression_semantics(id) {
-            crate::expression_semantics::ExpressionSemantics::Expression(d) => Some(d),
-            crate::expression_semantics::ExpressionSemantics::NonSpecial => None,
+            ExpressionSemantics::Expression(d) => Some(d),
+            ExpressionSemantics::NonSpecial => None,
         }
     }
     pub fn exports(&self) -> &[ExportInfo] {
@@ -162,13 +175,13 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn symbol_for_reference(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> Option<SymbolId> {
         self.data.symbol_for_reference(ref_id)
     }
     pub fn symbol_for_identifier_reference(
         &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
+        id: &IdentifierReference<'a>,
     ) -> Option<SymbolId> {
         self.data.symbol_for_identifier_reference(id)
     }
@@ -177,13 +190,13 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn binding_origin_key_for_reference(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> Option<&str> {
         self.data.binding_origin_key_for_reference(ref_id)
     }
     pub fn binding_origin_key_for_identifier_reference(
         &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
+        id: &IdentifierReference<'a>,
     ) -> Option<&str> {
         self.data.binding_origin_key_for_identifier_reference(id)
     }
@@ -192,13 +205,13 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn declarator_semantics(
         &self,
-        decl_node: svelte_component_semantics::OxcNodeId,
-    ) -> crate::types::data::DeclaratorSemantics {
+        decl_node: SemOxcNodeId,
+    ) -> DeclaratorSemantics {
         self.data.declarator_semantics(decl_node)
     }
     pub fn reference_semantics(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
@@ -207,7 +220,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         store: &svelte_ast::AstStore,
         id: svelte_ast::FragmentId,
     ) -> Vec<NodeId> {
-        crate::passes::fragment_topology::fragment_items(store, id)
+        fragment_items(store, id)
     }
 
     pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
@@ -322,12 +335,9 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .flags
             .component_props(id)
             .iter()
-            .any(|p| matches!(p.kind, crate::types::data::ComponentPropKind::Bind { .. }))
+            .any(|p| matches!(p.kind, ComponentPropKind::Bind { .. }))
     }
-    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
-        self.data.elements.flags.component_binding_sym(id)
-    }
-    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId, oxc_syntax::node::NodeId)] {
+    pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
         self.data.elements.flags.component_css_props(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
@@ -357,11 +367,14 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_fragment_slot(id)
     }
-    pub fn is_svelte_self(&self, id: NodeId) -> bool {
-        self.data.elements.flags.is_svelte_self(id)
-    }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)
+    }
+    pub fn has_any_bind_group(&self) -> bool {
+        self.data.template.bind_semantics.has_any_bind_group()
+    }
+    pub fn binding_group_count(&self) -> u32 {
+        self.data.template.bind_semantics.binding_group_count()
     }
     pub fn title_elements_for_fragment_by_id(
         &self,
@@ -377,9 +390,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
 
     pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
         self.data.block_semantics_store.is_each_index_sym(sym)
-    }
-    pub fn known_value(&self, name: &str) -> Option<&str> {
-        self.data.known_value(name)
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.data.nearest_element(id)

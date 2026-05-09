@@ -1,5 +1,5 @@
 mod anchor;
-mod async_plan;
+mod async_emit;
 mod attributes;
 mod blocks;
 mod component_props;
@@ -15,7 +15,6 @@ mod let_directive_legacy;
 mod namespace;
 
 use oxc_ast::ast::Statement;
-use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
 use crate::context::Ctx;
@@ -30,7 +29,6 @@ pub(crate) struct Codegen<'a, 'ctx> {
     hoisted: Vec<Statement<'a>>,
     instance_snippets: Vec<Statement<'a>>,
     hoistable_snippets: Vec<Statement<'a>>,
-    snippet_depth: u32,
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -40,7 +38,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             hoisted: Vec::new(),
             instance_snippets: Vec::new(),
             hoistable_snippets: Vec::new(),
-            snippet_depth: 0,
         }
     }
 
@@ -48,51 +45,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.hoisted.push(stmt);
     }
 
-    pub(in crate::codegen) fn enter_snippet_build(&mut self) {
-        self.snippet_depth += 1;
-    }
-
-    pub(in crate::codegen) fn exit_snippet_build(&mut self) {
-        self.snippet_depth -= 1;
-    }
-
-    pub(in crate::codegen) fn try_resolve_known_from_expr(
-        &self,
-        expr: &oxc_ast::ast::Expression<'_>,
-    ) -> Option<String> {
-        if let oxc_ast::ast::Expression::Identifier(ident) = expr {
-            return self
-                .ctx
-                .query
-                .view
-                .known_value(ident.name.as_str())
-                .map(|s| s.to_string());
-        }
-        None
-    }
-
-    pub(in crate::codegen) fn is_node_expr_definitely_defined(
-        &self,
-        nid: NodeId,
-        expr: &oxc_ast::ast::Expression<'_>,
-    ) -> bool {
-        if matches!(expr, oxc_ast::ast::Expression::BinaryExpression(_)) {
-            return true;
-        }
-        if !matches!(expr, oxc_ast::ast::Expression::Identifier(_)) {
-            return false;
-        }
-        let oxc_ast::ast::Expression::Identifier(_) = expr else {
-            return false;
-        };
-        let Some(data) = self.ctx.expression_data(nid) else {
-            return false;
-        };
-        if data.references.len() != 1 {
-            return false;
-        }
-        self.ctx.is_each_index_sym(data.references[0])
-    }
 
     pub(in crate::codegen) fn pack_body(
         &mut self,
@@ -100,8 +52,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         anchor_ident: &str,
     ) -> Result<Vec<Statement<'a>>> {
         debug_assert!(
-            state.pending_bind_this.is_empty(),
-            "pending_bind_this not flushed before pack_body"
+            state.pending_element_init.is_empty(),
+            "pending_element_init not flushed before pack_body"
         );
         let EmitState {
             template: _,
@@ -111,6 +63,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             root_var,
             special_elements,
             memo_attrs,
+            shared_memo,
             script_blockers,
             extra_blockers,
             ..
@@ -125,6 +78,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             &mut body,
             update,
             memo_attrs,
+            shared_memo,
             script_blockers,
             extra_blockers,
         )?;

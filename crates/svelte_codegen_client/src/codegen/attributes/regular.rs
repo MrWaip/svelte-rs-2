@@ -4,6 +4,7 @@ use svelte_ast::{Attribute, Element, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use super::super::data_structures::{MemoAttr, MemoAttrUpdate};
+use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 
 pub(super) enum RegularAttrUpdate {
@@ -219,7 +220,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
         for part in parts {
             match part {
-                svelte_ast::ConcatPart::Static(s) => push_tpl_str(&mut tpl_parts, s.clone()),
+                svelte_ast::ConcatPart::Static(s) => push_template_str(&mut tpl_parts, s.clone()),
                 svelte_ast::ConcatPart::Dynamic {
                     id: part_id,
                     expr: expr_ref,
@@ -228,13 +229,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return CodegenError::missing_expression(attr_id);
                     };
                     if fold_literals && let Some(lit) = literal_value(&expr) {
-                        push_tpl_str(&mut tpl_parts, lit);
+                        push_template_str(&mut tpl_parts, lit);
                         continue;
                     }
 
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    let defined = self.is_node_expr_definitely_defined(*part_id, &expr);
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref());
+                    let defined = data
+                        .as_ref()
+                        .map(|d| evaluation_is_defined(&d.evaluation))
+                        .unwrap_or(false);
+                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref(), false);
                     tpl_parts.push(TemplatePart::Expr(wrapped, defined));
                 }
             }
@@ -255,7 +259,7 @@ fn has_static_true_boolean_attribute(el: &Element, name: &str) -> bool {
         .any(|attr| matches!(attr, Attribute::BooleanAttribute(ba) if ba.name == name))
 }
 
-fn push_tpl_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
+fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
     if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
         prev.push_str(&value);
     } else {

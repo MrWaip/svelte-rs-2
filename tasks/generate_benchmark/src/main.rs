@@ -1,7 +1,7 @@
-use std::fmt::Write;
+use std::{env, fmt::Write, fs, path::Path};
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = env::args().collect();
 
     let name = args.get(1).map(|s| s.as_str()).unwrap_or("big_v6");
     let n: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(50);
@@ -21,10 +21,10 @@ fn main() {
 
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let filename = format!("{name}.svelte");
-    let path = std::path::Path::new(manifest_dir)
+    let path = Path::new(manifest_dir)
         .join("../benchmark/benches/compiler")
         .join(&filename);
-    std::fs::write(&path, &out).expect("failed to write benchmark file");
+    fs::write(&path, &out).expect("failed to write benchmark file");
 
     let lines = out.lines().count();
     println!("Generated {filename}: {lines} lines ({n} chunks)");
@@ -46,8 +46,8 @@ fn main() {
         .replace("${", "\\${");
 
     let example_js = format!("{EXAMPLE_HEADER}export const benchmarkExample = `{escaped}`;\n",);
-    let example_path = std::path::Path::new(manifest_dir).join("../../docs/example.js");
-    std::fs::write(&example_path, &example_js).expect("failed to write docs/example.js");
+    let example_path = Path::new(manifest_dir).join("../../docs/example.js");
+    fs::write(&example_path, &example_js).expect("failed to write docs/example.js");
     println!("Updated docs/example.js");
 }
 

@@ -131,3 +131,21 @@ Direction: для call-sites с `&IdentifierReference<'a>` в руках зам�
 Места: `crates/svelte_transform/src/transformer/runes.rs::class_field_state_binding_semantic`, `detect_class_field_rune_kind` в `state.rs:283`.
 
 Direction: в analyze добавить отдельный walk class-bodies (через тот же reactivity-builder), записывать `BindingFacts::State` для класс-филд символов с `StateDeclarationSemantics { binding_semantics: [<single-leaf>] }`. Тогда трансформ читает `binding_semantics_for_symbol(sym)` для класс-филда так же, как для top-level декларатора, и `class_field_state_binding_semantic` вместе с `detect_class_field_rune_kind` уходят полностью.
+
+
+## HTML concat-attributes mirror component-prop concat per-part plan
+
+Component-prop concat теперь имеет per-part `ConcatPartEmit` план в `ComponentPropConcatSemantics` (`Static | Inline | HoistDerived`), считаемый в `derive_component_concat_semantics` (`crates/svelte_analyze/src/attribute_semantics/builder/mod.rs`). Для HTML `Element` ConcatenationAttribute такой же gap присутствует и сейчас закрывается legacy-coarse-wrap fallback'ом — `{getName()}` инлайнится с `($.deep_read_state, $.untrack)`, литерал-Dynamic `{0}` хойстится зря. Reference вместо этого мемоизирует call-частей через `Memoizer` и кладёт результат в `$.template_effect(([$0]) => ..., [() => getName()])`.
+
+Места: codegen `crates/svelte_codegen_client/src/codegen/attributes/concat_attr.rs`, analyze — пока `AttributeSemantics::NonSpecial` для concat HTML.
+
+Direction: добавить `HtmlConcatSemantics { plan: SmallVec<[ConcatPartEmit; 4]> }` (или общий `ConcatPlan` на уровне `AttributeSemantics`), считать тем же `derive_concat_plan` без `should_wrap_in_derived` (HTML не поднимает state-only в derived); кодген attribute-эффекта читает план и собирает `Memoizer`-style массив для `template_effect`. Тест: добавить compiler-test cases2 для `<div class="x{getName()}{0}">` с конфигом auto-mode и runes.
+
+
+## ExprShapeProbe в attribute_semantics дублирует ExpressionSemantics
+
+В `crates/svelte_analyze/src/attribute_semantics/builder/mod.rs` есть локальный визитор `ExprShapeProbe`, который при derive семантик атрибутов (component-spread, attach, expression-prop memo, each-context-vars, document/window bind blockers) ходит по выражению и считает `has_call`, `is_dynamic`, `is_import`, `references`. Все эти факты уже опубликованы `ExpressionSemantics` (`ExpressionData::has_call`, `ExpressionData::is_dynamic()`, references + `semantics.symbol_flags(SymbolFlags::Import)`) — для concat-плана это уже сделано (`derive_component_concat_semantics`).
+
+Места: `derive_component_attach_emit`, `derive_component_spread_emit`, `derive_component_prop_memo_for_expression`, `derive_each_context_vars`, blockers-сборщики для bind-директив — все используют `ExprShapeProbe::new(ctx); probe.visit_expression(e)`.
+
+Direction: заменить probe на `ctx.expression_data(part_or_attr_id)` queries; удалить `ExprShapeProbe` если останется без callsite-ов. Это уберёт повторный walk JS-AST на каждом attribute-узле (analyze дозма из ARCHITECTURE §3 — single source of truth, без re-walks).

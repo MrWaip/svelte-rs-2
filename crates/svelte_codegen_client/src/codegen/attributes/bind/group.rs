@@ -1,4 +1,5 @@
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::BindDirective;
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -13,13 +14,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         get_fn: Expression<'a>,
         set_fn: Expression<'a>,
     ) -> Result<Statement<'a>> {
-        self.ctx.state.needs_binding_group = true;
-
-        let parent_eaches: smallvec::SmallVec<[svelte_ast::NodeId; 4]> =
+        let (parent_eaches, group_id): (smallvec::SmallVec<[svelte_ast::NodeId; 4]>, u32) =
             match self.ctx.query.analysis.attributes.get(bind.id) {
-                svelte_analyze::AttributeSemantics::ElementBind(b) => b.parent_each_blocks.clone(),
-                _ => smallvec::SmallVec::new(),
+                svelte_analyze::AttributeSemantics::ElementBind(b) => {
+                    (b.parent_each_blocks.clone(), b.group_id.unwrap_or(0))
+                }
+                _ => (smallvec::SmallVec::new(), 0),
             };
+        let group_name = crate::binding_group_name(group_id);
+        let group_name_ref: &str = self.ctx.b.alloc_str(&group_name);
         let index_array = if parent_eaches.is_empty() {
             self.ctx.b.empty_array_expr()
         } else {
@@ -47,7 +50,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let getter = if let Some(val_attr_id) = group_value_attr {
             let val_expr = {
                 let store = &self.ctx.query.component.store;
-                let mut found_id: Option<oxc_syntax::node::NodeId> = None;
+                let mut found_id: Option<OxcNodeId> = None;
                 for n in store.iter_nodes() {
                     let attrs: &[svelte_ast::Attribute] = match n {
                         svelte_ast::Node::Element(el) => &el.attributes,
@@ -95,7 +98,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(self.ctx.b.call_stmt(
             "$.bind_group",
             [
-                Arg::Ident("binding_group"),
+                Arg::Ident(group_name_ref),
                 Arg::Expr(index_array),
                 Arg::Ident(el_name),
                 Arg::Expr(getter),

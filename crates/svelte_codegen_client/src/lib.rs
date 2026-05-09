@@ -4,11 +4,16 @@ mod custom_element;
 mod script;
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
+use oxc_ast::ast::{
+    AssignmentOperator, AssignmentTarget, BindingPattern, ExportDefaultDeclarationKind, Expression,
+    Program, Statement,
+};
 use oxc_codegen::{Codegen, CodegenOptions as OxcCodegenOptions};
 use oxc_span::Span;
+use std::iter::empty;
 use std::path::PathBuf;
 
+use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::AnalysisData;
 use svelte_ast::{Attribute, Node};
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
@@ -16,6 +21,15 @@ use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
 
 use context::Ctx;
+use std::borrow::Cow;
+
+pub(crate) fn binding_group_name(id: u32) -> Cow<'static, str> {
+    if id == 0 {
+        Cow::Borrowed("binding_group")
+    } else {
+        Cow::Owned(format!("binding_group_{id}"))
+    }
+}
 
 pub fn generate<'a>(
     compile_ctx: svelte_types::CompileContext<'a, 'a>,
@@ -73,7 +87,7 @@ pub fn generate<'a>(
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx
             .b
-            .call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
+            .call_expr("$.props_id", empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
@@ -152,31 +166,34 @@ pub fn generate<'a>(
 
     if runtime.has_stores {
         let scoping = ctx.query.scoping();
-        let stores: Vec<(&str, &str, bool)> = ctx
+        let stores: Vec<(&str, &str, svelte_component_semantics::SymbolId)> = ctx
             .query
             .view
             .iter_store_bindings()
             .map(|(_, store)| {
-                let base_via_legacy_state = matches!(
-                    ctx.query.view.binding_semantics(store.base_symbol),
-                    svelte_analyze::BindingSemantics::LegacyState(_)
-                );
                 (
                     scoping.symbol_name(store.base_symbol),
                     scoping.symbol_name(store.store_symbol),
-                    base_via_legacy_state,
+                    store.base_symbol,
                 )
             })
             .collect();
 
-        for (base_name, dollar_name, base_via_legacy_state) in &stores {
+        for (base_name, dollar_name, base_symbol) in &stores {
             let dollar_name_str: &str = ctx.b.alloc_str(dollar_name);
             let base_str: &str = ctx.b.alloc_str(base_name);
             let make_base_arg = || -> Arg<'_, '_> {
-                if *base_via_legacy_state {
-                    Arg::Expr(ctx.b.call_expr("$.get", [Arg::Ident(base_str)]))
-                } else {
-                    Arg::Ident(base_str)
+                match ctx.query.view.binding_semantics(*base_symbol) {
+                    svelte_analyze::BindingSemantics::LegacyState(_)
+                    | svelte_analyze::BindingSemantics::State(_)
+                    | svelte_analyze::BindingSemantics::Derived(_) => {
+                        Arg::Expr(ctx.b.call_expr("$.get", [Arg::Ident(base_str)]))
+                    }
+                    svelte_analyze::BindingSemantics::Prop(_) => Arg::Expr(
+                        ctx.b
+                            .static_member_expr(ctx.b.rid_expr("$$props"), base_str),
+                    ),
+                    _ => Arg::Ident(base_str),
                 }
             };
             let store_get = ctx.b.call_expr(
@@ -206,15 +223,20 @@ pub fn generate<'a>(
 
         let setup_call = ctx
             .b
-            .call_expr("$.setup_stores", std::iter::empty::<Arg<'_, '_>>());
+            .call_expr("$.setup_stores", empty::<Arg<'_, '_>>());
         fn_body.push(
             ctx.b
                 .const_array_destruct_stmt(&["$$stores", "$$cleanup"], setup_call),
         );
     }
 
-    if ctx.state.needs_binding_group {
-        fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
+    {
+        let count = ctx.query.view.binding_group_count();
+        for id in 0..count {
+            let name = binding_group_name(id);
+            let name_ref: &str = ctx.b.alloc_str(&name);
+            fn_body.push(ctx.b.const_stmt(name_ref, ctx.b.empty_array_expr()));
+        }
     }
 
     fn_body.extend(instance_snippets);
@@ -259,7 +281,7 @@ pub fn generate<'a>(
                     let key: &str = ctx.b.alloc_str(&prop.prop_name);
                     let local: &str = ctx.b.alloc_str(&prop.local_name);
 
-                    let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
+                    let getter_expr = ctx.b.call_expr(local, empty::<Arg<'_, '_>>());
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     let default_expr = if ctx.query.runes() {
@@ -273,7 +295,7 @@ pub fn generate<'a>(
                         ctx.b
                             .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
                         ctx.b
-                            .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
+                            .call_stmt("$.flush", empty::<Arg<'_, '_>>()),
                     ];
                     export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
                 }
@@ -283,7 +305,7 @@ pub fn generate<'a>(
         if ctx.state.dev {
             let legacy_call = ctx
                 .b
-                .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
+                .call_expr("$.legacy_api", empty::<Arg<'_, '_>>());
             export_props.insert(0, ObjProp::Spread(legacy_call));
         }
 
@@ -293,7 +315,7 @@ pub fn generate<'a>(
     match runtime.legacy_init {
         svelte_analyze::LegacyInit::None => {}
         svelte_analyze::LegacyInit::Plain => {
-            fn_body.push(ctx.b.call_stmt("$.init", std::iter::empty::<Arg<'_, '_>>()))
+            fn_body.push(ctx.b.call_stmt("$.init", empty::<Arg<'_, '_>>()))
         }
         svelte_analyze::LegacyInit::Immutable => {
             fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]))
@@ -308,7 +330,7 @@ pub fn generate<'a>(
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
             fn_body.push(
                 ctx.b
-                    .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+                    .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
             );
             fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
         } else if runtime.needs_pop_with_return {
@@ -319,20 +341,20 @@ pub fn generate<'a>(
         } else {
             fn_body.push(
                 ctx.b
-                    .expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())),
+                    .expr_stmt(ctx.b.call_expr("$.pop", empty::<Arg<'_, '_>>())),
             );
 
             if runtime.has_stores {
                 fn_body.push(
                     ctx.b
-                        .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+                        .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
                 );
             }
         }
     } else if runtime.has_stores {
         fn_body.push(
             ctx.b
-                .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+                .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
         );
     }
 
@@ -430,7 +452,7 @@ pub fn generate<'a>(
     {
         let name: &str = b.alloc_str(ctx.query.analysis.scoping.symbol_name(sym));
         let var_name: &str = b.alloc_str(
-            &svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name(name),
+            &legacy_reactive_import_wrapper_name(name),
         );
         let thunk = b.thunk(b.rid_expr(name));
         let init = b.call_expr("$.reactive_import", [Arg::Expr(thunk)]);
@@ -475,7 +497,7 @@ pub fn generate<'a>(
 }
 
 fn build_codegen_output(
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     kind: SourcemapKind,
     filename: &str,
     source_text: &str,
@@ -512,7 +534,7 @@ fn split_async_instance_body<'a>(
 
     let mut result = Vec::new();
     let mut hoisted_names: Vec<&str> = Vec::new();
-    let mut thunks: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
+    let mut thunks: Vec<Expression<'a>> = Vec::new();
 
     for (i, stmt) in body.into_iter().enumerate() {
         if i < first_await_idx {
@@ -545,8 +567,8 @@ fn split_async_instance_body<'a>(
                     if matches!(
                         &declarator.init,
                         Some(
-                            oxc_ast::ast::Expression::ArrowFunctionExpression(_)
-                                | oxc_ast::ast::Expression::FunctionExpression(_)
+                            Expression::ArrowFunctionExpression(_)
+                                | Expression::FunctionExpression(_)
                         )
                     ) {
                         result.push(b.var_init_stmt(declarator));
@@ -557,7 +579,7 @@ fn split_async_instance_body<'a>(
                         let init = declarator.init.unwrap_or_else(|| b.void_zero_expr());
                         let assign = b.ast.expression_assignment(
                             oxc_span::SPAN,
-                            oxc_ast::ast::AssignmentOperator::Assign,
+                            AssignmentOperator::Assign,
                             assign_target,
                             init,
                         );
@@ -608,10 +630,9 @@ fn split_async_instance_body<'a>(
 }
 
 fn try_binding_to_assignment<'a>(
-    pat: &oxc_ast::ast::BindingPattern<'a>,
+    pat: &BindingPattern<'a>,
     b: &Builder<'a>,
-) -> Option<oxc_ast::ast::AssignmentTarget<'a>> {
-    use oxc_ast::ast::{AssignmentTarget, BindingPattern};
+) -> Option<AssignmentTarget<'a>> {
     match pat {
         BindingPattern::BindingIdentifier(id) => {
             let ident = b.ast.identifier_reference(oxc_span::SPAN, id.name.as_str());
@@ -623,7 +644,7 @@ fn try_binding_to_assignment<'a>(
 
 pub fn generate_module<'a>(
     alloc: &'a Allocator,
-    program: oxc_ast::ast::Program<'a>,
+    program: Program<'a>,
     analysis: &AnalysisData<'a>,
     line_index: &svelte_span::LineIndex,
     dev: bool,

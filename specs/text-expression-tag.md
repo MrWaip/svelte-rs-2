@@ -1,9 +1,9 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 8/8 use cases
-- **Tests**: 17/17 green
-- Last updated: 2026-05-01
+- **Working**: 13/13 use cases
+- **Tests**: 24/24 green
+- Last updated: 2026-05-11
 
 ## Source
 
@@ -29,6 +29,13 @@
 - [x] Template validation rejects invalid text / expression placement with `node_invalid_placement`
 - [x] Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
 - [x] Concat-context expression interpolations whose value is statically known to be non-nullish skip the `?? ""` fallback. `is_node_expr_definitely_defined` in `crates/svelte_codegen_client/src/codegen/mod.rs` returns `true` for `BinaryExpression`, so `${a() + b()}` inside a `set_text` template literal emits without the fallback (test: `text_expression_binary_no_nullish_fallback`).
+- [x] HTML named entity decoder is safe when the entity is followed by a multi-byte UTF-8 character. `decode_named_entity` in `crates/svelte_parser/src/html.rs` limits its search to the leading ASCII byte run of the remainder (named entity names are ASCII-only), so `&rest[..end]` never lands inside a multi-byte char boundary (regression: `&nbsp;всегда`).
+- [x] Pure-static element text fed into the `$.from_html(`...`)` template literal preserves named HTML entities verbatim. Codegen `ConcatPart::StaticEntities { html, text }` carries both forms when the parser-level `Text::decoded` is `Some` (entities present). Template-HTML consumers (`Template::push_text` via `FragmentAnchor::Child`) read the raw `html` form through `FragmentCtx::static_html_of`; JS-string consumers (`$.text(...)`, `${…}` template-literal interpolation, `document.title = …`) keep using the decoded `text` form through `FragmentCtx::static_text_of`. Trim is applied to both forms with the same flags — leading/trailing ASCII-whitespace runs are identical in raw and decoded so positions align. (test: `diagnose_html_template_preserves_nbsp`)
+- [x] Sibling-text concatenation that interpolates an imported binding (e.g. `<div>Hello {NAME} world<Other/></div>`) compiles to `$.template_effect(() => $.set_text(text, …))`, not `text.nodeValue = …`. Owning layer: **analyze**. Imports cross a module boundary that the compiler cannot evaluate (a `.svelte.js` re-export may carry `$state`), so they are classified as `BindingSemantics::MaybeReactive` — a domain answer to "we cannot prove non-reactivity". `is_symbol_dynamic` in `crates/svelte_analyze/src/expression_semantics/builder/derive.rs` (and the mirror in `passes/dynamism.rs`) returns `true` for `MaybeReactive`, feeding `ExprKind::SimpleRead { reactive: true }` so concat-context emits `template_effect`. Component / snippet binding classifiers (`is_reactive_component_binding`, `is_reactive_symbol` in `block_semantics/builder/render.rs`) treat `MaybeReactive` as static — imported `<Other />` and `{@render snip()}` keep their direct call form. (test: `diagnose_text_concat_import_uses_template_effect`)
+
+- [x] Concat-context interpolations lifted into a `template_effect` memo param (`$0`, sync or async) emit `${$0 ?? ""}` unconditionally. `build_concatenation_parts` in `crates/svelte_codegen_client/src/codegen/concatenation.rs` tracks `was_memoized` per part: when `data.kind` triggers `sync_values_push` / `async_values_push`, `defined` is forced to `false` regardless of the source expression's `ExpressionSemantics::Evaluation` because the substituted identifier `$0` carries no defined-ness. Same correction applied to `TitlePart::SyncMemo` / `TitlePart::AsyncMemo` in `crates/svelte_codegen_client/src/codegen/hoisted/title.rs` (mirror site, no failing case yet but kept consistent). Test: `text_expression_conditional_memoized_needs_nullish_fallback`.
+
+- [x] Element with a single dynamic expression child whose source is reactive must compile to `$.child(el, true)` + `$.template_effect(() => $.set_text(text, ...))`, never to `el.textContent = $.get(...)`. The HTML template carries a single space placeholder (`<button> </button>`) so `$.child(el, true)` can attach during hydration. The codegen single-expression-child fast path already toggles between `textContent =` and the reactive form via `is_dynamic_template`; the gap was upstream in analyze. Owning layer: **analyze** — `collect_derived_init_refs` in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/mod.rs` only walks the `$derived.by` argument when it's an `ArrowFunctionExpression` with `.expression == true`. Block-body arrows, function expressions, and non-arrow arguments are opaque: no refs collected, so `Derived.reactive` stays at the initial `true`, and the read-site `is_dynamic_template` correctly forces `template_effect`. Mirrors reference's `scope.evaluate` boundary — it does not peer into block bodies. (test: `diagnose_button_single_dynamic_text`)
 
 ## Out of scope
 
@@ -76,3 +83,12 @@
 - [x] `validate_text_bidirectional_control_warning` (analyzer)
 - [x] `validate_text_bidirectional_control_warning_ignored` (analyzer)
 - [x] `text_expression_binary_no_nullish_fallback`
+- [x] `decodes_named_entity_followed_by_multibyte_char` (parser unit)
+- [x] `leaves_ampersand_when_multibyte_char_follows_directly` (parser unit)
+- [x] `decodes_named_entity_in_mixed_multibyte_text` (parser unit)
+- [x] `diagnose_html_template_preserves_nbsp`
+- [x] `diagnose_button_single_dynamic_text`
+- [x] `derived_by_block_body_is_opaque_to_inert_deps_optimizer` (analyzer unit)
+- [x] `derived_by_expression_body_tracks_inert_deps` (analyzer unit)
+- [x] `diagnose_text_concat_import_uses_template_effect`
+- [x] `text_expression_conditional_memoized_needs_nullish_fallback`

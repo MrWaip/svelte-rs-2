@@ -1,9 +1,12 @@
+use std::mem;
+
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::HandlerEmit;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
 use crate::context::Ctx;
+use crate::script::sanitize_location;
 
 use super::super::{Codegen, CodegenError, Result};
 
@@ -91,11 +94,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
             let label_expr = if !call.arguments.is_empty() {
                 let mut dummy = oxc_ast::ast::Argument::from(self.ctx.b.cheap_expr());
-                std::mem::swap(&mut call.arguments[0], &mut dummy);
+                mem::swap(&mut call.arguments[0], &mut dummy);
                 dummy.into_expression()
             } else {
                 let (line, col) = self.ctx.state.line_index.line_col(arrow.span.start);
-                let sanitized = crate::script::sanitize_location(self.ctx.state.filename);
+                let sanitized = sanitize_location(self.ctx.state.filename);
                 let label = format!("trace ({sanitized}:{line}:{col})");
                 self.ctx.b.str_expr(&label)
             };

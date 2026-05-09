@@ -1,5 +1,5 @@
 use super::*;
-use svelte_ast::SvelteComponentLegacy;
+use svelte_ast::{SvelteComponentLegacy, SvelteSelf};
 
 #[allow(unused_variables)]
 pub(crate) trait TemplateVisitor {
@@ -33,6 +33,8 @@ pub(crate) trait TemplateVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
     }
+    fn visit_svelte_self(&mut self, el: &SvelteSelf, ctx: &mut VisitContext<'_, '_>) {}
+    fn leave_svelte_self(&mut self, el: &SvelteSelf, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_svelte_fragment_legacy(
         &mut self,
         el: &SvelteFragmentLegacy,

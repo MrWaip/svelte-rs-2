@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::hint::black_box;
-use std::io::{BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::time::{Duration, Instant};
 
 enum Mode {
@@ -59,7 +59,7 @@ fn main() {
         }
     });
 
-    let stdout = std::io::stdout();
+    let stdout = io::stdout();
     let mut out = BufWriter::new(stdout.lock());
 
     let warmup_dur = Duration::from_secs_f64(warmup);

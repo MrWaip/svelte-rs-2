@@ -854,6 +854,46 @@ fn explicit_external_css_mode_returns_compile_result_css() {
 }
 
 #[test]
+fn filename_relative_to_root_dir_strips_prefix() {
+    assert_eq!(
+        filename_relative_to_root_dir("/repo/src/x.svelte", Some("/repo")),
+        "src/x.svelte"
+    );
+}
+
+#[test]
+fn filename_relative_to_root_dir_strips_trailing_slash_root() {
+    assert_eq!(
+        filename_relative_to_root_dir("/repo/src/x.svelte", Some("/repo/")),
+        "src/x.svelte"
+    );
+}
+
+#[test]
+fn filename_relative_to_root_dir_keeps_when_no_match() {
+    assert_eq!(
+        filename_relative_to_root_dir("/elsewhere/x.svelte", Some("/repo")),
+        "/elsewhere/x.svelte"
+    );
+}
+
+#[test]
+fn filename_relative_to_root_dir_no_root_dir_returns_normalized() {
+    assert_eq!(
+        filename_relative_to_root_dir("/abs/x.svelte", None),
+        "/abs/x.svelte"
+    );
+}
+
+#[test]
+fn filename_relative_to_root_dir_normalizes_backslashes() {
+    assert_eq!(
+        filename_relative_to_root_dir("C:\\repo\\src\\x.svelte", Some("C:\\repo")),
+        "src/x.svelte"
+    );
+}
+
+#[test]
 fn attribute_invalid_event_handler_string_value() {
     let result = compile(
         r#"<button onclick="doSomething()"></button>"#,

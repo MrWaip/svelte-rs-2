@@ -1,22 +1,9 @@
 # Legacy reactivity system
 
 ## Current state
-- **Working**: 17/29 (8 base + 9 rune-in-legacy fallback). Umbrella `diagnose_legacy_dev_benchmark` byte-for-byte parity decomposed 2026-05-06 into 16 sub-cases under "Dev-mode legacy parity"; 5 store-related sub-cases moved to `specs/store-subscriptions.md` 2026-05-06, 11 remain here. Umbrella stays open until all sub-cases (here + store spec) close.
-- **Tests**: 8/8 green for landed legacy-state lowering. Diagnostic snapshots `validate_derived_rune_invalid_usage_in_non_runes_mode` / `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode` pass. e2e fixtures `derived_non_runes_invalid_usage` + `smoke_legacy_rune_fallback_all` register no `#[ignore]`, match reference byte-for-byte.
-- **Synthetic store_sub (closed 2026-05-05)**: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/store.rs::collect_store_declarations` declares synthetic `SymbolId` per unresolved `$name` reference in non-runes mode (sorted by source order via first reference's `ReferenceId`). Synthetic binding lives on root scope with `SymbolOwner::Synthetic`. Downstream `unresolved_store_base` finds it; `record_store_binding` activates legacy store fallback pipeline (`iter_store_bindings` → `lib.rs:154-201` thunks + `setup_stores` + `$$cleanup`) and `dispatch_identifier_read::StoreRead` on rune-shaped callees.
-- **Mode-aware rune classification**: rune-shape recognition fully gated on `uses_runes()` in analyze. Transform never re-detects rune kind from AST shape; consults:
-  - `crates/svelte_analyze/src/passes/js_analyze/script_runes.rs::collect_script_rune_call_kinds` — empty `script_rune_calls` in non-runes; `transformer/state.rs::rune_kind_from_expr` reads only this index (no `detect_class_field_rune_kind` AST fallback).
-  - `crates/svelte_analyze/src/reactivity_semantics/builder_v2/mod.rs::record_rune_declarator` — early-return non-runes.
-  - `crates/svelte_analyze/src/utils/script_info.rs::collect_var_declarations` — receives `runes: bool`, suppresses `is_rune` (and `props_declaration` from `$props()` calls) non-runes.
-  - `crates/svelte_analyze/src/passes/post_resolve.rs::analyze_declarations` — `data.script.props_id` set only from rune declarations.
-  - `crates/svelte_analyze/src/passes/js_analyze/script_body.rs::needs_context_for_program` — `body.has_effects` (from `$effect` rune-shaped callees) gated by `uses_runes`. Synthetic store-sub fallback non-runes does not leak `needs_context = true`, does not force `$.push`/`$.pop`.
-  - `crates/svelte_analyze/src/validate/stores.rs::is_synthetic_origin` — `StoreRuneConflict` warning skips synthetic store_sub bindings (analyzer-created, not user-declared, cannot conflict).
-  - `crates/svelte_transform/src/transformer/rewrites.rs::identifier_is_store_read` — single helper consulted by `rewrite_call_expression` + `rewrite_shared_call`, skips `$effect.*` / `$state.snapshot` / `$state.eager` / `$effect.pending` / `$host` rewrites when callee classified `StoreRead`. No `self.runes` mode-flag stitching in transform.
-- Last updated: 2026-05-06
-- Unified reactivity dependency: satisfied. Future legacy-reactivity work builds on landed `ReactivitySemantics` model. Keep explicit legacy-only hooks for containment + removability.
-- Member-target legacy state mutations inside template expressions (`{obj.x++}`, `{obj.x += n}`) lower through `rewrite_legacy_state_member_update` / `rewrite_legacy_state_member_assignment`, dispatched from `template_rewrites::rewrite_template_enter` alongside existing deep-store member rewrites. Same helpers serve script-body traversal — identical lowering both contexts.
-- Each-item indirect propagation: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::promote_each_sources_to_legacy_state` (`EachSourcePromoter::visit_each_block`). Each-item mutated → collection symbols promoted to legacy state, indirect links recorded via `add_each_item_indirect_source`. Member-mutations emit `$.invalidate_inner_signals(() => $.get(items))` through existing legacy coarse-wrap path.
-- Rune-in-legacy fallback set (moved from `specs/unknown.md` 2026-05-04): non-runes components, reference compiler treats rune-shaped calls as ordinary identifiers — `$derived` resolves as store getter, `$derived(expr)` lowers to `$derived()(expr)`. Our compiler hard-errors at `crates/svelte_analyze/src/validate/runes.rs:744` for `$derived`, never reaches codegen for `diagnose_legacy_dev_benchmark`. Implementation must follow `.claude/skills/legacy-conventions` (Legacy suffix + `LEGACY(svelte4):` doc-comment per struct/function, isolated codepaths).
+- Working: 38/40
+- Tests: 20/20
+- Last updated: 2026-05-13
 
 ## Source
 
@@ -63,46 +50,59 @@
 
 ## Use cases
 
-- [x] Top-level legacy `let` lower through `$.mutable_source(...)`, `$.get(...)`, `$.set(...)` legacy mode. Pre: raw `let count = 0`, raw `count += 1`, static text for `{count}`. Test: `legacy_reactivity_let_basic`.
-- [x] Top-level legacy `var` use same legacy-state lowering, preserve `$.safe_get(...)` reads for var-declared sources. Matches reference legacy `var` semantics. Test: `legacy_reactivity_var_basic`.
-- [x] Member mutations of top-level legacy locals lower through `$.mutate(...)` + coarse member reads. `object.x += 1` invalidates template consumers via legacy runtime, not plain object mutation. Test: `legacy_reactivity_member_mutation`.
+- [x] Top-level legacy `let` lower through `$.mutable_source(...)`, `$.get(...)`, `$.set(...)` legacy mode. Test: `legacy_reactivity_let_basic`.
+- [x] Top-level legacy `var` use same legacy-state lowering, preserve `$.safe_get(...)` reads for var-declared sources. Test: `legacy_reactivity_var_basic`.
+- [x] Member mutations of top-level legacy locals lower through `$.mutate(...)` + coarse member reads. Test: `legacy_reactivity_member_mutation`.
 - [x] Array-method mutation + explicit self-assignment (`numbers.push(...); numbers = numbers;`) lowers through `$.get(...)` / `$.set(...)` + coarse member reads for `numbers.length`. Test: `legacy_reactivity_array_self_assign`.
-- [x] Destructured top-level legacy declarations lower through legacy-state declarator path. Each bound name = own mutable source. Destructuring reassignment → `$.set(...)` updates. Test: `legacy_reactivity_destructure`.
-- [x] Member update of top-level legacy state inside template expression (`{obj.x++}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x++)))`. `template_rewrites::rewrite_template_enter` dispatches `rewrite_legacy_state_member_update` for `UpdateExpression`. Legacy coarse-wrap activates: `UpdateExpression` → `ExpressionKind::Update`. Test: `legacy_state_member_update_in_template`.
-- [x] Compound member assignment to top-level legacy state inside template expression (`{obj.x += 5}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x += 5)))` via same template-enter dispatch into `rewrite_legacy_state_member_assignment`. Test: `legacy_state_member_compound_in_template`.
-- [x] Each-item member mutation through `{#each items as item}` propagates indirect-binding back to iterated collection. Collection declarator upgrades `let items = [...]` → `let items = $.mutable_source([...])`. Member-mutations in template effect emit `$.invalidate_inner_signals(() => $.get(items))` (mirrors reference `legacy_indirect_bindings`). Owner: `crates/svelte_analyze/src/reactivity_semantics/builder_v2/contextual.rs::EachSourcePromoter` + standard legacy coarse-wrap codegen. Test: `smoke_legacy_contextual_mutations_all`.
+- [x] Destructured top-level legacy declarations lower through legacy-state declarator path. Each bound name = own mutable source. Test: `legacy_reactivity_destructure`.
+- [x] Member update of top-level legacy state inside template expression (`{obj.x++}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x++)))`. Test: `legacy_state_member_update_in_template`.
+- [x] Compound member assignment to top-level legacy state inside template expression (`{obj.x += 5}`) lowers to `($.get(obj), $.untrack(() => $.mutate(obj, $.get(obj).x += 5)))`. Test: `legacy_state_member_compound_in_template`.
+- [x] Each-item member mutation through `{#each items as item}` propagates indirect-binding back to iterated collection. Collection declarator upgrades to `$.mutable_source([...])`; member-mutations emit `$.invalidate_inner_signals(() => $.get(items))`. Test: `smoke_legacy_contextual_mutations_all`.
+- [x] Legacy `{#each}` iter param promoted to `mutable_source` when transitively mutated through `{@const}` + bind chain. Test: `legacy_const_each_bind_member_chain`.
+- [x] Top-level `const` with member mutation promotes to legacy state (auto SoftLegacy + explicit `runes:false`). Test: `auto_softlegacy_const_member_mutation`.
+- [x] Legacy `{#if expr}` condition reads of legacy-state member-expressions apply coarse-wrap at codegen. Test: `legacy_const_member_mutation_through_ts_non_null`.
+- [x] TS wrappers (`!`, `as`, `<T>`) on the member-mutation target skip `const`/`let` legacy-state promotion. Test: `legacy_const_member_mutation_through_ts_non_null`.
+- [x] Bind-setter `$.mutate` wrap for legacy-state member mutation. Test: `legacy_state_bind_member_mutate_wrap`.
+- [x] Top-level `let` written + read only inside a single function called from template stays plain JS — not promoted to `$.mutable_source(...)`. Reference treats indirect reads via a function body as non-reactive consumer; only direct template/`$:`/other-reactive-site reads upgrade. Also: `{#if fn()}` derived condition for such a function emits `$.derived(() => $.untrack(fn))`. Test: `diagnose_legacy_local_var_not_promoted_to_state`.
+- [x] Destructured `{@const}` initializer rooted on each-item reactive binding coarse-wraps: `{#each rows as row}{@const { x, y } = lookup[row.key]}` → `const { x, y } = ($.get(row), $.untrack(() => lookup[$.get(row).key]))`. Currently emits bare `lookup[$.get(row).key]` with no coarse wrap. Test: `diagnose_legacy_each_const_destructure_coarse_wrap`.
+- [x] `{#if call(item.x)}` derived condition rooted on each-item reactive binding coarse-wraps: `var d = $.derived(() => ($.get(row), $.untrack(() => check($.get(row).key))))`. Currently emits bare call inside derived without coarse wrap. Test: `diagnose_legacy_each_if_condition_coarse_wrap`.
+- [x] `{#if local && $store.length > 0}` legacy `$.if` predicate with store auto-subscription inside short-circuit position coarse-wraps: `if ($items(), $.untrack(() => local && $items().length > 0)) $$render(...)`. Currently emits bare `local && $items().length > 0` without hoisting `$items()` read or untracking. Test: `diagnose_legacy_if_store_short_circuit_coarse_wrap`.
 
-### Rune-in-legacy fallback (moved from specs/unknown.md 2026-05-04)
+### Rune-in-legacy fallback
 
-Reference compiler does not treat `$state`, `$derived`, `$props`, `$effect`, `$inspect`, `$bindable` (or member forms) as runes when `runes:false`. Instead degrade to ordinary identifier references — typically resolve to legacy store-getters (`$name → $.store_get(name)`). No `rune_invalid_usage` diagnostic emitted. Repro/test: `diagnose_legacy_dev_benchmark`. Owning layer split: hard-error removal in analyze (`validate/runes.rs:744`), call-site lowering in transform/codegen. All new code follows `.claude/skills/legacy-conventions`.
+Reference compiler does not treat `$state`, `$derived`, `$props`, `$effect`, `$inspect`, `$bindable` (or member forms) as runes when `runes:false`. Instead degrade to ordinary identifier references — typically resolve to legacy store-getters. No `rune_invalid_usage` diagnostic emitted.
 
-- [x] Remove `runes:false` hard-error for `$derived` at `crates/svelte_analyze/src/validate/runes.rs:744`. Reference emits no `rune_invalid_usage` non-runes. Tests `validate_derived_rune_invalid_usage_in_non_runes_mode`, `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode` baselined empty, no `#[ignore]`.
-- [x] `$derived(expr)` non-runes → `$derived()(expr)`. `$derived` resolves as synthetic store getter. No `$.derived(() => expr)` wrapping. Test: `derived_non_runes_invalid_usage`.
-- [x] `$derived.by(fn)` non-runes → `$derived().by(() => fn)` (member-access on store value). Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$state(initial)` non-runes → `$state()(initial)`. No `$.state(...)` / `$.proxy(...)` wrapping. Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$state.raw(initial)` + `$state.snapshot(value)` non-runes → `$state().raw(initial)` / `$state().snapshot(value)` — plain member calls on store value. Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$props()`, `$props.id()` non-runes → `$props()()` and `$props().id()`. No `props_declaration`, `props_id`, `$.props_id()` hoist, `$$props` parameter, `$.push`/`$.pop`. Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$effect(fn)`, `$effect.pre(fn)`, `$effect.tracking()` non-runes → `$effect()(fn)` / `$effect().pre(fn)` / `$effect().tracking()`. No `$.user_effect` / `$.user_pre_effect` / `$.effect_tracking` wrapping. `body.has_effects` does not propagate to `needs_context`. Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$inspect(...)` non-runes → `$inspect()(value)` — plain store-thunk call. Test: `smoke_legacy_rune_fallback_all`.
-- [x] `$bindable(default)` non-runes → `$bindable()(default)` — plain store-thunk call. Test: `smoke_legacy_rune_fallback_all`.
+- [x] Remove `runes:false` hard-error for `$derived`. Tests: `validate_derived_rune_invalid_usage_in_non_runes_mode`, `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode`.
+- [x] `$derived(expr)` non-runes → `$derived()(expr)`. Test: `derived_non_runes_invalid_usage`.
+- [x] `$derived.by(fn)` non-runes → `$derived().by(() => fn)`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$state(initial)` non-runes → `$state()(initial)`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$state.raw(initial)` + `$state.snapshot(value)` non-runes → plain member calls on store value. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$props()`, `$props.id()` non-runes → `$props()()` and `$props().id()`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$effect(fn)`, `$effect.pre(fn)`, `$effect.tracking()` non-runes → plain store-thunk member calls. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$inspect(...)` non-runes → `$inspect()(value)`. Test: `smoke_legacy_rune_fallback_all`.
+- [x] `$bindable(default)` non-runes → `$bindable()(default)`. Test: `smoke_legacy_rune_fallback_all`.
 - [ ] (umbrella) `diagnose_legacy_dev_benchmark` produces JS matching reference `case-svelte.js` byte-for-byte under `runes:false, dev:true`. Closes only when all "Dev-mode legacy parity" sub-cases close.
 
-### Dev-mode legacy parity (decomposed from `diagnose_legacy_dev_benchmark` 2026-05-06)
+### Dev-mode legacy parity
 
-Each sub-case = one independent divergence cluster from diff `tasks/compiler_tests/cases2/diagnose_legacy_dev_benchmark/{case-svelte.js,case-rust.js}`. Each gets minimal compiler test under `tasks/compiler_tests/cases2/legacy_dev_<slug>/`. New structs/functions follow `.claude/skills/legacy-conventions` (Legacy suffix + `LEGACY(svelte4):` doc-comment + isolated codepaths).
+Each sub-case = one independent divergence cluster from diff `tasks/compiler_tests/cases2/diagnose_legacy_dev_benchmark/{case-svelte.js,case-rust.js}`.
 
-- [ ] **`bind:this` targets promote to legacy mutable_source**: `<el bind:this={target}>` with `let target` → `target` = legacy state. Declaration → `let target = $.mutable_source()`. Bind setter → `($$value) => $.set(target, $$value), () => $.get(target)`. Owner: analyze (legacy state classification). Test: `legacy_dev_bind_this_promotes_state`.
-- [ ] **`$inspect(...)` falls back to synthetic-thunk call**: non-runes, `$inspect(a, b)` → `$inspect()(a, b)` (synthetic store thunk invoked, then called with args). Not `$.inspect(() => [...], handler, true)`. Owner: transform (rune call rewrite). Test: `legacy_dev_inspect_fallback`.
-- [ ] **Legacy template effect uses `$.deferred_template_effect`**: legacy non-runes, catch-all template effect helper = `$.deferred_template_effect(...)`. Not `$.effect(...)`. Owner: codegen_client (template effect emission). Test: `legacy_dev_deferred_template_effect`.
-- [ ] **Reactive text via `$.child` + `$.reset` + `$.set_text` for text-only elements**: legacy mode, element with one dynamic text child (`<p>{x}</p>`, `<strong>{x}</strong>`, `<svelte:element>...{x}</svelte:element>`) emits template HTML with single space placeholder (`<p> </p>`) + runtime sequence `var t_N = $.child(p); $.reset(p); ... $.template_effect(() => $.set_text(t_N, ...));`. Not `p.textContent = ...` / `text.nodeValue = ...`. Owner: codegen_client (template_html + text-only element handling). Test: `legacy_dev_reactive_text_only_element`.
-- [ ] **Legacy `{@const}` deep-read coarse-tracking**: `{@const X = obj.member}` initializer legacy mode → `$.derived_safe_equal(() => ($.get(obj), $.untrack(() => $.get(obj).member)))` — coarse-read of source + untracked fine-grained access. Owner: analyze + transform/codegen (member-read coarse wrap on read sites). Test: `legacy_dev_const_deep_read_wrap`.
-- [ ] **Each-item `{@const}` deep_read prelude with `$.deep_read_state`**: `{#each items as item, idx}{@const X = ...}` initializers coarse-read each-item locals via `$.deep_read_state($.get(idx))` + same coarse+untrack wrap from cluster #9. Owner: analyze (each-item indirect reads). Test: `legacy_dev_each_const_deep_read`.
-- [ ] **Group consecutive attribute setters into one `$.template_effect`**: element with multiple dynamic attributes (`<input {title} {state} value={count}>`) → all emitted inside single `$.template_effect(() => { $.set_attribute(...); $.set_attribute(...); $.set_value(...); });`. Not one inline + separate effect for rest. Owner: codegen_client (attribute effect grouping). Test: `legacy_dev_attribute_effect_grouping`.
-- [ ] **Component event-prop `getHandler()` uses `derived_safe_equal` + `untrack`**: callee-call `getHandler()` passed as component event prop (`onclick={getHandler()}`) → `let $0 = $.derived_safe_equal(() => $.untrack(getHandler));`. Not `$.derived(getHandler)`. Owner: codegen_client (component prop derived). Test: `legacy_dev_component_event_prop_derived`.
-- [ ] **Component prop forwarding emits getters legacy mode**: shorthand `{title}` forwarded to child component → `{ get title() { return title; } }`. Not `{ title }`. Owner: codegen_client (component invocation). Test: `legacy_dev_component_prop_getter`.
-- [ ] **Component invocation emits `$$legacy: true` flag**: props-object passed to `$.component(...)` for non-snippet child components includes literal key/value `$$legacy: true` legacy mode. Owner: codegen_client (component invocation). Test: `legacy_dev_component_legacy_flag`.
-- [ ] **`export const` / `export function` emit `$.bind_prop` at script tail**: every `export const X = ...` / `export function X(...) { ... }` legacy mode appends `$.bind_prop($$props, "X", X);` at end of component function body. Owner: codegen_client (script tail). Test: `legacy_dev_export_bind_prop`.
-- [ ] **Store-related dev-mode legacy parity sub-cases moved to `specs/store-subscriptions.md`** — synthetic store-thunk getters, no `mutable_source` promotion for `writable()` w/o reassign, store dereference call shape, `$X = expr` → `$.store_set`, `bind:` setter `$.store_unsub` wrap. Closure of `diagnose_legacy_dev_benchmark` umbrella requires those sub-cases to close in the store spec.
+- [x] `bind:this` targets promote to legacy mutable_source. Test: `legacy_dev_bind_this_promotes_state`.
+- [x] `$inspect(...)` falls back to synthetic-thunk call. Test: `legacy_dev_inspect_fallback`.
+- [x] Legacy template effect uses `$.deferred_template_effect` for `<svelte:head><title>{expr}</title>` reading legacy reactive state. Test: `legacy_dev_deferred_template_effect`.
+- [x] Reactive text via `$.child` + `$.reset` + `$.set_text` for text-only elements. Test: `legacy_dev_reactive_text_only_element`.
+- [x] Legacy `{@const}` deep-read coarse-tracking: `{@const X = obj.member}` initializer → `$.derived_safe_equal(() => ($.get(obj), $.untrack(() => $.get(obj).member)))`. Test: `legacy_dev_const_deep_read_wrap`.
+- [x] Each-item `{@const}` initializer in legacy mode coarse-wraps reactive contextual member roots: `{#each items as item, idx}{@const X = ...}` whose initializer roots a member/call expression on `item`/`idx`/snippet-param/let-directive/await-value/await-error promotes to `$.derived_safe_equal(() => (<dep-reads>, $.untrack(() => <orig>)))`. Test: `legacy_dev_each_const_deep_read`.
+- [x] Group consecutive attribute setters into one `$.template_effect`. Test: `legacy_dev_attribute_effect_grouping`.
+- [x] Component event-prop `getHandler()` uses `derived_safe_equal` + `untrack`: `onclick={getHandler()}` → `let $0 = $.derived_safe_equal(() => $.untrack(getHandler));`. Test: `legacy_dev_component_event_prop_derived`.
+- [ ] Component prop forwarding emits getters legacy mode: shorthand `{title}` → `{ get title() { return title; } }`. Test: `legacy_dev_component_prop_getter`.
+- [ ] Component invocation emits `$$legacy: true` flag. Test: `legacy_dev_component_legacy_flag`.
+- [ ] `export const` / `export function` emit `$.bind_prop` at script tail. Test: `legacy_dev_export_bind_prop`.
+- [x] Destructured `const` legacy-state promotion with member mutation. Test: `legacy_const_destructured_member_bind`.
+- [x] HardLegacy import-base call-expression coarse wrap via `$.deep_read_state`. Test: `auto_hardlegacy_import_call_coarse_wrap`.
+- [x] `legacy_pre_effect` block placement is after script function declarations. Test: `diagnose_legacy_pre_effect_order_after_functions`.
+- [x] `$.template_effect`/`derived_safe_equal` coarse wrap for prop call + member. Test: `diagnose_legacy_template_effect_prop_call_coarse_wrap`.
+- [ ] Store-related dev-mode legacy parity sub-cases moved to `specs/store-subscriptions.md` — closure of `diagnose_legacy_dev_benchmark` umbrella requires those sub-cases to close in the store spec.
 
 ## Out of scope
 
@@ -149,16 +149,28 @@ Each sub-case = one independent divergence cluster from diff `tasks/compiler_tes
 - [x] `legacy_reactivity_destructure`
 - [x] `legacy_state_member_update_in_template`
 - [x] `legacy_state_member_compound_in_template`
-- [x] e2e smoke: `smoke_legacy_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for legacy state identifier + member targets — static (`obj.x`), computed string (`obj["x"]`), computed dynamic (`obj[key]`) member access — script body + template expressions, alongside legacy bindable, store, deep-store paths.
-- [ ] `diagnose_legacy_dev_benchmark` — umbrella, `#[ignore]`d. Closes when every "Dev-mode legacy parity" sub-case passes (including the store sub-cases tracked in `specs/store-subscriptions.md`).
-- [ ] `legacy_dev_bind_this_promotes_state`
-- [ ] `legacy_dev_inspect_fallback`
-- [ ] `legacy_dev_deferred_template_effect`
-- [ ] `legacy_dev_reactive_text_only_element`
-- [ ] `legacy_dev_const_deep_read_wrap`
-- [ ] `legacy_dev_each_const_deep_read`
-- [ ] `legacy_dev_attribute_effect_grouping`
-- [ ] `legacy_dev_component_event_prop_derived`
+- [x] `smoke_legacy_reactive_mutations_all`
+- [x] `auto_softlegacy_const_member_mutation`
+- [x] `legacy_const_each_bind_member_chain`
+- [x] `legacy_state_bind_member_mutate_wrap`
+- [x] `legacy_const_member_mutation_through_ts_non_null`
+- [x] `legacy_const_destructured_member_bind`
+- [ ] `diagnose_legacy_dev_benchmark` — umbrella, `#[ignore]`d.
+- [x] `legacy_dev_bind_this_promotes_state`
+- [x] `legacy_dev_inspect_fallback`
+- [x] `legacy_dev_deferred_template_effect`
+- [x] `legacy_dev_reactive_text_only_element`
+- [x] `legacy_dev_const_deep_read_wrap`
+- [x] `legacy_dev_each_const_deep_read`
+- [x] `legacy_dev_attribute_effect_grouping`
+- [x] `legacy_dev_component_event_prop_derived`
 - [ ] `legacy_dev_component_prop_getter`
 - [ ] `legacy_dev_component_legacy_flag`
 - [ ] `legacy_dev_export_bind_prop`
+- [x] `auto_hardlegacy_import_call_coarse_wrap`
+- [x] `diagnose_legacy_pre_effect_order_after_functions`
+- [x] `diagnose_legacy_template_effect_prop_call_coarse_wrap`
+- [x] `diagnose_legacy_local_var_not_promoted_to_state`
+- [x] `diagnose_legacy_each_const_destructure_coarse_wrap`
+- [x] `diagnose_legacy_each_if_condition_coarse_wrap`
+- [x] `diagnose_legacy_if_store_short_circuit_coarse_wrap`

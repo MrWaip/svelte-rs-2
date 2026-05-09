@@ -1,9 +1,9 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 22/22 use cases
-- **Tests**: 54/54 green
-- Last updated: 2026-04-30
+- **Working**: 26/26 use cases
+- **Tests**: 58/58 green
+- Last updated: 2026-05-14
 - Member-target prop mutations inside template expressions (`{props.x++}`, `{props.x += n}`) lower through the shared `rewrite_prop_member_assignment` / `rewrite_prop_member_update` helpers (extracted from `transform_assignment` / `transform_update`), now dispatched from `template_rewrites::rewrite_template_enter`. Bindable prop sources receive the `obj(obj().x++, true)` wrap for both assign and update. The dev ownership-validator hook `rewrite_prop_update_ownership_exit` is now also invoked from `rewrite_template_exit` so template-side member updates still emit `$$ownership_validator.mutation(...)` in dev.
 
 ## Source
@@ -27,6 +27,8 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] Rest props lowering: `let { x, ...rest } = $props()` (test: `props_rest`)
 - [x] Identifier pattern: `const props = $props()` (tests: `props_identifier_basic`, `props_identifier_await_expression`)
 - [x] Non-bindable fallback values including lazy defaults (test: `props_lazy_default`)
+- [x] Prop default that's a bare identifier referring to another reactive binding (another prop, `$state`, `$derived`, store, contextual) classified as Lazy: emits `() => <ident>` wrapper and `PROPS_IS_LAZY_INITIAL` flag bit (test: `diagnose_props_default_identifier_prop_reference`)
+- [x] Prop default that's a bare identifier referring to a top-level non-reactive binding (import, function declaration, plain `const`) classified as Eager: emits the identifier directly with flag bit `3`, no `() => …` wrapper and no `PROPS_IS_LAZY_INITIAL` (test: `diagnose_props_default_identifier_non_reactive`).
 - [x] Local mutation of a prop source produces updatable local state (test: `props_mutated`)
 - [x] `$bindable()` defaults inside `$props()` destructuring (tests: `props_bindable`, `props_mixed`)
 - [x] Proxy wrapping for bindable object/array defaults (test: `tag_bindable_proxy`)
@@ -46,6 +48,8 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] Dev-mode ownership mutation validation for prop / bindable-prop member writes via `$$ownership_validator.mutation(...)` (tests: `compile_dev_props_member_mutation_uses_ownership_validator`, `compile_dev_bindable_prop_member_mutation_uses_prop_alias`, `compile_dev_bindable_prop_member_update_uses_ownership_validator`, `compile_dev_props_member_mutation_in_return_uses_ownership_validator`, `compile_dev_shadowed_bindable_member_update_does_not_use_ownership_validator`, `props_member_mutation_computed`, `props_renamed_member_update_computed`)
 - [x] Member-target update of a runes prop inside a template expression (`{obj.x++}`) lowers to `obj().x++` (root rewritten to the prop getter call) via the shared `rewrite_prop_member_update` dispatched from `template_rewrites::rewrite_template_enter` (test: `runes_prop_member_update_in_template`).
 - [x] Member-target compound assignment to a runes prop inside a template expression (`{obj.x += 5}`) lowers to `obj().x += 5` via the shared `rewrite_prop_member_assignment` dispatched from `template_rewrites::rewrite_template_enter` (test: `runes_prop_member_compound_in_template`).
+- [x] Source declarator kind is preserved when destructuring `$props()` — `const { x = 0 } = $props()` emits `const x = $.prop(...)`. `DeclaratorSemantics::PropsObject`/`PropsIdentifier` carry `PropsDeclKind` (Const/Let/Var), filled from the source `VariableDeclaration.kind` and consumed by `var_decl_multi_stmt` in transform (test: `props_const_destructured_with_default`).
+- [x] Identifier-pattern `$props()` member access inside a `{#snippet}` body rewrites `props.X` → `$$props.X` and keeps the snippet non-hoisted. Closed by moving `ComponentNode.name` from `String` to `ExprRef`: the JS expression in the tag name flows through the same `ComponentSemantics` / `ReactivitySemantics` pipeline as any template expression, so the root identifier's `ReferenceId` is tainted as an instance reference (driving hoist classification) and the transform's reference dispatchers rewrite `props` → `$$props` uniformly inside snippet bodies. (test: `diagnose_props_identifier_in_snippet_body`)
 
 ## Reference
 
@@ -122,4 +126,8 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `props_renamed_member_update_computed`
 - [x] `runes_prop_member_update_in_template`
 - [x] `runes_prop_member_compound_in_template`
+- [x] `props_const_destructured_with_default`
+- [x] `diagnose_props_identifier_in_snippet_body`
+- [x] `diagnose_props_default_identifier_prop_reference`
+- [x] `diagnose_props_default_identifier_non_reactive`
 - [x] e2e smoke: `smoke_runes_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for runes prop / `$bindable` identifier and member targets — including static (`obj.x`), computed string (`obj["x"]`), computed dynamic (`obj[key]`), and deep chains (`obj.a.b.c.x`, `obj["a"]["b"]["c"]["x"]`, mixed `obj[k1].b[k2]`) plus optional-chain reads (`obj?.a?.b?.c?.x`) — in both script body and template expressions, alongside `$state`, `$state.raw`, store, and deep-store paths. The smoke also exercises every contextual reactive reference: `{#each}` items, `{#snippet}` params, `{@const}` aliases, `{#await}` resolved/error values. Companion `smoke_runes_declarator_gaps_all` (ignored) captures three declarator gaps tracked in debt.md: `var foo = $state(0)`, `let { rawProp } = $props()` (NonSource→Source upgrade on mutation), `$state.eager(0)`.

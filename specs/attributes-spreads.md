@@ -1,9 +1,9 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 22/22 use cases
-- **Tests**: 28/28 green
-- Last updated: 2026-04-11
+- **Working**: 26/27 use cases
+- **Tests**: 32/33 green
+- Last updated: 2026-05-13
 
 ## Source
 
@@ -51,6 +51,11 @@
 - [x] Binding-driven attribute diagnostics (`attribute_invalid_type`, `attribute_invalid_multiple`, contenteditable) are tracked and completed in `specs/bind-directives.md`
 - [x] A11y attribute warnings are owned by `specs/a11y-warnings.md`
 - [x] Legacy slot-attribute validation ownership moved to `specs/legacy-slots.md`
+- [x] Regular-element attribute whose value is a member-access chain rooted in a `MetaProperty` (e.g. `<a href={import.meta.env.VITE_X}>`) lowers through `$.template_effect(() => $.set_attribute(el, name, expr))` instead of an eager `$.set_attribute(...)` outside the effect. Reference treats any `MetaProperty`-rooted read as runtime-evaluated. Owning layer: 3.A.3 `ExpressionSemantics`. The classifier already has the right output shape — `ExprKind::SimpleRead { reactive: true }` for `TopLevelForm::Member`. The single missing input is a builder-private fact in `ExprFacts` (peer of `has_call` / `has_await` / `has_store_ref`) marking that the peeled root is `MetaProperty`; `derive::is_dynamic_template` ORs it into the Member/Call dynamism check, `update_aggregates` notes `ContextSignal::IMPORT_OR_PROP_MEMBER` so `$.push/$.pop` emit. Consumers (`references_need_wrap` in `attribute_semantics`, `is_dynamic_element_attr` in `dynamism.rs`) read the canonical `data.kind` reactive flag — no sidecar boolean on `ExpressionData`. Test: `element_attr_import_meta_template_effect`.
+- [ ] Concatenated `class="..."` template parts skip the `?? ""` fallback for expressions that always coerce to a string in template-literal context — `LogicalExpression` (`&&`, `||`, `??`), `ConditionalExpression`, `BinaryExpression`, and string/number literals — matching reference output `${cond && "b"}` instead of `${(cond && "b") ?? ""}` (test: `class_concat_logical_and_string`)
+- [x] Shorthand attributes inside an `$.attribute_effect(...)` spread object emit `name: name()` for `$.prop`-wrapped locals and `name: $$props.name` for props with no local binding; bare shorthand stays for plain locals (test: `attribute_effect_shorthand_prop_unwrap`)
+- [x] Attribute and directive names containing `_` parse correctly across regular attrs, `class:`, `style:`, `on:`, `use:`, `bind:` — scanner allows `_` in the attribute-identifier predicate (tests: `attribute_name_with_underscore`, `diagnose_class_directive_name_with_underscore`)
+- [x] `class:` directives whose value is a non-trivial expression (e.g. `CallExpression` like `Boolean(x)`) hoist the entire class-directives object into the `template_effect` deps array — `template_effect(($0) => { classes = set_class(div, 1, "", null, classes, $0); ... }, [() => ({ ... })])` — instead of inlining the object literal directly into the `set_class(...)` call (test: `diagnose_class_directive_call_in_template_effect`)
 
 ## Reference
 
@@ -107,3 +112,7 @@
 - [x] `regular_element_attribute_unquoted_sequence_errors`
 - [x] `custom_element_attribute_unquoted_sequence_errors`
 - [x] `svelte_element_attribute_unquoted_sequence_errors`
+- [ ] `class_concat_logical_and_string`
+- [x] `element_attr_import_meta_template_effect`
+- [x] `attribute_effect_shorthand_prop_unwrap`
+- [x] `diagnose_class_directive_call_in_template_effect`

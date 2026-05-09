@@ -1,4 +1,6 @@
 use super::*;
+use oxc_ast::ast::Program;
+use svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore;
 
 #[derive(Debug, Default)]
 pub struct IgnoreData {
@@ -35,7 +37,7 @@ impl IgnoreData {
     }
     pub fn scan_program_comments(
         &mut self,
-        program: &oxc_ast::ast::Program<'_>,
+        program: &Program<'_>,
         source: &str,
         runes: bool,
     ) {
@@ -59,7 +61,7 @@ impl IgnoreData {
             } else {
                 continue;
             };
-            let result = svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore(
+            let result = extract_svelte_ignore(
                 inner_offset,
                 inner,
                 runes,

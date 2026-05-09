@@ -1,10 +1,15 @@
+use std::{iter, mem};
+
 use oxc_allocator::{CloneIn, Vec as OxcVec};
+use oxc_ast::NONE;
 use oxc_ast::ast::{
-    AssignmentTarget, BindingPattern, Expression, PropertyKey, Statement, VariableDeclarationKind,
+    Argument, AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty,
+    BindingPattern, Expression, PropertyKey, Statement,
 };
-use svelte_analyze::DeclaratorSemantics;
+use oxc_span::SPAN;
+use svelte_analyze::{AnalysisData, DeclaratorSemantics, ReferenceSemantics};
 use svelte_ast_builder::Arg;
-use svelte_component_semantics::{Access, walk_bindings};
+use svelte_component_semantics::{Access, SymbolId, walk_bindings};
 
 use super::model::ComponentTransformer;
 
@@ -41,7 +46,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 continue;
             };
 
-            let Some(leaf_paths) = collect_leaf_paths(&declarator.id) else {
+            let Some(leaf_paths) = collect_binding_paths(&declarator.id) else {
                 i += 1;
                 continue;
             };
@@ -75,12 +80,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 declarators_out.push((leaf_name, init_expr));
             }
 
-            let replacement = match kind {
-                VariableDeclarationKind::Let | VariableDeclarationKind::Var => {
-                    self.b.let_multi_stmt(declarators_out)
-                }
-                _ => self.b.let_multi_stmt(declarators_out),
-            };
+            let replacement = self.b.var_decl_multi_stmt(declarators_out, kind);
             stmts.insert(i, replacement);
             self.ident_counter += 1;
             i += 1;
@@ -109,13 +109,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
             _ => return false,
         }
-        let Some(leaves) = collect_array_assign_legacy_state_leaves(analysis, &assign_box.left)
+        let Some(leaves) = collect_array_assign_legacy_state_bindings(analysis, &assign_box.left)
         else {
             return false;
         };
         let n = leaves.len() as f64;
         let placeholder = self.b.cheap_expr();
-        let owned = std::mem::replace(node, placeholder);
+        let owned = mem::replace(node, placeholder);
         let Expression::AssignmentExpression(assign_box) = owned else {
             unreachable!();
         };
@@ -141,12 +141,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         let arrow = self.b.arrow_expr(self.b.params([value_param]), body);
         let iife = self.b.ast.expression_call(
-            oxc_span::SPAN,
+            SPAN,
             arrow,
-            oxc_ast::NONE,
+            NONE,
             self.b
                 .ast
-                .vec_from_iter(std::iter::once(oxc_ast::ast::Argument::from(rhs))),
+                .vec_from_iter(iter::once(Argument::from(rhs))),
             false,
         );
         *node = iife;
@@ -171,7 +171,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut entries: Vec<(String, String)> = Vec::with_capacity(obj.properties.len());
         for prop in &obj.properties {
             match prop {
-                oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
+                AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
                     if sh.init.is_some() {
                         return false;
                     }
@@ -180,15 +180,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     };
                     if !matches!(
                         analysis.reference_semantics(ref_id),
-                        svelte_analyze::ReferenceSemantics::LegacyStateWrite
-                            | svelte_analyze::ReferenceSemantics::LegacyStateUpdate { .. }
+                        ReferenceSemantics::LegacyStateWrite
+                            | ReferenceSemantics::LegacyStateUpdate { .. }
                     ) {
                         return false;
                     }
                     let name = sh.binding.name.as_str().to_string();
                     entries.push((name.clone(), name));
                 }
-                oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(_) => {
+                AssignmentTargetProperty::AssignmentTargetPropertyProperty(_) => {
                     return false;
                 }
             }
@@ -198,7 +198,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let placeholder = self.b.cheap_expr();
-        let owned = std::mem::replace(node, placeholder);
+        let owned = mem::replace(node, placeholder);
         let Expression::AssignmentExpression(assign_box) = owned else {
             unreachable!();
         };
@@ -206,8 +206,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let rhs = assign.right;
 
         let allocator = self.b.ast.allocator;
-        let mut seq: oxc_allocator::Vec<'a, Expression<'a>> =
-            oxc_allocator::Vec::with_capacity_in(entries.len(), allocator);
+        let mut seq: OxcVec<'a, Expression<'a>> =
+            OxcVec::with_capacity_in(entries.len(), allocator);
         for (key, target) in entries.iter() {
             let target_alloc: &'a str = self.b.alloc_str(target);
             let key_alloc: &'a str = self.b.alloc_str(key);
@@ -218,15 +218,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .call_expr("$.set", [Arg::Ident(target_alloc), Arg::Expr(access)]);
             seq.push(set_call);
         }
-        *node = self.b.ast.expression_sequence(oxc_span::SPAN, seq);
+        *node = self.b.ast.expression_sequence(SPAN, seq);
         true
     }
 }
 
-fn collect_leaf_paths<'a>(
+fn collect_binding_paths<'a>(
     pat: &BindingPattern<'a>,
-) -> Option<Vec<(svelte_component_semantics::SymbolId, Vec<AccessPathStep>)>> {
-    let mut out: Vec<(svelte_component_semantics::SymbolId, Vec<AccessPathStep>)> = Vec::new();
+) -> Option<Vec<(SymbolId, Vec<AccessPathStep>)>> {
+    let mut out: Vec<(SymbolId, Vec<AccessPathStep>)> = Vec::new();
     let mut bail = false;
     walk_bindings(pat, |visit| {
         if bail {
@@ -297,8 +297,8 @@ fn build_tmp_access<'a>(
     current
 }
 
-fn collect_array_assign_legacy_state_leaves<'a>(
-    analysis: &svelte_analyze::AnalysisData<'a>,
+fn collect_array_assign_legacy_state_bindings<'a>(
+    analysis: &AnalysisData<'a>,
     target: &AssignmentTarget<'a>,
 ) -> Option<Vec<String>> {
     let AssignmentTarget::ArrayAssignmentTarget(arr) = target else {
@@ -312,15 +312,15 @@ fn collect_array_assign_legacy_state_leaves<'a>(
         let Some(elem) = elem else {
             return None;
         };
-        let oxc_ast::ast::AssignmentTargetMaybeDefault::AssignmentTargetIdentifier(id) = elem
+        let AssignmentTargetMaybeDefault::AssignmentTargetIdentifier(id) = elem
         else {
             return None;
         };
         let ref_id = id.reference_id.get()?;
         if !matches!(
             analysis.reference_semantics(ref_id),
-            svelte_analyze::ReferenceSemantics::LegacyStateWrite
-                | svelte_analyze::ReferenceSemantics::LegacyStateUpdate { .. }
+            ReferenceSemantics::LegacyStateWrite
+                | ReferenceSemantics::LegacyStateUpdate { .. }
         ) {
             return None;
         }

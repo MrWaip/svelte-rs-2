@@ -16,6 +16,14 @@ impl<'a> Visit<'a> for SimpleExprChecker {
             Expression::ConditionalExpression(_)
             | Expression::BinaryExpression(_)
             | Expression::LogicalExpression(_) => walk::walk_expression(self, expr),
+            Expression::ParenthesizedExpression(inner) => self.visit_expression(&inner.expression),
+            Expression::TSAsExpression(inner) => self.visit_expression(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => self.visit_expression(&inner.expression),
+            Expression::TSNonNullExpression(inner) => self.visit_expression(&inner.expression),
+            Expression::TSTypeAssertion(inner) => self.visit_expression(&inner.expression),
+            Expression::TSInstantiationExpression(inner) => {
+                self.visit_expression(&inner.expression);
+            }
             _ => self.0 = false,
         }
     }

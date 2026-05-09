@@ -146,19 +146,30 @@ Analyze owes them ready-made answers: enums and structs that name the decision d
 
 ### Target shape
 
-Analyze is composed of **semantic subsystems** (`ComponentSemantics`, `ReactivitySemantics`, `BlockSemantics`, …). Each subsystem:
+Analyze splits into two classes:
 
-- absorbs multiple raw indices / side-tables internally
-- exposes a query API answering one concrete question per call:
-  - "how do I read this identifier?" → `ReactivitySemantics::reference_semantics(ref_id)`
-  - "what does this block lower into?" → `BlockSemanticsStore::get(node_id)`
-- never leaks raw flags to consumers
+- **3.A semantic subsystems** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`. Each absorbs multiple raw indices internally and exposes a query API answering one concrete question per call. Never leaks raw flags to consumers.
+- **3.B analytical side-tables** — `ScriptAnalysis`, `ElementAnalysis`, `TemplateAnalysis`, `BlockAnalysis`, `OutputPlanData`, `DynamismData`, `PickledAwaits`. Flat tables on `AnalysisData` that have not been folded into a 3.A subsystem yet. Tracked in `debt.md`.
 
-Current code is partway there. New facts go into a subsystem (or motivate a new one), not loose `AnalysisData` fields.
+New facts go into a 3.A subsystem (or motivate a new one), never into 3.B.
+
+Build order (`crates/svelte_analyze/src/lib.rs` + `passes/mod.rs`):
+
+```
+ComponentSemantics
+  └── ReactivitySemantics (phase 1, script-only)
+        ├── ExpressionSemantics
+        │     └── AttributeSemantics
+        └── ReactivitySemantics (phase 2, template walk)
+              └── BlockSemantics
+                    └── Validation (3.C)
+```
+
+Pipeline order ≠ data dependency: `BuildBlockSemantics` runs after `Expression`/`Attribute` for staging reasons, but `BlockSemantics::build` reads neither.
 
 ### Validation
 
-Analyze also owns the checker/validate phase. User-facing diagnostics (errors + warnings) are produced here from already-built semantics. Transform and codegen run on validated input and emit no diagnostics.
+Analyze also owns the checker/validate phase (3.C). User-facing diagnostics (errors + warnings) are produced from already-built 3.A subsystems. Transform and codegen run on validated input and emit no diagnostics.
 
 ### BindingPattern handling (cross-cutting)
 
@@ -180,7 +191,7 @@ Anti-pattern: an `enum AnalyzedPattern { Identifier(...), Object { props: Vec<..
 
 ---
 
-## 3.1 ComponentSemantics (generic JS scope graph)
+## 3.A.1 ComponentSemantics (generic JS scope graph)
 
 Crate: `svelte_component_semantics`.
 
@@ -210,15 +221,9 @@ Modeled after `oxc` `Scoping` module, adapted to a Svelte component (multi-progr
 - **Identity by id, never by string.** Symbol / binding / reference resolution goes through `OxcNodeId` / `ReferenceId` / `SymbolId`. No `find_binding_by_name("foo")` for real lookups. Name comparison is allowed only for syntactic predicates (e.g. detecting `$state` rune callee, `$$props`).
 - **JS spans are script-content-relative.** `oxc_parser` parses `<script>` / `<script module>` as standalone JS, so spans on stored symbols / bindings / references are zero-based against the script body. Consumers that need a file-relative span (diagnostics, source-text lookup) lazily shift via `Span::shifted_from_oxc(script_offset, oxc_span)` at the call site — no global rewrite, no hidden state.
 
-### Anti-patterns
-
-- Adding Svelte-specific flags (`is_state`, `is_prop`, `is_store`) directly onto `ComponentSemantics`.
-- Re-running the walker from another pass to re-derive scopes/references.
-- Resolving identifiers by string lookup instead of `OxcNodeId` → `ReferenceId` → `SymbolId`.
-
 ---
 
-## 3.2 ReactivitySemantics
+## 3.A.2 ReactivitySemantics
 
 Module: `svelte_analyze::reactivity_semantics`.
 
@@ -254,17 +259,82 @@ Exceptions are coarse-grained iterators over a known subset: `iter_store_declara
 
 - Read-only for consumers. Mutation is private to the builder.
 - One source of truth for reactivity classification. No shadow flags on `ComponentScoping` or `ScriptAnalysis`.
-- Builder runs once, after `ComponentSemantics` is finished.
-
-### Anti-patterns
-
-- Re-deriving rune kind from AST in transform/codegen.
-- Adding a getter that exposes raw bool flags to a consumer — encode the decision as an enum variant on `DeclarationSemantics` / `ReferenceSemantics`.
-- Duplicating a fact onto another subsystem just because the import is shorter.
+- Builder runs in two phases. Phase 1 (`BuildReactivitySemantics`, before template) covers rune declarations, store / contextual bindings, legacy `$:`. Phase 2 (`ReactivityWalk`, after template) adds reference facts collected from the template. `ExpressionSemantics` and `AttributeSemantics` build between the two phases and read phase-1 facts only; `BlockSemantics` and validation read after phase 2.
 
 ---
 
-## 3.3 BlockSemantics
+## 3.A.3 ExpressionSemantics
+
+Module: `svelte_analyze::expression_semantics`.
+
+### Depends on
+
+`ComponentSemantics`, `ReactivitySemantics` (phase 1), `ComponentScoping`.
+
+### Purpose
+
+Per-expression facts for every template / attribute expression. For one expression `NodeId` consumers receive one `ExpressionSemantics` variant carrying:
+
+- expression kind (sync / async / non-special)
+- `Evaluation` — `Known(KnownValue)` / `Defined { class }` / `MaybeNullish { has_unknown }`
+- `LegacyWrap` choice for legacy reactive contexts
+- `references: SmallVec<SymbolId>` actually read by the expression
+- blocker indices
+
+Plus a single aggregate signal `is_context_required()` — true if any expression in the component touches rest-prop members, store mutation, or import-or-prop members and therefore needs the runtime context.
+
+### Query surface
+
+- `ExpressionSemanticsStore::get(NodeId) -> &ExpressionSemantics` — total. Out-of-range / non-expression ids collapse to `&ExpressionSemantics::NonSpecial`. No `Option`.
+- `ExpressionSemanticsStore::is_context_required() -> bool` — single component-wide boolean.
+
+### Constraints
+
+- Keyed by template `NodeId` of the expression node, not `OxcNodeId`.
+- One source of truth for `Evaluation` and `LegacyWrap`. Transform / codegen never re-walk an expression to recompute these.
+- Read-only after build.
+
+---
+
+## 3.A.4 AttributeSemantics
+
+Module: `svelte_analyze::attribute_semantics`.
+
+### Depends on
+
+`ComponentSemantics`, `ReactivitySemantics` (phase 1), `ComponentScoping`, `ExpressionSemantics`.
+
+### Purpose
+
+Single answer to codegen for one attribute / directive: which runtime shape it emits. For one attribute `NodeId` consumers receive one `AttributeSemantics` variant:
+
+- `ElementBind(ElementBindSemantics)` — `bind:` on a regular element
+- `WindowBind(WindowBindSemantics)` — `bind:` on `<svelte:window>`
+- `DocumentBind(DocumentBindSemantics)` — `bind:` on `<svelte:document>`
+- `ComponentBind(ComponentBindSemantics)` — `bind:` on a component
+- `Event(EventSemantics)` — `on:` / event attribute
+- `ComponentProp(ComponentPropSemantics)` — prop passed to a child component
+- `ComponentSpread(ComponentSpreadSemantics)` — `{...spread}` on a component
+- `ComponentAttach(ComponentAttachSemantics)` — `{@attach …}`
+- `BoundaryProp(BoundaryPropSemantics)` — prop on `<svelte:boundary>`
+- `HtmlConcat(HtmlConcatSemantics)` — concat-attribute on a regular element
+- `NonSpecial` — default
+
+Each variant carries the chosen emit shape (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, `HtmlConcatPart`, `TemplateEffect`, `ElementBindPropertyKind`, …). Codegen reads, never combines.
+
+### Query surface
+
+- `AttributeSemanticsStore::get(NodeId) -> &AttributeSemantics` — total. Out-of-range / non-attribute ids collapse to `&AttributeSemantics::NonSpecial`. No `Option`.
+
+### Constraints
+
+- One entry per attribute / directive `NodeId`.
+- Pre-computed emit shape lives on the variant. Codegen branches on the variant and prints.
+- Read-only after build.
+
+---
+
+## 3.A.5 BlockSemantics
 
 Module: `svelte_analyze::block_semantics`.
 
@@ -298,15 +368,25 @@ Single, exhaustive answer to codegen: "what does this template block become?". F
 - Each variant carries pre-computed lowering shape (flavor, async kind, item/index/key strategy, render call shape, await wrapper layout, etc.). Codegen reads, never combines.
 - Read-only after build.
 
-### Anti-patterns
+---
 
-- Codegen branching on `if has_index && !is_keyed && collection_kind == X` to decide what to emit — that compound belongs as a single named field on the variant.
-- Returning `Option<&BlockSemantics>` from the store.
-- Adding a parallel side-table that re-encodes a fact already on a variant.
+## 3.B Analytical side-tables
+
+Flat tables on `AnalysisData` that predate the semantic-subsystems split. They expose raw fields to consumers and should be folded into 3.A subsystems over time. **New facts MUST NOT be added here** — they belong in (or motivate) a 3.A subsystem.
+
+- `ScriptAnalysis` — script-level flags (`preserve_whitespace`, `preserve_comments`, `dev`, `experimental_async`, `has_class_state_fields`, `BlockerData`, …).
+- `ElementAnalysis` — per-element facts and flags (class/style attribute pointers, event modifiers, …).
+- `TemplateAnalysis` — template-wide indices (snippet table, fragment metadata, …).
+- `BlockAnalysis` — block-level flags consumed by codegen alongside `BlockSemantics`.
+- `OutputPlanData` — emit-time aggregates (`needs_context`, `runtime_plan`, component name, ignore data, custom-element flags, …).
+- `DynamismData` — per-node dynamism bits.
+- `PickledAwaits` — captured top-level `await` expressions for the async pipeline.
+
+Migration notes per table live in `debt.md`.
 
 ---
 
-## 3.4 Validation
+## 3.C Validation
 
 Module: `svelte_analyze::validate`.
 
@@ -319,12 +399,6 @@ Walk the AST and emit user-facing diagnostics — warnings + errors. Runs after 
 - Read-only on AST and on every analyze subsystem.
 - Only producer of `Diagnostic` for user-facing parity. Transform/codegen are diagnostic-free.
 - Do not re-derive facts here that a subsystem already owns — query and report.
-
-### Anti-patterns
-
-- Mutating semantic subsystems from a validation pass.
-- Re-walking AST to recompute classification before reporting.
-- Emitting diagnostics from transform or codegen.
 
 ---
 

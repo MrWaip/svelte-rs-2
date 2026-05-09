@@ -1,4 +1,7 @@
+use svelte_ast::FragmentId;
+
 use super::*;
+use SymbolId;
 
 pub struct TemplateSemanticsData {
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
@@ -50,7 +53,7 @@ pub(crate) struct FragmentNodeList {
 }
 
 impl FragmentNodeList {
-    pub(crate) fn insert(&mut self, id: svelte_ast::FragmentId, ids: Vec<NodeId>) {
+    pub(crate) fn insert(&mut self, id: FragmentId, ids: Vec<NodeId>) {
         let idx = id.0 as usize;
         if self.entries.len() <= idx {
             self.entries.resize(idx + 1, None);
@@ -58,7 +61,7 @@ impl FragmentNodeList {
         self.entries[idx] = Some(ids);
     }
 
-    pub(crate) fn get_by_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+    pub(crate) fn get_by_id(&self, id: FragmentId) -> Option<&Vec<NodeId>> {
         self.entries.get(id.0 as usize)?.as_ref()
     }
 }
@@ -80,7 +83,7 @@ impl TitleElementData {
         }
     }
 
-    pub fn by_fragment_id(&self, id: svelte_ast::FragmentId) -> Option<&Vec<NodeId>> {
+    pub fn by_fragment_id(&self, id: FragmentId) -> Option<&Vec<NodeId>> {
         self.by_fragment.get_by_id(id)
     }
 }
@@ -100,7 +103,7 @@ impl BindHostKind {
             ParentKind::Element | ParentKind::SlotElementLegacy | ParentKind::SvelteElement => {
                 Some(Self::Element)
             }
-            ParentKind::ComponentNode => Some(Self::Component),
+            ParentKind::ComponentNode | ParentKind::SvelteSelf => Some(Self::Component),
             ParentKind::SvelteWindow => Some(Self::Window),
             ParentKind::SvelteDocument => Some(Self::Document),
             ParentKind::SvelteBody => Some(Self::Body),
@@ -431,7 +434,7 @@ impl BindPropertyKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BindSource {
     Expression,
-    StoreSubscription { store_symbol: crate::scope::SymbolId },
+    StoreSubscription { store_symbol: SymbolId },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -606,16 +609,34 @@ impl DocumentBindKind {
 
 pub struct BindSemanticsData {
     pub(crate) has_bind_group: NodeBitSet,
+    pub(crate) any_bind_group: bool,
+    pub(crate) binding_group_id_by_attr: FxHashMap<NodeId, u32>,
+    pub(crate) binding_group_count: u32,
 }
 
 impl BindSemanticsData {
     pub fn new(node_count: u32) -> Self {
         Self {
             has_bind_group: NodeBitSet::new(node_count),
+            any_bind_group: false,
+            binding_group_id_by_attr: FxHashMap::default(),
+            binding_group_count: 0,
         }
     }
 
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.has_bind_group.contains(&id)
+    }
+
+    pub fn has_any_bind_group(&self) -> bool {
+        self.any_bind_group
+    }
+
+    pub fn binding_group_id(&self, attr_id: NodeId) -> Option<u32> {
+        self.binding_group_id_by_attr.get(&attr_id).copied()
+    }
+
+    pub fn binding_group_count(&self) -> u32 {
+        self.binding_group_count
     }
 }

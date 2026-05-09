@@ -10,7 +10,9 @@ use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentId, Node, NodeId};
-use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId, walk_bindings};
+use svelte_component_semantics::{
+    ComponentSemantics, ReferenceId, SymbolFlags, SymbolId, walk_bindings,
+};
 
 pub(super) fn populate(
     component: &Component,
@@ -50,6 +52,7 @@ pub(super) fn populate(
         &ctx.snippet_scopes,
         &ctx.snippet_name_syms,
         semantics,
+        reactivity,
         ctx.store,
     );
 }
@@ -58,8 +61,10 @@ fn finalize_hoistable(
     snippet_scopes: &[SnippetScope],
     snippet_name_syms: &FxHashSet<SymbolId>,
     semantics: &ComponentSemantics<'_>,
+    reactivity: &ReactivitySemantics,
     store: &mut BlockSemanticsStore,
 ) {
+    use crate::reactivity_semantics::data::BindingSemantics;
     if snippet_scopes.is_empty() {
         return;
     }
@@ -78,10 +83,19 @@ fn finalize_hoistable(
             continue;
         }
 
-        if let Some(sym) = semantics.get_reference(ref_id).symbol_id()
-            && snippet_name_syms.contains(&sym)
-        {
-            continue;
+        if let Some(sym) = semantics.get_reference(ref_id).symbol_id() {
+            if snippet_name_syms.contains(&sym) {
+                continue;
+            }
+            if matches!(
+                reactivity.binding_semantics(sym),
+                BindingSemantics::MaybeReactive
+            ) {
+                continue;
+            }
+            if semantics.symbol_flags(sym).contains(SymbolFlags::TypeImport) {
+                continue;
+            }
         }
 
         let mut scope = Some(semantics.get_reference(ref_id).scope_id());
@@ -151,6 +165,13 @@ impl<'a> Ctx<'_, 'a> {
             }
             Node::SlotElementLegacy(el) => self.visit_fragment(el.fragment),
             Node::ComponentNode(cn) => {
+                self.visit_fragment(cn.fragment);
+                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
+                for fid in slot_frags {
+                    self.visit_fragment(fid);
+                }
+            }
+            Node::SvelteSelf(cn) => {
                 self.visit_fragment(cn.fragment);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {

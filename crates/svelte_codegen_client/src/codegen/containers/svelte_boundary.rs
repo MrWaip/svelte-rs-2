@@ -1,4 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use rustc_hash::FxHashSet;
 use svelte_analyze::{
     AttributeSemantics, BlockSemantics, BoundaryPropEmit, BoundaryPropSemantics,
@@ -9,10 +10,11 @@ use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use crate::context::Ctx;
 use super::super::{Codegen, CodegenError, Result};
 
 fn const_tag_bindings(
-    ctx: &crate::context::Ctx<'_>,
+    ctx: &Ctx<'_>,
     sem: &ConstTagBlockSemantics,
 ) -> (Vec<oxc_semantic::SymbolId>, bool) {
     use oxc_ast::AstKind;
@@ -32,16 +34,17 @@ fn const_tag_bindings(
 }
 
 fn build_const_tag_prefix_stmts<'a>(
-    ctx: &mut crate::context::Ctx<'a>,
+    ctx: &mut Ctx<'a>,
     cloned: &mut Vec<(Vec<String>, Expression<'a>)>,
 ) -> Vec<Statement<'a>> {
     let mut stmts: Vec<Statement<'a>> = Vec::new();
+    let helper = ctx.query.view.derived_helper();
     for (names, init) in cloned.drain(..) {
         let Some(first) = names.first() else {
             continue;
         };
         let thunk = ctx.b.thunk(init);
-        let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+        let derived = ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
         stmts.push(ctx.b.const_stmt(first, derived));
     }
     stmts
@@ -78,7 +81,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             })
             .collect();
 
-        let attr_infos: Vec<(String, NodeId, oxc_syntax::node::NodeId, BoundaryPropEmit)> = boundary
+        let attr_infos: Vec<(String, NodeId, OxcNodeId, BoundaryPropEmit)> = boundary
             .attributes
             .iter()
             .map(|attr| {
@@ -92,14 +95,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                                 a.expression.id(),
                                 *emit,
                             ))),
-                            _ => crate::codegen::CodegenError::semantic_mismatch(
+                            _ => CodegenError::semantic_mismatch(
                                 attr_id,
                                 "BoundaryProp payload requires ExpressionAttribute",
                             ),
                         }
                     }
                     AttributeSemantics::NonSpecial => Ok(None),
-                    _ => crate::codegen::CodegenError::semantic_mismatch(
+                    _ => CodegenError::semantic_mismatch(
                         attr_id,
                         "non-boundary semantics on <svelte:boundary>",
                     ),
@@ -116,7 +119,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for (name, attr_id, expr_id, emit) in attr_infos {
             let key = self.ctx.b.alloc_str(&name);
             let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
-                return crate::codegen::CodegenError::missing_expression(attr_id);
+                return CodegenError::missing_expression(attr_id);
             };
             let expr = self.maybe_wrap_legacy_slots_read(expr);
             match emit {
@@ -198,7 +201,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        let mut snippet_decls: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+        let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
         for (i, (snippet_id, _)) in snippet_children.iter().enumerate() {
             let sem = match self.ctx.query.analysis.block_semantics(*snippet_id) {
                 svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),

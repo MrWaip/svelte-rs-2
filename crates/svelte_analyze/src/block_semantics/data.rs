@@ -57,14 +57,22 @@ pub struct EachBlockSemantics {
 
     pub collection_kind: EachCollectionKind,
 
-    pub collection_store: Option<crate::scope::SymbolId>,
+    pub collection_store: Option<SymbolId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EachCollectionKind {
     Regular,
 
     PropSource,
+
+    LegacyCallReadsState {
+        deep_read_symbols: SmallVec<[SymbolId; 2]>,
+    },
+
+    LegacyStoreMemberChain {
+        store_sym: SymbolId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,17 +222,17 @@ pub enum ConstTagAsyncKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderTagBlockSemantics {
-    pub callee_shape: RenderCalleeShape,
+    pub callee_shape: RenderCalleeKind,
 
     pub callee_sym: Option<SymbolId>,
 
-    pub args: SmallVec<[RenderArgLowering; 4]>,
+    pub args: SmallVec<[RenderArgEmit; 4]>,
 
     pub async_kind: RenderAsyncKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RenderCalleeShape {
+pub enum RenderCalleeKind {
     Static,
 
     StaticChain,
@@ -235,7 +243,7 @@ pub enum RenderCalleeShape {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RenderArgLowering {
+pub enum RenderArgEmit {
     PropSource { sym: SymbolId },
 
     MemoSync,

@@ -4,6 +4,7 @@ use std::{
 };
 
 use compiler_tests::cases::{load_v3_case, load_v3_module_case, v3_case_dir};
+use compiler_tests::sourcemap_invariants::assert_sourcemap_invariants;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use svelte_compiler::{compile, compile_module};
@@ -42,7 +43,7 @@ fn assert_compiler(case: &str) {
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
     if let Some(map) = js_output.map.as_ref() {
-        compiler_tests::sourcemap_invariants::assert_sourcemap_invariants(
+        assert_sourcemap_invariants(
             case,
             &input,
             map,
@@ -70,6 +71,26 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
+fn legacy_const_each_bind_member_chain() {
+    assert_compiler("legacy_const_each_bind_member_chain");
+}
+
+#[rstest]
+fn diagnose_js_object_method_shorthand() {
+    assert_compiler("diagnose_js_object_method_shorthand");
+}
+
+#[rstest]
+fn diagnose_props_default_identifier_prop_reference() {
+    assert_compiler("diagnose_props_default_identifier_prop_reference");
+}
+
+#[rstest]
+fn diagnose_props_default_identifier_non_reactive() {
+    assert_compiler("diagnose_props_default_identifier_non_reactive");
+}
+
+#[rstest]
 fn css_scope_class_in_snippet() {
     assert_compiler("css_scope_class_in_snippet");
 }
@@ -82,6 +103,16 @@ fn css_scope_svelte_element_class() {
 #[rstest]
 fn css_scope_class_object() {
     assert_compiler("css_scope_class_object");
+}
+
+#[rstest]
+fn css_scope_class_array_no_directive() {
+    assert_compiler("css_scope_class_array_no_directive");
+}
+
+#[rstest]
+fn css_scope_class_array_with_state() {
+    assert_compiler("css_scope_class_array_with_state");
 }
 
 #[rstest]
@@ -102,6 +133,17 @@ fn css_unused_injected() {
 #[rstest]
 fn css_nested_style() {
     assert_compiler("css_nested_style");
+}
+
+#[rstest]
+fn css_nested_pseudo_element_no_scope_class() {
+    assert_compiler("css_nested_pseudo_element_no_scope_class");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn css_nested_amp_compound_no_scope_class() {
+    assert_compiler("css_nested_amp_compound_no_scope_class");
 }
 
 #[rstest]
@@ -132,6 +174,11 @@ fn css_scoped_attr_name_casefolding() {
 #[rstest]
 fn css_pseudo_compound_unused_but_scoped() {
     assert_compiler("css_pseudo_compound_unused_but_scoped");
+}
+
+#[rstest]
+fn css_scope_child_combinator_bare_pseudo() {
+    assert_compiler("css_scope_child_combinator_bare_pseudo");
 }
 
 #[rstest]
@@ -265,6 +312,16 @@ fn head_with_snippets() {
 }
 
 #[rstest]
+fn head_with_if_body() {
+    assert_compiler("head_with_if_body");
+}
+
+#[rstest]
+fn head_with_render_and_component() {
+    assert_compiler("head_with_render_and_component");
+}
+
+#[rstest]
 fn push_binding_group_order() {
     assert_compiler("push_binding_group_order");
 }
@@ -272,6 +329,26 @@ fn push_binding_group_order() {
 #[rstest]
 fn bind_group_order_with_stores() {
     assert_compiler("bind_group_order_with_stores");
+}
+
+#[rstest]
+fn component_bind_group_multiple_targets() {
+    assert_compiler("component_bind_group_multiple_targets");
+}
+
+#[rstest]
+fn bind_member_expression_no_runes() {
+    assert_compiler("bind_member_expression_no_runes");
+}
+
+#[rstest]
+fn legacy_const_destructured_member_bind() {
+    assert_compiler("legacy_const_destructured_member_bind");
+}
+
+#[rstest]
+fn legacy_const_member_mutation_through_ts_non_null() {
+    assert_compiler("legacy_const_member_mutation_through_ts_non_null");
 }
 
 #[rstest]
@@ -308,6 +385,11 @@ fn css_global_compound() {
 #[rstest]
 fn css_global_in_pseudo() {
     assert_compiler("css_global_in_pseudo");
+}
+
+#[rstest]
+fn css_global_with_combinators() {
+    assert_compiler("css_global_with_combinators");
 }
 
 #[rstest]
@@ -531,6 +613,11 @@ fn each_inner_shadow() {
 }
 
 #[rstest]
+fn each_nested_array_destructure_no_inner_shadow() {
+    assert_compiler("each_nested_array_destructure_no_inner_shadow");
+}
+
+#[rstest]
 fn bind_directives() {
     assert_compiler("bind_directives");
 }
@@ -566,6 +653,16 @@ fn spread_attribute() {
 }
 
 #[rstest]
+fn attribute_effect_shorthand_prop_unwrap() {
+    assert_compiler("attribute_effect_shorthand_prop_unwrap");
+}
+
+#[rstest]
+fn img_spread_replay_events() {
+    assert_compiler("img_spread_replay_events");
+}
+
+#[rstest]
 fn spread_class_directive() {
     assert_compiler("spread_class_directive");
 }
@@ -588,6 +685,16 @@ fn smoke() {
 #[rstest]
 fn class_directive() {
     assert_compiler("class_directive");
+}
+
+#[rstest]
+fn diagnose_class_directive_name_with_underscore() {
+    assert_compiler("diagnose_class_directive_name_with_underscore");
+}
+
+#[rstest]
+fn diagnose_class_directive_call_in_template_effect() {
+    assert_compiler("diagnose_class_directive_call_in_template_effect");
 }
 
 #[rstest]
@@ -658,6 +765,16 @@ fn props_rest() {
 #[rstest]
 fn props_renamed() {
     assert_compiler("props_renamed");
+}
+
+#[rstest]
+fn props_const_destructured_with_default() {
+    assert_compiler("props_const_destructured_with_default");
+}
+
+#[rstest]
+fn template_effect_merge_class_state_with_memo_text() {
+    assert_compiler("template_effect_merge_class_state_with_memo_text");
 }
 
 #[rstest]
@@ -746,6 +863,21 @@ fn component_children() {
 }
 
 #[rstest]
+fn diagnose_component_slot_node_naming() {
+    assert_compiler("diagnose_component_slot_node_naming");
+}
+
+#[rstest]
+fn diagnose_sibling_after_deep_nested_elements() {
+    assert_compiler("diagnose_sibling_after_deep_nested_elements");
+}
+
+#[rstest]
+fn legacy_slot_fallback_if_sibling_node_naming() {
+    assert_compiler("legacy_slot_fallback_if_sibling_node_naming");
+}
+
+#[rstest]
 fn component_events() {
     assert_compiler("component_events");
 }
@@ -763,6 +895,11 @@ fn component_element_children() {
 #[rstest]
 fn component_named_slot() {
     assert_compiler("component_named_slot");
+}
+
+#[rstest]
+fn legacy_slot_forward_named_into_child_component() {
+    assert_compiler("legacy_slot_forward_named_into_child_component");
 }
 
 #[rstest]
@@ -806,6 +943,11 @@ fn derived_basic() {
 }
 
 #[rstest]
+fn diagnose_derived_rune_with_ts_as_cast() {
+    assert_compiler("diagnose_derived_rune_with_ts_as_cast");
+}
+
+#[rstest]
 fn derived_by() {
     assert_compiler("derived_by");
 }
@@ -813,6 +955,11 @@ fn derived_by() {
 #[rstest]
 fn derived_dynamic() {
     assert_compiler("derived_dynamic");
+}
+
+#[rstest]
+fn derived_write_assignment() {
+    assert_compiler("derived_write_assignment");
 }
 
 #[rstest]
@@ -1071,6 +1218,21 @@ fn css_custom_prop_component_svg() {
 }
 
 #[rstest]
+fn css_custom_prop_component_nested() {
+    assert_compiler("css_custom_prop_component_nested");
+}
+
+#[rstest]
+fn css_custom_prop_component_string_value() {
+    assert_compiler("css_custom_prop_component_string_value");
+}
+
+#[rstest]
+fn css_custom_prop_component_concat_value() {
+    assert_compiler("css_custom_prop_component_concat_value");
+}
+
+#[rstest]
 fn style_directive_important() {
     assert_compiler("style_directive_important");
 }
@@ -1093,6 +1255,16 @@ fn on_directive() {
 #[rstest]
 fn on_directive_modifiers() {
     assert_compiler("on_directive_modifiers");
+}
+
+#[rstest]
+fn on_directive_with_use() {
+    assert_compiler("on_directive_with_use");
+}
+
+#[rstest]
+fn on_directive_with_use_bind_this_order() {
+    assert_compiler("on_directive_with_use_bind_this_order");
 }
 
 #[rstest]
@@ -1146,6 +1318,11 @@ fn use_action_in_each() {
 }
 
 #[rstest]
+fn use_action_with_children() {
+    assert_compiler("use_action_with_children");
+}
+
+#[rstest]
 fn void_elements() {
     assert_compiler("void_elements");
 }
@@ -1173,6 +1350,11 @@ fn store_legacy_let_synthetic_reassign() {
 #[rstest]
 fn store_legacy_each_invalidate() {
     assert_compiler("store_legacy_each_invalidate");
+}
+
+#[rstest]
+fn store_legacy_each_member_iterable() {
+    assert_compiler("store_legacy_each_member_iterable");
 }
 
 #[rstest]
@@ -1226,6 +1408,47 @@ fn store_runes_each_member_mutation() {
 }
 
 #[rstest]
+fn store_runes_prop_thunk() {
+    assert_compiler("store_runes_prop_thunk");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn store_runes_synthetic_thunk_derived_base() {
+    assert_compiler("store_runes_synthetic_thunk_derived_base");
+}
+
+#[rstest]
+fn store_runes_prop_assign_bind() {
+    assert_compiler("store_runes_prop_assign_bind");
+}
+
+#[rstest]
+fn diagnose_bindable_prop_store_only() {
+    assert_compiler("diagnose_bindable_prop_store_only");
+}
+
+#[rstest]
+fn store_runes_component_bind_prop_store() {
+    assert_compiler("store_runes_component_bind_prop_store");
+}
+
+#[rstest]
+fn component_bind_ref_state_flag() {
+    assert_compiler("component_bind_ref_state_flag");
+}
+
+#[rstest]
+fn component_bind_prop_order() {
+    assert_compiler("component_bind_prop_order");
+}
+
+#[rstest]
+fn component_snippet_node_ident_ordering() {
+    assert_compiler("component_snippet_node_ident_ordering");
+}
+
+#[rstest]
 fn store_legacy_id_assign_ops() {
     assert_compiler("store_legacy_id_assign_ops");
 }
@@ -1276,6 +1499,21 @@ fn legacy_dev_bind_store_unsub() {
 }
 
 #[rstest]
+fn legacy_dev_bind_this_promotes_state() {
+    assert_compiler("legacy_dev_bind_this_promotes_state");
+}
+
+#[rstest]
+fn legacy_dev_reactive_text_only_element() {
+    assert_compiler("legacy_dev_reactive_text_only_element");
+}
+
+#[rstest]
+fn legacy_dev_deferred_template_effect() {
+    assert_compiler("legacy_dev_deferred_template_effect");
+}
+
+#[rstest]
 fn store_if_block_condition() {
     assert_compiler("store_if_block_condition");
 }
@@ -1298,6 +1536,11 @@ fn store_render_tag_snippet() {
 #[rstest]
 fn store_bind_this_element_ref() {
     assert_compiler("store_bind_this_element_ref");
+}
+
+#[rstest]
+fn store_bare_identifier_method_call() {
+    assert_compiler("store_bare_identifier_method_call");
 }
 
 #[rstest]
@@ -1346,6 +1589,16 @@ fn const_tag_destructured_if() {
 }
 
 #[rstest]
+fn const_tag_destructured_single_key() {
+    assert_compiler("const_tag_destructured_single_key");
+}
+
+#[rstest]
+fn const_tag_destructured_default() {
+    assert_compiler("const_tag_destructured_default");
+}
+
+#[rstest]
 fn const_tag_key_block() {
     assert_compiler("const_tag_key_block");
 }
@@ -1378,6 +1631,11 @@ fn class_variable() {
 #[rstest]
 fn class_expr_with_directives() {
     assert_compiler("class_expr_with_directives");
+}
+
+#[rstest]
+fn class_concat_logical_and_string() {
+    assert_compiler("class_concat_logical_and_string");
 }
 
 #[rstest]
@@ -1552,6 +1810,21 @@ fn transition_reactive_params() {
 #[rstest]
 fn transition_elseif_local() {
     assert_compiler("transition_elseif_local");
+}
+
+#[rstest]
+fn transition_after_delegated() {
+    assert_compiler("transition_after_delegated");
+}
+
+#[rstest]
+fn transition_after_delegated_descendant() {
+    assert_compiler("transition_after_delegated_descendant");
+}
+
+#[rstest]
+fn transition_before_lifecycle_events() {
+    assert_compiler("transition_before_lifecycle_events");
 }
 
 // ---------------------------------------------------------------------------
@@ -1828,7 +2101,7 @@ fn assert_compiler_module(case: &str) {
     assert_eq!(js, expected);
 
     if let Some(map) = js_output.map.as_ref() {
-        compiler_tests::sourcemap_invariants::assert_sourcemap_invariants(
+        assert_sourcemap_invariants(
             case,
             &input,
             map,
@@ -1838,8 +2111,42 @@ fn assert_compiler_module(case: &str) {
 }
 
 #[rstest]
+fn state_class_field_proxy_init() {
+    assert_compiler_module("state_class_field_proxy_init");
+}
+
+#[rstest]
+fn module_derived_arrow_wrap_with_state_deps() {
+    assert_compiler_module("module_derived_arrow_wrap_with_state_deps");
+}
+
+#[rstest]
 fn module_compilation() {
     assert_compiler_module("module_compilation");
+}
+
+#[rstest]
+fn state_raw_class_constructor_object_ts() {
+    assert_compiler_module("state_raw_class_constructor_object_ts");
+}
+
+#[rstest]
+fn module_derived_arrow_wrap_in_class_method() {
+    assert_compiler_module("module_derived_arrow_wrap_in_class_method");
+}
+#[rstest]
+fn module_ts_strip() {
+    assert_compiler_module("module_ts_strip");
+}
+
+#[rstest]
+fn module_derived_arrow_wrap_no_state_deps() {
+    assert_compiler_module("module_derived_arrow_wrap_no_state_deps");
+}
+
+#[rstest]
+fn ts_strip_non_null_chain() {
+    assert_compiler_module("ts_strip_non_null_chain");
 }
 
 #[rstest]
@@ -1958,6 +2265,11 @@ fn legacy_export_let_bind_to_inner() {
 }
 
 #[rstest]
+fn diagnose_legacy_export_let_element_bind_this() {
+    assert_compiler("diagnose_legacy_export_let_element_bind_this");
+}
+
+#[rstest]
 fn legacy_export_let_compound_assign_prop() {
     assert_compiler("legacy_export_let_compound_assign_prop");
 }
@@ -1985,6 +2297,21 @@ fn legacy_state_member_compound_in_template() {
 #[rstest]
 fn legacy_export_let_member_update_in_template() {
     assert_compiler("legacy_export_let_member_update_in_template");
+}
+
+#[rstest]
+fn legacy_export_let_default_typed_cast_arrow() {
+    assert_compiler("legacy_export_let_default_typed_cast_arrow");
+}
+
+#[rstest]
+fn legacy_export_let_key_block_member_coarse_wrap() {
+    assert_compiler("legacy_export_let_key_block_member_coarse_wrap");
+}
+
+#[rstest]
+fn legacy_pre_effect_store_subscription_dep() {
+    assert_compiler("legacy_pre_effect_store_subscription_dep");
 }
 
 #[rstest]
@@ -2040,6 +2367,11 @@ fn smoke_ts_non_null_assertion_mutations() {
 #[rstest]
 fn text_expression_binary_no_nullish_fallback() {
     assert_compiler("text_expression_binary_no_nullish_fallback");
+}
+
+#[rstest]
+fn text_expression_conditional_memoized_needs_nullish_fallback() {
+    assert_compiler("text_expression_conditional_memoized_needs_nullish_fallback");
 }
 
 #[rstest]
@@ -2154,6 +2486,21 @@ fn svelte_window_event_attr() {
 }
 
 #[rstest]
+fn svelte_window_event_attr_props_handler() {
+    assert_compiler("svelte_window_event_attr_props_handler");
+}
+
+#[rstest]
+fn svelte_document_event_attr_props_handler() {
+    assert_compiler("svelte_document_event_attr_props_handler");
+}
+
+#[rstest]
+fn svelte_body_event_attr_props_handler() {
+    assert_compiler("svelte_body_event_attr_props_handler");
+}
+
+#[rstest]
 fn svelte_window_bind_scroll() {
     assert_compiler("svelte_window_bind_scroll");
 }
@@ -2214,6 +2561,11 @@ fn svelte_fragment_named_slot() {
 }
 
 #[rstest]
+fn svelte_fragment_named_slot_component_expr_attr() {
+    assert_compiler("svelte_fragment_named_slot_component_expr_attr");
+}
+
+#[rstest]
 fn component_named_slot_let_fragment() {
     assert_compiler("component_named_slot_let_fragment");
 }
@@ -2221,6 +2573,26 @@ fn component_named_slot_let_fragment() {
 #[rstest]
 fn component_named_slot_let_fragment_destructure() {
     assert_compiler("component_named_slot_let_fragment_destructure");
+}
+
+#[rstest]
+fn svelte_fragment_default_slot_wrapper() {
+    assert_compiler("svelte_fragment_default_slot_wrapper");
+}
+
+#[rstest]
+fn svelte_fragment_default_slot_let() {
+    assert_compiler("svelte_fragment_default_slot_let");
+}
+
+#[rstest]
+fn svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop() {
+    assert_compiler("svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop");
+}
+
+#[rstest]
+fn svelte_fragment_named_slot_with_const_tag() {
+    assert_compiler("svelte_fragment_named_slot_with_const_tag");
 }
 
 #[rstest]
@@ -2266,6 +2638,11 @@ fn svelte_element_dynamic_xmlns() {
 #[rstest]
 fn svelte_element_children_expr() {
     assert_compiler("svelte_element_children_expr");
+}
+
+#[rstest]
+fn svelte_element_body_multi_child_fragment() {
+    assert_compiler("svelte_element_body_multi_child_fragment");
 }
 
 #[rstest]
@@ -2433,6 +2810,11 @@ fn event_attr_non_delegatable() {
 }
 
 #[rstest]
+fn event_attr_delegated_after_non_delegated_order() {
+    assert_compiler("event_attr_delegated_after_non_delegated_order");
+}
+
+#[rstest]
 fn event_attr_capture() {
     assert_compiler("event_attr_capture");
 }
@@ -2468,6 +2850,16 @@ fn event_attr_member_handler() {
 }
 
 #[rstest]
+fn event_attr_const_tag_destructure() {
+    assert_compiler("event_attr_const_tag_destructure");
+}
+
+#[rstest]
+fn event_attr_props_handler() {
+    assert_compiler("event_attr_props_handler");
+}
+
+#[rstest]
 fn event_attr_has_call() {
     assert_compiler("event_attr_has_call");
 }
@@ -2497,6 +2889,36 @@ fn component_prop_has_call_mixed() {
 }
 
 #[rstest]
+fn component_prop_concat_call_memo() {
+    assert_compiler("component_prop_concat_call_memo");
+}
+
+#[rstest]
+fn component_prop_concat_call_with_literal() {
+    assert_compiler("component_prop_concat_call_with_literal");
+}
+
+#[rstest]
+fn component_prop_concat_import_identifier() {
+    assert_compiler("component_prop_concat_import_identifier");
+}
+
+#[rstest]
+fn component_prop_concat_import_and_call() {
+    assert_compiler("component_prop_concat_import_and_call");
+}
+
+#[rstest]
+fn html_concat_call_with_literal() {
+    assert_compiler("html_concat_call_with_literal");
+}
+
+#[rstest]
+fn html_class_concat_call_with_literal() {
+    assert_compiler("html_class_concat_call_with_literal");
+}
+
+#[rstest]
 fn component_dynamic_dotted() {
     assert_compiler("component_dynamic_dotted");
 }
@@ -2504,6 +2926,31 @@ fn component_dynamic_dotted() {
 #[rstest]
 fn component_prop_memo_state() {
     assert_compiler("component_prop_memo_state");
+}
+
+#[rstest]
+fn component_prop_const_call_init_getter() {
+    assert_compiler("component_prop_const_call_init_getter");
+}
+
+#[rstest]
+fn component_prop_const_member_init_getter() {
+    assert_compiler("component_prop_const_member_init_getter");
+}
+
+#[rstest]
+fn component_prop_imported_direct_getter() {
+    assert_compiler("component_prop_imported_direct_getter");
+}
+
+#[rstest]
+fn component_prop_import_meta_getter() {
+    assert_compiler("component_prop_import_meta_getter");
+}
+
+#[rstest]
+fn element_attr_import_meta_template_effect() {
+    assert_compiler("element_attr_import_meta_template_effect");
 }
 
 #[rstest]
@@ -2649,6 +3096,12 @@ fn ts_strip_attribute() {
 #[rstest]
 fn ts_strip_script_types() {
     assert_compiler("ts_strip_script_types");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn ts_strip_handler_param_annotation() {
+    assert_compiler("ts_strip_handler_param_annotation");
 }
 
 #[rstest]
@@ -3013,6 +3466,79 @@ fn component_bind_prop_forward() {
     assert_compiler("component_bind_prop_forward");
 }
 
+#[rstest]
+fn component_bind_member_path() {
+    assert_compiler("component_bind_member_path");
+}
+
+#[rstest]
+fn component_bind_member_path_bindable_root() {
+    assert_compiler("component_bind_member_path_bindable_root");
+}
+
+#[rstest]
+#[ignore = "diagnose: dev-mode $.validate_binding for component member-path bind not emitted"]
+fn component_bind_member_path_dev() {
+    assert_compiler("component_bind_member_path_dev");
+}
+
+#[rstest]
+fn component_bind_function() {
+    assert_compiler("component_bind_function");
+}
+
+#[rstest]
+fn component_bind_function_anchor_order() {
+    assert_compiler("component_bind_function_anchor_order");
+}
+
+#[rstest]
+fn diagnose_component_bind_function_props_position() {
+    assert_compiler("diagnose_component_bind_function_props_position");
+}
+
+#[rstest]
+fn diagnose_component_bind_derived_target_no_proxy_flag() {
+    assert_compiler("diagnose_component_bind_derived_target_no_proxy_flag");
+}
+
+#[rstest]
+fn diagnose_fragment_id_after_component_with_snippet() {
+    assert_compiler("diagnose_fragment_id_after_component_with_snippet");
+}
+
+#[rstest]
+fn diagnose_fragment_id_in_snippet_used_as_expression() {
+    assert_compiler("diagnose_fragment_id_in_snippet_used_as_expression");
+}
+
+#[rstest]
+fn component_prop_const_tag_member() {
+    assert_compiler("component_prop_const_tag_member");
+}
+
+#[rstest]
+fn diagnose_component_prop_const_tag_member_init() {
+    assert_compiler("diagnose_component_prop_const_tag_member_init");
+}
+
+#[rstest]
+fn diagnose_component_prop_const_tag_destructured_shorthand() {
+    assert_compiler("diagnose_component_prop_const_tag_destructured_shorthand");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_component_prop_computed_member_getter() {
+    assert_compiler("diagnose_component_prop_computed_member_getter");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_component_prop_hyphenated_key_derived() {
+    assert_compiler("diagnose_component_prop_hyphenated_key_derived");
+}
+
 // ---------------------------------------------------------------------------
 // Diagnose: svelte import patterns
 // ---------------------------------------------------------------------------
@@ -3060,6 +3586,11 @@ fn each_block_no_item_multi() {
 #[rstest]
 fn each_block_no_item_with_index() {
     assert_compiler("each_block_no_item_with_index");
+}
+
+#[rstest]
+fn each_collection_call_reads_state() {
+    assert_compiler("each_collection_call_reads_state");
 }
 
 #[rstest]
@@ -3348,6 +3879,16 @@ fn derived_destructured_object() {
 }
 
 #[rstest]
+fn derived_destructured_object_prop_source() {
+    assert_compiler("derived_destructured_object_prop_source");
+}
+
+#[rstest]
+fn derived_destructured_props_whole_source() {
+    assert_compiler("derived_destructured_props_whole_source");
+}
+
+#[rstest]
 fn derived_destructured_array() {
     assert_compiler("derived_destructured_array");
 }
@@ -3408,6 +3949,21 @@ fn snippet_object_destructure() {
 }
 
 #[rstest]
+fn diagnose_legacy_snippet_param_member_to_component_prop() {
+    assert_compiler("diagnose_legacy_snippet_param_member_to_component_prop");
+}
+
+#[rstest]
+fn diagnose_legacy_component_prop_import_meta_getter_in_if() {
+    assert_compiler("diagnose_legacy_component_prop_import_meta_getter_in_if");
+}
+
+#[rstest]
+fn diagnose_snippet_inside_each_callback() {
+    assert_compiler("diagnose_snippet_inside_each_callback");
+}
+
+#[rstest]
 fn snippet_array_destructure() {
     assert_compiler("snippet_array_destructure");
 }
@@ -3425,6 +3981,11 @@ fn snippet_nested_destructure() {
 #[rstest]
 fn snippet_computed_key_destructure() {
     assert_compiler("snippet_computed_key_destructure");
+}
+
+#[rstest]
+fn snippet_body_single_component() {
+    assert_compiler("snippet_body_single_component");
 }
 
 #[rstest]
@@ -3488,6 +4049,16 @@ fn diagnose_props_bindable_icon_component() {
 }
 
 #[rstest]
+fn diagnose_props_identifier_in_snippet_body() {
+    assert_compiler("diagnose_props_identifier_in_snippet_body");
+}
+
+#[rstest]
+fn diagnose_filename_name_collides_with_ts_type_import() {
+    assert_compiler("diagnose_filename_name_collides_with_ts_type_import");
+}
+
+#[rstest]
 fn props_bindable_checkbox_disabled_shorthand_ts() {
     assert_compiler("props_bindable_checkbox_disabled_shorthand_ts");
 }
@@ -3510,6 +4081,12 @@ fn clock_svg_derived_onmount() {
 #[rstest]
 fn diagnose_component_default_and_named_slot_expr() {
     assert_compiler("diagnose_component_default_and_named_slot_expr");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_component_named_slot_child_with_expression_prop() {
+    assert_compiler("diagnose_component_named_slot_child_with_expression_prop");
 }
 
 #[rstest]
@@ -3539,6 +4116,16 @@ fn dev_binary_equals_wrap() {
 }
 
 #[rstest]
+fn dev_filename_relative_to_root_dir() {
+    assert_compiler("dev_filename_relative_to_root_dir");
+}
+
+#[rstest]
+fn dev_filename_root_dir_no_match() {
+    assert_compiler("dev_filename_root_dir_no_match");
+}
+
+#[rstest]
 fn add_locations_svelte_head_skips_hoisted_title() {
     assert_compiler("add_locations_svelte_head_skips_hoisted_title");
 }
@@ -3560,6 +4147,37 @@ fn auto_hardlegacy_member_read_explicit() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn auto_hardlegacy_import_call_coarse_wrap() {
+    assert_compiler("auto_hardlegacy_import_call_coarse_wrap");
+}
+
+#[rstest]
+fn legacy_dev_inspect_fallback() {
+    assert_compiler("legacy_dev_inspect_fallback");
+}
+
+#[rstest]
+fn legacy_dev_const_deep_read_wrap() {
+    assert_compiler("legacy_dev_const_deep_read_wrap");
+}
+
+#[rstest]
+fn legacy_dev_each_const_deep_read() {
+    assert_compiler("legacy_dev_each_const_deep_read");
+}
+
+#[rstest]
+fn legacy_dev_attribute_effect_grouping() {
+    assert_compiler("legacy_dev_attribute_effect_grouping");
+}
+
+#[rstest]
+fn legacy_dev_component_event_prop_derived() {
+    assert_compiler("legacy_dev_component_event_prop_derived");
+}
+
+#[rstest]
 fn auto_softlegacy_simple_template() {
     assert_compiler("auto_softlegacy_simple_template");
 }
@@ -3567,4 +4185,164 @@ fn auto_softlegacy_simple_template() {
 #[rstest]
 fn auto_softlegacy_const_only() {
     assert_compiler("auto_softlegacy_const_only");
+}
+
+#[rstest]
+fn auto_softlegacy_const_member_mutation() {
+    assert_compiler("auto_softlegacy_const_member_mutation");
+}
+
+#[rstest]
+fn legacy_state_bind_member_mutate_wrap() {
+    assert_compiler("legacy_state_bind_member_mutate_wrap");
+}
+
+#[rstest]
+fn auto_softlegacy_component_prop_derived() {
+    assert_compiler("auto_softlegacy_component_prop_derived");
+}
+
+#[rstest]
+fn auto_softlegacy_render_arg_memo() {
+    assert_compiler("auto_softlegacy_render_arg_memo");
+}
+
+#[rstest]
+fn auto_softlegacy_template_call_expr() {
+    assert_compiler("auto_softlegacy_template_call_expr");
+}
+
+#[rstest]
+fn needs_context_template_member_in_binary() {
+    assert_compiler("needs_context_template_member_in_binary");
+}
+
+#[rstest]
+fn needs_context_template_member_in_conditional() {
+    assert_compiler("needs_context_template_member_in_conditional");
+}
+
+#[rstest]
+fn needs_context_template_member_root_import() {
+    assert_compiler("needs_context_template_member_root_import");
+}
+
+#[rstest]
+fn needs_context_template_member_ts_props() {
+    assert_compiler("needs_context_template_member_ts_props");
+}
+
+#[rstest]
+fn diagnose_component_bind_group_emits_array() {
+    assert_compiler("diagnose_component_bind_group_emits_array");
+}
+
+#[rstest]
+fn diagnose_html_template_preserves_nbsp() {
+    assert_compiler("diagnose_html_template_preserves_nbsp");
+}
+
+#[rstest]
+fn diagnose_component_onclick_const_arrow() {
+    assert_compiler("diagnose_component_onclick_const_arrow");
+}
+
+#[rstest]
+fn diagnose_component_spread_call_memo() {
+    assert_compiler("diagnose_component_spread_call_memo");
+}
+
+#[rstest]
+fn diagnose_button_single_dynamic_text() {
+    assert_compiler("diagnose_button_single_dynamic_text");
+}
+
+#[rstest]
+fn diagnose_text_concat_import_uses_template_effect() {
+    assert_compiler("diagnose_text_concat_import_uses_template_effect");
+}
+
+#[rstest]
+fn diagnose_snippet_inside_if_consequent() {
+    assert_compiler("diagnose_snippet_inside_if_consequent");
+}
+
+#[rstest]
+fn diagnose_snippet_hoistable_with_script_import() {
+    assert_compiler("diagnose_snippet_hoistable_with_script_import");
+}
+
+#[rstest]
+fn diagnose_snippet_hoistable_param_type_annotation() {
+    assert_compiler("diagnose_snippet_hoistable_param_type_annotation");
+}
+
+#[rstest]
+fn diagnose_snippet_name_with_underscore() {
+    assert_compiler("diagnose_snippet_name_with_underscore");
+}
+
+#[rstest]
+fn diagnose_hoisted_snippet_module_order_with_sibling_template() {
+    assert_compiler("diagnose_hoisted_snippet_module_order_with_sibling_template");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_snippet_store_autosub_not_hoistable() {
+    assert_compiler("diagnose_snippet_store_autosub_not_hoistable");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_component_on_directive_shorthand_forward() {
+    assert_compiler("diagnose_component_on_directive_shorthand_forward");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_legacy_pre_effect_order_after_functions() {
+    assert_compiler("diagnose_legacy_pre_effect_order_after_functions");
+}
+
+#[rstest]
+fn diagnose_legacy_template_effect_prop_call_coarse_wrap() {
+    assert_compiler("diagnose_legacy_template_effect_prop_call_coarse_wrap");
+}
+
+#[rstest]
+fn diagnose_legacy_local_var_not_promoted_to_state() {
+    assert_compiler("diagnose_legacy_local_var_not_promoted_to_state");
+}
+
+#[rstest]
+fn diagnose_legacy_each_const_destructure_coarse_wrap() {
+    assert_compiler("diagnose_legacy_each_const_destructure_coarse_wrap");
+}
+
+#[rstest]
+fn diagnose_legacy_each_if_condition_coarse_wrap() {
+    assert_compiler("diagnose_legacy_each_if_condition_coarse_wrap");
+}
+
+#[rstest]
+fn diagnose_legacy_if_store_short_circuit_coarse_wrap() {
+    assert_compiler("diagnose_legacy_if_store_short_circuit_coarse_wrap");
+}
+
+#[rstest]
+fn diagnose_component_bind_store_derived_base() {
+    assert_compiler("diagnose_component_bind_store_derived_base");
+}
+
+
+#[rstest]
+fn diagnose_nested_delegated_transition_order() {
+    assert_compiler("diagnose_nested_delegated_transition_order");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_script_line_comment_between_imports() {
+    assert_compiler("diagnose_script_line_comment_between_imports");
 }

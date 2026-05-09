@@ -4,9 +4,10 @@ use svelte_ast::{Attribute, NodeId, RenderTag, StyleDirectiveValue};
 use svelte_span::Span;
 
 use crate::types::data::AnalysisData;
+use crate::types::markers::ScopingBuilt;
 use crate::walker::{TemplateVisitor, VisitContext};
 
-pub(crate) fn make_visitor(_scoping: crate::types::markers::ScopingBuilt) -> CollectSymbolsVisitor {
+pub(crate) fn make_visitor(_scoping: ScopingBuilt) -> CollectSymbolsVisitor {
     CollectSymbolsVisitor {
         pending_shorthand: None,
         pending_clsx: false,

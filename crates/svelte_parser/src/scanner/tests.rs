@@ -117,6 +117,42 @@ fn self_closed_start_tag() {
 }
 
 #[test]
+fn attribute_name_with_underscore() {
+    let source = "<div foo_bar=\"x\" class:is_expanded={true} on:foo_bar={h} use:foo_bar={a} bind:foo_bar={v} style:foo_bar=\"red\" />";
+    let mut scanner = Scanner::new(source);
+    let (tokens, diagnostics) = scanner.scan_tokens();
+    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+    let names: Vec<&str> = start_tag
+        .attributes
+        .iter()
+        .map(|a| match a {
+            Attribute::HTMLAttribute(v) => v.name_span.source_text(source),
+            Attribute::ClassDirective(cd) => cd.name_span.source_text(source),
+            Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
+            Attribute::UseDirective(ud) => ud.name_span.source_text(source),
+            Attribute::BindDirective(bd) => bd.name_span.source_text(source),
+            Attribute::StyleDirective(sd) => sd.name_span.source_text(source),
+            _ => panic!("unexpected attribute variant"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            "foo_bar",
+            "is_expanded",
+            "foo_bar",
+            "foo_bar",
+            "foo_bar",
+            "foo_bar",
+        ]
+    );
+}
+
+#[test]
 fn start_tag_attributes() {
     let source = "<div valid id=123 touched some=true disabled value=\"333\" class='never' >";
     let mut scanner = Scanner::new(source);
@@ -797,6 +833,36 @@ fn snippet_tag_params_with_template_literal() {
     }
     assert!(tokens[1].token_type == TokenType::Text);
     assert!(tokens[2].token_type == TokenType::EndSnippetTag);
+}
+
+#[test]
+fn snippet_tag_name_with_underscore() {
+    let source = "{#snippet extra_element()}content{/snippet}";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    assert!(matches!(
+        tokens[0].token_type,
+        TokenType::StartSnippetTag(_)
+    ));
+    if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
+        assert_eq!(st.expression_span.source_text(source), "extra_element()");
+    }
+    assert!(tokens[1].token_type == TokenType::Text);
+    assert!(tokens[2].token_type == TokenType::EndSnippetTag);
+}
+
+#[test]
+fn snippet_tag_name_with_dollar() {
+    let source = "{#snippet $foo()}content{/snippet}";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    assert!(matches!(
+        tokens[0].token_type,
+        TokenType::StartSnippetTag(_)
+    ));
+    if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
+        assert_eq!(st.expression_span.source_text(source), "$foo()");
+    }
 }
 
 #[test]

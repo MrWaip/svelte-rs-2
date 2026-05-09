@@ -1,3 +1,5 @@
+use std::mem::take;
+
 use smallvec::SmallVec;
 
 use svelte_ast::{AstStore, Component, FragmentRole, Node, NodeId};
@@ -9,7 +11,7 @@ pub(crate) fn build(component: &Component, data: &mut AnalysisData) {
     if !data.script.blocker_data.has_async {
         return;
     }
-    let map = std::mem::take(&mut data.template.expression_tags_by_fragment);
+    let map = take(&mut data.template.expression_tags_by_fragment);
     for (idx, slot) in map.iter().enumerate() {
         let Some(expr_ids) = slot else { continue };
         let mut blockers = SmallVec::<[u32; 2]>::new();

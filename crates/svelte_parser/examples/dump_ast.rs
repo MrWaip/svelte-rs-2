@@ -2,9 +2,11 @@ use oxc_allocator::Allocator;
 use oxc_estree::{ESTree, PrettyJSSerializer};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+use std::env;
+use std::process;
 
 fn main() {
-    let input = std::env::args()
+    let input = env::args()
         .nth(1)
         .expect("Usage: dump_ast <js-expression>");
 
@@ -16,7 +18,7 @@ fn main() {
         for err in &ret.errors {
             eprintln!("Error: {err}");
         }
-        std::process::exit(1);
+        process::exit(1);
     }
 
     let mut serializer = PrettyJSSerializer::new(false);

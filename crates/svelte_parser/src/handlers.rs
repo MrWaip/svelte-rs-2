@@ -2,7 +2,7 @@
 
 use svelte_ast::{
     AwaitBlock, ComponentNode, EachBlock, Element, ExprRef, FragmentRole, IfBlock, KeyBlock, Node,
-    NodeId, SVELTE_COMPONENT, SnippetBlock, StmtRef, SvelteComponentLegacy,
+    NodeId, SVELTE_COMPONENT, SVELTE_SELF, SnippetBlock, StmtRef, SvelteComponentLegacy, SvelteSelf,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -77,6 +77,19 @@ impl<'a> Parser<'a> {
                         fragment,
                         legacy_slots,
                     })
+                } else if el.name == SVELTE_SELF {
+                    let (default_children, legacy_slots) =
+                        self.partition_component_children(children);
+                    let fragment =
+                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
+                    Node::SvelteSelf(SvelteSelf {
+                        id: NodeId(0),
+                        span: merged_span,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment,
+                        legacy_slots,
+                    })
                 } else if is_component_name(&el.name) {
                     let (default_children, legacy_slots) =
                         self.partition_component_children(children);
@@ -85,7 +98,7 @@ impl<'a> Parser<'a> {
                     Node::ComponentNode(ComponentNode {
                         id: NodeId(0),
                         span: merged_span,
-                        name: el.name,
+                        name: ExprRef::new(el.name_span),
                         self_closing: false,
                         attributes: el.attributes,
                         fragment,
@@ -434,6 +447,19 @@ impl<'a> Parser<'a> {
                         fragment,
                         legacy_slots,
                     })
+                } else if el.name == SVELTE_SELF {
+                    let (default_children, legacy_slots) =
+                        self.partition_component_children(children);
+                    let fragment =
+                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
+                    Node::SvelteSelf(SvelteSelf {
+                        id: NodeId(0),
+                        span: merged_span,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment,
+                        legacy_slots,
+                    })
                 } else if is_component_name(&el.name) {
                     let (default_children, legacy_slots) =
                         self.partition_component_children(children);
@@ -442,7 +468,7 @@ impl<'a> Parser<'a> {
                     Node::ComponentNode(ComponentNode {
                         id: NodeId(0),
                         span: merged_span,
-                        name: el.name,
+                        name: ExprRef::new(el.name_span),
                         self_closing: false,
                         attributes: el.attributes,
                         fragment,

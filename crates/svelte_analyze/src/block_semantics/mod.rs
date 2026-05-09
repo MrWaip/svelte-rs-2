@@ -7,8 +7,8 @@ pub use data::{
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
     HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
-    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgLowering, RenderAsyncKind,
-    RenderCalleeShape, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgEmit, RenderAsyncKind,
+    RenderCalleeKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 
 use crate::scope::SymbolId;
@@ -22,7 +22,7 @@ pub struct BlockSemanticsStore {
 }
 
 impl BlockSemanticsStore {
-    pub fn new(node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
         let mut entries = Vec::with_capacity(node_count as usize);
         entries.resize_with(node_count as usize, BlockSemantics::default);
         Self {

@@ -1,9 +1,9 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 57/57 use cases
-- **Tests**: 39/39 green
-- Last updated: 2026-05-06
+- **Working**: 64/64 use cases
+- **Tests**: 46/46 green
+- Last updated: 2026-05-13
 
 ## Source
 
@@ -129,6 +129,18 @@ In **runes mode** with `{#each $items as item}` whose collection expression is a
 - [x] Runes mode: `{#each $store as item}` with item member mutation — wraps mutation as `($.get(item).value++, $.invalidate_store($$stores, '$items'))` (test: `store_runes_each_member_mutation`)
 - [x] `bind:value={$store}` passes synthetic thunk identifier directly without arrow wrap (test: `store_bind_value_thunk_arrow`)
 
+- [x] Runes mode: synthetic store thunk where base is a `$props()`-destructured prop reads through `$$props.<name>` — `const $store = () => $.store_get($$props.store, "$store", $$stores)` (test: `store_runes_prop_thunk`)
+
+- [x] Runes mode: synthetic store thunk where base symbol is a reactive source (`$derived`, `$derived.by`, `$state`) unwraps the signal in the thunk — `const $store = () => $.store_get($.get(store), "$store", $$stores)`. Codegen `lib.rs` inlines `BindingSemantics` match in `make_base_arg` (local triage enum removed); transform `make_store_base_expr` adds matching `State`/`Derived` arm returning `$.get(<base>)` (test: `store_runes_synthetic_thunk_derived_base`)
+
+- [x] Runes mode: `$props()`-destructured prop used solely as a store (only `$X` reads/writes, including `bind:value={$X}`) must NOT materialize a `$.prop($$props, "X", 7)` local binding; `$X = …` writes and `bind:value={$X}` setter target `$.store_set($$props.X, …)` directly. Analyze: `has_non_store_mutation` excludes store-candidate write refs from the `is_source` predicate in `record_object_prop_pattern`. Transform: `make_store_set` accepts a base `Expression`; `make_store_base_expr` builds `$$props.<name>` for `Prop(NonSource, Standard)` base symbols (mirrors `LegacyState` `$.get(name)` wrap) (test: `store_runes_prop_assign_bind`)
+
+- [x] Runes mode: `$bindable()`-marked prop without a default expression and without any non-store-classified write reference to the bare identifier follows the same `Prop(NonSource, Standard)` routing as a plain prop — drops the `let X = $.prop(...)` materialization, lowers bare `X` to `$$props.X`, and emits `$.store_set($$props.X, $$value)` in the `bind:value={$X}` setter. Analyze: `record_named_prop_assignment_left` publishes the symbol into `standard_prop_source_symbols` when `bindable && PropLoweringMode::Standard && PropDefaultLowering::None`; the deferred-downgrade loop now accepts a reference as compatible if it is either a `StoreRead`/`StoreWrite`/`StoreUpdate` reference fact OR a read-only `Reference` (so a method-call base like `inputValue.set(5)` no longer blocks downgrade). `Prop(NonSource, Standard)` routing in `make_store_base_expr` already handles the `$$props.<name>` rewrite for both bare reads and `store_set` setter base (test: `diagnose_bindable_prop_store_only`)
+
+- [x] Runes mode: `<Child bind:prop={$store}>` component-bind setter where store base is a `$props()`-destructured prop emits `$.store_set($$props.<name>, $$value)` — codegen `bind_prop.rs::emit_bind_store` reads `BindingSemantics(base_symbol)` and emits `$$props.<name>` member for `Prop(NonSource, _)`, mirroring the element-bind path's `Prop(NonSource, Standard) → $$props.<name>` rule (test: `store_runes_component_bind_prop_store`)
+
+- [x] Runes mode: `<Child bind:prop={$store}>` setter where store base symbol is `State` / `Derived` (including a field destructured from `$derived(...)`) emits `$.store_set($.get(<base>), $$value)` — codegen `bind_prop.rs::emit_bind_store` extends the `binding_semantics(base_symbol)` match with a `State(_) | Derived(_)` arm wrapping the identifier in `$.get(...)`, mirroring `lib.rs::make_base_arg` read-side handling (test: `diagnose_component_bind_store_derived_base`)
+
 - [x] **Legacy mode: full store path closed**
   - [x] `let X = writable(...)` upgraded to legacy state when `X` reassigned and `$X` referenced lowers to `$.mutable_source(writable(...))` + store thunk + `setup_stores` + `$$cleanup` + `$.init()` (test: `store_legacy_let_synthetic_reassign`)
   - [x] Legacy assignment of state-source whose `$X` is store_sub wraps with `$.store_unsub($.set(X, v), '$X', $$stores)` via new `LegacyStateSubscribedWrite` / `LegacyStateSubscribedUpdate` reference variants and `make_store_unsub` builder (test: `store_legacy_let_synthetic_reassign`)
@@ -155,6 +167,8 @@ In **runes mode** with `{#each $items as item}` whose collection expression is a
   - [x] `{#await $promise}{:then v}…{/await}` passes synthetic thunk identifier directly to `$.await(node, $promise, …)` (test: `store_await_block_promise`)
   - [x] `{@render $snippet(args)}` lowers to `$.snippet(node, $snippet, () => arg)` via existing Dynamic codegen path + `b.thunk` unthunk-collapse of `() => $name()` → `$name`. Required `callee_symbol` in `crates/svelte_analyze/src/block_semantics/builder/render.rs` to resolve store-reference identifiers to the synthetic store SymbolId (via `ReferenceSemantics::StoreRead`/`StoreWrite`/`StoreUpdate`/`ImportSubscribedRead`) instead of falling back to the base import binding — without that, `RenderCalleeShape` came out `Static` and the emit dropped the `$.snippet(...)` wrapper (test: `store_render_tag_snippet`)
   - [x] `bind:this={$el}` lowers to `$.bind_this(div, ($$value) => $.store_set(el, $$value), () => $el())` via store-aware branch in codegen `crates/svelte_codegen_client/src/codegen/attributes/bind/this.rs::emit_bind_this`. Branch detects store target through `directive_root_reference_semantics` returning `StoreRead`/`StoreWrite`/`StoreUpdate` and synthesises both arrows directly from the synthetic store SymbolId — no transform/analyze plumbing required, the existing transform path that skips bind:this in `walk_attrs` is preserved (test: `store_bind_this_element_ref`)
+
+- [x] Bare identifier `name` coexists with `$name` store subscription — bare references (method calls `name.foo()`, member reads `name.bar`, argument passes) remain unchanged; only `$name` reads/writes/updates route through the synthetic store thunk. Fix: `ImportSubscribedRead` removed from the thunk-call rewrite arm in `crates/svelte_transform/src/transformer/rewrites.rs::dispatch_identifier_read`; variant retained in analyze for `ExpressionSemantics` dynamism tracking and `BlockSemantics::render` callee resolution (test: `store_bare_identifier_method_call`)
 
 - [ ] **`$:` reactive statement reading a store** — owned by `specs/legacy-reactive-assignments.md` but cross-references store path. Cross-link only.
 
@@ -255,3 +269,9 @@ In **runes mode** with `{#each $items as item}` whose collection expression is a
 - [x] `store_await_block_promise`
 - [x] `store_render_tag_snippet`
 - [x] `store_bind_this_element_ref`
+- [x] `store_runes_prop_assign_bind`
+- [x] `store_runes_component_bind_prop_store`
+- [x] `store_runes_prop_thunk`
+- [x] `diagnose_bindable_prop_store_only`
+- [x] `diagnose_component_bind_store_derived_base`
+- [x] `store_bare_identifier_method_call`

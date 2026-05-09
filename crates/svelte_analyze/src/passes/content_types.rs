@@ -1,12 +1,13 @@
 use svelte_ast::{AstStore, Attribute, Element, Node, NodeId};
 
+use crate::passes::fragment_topology;
 use crate::types::data::AnalysisData;
-use crate::walker::TemplateVisitor;
+use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) struct ContentAndVarVisitor;
 
 impl TemplateVisitor for ContentAndVarVisitor {
-    fn leave_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_, '_>) {
+    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         if element_needs_var(el, ctx.data, ctx.store) {
             ctx.data.elements.flags.needs_var.insert(el.id);
         }
@@ -41,7 +42,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData, store: &AstStore) -> boo
         return true;
     }
 
-    let lf = crate::passes::fragment_topology::fragment_items(store, el.fragment);
+    let lf = fragment_topology::fragment_items(store, el.fragment);
     lf.iter()
         .any(|&item_id| item_needs_var(item_id, data, store))
 }
@@ -53,7 +54,7 @@ fn item_needs_var(id: NodeId, data: &AnalysisData, store: &AstStore) -> bool {
         Node::Element(_) => data.elements.flags.needs_var.contains(&id),
         Node::SlotElementLegacy(_) => true,
         Node::SvelteFragmentLegacy(el) => {
-            let fragment = crate::passes::fragment_topology::fragment_items(store, el.fragment);
+            let fragment = fragment_topology::fragment_items(store, el.fragment);
             fragment
                 .iter()
                 .any(|&inner| item_needs_var(inner, data, store))

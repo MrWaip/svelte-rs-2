@@ -30,13 +30,10 @@ test-all:
 sweep-2d:
     cargo sweep -t 2
 
-# Run Clippy across the workspace
-clippy:
-    cargo clippy --workspace --all-targets
-
-# Run Clippy and fail on any warning
-clippy-strict:
+# Run all lints (clippy + custom dylint rules) and fail on any warning
+lint:
     cargo clippy --workspace --all-targets -- -D warnings
+    DYLINT_RUSTFLAGS="-D warnings --cap-lints=deny" cargo dylint --all
 
 # Apply Clippy's machine-applicable fixes across the workspace
 clippy-fix:
@@ -81,9 +78,9 @@ bench-flame-all:
 dump-ast expr:
     cargo run -p svelte_parser --example dump_ast -- '{{expr}}'
 
-# Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte)
-quick-check path:
-    cargo run -q -p quick_check -- {{path}}
+# Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>])
+quick-check path *flags:
+    cargo run -q -p quick_check -- {{path}} {{flags}}
 
 # Build WASM and serve the playground
 playground:

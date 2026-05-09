@@ -4,10 +4,11 @@ mod legacy;
 mod non_reactive_update;
 mod runes;
 mod stores;
+mod typescript;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, Function, ImportDeclarationSpecifier,
-    ModuleExportName, NewExpression, Program, Statement,
+    ArrowFunctionExpression, BindingPattern, Declaration, Expression, ExportSpecifier, Function,
+    ImportDeclarationSpecifier, ModuleExportName, NewExpression, Program, Statement,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -47,6 +48,7 @@ pub fn validate(
         );
         stores::validate_module(data, module_program, diags);
         validate_perf_class_warnings(module_program, 0, diags);
+        typescript::validate(module_program, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, parsed, diags);
@@ -83,6 +85,7 @@ pub fn validate_program(
     if runes {
         class_state_fields::validate(program, diags);
     }
+    typescript::validate(program, diags);
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
@@ -105,6 +108,7 @@ pub fn validate_standalone_module(
     );
     stores::validate_standalone_module(data, program, diags);
     validate_perf_class_warnings(program, 0, diags);
+    typescript::validate(program, diags);
 }
 
 fn validate_perf_class_warnings(
@@ -164,7 +168,7 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
         if self.function_depth > 0
-            && matches!(expr.callee, oxc_ast::ast::Expression::ClassExpression(_))
+            && matches!(expr.callee, Expression::ClassExpression(_))
         {
             self.diags.push(Diagnostic::warning(
                 DiagnosticKind::PerfAvoidInlineClass,
@@ -208,7 +212,7 @@ fn validate_illegal_default_export(
     }
 }
 
-fn export_specifier_is_default(specifier: &oxc_ast::ast::ExportSpecifier<'_>) -> bool {
+fn export_specifier_is_default(specifier: &ExportSpecifier<'_>) -> bool {
     match &specifier.exported {
         ModuleExportName::IdentifierName(name) => name.name == "default",
         ModuleExportName::IdentifierReference(name) => name.name == "default",
@@ -244,7 +248,7 @@ fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut V
             continue;
         }
         for specifier in &export.specifiers {
-            let oxc_ast::ast::ModuleExportName::IdentifierReference(ident) = &specifier.local
+            let ModuleExportName::IdentifierReference(ident) = &specifier.local
             else {
                 continue;
             };

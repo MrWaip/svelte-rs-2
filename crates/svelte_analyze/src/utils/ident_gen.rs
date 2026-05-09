@@ -1,5 +1,6 @@
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::str::from_utf8_unchecked;
 
 fn push_u32(out: &mut String, mut n: u32) {
     if n == 0 {
@@ -13,7 +14,7 @@ fn push_u32(out: &mut String, mut n: u32) {
         buf[i] = b'0' + (n % 10) as u8;
         n /= 10;
     }
-    out.push_str(unsafe { std::str::from_utf8_unchecked(&buf[i..]) });
+    out.push_str(unsafe { from_utf8_unchecked(&buf[i..]) });
 }
 
 fn build_name_into(out: &mut String, prefix: &str, n: u32) {

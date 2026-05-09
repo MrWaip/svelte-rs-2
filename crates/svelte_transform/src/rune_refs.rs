@@ -38,25 +38,25 @@ pub fn find_expr_root_name<'b>(expr: &'b Expression) -> Option<&'b str> {
 
 pub fn find_expr_root_identifier<'b, 'a>(
     expr: &'b Expression<'a>,
-) -> Option<&'b oxc_ast::ast::IdentifierReference<'a>> {
-    let mut current = expr;
+) -> Option<&'b IdentifierReference<'a>> {
+    let mut current = expr.get_inner_expression();
     loop {
-        match current {
-            Expression::Identifier(id) => return Some(id),
-            _ => current = current.as_member_expression()?.object(),
+        if let Expression::Identifier(id) = current {
+            return Some(id);
         }
+        current = current.as_member_expression()?.object().get_inner_expression();
     }
 }
 
 pub fn replace_expr_root<'a>(expr: &mut Expression<'a>, replacement: Expression<'a>) {
-    let mut current = expr;
+    let mut current = expr.get_inner_expression_mut();
     loop {
-        if matches!(current, Expression::Identifier(_)) {
+        if let Expression::Identifier(_) = current {
             *current = replacement;
             return;
         }
         match current.as_member_expression_mut() {
-            Some(member) => current = member.object_mut(),
+            Some(member) => current = member.object_mut().get_inner_expression_mut(),
             None => return,
         }
     }
