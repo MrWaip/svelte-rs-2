@@ -99,10 +99,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let Some(handler) = handlers.into_iter().next() else {
                         return ObjProp::Shorthand(key);
                     };
-                    if matches!(&handler, Expression::FunctionExpression(_)) {
+                    if matches!(
+                        handler.get_inner_expression(),
+                        Expression::FunctionExpression(_)
+                    ) {
                         return ObjProp::Method(key, handler);
                     }
-                    if let Expression::Identifier(id) = &handler
+                    if let Expression::Identifier(id) = handler.get_inner_expression()
                         && id.name.as_str() == name
                     {
                         return ObjProp::Shorthand(key);

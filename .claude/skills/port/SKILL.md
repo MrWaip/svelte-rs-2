@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 **Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
 
-Reference Svelte compiler: `reference/compiler/`. Our Rust compiler: `crates/svelte_*`.
+Original Svelte compiler: `reference/compiler/`. Our Rust compiler: `crates/svelte_*`.
 
 Command arg is one of:
 
@@ -71,7 +71,7 @@ Spec lacks usable closure units -> derive from existing `Use cases`/`Tasks` befo
 
 ## Approach
 
-Reference compiler = understand expected output, not copy structure.
+Original = understand expected output, not copy structure.
 
 Do not port:
 
@@ -82,7 +82,7 @@ Do not port:
 
 Do:
 
-- match reference observable behavior exactly for selected use case set
+- match Original observable behavior exactly for selected use case set
 - keep implementation aligned with crate boundaries
 
 Do not respond to repeated `/port` runs by explaining open checkboxes are expected. Close a use case or split one that is too large.
@@ -137,9 +137,27 @@ Sections:
 1. Included use cases
 2. Excluded use cases
 3. Owning layer
-4. Expected files to change
-5. Verification strategy
-6. Closure condition
+4. Original dispatch
+5. Expected files to change
+6. Verification strategy
+7. Closure condition
+
+`Original dispatch` is mandatory and uses this exact shape:
+
+```
+- Original handler: <file:line>  (line number required; function name alone is insufficient)
+- Dispatch style: <visitor / match / for-loop / recursive walk>
+- Node kinds it covers: <list>
+- My change covers: <list>
+- Not covered (and why ok): <list, or "nothing excluded">
+```
+
+`My change covers` strictly smaller than `Node kinds it covers` without explicit justification in `Not covered` -> not a closure, decompose.
+
+Every `Not covered` item must:
+
+- cite a different `Original handler <file:line>` than the top one — same handler means same closure unit, include it or decompose
+- end with `→ spec:<line>` to an existing bullet or to a new `[ ]` added in Step 4
 
 `Closure condition` states what must be true for each included use case to be marked `[x]`.
 
@@ -155,6 +173,12 @@ Do not use `Current state` as planning scratchpad. Terse resume header only.
 Spec needs planning update before implementation -> refine `Use cases` or decompose broad item, not planning bullets in `Current state`.
 
 Selected use case too broad -> draft decomposition instead of normal closure plan.
+
+`Not covered` items from Step 3 without an existing spec anchor must be added here as new unchecked bullets in this exact shape:
+
+```
+- [ ] <use case> — deferred: <one-line why separate from current closure>
+```
 
 Do not apply spec update yet. Present closure plan and proposed spec update, wait for approval.
 
@@ -172,20 +196,20 @@ Start only after plan approval. Sequential.
 
 Pick smallest correct verification surface before writing code.
 
-e2e compiler tests only when closure unit must check against reference compiler output.
+e2e compiler tests only when closure unit must check against Original output.
 
 Unit tests when behavior owned by one layer and needs no end-to-end snapshot comparison.
 
 Default mapping:
 
 - parser syntax and AST shape -> parser unit tests in `test.rs` modules
-- analysis metadata, symbol logic, ownership, diagnostics -> analyzer unit tests in `test.rs` modules
-- observable diagnostic parity against npm `svelte/compiler` -> `tasks/diagnostic_tests/`
-- codegen or compiler output that must match reference -> `tasks/compiler_tests/` e2e coverage
+- semantics, symbols, scopes, diagnostics -> analyze unit tests in `test.rs` modules
+- observable diagnostic parity against Original -> `tasks/diagnostic_tests/`
+- codegen or compiler output that must match Original -> `tasks/compiler_tests/` e2e coverage
 
 Parser-only or analyze-only closure units -> prefer layer-local tests and exact AST/analysis expectations unless e2e parity required.
 
-Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless point of closure unit is e2e compiler snapshot vs reference compiler.
+Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless point of closure unit is e2e compiler snapshot vs Original.
 
 Closure unit needs both:
 
@@ -206,9 +230,9 @@ e2e tests:
 1. add minimal `tasks/compiler_tests/cases2/<name>/case.svelte`
 2. add matching entry in `tasks/compiler_tests/test_v3.rs`
 3. run `just generate` to produce `case-svelte.js`
-4. verify generated reference output before implementing
+4. verify generated Original output before implementing
 
-Before implementation, treat only `case-svelte.js` as reference artifact to review. Do not treat pre-implementation `case-rust.js` as meaningful.
+Before implementation, treat only `case-svelte.js` as Original artifact to review. Do not treat pre-implementation `case-rust.js` as meaningful.
 
 `case-svelte.js` and `case-rust.js` = generated artifacts. Never edit manually. Change only through generation or compiler output.
 
@@ -217,9 +241,9 @@ Diagnostic parity tests:
 1. add minimal `tasks/diagnostic_tests/cases/<name>/case.svelte`
 2. add matching entry in `tasks/diagnostic_tests/test_diagnostics.rs`
 3. run `just generate` to produce `case-svelte.json`
-4. verify generated reference diagnostics before implementing
+4. verify generated Original diagnostics before implementing
 
-Before implementation, treat only `case-svelte.json` as reference artifact. Do not treat pre-implementation `case-rust.json` as meaningful.
+Before implementation, treat only `case-svelte.json` as Original artifact. Do not treat pre-implementation `case-rust.json` as meaningful.
 
 `case-svelte.json` and `case-rust.json` = generated artifacts. Never edit manually. Change only through generation or compiler output.
 
@@ -232,8 +256,8 @@ Rules:
 
 Layer order:
 
-1. parser and AST only if closure unit needs new syntax
-2. analyze only if closure unit needs new derived data
+1. parser and Svelte AST only if closure unit needs new syntax
+2. analyze only if closure unit needs new semantics
 3. transform or codegen only after required parser/analysis support exists
 
 Second infrastructural concept becomes necessary mid-run -> stop, decompose in spec, report split. No half-finished implementation.
@@ -285,7 +309,7 @@ Update spec — minimal edits only:
 
 Forbidden when closing a use case:
 
-- appending implementation summary, file list, owner, reference parallels, or sibling cluster notes to the checkbox line
+- appending implementation summary, file list, owner, Original parallels, or sibling cluster notes to the checkbox line
 - adding dated entries (`<date>: <what was closed>`) anywhere in `Current state`
 - rewriting `Current state` into a prose paragraph or changelog — it stays three lines: `Working`, `Tests`, `Last updated`
 

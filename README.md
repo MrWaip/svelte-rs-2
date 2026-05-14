@@ -1,125 +1,156 @@
-# svelte-rs — Rust implementation of the Svelte compiler (WIP)
+<div align="center">
 
-[![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
+# svelte-rs
 
-## Demo
+**The Svelte 5 compiler, rewritten in Rust.**
 
-https://mrwaip.github.io/svelte-rs-2/
+Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.55.5**) — same JS output, ~30× faster.
 
-## Architecture overview
+> ⚠️ **WIP / canary.** Built by a human with heavy AI assistance. Expect bugs, missing edge cases, and breaking changes. Not production-ready — please report what breaks.
 
-https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
+[![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs2-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs2)
+[![tests](https://img.shields.io/badge/e2e_tests-1500%2B-success)](./tasks/compiler_tests/cases2)
+
+[Playground](https://mrwaip.github.io/svelte-rs-2/) · [Roadmap](./ROADMAP.md)
+
+</div>
 
 ---
 
-## Feature checklist
+## Why
 
-See [ROADMAP.md](./ROADMAP.md) for the full feature checklist.
+- **Byte-exact JS output** — diffed against the reference compiler on **1500+ end-to-end cases** (compiler + diagnostics).
+- **Drop-in** — same `compile()` / `compileModule()` API as `svelte/compiler`.
+- **30× faster** (geomean across 24 benches, up to **52×** on large components).
+- Wired into a fork of `vite-plugin-svelte`, so you can try it in a real Vite app today.
 
----
+### Requirements
+
+| | |
+| --- | --- |
+| Node | `^20.19 \|\| ^22.12 \|\| >=24` |
+| Platforms | macOS arm64/x64, Linux x64 glibc. Windows and Linux musl (Alpine) not yet. |
+| Peer | `svelte@5.55.5` — Vite plugin falls back to `svelte/compiler` for unsupported options. |
+
+## What Works So Far?
+
+This is still a work in progress and is not yet at full feature parity with `svelte/compiler`. Parity target: **svelte@5.55.5**. Bugs may exist. Please check this list carefully before logging a new issue or assuming an intentional change.
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Svelte 5 syntax | done | Runes, template, bindings, directives, events, special elements, diagnostics, a11y. Byte-exact diff against `svelte/compiler`. |
+| Svelte 4 legacy | in progress | `export let`, `$:`, `beforeUpdate`/`afterUpdate`, `<svelte:component>`, auto-mode detection done. `<slot>` / `<svelte:self>` still pending. |
+| CSS pipeline | done | analyze + transform + codegen |
+| TypeScript | done | Script stripping only — no type checking. |
+| `.svelte.js` / `.svelte.ts` modules | done | — |
+| Custom elements | in progress | Basic path works; some option combinations not covered. |
+| Compiler options | in progress | Most common options honored; long tail (`discloseVersion`, etc.) still landing. |
+| Dev mode (`dev: true`) | in progress | Runtime checks and ownership tracking land case-by-case. |
+| Source maps | in progress | Partial implementation, not yet verified against reference. |
+| Preprocessors | not ready | Not started. |
+| SSR (`generate: 'server'`) | not ready | Not started — large chunk of work. |
+| HMR | not ready | Not started. |
+
+Definitions:
+
+- **done** aka "believed done": we're not currently aware of any deficits or major left work to do. OK to log bugs.
+- **in progress**: currently being worked on; some things may work, some may not. OK to log panics, but nothing else please.
+- **prototype**: proof-of-concept only; do not log bugs.
+- **not ready**: either haven't even started yet, or far enough from ready that you shouldn't bother messing with it yet.
+
+Full breakdown: [ROADMAP.md](./ROADMAP.md).
+
+### Known limitations
+
+- `ast` option is not supported — passing it throws; the returned `ast` is always `null`.
+- `sourcemap` and `outputFilename` options are not supported — passing them throws.
+- `modernAst: true` is accepted but ignored (emits `unsupported_option_ignored` warning).
+- `js.map` / `css.map` are always `null` (source maps are WIP).
+- `dev: true` runtime checks land case-by-case — not all ownership / hydration diagnostics are emitted yet.
+
+## Install
+
+### As a compiler
+
+```sh
+npm i -D @mrwaip/svelte-rs2
+```
+
+```js
+import { compile } from '@mrwaip/svelte-rs2/compiler';
+
+const { js } = compile(
+  `<script>let { name } = $props();</script><h1>hello {name}</h1>`,
+  { filename: 'Hello.svelte', generate: 'client' }
+);
+
+console.log(js.code);
+```
+
+API mirrors `svelte/compiler`. Unsupported options (`ast`, `sourcemap`, `outputFilename`) throw; see `packages/svelte-rs2/compiler/index.d.ts`.
+
+Want to see real input → output? Browse [`tasks/compiler_tests/cases2/`](./tasks/compiler_tests/cases2) — each folder has `case.svelte` (input), `case-rust.js` (our output) and `case-svelte.js` (reference). 1100+ cases, byte-diffed.
+
+### In a Vite app
+
+Use the fork of `vite-plugin-svelte` — it routes `compile` / `compileModule` through `@mrwaip/svelte-rs2` automatically, with fallback to `svelte/compiler` where the Rust side doesn't support an option yet.
+
+```sh
+npm i -D @mrwaip/vite-plugin-svelte
+```
+
+```js
+import { defineConfig } from 'vite';
+import { svelte } from '@mrwaip/vite-plugin-svelte';
+
+export default defineConfig({
+  plugins: [svelte()],
+});
+```
+
+Source: <https://github.com/MrWaip/vite-plugin-svelte>.
 
 ## Benchmarks
 
-Walltime comparison against `svelte/compiler` on `tasks/benchmark/benches/compiler/**`. Measured 2026-05-04 via `just bench-compare-walltime` (3 s budget per side, 0.5 s warmup, min 5 iters, `NeverGrowInPlaceAllocator`). Times are per single `compile()` / `compileModule()` call.
+**Geomean: 30.18×** across 24 cases (min 20.14×, max 51.97×). Walltime vs `svelte/compiler`, measured 2026-05-04 via `just bench-compare-walltime`. `big_v6.svelte` is a synthetic stress component (~5.8k LOC); the rest are real-world Svelte files.
 
-| case | rust med | rust mean | rust n | js med | js mean | js n | speedup (med) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| compile[benches/compiler/big_v6.svelte] | 18.39 | 18.83 | 160 | 955.9 | 976.7 | 5 | 51.97x |
-| compile_dev[benches/compiler/big_v6.svelte] | 19.56 | 19.96 | 151 | 944.7 | 960.2 | 5 | 48.30x |
-| compile_module[benches/compiler/module/case_02.svelte.js] | 0.1309 | 0.1360 | 21998 | 5.283 | 5.603 | 536 | 40.37x |
-| compile_module_dev[benches/compiler/module/case_02.svelte.js] | 0.1337 | 0.1352 | 22134 | 5.300 | 5.694 | 527 | 39.64x |
-| compile_module[benches/compiler/module/case_04.svelte.js] | 0.2580 | 0.2603 | 11350 | 10.05 | 10.09 | 298 | 38.95x |
-| compile_module[benches/compiler/module/case_03.svelte.js] | 0.2529 | 0.2552 | 11578 | 9.631 | 9.821 | 306 | 38.09x |
-| compile_module_dev[benches/compiler/module/case_03.svelte.js] | 0.2577 | 0.2602 | 11340 | 9.741 | 9.821 | 306 | 37.80x |
-| compile_module_dev[benches/compiler/module/case_04.svelte.js] | 0.2691 | 0.2720 | 10850 | 10.15 | 10.14 | 296 | 37.72x |
-| compile_module[benches/compiler/module/case_01.svelte.js] | 0.1398 | 0.1426 | 20987 | 5.034 | 5.319 | 565 | 36.00x |
-| compile_module_dev[benches/compiler/module/case_01.svelte.js] | 0.1436 | 0.1484 | 20168 | 4.919 | 5.247 | 572 | 34.25x |
-| compile_dev[benches/compiler/template/case_02.svelte] | 0.6525 | 0.6553 | 4575 | 20.01 | 20.45 | 147 | 30.66x |
-| compile_dev[benches/compiler/template/case_01.svelte] | 0.7388 | 0.7414 | 4043 | 22.33 | 22.47 | 134 | 30.22x |
-| compile[benches/compiler/template/case_02.svelte] | 0.6415 | 0.6453 | 4612 | 18.73 | 19.08 | 158 | 29.20x |
-| compile[benches/compiler/template/case_01.svelte] | 0.7445 | 0.7474 | 4011 | 21.65 | 22.11 | 136 | 29.08x |
-| compile_dev[benches/compiler/mixed/case_01.svelte] | 0.4584 | 0.4632 | 6456 | 11.57 | 11.54 | 260 | 25.23x |
-| compile[benches/compiler/mixed/case_01.svelte] | 0.4577 | 0.4606 | 6484 | 11.50 | 11.59 | 259 | 25.11x |
-| compile[benches/compiler/reactivity/case_01.svelte] | 0.4019 | 0.4124 | 7185 | 9.539 | 9.497 | 316 | 23.73x |
-| compile[benches/compiler/legacy/case_01.svelte] | 0.4398 | 0.4517 | 6623 | 10.43 | 10.64 | 282 | 23.71x |
-| compile_dev[benches/compiler/reactivity/case_01.svelte] | 0.4229 | 0.4255 | 6951 | 9.854 | 9.901 | 303 | 23.30x |
-| compile_dev[benches/compiler/legacy/case_01.svelte] | 0.4397 | 0.4429 | 6758 | 10.06 | 10.09 | 298 | 22.88x |
-| compile[benches/compiler/snippets/case_01.svelte] | 1.558 | 1.569 | 1900 | 35.62 | 36.36 | 83 | 22.86x |
-| compile_dev[benches/compiler/snippets/case_01.svelte] | 1.628 | 1.663 | 1803 | 36.34 | 36.63 | 82 | 22.32x |
-| compile_dev[benches/compiler/css/case_01.svelte] | 0.0147 | 0.0156 | 189504 | 0.2988 | 0.3243 | 9244 | 20.32x |
-| compile[benches/compiler/css/case_01.svelte] | 0.0144 | 0.0147 | 202196 | 0.2903 | 0.3338 | 8980 | 20.14x |
+<details>
+<summary>Per-case table</summary>
 
-All times in ms. **geomean speedup: 30.18x** (n=24), min 20.14x, max 51.97x.
+| case | rust med | js med | speedup |
+| --- | ---: | ---: | ---: |
+| `big_v6.svelte` (compile, synthetic stress) | 18.39 ms | 955.9 ms | **51.97×** |
+| `big_v6.svelte` (compile_dev, synthetic stress) | 19.56 ms | 944.7 ms | **48.30×** |
+| `module/case_02.svelte.js` (real-world) | 0.131 ms | 5.283 ms | 40.37× |
+| `template/case_01.svelte` (real-world) | 0.745 ms | 21.65 ms | 29.08× |
+| `snippets/case_01.svelte` (real-world) | 1.558 ms | 35.62 ms | 22.86× |
+| `css/case_01.svelte` (real-world) | 0.014 ms | 0.290 ms | 20.14× |
 
----
+</details>
 
-## Workflow
+## Try it locally
 
-This project uses Claude Code with a set of specialized commands and agents.
-
-### Session Start
-`/status` — project overview: active specs, ignored tests, next ROADMAP item, known debt
-
-### Feature Porting
-1. `/audit <feature>` — gap analysis, create a spec and tests
-2. `/port specs/<file>.md` — implement the next slice from the spec
-3. `/qa` — review for material quality issues
-4. `/sync-docs` — sync ROADMAP and CODEBASE_MAP
-
-### Test Triage
-1. `/explain-test <name>` (optional — understand what the test covers)
-2. `/triage-test <name>` — classify the work as `local-fix`, `slice-gap`, or `spec-gap`
-3. `/qa` (optional)
-
-### Diagnostic Parity
-1. `/add-diagnostic-test <name>` — create a focused diagnostic parity case under `tasks/diagnostic_tests/`
-2. `/diagnose-diagnostics <component|case>` — isolate a false positive, false negative, or span mismatch against npm `svelte/compiler`
-3. `/port specs/<file>.md` — implement the owning fix after the mismatch is reduced to one durable case
-
-### Tech Debt / Refactoring
-1. `/improve <description>` — diagnosis, fix, and tests
-2. `/qa`
-
-### Investigation
-- `/diagnose <component>` — run the repro through the pipeline, isolate the root cause, add focused tests, and record follow-up work in a spec or `ROADMAP.md`
-- `/audit <feature>` — gap analysis vs the reference compiler
-- `/explain-test <name>` — what the test does and why it fails
-- `/bench` — Rust vs JS performance
-
-### Maintenance
-- `/sync-docs` — synchronize documentation with the code
-- `/add-test <name>` — test-first: create a test before implementation
-- `/add-diagnostic-test <name>` — test-first: create a diagnostic parity case before implementation
-
-### Snapshot Generation
-- `just generate` — regenerate reference snapshots for both `tasks/compiler_tests/` and `tasks/diagnostic_tests/`
-
----
-
-## Building the WASM package
+Requires Rust, Node, and [`just`](https://github.com/casey/just) (`cargo install just` or `brew install just`).
 
 ```sh
-wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler
+just playground               # build wasm + serve playground
+just quick-check App.svelte   # diff one component against svelte/compiler
+just test-compiler            # run the 1500+ e2e suite
 ```
 
-Or `just playground` to build WASM and serve the playground locally.
+## Contributing
 
-## Native Node.js bindings (NAPI)
+Standard PRs welcome — no AI required. Day-to-day work uses [Claude Code](https://claude.com/claude-code); slash commands live in `.claude/commands/` (`/status`, `/port`, `/audit`). Before opening a PR: `just test-compiler && just test-diagnostics && just lint` must be green.
 
-A native addon for Node.js consumers lives in `crates/napi_compiler` and is published as `svelte-rs2` from `packages/`.
+Bugs and questions: <https://github.com/MrWaip/svelte-rs-2/issues>.
 
-- `just npm-smoke` — debug build + local link + smoke test
-- `just npm-build` — release build + tarballs for platform packages
+## Acknowledgements
 
-## Quick check against reference compiler
+- [Svelte](https://github.com/sveltejs/svelte) — the compiler this project mirrors; reference output is the source of truth.
+- [OXC](https://github.com/oxc-project/oxc) — JS parser, AST, and codegen.
+- [vite-plugin-svelte](https://github.com/sveltejs/vite-plugin-svelte) — base of the Vite integration fork.
 
-`just quick-check path/to/component.svelte` — compile a single component and diff against `svelte/compiler` output.
+## License
 
-## Useful dev commands
-
-- `just test-compiler` — run all compiler integration tests
-- `just test-case <name>` / `just test-case-verbose <name>` — single test case
-- `just test-diagnostics` / `just test-diagnostic-case <name>` — diagnostic parity tests
-- `just clippy-strict` — clippy with `-D warnings`
-- `just generate` — regenerate reference snapshots
-- `just dump-ast '<expr>'` — dump OXC ESTree JSON for a JS expression
+[MIT](./LICENSE) © Lobkov Constantine

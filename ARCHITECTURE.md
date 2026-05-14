@@ -158,14 +158,14 @@ Build order (`crates/svelte_analyze/src/lib.rs` + `passes/mod.rs`):
 ```
 ComponentSemantics
   └── ReactivitySemantics (phase 1, script-only)
-        ├── ExpressionSemantics
-        │     └── AttributeSemantics
+        ├── ExpressionSemantics ──┬── AttributeSemantics
+        │                         └── BlockSemantics
         └── ReactivitySemantics (phase 2, template walk)
               └── BlockSemantics
                     └── Validation (3.C)
 ```
 
-Pipeline order ≠ data dependency: `BuildBlockSemantics` runs after `Expression`/`Attribute` for staging reasons, but `BlockSemantics::build` reads neither.
+`BlockSemantics::build` reads `ExpressionSemantics` for per-expression facts (collection / callee / promise legacy-wrap, async-kind, blockers) instead of running parallel classification.
 
 ### Validation
 
@@ -244,7 +244,7 @@ Build the **reactivity graph** of the component. Owns everything reactive: runes
 - Per-declaration facts indexed by `OxcNodeId` (rune kind, mutation status, lowering plan).
 - Per-reference facts indexed by `ReferenceId` (read kind, target family, member-mutation flag).
 - Side indices for cheap lookup of subsets: store declarations, legacy bindable props, contextual owners, etc.
-- Rune-mode flag (`uses_runes`) and legacy `$$props` / `$$restProps` usage flags.
+- Rune-mode flag (`uses_runes`), full mode resolution (`runes_mode` → `RunesMode::Runes | SoftLegacy | HardLegacy`) and legacy `$$props` / `$$restProps` usage flags.
 
 ### Query surface
 
@@ -340,11 +340,13 @@ Module: `svelte_analyze::block_semantics`.
 
 ### Depends on
 
-`ComponentSemantics`, `ReactivitySemantics`, plus AST.
+`ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, plus AST.
 
 ### Purpose
 
 Single, exhaustive answer to codegen: "what does this template block become?". For one block `NodeId` codegen receives one `BlockSemantics` variant carrying every decision needed to emit runtime code — no extra lookups, no boolean assembly.
+
+- Reads per-expression facts from `ExpressionSemantics` for collection / callee / promise expressions (legacy-wrap, async-kind, blockers, references) instead of duplicating the classification. Each / Render / Await / If / Key derive their `async_kind` and legacy-wrap from `ExpressionData` directly.
 
 ### Block variants
 
@@ -546,7 +548,26 @@ Single, ergonomic surface for constructing `oxc_ast` nodes from transform/codege
 - Hand-rolling `oxc_allocator::Box::new_in(...)` / `Vec::new_in(...)` / `oxc_ast::ast::*` constructors from transform/codegen.
 - Adding a one-off helper inside transform/codegen instead of extending `Builder`.
 
-### 7.2 `svelte_transform_css`
+### 7.2 `svelte_emit_builders`
+
+Crate: `svelte_emit_builders`. Holds shared builders of Svelte runtime calls used by both transform and codegen: `build_store_base_read`, `make_store_set`, `make_store_mutate`, `make_store_update`.
+
+#### Purpose
+
+Single source of truth for the shape of `$.store_*` runtime calls and the "read base binding of a store auto-subscription" expression. One match on `BindingSemantics(base_symbol)` lives here; transform and codegen only call into it.
+
+#### Constraints
+
+- Depends on `svelte_ast_builder` + `svelte_analyze` (+ `svelte_component_semantics`). No reverse dependency.
+- Functions are pure: `(&Builder<'a>, &AnalysisData, …) -> Expression<'a>`.
+- New shared runtime-call builders (rune get/set, thunk call, dollar-member) join here as they get a second consumer.
+
+#### Anti-patterns
+
+- Re-implementing `$.get` / `$.store_*` shapes inline in transform or codegen.
+- Adding helpers that depend on `ComponentTransformer` / codegen `Ctx` — those belong in their crate.
+
+### 7.3 `svelte_transform_css`
 
 Crate: `svelte_transform_css`. Public entry: `transform_css(...)`, `transform_css_with_usage(...)`, `compact_css_for_injection(css)`.
 

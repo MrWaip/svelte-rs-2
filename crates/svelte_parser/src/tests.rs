@@ -1476,6 +1476,19 @@ fn slot_on_svelte_fragment_is_bucketed_before_legacy_conversion() {
 }
 
 #[test]
+fn slot_on_svelte_component_legacy_is_bucketed_into_legacy_slots() {
+    let c = parse(r#"<Comp><svelte:component this={X} slot="icon" /></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert_eq!(slot_names(cn), vec!["icon"]);
+    assert!(c.store.fragment(cn.fragment).nodes.is_empty());
+    let wrapper_id = c.store.fragment(cn.legacy_slots[0].fragment).nodes[0];
+    assert!(matches!(
+        c.store.get(wrapper_id),
+        Node::SvelteComponentLegacy(_)
+    ));
+}
+
+#[test]
 fn dynamic_slot_value_stays_in_default() {
     let c = parse(r#"<Comp><div slot={name}>X</div></Comp>"#);
     let cn = component_at(&c, 0);
@@ -1663,5 +1676,116 @@ fn component_node_name_parses_to_member_expression() {
         .expect("name expression");
     assert!(matches!(expr, Expression::StaticMemberExpression(_)));
 }
+
+#[test]
+fn ts_stripped_from_parser_output_in_instance_script() {
+    use oxc_ast::ast::{
+        ClassBody, ClassElement, FormalParameter, ImportDeclaration, ImportDeclarationSpecifier,
+        MethodDefinitionType, PropertyDefinitionType, VariableDeclarator,
+    };
+    use oxc_ast_visit::{Visit, walk};
+
+    struct TsDetector {
+        found: Option<&'static str>,
+    }
+    impl<'a> Visit<'a> for TsDetector {
+        fn visit_expression(&mut self, expr: &Expression<'a>) {
+            if self.found.is_some() {
+                return;
+            }
+            match expr {
+                Expression::TSAsExpression(_) => self.found = Some("TSAsExpression"),
+                Expression::TSSatisfiesExpression(_) => {
+                    self.found = Some("TSSatisfiesExpression")
+                }
+                Expression::TSNonNullExpression(_) => self.found = Some("TSNonNullExpression"),
+                Expression::TSTypeAssertion(_) => self.found = Some("TSTypeAssertion"),
+                Expression::TSInstantiationExpression(_) => {
+                    self.found = Some("TSInstantiationExpression")
+                }
+                _ => {}
+            }
+            walk::walk_expression(self, expr);
+        }
+
+        fn visit_class_body(&mut self, body: &ClassBody<'a>) {
+            for el in &body.body {
+                match el {
+                    ClassElement::TSIndexSignature(_) => self.found = Some("TSIndexSignature"),
+                    ClassElement::PropertyDefinition(p)
+                        if p.declare
+                            || p.r#type == PropertyDefinitionType::TSAbstractPropertyDefinition =>
+                    {
+                        self.found = Some("declare/abstract property")
+                    }
+                    ClassElement::MethodDefinition(m)
+                        if m.r#type == MethodDefinitionType::TSAbstractMethodDefinition =>
+                    {
+                        self.found = Some("abstract method")
+                    }
+                    _ => {}
+                }
+            }
+            walk::walk_class_body(self, body);
+        }
+
+        fn visit_formal_parameter(&mut self, p: &FormalParameter<'a>) {
+            if p.type_annotation.is_some() {
+                self.found = Some("FormalParameter::type_annotation");
+            }
+            walk::walk_formal_parameter(self, p);
+        }
+
+        fn visit_variable_declarator(&mut self, v: &VariableDeclarator<'a>) {
+            if v.type_annotation.is_some() {
+                self.found = Some("VariableDeclarator::type_annotation");
+            }
+            walk::walk_variable_declarator(self, v);
+        }
+
+        fn visit_import_declaration(&mut self, d: &ImportDeclaration<'a>) {
+            if d.import_kind.is_type() {
+                self.found = Some("type-only ImportDeclaration");
+            }
+            if let Some(specs) = &d.specifiers {
+                for s in specs {
+                    if let ImportDeclarationSpecifier::ImportSpecifier(spec) = s
+                        && spec.import_kind.is_type()
+                    {
+                        self.found = Some("type-only ImportSpecifier");
+                    }
+                }
+            }
+            walk::walk_import_declaration(self, d);
+        }
+    }
+
+    let source = r#"<script lang="ts">
+import type { Foo } from 'pkg';
+import { Bar, type Baz } from 'pkg2';
+const v: string = 'x' as string;
+const w = (obj?.x as Foo)?.y;
+let action: (node: Node) => void;
+function f(a: number, b: string): number { return a; }
+class C {
+    declare x: number;
+    abstract y(): void;
+    [k: string]: number;
+}
+type Alias = string;
+interface I {}
+declare const Z: number;
+const z = v satisfies string;
+const q = v!;
+</script>"#;
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let program = js.program.as_ref().expect("instance program");
+    let mut det = TsDetector { found: None };
+    det.visit_program(program);
+    assert!(det.found.is_none(), "TS leaked through parser: {:?}", det.found);
+}
+
 
 

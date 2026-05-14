@@ -8,7 +8,7 @@ use svelte_analyze::AnalysisData;
 use svelte_analyze::reactivity_semantics::legacy_reactive::{
     LegacyReactiveKind, LegacyReactiveStatement, legacy_reactive_import_wrapper_name,
 };
-use svelte_analyze::types::data::BindingSemantics;
+use svelte_analyze::types::data::{binding_group_name, BindingSemantics};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{OxcNodeId, SymbolId};
 
@@ -93,10 +93,14 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
         );
         pre_effect_stmts.push(b.expr_stmt(call));
     }
-    pre_effect_stmts.push(b.call_stmt("$.legacy_pre_effect_reset", []));
+    if !source_order.is_empty() {
+        pre_effect_stmts.push(b.call_stmt("$.legacy_pre_effect_reset", []));
+    }
+
+    let binding_group_count = analysis.template.bind_semantics.binding_group_count();
 
     let mut new_body: OxcVec<'a, Statement<'a>> = OxcVec::with_capacity_in(
-        slots.len() + implicit_syms.len() + topo.len() + 1,
+        slots.len() + implicit_syms.len() + binding_group_count as usize + topo.len() + 1,
         allocator,
     );
 
@@ -104,6 +108,11 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
         let name = analysis.scoping.symbol_name(*sym);
         let init = b.call_expr("$.mutable_source", []);
         new_body.push(b.const_stmt(name, init));
+    }
+
+    for id in 0..binding_group_count {
+        let name: &str = b.alloc_str(&binding_group_name(id));
+        new_body.push(b.const_stmt(name, b.empty_array_expr()));
     }
 
     for slot in slots {
@@ -195,7 +204,7 @@ fn build_dep_read<'a>(
         BindingSemantics::Store(_) => b.call_expr_callee(b.rid_expr(name), []),
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => b.rid_expr(name),
         BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => b.rid_expr(name),
-        BindingSemantics::Unresolved => b.rid_expr(name),
+        BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedRune(_)

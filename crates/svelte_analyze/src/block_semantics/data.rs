@@ -55,24 +55,21 @@ pub struct EachBlockSemantics {
 
     pub async_kind: EachAsyncKind,
 
-    pub collection_kind: EachCollectionKind,
+    pub collection: EachCollection,
 
     pub collection_store: Option<SymbolId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EachCollectionKind {
-    Regular,
+pub struct EachCollection {
+    pub source: EachCollectionSource,
+}
 
-    PropSource,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EachCollectionSource {
+    Local,
 
-    LegacyCallReadsState {
-        deep_read_symbols: SmallVec<[SymbolId; 2]>,
-    },
-
-    LegacyStoreMemberChain {
-        store_sym: SymbolId,
-    },
+    Prop { sym: SymbolId },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -222,35 +219,31 @@ pub enum ConstTagAsyncKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderTagBlockSemantics {
-    pub callee_shape: RenderCalleeKind,
+    pub call_kind: RenderCallKind,
 
     pub callee_sym: Option<SymbolId>,
 
-    pub args: SmallVec<[RenderArgEmit; 4]>,
+    pub args: SmallVec<[RenderArgKind; 4]>,
 
     pub async_kind: RenderAsyncKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RenderCalleeKind {
-    Static,
+pub enum RenderCallKind {
+    Plain,
 
-    StaticChain,
-
-    Dynamic,
-
-    DynamicChain,
+    OptionalChain,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RenderArgEmit {
-    PropSource { sym: SymbolId },
+pub enum RenderArgKind {
+    PropPassthrough { sym: SymbolId },
 
-    MemoSync,
+    NeedsMemo,
 
-    MemoAsync,
+    AwaitMemo { inner_node_id: Option<OxcNodeId> },
 
-    Plain,
+    InertThunk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

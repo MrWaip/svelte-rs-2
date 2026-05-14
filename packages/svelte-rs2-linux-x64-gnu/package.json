@@ -1,6 +1,7 @@
 {
   "name": "@mrwaip/svelte-rs2-linux-x64-gnu",
   "version": "0.0.0-canary.0",
+  "license": "MIT",
   "type": "commonjs",
   "publishConfig": {
     "access": "public"

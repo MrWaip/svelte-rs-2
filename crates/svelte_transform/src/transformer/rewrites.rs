@@ -16,6 +16,10 @@ use svelte_analyze::{
 };
 use svelte_component_semantics::SymbolId;
 
+use svelte_emit_builders::store::{
+    build_store_base_read, make_store_mutate, make_store_set, make_store_update,
+};
+
 use super::model::ComponentTransformer;
 use crate::rune_refs;
 
@@ -33,7 +37,8 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::Const(_)
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
-        | BindingSemantics::Unresolved => unreachable!(
+        | BindingSemantics::Unresolved
+        | BindingSemantics::LegacyApiExport => unreachable!(
             "store_sym from ReferenceSemantics::Store* must classify as BindingSemantics::Store (set together by analyze store builder)"
         ),
     }
@@ -80,13 +85,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { safe: false, .. }
             | ReferenceSemantics::LegacyStateWrite
-            | ReferenceSemantics::LegacyStateUpdate { safe: false } => {
+            | ReferenceSemantics::LegacyStateUpdate { safe: false }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { safe: false, .. } => {
                 *expr = self.make_rune_get(name.as_str());
                 true
             }
             ReferenceSemantics::SignalRead { safe: true, .. }
             | ReferenceSemantics::SignalUpdate { safe: true, .. }
-            | ReferenceSemantics::LegacyStateUpdate { safe: true } => {
+            | ReferenceSemantics::LegacyStateUpdate { safe: true }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { safe: true, .. } => {
                 *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
@@ -152,9 +160,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 };
                 true
             }
-            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. } => {
-                let dollar_name: &str = self.b.alloc_str(analysis.scoping.symbol_name(store_symbol));
-                *expr = self.make_thunk_call(dollar_name);
+            ReferenceSemantics::LegacyStateSubscribedRead { safe, .. } => {
+                *expr = if safe {
+                    self.make_rune_safe_get(name.as_str())
+                } else {
+                    self.make_rune_get(name.as_str())
+                };
                 true
             }
             ReferenceSemantics::LegacyReactiveImportRead => {
@@ -204,8 +215,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
             | ReferenceSemantics::RestPropMemberRewrite
-            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
-            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
@@ -604,7 +613,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => {
                 let base_sym = store_base_symbol(analysis, symbol);
-                let base_expr = self.make_store_base_expr(analysis, base_sym);
+                let base_expr = build_store_base_read(self.b, analysis, base_sym);
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
@@ -612,7 +621,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
                 let left_read = self.make_thunk_call(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
-                *node = self.make_store_set(base_expr, value);
+                *node = make_store_set(self.b, base_expr, value);
                 true
             }
             ReferenceSemantics::SignalWrite { kind } => {
@@ -732,7 +741,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::StoreUpdate { symbol } => {
                 let base_sym = store_base_symbol(analysis, symbol);
                 let base_name = analysis.scoping.symbol_name(base_sym);
-                *node = self.make_store_update(base_name, name.as_str(), is_prefix, is_increment);
+                *node = make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
                 true
             }
             ReferenceSemantics::SignalUpdate {
@@ -859,7 +868,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return false;
         };
         let base_sym = store_base_symbol(analysis, symbol);
-        let base_name = analysis.scoping.symbol_name(base_sym);
+        let base = build_store_base_read(self.b, analysis, base_sym);
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
@@ -870,7 +879,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
         let untracked = self.make_untrack(root_name.as_str());
-        *node = self.make_store_mutate(base_name, mutation, untracked);
+        *node = make_store_mutate(self.b, base, mutation, untracked);
         true
     }
 
@@ -1137,7 +1146,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return false;
         };
         let base_sym = store_base_symbol(analysis, symbol);
-        let base_name = analysis.scoping.symbol_name(base_sym);
+        let base = build_store_base_read(self.b, analysis, base_sym);
         let Expression::UpdateExpression(upd) = &mut *node else {
             unreachable!()
         };
@@ -1148,7 +1157,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
         let untracked = self.make_untrack(root_name.as_str());
-        *node = self.make_store_mutate(base_name, mutation, untracked);
+        *node = make_store_mutate(self.b, base, mutation, untracked);
         true
     }
 
@@ -1160,10 +1169,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::CallExpression(call) = expr else {
             return false;
         };
-        let Expression::StaticMemberExpression(member) = &call.callee else {
+        let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
             return false;
         };
-        let Expression::Identifier(obj) = &member.object else {
+        let Expression::Identifier(obj) = member.object.get_inner_expression() else {
             return false;
         };
         if self.identifier_is_store_read(obj) {
@@ -1212,7 +1221,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::StaticMemberExpression(member) = expr else {
             return false;
         };
-        let Expression::Identifier(id) = &member.object else {
+        let Expression::Identifier(id) = member.object.get_inner_expression() else {
             return false;
         };
         let Some(ref_id) = id.reference_id.get() else {

@@ -16,6 +16,6 @@ pub(crate) use concat::ConcatPart;
 pub(crate) use emit_state::EmitState;
 pub(crate) use fragment_anchor::FragmentAnchor;
 pub(crate) use fragment_ctx::FragmentCtx;
-pub(crate) use memo::{MemoAttr, MemoAttrUpdate, MemoValueRef, TemplateMemoState};
+pub(crate) use memo::{MemoValueRef, TemplateMemoState};
 pub(crate) use pre_anchor::PreAnchor;
 pub(crate) use template::Template;

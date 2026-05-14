@@ -5,7 +5,7 @@ use oxc_traverse::traverse_mut;
 
 use crate::data::TransformData;
 
-use svelte_analyze::{AnalysisData, ComponentScoping};
+use svelte_analyze::{AnalysisData, ComponentScoping, IdentGen};
 use svelte_ast_builder::Builder;
 
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
@@ -21,6 +21,7 @@ pub fn transform_script<'a, 'b>(
     b: &'b Builder<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    ident_gen: &'b mut IdentGen,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -54,6 +55,7 @@ pub fn transform_script<'a, 'b>(
         filename,
         next_arrow_name: None,
         ident_counter: 0,
+        ident_gen,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         experimental_async,

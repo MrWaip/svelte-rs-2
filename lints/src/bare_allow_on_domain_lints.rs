@@ -14,6 +14,7 @@ declare_lint_pass!(BareAllowOnDomainLints => [BARE_ALLOW_ON_DOMAIN_LINTS]);
 
 const DOMAIN_LINTS: &[&str] = &[
     "walk_over_oxc_expression",
+    "walk_over_oxc_binding_pattern",
     "exhaustiveness_on_domain_enum",
     "frozen_api_surface",
     "forbidden_identifier",

@@ -181,7 +181,7 @@ impl VisitMut for ScopeSelectors<'_> {
         let should_reset = self.selector_list_depth == 0;
         self.selector_list_depth += 1;
         if should_reset {
-            self.specificity_bumped = false;
+            self.specificity_bumped = self.rule_depth > 1;
         }
         walk_selector_list_mut(self, node);
         self.selector_list_depth -= 1;
@@ -196,6 +196,7 @@ impl VisitMut for ScopeSelectors<'_> {
         let mut unscoped_tail = self.after_bare_global;
         let mut has_nesting_selector = false;
         let mut has_prior_selectors = false;
+        let mut global_unwrapped = false;
 
         for sel in node.selectors.drain(..) {
             match sel {
@@ -207,6 +208,7 @@ impl VisitMut for ScopeSelectors<'_> {
                         scope_inserted = true;
                     }
 
+                    global_unwrapped = true;
                     for complex in args.children {
                         for rel in complex.children {
                             new_selectors.extend(rel.selectors);
@@ -247,6 +249,7 @@ impl VisitMut for ScopeSelectors<'_> {
             && !suppress_scoping
             && !unscoped_tail
             && !has_nesting_selector
+            && !global_unwrapped
             && !new_selectors.is_empty()
             && new_selectors.iter().all(|s| {
                 matches!(
@@ -283,7 +286,7 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_at_rule_mut(&mut self, node: &mut AtRule) {
-        if node.name == "keyframes" {
+        if strip_vendor_prefix(&node.name) == "keyframes" {
             let prelude = node.prelude.source_text(self.source).trim();
             if let Some(stripped) = prelude.strip_prefix("-global-") {
                 node.prelude_override = Some(CompactString::new(stripped));
@@ -327,7 +330,8 @@ impl VisitMut for ScopeSelectors<'_> {
         }
         let prop = node.property.source_text(self.source).trim();
         let prop_lower = prop.to_ascii_lowercase();
-        let is_animation = prop_lower == "animation" || prop_lower == "animation-name";
+        let unprefixed = strip_vendor_prefix(&prop_lower);
+        let is_animation = unprefixed == "animation" || unprefixed == "animation-name";
         if !is_animation {
             return;
         }
@@ -337,6 +341,15 @@ impl VisitMut for ScopeSelectors<'_> {
             node.value_override = Some(rewritten);
         }
     }
+}
+
+fn strip_vendor_prefix(name: &str) -> &str {
+    for prefix in ["-webkit-", "-moz-", "-o-", "-ms-"] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            return rest;
+        }
+    }
+    name
 }
 
 fn rewrite_animation_value(

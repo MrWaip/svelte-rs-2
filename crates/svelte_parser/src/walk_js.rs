@@ -428,6 +428,17 @@ fn walk_node<'a>(
                 result,
                 diags,
             );
+            for slot in &el.legacy_slots {
+                walk_fragment(
+                    alloc,
+                    slot.fragment,
+                    store,
+                    component,
+                    typescript,
+                    result,
+                    diags,
+                );
+            }
         }
         Node::SvelteSelf(el) => {
             walk_attrs(alloc, &el.attributes, component, typescript, result, diags);

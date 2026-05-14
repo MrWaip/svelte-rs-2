@@ -1,7 +1,7 @@
 use super::super::ExpressionSemanticsStore;
 use super::super::ContextSignal;
 use super::super::data::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap,
+    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier,
 };
 use super::super::evaluator::{self, EvalCtx};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -10,7 +10,8 @@ use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData};
-use oxc_ast::ast::{BindingPattern, Declaration, Expression, Function, Statement, VariableDeclaration};
+use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
+use oxc_ast::ast::{Argument, BindingPattern, ChainElement, Declaration, Expression, Function, Statement, VariableDeclaration};
 use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, Component, ConcatPart, Element, FragmentId, Node, NodeId, StyleDirectiveValue,
@@ -162,6 +163,7 @@ fn visit_fragment(
                 }
             }
             Node::EachBlock(b) => {
+                store_single(b.id, b.expression.id(), ctx, sink);
                 visit_fragment(component, b.body, ctx, sink);
                 if let Some(fb) = b.fallback {
                     visit_fragment(component, fb, ctx, sink);
@@ -169,6 +171,7 @@ fn visit_fragment(
             }
             Node::RenderTag(t) => {
                 store_render_tag(t.id, t.expression.id(), ctx, sink);
+                store_render_args(t.expression.id(), ctx, sink);
             }
             Node::ComponentNode(cn) => {
                 visit_attributes(&cn.attributes, ctx, sink);
@@ -181,6 +184,10 @@ fn visit_fragment(
             Node::SvelteComponentLegacy(cn) => {
                 visit_attributes(&cn.attributes, ctx, sink);
                 visit_fragment(component, cn.fragment, ctx, sink);
+                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
+                for fid in slot_frags {
+                    visit_fragment(component, fid, ctx, sink);
+                }
             }
             Node::SvelteSelf(cn) => {
                 visit_attributes(&cn.attributes, ctx, sink);
@@ -333,7 +340,9 @@ fn store_single(
     };
     let (data, facts) = compute(expr, ctx);
     update_aggregates(sink.store, &facts, ctx);
-    sink.store.set(site_id, ExpressionSemantics::Expression(data));
+    let value = ExpressionSemantics::Expression(data);
+    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.store.set(site_id, value);
 }
 
 fn store_render_tag(
@@ -352,10 +361,46 @@ fn store_render_tag(
             sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
+    if facts.has_legacy_props_member_root {
+        sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
+    }
     if facts.has_store_member_mutation {
         sink.store.note_context(ContextSignal::STORE_MUTATION);
     }
-    sink.store.set(site_id, ExpressionSemantics::Expression(data));
+    let value = ExpressionSemantics::Expression(data);
+    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.store.set(site_id, value);
+}
+
+fn store_render_args(
+    expr_id: OxcNodeId,
+    ctx: &Ctx<'_, '_>,
+    sink: &mut Sink<'_>,
+) {
+    let Some(expr) = ctx.parsed.expr(expr_id) else {
+        return;
+    };
+    let call = match expr.get_inner_expression() {
+        Expression::CallExpression(c) => Some(c.as_ref()),
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::CallExpression(c) => Some(c.as_ref()),
+            _ => None,
+        },
+        _ => None,
+    };
+    let Some(call) = call else { return };
+    for arg in &call.arguments {
+        if matches!(arg, Argument::SpreadElement(_)) {
+            continue;
+        }
+        let arg_expr = arg.to_expression();
+        let (data, facts) = compute(arg_expr, ctx);
+        update_aggregates(sink.store, &facts, ctx);
+        sink.store.set_by_oxc(
+            argument_node_id(arg),
+            ExpressionSemantics::Expression(data),
+        );
+    }
 }
 
 fn store_const_tag(
@@ -375,7 +420,9 @@ fn store_const_tag(
     };
     let (data, facts) = compute(expr, ctx);
     update_aggregates(sink.store, &facts, ctx);
-    sink.store.set(site_id, ExpressionSemantics::Expression(data));
+    let value = ExpressionSemantics::Expression(data);
+    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.store.set(site_id, value);
 }
 
 fn store_aggregate(
@@ -448,7 +495,7 @@ fn compute<'a>(
     );
     let blockers = derive::blockers(&facts, ctx.blockers);
     let kind = derive::kind(&facts, !blockers.is_empty(), is_dynamic, &evaluation);
-    let has_context_member_root = facts.member_or_call_roots.iter().any(|&sym| {
+    let has_context_member_root = facts.top_member_or_call_roots.iter().any(|&sym| {
         matches!(
             ctx.reactivity.binding_semantics(sym),
             BindingSemantics::MaybeReactive
@@ -480,26 +527,37 @@ fn update_aggregates(
     ctx: &Ctx<'_, '_>,
 ) {
     for &sym in facts.member_or_call_roots.iter() {
-        if matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::MaybeReactive
-                | BindingSemantics::Prop(PropBindingSemantics {
-                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-                    ..
-                })
-                | BindingSemantics::LegacyBindableProp(_)
-        ) {
+        if !is_safe_member_root(ctx.reactivity, sym) {
             store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
         }
         if ctx.scoping.is_rest_prop(sym) {
             store.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
+    if facts.has_legacy_props_member_root {
+        store.note_context(ContextSignal::REST_PROP_MEMBER);
+    }
     if facts.has_runtime_root {
+        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+    }
+    if facts.has_unsafe_member_root {
         store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
     if facts.has_store_member_mutation {
         store.note_context(ContextSignal::STORE_MUTATION);
+    }
+}
+
+fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool {
+    match reactivity.binding_semantics(sym) {
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
+            ..
+        })
+        | BindingSemantics::LegacyBindableProp(_) => false,
+        BindingSemantics::Store(store) => is_safe_member_root(reactivity, store.base_symbol),
+        _ => true,
     }
 }
 
@@ -511,8 +569,9 @@ fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
             ExprKind::Computed { reactive: false } => 2,
             ExprKind::SimpleRead { reactive: true } => 3,
             ExprKind::Computed { reactive: true } => 4,
-            ExprKind::Call => 5,
-            ExprKind::Async { .. } => 6,
+            ExprKind::Call { dynamic: false } => 5,
+            ExprKind::Call { dynamic: true } => 6,
+            ExprKind::Async { .. } => 7,
         }
     }
     if rank(a) >= rank(b) {
@@ -523,14 +582,41 @@ fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
 }
 
 fn combine_legacy_wrap(a: LegacyWrap, b: LegacyWrap) -> LegacyWrap {
-    let coarse = matches!(a, LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSanitized)
-        || matches!(b, LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSanitized);
-    let sanitized = matches!(a, LegacyWrap::SanitizedProps | LegacyWrap::CoarseAndSanitized)
-        || matches!(b, LegacyWrap::SanitizedProps | LegacyWrap::CoarseAndSanitized);
-    match (coarse, sanitized) {
-        (false, false) => LegacyWrap::None,
-        (true, false) => LegacyWrap::CoarseWrap,
-        (false, true) => LegacyWrap::SanitizedProps,
-        (true, true) => LegacyWrap::CoarseAndSanitized,
+    let coarse = is_coarse(a) || is_coarse(b);
+    let carrier = combine_synthetic_carrier(carrier_of(a), carrier_of(b));
+    match (coarse, carrier) {
+        (false, None) => LegacyWrap::None,
+        (true, None) => LegacyWrap::CoarseWrap,
+        (false, Some(c)) => LegacyWrap::Synthetic(c),
+        (true, Some(c)) => LegacyWrap::CoarseAndSynthetic(c),
+    }
+}
+
+fn is_coarse(w: LegacyWrap) -> bool {
+    matches!(w, LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSynthetic(_))
+}
+
+fn carrier_of(w: LegacyWrap) -> Option<SyntheticPropsCarrier> {
+    match w {
+        LegacyWrap::Synthetic(c) | LegacyWrap::CoarseAndSynthetic(c) => Some(c),
+        LegacyWrap::None | LegacyWrap::CoarseWrap => None,
+    }
+}
+
+fn combine_synthetic_carrier(
+    a: Option<SyntheticPropsCarrier>,
+    b: Option<SyntheticPropsCarrier>,
+) -> Option<SyntheticPropsCarrier> {
+    let (reads_props, reads_rest) = carrier_bits(a);
+    let (reads_props_b, reads_rest_b) = carrier_bits(b);
+    derive::synthetic_props_carrier(reads_props || reads_props_b, reads_rest || reads_rest_b)
+}
+
+fn carrier_bits(c: Option<SyntheticPropsCarrier>) -> (bool, bool) {
+    match c {
+        None => (false, false),
+        Some(SyntheticPropsCarrier::SanitizedProps) => (true, false),
+        Some(SyntheticPropsCarrier::RestProps) => (false, true),
+        Some(SyntheticPropsCarrier::Both) => (true, true),
     }
 }

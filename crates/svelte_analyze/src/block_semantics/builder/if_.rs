@@ -1,8 +1,8 @@
 use super::super::{
     BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
 };
-use super::common::expression_if_facts;
 use super::walker::Ctx;
+use crate::expression_semantics::{ExprKind, ExpressionData, ExpressionSemantics};
 use smallvec::SmallVec;
 use svelte_ast::{IfBlock, Node};
 
@@ -76,10 +76,18 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
 }
 
 fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32; 2]>) {
-    let Some(expr) = ctx.parsed.expr(block.test.id()) else {
-        return (false, false, SmallVec::new());
-    };
-    expression_if_facts(expr, ctx.semantics, ctx.blockers)
+    match ctx.expressions.get(block.id) {
+        ExpressionSemantics::Expression(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            let memoize = needs_memo(d);
+            (has_await, memoize, d.blockers.clone())
+        }
+        ExpressionSemantics::NonSpecial => (false, false, SmallVec::new()),
+    }
+}
+
+fn needs_memo(d: &ExpressionData) -> bool {
+    matches!(d.kind, ExprKind::Call { dynamic: true })
 }
 
 fn elseif_child<'c>(

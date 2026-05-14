@@ -1,3 +1,4 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
@@ -109,6 +110,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .unwrap_or(false);
                     if let Some(data) = data_clone {
                         let cloned_expr = self.ctx.b.clone_expr(&expr);
+                        let cloned_expr = coarse_wrap(self.ctx, cloned_expr, Some(&data));
                         match memo.add_memoized_expr(self.ctx, &data, cloned_expr) {
                             Some(MemoValueRef::Sync(idx)) => {
                                 built_parts.push(TitlePart::SyncMemo(idx, false));
@@ -193,10 +195,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     "$.deferred_template_effect",
                     arrow,
                     &mut memo,
-                    &mut state.init,
+                    &mut state.after_update,
                 );
             } else {
-                state.init.push(
+                state.after_update.push(
                     self.ctx
                         .b
                         .call_stmt("$.deferred_template_effect", [Arg::Expr(arrow)]),
@@ -205,7 +207,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             let arrow = self.ctx.b.thunk_block(vec![assignment]);
             state
-                .init
+                .after_update
                 .push(self.ctx.b.call_stmt("$.effect", [Arg::Expr(arrow)]));
         }
         Ok(())

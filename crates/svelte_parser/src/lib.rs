@@ -17,7 +17,7 @@ mod html;
 mod html_entities;
 pub mod parse_js;
 pub mod scanner;
-mod span_shift;
+mod js_postprocess;
 pub mod types;
 mod walk_js;
 
@@ -213,6 +213,7 @@ impl<'a> Parser<'a> {
             Node::Element(el) => &el.attributes,
             Node::ComponentNode(cn) => &cn.attributes,
             Node::SvelteSelf(cn) => &cn.attributes,
+            Node::SvelteComponentLegacy(cn) => &cn.attributes,
             _ => return None,
         };
 
@@ -220,7 +221,7 @@ impl<'a> Parser<'a> {
             if let Attribute::StringAttribute(sa) = attr
                 && sa.name == "slot"
             {
-                let value = sa.value_span.source_text(self.source);
+                let value = sa.value(self.source);
                 if value.is_empty() || value == "default" {
                     return None;
                 }

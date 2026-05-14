@@ -1,6 +1,8 @@
+use svelte_emit_builders::runes::rune_get;
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
+use svelte_analyze::{BindingSemantics, ContextualBindingSemantics};
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -15,11 +17,59 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
         el_id: NodeId,
+        existing_var: Option<&str>,
+    ) -> Result<String> {
+        self.emit_component_impl(state, ctx, el_id, existing_var, None, 0)
+    }
+
+    pub(in crate::codegen) fn emit_component_with_hoisted_memo(
+        &mut self,
+        state: &mut EmitState<'a>,
+        ctx: &FragmentCtx<'a>,
+        el_id: NodeId,
+        existing_var: Option<&str>,
+        memo_decls_out: &mut Vec<Statement<'a>>,
+        initial_memo_counter: u32,
+    ) -> Result<String> {
+        self.emit_component_impl(
+            state,
+            ctx,
+            el_id,
+            existing_var,
+            Some(memo_decls_out),
+            initial_memo_counter,
+        )
+    }
+
+    fn emit_component_impl(
+        &mut self,
+        state: &mut EmitState<'a>,
+        ctx: &FragmentCtx<'a>,
+        el_id: NodeId,
         _existing_var: Option<&str>,
+        memo_decls_out: Option<&mut Vec<Statement<'a>>>,
+        initial_memo_counter: u32,
     ) -> Result<String> {
         let node = self.ctx.query.component.store.get(el_id);
         let is_svelte_component_legacy = matches!(node, Node::SvelteComponentLegacy(_));
         let is_svelte_self = matches!(node, Node::SvelteSelf(_));
+        let callee_root_wrapped_through_get = matches!(node, Node::ComponentNode(cn) if {
+            let name = self.ctx.query.component.source_text(cn.name.span);
+            let root = name.split_once('.').map_or(name, |(r, _)| r);
+            self.ctx
+                .query
+                .component
+                .store
+                .node_fragment(el_id)
+                .and_then(|fid| self.ctx.query.view.fragment_scope_by_id(fid))
+                .and_then(|scope| self.ctx.query.view.find_binding(scope, root))
+                .is_some_and(|sym| matches!(
+                    self.ctx.query.view.binding_semantics(sym),
+                    BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective)
+                        | BindingSemantics::LegacyState(_)
+                ))
+        });
+
         let (cn_name, span_start, cn_fragment, named_slots) = {
             let Some(view) = node.as_component_like() else {
                 return CodegenError::unexpected_node(el_id, "component-like");
@@ -52,7 +102,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let is_dynamic = self.ctx.is_dynamic_component(el_id) || is_svelte_component_legacy;
 
         let mut props =
-            self.build_component_props(el_id, is_svelte_component_legacy, ctx.in_block_callback)?;
+            self.build_component_props(el_id, is_svelte_component_legacy, initial_memo_counter)?;
 
         let mut init_stmts: Vec<Statement<'a>> = Vec::new();
         let events = mem::take(&mut props.events);
@@ -154,6 +204,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 props.ownership_bindings,
                 bind_init_stmts,
                 init_stmts,
+                props.validate_binding_stmts,
                 span_start,
                 anchor_node,
             );
@@ -168,10 +219,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.alloc_str(&cn_name)
         };
-        let component_call = self
-            .ctx
-            .b
-            .call_expr(callee, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)]);
+        let component_call = if callee_root_wrapped_through_get {
+            let (root, rest) = callee.split_once('.').map_or((callee, ""), |(r, s)| (r, s));
+            let root_ident = self.ctx.b.alloc_str(root);
+            let mut wrapped_callee = rune_get(&self.ctx.b, root_ident);
+            if !rest.is_empty() {
+                for seg in rest.split('.') {
+                    wrapped_callee = self.ctx.b.static_member_expr(wrapped_callee, seg);
+                }
+            }
+            self.ctx.b.call_expr_callee(
+                wrapped_callee,
+                [Arg::Expr(anchor_expr), Arg::Expr(props_expr)],
+            )
+        } else {
+            self.ctx
+                .b
+                .call_expr(callee, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)])
+        };
 
         let final_expr = if let Some(bind_id) = props.bind_this {
             self.build_bind_this_call(el_id, bind_id, component_call)?
@@ -190,14 +255,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let ownership_stmts = self.build_ownership_binding_stmts(&props.ownership_bindings, callee);
+        let body_memo_decls: Vec<Statement<'a>> = if let Some(out) = memo_decls_out {
+            out.extend(props.memo_decls);
+            Vec::new()
+        } else {
+            props.memo_decls
+        };
+        for stmt in props.validate_binding_stmts {
+            state.init.push(stmt);
+        }
         if snippet_children.decls.is_empty()
-            && props.memo_decls.is_empty()
+            && body_memo_decls.is_empty()
             && ownership_stmts.is_empty()
         {
             state.init.push(component_stmt);
         } else {
             let mut block = snippet_children.decls;
-            block.extend(props.memo_decls);
+            block.extend(body_memo_decls);
             block.extend(ownership_stmts);
             block.push(component_stmt);
             state.init.push(self.ctx.b.block_stmt(block));
@@ -250,6 +324,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ownership_bindings: Vec<super::super::component_props::OwnershipBinding<'a>>,
         bind_init_stmts: Vec<Statement<'a>>,
         init_stmts: Vec<Statement<'a>>,
+        validate_binding_stmts: Vec<Statement<'a>>,
         span_start: u32,
         anchor_node: String,
     ) -> Result<String> {
@@ -257,6 +332,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.init.push(stmt);
         }
         for stmt in init_stmts {
+            state.init.push(stmt);
+        }
+        for stmt in validate_binding_stmts {
             state.init.push(stmt);
         }
 
@@ -286,9 +364,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             inner_call
         };
-        let mut inner_body: Vec<Statement<'a>> = memo_decls;
-        inner_body
-            .extend(self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref));
+        let mut inner_body: Vec<Statement<'a>> =
+            self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref);
         inner_body.push(self.ctx.b.expr_stmt(inner_final));
         let inner_arrow = self.ctx.b.arrow_block_expr(
             self.ctx.b.params(["$$anchor", intermediate_ref]),
@@ -315,10 +392,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(extra_obj),
         );
 
-        if snippet_decls.is_empty() {
+        if snippet_decls.is_empty() && memo_decls.is_empty() {
             state.init.push(component_stmt);
         } else {
             let mut block = snippet_decls;
+            block.extend(memo_decls);
             block.push(component_stmt);
             state.init.push(self.ctx.b.block_stmt(block));
         }

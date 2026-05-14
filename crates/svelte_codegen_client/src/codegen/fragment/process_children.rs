@@ -323,7 +323,7 @@ fn make_sibling_expr<'a, 'ctx>(
     let base_expr = match anchor {
         ChildAnchor::RawIdent(name) => b.rid_expr(&name),
         ChildAnchor::ElementChild { parent_var } => {
-            if is_text {
+            if is_text && skipped == 0 {
                 b.call_expr("$.child", [Arg::Ident(&parent_var), Arg::Bool(true)])
             } else {
                 b.call_expr("$.child", [Arg::Ident(&parent_var)])

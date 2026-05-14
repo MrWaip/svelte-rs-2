@@ -1,9 +1,9 @@
 # `<svelte:window>` / `<svelte:document>` / `<svelte:body>`
 
 ## Current state
-- **Working**: 14/14 use cases
-- **Tests**: 35/35 green
-- Last updated: 2026-05-14
+- **Working**: 19/19 use cases
+- **Tests**: 43/43 green
+- Last updated: 2026-05-17
 
 ## Source
 
@@ -56,8 +56,13 @@
 - [x] Generate `{@attach}` on `<svelte:document>`.
 - [x] Generate `<svelte:body>` event listeners for both Svelte 5 event attributes and legacy `on:` directives.
 - [x] Generate `use:` actions on `<svelte:body>`.
+- [x] Allow `use:` actions on `<svelte:window>` / `<svelte:document>` and emit `$.action($.window, ...)` / `$.action($.document, ...)`.
 - [x] Preserve mixed special-element output when `<svelte:head>`, `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` coexist in one component.
 - [x] Event-attribute handler on `<svelte:window>` / `<svelte:document>` / `<svelte:body>` whose identifier resolves to a `$props()` binding emits `$.event(name, target, function(...$$args) { $$props.<name>?.apply(this, $$args); })`, matching the `HandlerEmit::WrappedInert` rule already enforced for `$.delegated` on regular elements (see `specs/events.md`).
+- [x] Legacy `on:event` directive (with or without modifiers) on `<svelte:window>` / `<svelte:document>` / `<svelte:body>` whose handler resolves to an `export let` / `$props()` binding applies the same `HandlerEmit::WrappedInert` rule: emits `$.event(name, target, function(...$$args) { handler()?.apply(this, $$args); })` and keeps the modifier helper (`$.preventDefault(...)`, etc.) wrapping that function value, not the result of calling it.
+- [x] `<svelte:window bind:innerWidth|innerHeight|outerWidth|outerHeight={x}>` emits `$.bind_window_size(...)` after the template-effect block (between `$.template_effect(...)` and `$.append(...)`), in both runes and legacy mode.
+- [x] In legacy mode, when `x` resolves to a `mutable_source` (let-promotion), the setter lambda emits `$.set(x, $$value)` without the `true` mutation flag (the flag is reserved for `$state` runes).
+- [x] When `<svelte:window>` event listeners coexist with a root template that needs `var fragment = $.comment();` (e.g. an `{#if}` block), the `var fragment = $.comment();` declaration is emitted BEFORE the `$.event(...)` registrations and before `var node = $.first_child(fragment);`.
 
 ## Out of scope
 
@@ -153,3 +158,11 @@
 - [x] `svelte_window_event_attr_props_handler`
 - [x] `svelte_document_event_attr_props_handler`
 - [x] `svelte_body_event_attr_props_handler`
+- [x] `svelte_window_bind_size_legacy`
+- [x] `svelte_window_bind_size_with_template`
+- [x] `svelte_window_event_legacy_with_if`
+- [x] `diagnose_svelte_window_on_directive_legacy_prop_handler_wraps`
+- [x] `diagnose_svelte_document_on_directive_legacy_prop_handler_wraps`
+- [x] `diagnose_svelte_body_on_directive_legacy_prop_handler_wraps`
+- [x] `svelte_window_action`
+- [x] `svelte_document_action`

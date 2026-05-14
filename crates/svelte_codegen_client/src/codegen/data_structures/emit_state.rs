@@ -1,6 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
 
-use super::memo::{MemoAttr, TemplateMemoState};
+use super::memo::TemplateMemoState;
 use super::template::Template;
 
 #[derive(Default)]
@@ -13,7 +13,6 @@ pub(crate) struct EmitState<'a> {
     pub bound_contenteditable: bool,
     pub root_var: Option<String>,
     pub special_elements: Vec<Statement<'a>>,
-    pub memo_attrs: Vec<MemoAttr<'a>>,
     pub shared_memo: TemplateMemoState<'a>,
     pub script_blockers: Vec<u32>,
     pub extra_blockers: Vec<Expression<'a>>,

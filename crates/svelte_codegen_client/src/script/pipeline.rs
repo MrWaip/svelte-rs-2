@@ -1,8 +1,7 @@
 use oxc_allocator::Allocator;
 use oxc_ast::Comment;
 use oxc_ast::ast::{Program, Statement};
-use oxc_span::GetSpan;
-use svelte_analyze::{AnalysisData, ComponentScoping};
+use svelte_analyze::{AnalysisData, ComponentScoping, IdentGen};
 
 use svelte_ast_builder::Builder;
 use svelte_transform::{IgnoreQuery, transform_script};
@@ -46,22 +45,30 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     let ignore_query = IgnoreQuery::new(ctx.query.analysis);
     let line_index = ctx.state.line_index;
     let component_scoping = ctx.query.scoping();
+    let runes = ctx.query.runes();
+    let accessors = ctx.query.accessors();
+    let immutable = ctx.query.immutable();
+    let experimental_async = ctx.state.experimental_async;
+    let analysis = ctx.query.analysis;
+    let ident_gen: &mut IdentGen = ctx.state.ident_gen;
 
     run_transform(
         allocator,
         program,
-        Some(ctx.query.analysis),
+        Some(analysis),
         component_scoping,
+        ident_gen,
         true,
         dev,
         component_source,
         line_index,
         filename,
-        ctx.query.runes(),
-        ctx.query.accessors(),
-        ctx.query.immutable(),
-        ctx.state.experimental_async,
+        runes,
+        accessors,
+        immutable,
+        experimental_async,
         ignore_query,
+        true,
     )
 }
 
@@ -70,6 +77,7 @@ pub fn transform_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> ScriptOutput<'a> {
@@ -78,6 +86,7 @@ pub fn transform_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
+        ident_gen,
         false,
         dev,
         "",
@@ -88,6 +97,7 @@ pub fn transform_module_program<'a, 'b>(
         false,
         false,
         IgnoreQuery::empty(),
+        false,
     )
 }
 
@@ -96,6 +106,7 @@ pub fn transform_component_module_program<'a, 'b>(
     program: Program<'a>,
     analysis: Option<&'b AnalysisData<'a>>,
     component_scoping: &'b ComponentScoping<'a>,
+    ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
 ) -> ScriptOutput<'a> {
     run_transform(
@@ -103,6 +114,7 @@ pub fn transform_component_module_program<'a, 'b>(
         program,
         analysis,
         component_scoping,
+        ident_gen,
         false,
         false,
         "",
@@ -113,14 +125,16 @@ pub fn transform_component_module_program<'a, 'b>(
         false,
         false,
         IgnoreQuery::empty(),
+        true,
     )
 }
 
-fn run_transform<'a>(
+fn run_transform<'a, 'b>(
     allocator: &'a Allocator,
     mut program: Program<'a>,
-    analysis: Option<&'_ AnalysisData<'a>>,
-    component_scoping: &ComponentScoping<'a>,
+    analysis: Option<&'b AnalysisData<'a>>,
+    component_scoping: &'b ComponentScoping<'a>,
+    ident_gen: &'b mut IdentGen,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -131,9 +145,9 @@ fn run_transform<'a>(
     immutable: bool,
     experimental_async: bool,
     ignore_query: IgnoreQuery<'_, 'a>,
+    partition_imports: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
-    let is_ts = program.source_type.is_typescript();
 
     let out = transform_script(
         allocator,
@@ -141,6 +155,7 @@ fn run_transform<'a>(
         &b,
         analysis,
         component_scoping,
+        ident_gen,
         strip_exports,
         dev,
         component_source,
@@ -153,20 +168,20 @@ fn run_transform<'a>(
         ignore_query,
     );
 
-    if is_ts {
-        reattach_orphaned_comments(&mut program);
-    }
-
     let source_text = program.source_text;
     let program_span_end = program.span.end;
 
     let mut imports = vec![];
     let mut body = vec![];
-    for stmt in program.body {
-        match &stmt {
-            Statement::ImportDeclaration(_) => imports.push(stmt),
-            _ => body.push(stmt),
+    if partition_imports {
+        for stmt in program.body {
+            match &stmt {
+                Statement::ImportDeclaration(_) => imports.push(stmt),
+                _ => body.push(stmt),
+            }
         }
+    } else {
+        body.extend(program.body);
     }
 
     let comments: Vec<Comment> = if imports.is_empty() && body.is_empty() {
@@ -186,18 +201,3 @@ fn run_transform<'a>(
     }
 }
 
-fn reattach_orphaned_comments(program: &mut Program<'_>) {
-    let mut stmt_starts: Vec<u32> = program.body.iter().map(|s| s.span().start).collect();
-    stmt_starts.sort_unstable();
-
-    for comment in program.comments.iter_mut() {
-        if stmt_starts.binary_search(&comment.attached_to).is_ok() {
-            continue;
-        }
-        let pos = comment.span.end;
-        let next = stmt_starts.iter().find(|&&s| s >= pos).copied();
-        if let Some(next_start) = next {
-            comment.attached_to = next_start;
-        }
-    }
-}

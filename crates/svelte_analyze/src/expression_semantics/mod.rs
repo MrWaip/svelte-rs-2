@@ -4,11 +4,14 @@ pub mod evaluator;
 
 pub use builder::build;
 pub use data::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap, ValueClass,
+    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap,
+    SyntheticPropsCarrier, ValueClass,
 };
 
 use bitflags::bitflags;
+use rustc_hash::FxHashMap;
 use svelte_ast::NodeId;
+use svelte_component_semantics::OxcNodeId;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -22,6 +25,7 @@ bitflags! {
 #[derive(Debug, Default, Clone)]
 pub struct ExpressionSemanticsStore {
     entries: Vec<ExpressionSemantics>,
+    by_oxc: FxHashMap<OxcNodeId, ExpressionSemantics>,
     context_signals: ContextSignal,
 }
 
@@ -31,6 +35,7 @@ impl ExpressionSemanticsStore {
         entries.resize_with(node_count as usize, ExpressionSemantics::default);
         Self {
             entries,
+            by_oxc: FxHashMap::default(),
             context_signals: ContextSignal::empty(),
         }
     }
@@ -38,6 +43,12 @@ impl ExpressionSemanticsStore {
     pub fn get(&self, id: NodeId) -> &ExpressionSemantics {
         self.entries
             .get(id.0 as usize)
+            .unwrap_or(&ExpressionSemantics::NonSpecial)
+    }
+
+    pub fn get_by_oxc(&self, id: OxcNodeId) -> &ExpressionSemantics {
+        self.by_oxc
+            .get(&id)
             .unwrap_or(&ExpressionSemantics::NonSpecial)
     }
 
@@ -52,6 +63,10 @@ impl ExpressionSemanticsStore {
                 .resize_with(idx + 1, ExpressionSemantics::default);
         }
         self.entries[idx] = value;
+    }
+
+    pub(crate) fn set_by_oxc(&mut self, id: OxcNodeId, value: ExpressionSemantics) {
+        self.by_oxc.insert(id, value);
     }
 
     pub(crate) fn note_context(&mut self, signal: ContextSignal) {

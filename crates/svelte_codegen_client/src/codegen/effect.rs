@@ -1,13 +1,10 @@
-use std::mem;
-
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast::NodeId;
-use svelte_ast_builder::{Arg, AssignLeft};
+use svelte_ast_builder::Arg;
 
 use crate::context::Ctx;
 
-use super::data_structures::{MemoAttr, MemoAttrUpdate, TemplateMemoState};
-use super::{CodegenError, Result};
+use super::data_structures::TemplateMemoState;
+use super::Result;
 
 pub(in crate::codegen) fn emit_effect_call_extern<'a>(
     ctx: &Ctx<'a>,
@@ -51,7 +48,11 @@ pub(in crate::codegen) fn async_value_thunk<'a>(
     ctx: &Ctx<'a>,
     expr: Expression<'a>,
 ) -> Expression<'a> {
-    if let Expression::AwaitExpression(await_expr) = expr {
+    let is_await = matches!(expr.get_inner_expression(), Expression::AwaitExpression(_));
+    if is_await {
+        let Expression::AwaitExpression(await_expr) = expr.into_inner_expression() else {
+            unreachable!()
+        };
         let inner = await_expr.unbox().argument;
         ctx.b
             .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
@@ -83,12 +84,11 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     ctx: &mut Ctx<'a>,
     body: &mut Vec<Statement<'a>>,
     regular_updates: Vec<Statement<'a>>,
-    memo_attrs: Vec<MemoAttr<'a>>,
     mut shared_memo: TemplateMemoState<'a>,
     script_blockers: Vec<u32>,
     extra_blockers: Vec<Expression<'a>>,
 ) -> Result<()> {
-    if memo_attrs.is_empty() && !shared_memo.has_deps() {
+    if !shared_memo.has_deps() {
         emit_template_effect_with_blockers(
             ctx,
             regular_updates,
@@ -99,77 +99,14 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
         return Ok(());
     }
 
-    let memo_count = memo_attrs.len();
-    let mut memo_data: Vec<(NodeId, String, MemoAttrUpdate, Expression<'a>, bool)> =
-        Vec::with_capacity(memo_count);
-
-    for memo in memo_attrs {
-        memo_data.push((
-            memo.attr_id,
-            memo.el_name,
-            memo.update,
-            memo.expr,
-            memo.is_node_site,
-        ));
-    }
-
-    let mut deps = TemplateMemoState::default();
-    let shared_sync_count = shared_memo.sync_values.len();
-    deps.sync_values.append(&mut shared_memo.sync_values);
-    deps.async_values.append(&mut shared_memo.async_values);
-    for idx in mem::take(&mut shared_memo.blockers) {
-        deps.push_script_blocker(idx);
-    }
-    deps.extra_blockers
-        .append(&mut shared_memo.extra_blockers);
     for idx in script_blockers {
-        deps.push_script_blocker(idx);
+        shared_memo.push_script_blocker(idx);
     }
-    deps.extra_blockers.extend(extra_blockers);
-    let mut callback_body = regular_updates;
+    shared_memo.extra_blockers.extend(extra_blockers);
 
-    for (i, (attr_id, el_name, update, expr, is_node_site)) in memo_data.into_iter().enumerate() {
-        let memo_expr = ctx.b.rid_expr(&format!("${}", shared_sync_count + i));
-        match update {
-            MemoAttrUpdate::Call {
-                setter_fn,
-                attr_name,
-            } => {
-                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(ctx.b.rid_expr(&el_name))];
-                if let Some(name) = attr_name {
-                    args.push(Arg::Str(name));
-                }
-                args.push(Arg::Expr(memo_expr));
-                callback_body.push(ctx.b.call_stmt(setter_fn, args));
-            }
-            MemoAttrUpdate::Assignment { property } => {
-                callback_body.push(ctx.b.assign_stmt(
-                    AssignLeft::StaticMember(
-                        ctx.b.static_member(ctx.b.rid_expr(&el_name), &property),
-                    ),
-                    memo_expr,
-                ));
-            }
-        }
-
-        let _ = is_node_site;
-        let Some(attr_data) = ctx.expression_data(attr_id) else {
-            return CodegenError::missing_expression_deps(attr_id);
-        };
-        deps.push_expression_data(ctx, attr_data);
-        if matches!(
-            attr_data.kind,
-            svelte_analyze::ExprKind::Async { has_await: true }
-        ) {
-            deps.async_values.push(expr);
-        } else {
-            deps.sync_values.push(expr);
-        }
-    }
-
-    let param_names = deps.param_names();
+    let param_names = shared_memo.param_names();
     let params = ctx.b.params(param_names.iter().map(|s| s.as_str()));
-    let callback = ctx.b.arrow_expr(params, callback_body);
-    emit_effect_call(ctx, "$.template_effect", callback, &mut deps, body);
+    let callback = ctx.b.arrow_expr(params, regular_updates);
+    emit_effect_call(ctx, "$.template_effect", callback, &mut shared_memo, body);
     Ok(())
 }

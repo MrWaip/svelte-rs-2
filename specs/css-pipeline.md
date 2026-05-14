@@ -1,9 +1,9 @@
 # CSS
 
 ## Current state
-- **Working**: 26/26 use cases
-- **Tests**: 107/107 green
-- Last updated: 2026-05-13
+- **Working**: 40/40 use cases
+- **Tests**: 122/122 green
+- Last updated: 2026-05-23
 
 ## Source
 Project CSS pipeline parity work and follow-up diagnostic audit.
@@ -30,18 +30,33 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] Component custom properties trigger the `$.css_props(...)` wrapper path when the component is nested inside a parent element, inlining `<svelte-css-wrapper style="display: contents">` directly into the parent's static template (test: `css_custom_prop_component_nested`)
 - [x] Component custom property whose value is a static string literal (e.g. `<Child --color="25%" />`) lowers through the same `$.css_props(...)` wrapper path as the expression form (test: `css_custom_prop_component_string_value`)
 - [x] Component custom property whose value is a concatenation attribute (e.g. `<Child --color="px {val}" />`) lowers through the same `$.css_props(...)` wrapper path (test: `css_custom_prop_component_concat_value`)
+- [x] When the `$.css_props(...)` wrapper path applies to a component that also has a memoized prop (`let $0 = $.derived_safe_equal(...)`), the memo declaration is hoisted into the same outer `{ ... }` block as `$.css_props(...)`/`Child(...)`/`$.reset(...)` and placed before `$.css_props(...)`, rather than being nested in a private inner block (test: `css_custom_prop_component_with_memoized_prop`)
+- [x] Component custom property on a component used as a named slot fill child (e.g. `<Tooltip><Icon slot="activator" --color="red" /></Tooltip>`) lowers through the same `$.css_props(...)` wrapper path: the slot-fill snippet emits a `svelte-css-wrapper` root template, calls `$.css_props(node, () => ({ "--color": ... }))`, and renders the inner component into `node.lastChild` (test: `css_custom_prop_component_slot_fill`)
 - [x] Scope-class injection for a relative selector whose compound consists solely of pseudo-class / pseudo-element selectors after a combinator (e.g. `.benefit > :first-child`): `svelte_transform_css::visit_relative_selector_mut` now treats the compound as scopable when no `Type`/`Class`/`Id`/`Attribute` selector is present, except for standalone `:is(...)`/`:where(...)` singletons and compounds led by `:root`/`:host`. Inserts `:where(.<hash>)` before the leading pseudo (or `.<hash>` for the first specificity bump), matching reference (test: `css_scope_child_combinator_bare_pseudo`)
 - [x] Invalid CSS diagnostics for the tracked `:global(...)`/global-block placement and nesting-placement cases now match `svelte/compiler`; the previous ignored diagnostic cases were stale and have been unignored (tests: `css_global_block_invalid_placement`, `css_global_invalid_placement`, `css_global_invalid_placement_multiple_non_global_after`, `css_global_invalid_selector_list`, `css_type_selector_invalid_placement`, `css_global_invalid_selector`, `css_global_block_invalid_modifier_start`, `css_global_block_invalid_combinator`, `css_global_block_invalid_list`, `css_global_block_invalid_modifier`, `css_nesting_selector_invalid_placement`, `css_selector_invalid`, `css_global_block_descendant_ok`, `css_global_nesting_modifier_start_in_global_block`, `css_global_block_invalid_list_mixed`, `css_nesting_in_compound_global_block_ok`)
 - [x] Combinators (`+`, `>`, `~`) inside `:global(...)` arguments are preserved through the CSS transform/serializer instead of being collapsed into a compound selector — layer: css transform (`svelte_transform_css::expand_inline_global_with_combinators` splits multi-relative `:global(...)` into separate `RelativeSelector` entries on the parent `ComplexSelector`, wrapping each inner piece in `:global(...)` so it stays unscoped) (test: `css_global_with_combinators`)
 - [x] Nested rule whose compound consists solely of pseudo-element / pseudo-class selectors after `&` (e.g. `&::-webkit-scrollbar`) does not receive a `:where(.<hash>)` scope modifier — `svelte_transform_css::is_scopable` excludes `PseudoElement`, matching reference which `continue`s past pseudo selectors in the right-to-left scoping walk (test: `css_nested_pseudo_element_no_scope_class`)
 - [x] Nested rule whose compound contains `&` together with a class/id/type/attribute (e.g. `&.cell`, `&#id`, `&[disabled]`) does not receive a `:where(.<hash>)` scope modifier — `svelte_transform_css::visit_relative_selector_mut` now skips the scope-modifier insertion when the compound contains a `NestingSelector`, since `&` already inherits the scoped parent compound (test: `css_nested_amp_compound_no_scope_class`)
+- [x] Relative selector after `>` combinator whose compound is a `:global(...)` wrapping a single pseudo-class (e.g. `.box > :global(:last-child)`) does NOT receive a `:where(.<hash>)` scope modifier — `svelte_transform_css::visit_relative_selector_mut` tracks a `global_unwrapped` flag in the per-relative-selector loop; once a `:global(args)` branch extracts its inner selectors into `new_selectors`, the flag suppresses the pseudo-only-promotion path, matching reference which keeps the inner pseudo bare (test: `css_scope_child_combinator_global_pseudo_unscoped`)
 - [x] `<style lang="scss">` body containing `//` SCSS line comments inside a rule does not raise diagnostics. Reference's `read_declaration` is permissive: `parser.eat(':')` is non-throwing and `read_value()` swallows everything up to the next `;`/`{`/`}`, so a stray `//` line is parsed as a junk Declaration with `property == "//"` and serialized back unchanged via MagicString. Our `crates/svelte_css/src/parser.rs::parse_declaration` raises `css_expected_token { token: ":" }` (severity Error), which aborts JS emit. Need to make our declaration parser skip the strict colon/semicolon enforcement so unrecognized lines round-trip without diagnostics — layer: parser (`crates/svelte_css/src/parser.rs::parse_declaration`); repro/test: `style_lang_scss_no_diagnostics` (ignored, in `tasks/diagnostic_tests/cases/css/`); candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md`
+- [x] Nested rule whose leading compound is a class/id/type/attribute combined via sibling/child combinator with the parent reference `&` (e.g. `.a + &`, `.a > &`, `.a ~ &`) wraps the leading compound's scope class as `:where(.<hash>)` instead of appending `.<hash>` directly — `visit_selector_list_mut` seeds `specificity_bumped = true` when entering a nested rule's selector list (`rule_depth > 1`), mirroring reference's `has_local_selectors` ancestor check, so the first scopable relative selector emits `:where(.<hash>)` (test: `diagnose_css_nested_sibling_amp_scope_class`).
+- [x] `$.css_props(...)` wrapper template `var root_N = $.from_html(\`<svelte-css-wrapper …>\`, 1)` is hoisted AFTER the wrapped component's inner-fragment templates (slot fills, child blocks), not before. Reference emits inner child roots first and the outer css-wrapper root last (children-before-parent traversal); we currently emit the wrapper root first. Test: `diagnose_each_css_wrapper_root_order`.
+- [x] Attribute selector quote character preserved from source: `.a[data-hidden='true']` round-trips with single quotes instead of being normalized to `"true"`. Layer: parser (`crates/svelte_css/src/parser.rs::read_attribute_value` now returns `(Span, Option<u8>)`, capturing the leading byte of the `String` token); `AttributeSelector` carries a new `quote: Option<u8>` field; `crates/svelte_css/src/printer.rs` emits the recorded quote and falls back to `"` when absent (test: `diagnose_css_attribute_selector_quote_style`).
+- [x] Attribute selector with an unquoted value (e.g. `[data-state=open]`) round-trips without acquiring quotes — `crates/svelte_css/src/printer.rs` `SimpleSelector::Attribute` branch now emits the value bare when `attr.quote` is `None`, matching reference which preserves the source `quote_mark` (test: `diagnose_css_attribute_selector_unquoted_value`).
+- [x] Selector list branch whose adjacent-sibling combinator crosses an empty/conditional `{#if}` block is kept (matches conservatively) instead of being pruned. E.g. with template `<div class="a"/>{#if x}<div class="b"/>{/if}{#if y}<div class="c"/>{/if}` and rule `.a + .c, .b + .c { … }`, both selectors are kept because `.a + .c` matches when the `{#if x}` branch is empty; the `<div class="a">` element now receives the scope class — `crates/svelte_analyze/src/passes/css_prune.rs::get_possible_nested_siblings` treats missing optional branches (`IfBlock.alternate`, `EachBlock.fallback`, `AwaitBlock.{pending,then,catch}`) as `exhaustive = false`, mirroring reference's `fragment == null → exhaustive = false`, so elements inside such blocks are demoted to `Probably` and the `adjacent_only` walk continues past the conditional (test: `diagnose_css_adjacent_sibling_across_if_block`).
+- [x] Type selector against `<svelte:element>` matches unconditionally (e.g. `button.x { … }` with `<svelte:element this={tag} class="x">`): the rule is kept and the element receives the scope class via `set_class(...)`. `css_prune::apply_selector::SimpleSelector::Type` now treats `tag_name == "*"` (the marker recorded for `SvelteElement`) as an always-match, and `candidate_elements` adds `<svelte:element>` nodes alongside `elements_with_tag(name)` so the rule is offered the dynamic-tag node as a candidate (test: `diagnose_css_type_class_selector_on_svelte_element`).
+- [x] CSS comments embedded inside a declaration value round-trip through the emitted CSS: `--off: /*! off */;` keeps the `/*! off */` token in the value, matching reference. Custom-property `var(--off, fallback)` resolution treats `--off:` as the empty-token initial value, while `--off: /*! off */` is a non-empty whitespace-only value — the "CSS toggle" idiom is observably different. `crates/svelte_css/src/parser.rs::read_value` now updates `last_non_ws_end` for `Comment` tokens (previously skipped alongside `Whitespace`), so trailing comments are preserved in the `Declaration.value` span; printer round-trips it unchanged (test: `diagnose_css_declaration_value_comment`).
+- [x] Vendor-prefixed animation properties (`-webkit-animation`, `-moz-animation`, `-o-animation`, `-ms-animation`, plus their `-name` siblings) rewrite scoped keyframe names the same as the unprefixed `animation`/`animation-name` — `svelte_transform_css::strip_vendor_prefix` strips the four browser prefixes before the `is_animation` check in `visit_declaration_mut`, mirroring reference's `remove_css_prefix` regex (test: `diagnose_css_animation_vendor_prefix`).
+- [x] Vendor-prefixed `@-webkit-keyframes` / `@-moz-keyframes` / `@-o-keyframes` / `@-ms-keyframes` at-rules rename the keyframe identifier the same way as the unprefixed `@keyframes` — `svelte_transform_css::ScopeSelectors::visit_at_rule_mut` now runs the at-rule name through `strip_vendor_prefix` before the `"keyframes"` comparison, matching reference's `is_keyframes_node = remove_css_prefix(node.name) === 'keyframes'` (test: `diagnose_css_vendor_keyframes_rename`).
+- [x] `<svelte:component this={Expr} --custom="…">` lowers through the `$.css_props(...)` wrapper path: parent template embeds `<svelte-css-wrapper style="display: contents">` and codegen emits a `{ $.css_props(node, () => ({ "--custom": ... })); $.component(node.lastChild, ...); $.reset(node); }` block. Currently we treat `SvelteComponentLegacy` like a plain dynamic component and skip the css-props wrapper, so the custom-property attribute is dropped from the emitted DOM. Layer: codegen (`crates/svelte_codegen_client/src/template/component.rs` — wrapper dispatch keyed off the component's css-custom-prop attributes must include the `SvelteComponentLegacy` branch) — repro/test: `diagnose_svelte_component_css_custom_prop_wrapper`; candidate specs: `css-pipeline.md`, `svelte-component.md`; suggested spec: `css-pipeline.md`.
+- [x] Descendant selector whose right-hand compound matches an element rendered as `<slot>` fallback content (e.g. `.icon-slot img` with `<div class="icon-slot"><slot><img/></slot></div>`) matches: rule emitted with the fallback descendant wrapped as `:where(.<hash>)` and `class="<hash>"` added to the fallback element's template — layer: analyze (`svelte_analyze::passes::template_side_tables::visit_slot_element_legacy` now records the slot's parent in `template_topology`, so `collect_ancestor_elements` can walk past the slot when matching descendant combinators against fallback children; `collect_descendants_from_node` recurses into `Node::SlotElementLegacy.fragment` for the forward direction; the existing specificity-bump path in `svelte_transform_css` then emits `:where(.<hash>)` for the second relative selector automatically) (test: `diagnose_css_slot_fallback_descendant_scope`).
 
 ## Out of scope
 
 - CSS source maps; tracked in `specs/source-maps.md`
 - Custom-element default CSS injection behavior outside the main component CSS pipeline
 - SSR-specific CSS behavior
+- Emitting `/* (unused) <source> */` comments for pruned style rules and `/* :global {*/ … /*}*/` wrappers around lone `:global { … }` blocks — reference does this because its CSS transform is MagicString-based text replacement that cannot delete nodes without leaving a marker. Our pipeline is AST-based: `svelte_transform_css::ScopeSelectors` hoists `is_lone_global_block()` children up and `svelte_css::Printer` drops unused rules entirely (gated by `remove_unused`). The textual divergence vs reference is intentional; the snapshot harness absorbs it via `tasks/generate_test_cases/src/main.rs::strip_unused_css_comments` (strips `/* (unused) … */` from `case-svelte.css`) and `tasks/compiler_tests/test_v3.rs::normalize_css` (filters comment-only lines). Do not re-open this as a parity gap — see `specs/unknown.md` history for the rejected closure attempt.
 
 ## Reference
 ### Svelte
@@ -97,6 +112,9 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_global_with_combinators`
 - [x] `css_keyframes_scoped`
 - [x] `css_keyframes_percentage_scopes_all`
+- [x] `diagnose_css_type_class_selector_on_svelte_element`
+- [x] `diagnose_css_animation_vendor_prefix`
+- [x] `diagnose_css_vendor_keyframes_rename`
 - [x] `css_unused_external`
 - [x] `css_unused_injected`
 - [x] `css_pseudo_compound_unused_but_scoped`
@@ -115,6 +133,8 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_custom_prop_component_nested`
 - [x] `css_custom_prop_component_string_value`
 - [x] `css_custom_prop_component_concat_value`
+- [x] `css_custom_prop_component_with_memoized_prop`
+- [x] `css_custom_prop_component_slot_fill`
 - [x] `css_global_block_invalid_placement`
 - [x] `css_global_invalid_placement`
 - [x] `css_global_invalid_placement_multiple_non_global_after`
@@ -177,3 +197,12 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_nested_pseudo_element_no_scope_class`
 - [x] `css_nested_amp_compound_no_scope_class`
 - [x] `style_lang_scss_no_diagnostics`
+- [x] `css_scope_child_combinator_global_pseudo_unscoped`
+- [x] `diagnose_css_nested_sibling_amp_scope_class`
+- [x] `diagnose_each_css_wrapper_root_order`
+- [x] `diagnose_css_attribute_selector_quote_style`
+- [x] `diagnose_css_declaration_value_comment`
+- [x] `diagnose_css_slot_fallback_descendant_scope`
+- [x] `diagnose_svelte_component_css_custom_prop_wrapper`
+- [x] `diagnose_css_adjacent_sibling_across_if_block`
+- [x] `diagnose_css_attribute_selector_unquoted_value`

@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{
@@ -79,6 +81,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         has_await: bool,
     ) -> Result<Expression<'a>> {
         let expr = self.take_node_expr(block_id)?;
+        let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
         if has_await {
             Ok(self.ctx.b.async_thunk(expr))
         } else {
@@ -215,7 +218,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut decls: Vec<Statement<'a>> = Vec::new();
 
-        let get_source = self.ctx.b.call_expr("$.get", [Arg::Ident("$$source")]);
+        let get_source = rune_get(&self.ctx.b, "$$source");
         let destruct_stmt = match kind {
             AwaitDestructureKind::Array => self.ctx.b.var_array_destruct_stmt(&names, get_source),
             AwaitDestructureKind::Object => self.ctx.b.var_object_destruct_stmt(&names, get_source),
@@ -228,7 +231,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         decls.push(self.ctx.b.var_stmt("$$value", derived_call));
 
         for name in &names {
-            let get_value = self.ctx.b.call_expr("$.get", [Arg::Ident("$$value")]);
+            let get_value = rune_get(&self.ctx.b, "$$value");
             let member = self.ctx.b.static_member_expr(get_value, name);
             let getter_fn = self
                 .ctx

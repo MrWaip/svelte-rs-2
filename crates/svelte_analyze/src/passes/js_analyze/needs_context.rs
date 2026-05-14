@@ -4,7 +4,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics};
+use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics, ReferenceSemantics};
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub(crate) struct NeedsContextVisitor<'a> {
@@ -37,28 +37,37 @@ impl<'a> NeedsContextVisitor<'a> {
     }
 
     fn is_safe_sym(&self, ident: &IdentifierReference<'_>) -> bool {
+        if let Some(ref_id) = ident.reference_id.get()
+            && matches!(
+                self.reactivity.reference_semantics(ref_id),
+                ReferenceSemantics::LegacyPropsIdentifierRead
+                    | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            )
+        {
+            return false;
+        }
         let Some(sym_id) = self.resolve_ref(ident) else {
             return true;
         };
-        !matches!(
-            self.reactivity.binding_semantics(sym_id),
+        self.is_safe_binding(sym_id)
+    }
+
+    fn is_safe_binding(&self, sym_id: SymbolId) -> bool {
+        match self.reactivity.binding_semantics(sym_id) {
             BindingSemantics::MaybeReactive
-                | BindingSemantics::Prop(_)
-                | BindingSemantics::LegacyBindableProp(_)
-        )
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_) => false,
+            BindingSemantics::Store(store) => self.is_safe_binding(store.base_symbol),
+            _ => true,
+        }
     }
 
     fn is_safe_expression_root(&self, expr: &Expression<'_>) -> bool {
-        let mut node = expr;
+        let mut node = expr.get_inner_expression();
         loop {
             match node {
-                Expression::StaticMemberExpression(m) => node = &m.object,
-                Expression::ComputedMemberExpression(m) => node = &m.object,
-                Expression::TSAsExpression(t) => node = &t.expression,
-                Expression::TSSatisfiesExpression(t) => node = &t.expression,
-                Expression::TSNonNullExpression(t) => node = &t.expression,
-                Expression::TSTypeAssertion(t) => node = &t.expression,
-                Expression::TSInstantiationExpression(t) => node = &t.expression,
+                Expression::StaticMemberExpression(m) => node = m.object.get_inner_expression(),
+                Expression::ComputedMemberExpression(m) => node = m.object.get_inner_expression(),
                 _ => break,
             }
         }

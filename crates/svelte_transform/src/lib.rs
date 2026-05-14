@@ -51,6 +51,7 @@ pub fn transform_component<'a>(
         expr_handles,
         stmt_handles,
         bind_expr_handles,
+        ident_gen,
         ..
     } = ctx;
 
@@ -58,6 +59,7 @@ pub fn transform_component<'a>(
         alloc,
         analysis,
         &analysis.scoping,
+        ident_gen,
         expr_handles,
         stmt_handles,
         bind_expr_handles,
@@ -289,7 +291,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             let bind_id = bind.expression.id();
             let is_user_sequence = parsed
                 .expr(bind_id)
-                .is_some_and(|e| matches!(e, Expression::SequenceExpression(_)));
+                .is_some_and(|e| matches!(e.get_inner_expression(), Expression::SequenceExpression(_)));
             if bind.name == "this" {
                 continue;
             }
@@ -304,12 +306,14 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             }
 
             let is_bindable_prop_source = parsed.expr(bind_id).is_some_and(|expr| {
-                let mut current = expr;
+                let mut current = expr.get_inner_expression();
                 loop {
                     match current {
-                        Expression::StaticMemberExpression(m) => current = &m.object,
+                        Expression::StaticMemberExpression(m) => {
+                            current = m.object.get_inner_expression()
+                        }
                         Expression::ComputedMemberExpression(m) => {
-                            current = &m.object
+                            current = m.object.get_inner_expression()
                         }
                         Expression::Identifier(id) => {
                             let Some(ref_id) = id.reference_id.get() else {
@@ -417,7 +421,7 @@ fn get_directive_name_id(attr: &Attribute) -> Option<OxcNodeId> {
 fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attrs.iter().find_map(|attr| match attr {
         Attribute::StringAttribute(attr) if attr.name.as_str() == "slot" => {
-            Some(&source[attr.value_span.start as usize..attr.value_span.end as usize])
+            Some(attr.value(source))
         }
         _ => None,
     })

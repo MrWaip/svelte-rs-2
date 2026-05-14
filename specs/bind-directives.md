@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: 34/35 use cases
-- **Tests**: 81/82 green
-- Last updated: 2026-05-14
+- **Working**: 44/44 use cases
+- **Tests**: 92/92 green
+- Last updated: 2026-05-20
 
 ## Source
 
@@ -32,11 +32,13 @@ ROADMAP.md — Bindings
 - [x] `bind:checked`, `bind:group`, and `bind:files`
   Existing tests: `bind_directives_extended`, `bind_function_checked`, `bind_group_*`, `bind_files`, `push_binding_group_order`
 - [x] `bind:group` with auto-subscribed stores in same component: the synthesized `const binding_group = [];` declaration must be emitted AFTER the store getter constants and `const [$$stores, $$cleanup] = $.setup_stores();` (reference order = `store_setup` → `store_init` → `group_binding_declarations`). Currently emitted before them. (test: `bind_group_order_with_stores`, S)
+- [x] `bind:group` in a legacy component with `$:` reactive declarations: the synthesized `const binding_group = [];` declaration is emitted AFTER the `const <name> = $.mutable_source();` allocations that back legacy reactive bindings (order = `mutable_source_decls` → `group_binding_declarations` → `prop_decls` → `legacy_pre_effect`). Owned by transform `crates/svelte_transform/src/transformer/legacy_reactive.rs` — when `legacy_pre_effect` rewrites apply, the binding_group const block is materialized inside the script body between the implicit `mutable_source` decls and the slots; codegen `crates/svelte_codegen_client/src/lib.rs` skips its own top-of-body emit in that case to avoid duplication. Shared name helper `binding_group_name` lives in `svelte_analyze::types::data`. (test: `bind_group_order_with_legacy_reactive`)
 - [x] Regular-element `bind:checked` targeting a `$bindable` prop source from `$props()` passes the prop accessor directly to `$.bind_checked(...)` instead of lowering through rune getter/setter closures (test: `props_bindable_checkbox_disabled_shorthand_ts`)
 - [x] Contenteditable bindings: `bind:innerHTML`, `bind:innerText`, `bind:textContent`
   Existing tests: `bind_content_editable`, `bind_contenteditable_flag`, `bind_multiple_on_element`
 - [x] Element size bindings: `bind:clientWidth`, `bind:clientHeight`, `bind:offsetWidth`, `bind:offsetHeight`
   Existing test: `bind_element_size`
+- [x] Element size / resize-observer / focused / contenteditable / media bindings targeting a `$bindable` prop source (or legacy `export let`) must still go through the get/set transform — currently the `is_bindable_prop_source` short-circuit in `crates/svelte_transform/src/lib.rs::walk_attrs` skips ALL element binds whose expression resolves to a bindable prop, leaving the bare identifier in place. Only `bind:checked` survives via the dedicated `emit_bind_checked_shorthand` path; every other element-bind property panics in codegen with `bind without getter/setter must be bind:this`. Owner: transform — narrow the bindable-prop short-circuit to component binds, or extend codegen with bindable-prop shorthand paths for the affected element-bind properties. (test: `bind_element_size_bindable_prop_source`)
 - [x] Resize observer bindings: `bind:contentRect`, `bind:contentBoxSize`, `bind:borderBoxSize`, `bind:devicePixelContentBoxSize`
   Existing tests: `bind_resize_observer`, `bind_resize_observer_border_box_size`, `bind_resize_observer_device_pixel_content_box_size`
 - [x] `bind:this` on elements, components, `<svelte:element>`, and getter/setter sequence form
@@ -63,7 +65,7 @@ ROADMAP.md — Bindings
 - [x] Dev-mode `$$ownership_validator.binding(...)` honors `<!-- svelte-ignore ownership_invalid_binding -->` on the binding directive — when ignored, analyze sets `requires_ownership_emit = false` on the `ComponentPropKind::Bind` and codegen skips both the validator var decl and the binding stmt. (test: `bind_component_dev_ownership_ignore`)
 - [x] Component prop bindings with explicit identifier source (`<Comp bind:value={foo}>` where local var `foo` ≠ prop name `value`) — analyze stores trimmed `expr_text` as `expr_name` for simple-identifier expressions and uses it for both binding-semantics lookup and codegen source ident. (test: `bind_component_explicit_source`)
 - [x] Component prop binding with member-expression source (`<Comp bind:value={store.inner.value}>`) emits the full path inside both `get value()` and `set value($$value)` instead of using the prop name. Owned by transform: `bind_expr_handles` loop branches on `AttributeSemantics::ComponentBind` and lowers the get/set pair into a synthetic `ObjectExpression { get name() {...}, set name($$value) {...} }` (instead of the element-bind `SequenceExpression([thunk, arrow])`). Codegen splices the object's properties into the component props literal via `ObjProp::Raw`. Single shape works for both prod and dev (transform owns the dev-vs-prod function-shape choice). Tests: `component_bind_member_path`. Dev-mode `$.validate_binding(...)` emission for member-path component bind is a separate follow-up (test: `component_bind_member_path_dev`).
-- [ ] Dev-mode `$.validate_binding(<source>, <each_ids>, () => <object_path>, () => <leaf>, line, col)` is emitted before the component call for member-path component bindings (`<Comp bind:value={store.inner.value}>`). Currently absent for non-prop-source / non-store member chains. (test: `component_bind_member_path_dev`)
+- [x] Dev-mode `$.validate_binding(<source>, <each_ids>, () => <object_path>, () => <leaf>, line, col)` is emitted before the component call for member-path component bindings (`<Comp bind:value={store.inner.value}>`) (test: `component_bind_member_path_dev`)
 - [x] Component prop bind to a `$derived` identifier source (`<Child bind:value={derivedFlag}>` where `let derivedFlag = $derived(...)`) emits the writeback as `$.set(derivedFlag, $$value)` without the third `true` proxy flag. Owner: analyze 3.A.4 — `ComponentBindTarget` split into `Rune` (writable `$state` / `OptimizedRune`) and `RuneDerived` (read-only `$derived`); `derive_component_bind_target` routes `BindingSemantics::Derived` to `RuneDerived`. Codegen `bind_prop.rs::emit_bind_identifier` branches on `RuneDerived` and emits `$.set(source, $$value)` without `Arg::Bool(true)`; `bind_this.rs` collapses `Rune | RuneDerived` to the same `SignalShape::Rune`. (test: `diagnose_component_bind_derived_target_no_proxy_flag`)
 - [x] Component prop binding with member-expression source whose root is a `$bindable` prop (`let { store = $bindable() } = $props(); <Comp bind:value={store.inner.value}>`) rewrites the root identifier to its accessor call in the synthetic `get` body — `return store().inner.value;`, matching the setter side which already wraps via `wrap_bindable_prop_source_mutation`. Owner: transform — `dispatch_identifier_read` in `crates/svelte_transform/src/transformer/rewrites.rs` gained an arm for `ReferenceSemantics::PropSourceMemberMutationRoot { bindable: true, .. }` guarded by `!self.in_bind_setter_traverse` that emits `make_thunk_call(name)`. Setter-side path remains unchanged: `dispatch_member_assignment` → `wrap_bindable_prop_source_mutation` already replaces the LHS root and wraps the assignment. (test: `component_bind_member_path_bindable_root`)
 - [x] Function-binding form on a component prop (`<Comp bind:value={() => v, (n) => v = n} />`) lowers the user-supplied get/set pair into the synthetic `ObjectExpression { get value() { return bind_get(); }, set value($$value) { bind_set($$value); } }` and hoists `var bind_get = <get>; var bind_set = <set>;` aliases at the parent function's top. Owned by analyze + codegen: a 2-element `SequenceExpression` bind expression on a component classifies as `ComponentBindKind::FunctionPair`; codegen reserves fresh `bind_get`/`bind_set` idents via `IdentGen`, drains them via `ComponentPropsOutput::bind_init_stmts` into `state.init`, and emits the getter/setter pair through `ObjProp::Getter`/`ObjProp::Setter`. (test: `component_bind_function`)
@@ -71,7 +73,14 @@ ROADMAP.md — Bindings
 - [x] `bind_get` / `bind_set` aliases for a component function-binding are emitted **after** the parent fragment's anchor declaration (`var node = $.child(div);`), not before. Owned by codegen `containers/component.rs`: bind-init and event-init drain into `state.init` after `direct_anchor_expr` (static-component path) and after `comment_anchor_node_name` (`emit_dynamic_component`). Drain order: bind-init → event-init → component call. (test: `component_bind_function_anchor_order`)
 - [x] Multiple `bind:group` directives with distinct group identities allocate distinct `binding_group_N` const declarations (`binding_group`, `binding_group_1`, …) at the top of the component body — one per group key (bound symbols + parent-each chain). Owned by analyze 3.A.4 + 3.B `BindSemanticsData`: `attribute_semantics::builder` walks both element and component bind directives, assigning stable group ids via `BindingGroupTable` (keyed by `references: SmallVec<SymbolId>` + `parent_each_blocks`); ids land in `BindSemanticsData::binding_group_id_by_attr` and on `ElementBindSemantics::group_id`. Codegen `lib.rs` iterates `CodegenView::binding_group_count()` to emit one `const binding_group_N = []` per group; `emit_bind_group` formats the per-attr name via `binding_group_name(id)`. (test: `component_bind_group_multiple_targets`)
 - [x] `bind:group` on a component (`<Child bind:group={value}>`) synthesizes the top-level `const binding_group = [];` declaration even when no element-level `bind:group` is present. Owned by analyze: `BindSemanticsData::any_bind_group: bool` is raised by `ElementFlagsVisitor` for both regular elements (`visit_element`) and components (`visit_component_node` / `visit_svelte_component_legacy`) whenever a `BindDirective` named `group` is attached. Codegen reads `CodegenView::has_any_bind_group()` at the top of `compile_component`; the previous `EmitState::needs_binding_group` codegen-side flag was removed. (test: `diagnose_component_bind_group_emits_array`)
+- [x] Element `bind:value` on a `<textarea>`/`<input>` whose source is a legacy `export let` prop (or runes `$bindable`) lowers to `$.bind_value(el, value)` through the bindable-prop shorthand path (test: `diagnose_legacy_bind_value_textarea_export_let_prop`)
+- [x] Element `bind:group={value}` on a legacy `export let value` (component without runes) panics in codegen with `bind without getter/setter must be bind:this`. Owned by codegen `emit_bind_bindable_prop_shorthand` in `crates/svelte_codegen_client/src/codegen/attributes/bind/mod.rs`: the missing `ElementBindPropertyKind::Group` arm passes `var_alloc` directly as both the getter and setter when no `group_value_attr` is present, and as `() => var_alloc()` when `group_value_attr` is set so `emit_bind_group` can splice the val_stmt into the arrow body. Both delegate to `emit_bind_group`, producing the `$.bind_group(binding_group, [...], el, value, value)` or `$.bind_group(binding_group, [...], el, () => …, value)` shape the reference compiler emits for bindable-prop sources. (test: `diagnose_legacy_bind_group_radio_export_let_prop`)
+- [x] `bind:group` inside a legacy `{#each}` with a sibling `value={item.member}` attribute placed before the bind directive keeps the value expression available for the `bind:group` val_stmt (test: `bind_group_value_attr_before_bind`)
+- [x] Legacy `{#each items as item}` member-read of `item.member` inside `$.template_effect` for the `bind:group` value cache wraps as `($.get(item), $.untrack(() => $.get(item).member))` to keep the member read outside the template effect's reactive dependency set while still subscribing to `item` once (test: `bind_group_each_legacy_item_member_untrack`)
 - [x] Dev-mode element bind helpers (`$.bind_value`, `$.bind_checked`, `$.bind_group`, `$.bind_select_value`, `$.bind_content_editable`, `$.bind_volume`, `$.bind_paused`, `$.bind_element_size`) take named `function get() {...}` / `function set($$value) {...}` declarations as get/set callbacks instead of arrow expressions. Implemented at shorthand bind lowering in `transform/template_entry.rs`: in dev mode synthesize `named_function_expr("get", …)` / `named_function_expr("set", …)` instead of `b.thunk` / `b.arrow_expr`. (test: `bind_value_dev_named_fns`)
+- [x] Component `bind:value` against a legacy implicit reactive declaration target (`$: value = expr;` in non-runes mode) compiles — analyze treats `LegacyState` and `LegacyBindableProp` as writable bind targets alongside `State` / `Prop` in `validate_bind_identifier_value` (test: `diagnose_legacy_bind_value_on_implicit_reactive_declaration`)
+- [x] Legacy `bind:this={refs[item.key]}` on an element inside `{#each items as item}` where `refs` is a top-level legacy `let` (mutable_source) emits the per-item form: `$.bind_this(div, ($$value, item) => $.mutate(refs, $.get(refs)[item.key] = $$value), (item) => $.get(refs)?.[item.key], () => [$.get(item)])` — the setter routes through `$.mutate` on the reactive container, the getter uses optional-chaining on `$.get(refs)`, and the trailing dependency thunk threads the each-item id into both callbacks. Currently emits the plain `($$value) => refs[item.key] = $$value`, `() => refs[item.key]` form with no `$.mutate`, no optional chain, and no item dep array. Test: `diagnose_legacy_each_bind_this_indexed_reactive`.
+- [x] Legacy `bind:this={refs[idx]}` on an element inside `{#each items as item, idx}` where `idx` is the each-block index identifier emits the dependency thunk with the bare local: `() => [idx]`, not `() => [$.get(idx)]`. The each-block index is a plain JS parameter of the render callback and never carries a `mutable_source`; the inner setter/getter closures already shadow `idx` correctly, only the trailing dep thunk needed routing through the existing reactive-dep dispatcher. Owner: 4 codegen — `try_emit_bind_this_each_reactive_member` in `crates/svelte_codegen_client/src/codegen/attributes/bind/this.rs` builds the dep-array per symbol through `build_reactive_dep_expr_legacy` in `expr.rs`, which already maps `Contextual(EachIndex(Direct))` → bare ident and `Contextual(*(Signal))` → `$.get(name)`. Test: `diagnose_legacy_each_bind_this_indexed_by_index_variable`.
 
 ## Reference
 
@@ -98,6 +107,7 @@ ROADMAP.md — Bindings
 - [x] `bind_directives`
 - [x] `bind_directives_extended`
 - [x] `bind_element_size`
+- [x] `bind_element_size_bindable_prop_source`
 - [x] `bind_files`
 - [x] `bind_focused`
 - [x] `bind_function_checked`
@@ -129,8 +139,16 @@ ROADMAP.md — Bindings
 - [x] `component_bind_this_variants`
 - [x] `push_binding_group_order`
 - [x] `bind_group_order_with_stores`
+- [x] `bind_group_order_with_legacy_reactive`
 - [x] `diagnose_component_bind_group_emits_array`
 - [x] `component_bind_group_multiple_targets`
+- [x] `diagnose_legacy_bind_group_radio_export_let_prop`
+- [x] `diagnose_legacy_bind_value_on_implicit_reactive_declaration`
+- [x] `diagnose_legacy_bind_value_textarea_export_let_prop`
+- [x] `bind_group_value_attr_before_bind`
+- [x] `bind_group_each_legacy_item_member_untrack`
+- [x] `diagnose_legacy_each_bind_this_indexed_reactive`
+- [x] `diagnose_legacy_each_bind_this_indexed_by_index_variable`
 - [x] `props_bindable_checkbox_disabled_shorthand_ts`
 - [x] `svelte_document_bindings`
 - [x] `svelte_element_bind`
@@ -170,7 +188,7 @@ ROADMAP.md — Bindings
 - [x] `bind_component_explicit_source`
 - [x] `component_bind_member_path`
 - [x] `component_bind_member_path_bindable_root`
-- [ ] `component_bind_member_path_dev`
+- [x] `component_bind_member_path_dev`
 - [x] `diagnose_component_bind_derived_target_no_proxy_flag`
 - [x] `component_bind_function`
 - [x] `component_bind_function_anchor_order`

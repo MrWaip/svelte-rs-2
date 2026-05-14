@@ -43,13 +43,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(view) = store.get(component_id).as_component_like() else {
             return false;
         };
-        let has_static_slot = view
-            .attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"));
-        if has_static_slot {
-            return false;
-        }
         if view
             .attributes
             .iter()

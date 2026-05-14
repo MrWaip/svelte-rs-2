@@ -221,6 +221,10 @@ impl RunesMode {
     pub fn is_legacy(self) -> bool {
         matches!(self, Self::SoftLegacy | Self::HardLegacy)
     }
+
+    pub fn is_hard_legacy(self) -> bool {
+        matches!(self, Self::HardLegacy)
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -826,6 +830,19 @@ pub struct StringAttribute {
     pub span: Span,
     pub name: String,
     pub value_span: Span,
+    pub decoded: Option<String>,
+}
+
+impl StringAttribute {
+    pub fn raw_value<'a>(&self, source: &'a str) -> &'a str {
+        &source[self.value_span.start as usize..self.value_span.end as usize]
+    }
+
+    pub fn value<'a>(&'a self, source: &'a str) -> &'a str {
+        self.decoded
+            .as_deref()
+            .unwrap_or_else(|| self.raw_value(source))
+    }
 }
 
 #[derive(Clone)]

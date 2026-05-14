@@ -17,6 +17,21 @@ fn is_load_error_element(name: &str) -> bool {
     )
 }
 
+fn needs_textarea_content_reset(attributes: &[Attribute], has_spread: bool) -> bool {
+    if has_spread {
+        return true;
+    }
+    for attr in attributes {
+        match attr {
+            Attribute::BindDirective(b) if b.name == "value" => return true,
+            Attribute::ExpressionAttribute(a) if a.name == "value" => return true,
+            Attribute::ConcatenationAttribute(a) if a.name == "value" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn element_ident_prefix(&self, name: &str) -> String {
         let mut out = String::with_capacity(name.len());
@@ -102,10 +117,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let is_html = matches!(el_ns, Namespace::Html) && el_name_hint != "svg";
         state.template.push_element(&el_name_hint, is_html);
 
-        if is_html && el_name_hint == "noscript" {
-            state.template.pop_element();
-            return Ok(String::new());
-        }
+        let is_noscript = is_html && el_name_hint == "noscript";
 
         let has_is_attr = self.ctx.has_attribute(el_id, "is");
         state.template.needs_import_node |=
@@ -122,11 +134,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let is_ghost = el_name.is_empty();
 
-        if !is_ghost && self.ctx.needs_input_defaults(el_id) {
+        if !is_ghost
+            && self.ctx.needs_input_defaults(el_id)
+            && !self.ctx.has_spread(el_id)
+        {
             state.init.push(
                 self.ctx
                     .b
                     .call_stmt("$.remove_input_defaults", [Arg::Ident(&el_name)]),
+            );
+        }
+
+        if !is_ghost
+            && el_name_hint == "textarea"
+            && !self.ctx.needs_textarea_value_lowering(el_id)
+            && needs_textarea_content_reset(&attributes, self.ctx.has_spread(el_id))
+        {
+            state.init.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.remove_textarea_child", [Arg::Ident(&el_name)]),
             );
         }
 
@@ -137,7 +164,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let prev_pending_element_init = mem::take(&mut state.pending_element_init);
         let element_after_update_len_before = state.element_after_update.len();
-        self.emit_dom_attributes(state, el_id, &el_name_hint, &el_name, &non_attach_attrs)?;
+        if !is_noscript {
+            self.emit_dom_attributes(state, el_id, &el_name_hint, &el_name, &non_attach_attrs)?;
+        }
         if !is_ghost
             && is_load_error_element(&el_name_hint)
             && (self.ctx.has_spread(el_id)
@@ -154,7 +183,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let my_element_init = mem::take(&mut state.pending_element_init);
         state.pending_element_init = prev_pending_element_init;
 
-        if !self.ctx.query.view.is_void(el_id) {
+        if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
                 self.emit_customizable_select(state, ctx, el_id, &el_name, el_ns)?;
                 state.last_fragment_needs_reset = true;
@@ -204,10 +233,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         state.template.pop_element();
-
-        if el_name_hint == "script" {
-            state.template.push_comment(None);
-        }
 
         Ok(el_name)
     }
@@ -311,7 +336,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             update: inner_update,
             after_update: inner_after,
             root_var: _,
-            memo_attrs: inner_memo,
             shared_memo: inner_shared_memo,
             script_blockers: inner_script_blockers,
             extra_blockers: inner_extra_blockers,
@@ -358,7 +382,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx,
             &mut body,
             inner_update,
-            inner_memo,
             inner_shared_memo,
             inner_script_blockers,
             inner_extra_blockers,

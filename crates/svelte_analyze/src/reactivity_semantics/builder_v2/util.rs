@@ -31,11 +31,11 @@ pub(crate) fn expression_root_reference_id(expr: &Expression<'_>) -> Option<Refe
         Expression::Identifier(id) => id.reference_id.get(),
         Expression::StaticMemberExpression(m) => expression_root_reference_id(&m.object),
         Expression::ComputedMemberExpression(m) => expression_root_reference_id(&m.object),
-        Expression::TSNonNullExpression(t) => expression_root_reference_id(&t.expression),
-        Expression::TSAsExpression(t) => expression_root_reference_id(&t.expression),
-        Expression::TSSatisfiesExpression(t) => expression_root_reference_id(&t.expression),
-        Expression::TSTypeAssertion(t) => expression_root_reference_id(&t.expression),
-        Expression::TSInstantiationExpression(t) => expression_root_reference_id(&t.expression),
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         Expression::ParenthesizedExpression(p) => expression_root_reference_id(&p.expression),
         _ => None,
     }

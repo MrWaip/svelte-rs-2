@@ -18,13 +18,16 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: canary-${{ github.workflow }}-${{ inputs.dist_tag }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 env:
   NODE_VERSION: '22.13.0'
   RUST_CHANNEL: '1.94.1'
-  NPM_CONFIG_CACHE: ${{ github.workspace }}/.npm-cache
 
 jobs:
   version:
@@ -57,19 +60,16 @@ jobs:
             artifact_name: platform-linux-x64-gnu
             package_dir: packages/svelte-rs2-linux-x64-gnu
             package_name: '@mrwaip/svelte-rs2-linux-x64-gnu'
-            tarball_name: mrwaip-svelte-rs2-linux-x64-gnu
           - runner: macos-15
             artifact_name: platform-darwin-arm64
             package_dir: packages/svelte-rs2-darwin-arm64
             package_name: '@mrwaip/svelte-rs2-darwin-arm64'
-            tarball_name: mrwaip-svelte-rs2-darwin-arm64
           - runner: macos-15-intel
             artifact_name: platform-darwin-x64
             package_dir: packages/svelte-rs2-darwin-x64
             package_name: '@mrwaip/svelte-rs2-darwin-x64'
-            tarball_name: mrwaip-svelte-rs2-darwin-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust toolchain
         uses: moonrepo/setup-rust@v1
@@ -80,9 +80,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Stamp package versions
         run: node scripts/set-canary-version.mjs "${{ needs.version.outputs.npm_version }}"
@@ -91,50 +92,63 @@ jobs:
         run: node packages/svelte-rs2/scripts/smoke.mjs
 
       - name: Build release addon
-        run: cargo build -p napi_compiler --release
+        run: cargo build -p napi_compiler --release --locked
 
       - name: Prepare current platform package
         run: node packages/svelte-rs2/scripts/prepare-platform-package.mjs
 
       - name: Pack current platform package
-        run: npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP"
+        id: pack
+        shell: bash
+        run: |
+          OUTPUT=$(npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP" --json)
+          FILENAME=$(node -e "process.stdout.write(JSON.parse(process.argv[1])[0].filename)" "$OUTPUT")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
 
       - name: Verify tarball contains native addon
         shell: bash
-        run: |
-          TARBALL="$RUNNER_TEMP/${{ matrix.tarball_name }}-${{ needs.version.outputs.npm_version }}.tgz"
-          tar -tzf "$TARBALL" | grep 'package/svelte-rs2.node'
+        run: tar -tzf "${{ steps.pack.outputs.tarball }}" | grep 'package/svelte-rs2.node'
 
       - name: Upload tarball artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ runner.temp }}/${{ matrix.tarball_name }}-${{ needs.version.outputs.npm_version }}.tgz
+          path: ${{ steps.pack.outputs.tarball }}
           if-no-files-found: error
 
   build-main:
     name: Build Main Package
     needs: version
     runs-on: ubuntu-24.04
+    outputs:
+      filename: ${{ steps.pack.outputs.filename }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Stamp package versions
         run: node scripts/set-canary-version.mjs "${{ needs.version.outputs.npm_version }}"
 
       - name: Pack main package
-        run: npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP"
+        id: pack
+        shell: bash
+        run: |
+          OUTPUT=$(npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP" --json)
+          FILENAME=$(node -e "process.stdout.write(JSON.parse(process.argv[1])[0].filename)" "$OUTPUT")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload main package tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: main-package
-          path: ${{ runner.temp }}/mrwaip-svelte-rs2-${{ needs.version.outputs.npm_version }}.tgz
+          path: ${{ steps.pack.outputs.tarball }}
           if-no-files-found: error
 
   publish:
@@ -150,13 +164,13 @@ jobs:
       id-token: write
     steps:
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
 
       - name: Download all package tarballs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: ${{ runner.temp }}/publish
 
@@ -177,13 +191,21 @@ jobs:
       - name: Publish platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
         run: |
-          npm publish "$RUNNER_TEMP/publish/platform-linux-x64-gnu/mrwaip-svelte-rs2-linux-x64-gnu-${{ needs.version.outputs.npm_version }}.tgz" --tag "${{ inputs.dist_tag }}" --provenance
-          npm publish "$RUNNER_TEMP/publish/platform-darwin-arm64/mrwaip-svelte-rs2-darwin-arm64-${{ needs.version.outputs.npm_version }}.tgz" --tag "${{ inputs.dist_tag }}" --provenance
-          npm publish "$RUNNER_TEMP/publish/platform-darwin-x64/mrwaip-svelte-rs2-darwin-x64-${{ needs.version.outputs.npm_version }}.tgz" --tag "${{ inputs.dist_tag }}" --provenance
+          find "$RUNNER_TEMP/publish" -name '*.tgz' -not -path '*/main-package/*' -print0 \
+            | while IFS= read -r -d '' tgz; do
+                echo "Publishing $tgz"
+                npm publish "$tgz" --tag "${{ inputs.dist_tag }}" --provenance
+              done
 
       - name: Publish main package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
         run: |
-          npm publish "$RUNNER_TEMP/publish/main-package/mrwaip-svelte-rs2-${{ needs.version.outputs.npm_version }}.tgz" --tag "${{ inputs.dist_tag }}" --provenance
+          find "$RUNNER_TEMP/publish/main-package" -name '*.tgz' -print0 \
+            | while IFS= read -r -d '' tgz; do
+                echo "Publishing $tgz"
+                npm publish "$tgz" --tag "${{ inputs.dist_tag }}" --provenance
+              done

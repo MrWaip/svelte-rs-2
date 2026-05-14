@@ -43,7 +43,7 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
         let Some(value) = prop.value.as_ref() else {
             continue;
         };
-        let Expression::CallExpression(call) = value else {
+        let Expression::CallExpression(call) = value.get_inner_expression() else {
             continue;
         };
         if !is_state_creation_rune(detect_rune_from_call(call)) {
@@ -65,16 +65,19 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
         let Statement::ExpressionStatement(es) = stmt else {
             continue;
         };
-        let Expression::AssignmentExpression(assign) = &es.expression else {
+        let Expression::AssignmentExpression(assign) = es.expression.get_inner_expression() else {
             continue;
         };
         let AssignmentTarget::StaticMemberExpression(member) = &assign.left else {
             continue;
         };
-        if !matches!(&member.object, Expression::ThisExpression(_)) {
+        if !matches!(
+            member.object.get_inner_expression(),
+            Expression::ThisExpression(_)
+        ) {
             continue;
         }
-        let Expression::CallExpression(call) = &assign.right else {
+        let Expression::CallExpression(call) = assign.right.get_inner_expression() else {
             continue;
         };
         if !is_state_creation_rune(detect_rune_from_call(call)) {

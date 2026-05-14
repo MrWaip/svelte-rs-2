@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
@@ -38,7 +39,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .var_stmt(&id, self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])),
             );
-            handler = self.ctx.b.call_expr("$.get", [Arg::Ident(&id)]);
+            handler = rune_get(&self.ctx.b, &id);
         }
 
         build_event_apply_wrapper(
@@ -60,8 +61,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(handler);
         }
 
-        let Expression::ArrowFunctionExpression(arrow) = handler else {
+        let is_arrow = matches!(
+            handler.get_inner_expression(),
+            Expression::ArrowFunctionExpression(_)
+        );
+        if !is_arrow {
             return Ok(handler);
+        }
+        let Expression::ArrowFunctionExpression(arrow) = handler.into_inner_expression() else {
+            unreachable!()
         };
         let arrow = arrow.unbox();
         let mut body = arrow.body.unbox();
@@ -131,8 +139,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 }
 
 fn remove_parens_hint(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        call.arguments.is_empty() && matches!(&call.callee, Expression::Identifier(_))
+    if let Expression::CallExpression(call) = expr.get_inner_expression() {
+        call.arguments.is_empty()
+            && matches!(call.callee.get_inner_expression(), Expression::Identifier(_))
     } else {
         false
     }

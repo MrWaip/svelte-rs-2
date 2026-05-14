@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use std::iter;
 
 use oxc_allocator::{CloneIn, Vec as OxcVec};
@@ -7,8 +8,9 @@ use oxc_span::GetSpan;
 use crate::context::Ctx;
 
 use svelte_analyze::{
-    RenderArgEmit, RenderAsyncKind, RenderCalleeKind, RenderTagBlockSemantics,
+    BindingSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
 };
+use svelte_analyze::scope::SymbolId;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -29,10 +31,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             RenderAsyncKind::Async { blockers } => (true, blockers.to_vec()),
         };
 
-        let is_static_shape = matches!(
-            sem.callee_shape,
-            RenderCalleeKind::Static | RenderCalleeKind::StaticChain
-        );
+        let is_static_shape = render_callee_is_static(self.ctx, sem.callee_sym);
         let is_standalone = matches!(
             ctx.anchor,
             FragmentAnchor::Root
@@ -61,7 +60,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let expr = self.take_node_expr(id)?;
-        let call = match expr {
+        let call = match expr.into_inner_expression() {
             Expression::CallExpression(call) => call,
             Expression::ChainExpression(chain) => match chain.unbox().expression {
                 ChainElement::CallExpression(call) => call,
@@ -91,8 +90,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut async_memo_count: u32 = 0;
         for arg in &sem.args {
             match arg {
-                RenderArgEmit::MemoSync => sync_memo_count += 1,
-                RenderArgEmit::MemoAsync => async_memo_count += 1,
+                RenderArgKind::NeedsMemo => sync_memo_count += 1,
+                RenderArgKind::AwaitMemo { .. } => async_memo_count += 1,
                 _ => {}
             }
         }
@@ -115,7 +114,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )?;
         let tag_span_start = tag.span.start;
         let final_expr = self.build_render_final_call(
-            sem.callee_shape,
+            sem.call_kind,
+            is_static_shape,
             callee_expr,
             callee_text,
             inner_anchor_expr,
@@ -225,11 +225,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for (arg, arg_sem) in arguments.into_iter().zip(sem.args.iter()) {
             let arg_expr = arg.into_expression();
             match *arg_sem {
-                RenderArgEmit::PropSource { sym } => {
+                RenderArgKind::PropPassthrough { sym } => {
                     let name = self.ctx.symbol_name(sym).to_string();
                     thunks.push(Arg::Expr(self.ctx.b.rid_expr(&name)));
                 }
-                RenderArgEmit::MemoSync => {
+                RenderArgKind::NeedsMemo => {
                     let name = format!("${sync_seen}");
                     sync_seen += 1;
                     let helper = self.ctx.query.view.derived_helper();
@@ -237,26 +237,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
                     memo_stmts.push(self.ctx.b.let_init_stmt(&name, derived));
                     let name_ref = self.ctx.b.alloc_str(&name);
-                    let get = self.ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
+                    let get = rune_get(&self.ctx.b, name_ref);
                     let read_thunk = self
                         .ctx
                         .b
                         .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(get)]);
                     thunks.push(Arg::Expr(read_thunk));
                 }
-                RenderArgEmit::MemoAsync => {
+                RenderArgKind::AwaitMemo { .. } => {
                     async_values.push(self.ctx.b.clone_expr(&arg_expr));
                     let param_name = format!("${}", sync_memo_count + async_seen);
                     async_seen += 1;
                     let param_ref = self.ctx.b.alloc_str(&param_name);
-                    let get = self.ctx.b.call_expr("$.get", [Arg::Ident(param_ref)]);
+                    let get = rune_get(&self.ctx.b, param_ref);
                     let read_thunk = self
                         .ctx
                         .b
                         .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(get)]);
                     thunks.push(Arg::Expr(read_thunk));
                 }
-                RenderArgEmit::Plain => {
+                RenderArgKind::InertThunk => {
                     let thunk = self
                         .ctx
                         .b
@@ -285,43 +285,50 @@ fn async_value_thunk<'a>(
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_render_final_call(
         &mut self,
-        shape: RenderCalleeKind,
+        call_kind: RenderCallKind,
+        is_static_shape: bool,
         callee_expr: Expression<'a>,
         callee_text: &'a str,
         anchor_expr: Expression<'a>,
         arg_thunks: Vec<Arg<'a, 'static>>,
     ) -> Expression<'a> {
-        match shape {
-            RenderCalleeKind::Dynamic | RenderCalleeKind::DynamicChain => {
-                let is_chain = matches!(shape, RenderCalleeKind::DynamicChain);
-                let callee_arg = if is_chain {
-                    let coalesced = self
-                        .ctx
-                        .b
-                        .logical_coalesce(callee_expr, self.ctx.b.rid_expr("$.noop"));
-                    self.ctx
-                        .b
-                        .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(coalesced)])
-                } else {
-                    self.ctx.b.thunk(callee_expr)
-                };
-                let mut snippet_args: Vec<Arg<'a, '_>> =
-                    vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
-                snippet_args.extend(arg_thunks);
-                self.ctx.b.call_expr("$.snippet", snippet_args)
-            }
-            RenderCalleeKind::StaticChain => {
-                let callee = self.ctx.b.rid_expr(callee_text);
-                let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
-                all_args.extend(arg_thunks);
-                self.ctx.b.maybe_call_expr(callee, all_args)
-            }
-            RenderCalleeKind::Static => {
-                let callee = self.ctx.b.rid_expr(callee_text);
-                let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
-                all_args.extend(arg_thunks);
-                self.ctx.b.call_expr_callee(callee, all_args)
-            }
+        let is_chain = matches!(call_kind, RenderCallKind::OptionalChain);
+        if !is_static_shape {
+            let callee_arg = if is_chain {
+                let coalesced = self
+                    .ctx
+                    .b
+                    .logical_coalesce(callee_expr, self.ctx.b.rid_expr("$.noop"));
+                self.ctx
+                    .b
+                    .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(coalesced)])
+            } else {
+                self.ctx.b.thunk(callee_expr)
+            };
+            let mut snippet_args: Vec<Arg<'a, '_>> =
+                vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
+            snippet_args.extend(arg_thunks);
+            return self.ctx.b.call_expr("$.snippet", snippet_args);
+        }
+        let callee = self.ctx.b.rid_expr(callee_text);
+        let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+        all_args.extend(arg_thunks);
+        if is_chain {
+            self.ctx.b.maybe_call_expr(callee, all_args)
+        } else {
+            self.ctx.b.call_expr_callee(callee, all_args)
         }
     }
+}
+
+fn render_callee_is_static(ctx: &Ctx<'_>, callee_sym: Option<SymbolId>) -> bool {
+    let Some(sym) = callee_sym else {
+        return false;
+    };
+    matches!(
+        ctx.query.view.binding_semantics(sym),
+        BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved,
+    )
 }

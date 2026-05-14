@@ -2,6 +2,21 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   RUST_CHANNEL: '1.94.1'
@@ -11,7 +26,7 @@ jobs:
     name: Test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup rust toolchain and cache
         uses: moonrepo/setup-rust@v1
@@ -21,4 +36,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked

@@ -9,7 +9,7 @@ pub use data::{
     ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
     DocumentBindSemantics, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
     ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
-    HtmlBindKind, WindowBindSemantics,
+    HtmlBindKind, MustBePropertySemantics, MustBePropertyValue, WindowBindSemantics,
 };
 
 use svelte_ast::NodeId;

@@ -50,17 +50,10 @@ pub fn extract_script_info(
                 }
                 if let Some(decl) = &export.declaration {
                     if !runes
-                        && props_declaration.is_none()
-                        && matches!(
-                            decl,
-                            Declaration::VariableDeclaration(var_decl)
-                                if var_decl.kind == VariableDeclarationKind::Let
-                        )
+                        && let Declaration::VariableDeclaration(var_decl) = decl
+                        && var_decl.kind == VariableDeclarationKind::Let
                     {
-                        let Declaration::VariableDeclaration(var_decl) = decl else {
-                            unreachable!()
-                        };
-                        props_declaration = collect_legacy_export_props(var_decl, source);
+                        merge_legacy_export_props(var_decl, source, &mut props_declaration);
                         collect_declarations_from_declaration(
                             decl,
                             source,
@@ -104,10 +97,11 @@ pub fn extract_script_info(
     }
 }
 
-fn collect_legacy_export_props(
+fn merge_legacy_export_props(
     decl: &VariableDeclaration<'_>,
     source: &str,
-) -> Option<PropsDeclaration> {
+    props_declaration: &mut Option<PropsDeclaration>,
+) {
     let mut props = Vec::new();
 
     for declarator in &decl.declarations {
@@ -140,14 +134,24 @@ fn collect_legacy_export_props(
     }
 
     if props.is_empty() {
-        None
-    } else {
-        Some(PropsDeclaration {
-            props,
-            is_identifier_pattern: false,
-            declaration_spans: vec![Span::new(decl.span.start, decl.span.end)],
-            rest_pattern_span: None,
-        })
+        return;
+    }
+
+    let decl_span = Span::new(decl.span.start, decl.span.end);
+
+    match props_declaration {
+        Some(existing) => {
+            existing.props.extend(props);
+            existing.declaration_spans.push(decl_span);
+        }
+        None => {
+            *props_declaration = Some(PropsDeclaration {
+                props,
+                is_identifier_pattern: false,
+                declaration_spans: vec![decl_span],
+                rest_pattern_span: None,
+            });
+        }
     }
 }
 
@@ -217,9 +221,11 @@ fn collect_export_names_from_declaration(
     match decl {
         Declaration::VariableDeclaration(var_decl) => {
             for declarator in &var_decl.declarations {
-                if let BindingPattern::BindingIdentifier(ident) = &declarator.id {
+                let mut names: Vec<String> = Vec::new();
+                collect_binding_names(&declarator.id, &mut names);
+                for name in names {
                     exports.push(ExportInfo {
-                        name: CompactString::from(ident.name.as_str()),
+                        name: CompactString::from(name),
                         alias: None,
                     });
                 }
@@ -543,13 +549,15 @@ fn extract_call_arg_literal(expr: &Expression<'_>) -> Option<CompactString> {
 }
 
 fn extract_init_known(expr: &Expression<'_>) -> bool {
-    match expr {
+    match expr.get_inner_expression() {
         Expression::StringLiteral(_)
         | Expression::NumericLiteral(_)
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_)
         | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_) => true,
+        | Expression::RegExpLiteral(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
         Expression::TemplateLiteral(t) => t.expressions.is_empty(),
         Expression::UnaryExpression(u) => extract_init_known(&u.argument),
         Expression::BinaryExpression(b) => {
@@ -558,7 +566,6 @@ fn extract_init_known(expr: &Expression<'_>) -> bool {
         Expression::LogicalExpression(l) => {
             extract_init_known(&l.left) && extract_init_known(&l.right)
         }
-        Expression::ParenthesizedExpression(p) => extract_init_known(&p.expression),
         _ => false,
     }
 }
@@ -579,8 +586,8 @@ fn extract_prop_default(
 ) -> (Option<Span>, Option<String>, bool, bool) {
     if let BindingPattern::AssignmentPattern(assign) = pattern {
         let right = &assign.right;
-        if let Expression::CallExpression(call) = right
-            && let Expression::Identifier(ident) = &call.callee
+        if let Expression::CallExpression(call) = right.get_inner_expression()
+            && let Expression::Identifier(ident) = call.callee.get_inner_expression()
             && ident.name.as_str() == "$bindable"
         {
             let (default_span, default_text, is_simple) = if let Some(arg) = call.arguments.first()

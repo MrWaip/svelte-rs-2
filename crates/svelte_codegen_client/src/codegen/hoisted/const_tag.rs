@@ -1,3 +1,4 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::AstKind;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_semantic::SymbolId;
@@ -61,7 +62,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let name = self.ctx.query.view.symbol_name(sym).to_string();
         let init_expr =
-            self.maybe_wrap_legacy_coarse_expr(init_expr, self.ctx.expression_data(id), false);
+            coarse_wrap(self.ctx, init_expr, self.ctx.expression_data(id));
         let thunk = self.ctx.b.thunk(init_expr);
         let derived_fn = self.ctx.query.view.derived_helper();
         let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
@@ -108,7 +109,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let tmp_ref: &str = self.ctx.b.alloc_str(&tmp_name);
 
         let init_expr =
-            self.maybe_wrap_legacy_coarse_expr(init_expr, self.ctx.expression_data(id), false);
+            coarse_wrap(self.ctx, init_expr, self.ctx.expression_data(id));
         let destruct_stmt = self.ctx.b.const_destruct_stmt(pattern, init_expr);
         let props: Vec<ObjProp<'a>> = names
             .iter()

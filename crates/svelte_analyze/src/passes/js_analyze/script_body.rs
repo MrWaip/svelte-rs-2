@@ -2,13 +2,14 @@ use std::mem::take;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
-    BindingPattern, Class, Declaration, Expression, IdentifierReference, MemberExpression,
-    MethodDefinition, MethodDefinitionKind, Program, PropertyDefinition, SimpleAssignmentTarget,
-    Statement, UpdateExpression, VariableDeclarator,
+    AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, Declaration,
+    Expression, MethodDefinition, MethodDefinitionKind, Program, PropertyDefinition,
+    SimpleAssignmentTarget, Statement, UpdateExpression, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_member_expression, walk_simple_assignment_target, walk_update_expression,
+    walk_assignment_expression, walk_call_expression, walk_method_definition, walk_program,
+    walk_update_expression,
 };
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
@@ -75,39 +76,45 @@ pub(crate) struct ScriptBodyAnalyzer<'s> {
 impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
     fn visit_program(&mut self, program: &Program<'a>) {
         for stmt in &program.body {
-            self.visit_statement(stmt);
+            match stmt {
+                Statement::VariableDeclaration(decl) => {
+                    self.check_proxy_state_inits(&decl.declarations);
+                }
+                Statement::ExportNamedDeclaration(export) => {
+                    if let Some(Declaration::VariableDeclaration(d)) = &export.declaration {
+                        self.check_proxy_state_inits(&d.declarations);
+                    }
+                }
+                _ => {}
+            }
         }
+        walk_program(self, program);
     }
 
-    fn visit_statement(&mut self, stmt: &Statement<'a>) {
-        match stmt {
-            Statement::ExpressionStatement(es) => {
-                if self.uses_runes
-                    && let Expression::CallExpression(call) = &es.expression
-                    && matches!(
-                        detect_rune_from_call(call),
-                        Some(RuneKind::Effect | RuneKind::EffectPre)
-                    )
-                {
-                    self.has_effects = true;
-                }
-                if expression_has_store_member_mutation(&es.expression) {
-                    self.has_store_member_mutations = true;
-                }
-            }
-            Statement::ClassDeclaration(class) => {
-                self.visit_class(class);
-            }
-            Statement::VariableDeclaration(decl) => {
-                self.check_proxy_state_inits(&decl.declarations);
-            }
-            Statement::ExportNamedDeclaration(export) => {
-                if let Some(Declaration::VariableDeclaration(d)) = &export.declaration {
-                    self.check_proxy_state_inits(&d.declarations);
-                }
-            }
-            _ => {}
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if self.uses_runes
+            && matches!(
+                detect_rune_from_call(call),
+                Some(RuneKind::Effect | RuneKind::EffectPre)
+            )
+        {
+            self.has_effects = true;
         }
+        walk_call_expression(self, call);
+    }
+
+    fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
+        if assignment_target_root_is_store(&assign.left) {
+            self.has_store_member_mutations = true;
+        }
+        walk_assignment_expression(self, assign);
+    }
+
+    fn visit_update_expression(&mut self, upd: &UpdateExpression<'a>) {
+        if simple_target_root_is_store(&upd.argument) {
+            self.has_store_member_mutations = true;
+        }
+        walk_update_expression(self, upd);
     }
 
     fn visit_class(&mut self, class: &Class<'a>) {
@@ -126,21 +133,20 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
     }
 
     fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
-        if method.kind != MethodDefinitionKind::Constructor {
-            return;
-        }
-        let Some(body) = &method.value.body else {
-            return;
-        };
-        for stmt in &body.statements {
-            if let Statement::ExpressionStatement(es) = stmt
-                && let Expression::AssignmentExpression(assign) = &es.expression
-                && let Some(kind) = detect_rune(&assign.right)
-                && matches!(kind, RuneKind::State | RuneKind::StateRaw)
-            {
-                self.has_class_state_fields = true;
+        if method.kind == MethodDefinitionKind::Constructor
+            && let Some(body) = &method.value.body
+        {
+            for stmt in &body.statements {
+                if let Statement::ExpressionStatement(es) = stmt
+                    && let Expression::AssignmentExpression(assign) = &es.expression
+                    && let Some(kind) = detect_rune(&assign.right)
+                    && matches!(kind, RuneKind::State | RuneKind::StateRaw)
+                {
+                    self.has_class_state_fields = true;
+                }
             }
         }
+        walk_method_definition(self, method);
     }
 }
 
@@ -172,13 +178,13 @@ impl ScriptBodyAnalyzer<'_> {
 }
 
 fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
-    let Expression::CallExpression(call) = expr else {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return false;
     };
     let Some(arg) = call.arguments.first() else {
         return false;
     };
-    let Some(e) = arg.as_expression() else {
+    let Some(e) = arg.as_expression().map(|e| e.get_inner_expression()) else {
         return false;
     };
     if e.is_literal() {
@@ -202,47 +208,22 @@ fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
     true
 }
 
-fn expression_has_store_member_mutation(expr: &Expression<'_>) -> bool {
-    struct Probe {
-        has: bool,
-        in_write_position: bool,
-    }
-    impl<'a> Visit<'a> for Probe {
-        fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
-            self.in_write_position = true;
-            walk_simple_assignment_target(self, it);
-        }
-        fn visit_update_expression(&mut self, upd: &UpdateExpression<'a>) {
-            self.in_write_position = true;
-            walk_update_expression(self, upd);
-        }
-        fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-            if self.in_write_position {
-                let root_expr = match expr {
-                    MemberExpression::StaticMemberExpression(m) => Some(&m.object),
-                    MemberExpression::ComputedMemberExpression(m) => Some(&m.object),
-                    _ => None,
-                };
-                if root_expr.is_some_and(member_root_is_store) {
-                    self.has = true;
-                }
-            }
-            self.in_write_position = false;
-            walk_member_expression(self, expr);
-        }
-        fn visit_identifier_reference(
-            &mut self,
-            _ident: &IdentifierReference<'a>,
-        ) {
-            self.in_write_position = false;
-        }
-    }
-    let mut p = Probe {
-        has: false,
-        in_write_position: false,
+fn assignment_target_root_is_store(target: &AssignmentTarget<'_>) -> bool {
+    let expr = match target {
+        AssignmentTarget::StaticMemberExpression(m) => &m.object,
+        AssignmentTarget::ComputedMemberExpression(m) => &m.object,
+        _ => return false,
     };
-    p.visit_expression(expr);
-    p.has
+    member_root_is_store(expr)
+}
+
+fn simple_target_root_is_store(target: &SimpleAssignmentTarget<'_>) -> bool {
+    let expr = match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => &m.object,
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => &m.object,
+        _ => return false,
+    };
+    member_root_is_store(expr)
 }
 
 fn member_root_is_store(expr: &Expression<'_>) -> bool {

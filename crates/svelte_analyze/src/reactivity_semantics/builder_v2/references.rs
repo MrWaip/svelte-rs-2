@@ -1,6 +1,7 @@
 use super::super::data::{
-    BindingFacts, ContextualReadSemantics, DerivedKind, PropBindingKind, PropDefaultEmit,
-    PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
+    BindingFacts, ConstBindingSemantics, ContextualReadSemantics, DerivedKind, PropBindingKind,
+    PropDefaultEmit, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
+    StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -166,12 +167,18 @@ fn classify_reference_semantics(
                 None
             }
         }
-        BindingFacts::Const(_) => {
+        BindingFacts::Const(ConstBindingSemantics::ConstTag {
+            destructured,
+            owner_node,
+            ..
+        }) => {
             if is_write {
                 Some(ReferenceFacts::IllegalWrite)
             } else if is_read {
-                if let Some(owner_node) = data.reactivity.const_alias_owner_internal(sym) {
-                    Some(ReferenceFacts::ConstAliasRead { owner_node })
+                if *destructured {
+                    Some(ReferenceFacts::ConstAliasRead {
+                        owner_node: *owner_node,
+                    })
                 } else {
                     Some(ReferenceFacts::SignalRead {
                         kind: SignalReferenceKind::Derived(DerivedKind::Derived),
@@ -265,6 +272,13 @@ fn classify_reference_semantics(
                     lowering_mode: PropEmitMode::Standard,
                     symbol: sym,
                 }))
+            } else {
+                None
+            }
+        }
+        BindingFacts::LegacyApiExport => {
+            if is_write {
+                Some(ReferenceFacts::IllegalWrite)
             } else {
                 None
             }

@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind};
 use svelte_ast::NodeId;
@@ -123,10 +125,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let derived_name = match branch.condition {
                 IfConditionKind::Memo => {
                     let expr = self.take_node_expr(branch.block_id)?;
-                    let inner = self.maybe_wrap_legacy_coarse_expr(
+                    let inner = coarse_wrap(self.ctx, 
                         expr,
                         self.ctx.expression_data(branch.block_id),
-                        true,
                     );
                     let thunk = self
                         .ctx
@@ -225,7 +226,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<Expression<'a>> {
         match branch.condition {
             IfConditionKind::AsyncParam => {
-                Ok(self.ctx.b.call_expr("$.get", [Arg::Ident("$$condition")]))
+                Ok(rune_get(&self.ctx.b, "$$condition"))
             }
             IfConditionKind::Memo => {
                 let Some(name) = derived_name else {
@@ -234,14 +235,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         "Memo branch missing derived ident",
                     );
                 };
-                Ok(self.ctx.b.call_expr("$.get", [Arg::Ident(name)]))
+                Ok(rune_get(&self.ctx.b, name))
             }
             IfConditionKind::Raw => {
                 let expr = self.take_node_expr(branch.block_id)?;
-                Ok(self.maybe_wrap_legacy_coarse_expr(
+                Ok(coarse_wrap(self.ctx, 
                     expr,
                     self.ctx.expression_data(branch.block_id),
-                    false,
                 ))
             }
         }

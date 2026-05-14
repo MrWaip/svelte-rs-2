@@ -8,7 +8,7 @@ mod symbol;
 pub use builder::{
     ComponentSemanticsBuilder, JsSemanticVisitor, TemplateBuildContext, TemplateWalker,
 };
-pub use pattern::{Access, BindingVisit, Step, walk_bindings};
+pub use pattern::{Access, BindingVisit, Step, walk_assignment_target_idents, walk_bindings};
 pub use reference::Reference;
 pub use storage::{ComponentSemantics, JsNode, JsStorage};
 pub use svelte_ast::FragmentId;

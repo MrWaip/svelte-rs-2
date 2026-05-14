@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
                     self.process_svelte_option_bool(&ba.name, true, el.span, &mut options);
                 }
                 Attribute::StringAttribute(sa) => {
-                    let value = sa.value_span.source_text(self.source).to_string();
+                    let value = sa.value(self.source).to_string();
                     self.process_svelte_option_string(&sa.name, &value, el.span, &mut options);
                 }
                 Attribute::ExpressionAttribute(ea) => {

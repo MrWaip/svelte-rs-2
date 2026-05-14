@@ -466,7 +466,7 @@ fn collect_component_attr_snippets(
     expr_data: Option<&ExpressionData>,
     snippets: &mut Vec<NodeId>,
 ) -> bool {
-    if let Expression::Identifier(ident) = expr {
+    if let Expression::Identifier(ident) = expr.get_inner_expression() {
         let name = ident.name.as_str();
         let sym_id = expr_data
             .and_then(|d| d.references.first().copied())
@@ -1027,7 +1027,10 @@ fn relative_selector_matches(
                 let Some(tag_name) = pruner.elements.tag_name(elem_id) else {
                     return false;
                 };
-                if name.as_str() != "*" && !tag_name.eq_ignore_ascii_case(name.as_str()) {
+                if name.as_str() != "*"
+                    && tag_name != "*"
+                    && !tag_name.eq_ignore_ascii_case(name.as_str())
+                {
                     return false;
                 }
             }
@@ -1346,6 +1349,13 @@ fn collect_descendants_from_node(
         Node::SnippetBlock(block) => {
             collect_descendants_from_fragment(pruner, block.body, adjacent_only, seen_snippets, out)
         }
+        Node::SlotElementLegacy(el) => collect_descendants_from_fragment(
+            pruner,
+            el.fragment,
+            adjacent_only,
+            seen_snippets,
+            out,
+        ),
         Node::RenderTag(_) => {
             let snippet_ids = pruner.index.render_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
@@ -1613,69 +1623,63 @@ fn get_possible_nested_siblings(
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
-    let mut fragments: Vec<FragmentId> = Vec::new();
+    let mut fragments: Vec<Option<FragmentId>> = Vec::new();
     let mut exhaustive = true;
 
     match pruner.component.store.get(node_id) {
         Node::EachBlock(block) => {
-            fragments.push(block.body);
-            if let Some(fb) = block.fallback {
-                fragments.push(fb);
-            }
+            fragments.push(Some(block.body));
+            fragments.push(block.fallback);
         }
         Node::IfBlock(block) => {
-            fragments.push(block.consequent);
-            if let Some(alt) = block.alternate {
-                fragments.push(alt);
-            }
+            fragments.push(Some(block.consequent));
+            fragments.push(block.alternate);
         }
         Node::AwaitBlock(block) => {
-            if let Some(p) = block.pending {
-                fragments.push(p);
-            }
-            if let Some(t) = block.then {
-                fragments.push(t);
-            }
-            if let Some(c) = block.catch {
-                fragments.push(c);
-            }
+            fragments.push(block.pending);
+            fragments.push(block.then);
+            fragments.push(block.catch);
         }
         Node::KeyBlock(block) => {
-            fragments.push(block.fragment);
+            fragments.push(Some(block.fragment));
         }
         Node::SnippetBlock(block) => {
             if !seen_snippets.insert(node_id) {
                 return FxHashMap::default();
             }
             exhaustive = false;
-            fragments.push(block.body);
+            fragments.push(Some(block.body));
         }
         Node::ComponentNode(cn) => {
-            fragments.push(cn.fragment);
+            fragments.push(Some(cn.fragment));
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
-                    fragments.push(block.body);
+                    fragments.push(Some(block.body));
                 }
             }
         }
         Node::SvelteComponentLegacy(cn) => {
-            fragments.push(cn.fragment);
+            fragments.push(Some(cn.fragment));
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
-                    fragments.push(block.body);
+                    fragments.push(Some(block.body));
                 }
             }
         }
         Node::SvelteBoundary(b) => {
-            fragments.push(b.fragment);
+            fragments.push(Some(b.fragment));
         }
         _ => return FxHashMap::default(),
     }
 
     let mut result = FxHashMap::default();
-    for fragment_id in fragments {
+    for fragment_opt in fragments {
+        let Some(fragment_id) = fragment_opt else {
+            exhaustive = false;
+            continue;
+        };
         let map = loop_child(pruner, fragment_id, direction, adjacent_only, seen_snippets);
         exhaustive &= has_definite_elements(&map);
         add_all_candidates(&map, &mut result);
@@ -1846,8 +1850,11 @@ fn candidate_elements(
             }
             SimpleSelector::Type { name, .. } if name.as_str() != "*" => {
                 let direct = elements.elements_with_tag(name.as_str());
-                if !direct.is_empty() {
-                    return SmallVec::from_slice(direct);
+                let dynamic = elements.elements_with_tag("*");
+                if !direct.is_empty() || !dynamic.is_empty() {
+                    let mut out = SmallVec::from_slice(direct);
+                    out.extend_from_slice(dynamic);
+                    return out;
                 }
                 if name.as_str().bytes().any(|byte| byte.is_ascii_uppercase()) {
                     return SmallVec::from_slice(elements.all_elements());
@@ -2161,7 +2168,7 @@ fn gather_possible_values(
     values: &mut FxHashSet<String>,
     is_nested: bool,
 ) -> bool {
-    match expr {
+    match expr.get_inner_expression() {
         Expression::StringLiteral(lit) => {
             values.insert(lit.value.to_string());
             true

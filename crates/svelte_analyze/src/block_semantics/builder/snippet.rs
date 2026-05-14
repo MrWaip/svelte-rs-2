@@ -51,7 +51,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 fn arrow_from_declarator<'a>(
     decl: &'a VariableDeclarator<'a>,
 ) -> Option<&'a ArrowFunctionExpression<'a>> {
-    match decl.init.as_ref()? {
+    match decl.init.as_ref()?.get_inner_expression() {
         Expression::ArrowFunctionExpression(arrow) => Some(arrow.as_ref()),
         _ => None,
     }

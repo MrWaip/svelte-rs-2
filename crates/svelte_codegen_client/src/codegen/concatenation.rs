@@ -1,9 +1,11 @@
+use svelte_emit_builders::legacy_wrap;
 use oxc_ast::ast::Expression;
 use std::iter::empty;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use super::data_structures::{ConcatPart, EmitState, FragmentCtx, TemplateMemoState};
 use super::fragment::role_needs_text_first_next;
+use super::expr::legacy_dep_expr;
 use super::{Codegen, Result};
 
 pub(in crate::codegen) enum ConcatenationAnchor {
@@ -99,13 +101,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             data.kind,
                             ExprKind::SimpleRead { reactive: true }
                                 | ExprKind::Computed { reactive: true }
-                                | ExprKind::Call
+                                | ExprKind::Call { dynamic: true }
                                 | ExprKind::Async { .. }
                         );
-                        let expr =
-                            self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references, false);
+                        let expr = legacy_wrap::apply(
+                            &self.ctx.b,
+                            expr,
+                            data.legacy_wrap,
+                            &data.references,
+                            |sym| legacy_dep_expr(self.ctx, sym),
+                        );
                         let (effective, memoized) = match data.kind {
-                            ExprKind::Call if !data.references.is_empty() => {
+                            ExprKind::Call { dynamic: true } => {
                                 memo_deps.push_node_deps(self.ctx, *id);
                                 let cloned = self.ctx.b.clone_expr(&expr);
                                 let index = memo_deps.sync_values_push(cloned);
@@ -120,7 +127,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             ExprKind::KnownLiteral
                             | ExprKind::SimpleRead { .. }
                             | ExprKind::Computed { .. }
-                            | ExprKind::Call
+                            | ExprKind::Call { dynamic: false }
                             | ExprKind::Async { has_await: false } => (expr, false),
                         };
                         (effective, part_needs_effect, memoized)
@@ -129,7 +136,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             if part_needs_effect {
                 needs_effect = true;
             }
-            let defined = source_defined && !was_memoized;
+            let is_sequence = matches!(effective_expr, Expression::SequenceExpression(_));
+            let defined = source_defined && !was_memoized && !is_sequence;
             tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
         }
 

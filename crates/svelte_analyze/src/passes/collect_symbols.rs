@@ -64,7 +64,7 @@ fn classify_shorthand(
     data: &mut AnalysisData,
 ) {
     if let Some((attr_id, name)) = pending.take()
-        && let Expression::Identifier(ident) = expr
+        && let Expression::Identifier(ident) = expr.get_inner_expression()
         && ident.name.as_str() == name
     {
         data.elements.flags.expression_shorthand.insert(attr_id);
@@ -82,7 +82,7 @@ fn classify_clsx(
     }
     *pending = false;
     if !matches!(
-        expr,
+        expr.get_inner_expression(),
         Expression::StringLiteral(_)
             | Expression::TemplateLiteral(_)
             | Expression::BinaryExpression(_)

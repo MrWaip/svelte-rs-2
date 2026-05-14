@@ -64,12 +64,11 @@ impl ElementFactsEntry {
         for attr in attrs {
             match attr {
                 Attribute::StringAttribute(attr) if attr.name == "id" => {
-                    static_id = Some(CompactString::new(attr.value_span.source_text(source)));
+                    static_id = Some(CompactString::new(attr.value(source)));
                 }
                 Attribute::StringAttribute(attr) if attr.name == "class" => {
                     static_classes.extend(
-                        attr.value_span
-                            .source_text(source)
+                        attr.value(source)
                             .split_whitespace()
                             .map(CompactString::new),
                     );
