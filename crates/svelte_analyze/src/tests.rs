@@ -3242,7 +3242,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
     );
     assert_eq!(
         script_reference_semantics(&data, &parsed, "total", false, true, 0),
-        ReferenceSemantics::IllegalWrite
+        ReferenceSemantics::DerivedWrite
     );
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "foo", true, false, 0),

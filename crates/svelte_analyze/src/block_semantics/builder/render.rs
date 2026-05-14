@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn render_arg_prop_source() {
         assert_render(
-            r#"<script>let { value = $bindable() } = $props(); function row(_) {}</script>{@render row(value)}"#,
+            r#"<script>let { value = $bindable() } = $props(); function row(_) {} value = 1;</script>{@render row(value)}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
                 assert!(
