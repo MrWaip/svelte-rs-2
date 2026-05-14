@@ -1,9 +1,9 @@
 # Const Tag
 
 ## Current state
-- **Working**: 10/10 use cases
-- **Tests**: 22/22 green
-- Last updated: 2026-04-04
+- **Working**: 12/12 use cases
+- **Tests**: 24/24 green
+- Last updated: 2026-05-11
 
 ## Source
 
@@ -30,6 +30,8 @@
 
 - [x] Simple identifier binding inside an allowed block parent such as `{#each}` or `{#if}`
 - [x] Destructured binding patterns (`{ x, y }`) with derived reads through the generated temp binding
+- [x] Single-key object destructure `{@const { x } = expr}` rewrites reads as `$.get(computed_const).x` (test: `const_tag_destructured_single_key`)
+- [x] Destructured pattern preserves defaults (`{ a, b = 'x' } = expr`), alias renames, and nested patterns by reusing the original `BindingPattern` from the parsed declarator (test: `const_tag_destructured_default`)
 - [x] Multiple independent `{@const}` tags in one fragment
 - [x] TypeScript annotations on `{@const}` declarations are stripped before client codegen
 - [x] `{@const}` inside `if` / `else if` branches
@@ -90,6 +92,8 @@
 - [x] `const_tag_destructured`
 - [x] `const_tag_destructured_multi`
 - [x] `const_tag_destructured_if`
+- [x] `const_tag_destructured_single_key`
+- [x] `const_tag_destructured_default`
 - [x] `const_tag_dev`
 - [x] `ts_strip_const_tag`
 - [x] `const_tag_key_block`

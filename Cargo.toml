@@ -2,13 +2,14 @@
 members = ["crates/*", "tasks/*"]
 resolver = "2"
 
+[workspace.metadata.dylint]
+libraries = [
+    { path = "lints" },
+]
+
 [workspace.lints.rust]
-# unsafe_code = "deny"
-# Semantic-layer migration: `#[deprecated]` is used as a navigation
-# hint for contributors ("do not grow more call sites") rather than
-# a hard rule. Silence call-site warnings globally; the attribute
-# still appears on declarations so IDE / rustdoc surface the hint.
 deprecated = "allow"
+# dead_code = "forbid"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
@@ -18,6 +19,7 @@ expect_used = "allow"
 too_many_arguments = "allow"
 type_complexity = "allow"
 module_name_repetitions = "allow"
+absolute_paths = "warn"
 
 
 [workspace.dependencies]
@@ -63,7 +65,7 @@ bitflags = "2.6.0"
 [profile.release]
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = "symbols"
 
 [profile.profiling]

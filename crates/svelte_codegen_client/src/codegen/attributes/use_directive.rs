@@ -43,7 +43,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let stmt = self.ctx.b.call_stmt("$.action", args);
         let stmt = self.wrap_run_after_blockers(stmt, &blockers);
-        state.init.push(stmt);
+        state.pending_element_init.push(stmt);
 
         Ok(())
     }

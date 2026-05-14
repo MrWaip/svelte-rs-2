@@ -1,9 +1,9 @@
 # $state rune
 
 ## Current state
-- **Working**: 44/44 use cases
-- **Tests**: 50/50 green
-- Last updated: 2026-05-01
+- **Working**: 46/46 use cases
+- **Tests**: 52/52 green
+- Last updated: 2026-05-11
 
 ## Source
 Audit of existing implementation
@@ -31,10 +31,12 @@ Audit of existing implementation
 - [x] `$state.raw` object destructuring (covered, test: state_raw_destructure_object)
 - [x] `$state.raw` array destructuring (covered, test: state_raw_destructure_array)
 - [x] Public field: `count = $state(0)` → private backing + getter/setter (covered, test: state_class_field)
+- [x] Public class field with non-literal `$state(...)` initializer wraps argument in `$.proxy(...)` — e.g. `current = $state(DEFAULTS)` → `#current = $.state($.proxy(DEFAULTS))` (covered, test: state_class_field_proxy_init)
 - [x] Private field: `#count = $state(0)` (covered, test: state_private_class_field)
 - [x] Constructor assignment: `this.count = $state(0)` (covered, test: state_class_constructor)
 - [x] Multiple state fields in class (covered, test: state_class_multiple)
 - [x] `$state.raw` class field (covered, test: state_raw_class_field)
+- [x] `$state.raw` constructor assignment with object literal: `this.x = $state.raw({...})` — argument not wrapped in `$.proxy` (covered, test: state_raw_class_constructor_object_ts)
 - [x] Class field getter → `$.get(this.#field)` (covered, test: state_class_field)
 - [x] Class field setter → `$.set(this.#field, value, true)` (covered, test: state_class_field)
 - [x] `$state` inside exported function (covered, test: state_inside_function)
@@ -94,10 +96,12 @@ Audit of existing implementation
 - [x] `state_raw_destructure_object`
 - [x] `state_raw_destructure_array`
 - [x] `state_class_field`
+- [x] `state_class_field_proxy_init`
 - [x] `state_private_class_field`
 - [x] `state_class_constructor`
 - [x] `state_class_multiple`
 - [x] `state_raw_class_field`
+- [x] `state_raw_class_constructor_object_ts`
 - [x] `state_inside_function`
 - [x] `component_prop_memo_state`
 - [x] `render_tag_dynamic_state`

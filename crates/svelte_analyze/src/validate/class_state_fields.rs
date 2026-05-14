@@ -8,6 +8,7 @@ use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::types::script::RuneKind;
 use crate::utils::script_info::detect_rune_from_call;
 
 pub(super) fn validate(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
@@ -91,8 +92,7 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
     }
 }
 
-fn is_state_creation_rune(kind: Option<crate::types::script::RuneKind>) -> bool {
-    use crate::types::script::RuneKind;
+fn is_state_creation_rune(kind: Option<RuneKind>) -> bool {
     matches!(
         kind,
         Some(RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy)

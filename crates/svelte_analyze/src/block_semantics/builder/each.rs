@@ -5,8 +5,12 @@ use super::super::{
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
 use crate::reactivity_semantics::data::{PropReferenceSemantics, ReferenceSemantics};
-use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
+use oxc_ast::ast::{
+    AwaitExpression, BindingPattern, CallExpression, Expression, IdentifierReference,
+};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_await_expression, walk_call_expression};
+use oxc_syntax::scope::ScopeId;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, EachBlock, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, SymbolId};
@@ -111,6 +115,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         .is_some_and(|(child, parent)| {
             ctx.semantics
                 .own_binding_names(child)
+                .filter(|name| !name.starts_with("$$"))
                 .any(|name| ctx.semantics.find_binding(parent, name).is_some())
         });
 
@@ -121,6 +126,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     let has_external = collection_facts.has_external;
     let uses_store = collection_facts.uses_store;
     let collection_store = collection_facts.collection_store;
+    let collection_kind = match collection_expr {
+        Some(e) => collection_kind_of(ctx, e, &collection_facts),
+        None => EachCollectionKind::Regular,
+    };
+
     let async_kind = if collection_facts.has_await || !collection_facts.blockers.is_empty() {
         EachAsyncKind::Async {
             has_await: collection_facts.has_await,
@@ -129,10 +139,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     } else {
         EachAsyncKind::Sync
     };
-
-    let collection_kind = collection_expr
-        .map(|e| collection_kind_of(ctx, e))
-        .unwrap_or(EachCollectionKind::Regular);
 
     let has_key = !matches!(key, EachKeyKind::Unkeyed | EachKeyKind::KeyedByIndex);
     let has_index = matches!(index, EachIndexKind::Declared { .. });
@@ -182,12 +188,23 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
     );
 }
 
-fn collection_kind_of<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> EachCollectionKind {
+fn collection_kind_of<'a>(
+    ctx: &Ctx<'_, 'a>,
+    expr: &Expression<'a>,
+    facts: &CollectionExprFacts,
+) -> EachCollectionKind {
     let mut current = expr;
+    let mut peeled_member = false;
     loop {
         match current {
-            Expression::StaticMemberExpression(m) => current = &m.object,
-            Expression::ComputedMemberExpression(m) => current = &m.object,
+            Expression::StaticMemberExpression(m) => {
+                peeled_member = true;
+                current = &m.object;
+            }
+            Expression::ComputedMemberExpression(m) => {
+                peeled_member = true;
+                current = &m.object;
+            }
             Expression::ParenthesizedExpression(p) => current = &p.expression,
             Expression::Identifier(id) => {
                 let Some(ref_id) = id.reference_id.get() else {
@@ -197,29 +214,62 @@ fn collection_kind_of<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> EachColle
                     ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. }) => {
                         EachCollectionKind::PropSource
                     }
+                    ReferenceSemantics::StoreRead { symbol }
+                        if peeled_member && !ctx.reactivity.uses_runes() =>
+                    {
+                        EachCollectionKind::LegacyStoreMemberChain { store_sym: symbol }
+                    }
                     _ => EachCollectionKind::Regular,
                 };
             }
-            _ => return EachCollectionKind::Regular,
+            _ => break,
         }
+    }
+
+    if ctx.reactivity.uses_runes() || !facts.has_call {
+        return EachCollectionKind::Regular;
+    }
+
+    let mut deep_read_symbols: SmallVec<[SymbolId; 2]> = SmallVec::new();
+    for ref_id in &facts.refs {
+        let sem = ctx.reactivity.reference_semantics(*ref_id);
+        if !matches!(
+            sem,
+            ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+        ) {
+            continue;
+        }
+        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
+            continue;
+        };
+        if !deep_read_symbols.contains(&sym) {
+            deep_read_symbols.push(sym);
+        }
+    }
+
+    if deep_read_symbols.is_empty() {
+        EachCollectionKind::Regular
+    } else {
+        EachCollectionKind::LegacyCallReadsState { deep_read_symbols }
     }
 }
 
 fn collection_expression_facts<'a>(
     ctx: &Ctx<'_, 'a>,
     expr: &Expression<'a>,
-    body_scope: oxc_syntax::scope::ScopeId,
+    body_scope: ScopeId,
 ) -> CollectionExprFacts {
     let each_depth = ctx.semantics.function_depth(body_scope) + 1;
     let mut collector = CollectionExprCollector {
         refs: Vec::new(),
         has_await: false,
+        has_call: false,
     };
     collector.visit_expression(expr);
 
     let mut has_external = false;
     let mut uses_store = false;
-    let mut collection_store: Option<crate::scope::SymbolId> = None;
+    let mut collection_store: Option<SymbolId> = None;
     let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
     for ref_id in &collector.refs {
         let sem = ctx.reactivity.reference_semantics(*ref_id);
@@ -261,7 +311,9 @@ fn collection_expression_facts<'a>(
         uses_store,
         collection_store,
         has_await: collector.has_await,
+        has_call: collector.has_call,
         blockers,
+        refs: collector.refs,
     }
 }
 
@@ -286,14 +338,17 @@ fn body_has_direct_animate(ctx: &Ctx<'_, '_>, nodes: &[NodeId]) -> bool {
 struct CollectionExprFacts {
     has_external: bool,
     uses_store: bool,
-    collection_store: Option<crate::scope::SymbolId>,
+    collection_store: Option<SymbolId>,
     has_await: bool,
+    has_call: bool,
     blockers: SmallVec<[u32; 2]>,
+    refs: Vec<ReferenceId>,
 }
 
 struct CollectionExprCollector {
     refs: Vec<ReferenceId>,
     has_await: bool,
+    has_call: bool,
 }
 
 impl<'a> Visit<'a> for CollectionExprCollector {
@@ -302,9 +357,13 @@ impl<'a> Visit<'a> for CollectionExprCollector {
             self.refs.push(ref_id);
         }
     }
-    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         self.has_await = true;
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk_await_expression(self, expr);
+    }
+    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+        self.has_call = true;
+        walk_call_expression(self, expr);
     }
 }
 

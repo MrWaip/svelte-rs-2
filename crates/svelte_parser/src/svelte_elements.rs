@@ -1,3 +1,5 @@
+use std::mem;
+
 use svelte_ast::{
     AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Namespace, Node, NodeId,
     SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_FRAGMENT, SVELTE_HEAD,
@@ -77,7 +79,7 @@ impl<'a> Parser<'a> {
             }
 
             current_level.clear();
-            std::mem::swap(&mut current_level, &mut next_level);
+            mem::swap(&mut current_level, &mut next_level);
             at_root = false;
         }
     }
@@ -575,6 +577,12 @@ fn for_each_child_fragment(node: &Node, mut f: impl FnMut(svelte_ast::FragmentId
         Node::SvelteFragmentLegacy(fragment) => f(fragment.fragment),
         Node::SvelteElement(el) => f(el.fragment),
         Node::SvelteComponentLegacy(el) => {
+            f(el.fragment);
+            for slot in &el.legacy_slots {
+                f(slot.fragment);
+            }
+        }
+        Node::SvelteSelf(el) => {
             f(el.fragment);
             for slot in &el.legacy_slots {
                 f(slot.fragment);

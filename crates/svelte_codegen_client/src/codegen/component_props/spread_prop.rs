@@ -1,6 +1,8 @@
+use oxc_ast::ast::Statement;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::ComponentSpreadEmit;
 use svelte_ast::NodeId;
+use svelte_ast_builder::Arg;
 
 use super::super::{Codegen, CodegenError, Result};
 use super::dispatch::PropOrSpread;
@@ -12,11 +14,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         expr_id: OxcNodeId,
         emit: ComponentSpreadEmit,
         items: &mut Vec<PropOrSpread<'a>>,
+        memo_decls: &mut Vec<Statement<'a>>,
+        memo_counter: &mut u32,
     ) -> Result<()> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
         let spread_expr = match emit {
+            ComponentSpreadEmit::MemoThunk => {
+                let helper = self.ctx.query.view.derived_helper();
+                let memo_name = format!("${memo_counter}");
+                *memo_counter += 1;
+                let thunk = self.ctx.b.thunk(expr);
+                let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
+                memo_decls.push(self.ctx.b.let_init_stmt(&memo_name, derived));
+                let memo_ref = self.ctx.b.alloc_str(&memo_name);
+                let get = self.ctx.b.call_expr("$.get", [Arg::Ident(memo_ref)]);
+                self.ctx.b.thunk(get)
+            }
             ComponentSpreadEmit::Thunk => self.ctx.b.thunk(expr),
             ComponentSpreadEmit::Inline => expr,
         };

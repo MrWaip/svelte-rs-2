@@ -1,12 +1,13 @@
 pub(crate) mod builder;
 pub mod data;
 
-pub use builder::build;
+pub use builder::{build, BindingGroupTable};
 pub use data::{
     AttributeSemantics, BoundaryPropEmit, BoundaryPropSemantics, ComponentAttachEmit,
     ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
     ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
-    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, DocumentBindSemantics,
+    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
+    DocumentBindSemantics, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
     ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
     HtmlBindKind, WindowBindSemantics,
 };
@@ -19,7 +20,7 @@ pub struct AttributeSemanticsStore {
 }
 
 impl AttributeSemanticsStore {
-    pub fn new(node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
         let mut entries = Vec::with_capacity(node_count as usize);
         entries.resize_with(node_count as usize, AttributeSemantics::default);
         Self { entries }

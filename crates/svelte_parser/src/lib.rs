@@ -1,3 +1,7 @@
+use std::mem;
+
+use oxc_allocator::Allocator;
+use oxc_ast::ast::Program;
 use scanner::{Scanner, token::TokenType};
 use svelte_span::Span;
 
@@ -21,28 +25,28 @@ mod attr_convert;
 mod handlers;
 mod svelte_elements;
 
-pub use types::{CePropConfig, CeShadowMode, JsAst, ParsedCeConfig};
+pub use types::{CePropConfig, CeDomMode, JsAst, ParsedCeConfig};
 
 pub fn parse_module<'a>(
-    alloc: &'a oxc_allocator::Allocator,
+    alloc: &'a Allocator,
     source: &str,
     is_ts: bool,
-) -> Result<oxc_ast::ast::Program<'a>, Vec<Diagnostic>> {
+) -> Result<Program<'a>, Vec<Diagnostic>> {
     let arena_source: &'a str = alloc.alloc_str(source);
     parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)
 }
 
 pub fn parse_with_js<'a>(
-    alloc: &'a oxc_allocator::Allocator,
+    alloc: &'a Allocator,
     source: &str,
 ) -> (
     svelte_ast::Component,
-    crate::types::JsAst<'a>,
+    JsAst<'a>,
     Vec<Diagnostic>,
 ) {
     let trimmed = source.trim_end();
     let (component, mut diagnostics) = Parser::new(trimmed).parse();
-    let mut result = crate::types::JsAst::new();
+    let mut result = JsAst::new();
     walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
 
     (component, result, diagnostics)
@@ -73,6 +77,7 @@ struct KeyBlockEntry {
 
 struct ElementEntry {
     name: String,
+    name_span: Span,
     span_start: Span,
     attributes: Vec<Attribute>,
 }
@@ -207,6 +212,7 @@ impl<'a> Parser<'a> {
         let attrs = match self.store.get(child) {
             Node::Element(el) => &el.attributes,
             Node::ComponentNode(cn) => &cn.attributes,
+            Node::SvelteSelf(cn) => &cn.attributes,
             _ => return None,
         };
 
@@ -215,7 +221,7 @@ impl<'a> Parser<'a> {
                 && sa.name == "slot"
             {
                 let value = sa.value_span.source_text(self.source);
-                if value.is_empty() {
+                if value.is_empty() || value == "default" {
                     return None;
                 }
                 return Some(value.to_string());
@@ -282,11 +288,20 @@ impl<'a> Parser<'a> {
                                 fragment,
                                 legacy_slots: Vec::new(),
                             })
+                        } else if name == SVELTE_SELF {
+                            Node::SvelteSelf(svelte_ast::SvelteSelf {
+                                id: NodeId(0),
+                                span: token.span,
+                                self_closing: true,
+                                attributes: attrs,
+                                fragment,
+                                legacy_slots: Vec::new(),
+                            })
                         } else if is_component_name(&name) {
                             Node::ComponentNode(ComponentNode {
                                 id: NodeId(0),
                                 span: token.span,
-                                name,
+                                name: svelte_ast::ExprRef::new(tag.name_span),
                                 self_closing: true,
                                 attributes: attrs,
                                 fragment,
@@ -307,6 +322,7 @@ impl<'a> Parser<'a> {
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
                             name: name.to_string(),
+                            name_span: tag.name_span,
                             span_start: token.span,
                             attributes: attrs,
                         }));
@@ -521,7 +537,7 @@ impl<'a> Parser<'a> {
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
-        let store = std::mem::take(&mut self.store);
+        let store = mem::take(&mut self.store);
         let mut component = Component::new(
             self.source.to_string(),
             root_fragment,

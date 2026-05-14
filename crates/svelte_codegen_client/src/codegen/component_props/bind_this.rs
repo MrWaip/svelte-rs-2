@@ -41,15 +41,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .to_string()
         };
 
-        let is_rune = match self.ctx.query.analysis.attributes.get(bind_id) {
+        enum SignalKind {
+            Plain,
+            Rune,
+            LegacyState,
+        }
+        let signal_shape = match self.ctx.query.analysis.attributes.get(bind_id) {
             svelte_analyze::AttributeSemantics::ComponentBind(b) => match &b.kind {
-                svelte_analyze::ComponentBindKind::This { target, .. } => {
-                    matches!(target, svelte_analyze::ComponentBindTarget::Rune)
-                }
-                _ => false,
+                svelte_analyze::ComponentBindKind::This { target, .. } => match target {
+                    svelte_analyze::ComponentBindTarget::Rune
+                    | svelte_analyze::ComponentBindTarget::RuneDerived => SignalKind::Rune,
+                    svelte_analyze::ComponentBindTarget::LegacyState => SignalKind::LegacyState,
+                    _ => SignalKind::Plain,
+                },
+                _ => SignalKind::Plain,
             },
-            _ => false,
+            _ => SignalKind::Plain,
         };
+        let is_rune = !matches!(signal_shape, SignalKind::Plain);
 
         let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
 
@@ -123,7 +132,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let expr_text = self.ctx.b.alloc_str(&var_name);
 
-        let setter = if is_rune {
+        let setter = if let SignalKind::Rune = signal_shape {
             let body = self.ctx.b.call_expr(
                 "$.set",
                 [
@@ -132,6 +141,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Arg::Expr(self.ctx.b.bool_expr(true)),
                 ],
             );
+            self.ctx
+                .b
+                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])
+        } else if let SignalKind::LegacyState = signal_shape {
+            let body = self
+                .ctx
+                .b
+                .call_expr("$.set", [Arg::Ident(expr_text), Arg::Ident("$$value")]);
             self.ctx
                 .b
                 .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])

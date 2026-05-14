@@ -1,11 +1,10 @@
 use oxc_ast::ast::Expression;
-use svelte_ast::{
-    Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SVELTE_COMPONENT, SlotElementLegacy,
-};
+use svelte_ast::{Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SlotElementLegacy};
 
-use crate::expression_semantics::ExpressionData;
+use crate::expression_semantics::{ExprKind, ExpressionData};
+use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{
+use crate::types::data::{ConstBindingSemantics,
     AnalysisData, BindingSemantics, ParentKind, PropBindingKind, PropBindingSemantics,
     ReactivitySemantics,
 };
@@ -80,7 +79,13 @@ impl TemplateVisitor for DynamismVisitor {
         let Some(data) = ctx.data.expression_data(tag.id) else {
             return;
         };
-        if data.is_dynamic() {
+        if matches!(
+            data.kind,
+            ExprKind::SimpleRead { reactive: true }
+                | ExprKind::Computed { reactive: true }
+                | ExprKind::Call
+                | ExprKind::Async { .. }
+        ) {
             ctx.data.dynamism.mark_dynamic_node(tag.id);
         }
     }
@@ -104,19 +109,28 @@ impl TemplateVisitor for DynamismVisitor {
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         let data = &*ctx.data;
         let uses_runes = data.uses_runes();
-        let base_name = cn.name.split('.').next().unwrap_or(cn.name.as_str());
-        if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name)
+        let Some(expr) = ctx.parsed.and_then(|p| p.expr(cn.name.id())) else {
+            return;
+        };
+        if uses_runes && matches!(expr, Expression::StaticMemberExpression(_)) {
+            ctx.data.dynamism.mark_dynamic_component(cn.id);
+            return;
+        }
+        if let Some(ref_id) = expression_root_reference_id(expr)
+            && let Some(sym_id) = data.scoping.symbol_for_reference(ref_id)
             && uses_runes
             && is_reactive_component_binding(data, sym_id)
         {
             ctx.data.dynamism.mark_dynamic_component(cn.id);
         }
-        if uses_runes && cn.name.contains('.') {
-            ctx.data.dynamism.mark_dynamic_component(cn.id);
-        }
-        if cn.name == SVELTE_COMPONENT {
-            ctx.data.dynamism.mark_dynamic_component(cn.id);
-        }
+    }
+
+    fn visit_svelte_component_legacy(
+        &mut self,
+        cn: &svelte_ast::SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        ctx.data.dynamism.mark_dynamic_component(cn.id);
     }
 
     fn visit_js_expression(
@@ -133,7 +147,7 @@ impl TemplateVisitor for DynamismVisitor {
             let in_component = ctx.data.expr_ancestors(node_id).nth(1).is_some_and(|gp| {
                 matches!(
                     gp.kind,
-                    ParentKind::ComponentNode | ParentKind::SvelteBoundary
+                    ParentKind::ComponentNode | ParentKind::SvelteSelf | ParentKind::SvelteBoundary
                 )
             });
 
@@ -175,7 +189,13 @@ impl TemplateVisitor for DynamismVisitor {
             let Some(data) = ctx.data.expression_data(node_id) else {
                 return;
             };
-            if data.is_dynamic() {
+            if matches!(
+                data.kind,
+                ExprKind::SimpleRead { reactive: true }
+                    | ExprKind::Computed { reactive: true }
+                    | ExprKind::Call
+                    | ExprKind::Async { .. }
+            ) {
                 ctx.data.dynamism.mark_dynamic_node(node_id);
             }
         }
@@ -187,13 +207,13 @@ pub(crate) fn is_symbol_dynamic(
     reactivity: &ReactivitySemantics,
     sym_id: SymbolId,
 ) -> bool {
-    use crate::types::data::ConstBindingSemantics;
     if scoping.is_each_index_non_dynamic(sym_id) {
         return false;
     }
     let decl = reactivity.binding_semantics(sym_id);
     match decl {
-        BindingSemantics::State(_)
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
@@ -203,9 +223,15 @@ pub(crate) fn is_symbol_dynamic(
         BindingSemantics::Derived(d) => d.reactive,
         BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
         BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive
-        | BindingSemantics::Unresolved
-        | BindingSemantics::OptimizedRune(_) => !scoping.is_component_top_level_symbol(sym_id),
+        BindingSemantics::NonReactive => {
+            if !scoping.is_component_top_level_symbol(sym_id) {
+                return true;
+            }
+            !scoping.is_init_known(sym_id)
+        }
+        BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
+            !scoping.is_component_top_level_symbol(sym_id)
+        }
     }
 }
 
@@ -214,7 +240,14 @@ fn is_dynamic_element_attr(
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if data.has_await() {
+    if matches!(data.kind, ExprKind::Async { has_await: true }) {
+        return true;
+    }
+    if matches!(
+        data.kind,
+        ExprKind::SimpleRead { reactive: true } | ExprKind::Computed { reactive: true }
+    ) && data.references.is_empty()
+    {
         return true;
     }
     attr_symbols_data(data, None, scoping).any(|sym_id| {
@@ -234,7 +267,7 @@ fn has_state_component_attr(
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if data.has_await() {
+    if matches!(data.kind, ExprKind::Async { has_await: true }) {
         return true;
     }
     if matches!(expr, Expression::ArrowFunctionExpression(_)) {
@@ -278,7 +311,9 @@ fn is_unified_plain_symbol(
 fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool {
     !matches!(
         data.binding_semantics(sym),
-        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
+        BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved,
     )
 }
 

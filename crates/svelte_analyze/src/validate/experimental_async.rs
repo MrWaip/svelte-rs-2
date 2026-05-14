@@ -1,7 +1,8 @@
 use oxc_ast::ast::{ArrowFunctionExpression, AwaitExpression, CallExpression, Function, Program};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_call_expression, walk_function, walk_program,
+    walk_arrow_function_expression, walk_await_expression, walk_call_expression, walk_function,
+    walk_program,
 };
 use oxc_semantic::ScopeFlags;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -83,6 +84,6 @@ impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
                 Span::new(expr.span.start, expr.span.end),
             ));
         }
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk_await_expression(self, expr);
     }
 }

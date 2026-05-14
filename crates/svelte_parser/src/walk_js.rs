@@ -210,6 +210,7 @@ fn walk_node<'a>(
             );
         }
         Node::ComponentNode(cn) => {
+            parse_span(alloc, component, cn.name.span, typescript, result, diags);
             walk_attrs(alloc, &cn.attributes, component, typescript, result, diags);
             walk_fragment(
                 alloc,
@@ -427,6 +428,29 @@ fn walk_node<'a>(
                 result,
                 diags,
             );
+        }
+        Node::SvelteSelf(el) => {
+            walk_attrs(alloc, &el.attributes, component, typescript, result, diags);
+            walk_fragment(
+                alloc,
+                el.fragment,
+                store,
+                component,
+                typescript,
+                result,
+                diags,
+            );
+            for slot in &el.legacy_slots {
+                walk_fragment(
+                    alloc,
+                    slot.fragment,
+                    store,
+                    component,
+                    typescript,
+                    result,
+                    diags,
+                );
+            }
         }
         Node::SvelteWindow(w) => {
             walk_attrs(alloc, &w.attributes, component, typescript, result, diags);

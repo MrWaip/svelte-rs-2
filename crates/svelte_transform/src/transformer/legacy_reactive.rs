@@ -1,4 +1,7 @@
+use std::mem;
+
 use oxc_allocator::Vec as OxcVec;
+use oxc_span::SPAN;
 use oxc_ast::ast::{Expression, Program, Statement};
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::AnalysisData;
@@ -25,7 +28,7 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
         topo.iter().map(|s| (s.stmt_node, *s)).collect();
 
     let allocator = b.ast.allocator;
-    let old_body = std::mem::replace(&mut program.body, OxcVec::new_in(allocator));
+    let old_body = mem::replace(&mut program.body, OxcVec::new_in(allocator));
 
     let mut bodies_by_node: FxHashMap<OxcNodeId, Statement<'a>> = FxHashMap::default();
     enum Slot<'a> {
@@ -103,19 +106,14 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
         new_body.push(b.const_stmt(name, init));
     }
 
-    let mut inserted = false;
     for slot in slots {
         match slot {
             Slot::Keep(stmt) => new_body.push(stmt),
-            Slot::DollarPlaceholder => {
-                if !inserted {
-                    for stmt in pre_effect_stmts.drain(..) {
-                        new_body.push(stmt);
-                    }
-                    inserted = true;
-                }
-            }
+            Slot::DollarPlaceholder => {}
         }
+    }
+    for stmt in pre_effect_stmts.drain(..) {
+        new_body.push(stmt);
     }
 
     program.body = new_body;
@@ -167,7 +165,7 @@ fn build_deps_thunk<'a>(
     for expr in dep_exprs {
         seq_vec.push(expr);
     }
-    let seq = b.ast.expression_sequence(oxc_span::SPAN, seq_vec);
+    let seq = b.ast.expression_sequence(SPAN, seq_vec);
     b.arrow_expr(b.no_params(), [b.expr_stmt(seq)])
 }
 
@@ -194,6 +192,16 @@ fn build_dep_read<'a>(
             let accessor_call = b.call_expr_callee(b.rid_expr(name), []);
             b.call_expr("$.deep_read_state", [Arg::Expr(accessor_call)])
         }
-        _ => b.rid_expr(name),
+        BindingSemantics::Store(_) => b.call_expr_callee(b.rid_expr(name), []),
+        BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => b.rid_expr(name),
+        BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => b.rid_expr(name),
+        BindingSemantics::Unresolved => b.rid_expr(name),
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::RuntimeRune { .. } => {
+            unreachable!("rune-mode binding cannot be a dep of legacy `$:` block")
+        }
     }
 }

@@ -20,6 +20,7 @@ pub(crate) struct FragmentCtx<'a> {
     pub role: FragmentRole,
     pub source: &'a str,
     pub anchor: FragmentAnchor,
+    pub in_block_callback: bool,
 }
 
 impl<'a> FragmentCtx<'a> {
@@ -38,6 +39,7 @@ impl<'a> FragmentCtx<'a> {
             role: fragment.role,
             source: ctx.state.source,
             anchor: FragmentAnchor::Root,
+            in_block_callback: false,
         }
     }
 
@@ -125,6 +127,16 @@ impl<'a> FragmentCtx<'a> {
         match part {
             ConcatPart::Static(span) => Some(self.source_of(*span)),
             ConcatPart::StaticOwned(s) => Some(s.as_str()),
+            ConcatPart::StaticEntities { text, .. } => Some(text.as_str()),
+            ConcatPart::Expr(_) => None,
+        }
+    }
+
+    pub fn static_html_of(&self, part: &'a ConcatPart) -> Option<&'a str> {
+        match part {
+            ConcatPart::Static(span) => Some(self.source_of(*span)),
+            ConcatPart::StaticOwned(s) => Some(s.as_str()),
+            ConcatPart::StaticEntities { html, .. } => Some(html.as_str()),
             ConcatPart::Expr(_) => None,
         }
     }

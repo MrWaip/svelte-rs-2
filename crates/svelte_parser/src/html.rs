@@ -85,10 +85,12 @@ fn decode_numeric_entity(rest: &str) -> Option<(char, usize)> {
 }
 
 fn decode_named_entity(rest: &str) -> Option<(char, usize)> {
-    let limit = rest.len().min(MAX_ENTITY_LEN);
+    let bytes = rest.as_bytes();
+    let limit = bytes.len().min(MAX_ENTITY_LEN);
+    let ascii_len = bytes[..limit].iter().take_while(|b| b.is_ascii()).count();
     let mut best = None;
 
-    for end in 1..=limit {
+    for end in 1..=ascii_len {
         let candidate = &rest[..end];
         if let Ok(index) = NAMED_ENTITIES.binary_search_by_key(&candidate, |(name, _)| *name) {
             best = Some((NAMED_ENTITIES[index].1, end));
@@ -133,5 +135,23 @@ mod tests {
     #[test]
     fn returns_none_when_text_is_unchanged() {
         assert_eq!(decode_text("plain text"), None);
+    }
+
+    #[test]
+    fn decodes_named_entity_followed_by_multibyte_char() {
+        assert_eq!(decode_text("&nbsp;\u{42f}"), Some("\u{a0}\u{42f}".into()));
+    }
+
+    #[test]
+    fn leaves_ampersand_when_multibyte_char_follows_directly() {
+        assert_eq!(decode_text("&\u{42f}"), None);
+    }
+
+    #[test]
+    fn decodes_named_entity_in_mixed_multibyte_text() {
+        assert_eq!(
+            decode_text("a&nbsp;\u{42f}b\u{2603}c"),
+            Some("a\u{a0}\u{42f}b\u{2603}c".into()),
+        );
     }
 }

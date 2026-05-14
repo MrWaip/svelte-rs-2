@@ -4,6 +4,7 @@ use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use super::super::data_structures::ConcatPart;
 use super::super::data_structures::{EmitState, FragmentCtx, MemoValueRef, TemplateMemoState};
+use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -70,16 +71,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         built_parts.push(TitlePart::Str(s.clone()));
                     }
                 }
+                ConcatPart::StaticEntities { text, .. } => {
+                    if let Some(TitlePart::Str(prev)) = built_parts.last_mut() {
+                        prev.push_str(text);
+                    } else {
+                        built_parts.push(TitlePart::Str(text.clone()));
+                    }
+                }
                 ConcatPart::Expr(eid) => {
                     expr_count += 1;
                     let data = self.ctx.expression_data(*eid);
                     if self.ctx.is_dynamic(*eid)
-                        || data.is_some_and(|d| d.has_await() || !d.blockers.is_empty())
+                        || data.is_some_and(|d| {
+                            matches!(
+                                d.kind,
+                                svelte_analyze::ExprKind::Async { has_await: true }
+                            ) || !d.blockers.is_empty()
+                        })
                     {
                         has_state = true;
                     }
-                    let expr = self.take_node_expr(*eid)?;
-                    if let Some(known) = self.try_resolve_known_from_expr(&expr) {
+                    if let Some(known) =
+                        data.and_then(|d| d.evaluation.known_str())
+                    {
                         if let Some(TitlePart::Str(prev)) = built_parts.last_mut() {
                             prev.push_str(&known);
                         } else {
@@ -87,16 +101,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         }
                         continue;
                     }
-                    let defined = self.is_node_expr_definitely_defined(*eid, &expr);
+                    let expr = self.take_node_expr(*eid)?;
                     let data_clone = self.ctx.expression_data(*eid).cloned();
+                    let defined = data_clone
+                        .as_ref()
+                        .map(|d| evaluation_is_defined(&d.evaluation))
+                        .unwrap_or(false);
                     if let Some(data) = data_clone {
                         let cloned_expr = self.ctx.b.clone_expr(&expr);
                         match memo.add_memoized_expr(self.ctx, &data, cloned_expr) {
                             Some(MemoValueRef::Sync(idx)) => {
-                                built_parts.push(TitlePart::SyncMemo(idx, defined));
+                                built_parts.push(TitlePart::SyncMemo(idx, false));
                             }
                             Some(MemoValueRef::Async(idx)) => {
-                                built_parts.push(TitlePart::AsyncMemo(idx, defined));
+                                built_parts.push(TitlePart::AsyncMemo(idx, false));
                             }
                             None => {
                                 built_parts.push(TitlePart::Expr(expr, defined));

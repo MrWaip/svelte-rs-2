@@ -1,5 +1,9 @@
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
+use rustc_hash::FxHashMap;
 use smallvec::smallvec;
+use std::slice;
+use svelte_component_semantics::SymbolId;
 use svelte_ast::{
     Attribute, AwaitBlock, BindDirective, ClassDirective, Component, LetDirectiveLegacy, Node,
     NodeId, StyleDirective, StyleDirectiveValue,
@@ -37,10 +41,10 @@ pub(crate) fn build<'d, 'a>(
         builder.add_template(&mut walker);
     }
 
-    let mut expr_id_map: rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId> =
-        rustc_hash::FxHashMap::default();
-    let mut stmt_id_map: rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId> =
-        rustc_hash::FxHashMap::default();
+    let mut expr_id_map: FxHashMap<u32, OxcNodeId> =
+        FxHashMap::default();
+    let mut stmt_id_map: FxHashMap<u32, OxcNodeId> =
+        FxHashMap::default();
     collect_ref_ids(component, &mut expr_id_map, &mut stmt_id_map);
     parsed.drain_pending(&expr_id_map, &stmt_id_map);
 
@@ -76,6 +80,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 }
                 Node::ComponentNode(node) => self.walk_component_node(node, ctx),
                 Node::SvelteComponentLegacy(node) => self.walk_svelte_component_legacy(node, ctx),
+                Node::SvelteSelf(node) => self.walk_svelte_self(node, ctx),
                 Node::ExpressionTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
@@ -330,12 +335,23 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         node: &'d svelte_ast::ComponentNode,
         ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
+        if let Some(expr) = self.parsed.pending_expr(node.name.span.start) {
+            ctx.visit_js_expression(&node.name, expr);
+        }
         self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
     }
 
     fn walk_svelte_component_legacy(
         &mut self,
         node: &'d svelte_ast::SvelteComponentLegacy,
+        ctx: &mut TemplateBuildContext<'_, 'a>,
+    ) {
+        self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
+    }
+
+    fn walk_svelte_self(
+        &mut self,
+        node: &'d svelte_ast::SvelteSelf,
         ctx: &mut TemplateBuildContext<'_, 'a>,
     ) {
         self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
@@ -365,7 +381,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     self.declare_let_directive_legacy(dir, ctx);
                     ctx.leave_scope();
                 }
-                _ => self.walk_attributes(std::slice::from_ref(attr), ctx),
+                _ => self.walk_attributes(slice::from_ref(attr), ctx),
             }
         }
 
@@ -513,14 +529,14 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
 fn bind_member_root_symbol<'a>(
     expr: &Expression<'a>,
     ctx: &TemplateBuildContext<'_, 'a>,
-) -> Option<svelte_component_semantics::SymbolId> {
+) -> Option<SymbolId> {
     attr_root_symbol(expr, ctx)
 }
 
 fn attr_root_symbol<'a>(
     expr: &Expression<'a>,
     ctx: &TemplateBuildContext<'_, 'a>,
-) -> Option<svelte_component_semantics::SymbolId> {
+) -> Option<SymbolId> {
     let mut current = expr;
     loop {
         match current {
@@ -556,16 +572,16 @@ impl<'d, 'a> TemplateWalker<'a> for AnalyzeTemplateWalker<'d, 'a> {
 
 fn collect_ref_ids(
     component: &Component,
-    expr_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
-    stmt_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
+    expr_ids: &mut FxHashMap<u32, OxcNodeId>,
+    stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
 ) {
     fn record_expr(
         r: &svelte_ast::ExprRef,
         offset: u32,
-        out: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
+        out: &mut FxHashMap<u32, OxcNodeId>,
     ) {
         let id = r.oxc_id.get();
-        if id != oxc_syntax::node::NodeId::DUMMY {
+        if id != OxcNodeId::DUMMY {
             out.insert(offset, id);
         }
     }
@@ -573,18 +589,18 @@ fn collect_ref_ids(
     fn record_stmt(
         r: &svelte_ast::StmtRef,
         offset: u32,
-        out: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
+        out: &mut FxHashMap<u32, OxcNodeId>,
     ) {
         let id = r.oxc_id.get();
-        if id != oxc_syntax::node::NodeId::DUMMY {
+        if id != OxcNodeId::DUMMY {
             out.insert(offset, id);
         }
     }
 
     fn walk_attr(
         attr: &Attribute,
-        expr_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
-        stmt_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
+        expr_ids: &mut FxHashMap<u32, OxcNodeId>,
+        stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
     ) {
         match attr {
             Attribute::ExpressionAttribute(a) => {
@@ -657,8 +673,8 @@ fn collect_ref_ids(
     fn walk_fragment(
         component: &Component,
         fragment_id: svelte_ast::FragmentId,
-        expr_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
-        stmt_ids: &mut rustc_hash::FxHashMap<u32, oxc_syntax::node::NodeId>,
+        expr_ids: &mut FxHashMap<u32, OxcNodeId>,
+        stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
     ) {
         let nodes = component.fragment_nodes(fragment_id).to_vec();
         for id in nodes {
@@ -675,7 +691,10 @@ fn collect_ref_ids(
                     }
                     walk_fragment(component, el.fragment, expr_ids, stmt_ids);
                 }
-                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
+                    if let Node::ComponentNode(cn) = component.store.get(id) {
+                        record_expr(&cn.name, cn.name.span.start, expr_ids);
+                    }
                     if let Some(view) = component.store.get(id).as_component_like() {
                         for attr in view.attributes {
                             walk_attr(attr, expr_ids, stmt_ids);

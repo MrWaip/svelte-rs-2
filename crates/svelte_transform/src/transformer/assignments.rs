@@ -1,4 +1,9 @@
-use oxc_ast::ast::Expression;
+use std::iter;
+
+use oxc_ast::ast::{
+    AssignmentOperator, AssignmentTarget, Expression, IdentifierReference, MemberExpression,
+    SimpleAssignmentTarget, UpdateOperator,
+};
 use oxc_traverse::{Ancestor, TraverseCtx};
 use svelte_analyze::{ReferenceSemantics, RuneKind};
 
@@ -8,13 +13,14 @@ use super::async_check::is_expression_async;
 use super::model::PendingPropMutationValidation;
 
 use super::model::ComponentTransformer;
+use crate::rune_refs::{replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy};
 
-fn assign_op_literal(op: oxc_ast::ast::AssignmentOperator) -> Option<&'static str> {
+fn assign_op_literal(op: AssignmentOperator) -> Option<&'static str> {
     match op {
-        oxc_ast::ast::AssignmentOperator::Assign => Some("="),
-        oxc_ast::ast::AssignmentOperator::LogicalAnd => Some("&&="),
-        oxc_ast::ast::AssignmentOperator::LogicalOr => Some("||="),
-        oxc_ast::ast::AssignmentOperator::LogicalNullish => Some("??="),
+        AssignmentOperator::Assign => Some("="),
+        AssignmentOperator::LogicalAnd => Some("&&="),
+        AssignmentOperator::LogicalOr => Some("||="),
+        AssignmentOperator::LogicalNullish => Some("??="),
         _ => None,
     }
 }
@@ -22,8 +28,8 @@ fn assign_op_literal(op: oxc_ast::ast::AssignmentOperator) -> Option<&'static st
 impl<'a> ComponentTransformer<'_, 'a> {
     fn member_root_identifier<'b>(
         &self,
-        target: &'b oxc_ast::ast::MemberExpression<'a>,
-    ) -> Option<&'b oxc_ast::ast::IdentifierReference<'a>> {
+        target: &'b MemberExpression<'a>,
+    ) -> Option<&'b IdentifierReference<'a>> {
         let mut root = target.object();
         while let Some(member) = root.as_member_expression() {
             root = member.object();
@@ -37,17 +43,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     fn prop_mutation_segments_from_member(
         &self,
-        target: &oxc_ast::ast::MemberExpression<'a>,
+        target: &MemberExpression<'a>,
     ) -> Option<Vec<Expression<'a>>> {
         let mut root = target.object();
         let mut segments_rev: Vec<Expression<'a>> = vec![match target {
-            oxc_ast::ast::MemberExpression::StaticMemberExpression(member) => {
+            MemberExpression::StaticMemberExpression(member) => {
                 self.b.str_expr(member.property.name.as_str())
             }
-            oxc_ast::ast::MemberExpression::ComputedMemberExpression(member) => {
+            MemberExpression::ComputedMemberExpression(member) => {
                 self.prop_mutation_path_segment_expr(&member.expression)?
             }
-            oxc_ast::ast::MemberExpression::PrivateFieldExpression(_) => return None,
+            MemberExpression::PrivateFieldExpression(_) => return None,
         }];
         loop {
             match root {
@@ -76,25 +82,25 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     fn rewrite_prop_source_member_assignment_target(
         &mut self,
-        target: &mut oxc_ast::ast::AssignmentTarget<'a>,
+        target: &mut AssignmentTarget<'a>,
         root_name: &str,
     ) {
-        crate::rune_refs::replace_expr_root_in_assign_target(
+        replace_expr_root_in_assign_target(
             target,
             self.b
-                .call_expr(root_name, std::iter::empty::<Arg<'a, '_>>()),
+                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
     fn rewrite_prop_source_member_update_target(
         &mut self,
-        target: &mut oxc_ast::ast::SimpleAssignmentTarget<'a>,
+        target: &mut SimpleAssignmentTarget<'a>,
         root_name: &str,
     ) {
-        crate::rune_refs::replace_expr_root_in_simple_target(
+        replace_expr_root_in_simple_target(
             target,
             self.b
-                .call_expr(root_name, std::iter::empty::<Arg<'a, '_>>()),
+                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
@@ -218,11 +224,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let op_literal = assign_op_literal(assign.operator);
         let is_static = matches!(
             &assign.left,
-            oxc_ast::ast::AssignmentTarget::StaticMemberExpression(_)
+            AssignmentTarget::StaticMemberExpression(_)
         );
         let is_computed = matches!(
             &assign.left,
-            oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(_)
+            AssignmentTarget::ComputedMemberExpression(_)
         );
         let should_rewrite_assign = op_literal.is_some() && (is_static || is_computed);
         if !should_rewrite_assign {
@@ -279,13 +285,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
 
         let (object, key) = if is_static {
-            let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) = assign.left else {
+            let AssignmentTarget::StaticMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
             (m.object, self.b.str_expr(m.property.name.as_str()))
         } else {
-            let oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
+            let AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
@@ -483,7 +489,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             matches!(
                 &assign.left,
-                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)
+                AssignmentTarget::AssignmentTargetIdentifier(_)
             )
         };
 
@@ -515,15 +521,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let op_literal = assign_op_literal(assign.operator);
         let is_static = matches!(
             &assign.left,
-            oxc_ast::ast::AssignmentTarget::StaticMemberExpression(_)
+            AssignmentTarget::StaticMemberExpression(_)
         );
         let is_computed = matches!(
             &assign.left,
-            oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(_)
+            AssignmentTarget::ComputedMemberExpression(_)
         );
         let should_rewrite_assign = op_literal.is_some()
             && (is_static || is_computed)
-            && crate::rune_refs::should_proxy(&assign.right);
+            && should_proxy(&assign.right);
         if !should_rewrite_assign {
             return;
         }
@@ -568,13 +574,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
 
         let (object, key) = if is_static {
-            let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) = assign.left else {
+            let AssignmentTarget::StaticMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
             (m.object, self.b.str_expr(m.property.name.as_str()))
         } else {
-            let oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
+            let AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
                 unreachable!();
             };
             let m = m.unbox();
@@ -612,7 +618,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             matches!(
                 &upd.argument,
-                oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(_)
+                SimpleAssignmentTarget::AssignmentTargetIdentifier(_)
             )
         };
 
@@ -624,7 +630,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         };
 
-        if let oxc_ast::ast::SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument
+        if let SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument
             && matches!(&pfe.object, Expression::ThisExpression(_))
             && self.is_private_state_field(pfe.field.name.as_str())
         {
@@ -636,7 +642,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             let field_expr = self.b.this_private_member(field_name);
             let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(field_expr)];
-            if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+            if upd.operator == UpdateOperator::Decrement {
                 args.push(Arg::Num(-1.0));
             }
             *node = self.b.call_expr(fn_name, args);
@@ -659,7 +665,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn rewrite_private_assignment_exit(&self, node: &mut Expression<'a>) -> bool {
         if let Expression::AssignmentExpression(assign) = node
-            && let oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
+            && let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
             let field_name = pfe.field.name.as_str();
@@ -710,7 +716,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let awaited = self.b.await_expr(track_call);
             *node = self
                 .b
-                .call_expr_callee(awaited, std::iter::empty::<Arg<'a, '_>>());
+                .call_expr_callee(awaited, iter::empty::<Arg<'a, '_>>());
         }
     }
 }

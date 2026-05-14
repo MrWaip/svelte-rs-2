@@ -1,9 +1,9 @@
 # Legacy slots
 
 ## Current state
-- **Working**: 30/30 use cases
-- **Tests**: 55/55 green
-- Last updated: 2026-04-24
+- **Working**: 33/33 use cases
+- **Tests**: 58/58 green
+- Last updated: 2026-05-13
 
 ## Source
 - `ROADMAP.md` legacy item: `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute`
@@ -70,6 +70,9 @@
   - [x] `let:` on `<svelte:window>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_window`)
   - [x] `let:` on `<svelte:body>` reports `let_directive_invalid_placement` instead of a generic illegal-attribute diagnostic (test: `slots/let_directive_invalid_placement_svelte_body`)
 - [x] Components with both default-slot content and a named slot containing a dynamic expression codegen correctly: the default-slot traversal skips children carrying a `slot="..."` attribute so the named-slot arrow still owns their expressions (test: `diagnose_component_default_and_named_slot_expr`)
+- [x] Child component used as a named-slot fill (`<Inner slot="..." x={expr} />`) keeps non-slot expression props classified as `ComponentProp::Expression` instead of falling through to `NonSpecial`, so codegen does not panic with "unsupported NonSpecial attribute on ComponentNode" (test: `diagnose_component_named_slot_child_with_expression_prop`)
+- [x] `<slot name="X" slot="X" />` used as a named-slot fill inside a child component forwards the parent slot through a generated `$$slots.X` entry that calls `$.slot(node, $$props, "X", {}, null)`, instead of being dropped from the child component's call arguments (test: `legacy_slot_forward_named_into_child_component`)
+- [x] `<slot>` placeholder node id is allocated in the outer template scope before the slot fallback's inner template scope, so `var node = $.child(parent); $.slot(node, ...)` keeps the unsuffixed id and the fallback body re-uses the counter from zero (test: `legacy_slot_fallback_if_sibling_node_naming`)
 
 ## Out of scope
 
@@ -168,3 +171,6 @@
 - [x] slots/let_directive_invalid_placement_svelte_window
 - [x] slots/let_directive_invalid_placement_svelte_body
 - [x] diagnose_component_default_and_named_slot_expr
+- [x] diagnose_component_named_slot_child_with_expression_prop
+- [x] legacy_slot_forward_named_into_child_component
+- [x] legacy_slot_fallback_if_sibling_node_naming

@@ -1,6 +1,16 @@
 use super::*;
 use crate::types::script::PropsDeclaration;
-use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
+use crate::types::data::template_topology::Ancestors;
+use crate::types::data::DeclaratorSemantics;
+use crate::attribute_semantics::{AttributeSemanticsStore, data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics}};
+use crate::block_semantics::{BlockSemanticsStore, BlockSemantics, EachIndexKind, EachItemKind};
+use crate::expression_semantics::{ExpressionSemanticsStore, ExpressionSemantics, ExpressionData, ExprKind};
+use crate::passes::dynamism::DynamismData;
+use crate::passes::fragment_topology::fragment_items;
+use oxc_ast::ast::IdentifierReference;
+use oxc_semantic::ScopeId;
+use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, RunesMode, StringAttribute};
+use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
@@ -8,7 +18,7 @@ pub struct ScriptAnalysis {
     pub exports: Vec<ExportInfo>,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
-    pub runes_mode: svelte_ast::RunesMode,
+    pub runes_mode: RunesMode,
     pub accessors: bool,
     pub immutable: bool,
     pub preserve_whitespace: bool,
@@ -28,7 +38,7 @@ impl ScriptAnalysis {
             exports: Vec::new(),
             has_class_state_fields: false,
             has_store_member_mutations: false,
-            runes_mode: svelte_ast::RunesMode::Runes,
+            runes_mode: RunesMode::Runes,
             accessors: false,
             immutable: false,
             preserve_whitespace: false,
@@ -131,21 +141,21 @@ impl BlockAnalysis {
     }
 }
 
-pub struct OutputPlanData {
+pub struct OutputData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
     pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
     pub is_custom_element_target: bool,
     pub custom_element_compile_flag: bool,
-    pub runtime_plan: RuntimePlan,
+    pub runtime_plan: RuntimeInfo,
     pub ignore_data: IgnoreData,
     pub needs_component_bind_ownership: bool,
 
     pub css: CssAnalysis,
 }
 
-impl OutputPlanData {
+impl OutputData {
     fn new(node_count: u32) -> Self {
         Self {
             needs_context: false,
@@ -154,7 +164,7 @@ impl OutputPlanData {
             component_name: String::new(),
             is_custom_element_target: false,
             custom_element_compile_flag: false,
-            runtime_plan: RuntimePlan::default(),
+            runtime_plan: RuntimeInfo::default(),
             ignore_data: IgnoreData::new(),
             needs_component_bind_ownership: false,
             css: CssAnalysis::empty(node_count),
@@ -163,35 +173,35 @@ impl OutputPlanData {
 }
 
 pub struct AnalysisData<'a> {
-    pub expressions_v2: crate::expression_semantics::ExpressionSemanticsStore,
-    pub attributes: crate::attribute_semantics::AttributeSemanticsStore,
+    pub expressions_v2: ExpressionSemanticsStore,
+    pub attributes: AttributeSemanticsStore,
     pub pickled_awaits: PickledAwaits,
     pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
     pub template: TemplateAnalysis,
     pub blocks: BlockAnalysis,
-    pub output: OutputPlanData,
+    pub output: OutputData,
     pub reactivity: ReactivitySemantics,
-    pub(crate) block_semantics_store: crate::block_semantics::BlockSemanticsStore,
-    pub dynamism: crate::passes::dynamism::DynamismData,
+    pub(crate) block_semantics_store: BlockSemanticsStore,
+    pub dynamism: DynamismData,
 }
 
 impl<'a> AnalysisData<'a> {
     pub(crate) fn new_empty(node_count: u32) -> Self {
         Self {
-            expressions_v2: crate::expression_semantics::ExpressionSemanticsStore::new(node_count),
-            attributes: crate::attribute_semantics::AttributeSemanticsStore::new(node_count),
+            expressions_v2: ExpressionSemanticsStore::new(node_count),
+            attributes: AttributeSemanticsStore::new(node_count),
             pickled_awaits: PickledAwaits::new(),
             scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),
             template: TemplateAnalysis::new(node_count),
             blocks: BlockAnalysis::new(node_count),
-            output: OutputPlanData::new(node_count),
+            output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
-            block_semantics_store: crate::block_semantics::BlockSemanticsStore::new(node_count),
-            dynamism: crate::passes::dynamism::DynamismData::new(node_count),
+            block_semantics_store: BlockSemanticsStore::new(node_count),
+            dynamism: DynamismData::new(node_count),
         }
     }
 }
@@ -217,14 +227,19 @@ impl<'a> AnalysisData<'a> {
     pub fn component_name(&self) -> &str {
         &self.output.component_name
     }
-    pub fn expression_data(&self, id: NodeId) -> Option<&crate::expression_semantics::ExpressionData> {
+    pub fn expression_data(&self, id: NodeId) -> Option<&ExpressionData> {
         match self.expressions_v2.get(id) {
-            crate::expression_semantics::ExpressionSemantics::Expression(d) => Some(d),
-            crate::expression_semantics::ExpressionSemantics::NonSpecial => None,
+            ExpressionSemantics::Expression(d) => Some(d),
+            ExpressionSemantics::NonSpecial => None,
         }
     }
     pub fn expr_is_async(&self, id: NodeId) -> bool {
-        self.expression_data(id).is_some_and(|d| d.has_await())
+        self.expression_data(id).is_some_and(|d| {
+            matches!(
+                d.kind,
+                ExprKind::Async { has_await: true }
+            )
+        })
     }
     pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
         self.scoping.binding_origin_key(sym)
@@ -234,25 +249,25 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn symbol_for_reference(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> Option<SymbolId> {
         self.scoping.symbol_for_reference(ref_id)
     }
     pub fn symbol_for_identifier_reference(
         &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
+        id: &IdentifierReference<'a>,
     ) -> Option<SymbolId> {
         self.scoping.symbol_for_identifier_reference(id)
     }
     pub fn binding_origin_key_for_reference(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> Option<&str> {
         self.scoping.binding_origin_key_for_reference(ref_id)
     }
     pub fn binding_origin_key_for_identifier_reference(
         &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
+        id: &IdentifierReference<'a>,
     ) -> Option<&str> {
         self.scoping.binding_origin_key_for_identifier_reference(id)
     }
@@ -266,13 +281,13 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn declarator_semantics(
         &self,
-        decl_node: svelte_component_semantics::OxcNodeId,
-    ) -> crate::types::data::DeclaratorSemantics {
+        decl_node: OxcNodeId,
+    ) -> DeclaratorSemantics {
         self.reactivity.declarator_semantics(decl_node)
     }
     pub fn reference_semantics(
         &self,
-        ref_id: svelte_component_semantics::ReferenceId,
+        ref_id: ReferenceId,
     ) -> ReferenceSemantics {
         self.reactivity.reference_semantics(ref_id)
     }
@@ -280,7 +295,7 @@ impl<'a> AnalysisData<'a> {
         self.reactivity.uses_runes()
     }
 
-    pub fn block_semantics(&self, id: NodeId) -> &crate::block_semantics::BlockSemantics {
+    pub fn block_semantics(&self, id: NodeId) -> &BlockSemantics {
         self.block_semantics_store.get(id)
     }
     pub fn fragment_facts_by_id(&self, id: svelte_ast::FragmentId) -> Option<&FragmentFactsEntry> {
@@ -458,13 +473,13 @@ impl<'a> AnalysisData<'a> {
     pub fn expr_parent(&self, id: NodeId) -> Option<ParentRef> {
         self.template.template_topology.expr_parent(id)
     }
-    pub fn ancestors(&self, id: NodeId) -> crate::types::data::template_topology::Ancestors<'_> {
+    pub fn ancestors(&self, id: NodeId) -> Ancestors<'_> {
         self.template.template_topology.ancestors(id)
     }
     pub fn expr_ancestors(
         &self,
         id: NodeId,
-    ) -> crate::types::data::template_topology::Ancestors<'_> {
+    ) -> Ancestors<'_> {
         self.template.template_topology.expr_ancestors(id)
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
@@ -524,9 +539,9 @@ impl<'a> AnalysisData<'a> {
 
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
         match self.block_semantics_store.get(id) {
-            crate::block_semantics::BlockSemantics::Each(sem) => match sem.index {
-                crate::block_semantics::EachIndexKind::Declared { sym, .. } => Some(sym),
-                crate::block_semantics::EachIndexKind::Absent => None,
+            BlockSemantics::Each(sem) => match sem.index {
+                EachIndexKind::Declared { sym, .. } => Some(sym),
+                EachIndexKind::Absent => None,
             },
             _ => None,
         }
@@ -539,8 +554,8 @@ impl<'a> AnalysisData<'a> {
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
         matches!(
             self.block_semantics_store.get(id),
-            crate::block_semantics::BlockSemantics::Each(sem)
-                if matches!(sem.item, crate::block_semantics::EachItemKind::Pattern(_)),
+            BlockSemantics::Each(sem)
+                if matches!(sem.item, EachItemKind::Pattern(_)),
         )
     }
     pub fn css_hash(&self) -> &str {
@@ -566,9 +581,6 @@ impl<'a> AnalysisData<'a> {
         self.shorthand_symbol(id)
     }
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
-        use crate::attribute_semantics::data::{
-            AttributeSemantics, ComponentPropMemo, ComponentPropSemantics,
-        };
         matches!(
             self.attributes.get(attr_id),
             AttributeSemantics::ComponentProp(
@@ -577,8 +589,13 @@ impl<'a> AnalysisData<'a> {
         )
     }
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expression_data(id).is_some_and(|d| {
-            !matches!(d.memoization, crate::expression_semantics::Memoization::None)
+        self.expression_data(id).is_some_and(|d| match d.kind {
+            ExprKind::Async { has_await: true } => true,
+            ExprKind::Call => !d.references.is_empty(),
+            ExprKind::KnownLiteral
+            | ExprKind::SimpleRead { .. }
+            | ExprKind::Computed { .. }
+            | ExprKind::Async { has_await: false } => false,
         })
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
@@ -595,16 +612,11 @@ impl<'a> AnalysisData<'a> {
             .map(|d| d.blockers.clone())
             .unwrap_or_default()
     }
-    pub fn known_value(&self, name: &str) -> Option<&str> {
-        let root = self.scoping.root_scope_id();
-        let sym_id = self.scoping.find_binding(root, name)?;
-        self.scoping.known_value_by_sym(sym_id)
-    }
     pub fn effective_fragment_scope(
         &self,
         fragment_id: svelte_ast::FragmentId,
-        parent_scope: oxc_semantic::ScopeId,
-    ) -> oxc_semantic::ScopeId {
+        parent_scope: ScopeId,
+    ) -> ScopeId {
         self.scoping
             .fragment_scope_by_id(fragment_id)
             .unwrap_or(parent_scope)
@@ -618,7 +630,7 @@ impl<'a> AnalysisData<'a> {
         if syms.is_empty() {
             return false;
         }
-        let lowered = crate::passes::fragment_topology::fragment_items(store, fragment_id);
+        let lowered = fragment_items(store, fragment_id);
         for id in lowered {
             match store.get(id) {
                 svelte_ast::Node::ExpressionTag(_) => {
@@ -686,6 +698,11 @@ impl<'a> AnalysisData<'a> {
                     }
                 }
                 svelte_ast::Node::ComponentNode(cn) => {
+                    if self.fragment_references_any_symbol(store, cn.fragment, syms) {
+                        return true;
+                    }
+                }
+                svelte_ast::Node::SvelteSelf(cn) => {
                     if self.fragment_references_any_symbol(store, cn.fragment, syms) {
                         return true;
                     }

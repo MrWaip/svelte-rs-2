@@ -1,4 +1,4 @@
-use std::{fs, fs::read_to_string, path::Path};
+use std::{cmp, fs, fs::read_to_string, path::Path};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
@@ -127,7 +127,7 @@ fn spans_intersect(left: &ExpectedDiagnostic, right: &ExpectedDiagnostic) -> boo
         (_, _, true, true) => left.start == right.start,
         (_, _, true, false) => point_in_span(left.start, right.start, right.end),
         (_, _, false, true) => point_in_span(right.start, left.start, left.end),
-        _ => std::cmp::max(left.start, right.start) < std::cmp::min(left.end, right.end),
+        _ => cmp::max(left.start, right.start) < cmp::min(left.end, right.end),
     }
 }
 
@@ -691,6 +691,10 @@ mod css {
     diagnostic_case!(
         valid_scoped_css_no_diagnostics,
         "css/valid_scoped_css_no_diagnostics"
+    );
+    diagnostic_case!(
+        style_lang_scss_no_diagnostics,
+        "css/style_lang_scss_no_diagnostics"
     );
 }
 
@@ -1698,6 +1702,14 @@ mod slots {
         "slots/svelte_fragment_invalid_attribute_class"
     );
     diagnostic_case!(
+        svelte_fragment_invalid_placement_nested_in_element,
+        "slots/svelte_fragment_invalid_placement_nested_in_element"
+    );
+    diagnostic_case!(
+        svelte_fragment_invalid_attribute_bind,
+        "slots/svelte_fragment_invalid_attribute_bind"
+    );
+    diagnostic_case!(
         let_directive_invalid_placement_svelte_window,
         "slots/let_directive_invalid_placement_svelte_window"
     );
@@ -1950,4 +1962,17 @@ mod template {
         validate_non_reactive_update_bind_this_warns_inside_if_block,
         "template/validate_non_reactive_update_bind_this_warns_inside_if_block"
     );
+}
+
+mod typescript {
+    use super::*;
+
+    diagnostic_case!(
+        parameter_property_accessibility,
+        "typescript/parameter_property_accessibility"
+    );
+    diagnostic_case!(decorator, "typescript/decorator");
+    diagnostic_case!(accessor_field, "typescript/accessor_field");
+    diagnostic_case!(enum_declaration, "typescript/enum_declaration");
+    diagnostic_case!(namespace_with_value, "typescript/namespace_with_value");
 }

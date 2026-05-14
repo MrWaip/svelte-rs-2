@@ -2,15 +2,15 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::NodeId;
 
-use super::super::async_plan::emit_async_call_stmt;
+use super::super::async_emit::emit_async_call_stmt;
 use crate::context::Ctx;
 
-pub(crate) struct AsyncEmissionPlan {
+pub(crate) struct AsyncEmission {
     has_await: bool,
     blockers: Vec<u32>,
 }
 
-impl AsyncEmissionPlan {
+impl AsyncEmission {
     pub(crate) fn for_node(ctx: &Ctx<'_>, id: NodeId) -> Self {
         let Some(data) = ctx.expression_data(id) else {
             return Self {
@@ -19,7 +19,10 @@ impl AsyncEmissionPlan {
             };
         };
         Self {
-            has_await: data.has_await(),
+            has_await: matches!(
+                data.kind,
+                svelte_analyze::ExprKind::Async { has_await: true }
+            ),
             blockers: data.blockers.to_vec(),
         }
     }

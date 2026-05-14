@@ -977,6 +977,7 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "svelte_compiler",
+ "svelte_transform_css",
 ]
 
 [[package]]

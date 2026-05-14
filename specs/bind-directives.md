@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: 26/26 use cases
-- **Tests**: 73/73 green
-- Last updated: 2026-05-01
+- **Working**: 34/35 use cases
+- **Tests**: 81/82 green
+- Last updated: 2026-05-14
 
 ## Source
 
@@ -62,6 +62,15 @@ ROADMAP.md — Bindings
 - [x] Dev-mode `<svelte:component>` prop bindings emit `$$ownership_validator.binding(name, intermediate_name, source)` using the synthesized intermediate ident inside the dynamic component callback, not the literal tag name. (test: `bind_dynamic_component_dev_ownership`)
 - [x] Dev-mode `$$ownership_validator.binding(...)` honors `<!-- svelte-ignore ownership_invalid_binding -->` on the binding directive — when ignored, analyze sets `requires_ownership_emit = false` on the `ComponentPropKind::Bind` and codegen skips both the validator var decl and the binding stmt. (test: `bind_component_dev_ownership_ignore`)
 - [x] Component prop bindings with explicit identifier source (`<Comp bind:value={foo}>` where local var `foo` ≠ prop name `value`) — analyze stores trimmed `expr_text` as `expr_name` for simple-identifier expressions and uses it for both binding-semantics lookup and codegen source ident. (test: `bind_component_explicit_source`)
+- [x] Component prop binding with member-expression source (`<Comp bind:value={store.inner.value}>`) emits the full path inside both `get value()` and `set value($$value)` instead of using the prop name. Owned by transform: `bind_expr_handles` loop branches on `AttributeSemantics::ComponentBind` and lowers the get/set pair into a synthetic `ObjectExpression { get name() {...}, set name($$value) {...} }` (instead of the element-bind `SequenceExpression([thunk, arrow])`). Codegen splices the object's properties into the component props literal via `ObjProp::Raw`. Single shape works for both prod and dev (transform owns the dev-vs-prod function-shape choice). Tests: `component_bind_member_path`. Dev-mode `$.validate_binding(...)` emission for member-path component bind is a separate follow-up (test: `component_bind_member_path_dev`).
+- [ ] Dev-mode `$.validate_binding(<source>, <each_ids>, () => <object_path>, () => <leaf>, line, col)` is emitted before the component call for member-path component bindings (`<Comp bind:value={store.inner.value}>`). Currently absent for non-prop-source / non-store member chains. (test: `component_bind_member_path_dev`)
+- [x] Component prop bind to a `$derived` identifier source (`<Child bind:value={derivedFlag}>` where `let derivedFlag = $derived(...)`) emits the writeback as `$.set(derivedFlag, $$value)` without the third `true` proxy flag. Owner: analyze 3.A.4 — `ComponentBindTarget` split into `Rune` (writable `$state` / `OptimizedRune`) and `RuneDerived` (read-only `$derived`); `derive_component_bind_target` routes `BindingSemantics::Derived` to `RuneDerived`. Codegen `bind_prop.rs::emit_bind_identifier` branches on `RuneDerived` and emits `$.set(source, $$value)` without `Arg::Bool(true)`; `bind_this.rs` collapses `Rune | RuneDerived` to the same `SignalShape::Rune`. (test: `diagnose_component_bind_derived_target_no_proxy_flag`)
+- [x] Component prop binding with member-expression source whose root is a `$bindable` prop (`let { store = $bindable() } = $props(); <Comp bind:value={store.inner.value}>`) rewrites the root identifier to its accessor call in the synthetic `get` body — `return store().inner.value;`, matching the setter side which already wraps via `wrap_bindable_prop_source_mutation`. Owner: transform — `dispatch_identifier_read` in `crates/svelte_transform/src/transformer/rewrites.rs` gained an arm for `ReferenceSemantics::PropSourceMemberMutationRoot { bindable: true, .. }` guarded by `!self.in_bind_setter_traverse` that emits `make_thunk_call(name)`. Setter-side path remains unchanged: `dispatch_member_assignment` → `wrap_bindable_prop_source_mutation` already replaces the LHS root and wraps the assignment. (test: `component_bind_member_path_bindable_root`)
+- [x] Function-binding form on a component prop (`<Comp bind:value={() => v, (n) => v = n} />`) lowers the user-supplied get/set pair into the synthetic `ObjectExpression { get value() { return bind_get(); }, set value($$value) { bind_set($$value); } }` and hoists `var bind_get = <get>; var bind_set = <set>;` aliases at the parent function's top. Owned by analyze + codegen: a 2-element `SequenceExpression` bind expression on a component classifies as `ComponentBindKind::FunctionPair`; codegen reserves fresh `bind_get`/`bind_set` idents via `IdentGen`, drains them via `ComponentPropsOutput::bind_init_stmts` into `state.init`, and emits the getter/setter pair through `ObjProp::Getter`/`ObjProp::Setter`. (test: `component_bind_function`)
+- [x] Function-binding form on a component prop preserves the **source position** of the synthetic `get/set <prop>` pair relative to sibling props in the literal — `<Comp bind:value={() => v, set} label="x" id="y" />` emits `{ get value, set value, label, id }`. Single-identifier `bind:value={v}` keeps the existing "deferred to end" placement (covered by `component_bind_prop_order`); only the function-pair (`SequenceExpression`) form is in-place. Owned by codegen `dispatch_component_bind` in `crates/svelte_codegen_client/src/codegen/component_props/dispatch.rs`: `ComponentBindKind::FunctionPair` appends through `out.items` directly, mirroring reference `push_prop(get); push_prop(set);` for `SequenceExpression` bind expressions, while ident/expression/store bind kinds still go through `out.deferred_items`. (test: `diagnose_component_bind_function_props_position`)
+- [x] `bind_get` / `bind_set` aliases for a component function-binding are emitted **after** the parent fragment's anchor declaration (`var node = $.child(div);`), not before. Owned by codegen `containers/component.rs`: bind-init and event-init drain into `state.init` after `direct_anchor_expr` (static-component path) and after `comment_anchor_node_name` (`emit_dynamic_component`). Drain order: bind-init → event-init → component call. (test: `component_bind_function_anchor_order`)
+- [x] Multiple `bind:group` directives with distinct group identities allocate distinct `binding_group_N` const declarations (`binding_group`, `binding_group_1`, …) at the top of the component body — one per group key (bound symbols + parent-each chain). Owned by analyze 3.A.4 + 3.B `BindSemanticsData`: `attribute_semantics::builder` walks both element and component bind directives, assigning stable group ids via `BindingGroupTable` (keyed by `references: SmallVec<SymbolId>` + `parent_each_blocks`); ids land in `BindSemanticsData::binding_group_id_by_attr` and on `ElementBindSemantics::group_id`. Codegen `lib.rs` iterates `CodegenView::binding_group_count()` to emit one `const binding_group_N = []` per group; `emit_bind_group` formats the per-attr name via `binding_group_name(id)`. (test: `component_bind_group_multiple_targets`)
+- [x] `bind:group` on a component (`<Child bind:group={value}>`) synthesizes the top-level `const binding_group = [];` declaration even when no element-level `bind:group` is present. Owned by analyze: `BindSemanticsData::any_bind_group: bool` is raised by `ElementFlagsVisitor` for both regular elements (`visit_element`) and components (`visit_component_node` / `visit_svelte_component_legacy`) whenever a `BindDirective` named `group` is attached. Codegen reads `CodegenView::has_any_bind_group()` at the top of `compile_component`; the previous `EmitState::needs_binding_group` codegen-side flag was removed. (test: `diagnose_component_bind_group_emits_array`)
 - [x] Dev-mode element bind helpers (`$.bind_value`, `$.bind_checked`, `$.bind_group`, `$.bind_select_value`, `$.bind_content_editable`, `$.bind_volume`, `$.bind_paused`, `$.bind_element_size`) take named `function get() {...}` / `function set($$value) {...}` declarations as get/set callbacks instead of arrow expressions. Implemented at shorthand bind lowering in `transform/template_entry.rs`: in dev mode synthesize `named_function_expr("get", …)` / `named_function_expr("set", …)` instead of `b.thunk` / `b.arrow_expr`. (test: `bind_value_dev_named_fns`)
 
 ## Reference
@@ -120,6 +129,8 @@ ROADMAP.md — Bindings
 - [x] `component_bind_this_variants`
 - [x] `push_binding_group_order`
 - [x] `bind_group_order_with_stores`
+- [x] `diagnose_component_bind_group_emits_array`
+- [x] `component_bind_group_multiple_targets`
 - [x] `props_bindable_checkbox_disabled_shorthand_ts`
 - [x] `svelte_document_bindings`
 - [x] `svelte_element_bind`
@@ -157,3 +168,10 @@ ROADMAP.md — Bindings
 - [x] `bind_dynamic_component_dev_ownership`
 - [x] `bind_component_dev_ownership_ignore`
 - [x] `bind_component_explicit_source`
+- [x] `component_bind_member_path`
+- [x] `component_bind_member_path_bindable_root`
+- [ ] `component_bind_member_path_dev`
+- [x] `diagnose_component_bind_derived_target_no_proxy_flag`
+- [x] `component_bind_function`
+- [x] `component_bind_function_anchor_order`
+- [x] `diagnose_component_bind_function_props_position`

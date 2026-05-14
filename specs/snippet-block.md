@@ -1,9 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 25/25 use cases
-- **Tests**: 28/28 green
-- Last updated: 2026-05-01
+- **Working**: 32/33 use cases
+- **Tests**: 35/36 green
+- Last updated: 2026-05-14
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
@@ -35,6 +35,14 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_invalid_export` validation (tests: analyzer unit tests)
 - [x] Dev-mode `{@render snippet(...)}` calls are wrapped in `$.add_svelte_meta(() => snippet(...), "render", App, line, col)` rather than emitted bare. (test: `tag_render_dev`)
 - [x] Dev-mode snippet parameter destructuring emits an eager-evaluation read after each leaf binding declaration (`name()` for thunk-form, `$.get(name)` for `has_default` derived form) so "Cannot access X before initialization" errors fire eagerly. Mirrors reference `SnippetBlock.js:63-67`. (test: `snippet_destructure_dev`)
+- [x] Snippet body always emits a block-form arrow body `($$anchor) => { ... }`, never collapsed to expression body, even when the body compiles to a single `ExpressionStatement` (e.g. one inline component call). Reference compiler never collapses snippet bodies. Owning layer: codegen — `svelte_ast_builder::builder::functions::arrow` collapses any single-`ExpressionStatement` arrow to expression body, and `emit_snippet_block` / `build_snippet_const_inner` use that builder. Should switch snippet body emission to `arrow_block` (or equivalent non-collapsing variant). (test: `snippet_body_single_component`)
+- [x] Top-level snippet that only references instance-script **imports** must hoist to module scope, matching reference `can_hoist_snippet` rule `function_depth === 0`. Owning layer: 3.A.5 `BlockSemantics`. `finalize_hoistable` in `crates/svelte_analyze/src/block_semantics/builder/walker.rs` exempts references whose symbol carries `BindingSemantics::MaybeReactive` (the marker `record_maybe_reactive_imports` places on every import) from the instance-scope taint. Reactive instance-script bindings (`State`/`Derived`/`Store`/`LegacyState`/`Prop`/…) keep tainting. (test: `diagnose_snippet_hoistable_with_script_import`)
+- [x] Snippet name is scanned as a JS identifier, so `_` and `$` are accepted (`{#snippet extra_element()}`, `{#snippet $foo()}`). `Scanner::start_snippet_tag` reads the name through `Scanner::js_identifier_segment` (which mirrors JS identifier rules) instead of `Scanner::identifier` (HTML tag-name shape, terminates at `_`/`$`). (test: `diagnose_snippet_name_with_underscore`)
+- [x] Module-scope `var root_<n> = $.from_html(...)` declarations emit in fragment-visit (source) order, and the `root_<n>` counter ticks for every hoisted snippet body — even when the body does not materialize a `from_html` template (e.g. snippet whose only content is `{@render mf()}`). `emit_fragment` in `crates/svelte_codegen_client/src/codegen/fragment/mod.rs` merges `bucket.snippets`/`svelte_head`/`svelte_window`/`svelte_document`/`svelte_body` into a single list sorted by `NodeId.0` before dispatching, so hoisted items consume `gen_ident("root")` slots in the order they appeared in the `.svelte` source. (test: `diagnose_hoisted_snippet_module_order_with_sibling_template`)
+- [x] Snippet body uses its own per-function `fragment`/`node` ident counter, starting at `fragment` (no suffix). When the snippet is referenced from a JS expression (e.g. passed as a component prop value via a conditional like `icon={cond ? body : undefined}`), the inner counter must not inherit/share state with the surrounding function's template idents. Layer: codegen — fragment-id generation scope leaks across snippet body when the snippet is consumed via an `ExpressionTag`/derived-wrapped prop instead of a direct `{@render}` or named-slot binding. (test: `diagnose_fragment_id_in_snippet_used_as_expression`)
+- [x] Top-level snippet whose parameter list carries only TypeScript type annotations (e.g. `{#snippet defaultWrapWith(mf: Snippet)}`) must still hoist to module scope. Type-only identifier references resolve to `SymbolFlags::TypeImport` bindings; `finalize_hoistable` in `crates/svelte_analyze/src/block_semantics/builder/walker.rs` exempts those from the instance-scope taint, mirroring the existing `BindingSemantics::MaybeReactive` continue. (test: `diagnose_snippet_hoistable_param_type_annotation`)
+- [ ] Top-level snippet whose body auto-subscribes to a `$store` (e.g. `{$page.url}`) must NOT hoist to module scope, because store auto-subscription expands to `$page()` → `$.store_get(page, "$page", $$stores)` which depends on the instance-scoped `$$stores` array. Owning layer: 3.A.5 `BlockSemantics`. `finalize_hoistable` in `crates/svelte_analyze/src/block_semantics/builder/walker.rs` currently exempts every `BindingSemantics::MaybeReactive` reference (the marker on every instance import) from the instance-scope taint; the exemption is too permissive — store auto-sub identifiers (`$ident` resolved to a store import) must taint regardless. (test: `diagnose_snippet_store_autosub_not_hoistable`)
+- [x] Snippet declared inside an `{#if}` (or any non-fragment template block) and lexically enclosed by an element child of that block emits the `const subtitle = ...` declaration inside the consequent/alternate arrow's body block, wrapped in its own `{ ... }` lexical scope. Implementation: `emit_local_snippet_block` in `crates/svelte_codegen_client/src/codegen/hoisted/snippet.rs` builds the snippet const via `build_snippet_const` and pushes it as a `BlockStatement { const X = ... }` directly into the enclosing fragment's `state.init`. `emit_fragment` non-root-anchor branch in `crates/svelte_codegen_client/src/codegen/fragment/mod.rs` calls this instead of `emit_hoisted_snippet`, so non-hoistable snippets in nested fragments stay local instead of being lifted into `instance_snippets`/`hoistable_snippets`. (test: `diagnose_snippet_inside_if_consequent`)
 
 ## Reference
 
@@ -89,3 +97,11 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `validate_snippet_children_without_other_content_has_no_conflict`
 - [x] `snippet_destructure_default_state_ref`
 - [x] `snippet_destructure_default_mutated_state_ref`
+- [x] `snippet_body_single_component`
+- [x] `diagnose_snippet_inside_if_consequent`
+- [x] `diagnose_snippet_hoistable_with_script_import`
+- [x] `diagnose_snippet_name_with_underscore`
+- [x] `diagnose_hoisted_snippet_module_order_with_sibling_template`
+- [x] `diagnose_fragment_id_in_snippet_used_as_expression`
+- [ ] `diagnose_snippet_store_autosub_not_hoistable`
+- [x] `diagnose_snippet_hoistable_param_type_annotation`

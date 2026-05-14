@@ -10,8 +10,10 @@
     "@mrwaip/svelte-rs2": "file:../../mrwaip-svelte-rs2-0.0.0-canary.0.tgz",
     "diff": "^7.0.0",
     "fast-glob": "^3.3.2",
-    "prettier": "^3.3.0",
-    "svelte": "5.55.5"
+    "lightningcss": "^1.27.0",
+    "oxc-transform": "^0.129.0",
+    "svelte": "5.55.5",
+    "terser": "^5.36.0"
   },
   "overrides": {
     "svelte": "5.55.5",

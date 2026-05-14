@@ -1,8 +1,8 @@
 use oxc_ast::ast::{
-    AwaitExpression, BindingPattern, CallExpression, Expression, IdentifierReference, Statement,
-    VariableDeclarator,
+    AwaitExpression, BindingIdentifier, BindingPattern, CallExpression, Expression,
+    IdentifierReference, Statement, VariableDeclarator,
 };
-use oxc_ast_visit::Visit;
+use oxc_ast_visit::{Visit, walk};
 use smallvec::SmallVec;
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId};
 
@@ -19,7 +19,7 @@ pub(super) fn declarator_from_stmt<'a>(
 
 pub(super) fn binding_ident_of<'a>(
     pattern: &'a BindingPattern<'a>,
-) -> Option<&'a oxc_ast::ast::BindingIdentifier<'a>> {
+) -> Option<&'a BindingIdentifier<'a>> {
     match pattern {
         BindingPattern::BindingIdentifier(ident) => Some(ident),
         _ => None,
@@ -74,7 +74,7 @@ impl<'a> Visit<'a> for AsyncFactsCollector {
     }
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         self.has_await = true;
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk::walk_await_expression(self, expr);
     }
 }
 
@@ -122,10 +122,10 @@ impl<'a> Visit<'a> for IfFactsCollector {
     }
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         self.has_await = true;
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk::walk_await_expression(self, expr);
     }
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         self.has_call = true;
-        oxc_ast_visit::walk::walk_call_expression(self, expr);
+        walk::walk_call_expression(self, expr);
     }
 }

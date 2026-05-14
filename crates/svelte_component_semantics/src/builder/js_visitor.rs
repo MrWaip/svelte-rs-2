@@ -3,7 +3,8 @@ use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::node::NodeId as OxcNodeId;
-use oxc_syntax::reference::ReferenceFlags;
+use oxc_syntax::reference::{ReferenceFlags, ReferenceId};
+use oxc_syntax::symbol::SymbolId;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolFlags;
 
@@ -23,7 +24,7 @@ pub struct JsSemanticVisitor<'s, 'a> {
 
     owner: SymbolOwner,
 
-    unresolved_stack: Vec<Vec<(CompactString, oxc_syntax::reference::ReferenceId)>>,
+    unresolved_stack: Vec<Vec<(CompactString, ReferenceId)>>,
 
     current_node_id: OxcNodeId,
 
@@ -648,7 +649,7 @@ fn store_candidate_base(name: &str) -> Option<&str> {
 fn assignment_target_member_root_symbol(
     semantics: &ComponentSemantics<'_>,
     target: &AssignmentTarget<'_>,
-) -> Option<oxc_syntax::symbol::SymbolId> {
+) -> Option<SymbolId> {
     match target {
         AssignmentTarget::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
         AssignmentTarget::ComputedMemberExpression(m) => {
@@ -661,7 +662,7 @@ fn assignment_target_member_root_symbol(
 fn simple_assignment_target_member_root_symbol(
     semantics: &ComponentSemantics<'_>,
     target: &SimpleAssignmentTarget<'_>,
-) -> Option<oxc_syntax::symbol::SymbolId> {
+) -> Option<SymbolId> {
     match target {
         SimpleAssignmentTarget::StaticMemberExpression(m) => {
             expression_root_symbol(semantics, &m.object)
@@ -689,7 +690,7 @@ fn unwrap_assignment_expression<'r, 'a>(
 fn expression_root_symbol(
     semantics: &ComponentSemantics<'_>,
     expr: &Expression<'_>,
-) -> Option<oxc_syntax::symbol::SymbolId> {
+) -> Option<SymbolId> {
     match expr {
         Expression::Identifier(id) => id
             .reference_id
@@ -697,6 +698,12 @@ fn expression_root_symbol(
             .and_then(|ref_id| semantics.get_reference(ref_id).symbol_id()),
         Expression::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
         Expression::ComputedMemberExpression(m) => expression_root_symbol(semantics, &m.object),
+        Expression::TSNonNullExpression(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::TSAsExpression(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::TSSatisfiesExpression(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::TSTypeAssertion(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::TSInstantiationExpression(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::ParenthesizedExpression(p) => expression_root_symbol(semantics, &p.expression),
         _ => None,
     }
 }

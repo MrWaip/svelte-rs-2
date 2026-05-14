@@ -21,6 +21,8 @@ Sections in fixed order. Most important first.
 - **Tests**: X/Y green
 - Last updated: <date>
 
+<!-- Three lines only. No prose paragraph, no dated journal, no "<date>: <what was closed>" entries. Git log is the changelog. -->
+
 ## Source
 <ROADMAP item reference or user request>
 
@@ -40,6 +42,7 @@ Sections in fixed order. Most important first.
 ## Use cases
 
 - [x] <description> (test: <test_name>)
+<!-- Closed item = one line. No implementation notes, no "Closed YYYY-MM-DD", no owner, no sibling refs, no reference parallels. Just flip [ ] -> [x]. -->
 - [ ] <description> — if partially implemented, say what works and what remains; otherwise note the next layer/task (test: <test_name>, #[ignore], quick fix)
 - [ ] <broad use case that must be decomposed before porting directly>
   - [x] <explicit closed sub-use-case>
@@ -68,8 +71,8 @@ Sections in fixed order. Most important first.
 - **Client-side only.** No SSR use cases.
 - `[ ]` = in scope, still open. Partial work stays `[ ]` with completed part and remaining gap described inline
 - `[x]` = done with test
-- `Current state` = terse resume header, not changelog. Keep only `Working`, `Tests`, `Last updated`.
-- No dated `Completed (...)`, `Confirmed gap (...)`, or history bullets under `Current state`.
+- `Current state` = three lines only: `Working`, `Tests`, `Last updated`. No prose, no journal, no dated entries. Hard cap.
+- Closed use case = `[ ]` flipped to `[x]` and counters bumped. No appended description of the fix, no date, no owner, no reference parallel, no sibling cluster note. Git log is the audit trail.
 - Durable findings go in `Use cases`, `Reference`, `Test cases`. Not `Current state`.
 - `How It Works` = optional. Use when feature has non-obvious activation, classification, lowering, or runtime behavior that future `/port` must preserve.
 - Use cases: no `###` subsections or numbered groups inside `Use cases`.

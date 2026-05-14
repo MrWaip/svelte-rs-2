@@ -1,7 +1,8 @@
 use std::cell::Cell;
+use std::mem;
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, NullLiteral, Program, Statement};
 use oxc_parser::Parser as OxcParser;
 use oxc_span::SourceType;
 use oxc_syntax::node::NodeId;
@@ -41,7 +42,7 @@ pub fn parse_script_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<oxc_ast::ast::Program<'a>, Vec<Diagnostic>> {
+) -> Result<Program<'a>, Vec<Diagnostic>> {
     let source_type = if typescript {
         SourceType::mjs().with_typescript(true)
     } else {
@@ -70,7 +71,7 @@ pub fn parse_const_declaration_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
+) -> Result<Statement<'a>, Diagnostic> {
     const PREFIX: &str = "const ";
     let wrapped_owned = format!("{PREFIX}{source};");
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
@@ -97,7 +98,7 @@ pub fn parse_const_declaration_with_alloc<'a>(
     })?;
 
     if typescript
-        && let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = &mut stmt
+        && let Statement::VariableDeclaration(var_decl) = &mut stmt
         && let Some(declarator) = var_decl.declarations.first_mut()
         && let Some(init) = &mut declarator.init
     {
@@ -113,7 +114,7 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Option<oxc_ast::ast::Statement<'a>> {
+) -> Option<Statement<'a>> {
     const PREFIX: &str = "let ";
     let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
@@ -143,7 +144,7 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
-) -> Option<oxc_ast::ast::Statement<'a>> {
+) -> Option<Statement<'a>> {
     const PREFIX: &str = "let ";
     let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
@@ -169,7 +170,7 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Option<oxc_ast::ast::Statement<'a>> {
+) -> Option<Statement<'a>> {
     const PREFIX: &str = "const ";
     const ASSIGN: &str = " = ";
     let leading_ws = leading_whitespace_len(source);
@@ -196,7 +197,7 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
 
     let name_prefix = PREFIX.len() as i64;
     let params_prefix = (PREFIX.len() + ASSIGN.len()) as i64;
-    if let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = &mut stmt
+    if let Statement::VariableDeclaration(var_decl) = &mut stmt
         && let Some(declarator) = var_decl.declarations.first_mut()
     {
         shift_binding_pattern(
@@ -226,7 +227,7 @@ pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
     slot_prop_name: &str,
     offset: u32,
     typescript: bool,
-) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
+) -> Result<Statement<'a>, Diagnostic> {
     let source = format!("{pattern_source} = $$slotProps.{slot_prop_name}");
     let source: &'a str = alloc.alloc_str(&source);
     parse_const_declaration_with_alloc(alloc, source, offset, typescript)
@@ -235,7 +236,7 @@ pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
 fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
     let dummy = || {
         Expression::NullLiteral(oxc_allocator::Box::new_in(
-            oxc_ast::ast::NullLiteral {
+            NullLiteral {
                 span: oxc_span::SPAN,
                 node_id: Cell::new(NodeId::DUMMY),
             },
@@ -244,7 +245,7 @@ fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
     };
 
     loop {
-        let inner = match std::mem::replace(expr, dummy()) {
+        let inner = match mem::replace(expr, dummy()) {
             Expression::TSAsExpression(ts) => ts.unbox().expression,
             Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
             Expression::TSNonNullExpression(ts) => ts.unbox().expression,

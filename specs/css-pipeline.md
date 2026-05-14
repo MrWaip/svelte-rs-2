@@ -1,9 +1,9 @@
 # CSS
 
 ## Current state
-- **Working**: 17/17 use cases
-- **Tests**: 97/97 green
-- Last updated: 2026-04-30
+- **Working**: 26/26 use cases
+- **Tests**: 107/107 green
+- Last updated: 2026-05-13
 
 ## Source
 Project CSS pipeline parity work and follow-up diagnostic audit.
@@ -15,6 +15,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] Injected CSS `code:` string carries semantically equivalent CSS to the reference output: same selectors, scope class injection, keyframe rename, animation value rewrite, and declaration values. Whitespace shape inside the `code:` string is not part of the contract. (test: `css_injected_keyframes_preserve_semantics` in `crates/svelte_compiler/src/tests.rs`)
 - [x] In injected CSS mode, `$.append_styles($$anchor, $$css);` is emitted AFTER `$.push($$props, ...)` and before the auto-subscribed-store getter consts / `$.setup_stores()` block, matching the reference `push → append_styles → store_setup → store_init` order (test: `css_injected_append_styles_with_stores_order`)
 - [x] Scoped selector marking and scope-class injection work for ordinary elements, snippets, `<svelte:element>`, class-object attrs, and spread attrs (tests: `css_scoped_class_selector`, `css_scope_class_in_snippet`, `css_scope_svelte_element_class`, `css_scope_class_object`, `css_scope_spread_attribute`)
+- [x] Scope-class is threaded as the 4th argument of `$.set_class(...)` for dynamic `class={...}` attrs without any `class:*` directive, in both the eager-init and `template_effect` update paths (tests: `css_scope_class_array_no_directive`, `css_scope_class_array_with_state`)
 - [x] Selector matching covers type, class, id, attribute presence, static attribute matcher/value selectors, and bounded dynamic attribute expansion with reference-conservative behavior where required (tests: `css_scoped_id_selector`, `css_scoped_attr_presence`, `css_scoped_attr_value_selector`, `css_scoped_attr_matcher_operators`, `css_scoped_attr_name_casefolding`, `css_dynamic_attr_selector_match`, `concat_attribute_selector_no_match`)
 - [x] `:global(...)`, bare `:global`, `:global { ... }`, and `:global(...)` inside `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)` match the reference transform/analyze behavior for valid CSS (tests: `css_global_basic`, `css_global_compound`, `css_global_block`, `css_global_in_pseudo`)
 - [x] Scoped keyframes and `-global-` escapes are rewritten correctly (test: `css_keyframes_scoped`)
@@ -26,7 +27,15 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] CSS comments are preserved in emitted output (test: `css_comments_preserved`)
 - [x] Nested `<style>` elements inside markup or blocks remain ordinary DOM `<style>` elements; only the root `<style>` is extracted into component CSS (test: `css_nested_style`)
 - [x] Component custom properties lower through the wrapper-based `$.css_props(...)` path in HTML and SVG namespaces (tests: `css_custom_prop_component`, `css_custom_prop_component_svg`)
+- [x] Component custom properties trigger the `$.css_props(...)` wrapper path when the component is nested inside a parent element, inlining `<svelte-css-wrapper style="display: contents">` directly into the parent's static template (test: `css_custom_prop_component_nested`)
+- [x] Component custom property whose value is a static string literal (e.g. `<Child --color="25%" />`) lowers through the same `$.css_props(...)` wrapper path as the expression form (test: `css_custom_prop_component_string_value`)
+- [x] Component custom property whose value is a concatenation attribute (e.g. `<Child --color="px {val}" />`) lowers through the same `$.css_props(...)` wrapper path (test: `css_custom_prop_component_concat_value`)
+- [x] Scope-class injection for a relative selector whose compound consists solely of pseudo-class / pseudo-element selectors after a combinator (e.g. `.benefit > :first-child`): `svelte_transform_css::visit_relative_selector_mut` now treats the compound as scopable when no `Type`/`Class`/`Id`/`Attribute` selector is present, except for standalone `:is(...)`/`:where(...)` singletons and compounds led by `:root`/`:host`. Inserts `:where(.<hash>)` before the leading pseudo (or `.<hash>` for the first specificity bump), matching reference (test: `css_scope_child_combinator_bare_pseudo`)
 - [x] Invalid CSS diagnostics for the tracked `:global(...)`/global-block placement and nesting-placement cases now match `svelte/compiler`; the previous ignored diagnostic cases were stale and have been unignored (tests: `css_global_block_invalid_placement`, `css_global_invalid_placement`, `css_global_invalid_placement_multiple_non_global_after`, `css_global_invalid_selector_list`, `css_type_selector_invalid_placement`, `css_global_invalid_selector`, `css_global_block_invalid_modifier_start`, `css_global_block_invalid_combinator`, `css_global_block_invalid_list`, `css_global_block_invalid_modifier`, `css_nesting_selector_invalid_placement`, `css_selector_invalid`, `css_global_block_descendant_ok`, `css_global_nesting_modifier_start_in_global_block`, `css_global_block_invalid_list_mixed`, `css_nesting_in_compound_global_block_ok`)
+- [x] Combinators (`+`, `>`, `~`) inside `:global(...)` arguments are preserved through the CSS transform/serializer instead of being collapsed into a compound selector — layer: css transform (`svelte_transform_css::expand_inline_global_with_combinators` splits multi-relative `:global(...)` into separate `RelativeSelector` entries on the parent `ComplexSelector`, wrapping each inner piece in `:global(...)` so it stays unscoped) (test: `css_global_with_combinators`)
+- [x] Nested rule whose compound consists solely of pseudo-element / pseudo-class selectors after `&` (e.g. `&::-webkit-scrollbar`) does not receive a `:where(.<hash>)` scope modifier — `svelte_transform_css::is_scopable` excludes `PseudoElement`, matching reference which `continue`s past pseudo selectors in the right-to-left scoping walk (test: `css_nested_pseudo_element_no_scope_class`)
+- [x] Nested rule whose compound contains `&` together with a class/id/type/attribute (e.g. `&.cell`, `&#id`, `&[disabled]`) does not receive a `:where(.<hash>)` scope modifier — `svelte_transform_css::visit_relative_selector_mut` now skips the scope-modifier insertion when the compound contains a `NestingSelector`, since `&` already inherits the scoped parent compound (test: `css_nested_amp_compound_no_scope_class`)
+- [x] `<style lang="scss">` body containing `//` SCSS line comments inside a rule does not raise diagnostics. Reference's `read_declaration` is permissive: `parser.eat(':')` is non-throwing and `read_value()` swallows everything up to the next `;`/`{`/`}`, so a stray `//` line is parsed as a junk Declaration with `property == "//"` and serialized back unchanged via MagicString. Our `crates/svelte_css/src/parser.rs::parse_declaration` raises `css_expected_token { token: ":" }` (severity Error), which aborts JS emit. Need to make our declaration parser skip the strict colon/semicolon enforcement so unrecognized lines round-trip without diagnostics — layer: parser (`crates/svelte_css/src/parser.rs::parse_declaration`); repro/test: `style_lang_scss_no_diagnostics` (ignored, in `tasks/diagnostic_tests/cases/css/`); candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md`
 
 ## Out of scope
 
@@ -71,6 +80,8 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_scope_class_in_snippet`
 - [x] `css_scope_svelte_element_class`
 - [x] `css_scope_class_object`
+- [x] `css_scope_class_array_no_directive`
+- [x] `css_scope_class_array_with_state`
 - [x] `css_scope_spread_attribute`
 - [x] `css_scoped_id_selector`
 - [x] `css_scoped_attr_presence`
@@ -83,6 +94,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_global_compound`
 - [x] `css_global_block`
 - [x] `css_global_in_pseudo`
+- [x] `css_global_with_combinators`
 - [x] `css_keyframes_scoped`
 - [x] `css_keyframes_percentage_scopes_all`
 - [x] `css_unused_external`
@@ -100,6 +112,9 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `css_nested_style`
 - [x] `css_custom_prop_component`
 - [x] `css_custom_prop_component_svg`
+- [x] `css_custom_prop_component_nested`
+- [x] `css_custom_prop_component_string_value`
+- [x] `css_custom_prop_component_concat_value`
 - [x] `css_global_block_invalid_placement`
 - [x] `css_global_invalid_placement`
 - [x] `css_global_invalid_placement_multiple_non_global_after`
@@ -158,3 +173,7 @@ Project CSS pipeline parity work and follow-up diagnostic audit.
 - [x] `implicit_nesting_match`
 - [x] `root_has_match`
 - [x] `escaped_selector_match`
+- [x] `css_scope_child_combinator_bare_pseudo`
+- [x] `css_nested_pseudo_element_no_scope_class`
+- [x] `css_nested_amp_compound_no_scope_class`
+- [x] `style_lang_scss_no_diagnostics`

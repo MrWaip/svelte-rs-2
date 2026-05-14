@@ -1,3 +1,5 @@
+use std::mem;
+
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -82,10 +84,11 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     body: &mut Vec<Statement<'a>>,
     regular_updates: Vec<Statement<'a>>,
     memo_attrs: Vec<MemoAttr<'a>>,
+    mut shared_memo: TemplateMemoState<'a>,
     script_blockers: Vec<u32>,
     extra_blockers: Vec<Expression<'a>>,
 ) -> Result<()> {
-    if memo_attrs.is_empty() {
+    if memo_attrs.is_empty() && !shared_memo.has_deps() {
         emit_template_effect_with_blockers(
             ctx,
             regular_updates,
@@ -97,12 +100,10 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     }
 
     let memo_count = memo_attrs.len();
-    let mut param_names: Vec<String> = Vec::with_capacity(memo_count);
     let mut memo_data: Vec<(NodeId, String, MemoAttrUpdate, Expression<'a>, bool)> =
         Vec::with_capacity(memo_count);
 
-    for (i, memo) in memo_attrs.into_iter().enumerate() {
-        param_names.push(format!("${i}"));
+    for memo in memo_attrs {
         memo_data.push((
             memo.attr_id,
             memo.el_name,
@@ -113,6 +114,14 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     }
 
     let mut deps = TemplateMemoState::default();
+    let shared_sync_count = shared_memo.sync_values.len();
+    deps.sync_values.append(&mut shared_memo.sync_values);
+    deps.async_values.append(&mut shared_memo.async_values);
+    for idx in mem::take(&mut shared_memo.blockers) {
+        deps.push_script_blocker(idx);
+    }
+    deps.extra_blockers
+        .append(&mut shared_memo.extra_blockers);
     for idx in script_blockers {
         deps.push_script_blocker(idx);
     }
@@ -120,7 +129,7 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     let mut callback_body = regular_updates;
 
     for (i, (attr_id, el_name, update, expr, is_node_site)) in memo_data.into_iter().enumerate() {
-        let memo_expr = ctx.b.rid_expr(&param_names[i]);
+        let memo_expr = ctx.b.rid_expr(&format!("${}", shared_sync_count + i));
         match update {
             MemoAttrUpdate::Call {
                 setter_fn,
@@ -148,13 +157,17 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
             return CodegenError::missing_expression_deps(attr_id);
         };
         deps.push_expression_data(ctx, attr_data);
-        if attr_data.has_await() {
+        if matches!(
+            attr_data.kind,
+            svelte_analyze::ExprKind::Async { has_await: true }
+        ) {
             deps.async_values.push(expr);
         } else {
             deps.sync_values.push(expr);
         }
     }
 
+    let param_names = deps.param_names();
     let params = ctx.b.params(param_names.iter().map(|s| s.as_str()));
     let callback = ctx.b.arrow_expr(params, callback_body);
     emit_effect_call(ctx, "$.template_effect", callback, &mut deps, body);

@@ -1,0 +1,5 @@
+{
+  "dev": true,
+  "filename": "/elsewhere/foo.svelte",
+  "rootDir": "/repo"
+}

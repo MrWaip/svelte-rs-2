@@ -1,3 +1,7 @@
+use std::error::Error;
+use std::fmt;
+use std::result::Result as StdResult;
+
 use svelte_ast::NodeId;
 
 #[derive(Debug)]
@@ -62,8 +66,8 @@ impl CodegenError {
     }
 }
 
-impl std::fmt::Display for CodegenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CodegenError::UnexpectedChild { expected, got } => {
                 write!(f, "codegen: expected {expected} child, got {got}")
@@ -99,6 +103,6 @@ impl std::fmt::Display for CodegenError {
     }
 }
 
-impl std::error::Error for CodegenError {}
+impl Error for CodegenError {}
 
-pub(crate) type Result<T> = std::result::Result<T, CodegenError>;
+pub(crate) type Result<T> = StdResult<T, CodegenError>;

@@ -1,44 +1,27 @@
-use oxc_ast::ast::{Expression, MemberExpression};
+use oxc_ast::ast::{
+    CallExpression, Expression, IdentifierReference, MemberExpression, NewExpression, Program,
+};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::types::script::{RuneKind, ScriptInfo};
+use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics};
+use crate::scope::{ComponentScoping, SymbolId};
 
 pub(crate) struct NeedsContextVisitor<'a> {
-    scoping: &'a crate::scope::ComponentScoping<'a>,
-    unsafe_prop_syms: rustc_hash::FxHashSet<crate::scope::SymbolId>,
+    scoping: &'a ComponentScoping<'a>,
+    reactivity: &'a ReactivitySemantics,
     needs_context: bool,
 }
 
 impl<'a> NeedsContextVisitor<'a> {
     pub(crate) fn check(
-        program: &oxc_ast::ast::Program<'a>,
-        scoping: &'a crate::scope::ComponentScoping,
-        script_info: &ScriptInfo,
+        program: &Program<'a>,
+        scoping: &'a ComponentScoping,
+        reactivity: &'a ReactivitySemantics,
     ) -> bool {
-        let root = scoping.root_scope_id();
-        let mut unsafe_prop_syms = rustc_hash::FxHashSet::default();
-
-        for d in &script_info.declarations {
-            if d.is_rune == Some(RuneKind::Props)
-                && let Some(sym) = scoping.find_binding(root, d.name.as_str())
-            {
-                unsafe_prop_syms.insert(sym);
-            }
-        }
-        if let Some(ref decl) = script_info.props_declaration {
-            for p in &decl.props {
-                if p.is_rest
-                    && let Some(sym) = scoping.find_binding(root, p.local_name.as_str())
-                {
-                    unsafe_prop_syms.insert(sym);
-                }
-            }
-        }
-
         let mut visitor = Self {
             scoping,
-            unsafe_prop_syms,
+            reactivity,
             needs_context: false,
         };
         visitor.visit_program(program);
@@ -47,17 +30,22 @@ impl<'a> NeedsContextVisitor<'a> {
 
     fn resolve_ref(
         &self,
-        ident: &oxc_ast::ast::IdentifierReference<'_>,
-    ) -> Option<crate::scope::SymbolId> {
+        ident: &IdentifierReference<'_>,
+    ) -> Option<SymbolId> {
         let ref_id = ident.reference_id.get()?;
         self.scoping.get_reference(ref_id).symbol_id()
     }
 
-    fn is_safe_sym(&self, ident: &oxc_ast::ast::IdentifierReference<'_>) -> bool {
+    fn is_safe_sym(&self, ident: &IdentifierReference<'_>) -> bool {
         let Some(sym_id) = self.resolve_ref(ident) else {
             return true;
         };
-        !self.unsafe_prop_syms.contains(&sym_id) && !self.scoping.is_import(sym_id)
+        !matches!(
+            self.reactivity.binding_semantics(sym_id),
+            BindingSemantics::MaybeReactive
+                | BindingSemantics::Prop(_)
+                | BindingSemantics::LegacyBindableProp(_)
+        )
     }
 
     fn is_safe_expression_root(&self, expr: &Expression<'_>) -> bool {
@@ -82,11 +70,11 @@ impl<'a> NeedsContextVisitor<'a> {
 }
 
 impl<'a> Visit<'a> for NeedsContextVisitor<'a> {
-    fn visit_new_expression(&mut self, _it: &oxc_ast::ast::NewExpression<'a>) {
+    fn visit_new_expression(&mut self, _it: &NewExpression<'a>) {
         self.needs_context = true;
     }
 
-    fn visit_call_expression(&mut self, it: &oxc_ast::ast::CallExpression<'a>) {
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         if !self.is_safe_expression_root(&it.callee) {
             self.needs_context = true;
         }

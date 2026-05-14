@@ -1,4 +1,6 @@
-use oxc_ast::ast::{Argument, Expression, Statement};
+use std::mem;
+
+use oxc_ast::ast::{Argument, Expression, FunctionBody, Statement};
 
 use svelte_ast_builder::Arg;
 
@@ -46,7 +48,7 @@ pub(crate) fn is_inspect_trace_call(expr: &Expression) -> bool {
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_trace_function_body(
         &mut self,
-        body: &mut oxc_ast::ast::FunctionBody<'a>,
+        body: &mut FunctionBody<'a>,
     ) {
         if !self.dev {
             return;
@@ -73,8 +75,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut call = call.unbox();
 
         let label_expr = if !call.arguments.is_empty() {
-            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-            std::mem::swap(&mut call.arguments[0], &mut dummy);
+            let mut dummy = Argument::from(self.b.cheap_expr());
+            mem::swap(&mut call.arguments[0], &mut dummy);
             dummy.into_expression()
         } else {
             let func_name = info.name.as_deref().unwrap_or("trace");
@@ -122,8 +124,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let cb = if outer_call.arguments.is_empty() {
                 self.b.rid_expr("undefined")
             } else {
-                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                std::mem::swap(&mut outer_call.arguments[0], &mut dummy);
+                let mut dummy = Argument::from(self.b.cheap_expr());
+                mem::swap(&mut outer_call.arguments[0], &mut dummy);
                 dummy.into_expression()
             };
 
@@ -139,8 +141,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let mut inner_call = inner_call.unbox();
 
             let thunk = {
-                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                std::mem::swap(&mut inner_call.arguments[0], &mut dummy);
+                let mut dummy = Argument::from(self.b.cheap_expr());
+                mem::swap(&mut inner_call.arguments[0], &mut dummy);
                 dummy.into_expression()
             };
 
@@ -154,6 +156,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if let Expression::Identifier(id) = &outer_call.callee
             && id.name.as_str() == "$inspect"
         {
+            if !self.runes {
+                return None;
+            }
+
             let Expression::CallExpression(call) = node else {
                 unreachable!()
             };

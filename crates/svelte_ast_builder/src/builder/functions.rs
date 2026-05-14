@@ -2,7 +2,7 @@ use super::*;
 
 impl<'a> Builder<'a> {
     pub fn no_params(&self) -> FormalParameters<'a> {
-        self.params(std::iter::empty::<&str>())
+        self.params(iter::empty::<&str>())
     }
 
     pub fn params(&self, items: impl IntoIterator<Item = impl AsRef<str>>) -> FormalParameters<'a> {

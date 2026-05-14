@@ -1,11 +1,14 @@
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
+use oxc_ast::ast::{ArrayPattern, BindingPattern, Expression, ObjectPattern, Statement};
+use oxc_span::SPAN;
+use smallvec::SmallVec;
 use svelte_analyze::{
     EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::SymbolId;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -25,7 +28,7 @@ fn array_element_name(pattern: &BindingPattern<'_>) -> Option<String> {
 const EACH_IS_CONTROLLED: u32 = 4;
 const SYNTHETIC_ITEM_NAME: &str = "$$item";
 
-struct EachPlan {
+struct EachEmit {
     flags: u32,
     item_param_name: String,
     user_index_name: Option<String>,
@@ -36,6 +39,8 @@ struct EachPlan {
     has_fallback: bool,
     item_reactive: bool,
     is_prop_source: bool,
+    legacy_deep_read_symbols: SmallVec<[SymbolId; 2]>,
+    legacy_store_member_root: Option<SymbolId>,
     needs_async: bool,
     has_await: bool,
     blockers: Vec<u32>,
@@ -143,7 +148,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
         sem: &EachBlockSemantics,
         is_controlled: bool,
-    ) -> Result<EachPlan> {
+    ) -> Result<EachEmit> {
         let block = self.ctx.query.each_block(block_id);
 
         let (body_uses_index, key_uses_index) = match sem.index {
@@ -222,7 +227,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } => (true, *has_await, blockers.to_vec()),
         };
 
-        Ok(EachPlan {
+        Ok(EachEmit {
             flags,
             item_param_name,
             user_index_name,
@@ -233,6 +238,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             has_fallback: block.fallback.is_some(),
             item_reactive: sem.each_flags.contains(EachFlags::ITEM_REACTIVE),
             is_prop_source: matches!(sem.collection_kind, EachCollectionKind::PropSource),
+            legacy_deep_read_symbols: match &sem.collection_kind {
+                EachCollectionKind::LegacyCallReadsState { deep_read_symbols } => {
+                    deep_read_symbols.clone()
+                }
+                _ => SmallVec::new(),
+            },
+            legacy_store_member_root: match &sem.collection_kind {
+                EachCollectionKind::LegacyStoreMemberChain { store_sym } => Some(*store_sym),
+                _ => None,
+            },
             needs_async,
             has_await,
             blockers,
@@ -265,7 +280,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_each_collection_fn(
         &mut self,
         block_id: NodeId,
-        plan: &EachPlan,
+        plan: &EachEmit,
     ) -> Result<Expression<'a>> {
         if plan.needs_async {
             return Ok(self
@@ -284,13 +299,41 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(self.ctx.b.rid_expr(src));
         }
         let expr = self.take_node_expr(block_id)?;
-        Ok(self.ctx.b.thunk(expr))
+        if let Some(store_sym) = plan.legacy_store_member_root {
+            let b = &self.ctx.b;
+            let name: &str = b.ast.allocator.alloc_str(self.ctx.query.symbol_name(store_sym));
+            let args: [Arg<'a, '_>; 0] = [];
+            let store_call = b.call_expr(name, args);
+            let untracked = b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]);
+            let sequence = b
+                .ast
+                .expression_sequence(SPAN, b.ast.vec_from_iter([store_call, untracked]));
+            return Ok(b.thunk(sequence));
+        }
+        if plan.legacy_deep_read_symbols.is_empty() {
+            return Ok(self.ctx.b.thunk(expr));
+        }
+
+        let b = &self.ctx.b;
+        let mut parts: Vec<Expression<'a>> =
+            Vec::with_capacity(plan.legacy_deep_read_symbols.len() + 1);
+        for sym in &plan.legacy_deep_read_symbols {
+            let name: &str = b.ast.allocator.alloc_str(self.ctx.query.symbol_name(*sym));
+            let args: [Arg<'a, '_>; 0] = [];
+            let getter = b.call_expr(name, args);
+            parts.push(b.call_expr("$.deep_read_state", [Arg::Expr(getter)]));
+        }
+        parts.push(b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]));
+        let sequence = b
+            .ast
+            .expression_sequence(SPAN, b.ast.vec_from_iter(parts));
+        Ok(b.thunk(sequence))
     }
 
     fn build_each_key_fn(
         &mut self,
         block_id: NodeId,
-        plan: &EachPlan,
+        plan: &EachEmit,
         context_pattern: Option<&BindingPattern<'a>>,
     ) -> Result<Expression<'a>> {
         if plan.key_is_index {
@@ -342,14 +385,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         parent_ctx: &FragmentCtx<'a>,
         block_id: NodeId,
-        plan: &EachPlan,
+        plan: &EachEmit,
         context_pattern: Option<BindingPattern<'a>>,
     ) -> Result<Expression<'a>> {
         let body = match self.ctx.query.component.store.get(block_id) {
             svelte_ast::Node::EachBlock(block) => block.body,
             _ => return CodegenError::unexpected_node(block_id, "EachBlock"),
         };
-        let inner_ctx = parent_ctx.child_of_block(
+        let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             body,
             FragmentAnchor::CallbackParam {
@@ -357,6 +400,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let mut frag_body = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -417,7 +461,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_each_array_destructure(
         &mut self,
-        arr: oxc_ast::ast::ArrayPattern<'a>,
+        arr: ArrayPattern<'a>,
         item_reactive: bool,
     ) -> Vec<Statement<'a>> {
         let elements: Vec<_> = arr.elements.into_iter().flatten().collect();
@@ -451,7 +495,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_each_object_destructure(
         &mut self,
-        obj: oxc_ast::ast::ObjectPattern<'a>,
+        obj: ObjectPattern<'a>,
         item_reactive: bool,
     ) -> Vec<Statement<'a>> {
         use oxc_ast::ast::PropertyKey;
@@ -507,7 +551,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
             _ => return CodegenError::unexpected_node(block_id, "EachBlock"),
         };
-        let inner_ctx = parent_ctx.child_of_block(
+        let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             fallback,
             FragmentAnchor::CallbackParam {
@@ -515,6 +559,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, fallback)?;
         let body = self.pack_callback_body(inner_state, "$$anchor")?;

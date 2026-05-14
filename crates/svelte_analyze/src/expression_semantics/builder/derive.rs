@@ -1,5 +1,6 @@
-use super::collector::{ExprFacts, TopLevelShape};
-use super::super::data::{ExprKind, LegacyWrap, Memoization};
+use super::collector::{ExprFacts, TopLevelForm};
+use super::super::data::{ExprKind, LegacyWrap};
+use super::super::Evaluation;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
@@ -9,22 +10,19 @@ use smallvec::SmallVec;
 
 pub(super) fn needs_context(
     facts: &ExprFacts,
-    scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if !matches!(facts.top_level_shape, TopLevelShape::Member | TopLevelShape::Call) {
+    if !matches!(facts.top_level_form, TopLevelForm::Member | TopLevelForm::Call) {
         return false;
     }
     facts.references.iter().any(|&sym| {
-        if scoping.is_import(sym) {
-            return true;
-        }
         matches!(
             reactivity.binding_semantics(sym),
-            BindingSemantics::Prop(PropBindingSemantics {
-                kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-                ..
-            })
+            BindingSemantics::MaybeReactive
+                | BindingSemantics::Prop(PropBindingSemantics {
+                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
+                    ..
+                })
         )
     })
 }
@@ -35,20 +33,27 @@ pub(super) fn is_dynamic_template(
     reactivity: &ReactivitySemantics,
     has_class_state_fields: bool,
 ) -> bool {
-    if facts.has_await || facts.has_state_rune || needs_context(facts, scoping, reactivity) {
+    if facts.has_await || facts.has_state_rune || needs_context(facts, reactivity) {
         return true;
     }
 
-    if matches!(facts.top_level_shape, TopLevelShape::Call) {
-        return facts.has_store_ref
+    if matches!(facts.top_level_form, TopLevelForm::Call) {
+        return facts.has_runtime_root
+            || facts.has_store_ref
             || facts.references.iter().any(|&sym| {
+                let semantics = reactivity.binding_semantics(sym);
+                if matches!(semantics, BindingSemantics::MaybeReactive) {
+                    return true;
+                }
                 is_symbol_dynamic(scoping, reactivity, sym)
-                    || (scoping.is_component_top_level_symbol(sym) && !scoping.is_import(sym))
+                    || scoping.is_component_top_level_symbol(sym)
             });
     }
 
-    if matches!(facts.top_level_shape, TopLevelShape::Member) {
-        return facts.has_store_ref || !facts.references.is_empty();
+    if matches!(facts.top_level_form, TopLevelForm::Member) {
+        return facts.has_runtime_root
+            || facts.has_store_ref
+            || !facts.references.is_empty();
     }
 
     if facts.has_store_ref {
@@ -80,7 +85,8 @@ fn is_symbol_dynamic(
         return false;
     }
     match reactivity.binding_semantics(sym_id) {
-        BindingSemantics::State(_)
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
@@ -90,9 +96,15 @@ fn is_symbol_dynamic(
         BindingSemantics::Derived(d) => d.reactive,
         BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
         BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive
-        | BindingSemantics::Unresolved
-        | BindingSemantics::OptimizedRune(_) => !scoping.is_component_top_level_symbol(sym_id),
+        BindingSemantics::NonReactive => {
+            if !scoping.is_component_top_level_symbol(sym_id) {
+                return true;
+            }
+            !scoping.is_init_known(sym_id)
+        }
+        BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
+            !scoping.is_component_top_level_symbol(sym_id)
+        }
     }
 }
 
@@ -126,37 +138,45 @@ pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVe
     out
 }
 
-pub(super) fn kind(facts: &ExprFacts, has_blockers: bool, is_dynamic: bool) -> ExprKind {
+pub(super) fn kind(
+    facts: &ExprFacts,
+    has_blockers: bool,
+    is_dynamic: bool,
+    evaluation: &Evaluation,
+) -> ExprKind {
     if facts.has_await || has_blockers {
         ExprKind::Async {
             has_await: facts.has_await,
         }
-    } else if is_dynamic {
-        ExprKind::Dynamic
+    } else if matches!(evaluation, Evaluation::Known(_)) {
+        ExprKind::KnownLiteral
+    } else if facts.has_call {
+        ExprKind::Call
+    } else if matches!(
+        facts.top_level_form,
+        TopLevelForm::Identifier | TopLevelForm::Member,
+    ) {
+        ExprKind::SimpleRead { reactive: is_dynamic }
     } else {
-        ExprKind::Static
+        ExprKind::Computed { reactive: is_dynamic }
     }
 }
 
-pub(super) fn memoization(facts: &ExprFacts) -> Memoization {
-    if facts.has_await {
-        Memoization::AsyncMemo
-    } else if facts.has_call && !facts.references.is_empty() {
-        Memoization::SyncMemo
-    } else {
-        Memoization::None
-    }
-}
-
-pub(super) fn legacy_wrap(runes: bool, facts: &ExprFacts) -> LegacyWrap {
-    if runes {
+pub(super) fn legacy_wrap(
+    uses_legacy_coarse_wrap: bool,
+    facts: &ExprFacts,
+    has_context_member_root: bool,
+) -> LegacyWrap {
+    if !uses_legacy_coarse_wrap {
         return LegacyWrap::None;
     }
     let needs_coarse = facts.has_call
+        || facts.has_member
         || matches!(
-            facts.top_level_shape,
-            TopLevelShape::Member | TopLevelShape::Assignment | TopLevelShape::Update
-        );
+            facts.top_level_form,
+            TopLevelForm::Member | TopLevelForm::Assignment | TopLevelForm::Update
+        )
+        || has_context_member_root;
     let uses_sanitized = facts.uses_legacy_sanitized_props;
     match (needs_coarse, uses_sanitized) {
         (false, false) => LegacyWrap::None,
@@ -165,3 +185,4 @@ pub(super) fn legacy_wrap(runes: bool, facts: &ExprFacts) -> LegacyWrap {
         (true, true) => LegacyWrap::CoarseAndSanitized,
     }
 }
+

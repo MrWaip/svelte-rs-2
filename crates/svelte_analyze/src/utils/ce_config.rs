@@ -7,7 +7,7 @@ pub(crate) fn extract_ce_config_from_expr(
 ) -> svelte_parser::ParsedCeConfig {
     let mut config = svelte_parser::ParsedCeConfig {
         tag: None,
-        shadow: svelte_parser::CeShadowMode::Open,
+        shadow: svelte_parser::CeDomMode::Open,
         delegates_focus: false,
         props: Vec::new(),
         extend_span: None,
@@ -34,7 +34,7 @@ pub(crate) fn extract_ce_config_from_expr(
             }
             "shadow" => match &prop.value {
                 Expression::StringLiteral(lit) if lit.value.as_str() == "none" => {
-                    config.shadow = svelte_parser::CeShadowMode::None;
+                    config.shadow = svelte_parser::CeDomMode::None;
                 }
                 Expression::ObjectExpression(obj) => {
                     for shadow_prop in &obj.properties {

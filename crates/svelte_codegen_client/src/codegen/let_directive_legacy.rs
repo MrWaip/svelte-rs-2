@@ -1,3 +1,5 @@
+use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKind};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -7,7 +9,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_let_directive_legacy_stmts(
         &mut self,
         owner_id: NodeId,
-    ) -> Vec<oxc_ast::ast::Statement<'a>> {
+    ) -> Vec<Statement<'a>> {
         let node = self.ctx.query.component.store.get(owner_id);
         let attrs: &[Attribute] = match node {
             Node::Element(el) => &el.attributes,
@@ -24,7 +26,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => None,
             })
             .collect();
-        let mut out: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+        let mut out: Vec<Statement<'a>> = Vec::new();
         for dir in &let_dirs {
             if let Some(stmt) = self.build_let_directive_legacy_stmt(dir) {
                 out.push(stmt);
@@ -37,14 +39,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &self,
         component_id: NodeId,
     ) -> bool {
-        let Some(view) = self
-            .ctx
-            .query
-            .component
-            .store
-            .get(component_id)
-            .as_component_like()
-        else {
+        let store = &self.ctx.query.component.store;
+        let Some(view) = store.get(component_id).as_component_like() else {
             return false;
         };
         let has_static_slot = view
@@ -54,15 +50,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if has_static_slot {
             return false;
         }
-        view.attributes
+        if view
+            .attributes
             .iter()
             .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
+        {
+            return true;
+        }
+        store
+            .fragment_nodes(view.fragment)
+            .iter()
+            .any(|&child_id| match store.get(child_id) {
+                Node::SvelteFragmentLegacy(el) => el
+                    .attributes
+                    .iter()
+                    .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_))),
+                _ => false,
+            })
     }
 
     fn build_let_directive_legacy_stmt(
         &mut self,
         dir: &svelte_ast::LetDirectiveLegacy,
-    ) -> Option<oxc_ast::ast::Statement<'a>> {
+    ) -> Option<Statement<'a>> {
         use oxc_allocator::CloneIn;
         let binding_ref = dir.binding.as_ref()?;
         let stmt_id = binding_ref.id();
@@ -70,22 +80,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let (is_destructured, simple_name, simple_init_clone): (
             bool,
             Option<String>,
-            Option<oxc_ast::ast::Expression<'a>>,
+            Option<Expression<'a>>,
         ) = {
             let stmt_ref = self.ctx.state.parsed.stmt(stmt_id)?;
-            let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt_ref else {
+            let Statement::VariableDeclaration(decl) = stmt_ref else {
                 return None;
             };
             let declarator = decl.declarations.first()?;
             match &declarator.id {
-                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                BindingPattern::BindingIdentifier(id) => {
                     let name = id.name.as_str().to_string();
                     let init = declarator.init.as_ref()?;
                     let init_clone = init.clone_in(self.ctx.b.ast.allocator);
                     (false, Some(name), Some(init_clone))
                 }
-                oxc_ast::ast::BindingPattern::ObjectPattern(_)
-                | oxc_ast::ast::BindingPattern::ArrayPattern(_) => (true, None, None),
+                BindingPattern::ObjectPattern(_)
+                | BindingPattern::ArrayPattern(_) => (true, None, None),
                 _ => return None,
             }
         };
@@ -106,12 +116,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_destructured_let_directive_legacy_stmt(
         &mut self,
-        stmt_id: oxc_syntax::node::NodeId,
-    ) -> Option<oxc_ast::ast::Statement<'a>> {
+        stmt_id: OxcNodeId,
+    ) -> Option<Statement<'a>> {
         use oxc_allocator::CloneIn;
         let (stmt_clone, stmt_oxc_node_id, binding_names) = {
             let stmt_ref = self.ctx.state.parsed.stmt(stmt_id)?;
-            let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt_ref else {
+            let Statement::VariableDeclaration(decl) = stmt_ref else {
                 return None;
             };
             let declarator = decl.declarations.first()?;
@@ -133,8 +143,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let carrier_name = self.ctx.symbol_name(carrier_sym_id).to_string();
 
         let mut destructure_stmt = stmt_clone;
-        if let oxc_ast::ast::Statement::VariableDeclaration(d) = &mut destructure_stmt {
-            d.kind = oxc_ast::ast::VariableDeclarationKind::Let;
+        if let Statement::VariableDeclaration(d) = &mut destructure_stmt {
+            d.kind = VariableDeclarationKind::Let;
         }
 
         let mut body = vec![destructure_stmt];

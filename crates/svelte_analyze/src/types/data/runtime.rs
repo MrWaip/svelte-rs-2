@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, Default)]
-pub struct RuntimePlan {
+pub struct RuntimeInfo {
     pub needs_push: bool,
     pub has_component_exports: bool,
     pub has_exports: bool,

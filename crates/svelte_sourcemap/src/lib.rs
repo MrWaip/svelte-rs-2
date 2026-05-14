@@ -1,3 +1,5 @@
+use std::iter;
+
 pub use oxc_sourcemap::{SourceMap, SourceMapBuilder, Token};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +46,7 @@ impl<'a> Sourcemap<'a> {
 
     pub fn set_source_name(&mut self, name: &str) -> &mut Self {
         self.map.set_file(name);
-        self.map.set_sources(std::iter::once(name));
+        self.map.set_sources(iter::once(name));
         self
     }
 
@@ -89,7 +91,7 @@ pub fn get_relative_path(from: &str, to: &str) -> String {
         out
     } else {
         let mut parts: Vec<&str> = Vec::with_capacity(ups + tail.len());
-        parts.extend(std::iter::repeat_n("..", ups));
+        parts.extend(iter::repeat_n("..", ups));
         parts.extend_from_slice(tail);
         parts.join("/")
     }

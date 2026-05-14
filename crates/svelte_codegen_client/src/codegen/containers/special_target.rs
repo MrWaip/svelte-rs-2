@@ -1,7 +1,10 @@
-use oxc_ast::ast::Expression;
+use std::mem;
+
+use oxc_ast::ast::{Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{
-    AttributeSemantics, DocumentBindKind, DocumentBindSemantics, HtmlBindKind, WindowBindKind,
-    WindowBindSemantics,
+    AttributeSemantics, DocumentBindKind, DocumentBindSemantics, EventEmit, HandlerEmit,
+    HtmlBindKind, WindowBindKind, WindowBindSemantics, is_passive_event, strip_capture_event,
 };
 use svelte_ast::{Attribute, BindDirective, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -85,6 +88,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => {}
             }
         }
+        let drained = mem::take(&mut state.pending_element_init);
+        state.init.extend(drained);
         Ok(String::new())
     }
 
@@ -101,10 +106,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let (host_prop, is_rune) = match self.ctx.query.analysis.attributes.get(bind.id) {
             AttributeSemantics::WindowBind(WindowBindSemantics {
                 property, kind, ..
-            }) => (HostProp::Window(*property), matches!(kind, HtmlBindKind::Rune)),
+            }) => (HostProp::Window(*property), matches!(kind, HtmlBindKind::Rune | HtmlBindKind::LegacyState)),
             AttributeSemantics::DocumentBind(DocumentBindSemantics {
                 property, kind, ..
-            }) => (HostProp::Document(*property), matches!(kind, HtmlBindKind::Rune)),
+            }) => (HostProp::Document(*property), matches!(kind, HtmlBindKind::Rune | HtmlBindKind::LegacyState)),
             _ => return Ok(()),
         };
 
@@ -220,7 +225,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         event_name: &'static str,
         target: &str,
         setter: Expression<'a>,
-    ) -> oxc_ast::ast::Statement<'a> {
+    ) -> Statement<'a> {
         self.ctx.b.call_stmt(
             "$.bind_property",
             [
@@ -236,29 +241,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         attr_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
         owner_var: &str,
         raw_event_name: &str,
         expr_offset: u32,
     ) -> Result<()> {
         let (event_name, capture) =
-            if let Some(base) = svelte_analyze::strip_capture_event(raw_event_name) {
+            if let Some(base) = strip_capture_event(raw_event_name) {
                 (base.to_string(), true)
             } else {
                 (raw_event_name.to_string(), false)
             };
 
         let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
-            svelte_analyze::AttributeSemantics::Event(ev) => match &ev.emit {
-                svelte_analyze::EventEmit::HtmlDelegated { handler }
-                | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
-                | svelte_analyze::EventEmit::Component { handler } => *handler,
-                svelte_analyze::EventEmit::HtmlBubble => svelte_analyze::HandlerEmit::Direct,
+            AttributeSemantics::Event(ev) => match &ev.emit {
+                EventEmit::HtmlDelegated { handler }
+                | EventEmit::HtmlDirect { handler, .. }
+                | EventEmit::Component { handler } => *handler,
+                EventEmit::HtmlBubble => HandlerEmit::Direct,
             },
-            _ => svelte_analyze::HandlerEmit::Direct,
+            _ => HandlerEmit::Direct,
         };
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
-            return crate::codegen::CodegenError::missing_expression(attr_id);
+            return CodegenError::missing_expression(attr_id);
         };
         let expr = self.maybe_wrap_legacy_slots_read(expr);
         let handler = self.build_event_handler_s5(
@@ -270,7 +275,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
-        let passive = svelte_analyze::is_passive_event(&event_name);
+        let passive = is_passive_event(&event_name);
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::StrRef(&event_name),
             Arg::Ident(owner_var),

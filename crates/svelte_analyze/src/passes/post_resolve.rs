@@ -18,26 +18,18 @@ fn analyze_declarations(data: &mut AnalysisData) {
             data.script.props_id = Some(decl.name.to_string());
         }
 
-        let Some(ref lit) = decl.init_literal else {
-            continue;
-        };
-
         let sym_id = data.scoping.find_binding(root, &decl.name);
         let rune_kind = decl.is_rune;
         let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
 
-        let is_foldable_rune = rune_kind == Some(RuneKind::State) && !is_mutated;
-
-        if rune_kind.is_some() && !is_foldable_rune {
-            continue;
-        }
-
-        if rune_kind.is_none() && decl.kind != DeclarationKind::Const {
-            continue;
-        }
-
-        if let Some(sym_id) = sym_id {
-            data.scoping.set_known_value(sym_id, lit.to_string());
+        if let Some(sym_id) = sym_id
+            && rune_kind.is_none()
+            && decl.init_known
+            && (decl.kind == DeclarationKind::Const
+                || decl.kind == DeclarationKind::Function
+                || !is_mutated)
+        {
+            data.scoping.mark_init_known(sym_id);
         }
     }
 

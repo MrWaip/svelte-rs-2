@@ -1,5 +1,6 @@
 pub mod token;
 
+use std::mem;
 use std::vec;
 
 pub use svelte_ast::is_void;
@@ -74,8 +75,8 @@ impl<'a> Scanner<'a> {
             span: Span::new(self.start as u32, self.current as u32),
         });
 
-        let tokens = std::mem::take(&mut self.tokens);
-        let diagnostics = std::mem::take(&mut self.diagnostics);
+        let tokens = mem::take(&mut self.tokens);
+        let diagnostics = mem::take(&mut self.diagnostics);
         (tokens, diagnostics)
     }
 
@@ -275,7 +276,7 @@ impl<'a> Scanner<'a> {
                 colon_pos = self.current;
             }
 
-            if ch.is_alphanumeric() || ch == '-' || ch == ':' {
+            if ch.is_alphanumeric() || ch == '-' || ch == ':' || ch == '_' {
                 self.advance();
             } else {
                 break;
@@ -2057,7 +2058,7 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         let expr_start = self.current;
-        let name = self.identifier();
+        let name = self.js_identifier_segment();
 
         if name.is_empty() {
             return Err(Diagnostic::unexpected_token(Span::new(

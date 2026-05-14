@@ -5,6 +5,10 @@ use svelte_ast_builder::{Arg, ObjProp};
 use super::super::data_structures::EmitState;
 use super::super::{Codegen, Result};
 
+fn expr_is_ident_named(expr: &Expression<'_>, name: &str) -> bool {
+    matches!(expr, Expression::Identifier(id) if id.name.as_str() == name)
+}
+
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_attr_spread(
         &mut self,
@@ -55,12 +59,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     props.push(ObjProp::KeyValue(name_alloc, self.ctx.b.str_expr(&val)));
                 }
                 Attribute::ExpressionAttribute(a) => {
-                    if self.ctx.is_expression_shorthand(attr_id) {
-                        let name_alloc = self.ctx.b.alloc_str(&a.name);
-                        props.push(ObjProp::Shorthand(name_alloc));
-                        continue;
-                    }
-
                     let expr = self.take_attr_expr(attr_id, &a.expression)?;
                     let is_event = a.event_name.is_some();
                     let is_fn = matches!(
@@ -83,7 +81,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ns_thunk = Some(self.ctx.b.thunk(clone));
                     }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
-                    props.push(ObjProp::KeyValue(name_alloc, expr));
+                    if self.ctx.is_expression_shorthand(attr_id)
+                        && expr_is_ident_named(&expr, &a.name)
+                    {
+                        props.push(ObjProp::Shorthand(name_alloc));
+                    } else {
+                        props.push(ObjProp::KeyValue(name_alloc, expr));
+                    }
                 }
                 Attribute::ConcatenationAttribute(a) => {
                     let val = self.build_concat_expr_collapse_single(attr_id, &a.parts)?;

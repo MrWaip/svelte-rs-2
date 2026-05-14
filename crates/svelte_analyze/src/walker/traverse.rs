@@ -1,3 +1,5 @@
+use std::slice;
+
 use super::*;
 
 use super::dispatch::{
@@ -172,6 +174,23 @@ fn walk_template_inner(
                 );
                 for v in visitors.iter_mut() {
                     v.leave_svelte_component_legacy(cn, ctx);
+                }
+            }
+            Node::SvelteSelf(cn) => {
+                for v in visitors.iter_mut() {
+                    v.visit_svelte_self(cn, ctx);
+                }
+                walk_component_like(
+                    cn.id,
+                    &cn.attributes,
+                    cn.fragment,
+                    &cn.legacy_slots,
+                    ParentKind::SvelteSelf,
+                    ctx,
+                    visitors,
+                );
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_self(cn, ctx);
                 }
             }
             Node::RenderTag(tag) => {
@@ -377,10 +396,10 @@ fn walk_component_like(
         match attr {
             Attribute::LetDirectiveLegacy(_) => {
                 ctx.scope = default_scope;
-                walk_attributes(std::slice::from_ref(attr), ctx, visitors);
+                walk_attributes(slice::from_ref(attr), ctx, visitors);
                 ctx.scope = saved;
             }
-            _ => walk_attributes(std::slice::from_ref(attr), ctx, visitors),
+            _ => walk_attributes(slice::from_ref(attr), ctx, visitors),
         }
     }
 
@@ -419,6 +438,7 @@ fn node_id_of(node: &Node) -> NodeId {
         Node::SnippetBlock(n) => n.id,
         Node::ComponentNode(n) => n.id,
         Node::SvelteComponentLegacy(n) => n.id,
+        Node::SvelteSelf(n) => n.id,
         Node::RenderTag(n) => n.id,
         Node::HtmlTag(n) => n.id,
         Node::ConstTag(n) => n.id,

@@ -79,13 +79,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         match placement {
             BindPlacement::AfterUpdate(stmt) => state.after_update.push(stmt),
-            BindPlacement::Init(stmt) => {
-                if matches!(payload.property, ElementBindPropertyKind::This) {
-                    state.pending_bind_this.push(stmt);
-                } else {
-                    state.init.push(stmt);
-                }
-            }
+            BindPlacement::Init(stmt) => state.pending_element_init.push(stmt),
         }
         Ok(())
     }

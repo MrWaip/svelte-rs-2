@@ -1,3 +1,5 @@
+use std::iter;
+
 use oxc_ast::ast::Expression;
 use svelte_analyze::{AttributeSemantics, HtmlBindKind};
 use svelte_ast::BindDirective;
@@ -7,6 +9,13 @@ use super::super::super::{Codegen, CodegenError, Result};
 
 use super::placement::BindPlacement;
 
+#[derive(Clone, Copy)]
+enum BindThisKind {
+    Plain,
+    Signal,
+    PropAccessor,
+}
+
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn emit_bind_this(
         &mut self,
@@ -14,13 +23,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         tag_name: &str,
     ) -> Result<Option<BindPlacement<'a>>> {
-        let (is_rune, store_base) = match self.ctx.query.analysis.attributes.get(bind.id) {
+        let (shape, store_base) = match self.ctx.query.analysis.attributes.get(bind.id) {
             AttributeSemantics::ElementBind(b) => match &b.kind {
-                HtmlBindKind::Rune => (true, None),
-                HtmlBindKind::StoreSubscribed { base_symbol } => (false, Some(*base_symbol)),
-                HtmlBindKind::Plain | HtmlBindKind::BindableProp => (false, None),
+                HtmlBindKind::Rune | HtmlBindKind::LegacyState => (BindThisKind::Signal, None),
+                HtmlBindKind::StoreSubscribed { base_symbol } => {
+                    (BindThisKind::Plain, Some(*base_symbol))
+                }
+                HtmlBindKind::BindableProp => (BindThisKind::PropAccessor, None),
+                HtmlBindKind::Plain => (BindThisKind::Plain, None),
             },
-            _ => (false, None),
+            _ => (BindThisKind::Plain, None),
         };
         let var_name = if bind.shorthand {
             bind.name.clone()
@@ -81,19 +93,41 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let getter_body = self
                 .ctx
                 .b
-                .call_expr_callee(self.ctx.b.rid_expr(dollar_alloc), std::iter::empty::<Arg>());
+                .call_expr_callee(self.ctx.b.rid_expr(dollar_alloc), iter::empty::<Arg>());
             let getter = self
                 .ctx
                 .b
                 .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(getter_body)]);
             (setter, getter)
         } else {
-            (
-                self.ctx
-                    .b
-                    .bind_this_setter_arrow(&var_name, is_rune, tag_name.is_empty()),
-                self.ctx.b.bind_this_getter_arrow(&var_name, is_rune),
-            )
+            match shape {
+                BindThisKind::PropAccessor => {
+                    let name = self.ctx.b.alloc_str(&var_name);
+                    let setter_body = self.ctx.b.call_expr(name, [Arg::Ident("$$value")]);
+                    let setter = self.ctx.b.arrow_expr(
+                        self.ctx.b.params(["$$value"]),
+                        [self.ctx.b.expr_stmt(setter_body)],
+                    );
+                    let getter_body = self.ctx.b.call_expr(name, iter::empty::<Arg>());
+                    let getter = self
+                        .ctx
+                        .b
+                        .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(getter_body)]);
+                    (setter, getter)
+                }
+                BindThisKind::Signal => (
+                    self.ctx
+                        .b
+                        .bind_this_setter_arrow(&var_name, true, tag_name.is_empty()),
+                    self.ctx.b.bind_this_getter_arrow(&var_name, true),
+                ),
+                BindThisKind::Plain => (
+                    self.ctx
+                        .b
+                        .bind_this_setter_arrow(&var_name, false, tag_name.is_empty()),
+                    self.ctx.b.bind_this_getter_arrow(&var_name, false),
+                ),
+            }
         };
         let stmt = self.ctx.b.call_stmt(
             "$.bind_this",

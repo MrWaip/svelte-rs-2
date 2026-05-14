@@ -1,0 +1,7 @@
+.cell-block.svelte-awt0xm .cell + .cell > .content {
+  border-top: 1px solid red;
+}
+
+.cell-block.svelte-awt0xm .x ~ .y {
+  color: blue;
+}

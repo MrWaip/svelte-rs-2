@@ -2,9 +2,11 @@ use oxc_ast::AstKind;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
-use svelte_ast::NodeId;
+use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
-use svelte_component_semantics::walk_bindings;
+use svelte_component_semantics::{OxcNodeId, walk_bindings};
+
+use crate::context::Ctx;
 
 use super::super::data_structures::{EmitState, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
@@ -37,18 +39,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sem: ConstTagBlockSemantics,
     ) -> Result<()> {
         let (bindings, is_destructured) = pattern_facts(self.ctx, sem.decl_node_id);
-        let init_expr = self.take_const_tag_init(id)?;
+        let (pattern, init_expr) = self.take_const_tag_decl(id)?;
 
         if is_destructured {
-            self.build_sync_destructured(id, &bindings, init_expr, &mut state.init)?;
+            self.build_sync_destructured(id, &bindings, pattern, init_expr, &mut state.init)?;
         } else {
-            self.build_sync_simple(&bindings, init_expr, &mut state.init)?;
+            self.build_sync_simple(id, &bindings, init_expr, &mut state.init)?;
         }
         Ok(())
     }
 
     fn build_sync_simple(
         &mut self,
+        id: NodeId,
         bindings: &[SymbolId],
         init_expr: Expression<'a>,
         stmts: &mut Vec<Statement<'a>>,
@@ -57,12 +60,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::unexpected_child("at least one binding", "empty bindings");
         };
         let name = self.ctx.query.view.symbol_name(sym).to_string();
+        let init_expr =
+            self.maybe_wrap_legacy_coarse_expr(init_expr, self.ctx.expression_data(id), false);
         let thunk = self.ctx.b.thunk(init_expr);
-        let derived_fn = if self.ctx.query.runes() {
-            "$.derived"
-        } else {
-            "$.derived_safe_equal"
-        };
+        let derived_fn = self.ctx.query.view.derived_helper();
         let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
 
         let final_expr = if self.ctx.state.dev {
@@ -87,6 +88,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         id: NodeId,
         bindings: &[SymbolId],
+        pattern: BindingPattern<'a>,
         init_expr: Expression<'a>,
         stmts: &mut Vec<Statement<'a>>,
     ) -> Result<()> {
@@ -105,7 +107,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .collect();
         let tmp_ref: &str = self.ctx.b.alloc_str(&tmp_name);
 
-        let destruct_stmt = self.ctx.b.const_object_destruct_stmt(&names, init_expr);
+        let init_expr =
+            self.maybe_wrap_legacy_coarse_expr(init_expr, self.ctx.expression_data(id), false);
+        let destruct_stmt = self.ctx.b.const_destruct_stmt(pattern, init_expr);
         let props: Vec<ObjProp<'a>> = names
             .iter()
             .map(|n| ObjProp::Shorthand(self.ctx.b.alloc_str(n)))
@@ -115,11 +119,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .arrow_block_expr(self.ctx.b.no_params(), [destruct_stmt, ret]);
-        let derived_fn = if self.ctx.query.runes() {
-            "$.derived"
-        } else {
-            "$.derived_safe_equal"
-        };
+        let derived_fn = self.ctx.query.view.derived_helper();
         let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
 
         let final_expr = if self.ctx.state.dev {
@@ -165,7 +165,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ConstTagAsyncKind::Sync => (false, Vec::new()),
             };
 
-            let init_expr = self.take_const_tag_init(id)?;
+            let (pattern, init_expr) = self.take_const_tag_decl(id)?;
 
             if is_destructured {
                 let Some(tmp_name) = self
@@ -187,7 +187,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.init.push(self.ctx.b.let_stmt(&tmp_name));
                 build_blocker_thunks(self.ctx, &blockers, &mut thunks);
 
-                let destruct_stmt = self.ctx.b.const_object_destruct_stmt(&names, init_expr);
+                let destruct_stmt = self.ctx.b.const_destruct_stmt(pattern, init_expr);
                 let props: Vec<ObjProp<'a>> = names
                     .iter()
                     .map(|n| ObjProp::Shorthand(self.ctx.b.alloc_str(n)))
@@ -275,8 +275,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    fn take_const_tag_init(&mut self, id: NodeId) -> Result<Expression<'a>> {
-        let svelte_ast::Node::ConstTag(tag) = self.ctx.query.component.store.get(id) else {
+    fn take_const_tag_decl(
+        &mut self,
+        id: NodeId,
+    ) -> Result<(BindingPattern<'a>, Expression<'a>)> {
+        let Node::ConstTag(tag) = self.ctx.query.component.store.get(id) else {
             return CodegenError::missing_expression(id);
         };
         let Some(stmt) = self.ctx.state.parsed.take_stmt(tag.decl.id()) else {
@@ -288,15 +291,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if decl.declarations.is_empty() {
             return CodegenError::unexpected_node(id, "const tag stmt has no declarators");
         }
-        let Some(init) = decl.declarations.remove(0).init.take() else {
+        let mut declarator = decl.declarations.remove(0);
+        let Some(init) = declarator.init.take() else {
             return CodegenError::unexpected_node(id, "const tag declarator must have init");
         };
-        Ok(init)
+        Ok((declarator.id, init))
     }
 }
 
 fn build_blocker_thunks<'a>(
-    ctx: &mut crate::context::Ctx<'a>,
+    ctx: &mut Ctx<'a>,
     blockers: &[u32],
     thunks: &mut Vec<Expression<'a>>,
 ) {
@@ -325,7 +329,7 @@ fn build_blocker_thunks<'a>(
 }
 
 fn create_derived<'a>(
-    ctx: &mut crate::context::Ctx<'a>,
+    ctx: &mut Ctx<'a>,
     init: Expression<'a>,
     has_await: bool,
 ) -> Expression<'a> {
@@ -334,18 +338,14 @@ fn create_derived<'a>(
         ctx.b.call_expr("$.async_derived", [Arg::Expr(thunk)])
     } else {
         let thunk = ctx.b.thunk(init);
-        let fn_name = if ctx.query.runes() {
-            "$.derived"
-        } else {
-            "$.derived_safe_equal"
-        };
+        let fn_name = ctx.query.view.derived_helper();
         ctx.b.call_expr(fn_name, [Arg::Expr(thunk)])
     }
 }
 
 fn pattern_facts(
-    ctx: &crate::context::Ctx<'_>,
-    decl_node_id: svelte_component_semantics::OxcNodeId,
+    ctx: &Ctx<'_>,
+    decl_node_id: OxcNodeId,
 ) -> (Vec<SymbolId>, bool) {
     let Some(AstKind::VariableDeclaration(decl)) = ctx.query.view.scoping().js_kind(decl_node_id)
     else {

@@ -1,7 +1,19 @@
 use oxc_ast::ast::Expression;
+use std::iter::{empty, once};
+use svelte_analyze::scope::SymbolId;
+use svelte_analyze::{Evaluation, KnownValue};
 use svelte_ast::{ExprRef, Node, NodeId};
 
+use crate::context::Ctx;
 use super::{Codegen, CodegenError, Result};
+
+pub(crate) fn evaluation_is_defined(eval: &Evaluation) -> bool {
+    match eval {
+        Evaluation::Known(KnownValue::Null | KnownValue::Undefined) => false,
+        Evaluation::Known(_) | Evaluation::Defined { .. } => true,
+        Evaluation::MaybeNullish { .. } => false,
+    }
+}
 
 fn expr_ref_for_node(node: &Node) -> Option<&ExprRef> {
     match node {
@@ -46,22 +58,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &self,
         expr: Expression<'a>,
         data: Option<&svelte_analyze::ExpressionData>,
+        in_block_callback: bool,
     ) -> Expression<'a> {
         let Some(data) = data else { return expr };
-        if self.ctx.query.runes() {
-            return expr;
-        }
         if matches!(data.legacy_wrap, svelte_analyze::LegacyWrap::None) {
             return expr;
         }
-        self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references)
+        self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references, in_block_callback)
     }
 
     pub(in crate::codegen) fn apply_legacy_wrap(
         &self,
         expr: Expression<'a>,
         wrap: svelte_analyze::LegacyWrap,
-        refs: &[svelte_analyze::scope::SymbolId],
+        refs: &[SymbolId],
+        in_block_callback: bool,
     ) -> Expression<'a> {
         use svelte_analyze::LegacyWrap;
         use svelte_ast_builder::Arg;
@@ -93,6 +104,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             );
         }
         if seq_parts.is_empty() {
+            if in_block_callback {
+                return self
+                    .ctx
+                    .b
+                    .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]);
+            }
             return expr;
         }
         let mut iter = seq_parts.into_iter();
@@ -100,7 +117,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return expr;
         };
         let mut sequence = first;
-        for next in iter.chain(std::iter::once(
+        for next in iter.chain(once(
             self.ctx
                 .b
                 .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]),
@@ -132,8 +149,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 }
 
 fn build_reactive_dep_expr_legacy<'a>(
-    ctx: &crate::context::Ctx<'a>,
-    sym: svelte_analyze::scope::SymbolId,
+    ctx: &Ctx<'a>,
+    sym: SymbolId,
 ) -> Option<Expression<'a>> {
     use svelte_analyze::{
         BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics as Ck,
@@ -157,19 +174,19 @@ fn build_reactive_dep_expr_legacy<'a>(
             ..
         }) => Some(ctx.b.call_expr(
             ctx.query.symbol_name(sym),
-            std::iter::empty::<Arg<'a, '_>>(),
+            empty::<Arg<'a, '_>>(),
         )),
 
         BindingSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
             ctx.query.symbol_name(sym),
-            std::iter::empty::<Arg<'a, '_>>(),
+            empty::<Arg<'a, '_>>(),
         )),
 
         BindingSemantics::Store(store) => {
             let dollar_name = ctx.query.symbol_name(store.store_symbol);
             Some(
                 ctx.b
-                    .call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>()),
+                    .call_expr(dollar_name, empty::<Arg<'a, '_>>()),
             )
         }
         BindingSemantics::LegacyState(state) => {
@@ -199,7 +216,7 @@ fn build_reactive_dep_expr_legacy<'a>(
             match kind {
                 Ck::EachItem(EachItemStrategy::Accessor)
                 | Ck::SnippetParam(SnippetParamStrategy::Accessor) => {
-                    Some(ctx.b.call_expr(name, std::iter::empty::<Arg<'a, '_>>()))
+                    Some(ctx.b.call_expr(name, empty::<Arg<'a, '_>>()))
                 }
                 Ck::EachItem(EachItemStrategy::Direct)
                 | Ck::EachIndex(EachIndexStrategy::Direct) => Some(ctx.b.rid_expr(name)),
@@ -213,7 +230,9 @@ fn build_reactive_dep_expr_legacy<'a>(
                 }
             }
         }
-        BindingSemantics::NonReactive if ctx.query.scoping().is_import(sym) => {
+        BindingSemantics::NonReactive | BindingSemantics::MaybeReactive
+            if ctx.query.scoping().is_import(sym) =>
+        {
             Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))
         }
         _ => None,
@@ -221,8 +240,8 @@ fn build_reactive_dep_expr_legacy<'a>(
 }
 
 fn uses_deep_read_state(
-    ctx: &crate::context::Ctx<'_>,
-    sym: svelte_analyze::scope::SymbolId,
+    ctx: &Ctx<'_>,
+    sym: SymbolId,
 ) -> bool {
     use svelte_analyze::{
         BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, PropBindingKind,

@@ -75,10 +75,14 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::SpreadProperty(self.alloc(spread))
             }
             ObjProp::Getter(name, expr) => {
-                let name_atom = self.ast.atom(name);
-                let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                );
+                let key_node = if name.contains('-') {
+                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
+                } else {
+                    let name_atom = self.ast.atom(name);
+                    ast::PropertyKey::StaticIdentifier(
+                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                    )
+                };
                 let body = self.ast.alloc_function_body(
                     SPAN,
                     self.ast.vec(),
@@ -110,10 +114,14 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::GetterBody(name, stmts) => {
-                let name_atom = self.ast.atom(name);
-                let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                );
+                let key_node = if name.contains('-') {
+                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
+                } else {
+                    let name_atom = self.ast.atom(name);
+                    ast::PropertyKey::StaticIdentifier(
+                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                    )
+                };
                 let mut body_stmts = self.ast.vec_with_capacity(stmts.len());
                 for s in stmts {
                     body_stmts.push(s);
@@ -160,10 +168,14 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::Setter(name, param_name, default_expr, body) => {
-                let name_atom = self.ast.atom(name);
-                let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                );
+                let key_node = if name.contains('-') {
+                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
+                } else {
+                    let name_atom = self.ast.atom(name);
+                    ast::PropertyKey::StaticIdentifier(
+                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                    )
+                };
                 let param_atom = self.ast.atom(param_name);
                 let pattern = self
                     .ast
@@ -215,6 +227,7 @@ impl<'a> Builder<'a> {
                 );
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
+            ObjProp::Raw(prop) => prop,
         }
     }
 }

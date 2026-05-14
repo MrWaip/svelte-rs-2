@@ -61,11 +61,15 @@ When user ask something to do specific, don't fallback. If user ask use mcp for 
 
 # Verify work
 
-After completed task run `just test-compiler` and `just test-diagnostics` and `just clippy-strict`. It have to be GREEN.
+After completed task run `just test-compiler` and `just test-diagnostics` and `just lint`. It have to be GREEN.
 
 # Glossary
 
+Доменный словарь и `_Avoid_`-синонимы для проектной речи — `CONTEXT.md` `## Language`.
+
 ## Never use
+
+Запрет на употребление в новых идентификаторах кода (имена типов, функций, полей, переменных).
 
 - leaf
 - leaves

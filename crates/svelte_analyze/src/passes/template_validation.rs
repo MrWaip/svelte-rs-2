@@ -1,5 +1,6 @@
 use oxc_ast::ast::{
-    AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement,
+    AssignmentExpression, AssignmentTarget, AwaitExpression, Expression, FormalParameters,
+    IdentifierReference, SimpleAssignmentTarget, Statement, UpdateExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
@@ -17,7 +18,12 @@ use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::data::{BindHostKind, BindPropertyKind, BindTargetSemantics};
+use crate::expression_semantics::ExprKind;
+use crate::types::data::{
+    BindHostKind, BindingSemantics, BindPropertyKind, BindTargetSemantics, ConstBindingSemantics,
+    ElementSizeKind,
+};
+use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier};
 
@@ -591,10 +597,10 @@ struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
     attrs: Vec<Attribute>,
-    parent_kind: crate::types::data::ParentKind,
+    parent_kind: ParentKind,
 }
 
-enum BindExpressionShape {
+enum BindExpressionKind {
     IdentifierOrMember,
     Sequence { len: usize, has_parens: bool },
     Invalid,
@@ -687,17 +693,14 @@ impl TemplateValidationVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
         if name == SVELTE_SELF {
-            let valid_placement = ctx.ancestors().any(|p| match p.kind {
-                ParentKind::IfBlock | ParentKind::EachBlock | ParentKind::SnippetBlock => true,
-                ParentKind::ComponentNode => {
-                    if let Node::ComponentNode(cn) = ctx.store.get(p.id) {
-                        cn.name != SVELTE_SELF
-                    } else {
-                        false
-                    }
-                }
-                ParentKind::SvelteComponentLegacy => false,
-                _ => false,
+            let valid_placement = ctx.ancestors().any(|p| {
+                matches!(
+                    p.kind,
+                    ParentKind::IfBlock
+                        | ParentKind::EachBlock
+                        | ParentKind::SnippetBlock
+                        | ParentKind::ComponentNode
+                )
             });
 
             if !valid_placement {
@@ -814,7 +817,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
         check_opening_sigil(tag.span, b'@', ctx);
         if let Some(parsed) = ctx.parsed()
-            && let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
+            && let Some(Statement::VariableDeclaration(decl)) =
                 parsed.stmt(tag.decl.id())
             && decl.declarations.len() > 1
         {
@@ -834,6 +837,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     | ParentKind::AwaitBlock
                     | ParentKind::SvelteBoundary
                     | ParentKind::KeyBlock
+                    | ParentKind::SvelteFragmentLegacy
             ) || element_has_slot_attr(p, ctx)
         });
 
@@ -1047,7 +1051,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
-        self.maybe_warn_legacy_special_element(&cn.name, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
@@ -1062,6 +1065,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
     ) {
         self.maybe_warn_legacy_special_element(SVELTE_COMPONENT, cn.span, ctx);
         validate_svelte_component_legacy_this(cn, ctx);
+        check_component_directives(&cn.attributes, ctx);
+        check_component_attribute_warnings(&cn.attributes, ctx);
+        check_attribute_unquoted_sequence(&cn.attributes, ctx);
+        check_attribute_quoted(&cn.attributes, ctx);
+        check_event_handler_value(&cn.attributes, ctx);
+    }
+
+    fn visit_svelte_self(
+        &mut self,
+        cn: &svelte_ast::SvelteSelf,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        self.maybe_warn_legacy_special_element(SVELTE_SELF, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
@@ -1233,7 +1249,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(attr.id)
-            .is_some_and(|d| d.has_await())
+            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_template_await_experimental(ctx, &attr.expression);
         }
@@ -1277,7 +1293,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 .is_some_and(|expr| matches!(expr, Expression::Identifier(_)))
         };
 
-        let shape = bind_expression_shape(dir, ctx);
+        let shape = bind_expression_kind(dir, ctx);
         let mut shape_invalid = false;
 
         match shape {
@@ -1287,10 +1303,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 }
                 validate_bind_group_binding(dir, ctx);
             }
-            Some(BindExpressionShape::Sequence { len, has_parens }) => {
+            Some(BindExpressionKind::Sequence { len, has_parens }) => {
                 validate_bind_sequence_expression(dir, len, has_parens, ctx);
             }
-            Some(BindExpressionShape::Invalid) => {
+            Some(BindExpressionKind::Invalid) => {
                 emit_bind_error(
                     ctx,
                     dir.expression.span,
@@ -1298,7 +1314,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 );
                 shape_invalid = true;
             }
-            Some(BindExpressionShape::IdentifierOrMember) => {
+            Some(BindExpressionKind::IdentifierOrMember) => {
                 if is_identifier_target {
                     validate_bind_identifier_value(dir, ctx);
                 }
@@ -1310,7 +1326,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| d.has_await())
+                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_directive_await_diagnostic(ctx, &dir.expression);
         }
@@ -1348,7 +1364,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(dir.id)
-            .is_some_and(|d| d.has_await())
+            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1401,7 +1417,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| d.has_await())
+                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1520,7 +1536,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| d.has_await())
+            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_template_await_experimental(ctx, &tag.expression);
         }
@@ -1538,7 +1554,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| d.has_await())
+            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_directive_await_diagnostic(ctx, &tag.expression);
         }
@@ -1611,7 +1627,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| d.has_await())
+                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1717,7 +1733,8 @@ fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<Bi
         }),
         Node::ComponentNode(node) => Some(BindParentInfo {
             id: node.id,
-            name: node.name.clone(),
+            name: ctx.source[node.name.span.start as usize..node.name.span.end as usize]
+                .to_string(),
             attrs: node.attributes.clone(),
             parent_kind: ParentKind::ComponentNode,
         }),
@@ -1749,31 +1766,31 @@ fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<Bi
     }
 }
 
-fn bind_expression_shape(
+fn bind_expression_kind(
     dir: &BindDirective,
     ctx: &VisitContext<'_, '_>,
-) -> Option<BindExpressionShape> {
+) -> Option<BindExpressionKind> {
     let parsed = ctx.parsed()?;
     let expr = parsed.expr(dir.expression.id())?;
     Some(classify_bind_expression(expr))
 }
 
-fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionShape {
+fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionKind {
     match expr {
-        Expression::Identifier(_) => BindExpressionShape::IdentifierOrMember,
-        Expression::SequenceExpression(sequence) => BindExpressionShape::Sequence {
+        Expression::Identifier(_) => BindExpressionKind::IdentifierOrMember,
+        Expression::SequenceExpression(sequence) => BindExpressionKind::Sequence {
             len: sequence.expressions.len(),
             has_parens: false,
         },
         Expression::ParenthesizedExpression(expr) => match &expr.expression {
-            Expression::SequenceExpression(sequence) => BindExpressionShape::Sequence {
+            Expression::SequenceExpression(sequence) => BindExpressionKind::Sequence {
                 len: sequence.expressions.len(),
                 has_parens: true,
             },
             inner => classify_bind_expression(inner),
         },
-        _ if expr.as_member_expression().is_some() => BindExpressionShape::IdentifierOrMember,
-        _ => BindExpressionShape::Invalid,
+        _ if expr.as_member_expression().is_some() => BindExpressionKind::IdentifierOrMember,
+        _ => BindExpressionKind::Invalid,
     }
 }
 
@@ -1892,7 +1909,7 @@ fn validate_bind_parent_specifics(
     if matches!(
         bind_property,
         Some(BindPropertyKind::ElementSize(
-            crate::types::data::ElementSizeKind::OffsetWidth
+            ElementSizeKind::OffsetWidth
         ))
     ) && is_svg(&parent.name)
     {
@@ -2087,7 +2104,7 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
 fn bind_base_symbol(
     dir: &BindDirective,
     ctx: &VisitContext<'_, '_>,
-) -> Option<crate::scope::SymbolId> {
+) -> Option<SymbolId> {
     if dir.shorthand {
         return ctx.data.shorthand_symbol(dir.id);
     }
@@ -2106,7 +2123,7 @@ fn bind_base_symbol(
 }
 
 fn bind_targets_each_context(
-    sym_id: crate::scope::SymbolId,
+    sym_id: SymbolId,
     bind_id: NodeId,
     ctx: &VisitContext<'_, '_>,
 ) -> bool {
@@ -2343,7 +2360,7 @@ fn should_emit_snippet_conflict(
                     only_const_tags = false;
                     continue;
                 };
-                let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
+                let Some(Statement::VariableDeclaration(decl)) =
                     parsed.stmt(tag.decl.id())
                 else {
                     only_const_tags = false;
@@ -2439,10 +2456,13 @@ fn validate_component_slot_conflicts(
     let slot_name = slot_attr.value_span.source_text(ctx.source);
 
     if has_prior_named_slot(component, el.id, slot_name, ctx) {
+        let component_name = ctx.source
+            [component.name.span.start as usize..component.name.span.end as usize]
+            .to_string();
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotAttributeDuplicate {
                 name: slot_name.to_string(),
-                component: component.name.clone(),
+                component: component_name,
             },
             slot_attr.value_span,
         ));
@@ -2518,7 +2538,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
                 };
                 if name == parent_element {
                     if let Some(message) =
-                        crate::utils::html_tree_validation::is_tag_valid_with_parent(
+                        is_tag_valid_with_parent(
                             &el.name,
                             &parent_element,
                         )
@@ -2536,7 +2556,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
             ancestors.push(name);
             let refs: Vec<&str> = ancestors.iter().map(String::as_str).collect();
             if let Some(message) =
-                crate::utils::html_tree_validation::is_tag_valid_with_ancestor(&el.name, &refs)
+                is_tag_valid_with_ancestor(&el.name, &refs)
             {
                 emit_invalid_placement(el, message, only_warn, ctx);
             }
@@ -2574,11 +2594,11 @@ fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option
         .ancestors(id)
         .find(|parent| parent.kind == ParentKind::Element)?;
     let element = ctx.store.get(parent.id).as_element()?;
-    crate::utils::html_tree_validation::is_tag_valid_with_parent("#text", element.name.as_str())
+    is_tag_valid_with_parent("#text", element.name.as_str())
 }
 
 fn is_each_block_var_ref(
-    ident: &oxc_ast::ast::IdentifierReference<'_>,
+    ident: &IdentifierReference<'_>,
     data: &AnalysisData,
 ) -> bool {
     ident
@@ -2597,7 +2617,7 @@ fn is_each_block_var_ref(
 }
 
 fn is_snippet_param_ref(
-    ident: &oxc_ast::ast::IdentifierReference<'_>,
+    ident: &IdentifierReference<'_>,
     data: &AnalysisData,
 ) -> bool {
     ident
@@ -2660,9 +2680,7 @@ fn maybe_const_tag_invalid_reference(
 
     if !matches!(
         ctx.data.binding_semantics(sym_id),
-        crate::types::data::BindingSemantics::Const(
-            crate::types::data::ConstBindingSemantics::ConstTag { .. }
-        )
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
     ) {
         return None;
     }
@@ -2815,9 +2833,9 @@ fn component_has_implicit_default_children(
 }
 
 fn extract_arrow_params<'s, 'a: 's>(
-    stmt: &'s oxc_ast::ast::Statement<'a>,
-) -> Option<&'s oxc_ast::ast::FormalParameters<'a>> {
-    let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else {
+    stmt: &'s Statement<'a>,
+) -> Option<&'s FormalParameters<'a>> {
+    let Statement::VariableDeclaration(decl) = stmt else {
         return None;
     };
     let declarator = decl.declarations.first()?;
@@ -2833,7 +2851,7 @@ struct InvalidEachAssignmentVisitor<'s> {
 }
 
 impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
-    fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
+    fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
         if let AssignmentTarget::AssignmentTargetIdentifier(id) = &expr.left
             && is_each_block_var_ref(id, self.data)
         {
@@ -2843,7 +2861,7 @@ impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
         walk::walk_assignment_expression(self, expr);
     }
 
-    fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
+    fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &expr.argument
             && is_each_block_var_ref(id, self.data)
         {
@@ -2873,7 +2891,7 @@ struct InvalidSnippetParamAssignmentVisitor<'s> {
 }
 
 impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
-    fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
+    fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
         if let AssignmentTarget::AssignmentTargetIdentifier(id) = &expr.left
             && is_snippet_param_ref(id, self.data)
         {
@@ -2883,7 +2901,7 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
         self.visit_expression(&expr.right);
     }
 
-    fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
+    fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &expr.argument
             && is_snippet_param_ref(id, self.data)
         {
@@ -3282,7 +3300,7 @@ struct FirstAwaitVisitor {
 }
 
 impl<'a> Visit<'a> for FirstAwaitVisitor {
-    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         if self.found.is_none() {
             self.found = Some(expr.span);
         }

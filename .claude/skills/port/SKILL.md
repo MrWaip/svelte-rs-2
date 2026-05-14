@@ -19,14 +19,19 @@ No matching spec -> stop, recommend `/audit <feature>` first.
 
 Multiple specs plausibly match -> stop, list candidates. Do not pick arbitrarily.
 
+## Architecture Is Mandatory
+
+Before anything else in `/port`, read `ARCHITECTURE.md` and `CONTEXT.md` (skip only if both already in current session context). Every proposed design, file placement, type name, and layer decision must align with their invariants and glossary (`CONTEXT.md ## Language` + `CLAUDE.md ## Never use`). Solution that violates crate boundaries or smart-analyzer / dumb-codegen dogma is not acceptable — reformulate, do not stretch the architecture to fit.
+
 ## Resume From Spec
 
 Spec path or matched spec:
 
-1. Read spec file
-2. Read `Current state` first
-3. Find next unchecked use case
-4. Close completely, unless multiple unchecked use cases belong to one closure unit
+1. Read `ARCHITECTURE.md` and `CONTEXT.md` if not already in session
+2. Read spec file
+3. Read `Current state` first
+4. Find next unchecked use case
+5. Close completely, unless multiple unchecked use cases belong to one closure unit
 
 `Current state` missing or conflicts with `Use cases`/`Tasks` -> normalize spec first, report drift before picking closure target.
 `Current state` turned into dated changelog -> collapse back to terse resume header before proceeding.
@@ -113,7 +118,19 @@ Do not guess what fits in session. Pick next explicit use case, or small set obv
 
 Next unit ambiguous -> narrow before proceeding. Do not start coding with fuzzy target.
 
-### Step 2: Closure Definition
+### Step 2: Domain Anchor
+
+Mandatory before Step 3. Invoke `domain-anchor` via `Agent` (`subagent_type=domain-anchor`).
+
+Prompt to agent contains exactly two fields, nothing else: **bullet_text** (verbatim quote of the unchecked bullet, no paraphrase) and **divergence** (input `.svelte` + reference `.js` + actual `.js`, or a path to the test case, or — for greenfield — plain-language description without file references).
+
+Forbidden in the prompt: pointers to files/functions/types, candidate clusters or variants, lists of allowed gap classifications, redefinitions of agent's terminology, pre-cooked answers, requests to confirm or be concise. If you catch yourself wanting any of these, send only the two fields anyway — wanting them means you already did the agent's job and don't trust your result.
+
+Wait for tool result. Agent's verdict is binding: layer, domain unit, carrier, gap kind, prescribed action. You do not reclassify, do not propose alternatives, do not "add a variant to the existing local triage enum". Cross-layer order is binding. New-carrier verdict proceeds only if all three greenfield criteria are listed; otherwise stop and escalate to user. If anti-pattern (б) is named, follow the prescribed (i) inline or (ii) debt action verbatim.
+
+You may not introduce in Step 3 or later any new struct / field / method / enum / pass whose role is to triage existing AST or `*Semantics` variants. Wanting to → re-invoke `domain-anchor`.
+
+### Step 3: Closure Definition
 
 Sections:
 
@@ -130,7 +147,7 @@ Chosen use case cannot close without decomposition -> do not proceed. Prepare sp
 
 Closure unit requires architecture changes that do not fit existing boundaries -> stop, ask approval. No improvised structural changes.
 
-### Step 3: Draft Spec Update
+### Step 4: Draft Spec Update
 
 Prepare proposed update for same spec so next session resumes cleanly.
 
@@ -151,7 +168,7 @@ Plan text must include: **"Changes must be systematic, without workarounds or te
 
 Start only after plan approval. Sequential.
 
-### Step 4: Choose Verification Strategy
+### Step 5: Choose Verification Strategy
 
 Pick smallest correct verification surface before writing code.
 
@@ -175,7 +192,7 @@ Closure unit needs both:
 - unit tests for layer-local behavior
 - minimum e2e coverage to verify observable compiler output
 
-### Step 5: Add Tests For This Closure Unit
+### Step 6: Add Tests For This Closure Unit
 
 Create or extend only tests selected in Step 4.
 
@@ -211,7 +228,7 @@ Rules:
 - no tests for excluded use cases in this run
 - existing small test already covers closure unit -> extend instead of duplicating
 
-### Step 6: Implement Only The Owning Changes
+### Step 7: Implement Only The Owning Changes
 
 Layer order:
 
@@ -223,7 +240,7 @@ Second infrastructural concept becomes necessary mid-run -> stop, decompose in s
 
 Unit tests mandatory for every new parser or analyze behavior.
 
-### Step 7: Verify The Closure Unit
+### Step 8: Verify The Closure Unit
 
 Relevant tests already fail before closure unit -> record baseline first. Verify closure unit fixes included use cases without new regressions. Do not widen scope to fix unrelated baseline failures.
 
@@ -255,15 +272,22 @@ Cross-check:
 
 Test fails after 3 attempts -> stop, report what was tried. Do not silently expand scope.
 
-### Step 8: Finalize The Closure Unit
+### Step 9: Finalize The Closure Unit
 
 Before updating spec, inspect diff. Confirm unrelated files not changed and generated files changed only through documented generation or test flow.
 
-Update spec:
+Update spec — minimal edits only:
 
-- mark completed use cases
-- update `Current state` counts and date
-- record newly discovered unchecked use cases
+- flip `[ ]` -> `[x]` on completed use cases
+- bump `Working: N/M` and `Tests: X/Y` counters
+- update `Last updated` date
+- append newly discovered unchecked use cases as plain `[ ]` lines
+
+Forbidden when closing a use case:
+
+- appending implementation summary, file list, owner, reference parallels, or sibling cluster notes to the checkbox line
+- adding dated entries (`<date>: <what was closed>`) anywhere in `Current state`
+- rewriting `Current state` into a prose paragraph or changelog — it stays three lines: `Working`, `Tests`, `Last updated`
 
 Mark use cases completed only here, after implementation and verification succeed.
 

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "typescript_invalid_feature",
+    "end": 87,
+    "severity": "error",
+    "start": 83
+  }
+]

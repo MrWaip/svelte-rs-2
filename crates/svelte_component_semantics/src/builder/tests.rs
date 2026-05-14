@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use oxc_syntax::reference::ReferenceFlags;
-use oxc_syntax::symbol::SymbolFlags;
+use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 
 use crate::OxcNodeId;
 use crate::builder::{ComponentSemanticsBuilder, TemplateBuildContext, TemplateWalker};
@@ -64,7 +64,7 @@ fn materialize_shorthand_reference<'a>(
     ctx: &mut TemplateBuildContext<'_, 'a>,
     name: &str,
     flags: ReferenceFlags,
-) -> Option<oxc_syntax::symbol::SymbolId> {
+) -> Option<SymbolId> {
     let scope = ctx.current_scope();
     let node_id = ctx.alloc_node_id();
     let mut reference = Reference::new(node_id, scope, flags);

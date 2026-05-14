@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use svelte_css::{
-    AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, RelativeSelector, SelectorList,
-    SimpleSelector, StyleRule, StyleSheet, Visit,
+    visit as css_visit, AtRule, Block, BlockChild, CombinatorKind, ComplexSelector,
+    RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;
@@ -18,6 +18,8 @@ pub fn analyze_css_pass(
     component: &SvelteComponent,
     stylesheet: &StyleSheet,
     parsed: &JsAst<'_>,
+    filename: &str,
+    root_dir: Option<&str>,
     inject_styles: bool,
     data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,
@@ -26,7 +28,7 @@ pub fn analyze_css_pass(
         return;
     };
     let css_text = component.source_text(css_block.content_span);
-    let hash = css_component_hash(css_text);
+    let hash = css_component_hash(filename, root_dir, css_text);
 
     let keyframes = collect_keyframe_names(stylesheet, css_text);
 
@@ -77,7 +79,7 @@ impl Visit for KeyframeCollector<'_> {
         if node.is_lone_global_block() {
             return;
         }
-        svelte_css::visit::walk_style_rule(self, node);
+        css_visit::walk_style_rule(self, node);
     }
 
     fn visit_at_rule(&mut self, node: &AtRule) {
@@ -88,7 +90,7 @@ impl Visit for KeyframeCollector<'_> {
             }
         }
 
-        svelte_css::visit::walk_at_rule(self, node);
+        css_visit::walk_at_rule(self, node);
     }
 }
 

@@ -26,7 +26,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
         let fragment = self.ctx.query.key_block(id).fragment;
-        let inner_ctx = ctx.child_of_block(
+        let mut inner_ctx = ctx.child_of_block(
             self.ctx,
             fragment,
             FragmentAnchor::CallbackParam {
@@ -34,6 +34,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, fragment)?;
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -77,6 +78,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let key_expr = self.take_node_expr(id)?;
+        let key_expr =
+            self.maybe_wrap_legacy_coarse_expr(key_expr, self.ctx.expression_data(id), false);
         let key_thunk = self.ctx.b.thunk(key_expr);
 
         let key_call = self.ctx.b.call_expr(

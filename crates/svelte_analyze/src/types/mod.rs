@@ -6,11 +6,12 @@ pub mod script;
 pub use data::{
     AnalysisData, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
     BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
-    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ContentEditableKind,
+    ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
+    ComponentPropKind, ContentEditableKind,
     DocumentBindKind, ElementAnalysis, ElementFlags, ElementSizeKind,
     EventHandlerMode, FragmentFacts,
-    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, OutputPlanData,
-    ResizeObserverKind, RuntimePlan, ScriptAnalysis, SnippetData, TemplateAnalysis,
+    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, OutputData,
+    ResizeObserverKind, RuntimeInfo, ScriptAnalysis, SnippetData, TemplateAnalysis,
     TemplateSemanticsData, TitleElementData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};

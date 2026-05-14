@@ -1,4 +1,6 @@
-use oxc_ast::ast::Expression;
+use std::mem;
+
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::AttributeSemantics;
 use svelte_ast::{Attribute, NodeId};
 
@@ -54,7 +56,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )?
             };
             self.emit_svelte_element_class_directives(state, owner_id, owner_var)?;
-            let animates: Vec<_> = std::mem::take(&mut state.after_update);
+            let animates: Vec<_> = mem::take(&mut state.after_update);
             for stmt in animates {
                 state.init.push(stmt);
             }
@@ -74,6 +76,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut emitted_class = false;
         let mut wrote_class_attr = false;
 
+        let saved_after_update = mem::take(&mut state.after_update);
+        let mut event_stmts: Vec<Statement<'a>> = Vec::new();
+
         for attr in attributes {
             let attr_id = attr.id();
             match self.ctx.query.analysis.attributes.get(attr_id) {
@@ -88,7 +93,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 AttributeSemantics::Event(_) => match attr {
                     Attribute::ExpressionAttribute(a) => {
+                        let before = state.after_update.len();
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
+                        event_stmts.extend(state.after_update.drain(before..));
                     }
                     Attribute::OnDirectiveLegacy(d) => {
                         self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
@@ -111,6 +118,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         attr_id,
                         "non-element semantics on HTML element",
                     );
+                }
+                AttributeSemantics::HtmlConcat(_) => {
+                    let Attribute::ConcatenationAttribute(a) = attr else {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "HtmlConcat requires ConcatenationAttribute",
+                        );
+                    };
+                    if a.name == "class" && (has_class_directives || has_class_attribute) {
+                        if !emitted_class {
+                            self.emit_class_attribute_and_directives(
+                                state, owner_id, owner_var,
+                            )?;
+                            emitted_class = true;
+                        }
+                        continue;
+                    }
+                    self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
@@ -163,17 +188,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         }
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
                     }
-                    Attribute::ConcatenationAttribute(a) => {
-                        if a.name == "class" && (has_class_directives || has_class_attribute) {
-                            if !emitted_class {
-                                self.emit_class_attribute_and_directives(
-                                    state, owner_id, owner_var,
-                                )?;
-                                emitted_class = true;
-                            }
-                            continue;
-                        }
-                        self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
+                    Attribute::ConcatenationAttribute(_) => {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "ConcatenationAttribute must classify as HtmlConcat",
+                        );
                     }
                     Attribute::SpreadAttribute(_)
                     | Attribute::ClassDirective(_)
@@ -213,6 +232,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         self.emit_style_directives_aggregate(state, owner_id, owner_var)?;
+
+        let scoped = mem::replace(&mut state.after_update, saved_after_update);
+        state.after_update.extend(event_stmts);
+        state.element_after_update.extend(scoped);
 
         Ok(None)
     }

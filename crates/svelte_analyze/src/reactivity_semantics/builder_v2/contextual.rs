@@ -1,8 +1,12 @@
-use oxc_ast::ast::{ArrowFunctionExpression, BindingIdentifier, Statement, VariableDeclarator};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, AssignmentPattern, BindingIdentifier, BindingPattern,
+    BindingRestElement, Expression, IdentifierReference, Statement, VariableDeclarator,
+};
 use oxc_ast_visit::Visit;
+use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, SnippetBlock};
-use svelte_component_semantics::OxcNodeId;
+use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
     ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
@@ -117,9 +121,24 @@ struct TemplateDeclarationCollector<'s> {
 
 impl TemplateVisitor for TemplateDeclarationCollector<'_> {
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
-        let syms: Vec<SymbolId> = collect_const_tag_syms(tag, ctx);
-
-        let is_destructured = syms.len() > 1;
+        let Some(parsed) = ctx.parsed() else {
+            return;
+        };
+        let Some(stmt) = parsed.stmt(tag.decl.id()) else {
+            return;
+        };
+        let Statement::VariableDeclaration(decl) = stmt else {
+            return;
+        };
+        let Some(declarator) = decl.declarations.first() else {
+            return;
+        };
+        let is_destructured = !matches!(
+            declarator.id,
+            BindingPattern::BindingIdentifier(_),
+        );
+        let mut syms: Vec<SymbolId> = Vec::new();
+        svelte_component_semantics::walk_bindings(&declarator.id, |v| syms.push(v.symbol));
 
         for sym in syms.iter().copied() {
             ctx.data
@@ -129,7 +148,6 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 ctx.data.reactivity.record_const_alias_owner(sym, tag.id);
             }
         }
-        let _ = syms;
     }
 
     fn visit_let_directive_legacy(
@@ -152,8 +170,8 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 return;
             };
             let is_destructured =
-                !matches!(pattern, oxc_ast::ast::BindingPattern::BindingIdentifier(_));
-            let mut syms: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+                !matches!(pattern, BindingPattern::BindingIdentifier(_));
+            let mut syms: Vec<SymbolId> = Vec::new();
             svelte_component_semantics::walk_bindings(pattern, |v| syms.push(v.symbol));
             (syms, is_destructured, stmt_node_id)
         };
@@ -188,11 +206,14 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
             .and_then(declarator_from_stmt_local)
-            .is_some_and(|d| !matches!(&d.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_)));
+            .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
 
-        if !is_destructured && let Some(key_ref) = block.key.as_ref() {
+        if ctx.data.script.runes()
+            && !is_destructured
+            && let Some(key_ref) = block.key.as_ref()
+        {
             mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
         }
 
@@ -242,7 +263,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 
 fn scoped_stmt_symbols(
     _data: &AnalysisData,
-    _scope: oxc_semantic::ScopeId,
+    _scope: ScopeId,
     stmt: &Statement<'_>,
 ) -> Vec<SymbolId> {
     let Statement::VariableDeclaration(decl) = stmt else {
@@ -258,7 +279,7 @@ fn scoped_stmt_symbols(
 
 fn ensure_slot_let_carrier(
     data: &mut AnalysisData,
-    scope: crate::scope::ScopeId,
+    scope: ScopeId,
     stmt_node_id: OxcNodeId,
     preferred_name: &str,
 ) -> SymbolId {
@@ -317,9 +338,18 @@ impl TemplateVisitor for EachSourcePromoter {
             syms
         };
 
-        if !item_syms
-            .iter()
-            .any(|&sym| ctx.data.scoping.is_mutated_any(sym))
+        let mut inner_mutated_bindings = false;
+        collect_each_body_inner_mutation(
+            block,
+            ctx,
+            parsed,
+            &mut inner_mutated_bindings,
+        );
+
+        if !inner_mutated_bindings
+            && !item_syms
+                .iter()
+                .any(|&sym| ctx.data.scoping.is_mutated_any(sym))
         {
             return;
         }
@@ -332,15 +362,15 @@ impl TemplateVisitor for EachSourcePromoter {
         collector.visit_expression(expr);
 
         let immutable = ctx.data.script.immutable;
-        let store_candidate_refs: rustc_hash::FxHashSet<svelte_component_semantics::ReferenceId> =
+        let store_candidate_refs: FxHashSet<ReferenceId> =
             ctx.data
                 .scoping
                 .store_candidate_refs()
                 .iter()
                 .map(|(_, ref_id)| *ref_id)
                 .collect();
-        let mut promoted_sources: Vec<svelte_component_semantics::SymbolId> = Vec::new();
-        let mut collection_store: Option<svelte_component_semantics::SymbolId> = None;
+        let mut promoted_sources: Vec<SymbolId> = Vec::new();
+        let mut collection_store: Option<SymbolId> = None;
         for ref_id in collector.refs {
             if store_candidate_refs.contains(&ref_id) {
                 let Some(base_sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
@@ -366,6 +396,9 @@ impl TemplateVisitor for EachSourcePromoter {
                 continue;
             }
             if ctx.data.reactivity.binding_facts(sym).is_some() {
+                continue;
+            }
+            if ctx.data.reactivity.store_shadow_of_internal(sym).is_some() {
                 continue;
             }
             ctx.data.reactivity.record_legacy_state_binding(
@@ -398,12 +431,111 @@ impl TemplateVisitor for EachSourcePromoter {
     }
 }
 
+fn collect_each_body_inner_mutation<'a>(
+    block: &EachBlock,
+    ctx: &VisitContext<'_, 'a>,
+    parsed: &JsAst<'a>,
+    out: &mut bool,
+) {
+    if *out {
+        return;
+    }
+    walk_fragment_const_tags(ctx.store, block.body, parsed, ctx, out);
+}
+
+fn walk_fragment_const_tags<'a>(
+    store: &svelte_ast::AstStore,
+    fragment_id: svelte_ast::FragmentId,
+    parsed: &JsAst<'a>,
+    ctx: &VisitContext<'_, 'a>,
+    out: &mut bool,
+) {
+    if *out {
+        return;
+    }
+    let fragment = store.fragment(fragment_id);
+    for child_id in fragment.nodes.iter().copied() {
+        if *out {
+            return;
+        }
+        match store.get(child_id) {
+            svelte_ast::Node::ConstTag(tag) => {
+                let Some(stmt) = parsed.stmt(tag.decl.id()) else {
+                    continue;
+                };
+                let Some(declarator) = declarator_from_stmt_local(stmt) else {
+                    continue;
+                };
+                svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+                    if ctx.data.scoping.is_mutated_any(v.symbol) {
+                        *out = true;
+                    }
+                });
+            }
+            svelte_ast::Node::IfBlock(b) => {
+                walk_fragment_const_tags(store, b.consequent, parsed, ctx, out);
+                if let Some(alt) = b.alternate {
+                    walk_fragment_const_tags(store, alt, parsed, ctx, out);
+                }
+            }
+            svelte_ast::Node::EachBlock(b) => {
+                walk_fragment_const_tags(store, b.body, parsed, ctx, out);
+                if let Some(fb) = b.fallback {
+                    walk_fragment_const_tags(store, fb, parsed, ctx, out);
+                }
+            }
+            svelte_ast::Node::AwaitBlock(b) => {
+                if let Some(p) = b.pending {
+                    walk_fragment_const_tags(store, p, parsed, ctx, out);
+                }
+                if let Some(t) = b.then {
+                    walk_fragment_const_tags(store, t, parsed, ctx, out);
+                }
+                if let Some(c) = b.catch {
+                    walk_fragment_const_tags(store, c, parsed, ctx, out);
+                }
+            }
+            svelte_ast::Node::KeyBlock(b) => {
+                walk_fragment_const_tags(store, b.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SnippetBlock(b) => {
+                walk_fragment_const_tags(store, b.body, parsed, ctx, out);
+            }
+            svelte_ast::Node::Element(e) => {
+                walk_fragment_const_tags(store, e.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteElement(e) => {
+                walk_fragment_const_tags(store, e.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::ComponentNode(c) => {
+                walk_fragment_const_tags(store, c.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteComponentLegacy(c) => {
+                walk_fragment_const_tags(store, c.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteSelf(c) => {
+                walk_fragment_const_tags(store, c.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteFragmentLegacy(f) => {
+                walk_fragment_const_tags(store, f.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteBoundary(b) => {
+                walk_fragment_const_tags(store, b.fragment, parsed, ctx, out);
+            }
+            svelte_ast::Node::SvelteHead(h) => {
+                walk_fragment_const_tags(store, h.fragment, parsed, ctx, out);
+            }
+            _ => {}
+        }
+    }
+}
+
 struct ExprRefCollector {
-    refs: Vec<svelte_component_semantics::ReferenceId>,
+    refs: Vec<ReferenceId>,
 }
 
 impl<'a> Visit<'a> for ExprRefCollector {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         if let Some(ref_id) = ident.reference_id.get() {
             self.refs.push(ref_id);
         }
@@ -517,7 +649,7 @@ fn run_snippet_param_marker<'a>(
 
 fn each_collection_has_external_deps(
     block: &EachBlock,
-    body_scope: crate::scope::ScopeId,
+    body_scope: ScopeId,
     ctx: &VisitContext<'_, '_>,
 ) -> bool {
     let Some(parsed) = ctx.parsed else {
@@ -560,7 +692,7 @@ fn mark_each_item_syms_non_reactive(
 
 fn mark_key_is_item_each_binding(
     block: &EachBlock,
-    body_scope: oxc_semantic::ScopeId,
+    body_scope: ScopeId,
     _key_span: svelte_span::Span,
     ctx: &mut VisitContext<'_, '_>,
     staging: &mut ContextualStaging,
@@ -590,7 +722,7 @@ fn mark_key_is_item_each_binding(
     let key_resolves_to_ctx = parsed
         .expr(key_ref.id())
         .and_then(|expr| match expr {
-            oxc_ast::ast::Expression::Identifier(ident) => ident.reference_id.get(),
+            Expression::Identifier(ident) => ident.reference_id.get(),
             _ => None,
         })
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())
@@ -635,7 +767,7 @@ impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
         }
     }
 
-    fn visit_binding_rest_element(&mut self, it: &oxc_ast::ast::BindingRestElement<'a>) {
+    fn visit_binding_rest_element(&mut self, it: &BindingRestElement<'a>) {
         let Some(ident) = it.argument.get_binding_identifier() else {
             return;
         };
@@ -648,7 +780,7 @@ impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
         }
     }
 
-    fn visit_assignment_pattern(&mut self, pat: &oxc_ast::ast::AssignmentPattern<'a>) {
+    fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
         let was_in_default = self.in_default;
         self.in_default = true;
         self.visit_binding_pattern(&pat.left);
@@ -707,7 +839,7 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
         }
     }
 
-    fn visit_assignment_pattern(&mut self, pat: &oxc_ast::ast::AssignmentPattern<'a>) {
+    fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
         let was_in_default = self.in_default;
         self.in_default = true;
         self.visit_binding_pattern(&pat.left);
@@ -725,23 +857,3 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     }
 }
 
-fn collect_const_tag_syms(
-    tag: &svelte_ast::ConstTag,
-    ctx: &mut VisitContext<'_, '_>,
-) -> Vec<SymbolId> {
-    let Some(parsed) = ctx.parsed() else {
-        return Vec::new();
-    };
-    let Some(stmt) = parsed.stmt(tag.decl.id()) else {
-        return Vec::new();
-    };
-    let Statement::VariableDeclaration(decl) = stmt else {
-        return Vec::new();
-    };
-    let Some(declarator) = decl.declarations.first() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    svelte_component_semantics::walk_bindings(&declarator.id, |v| out.push(v.symbol));
-    out
-}

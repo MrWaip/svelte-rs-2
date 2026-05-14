@@ -1,9 +1,9 @@
 # Svelte Element
 
 ## Current state
-- **Working**: 14/14 use cases
-- **Tests**: 21/21 green
-- Last updated: 2026-05-01
+- **Working**: 15/15 use cases
+- **Tests**: 22/22 green
+- Last updated: 2026-05-09
 
 ## Source
 
@@ -46,6 +46,7 @@
 - [x] Analyzer emits `svelte_element_missing_this` error when `this` attribute is absent (test: `svelte_element_missing_this`)
 - [x] Analyzer emits `svelte_element_missing_this` error for bare boolean `this` (test: `svelte_element_missing_this_boolean`)
 - [x] Analyzer emits `svelte_element_invalid_this` warning for string-literal `this="..."` while still compiling (test: `svelte_element_invalid_this_string`; existing `svelte_element_static_tag` remains green)
+- [x] `<svelte:element>` body containing a multi-child fragment (e.g. `{@render slot()}` plus `{#if}`) materializes the fragment via `root_*()` and traverses it via `$.first_child(fragment_*)` / `$.append($$anchor, fragment_*)`, instead of indexing the callback `$$anchor` with `$.child($$anchor)` (test: `svelte_element_body_multi_child_fragment`)
 
 ## Out of scope
 
@@ -94,3 +95,4 @@
 - [x] `svelte_element_missing_this` (diagnostic)
 - [x] `svelte_element_missing_this_boolean` (diagnostic)
 - [x] `svelte_element_invalid_this_string` (diagnostic)
+- [x] `svelte_element_body_multi_child_fragment`

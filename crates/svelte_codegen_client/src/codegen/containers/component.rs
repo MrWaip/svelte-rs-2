@@ -1,5 +1,7 @@
+use std::mem;
+
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast::{NodeId, SVELTE_COMPONENT, SVELTE_SELF};
+use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::EmitState;
@@ -15,15 +17,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         _existing_var: Option<&str>,
     ) -> Result<String> {
+        let node = self.ctx.query.component.store.get(el_id);
+        let is_svelte_component_legacy = matches!(node, Node::SvelteComponentLegacy(_));
+        let is_svelte_self = matches!(node, Node::SvelteSelf(_));
         let (cn_name, span_start, cn_fragment, named_slots) = {
-            let Some(view) = self
-                .ctx
-                .query
-                .component
-                .store
-                .get(el_id)
-                .as_component_like()
-            else {
+            let Some(view) = node.as_component_like() else {
                 return CodegenError::unexpected_node(el_id, "component-like");
             };
             let named_slots: Vec<(String, NodeId)> = view
@@ -36,25 +34,43 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     )
                 })
                 .collect();
-            (
-                view.name.to_string(),
-                view.span.start,
-                view.fragment,
-                named_slots,
-            )
+            let cn_name = match node {
+                Node::ComponentNode(cn) => self
+                    .ctx
+                    .query
+                    .component
+                    .source_text(cn.name.span)
+                    .to_string(),
+                Node::SvelteComponentLegacy(_) => svelte_ast::SVELTE_COMPONENT.to_string(),
+                Node::SvelteSelf(_) => svelte_ast::SVELTE_SELF.to_string(),
+                _ => unreachable!("component-like guard"),
+            };
+            (cn_name, view.span.start, view.fragment, named_slots)
         };
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
-        let is_dynamic = self.ctx.is_dynamic_component(el_id) || cn_name == SVELTE_COMPONENT;
+        let is_dynamic = self.ctx.is_dynamic_component(el_id) || is_svelte_component_legacy;
 
-        let mut props = self.build_component_props(el_id, &cn_name)?;
+        let mut props =
+            self.build_component_props(el_id, is_svelte_component_legacy, ctx.in_block_callback)?;
 
         let mut init_stmts: Vec<Statement<'a>> = Vec::new();
-        let events = std::mem::take(&mut props.events);
+        let events = mem::take(&mut props.events);
         self.build_component_events(el_id, events, &mut props.items, &mut init_stmts)?;
-        for stmt in init_stmts {
-            state.init.push(stmt);
-        }
+        let mut bind_init_stmts = mem::take(&mut props.bind_init_stmts);
+
+        let (anchor_expr_early, dynamic_anchor_name) = if is_dynamic {
+            (None, Some(self.comment_anchor_node_name(state, ctx)?))
+        } else {
+            let anchor = self.direct_anchor_expr(state, ctx)?;
+            for stmt in bind_init_stmts.drain(..) {
+                state.init.push(stmt);
+            }
+            for stmt in init_stmts.drain(..) {
+                state.init.push(stmt);
+            }
+            (Some(anchor), None)
+        };
 
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
@@ -123,24 +139,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let props_expr = self.build_props_expr(props.items);
 
         if is_dynamic {
+            let anchor_node = dynamic_anchor_name
+                .expect("dynamic component must have a pre-allocated anchor name");
             return self.emit_dynamic_component(
                 state,
-                ctx,
                 el_id,
                 &cn_name,
+                is_svelte_component_legacy,
                 props.bind_this,
                 props.svelte_component_this,
                 props_expr,
                 snippet_children.decls,
                 props.memo_decls,
                 props.ownership_bindings,
+                bind_init_stmts,
+                init_stmts,
                 span_start,
+                anchor_node,
             );
         }
 
-        let anchor_expr = self.direct_anchor_expr(state, ctx)?;
+        let anchor_expr = anchor_expr_early
+            .ok_or(())
+            .or_else(|()| self.direct_anchor_expr(state, ctx))?;
 
-        let callee: &str = if cn_name == SVELTE_SELF {
+        let callee: &str = if is_svelte_self {
             self.ctx.state.name
         } else {
             self.ctx.b.alloc_str(&cn_name)
@@ -156,7 +179,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             component_call
         };
 
-        let component_stmt = if cn_name == SVELTE_SELF {
+        let component_stmt = if is_svelte_self {
             self.ctx.b.expr_stmt(final_expr)
         } else {
             let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
@@ -216,21 +239,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn emit_dynamic_component(
         &mut self,
         state: &mut EmitState<'a>,
-        ctx: &FragmentCtx<'a>,
         el_id: NodeId,
         cn_name: &str,
+        is_svelte_component_legacy: bool,
         bind_this_info: Option<NodeId>,
         svelte_component_this: Option<Expression<'a>>,
         props_expr: Expression<'a>,
         snippet_decls: Vec<Statement<'a>>,
         memo_decls: Vec<Statement<'a>>,
         ownership_bindings: Vec<super::super::component_props::OwnershipBinding<'a>>,
+        bind_init_stmts: Vec<Statement<'a>>,
+        init_stmts: Vec<Statement<'a>>,
         span_start: u32,
+        anchor_node: String,
     ) -> Result<String> {
-        let anchor_node = self.comment_anchor_node_name(state, ctx)?;
+        for stmt in bind_init_stmts {
+            state.init.push(stmt);
+        }
+        for stmt in init_stmts {
+            state.init.push(stmt);
+        }
 
         let (intermediate_ref, component_thunk): (&str, Expression<'a>) =
-            if cn_name == SVELTE_COMPONENT {
+            if is_svelte_component_legacy {
                 let Some(this_expr) = svelte_component_this else {
                     return CodegenError::unexpected_node(
                         el_id,
@@ -242,7 +273,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let intermediate = cn_name.replace('.', "_");
                 let intermediate_name = self.ctx.state.gen_ident(&intermediate);
                 let intermediate_ref: &str = self.ctx.b.alloc_str(&intermediate_name);
-                let component_ref = self.build_dynamic_component_ref(el_id, cn_name)?;
+                let component_ref = self.build_dynamic_component_ref(el_id)?;
                 (intermediate_ref, self.ctx.b.thunk(component_ref))
             };
 

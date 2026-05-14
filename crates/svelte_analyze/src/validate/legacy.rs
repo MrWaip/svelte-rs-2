@@ -1,9 +1,11 @@
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    Declaration, IdentifierReference, ModuleExportName, Program, Statement, VariableDeclarationKind,
+    ArrowFunctionExpression, AssignmentTarget, Declaration, Expression, Function,
+    IdentifierReference, LabeledStatement, ModuleExportName, Program, Statement, VariableDeclarationKind,
 };
-use oxc_semantic::ReferenceId;
-use oxc_span::GetSpan;
+use oxc_syntax::scope::ScopeFlags;
+use oxc_semantic::{ReferenceId, SymbolId};
+use oxc_span::{GetSpan, Span as OxcSpan};
 use rustc_hash::FxHashSet;
 use svelte_component_semantics::OxcNodeId;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -34,6 +36,9 @@ fn validate_reactive_declaration_invalid_placement(
     diags: &mut Vec<Diagnostic>,
 ) {
     use oxc_ast_visit::Visit;
+    use oxc_ast_visit::walk::{
+        walk_arrow_function_expression, walk_function, walk_labeled_statement,
+    };
     struct Visitor<'a> {
         diags: &'a mut Vec<Diagnostic>,
         depth: u32,
@@ -41,29 +46,29 @@ fn validate_reactive_declaration_invalid_placement(
     impl<'v, 'a> Visit<'a> for Visitor<'v> {
         fn visit_function(
             &mut self,
-            func: &oxc_ast::ast::Function<'a>,
-            flags: oxc_syntax::scope::ScopeFlags,
+            func: &Function<'a>,
+            flags: ScopeFlags,
         ) {
             self.depth += 1;
-            oxc_ast_visit::walk::walk_function(self, func, flags);
+            walk_function(self, func, flags);
             self.depth -= 1;
         }
         fn visit_arrow_function_expression(
             &mut self,
-            arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+            arrow: &ArrowFunctionExpression<'a>,
         ) {
             self.depth += 1;
-            oxc_ast_visit::walk::walk_arrow_function_expression(self, arrow);
+            walk_arrow_function_expression(self, arrow);
             self.depth -= 1;
         }
-        fn visit_labeled_statement(&mut self, stmt: &oxc_ast::ast::LabeledStatement<'a>) {
+        fn visit_labeled_statement(&mut self, stmt: &LabeledStatement<'a>) {
             if self.depth > 0 && stmt.label.name == "$" {
                 self.diags.push(Diagnostic::warning(
                     DiagnosticKind::ReactiveDeclarationInvalidPlacement,
                     Span::new(stmt.span.start, stmt.span.end),
                 ));
             }
-            oxc_ast_visit::walk::walk_labeled_statement(self, stmt);
+            walk_labeled_statement(self, stmt);
         }
     }
     let mut v = Visitor {
@@ -95,14 +100,14 @@ fn validate_reactive_declaration_cycle(
                 AstKind::LabeledStatement(l) => l,
                 _ => return None,
             };
-            let oxc_ast::ast::Statement::ExpressionStatement(es) = &labeled.body else {
+            let Statement::ExpressionStatement(es) = &labeled.body else {
                 return None;
             };
-            let oxc_ast::ast::Expression::AssignmentExpression(assign) = &es.expression else {
+            let Expression::AssignmentExpression(assign) = &es.expression else {
                 return None;
             };
             match &assign.left {
-                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                AssignmentTarget::AssignmentTargetIdentifier(id) => {
                     Some(id.name.as_str().to_string())
                 }
                 _ => None,
@@ -149,7 +154,7 @@ fn validate_reactive_declaration_module_script_dependency(
             }
             let dep_name = data.scoping.symbol_name(dep_sym).to_string();
             let Some(labeled) = (match data.scoping.js_kind(stmt_node) {
-                Some(oxc_ast::AstKind::LabeledStatement(l)) => Some(l),
+                Some(AstKind::LabeledStatement(l)) => Some(l),
                 _ => None,
             }) else {
                 continue;
@@ -169,7 +174,7 @@ fn validate_reactive_declaration_module_script_dependency(
 }
 
 fn collect_module_dep_ref_span(
-    body: &oxc_ast::ast::Statement<'_>,
+    body: &Statement<'_>,
     name: &str,
     out: &mut Option<Span>,
 ) {
@@ -179,7 +184,7 @@ fn collect_module_dep_ref_span(
         out: &'a mut Option<Span>,
     }
     impl<'a, 'b> Visit<'b> for Finder<'a> {
-        fn visit_identifier_reference(&mut self, id: &oxc_ast::ast::IdentifierReference<'b>) {
+        fn visit_identifier_reference(&mut self, id: &IdentifierReference<'b>) {
             if self.out.is_none() && id.name.as_str() == self.name {
                 *self.out = Some(Span::new(id.span.start, id.span.end));
             }
@@ -251,7 +256,7 @@ fn emit_first_unresolved_read(
     ));
 }
 
-fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<oxc_span::Span> {
+fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<OxcSpan> {
     match data.scoping.js_kind(node_id)? {
         AstKind::IdentifierReference(id) => Some(id.span),
         _ => None,
@@ -263,7 +268,7 @@ fn validate_export_let_unused(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let symbols: Vec<oxc_semantic::SymbolId> =
+    let symbols: Vec<SymbolId> =
         data.reactivity.legacy_bindable_prop_symbols().to_vec();
     let export_specifier_refs = collect_export_specifier_refs(program);
     for sym in symbols {
@@ -302,7 +307,7 @@ fn collect_export_specifier_refs(program: &Program<'_>) -> FxHashSet<ReferenceId
     out
 }
 
-fn has_companion_store(data: &AnalysisData, sym: oxc_semantic::SymbolId) -> bool {
+fn has_companion_store(data: &AnalysisData, sym: SymbolId) -> bool {
     let name = data.scoping.symbol_name(sym);
     let companion = format!("${name}");
     data.scoping
@@ -312,7 +317,7 @@ fn has_companion_store(data: &AnalysisData, sym: oxc_semantic::SymbolId) -> bool
 
 fn has_non_export_read(
     data: &AnalysisData,
-    sym: oxc_semantic::SymbolId,
+    sym: SymbolId,
     decl_node: OxcNodeId,
     export_specifier_refs: &FxHashSet<ReferenceId>,
 ) -> bool {

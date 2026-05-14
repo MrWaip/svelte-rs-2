@@ -1,3 +1,5 @@
+use std::{iter, mem};
+
 use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     AstBuilder, NONE,
@@ -71,4 +73,6 @@ pub enum ObjProp<'a> {
     Setter(&'a str, &'a str, Option<Expression<'a>>, Vec<Statement<'a>>),
 
     Computed(Expression<'a>, Expression<'a>),
+
+    Raw(ast::ObjectPropertyKind<'a>),
 }

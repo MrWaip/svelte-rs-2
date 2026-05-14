@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::DiagnosticKind;
 
 pub fn legacy_replacement(code: &str) -> Option<&'static str> {
@@ -66,7 +68,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
             };
             curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
-        std::mem::swap(&mut prev, &mut curr);
+        mem::swap(&mut prev, &mut curr);
     }
 
     prev[n]
@@ -74,6 +76,8 @@ fn levenshtein(a: &str, b: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::Path};
+
     use super::*;
 
     #[test]
@@ -110,7 +114,7 @@ mod tests {
             "../../tasks/generate_test_cases/node_modules/svelte/src/constants.js",
             "../../tasks/benchmark/node_modules/svelte/src/constants.js",
         ];
-        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let path = candidates
             .iter()
             .map(|c| manifest_dir.join(c))
@@ -118,7 +122,7 @@ mod tests {
         let Some(path) = path else {
             return;
         };
-        let content = std::fs::read_to_string(&path).expect("read constants.js");
+        let content = fs::read_to_string(&path).expect("read constants.js");
         let start = content
             .find("IGNORABLE_RUNTIME_WARNINGS")
             .expect("constant present");
