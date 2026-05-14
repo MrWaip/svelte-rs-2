@@ -134,6 +134,7 @@ mod tests {
                 let child_fragment: Option<svelte_ast::FragmentId> = match node {
                     Node::Element(el) => Some(el.fragment),
                     Node::ComponentNode(cn) => Some(cn.fragment),
+                    Node::SvelteSelf(cn) => Some(cn.fragment),
                     Node::EachBlock(b) => Some(b.body),
                     Node::AwaitBlock(b) => {
                         if let Some(f) = b.pending {

@@ -1,3 +1,5 @@
+use std::panic;
+
 use oxc_allocator::Allocator;
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -138,7 +140,7 @@ impl WasmCompiler {
 }
 
 fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+    match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
         Ok(result) => result,
         Err(payload) => {
             let message = if let Some(s) = payload.downcast_ref::<String>() {

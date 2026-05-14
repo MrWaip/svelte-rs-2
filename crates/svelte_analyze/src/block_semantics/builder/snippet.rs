@@ -229,6 +229,17 @@ mod tests {
     }
 
     #[test]
+    fn snippet_hoistable_with_top_level_script_import() {
+        with_snippet(
+            r#"<script>import { noop } from "./helpers.js";</script>
+{#snippet row()}<p>{noop}</p>{/snippet}"#,
+            |sem| {
+                assert!(sem.hoistable);
+            },
+        );
+    }
+
+    #[test]
     fn snippet_non_hoistable_script_ref() {
         with_snippet(
             r#"<script>let x = $state(10);</script>

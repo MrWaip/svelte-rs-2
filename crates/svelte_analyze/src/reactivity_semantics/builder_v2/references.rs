@@ -1,6 +1,6 @@
 use super::super::data::{
-    BindingFacts, ContextualReadSemantics, DerivedKind, PropBindingKind, PropDefaultLowering,
-    PropLoweringMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
+    BindingFacts, ContextualReadSemantics, DerivedKind, PropBindingKind, PropDefaultEmit,
+    PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -93,7 +93,9 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::Derived(derived) => {
-            if is_write {
+            if is_write && !is_read {
+                Some(ReferenceFacts::DerivedWrite)
+            } else if is_write {
                 Some(ReferenceFacts::IllegalWrite)
             } else if is_read {
                 Some(ReferenceFacts::SignalRead {
@@ -125,7 +127,7 @@ fn classify_reference_semantics(
                 } else if is_read {
                     let reads_as_source = !bindable
                         || *updated
-                        || !matches!(default_lowering, PropDefaultLowering::None);
+                        || !matches!(default_lowering, PropDefaultEmit::None);
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,
@@ -260,7 +262,7 @@ fn classify_reference_semantics(
             } else if is_read {
                 Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                     bindable: true,
-                    lowering_mode: PropLoweringMode::Standard,
+                    lowering_mode: PropEmitMode::Standard,
                     symbol: sym,
                 }))
             } else {

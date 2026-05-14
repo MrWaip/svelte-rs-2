@@ -1,5 +1,9 @@
 use oxc_ast::ast::Expression;
+use oxc_semantic::SymbolId;
+
+use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
+use svelte_ast::NodeId as SvelteNodeId;
 
 use svelte_analyze::{
     AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, RuneKind, StateKind,
@@ -71,7 +75,7 @@ pub(crate) enum TransformMode {
 pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) mode: TransformMode,
 
-    pub(crate) transform_data: crate::data::TransformData,
+    pub(crate) transform_data: TransformData,
     pub(crate) b: &'b Builder<'a>,
     pub(crate) component_scoping: &'b ComponentScoping<'a>,
 
@@ -79,12 +83,11 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) runes: bool,
     pub(crate) accessors: bool,
     pub(crate) immutable: bool,
-    pub(crate) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+    pub(crate) derived_pending: FxHashSet<SymbolId>,
 
-    pub(crate) async_derived_pending: FxHashMap<oxc_semantic::SymbolId, AsyncDerivedMode>,
+    pub(crate) async_derived_pending: FxHashMap<SymbolId, AsyncDerivedMode>,
     pub(crate) strip_exports: bool,
     pub(crate) dev: bool,
-    pub(crate) is_ts: bool,
     pub(crate) function_info_stack: Vec<FunctionInfo>,
     pub(crate) has_tracing: bool,
     pub(crate) needs_ownership_validator: bool,
@@ -102,7 +105,7 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) enclosing_stmt_start: Vec<u32>,
 
-    pub(crate) template_owner_node: Option<svelte_ast::NodeId>,
+    pub(crate) template_owner_node: Option<SvelteNodeId>,
 
     pub(crate) in_bind_setter_traverse: bool,
 }
@@ -114,25 +117,30 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             .is_some_and(|&start| self.ignore_query.is_ignored_at_span(start, code))
     }
 
-    pub(crate) fn rune_for_symbol(&self, sym_id: oxc_semantic::SymbolId) -> Option<RuneKind> {
-        let kind = match self.binding_semantics_for_symbol(sym_id)? {
-            BindingSemantics::State(state) => match state.kind {
+    pub(crate) fn rune_for_symbol(&self, sym_id: SymbolId) -> Option<RuneKind> {
+        match self.binding_semantics_for_symbol(sym_id)? {
+            BindingSemantics::State(state) => Some(match state.kind {
                 StateKind::State => RuneKind::State,
                 StateKind::StateRaw => RuneKind::StateRaw,
                 StateKind::StateEager => RuneKind::StateEager,
-            },
-            BindingSemantics::Derived(derived) => match derived.kind {
+            }),
+            BindingSemantics::Derived(derived) => Some(match derived.kind {
                 DerivedKind::Derived => RuneKind::Derived,
                 DerivedKind::DerivedBy => RuneKind::DerivedBy,
-            },
-            _ => return None,
-        };
-        Some(kind)
+            }),
+            BindingSemantics::OptimizedRune(_) | BindingSemantics::Prop(_) => None,
+            BindingSemantics::RuntimeRune { .. } => None,
+            BindingSemantics::LegacyState(_) | BindingSemantics::LegacyBindableProp(_) => None,
+            BindingSemantics::Store(_) => None,
+            BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => None,
+            BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => None,
+            BindingSemantics::Unresolved => None,
+        }
     }
 
     pub(crate) fn binding_semantics_for_symbol(
         &self,
-        sym_id: oxc_semantic::SymbolId,
+        sym_id: SymbolId,
     ) -> Option<BindingSemantics> {
         let analysis = self.analysis.as_ref()?;
         Some(analysis.binding_semantics(sym_id))

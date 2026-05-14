@@ -35,8 +35,23 @@ pub fn read_sourcemap_module_source(case: &str) -> String {
 
 pub fn load_v3_module_case(case: &str) -> (String, ModuleCompileOptions) {
     let dir = v3_case_dir(case);
-    let input = read_to_string(dir.join("case.svelte.js")).expect("test invariant");
-    let mut opts = ModuleCompileOptions::default();
+    let ts_path = dir.join("case.svelte.ts");
+    let js_path = dir.join("case.svelte.js");
+    let (input, default_filename) = if ts_path.exists() {
+        (
+            read_to_string(&ts_path).expect("test invariant"),
+            "case.svelte.ts".to_string(),
+        )
+    } else {
+        (
+            read_to_string(&js_path).expect("test invariant"),
+            "case.svelte.js".to_string(),
+        )
+    };
+    let mut opts = ModuleCompileOptions {
+        filename: default_filename,
+        ..Default::default()
+    };
     if let Some(config) = read_config(&dir) {
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
@@ -91,6 +106,16 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
         }
         if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
             opts.filename = filename.to_string();
+        }
+        if let Some(name_val) = config.get("name") {
+            opts.name = if name_val.is_null() {
+                None
+            } else {
+                name_val.as_str().map(|s| s.to_string())
+            };
+        }
+        if let Some(root_dir) = config.get("rootDir").and_then(|v| v.as_str()) {
+            opts.root_dir = Some(root_dir.to_string());
         }
         if let Some(ns) = config.get("namespace").and_then(|v| v.as_str()) {
             opts.namespace = match ns {

@@ -1,3 +1,5 @@
+use oxc_ast::ast::{BindingPattern, Expression, Statement};
+
 use super::*;
 
 fn parse(source: &str) -> Component {
@@ -196,7 +198,7 @@ fn component_name_with_underscore_self_closing_parses() {
     let Node::ComponentNode(component) = node_at(&c, 0) else {
         panic!("expected ComponentNode");
     };
-    assert_eq!(component.name, "Derived_1");
+    assert_eq!(c.source_text(component.name.span), "Derived_1");
     assert!(component.self_closing);
 }
 
@@ -206,7 +208,7 @@ fn component_name_with_underscore_non_self_closing_parses() {
     let Node::ComponentNode(component) = node_at(&c, 0) else {
         panic!("expected ComponentNode");
     };
-    assert_eq!(component.name, "Const_0");
+    assert_eq!(c.source_text(component.name.span), "Const_0");
     assert!(!component.self_closing);
 }
 
@@ -225,7 +227,7 @@ fn dotted_component_name_with_lowercase_identifier_root_parses() {
     let Node::ComponentNode(component) = node_at(&c, 0) else {
         panic!("expected ComponentNode");
     };
-    assert_eq!(component.name, "registry_name.Widget");
+    assert_eq!(c.source_text(component.name.span), "registry_name.Widget");
     assert!(component.self_closing);
 }
 
@@ -235,7 +237,7 @@ fn dotted_component_name_with_lowercase_identifier_root_non_self_closing_parses(
     let Node::ComponentNode(component) = node_at(&c, 0) else {
         panic!("expected ComponentNode");
     };
-    assert_eq!(component.name, "registry_name.Widget");
+    assert_eq!(c.source_text(component.name.span), "registry_name.Widget");
     assert!(!component.self_closing);
 }
 
@@ -1291,6 +1293,7 @@ fn let_directive_legacy_converts_to_dedicated_attribute() {
 }
 
 mod js_parse_tests {
+    use crate::parse_js::parse_script_with_alloc;
     use oxc_allocator::Allocator;
 
     #[test]
@@ -1298,7 +1301,7 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false)
+        let program = parse_script_with_alloc(&alloc, arena_source, 0, false)
             .expect("test invariant");
         assert!(!program.body.is_empty());
     }
@@ -1308,7 +1311,7 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false)
+        let program = parse_script_with_alloc(&alloc, arena_source, 0, false)
             .expect("test invariant");
         assert!(!program.body.is_empty());
     }
@@ -1406,6 +1409,19 @@ fn slot_attr_remains_on_wrapper_after_bucketing() {
 }
 
 #[test]
+fn slot_default_value_normalizes_to_default_group() {
+    let c = parse(r#"<Comp><svelte:fragment slot="default">x</svelte:fragment></Comp>"#);
+    let cn = component_at(&c, 0);
+    assert!(
+        cn.legacy_slots.is_empty(),
+        "slot=\"default\" must not create a named slot bucket"
+    );
+    let default = &c.store.fragment(cn.fragment).nodes;
+    assert_eq!(default.len(), 1);
+    assert!(matches!(c.store.get(default[0]), Node::SvelteFragmentLegacy(_)));
+}
+
+#[test]
 fn multiple_named_slots_preserve_source_order() {
     let c = parse(r#"<Comp><div slot="header">H</div><p slot="footer">F</p></Comp>"#);
     let cn = component_at(&c, 0);
@@ -1441,7 +1457,10 @@ fn slot_on_nested_component_child_is_bucketed() {
     let wrapper = c
         .store
         .get(c.store.fragment(outer.legacy_slots[0].fragment).nodes[0]);
-    assert!(matches!(wrapper, Node::ComponentNode(cn) if cn.name == "Inner"));
+    let Node::ComponentNode(inner_cn) = wrapper else {
+        panic!("expected nested ComponentNode");
+    };
+    assert_eq!(c.source_text(inner_cn.name.span), "Inner");
 }
 
 #[test]
@@ -1573,18 +1592,18 @@ fn span_shift_snippet_decl_name_and_params_use_distinct_deltas() {
     let stmt = js
         .pending_stmt(snippet_decl_span.start)
         .expect("snippet decl stmt");
-    let oxc_ast::ast::Statement::VariableDeclaration(var_decl) = stmt else {
+    let Statement::VariableDeclaration(var_decl) = stmt else {
         panic!("expected VariableDeclaration");
     };
     let declarator = var_decl.declarations.first().expect("declarator");
-    let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &declarator.id else {
+    let BindingPattern::BindingIdentifier(id) = &declarator.id else {
         panic!("expected BindingIdentifier")
     };
     assert_eq!(
         &source[id.span.start as usize..id.span.end as usize],
         "row"
     );
-    let Some(oxc_ast::ast::Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
         panic!("expected arrow init")
     };
     let item_span = arrow.params.items[0].span;
@@ -1598,4 +1617,51 @@ fn span_shift_snippet_decl_name_and_params_use_distinct_deltas() {
         "count"
     );
 }
+
+#[test]
+fn svelte_self_becomes_dedicated_node() {
+    let c = parse(r#"<svelte:self />"#);
+    let node = node_at(&c, 0);
+    assert!(matches!(node, Node::SvelteSelf(_)));
+}
+
+#[test]
+fn component_node_name_parses_to_js_identifier() {
+    let source = "<Foo />";
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let cn = (0..component.node_count())
+        .find_map(|i| match component.store.get(svelte_ast::NodeId(i)) {
+            Node::ComponentNode(cn) => Some(cn),
+            _ => None,
+        })
+        .expect("ComponentNode");
+    let expr = js
+        .pending_expr(cn.name.span.start)
+        .expect("name expression");
+    let Expression::Identifier(id) = expr else {
+        panic!("expected Identifier, got {expr:?}");
+    };
+    assert_eq!(id.name.as_str(), "Foo");
+}
+
+#[test]
+fn component_node_name_parses_to_member_expression() {
+    let source = "<a.b.c />";
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(diags.is_empty(), "{diags:?}");
+    let cn = (0..component.node_count())
+        .find_map(|i| match component.store.get(svelte_ast::NodeId(i)) {
+            Node::ComponentNode(cn) => Some(cn),
+            _ => None,
+        })
+        .expect("ComponentNode");
+    let expr = js
+        .pending_expr(cn.name.span.start)
+        .expect("name expression");
+    assert!(matches!(expr, Expression::StaticMemberExpression(_)));
+}
+
 

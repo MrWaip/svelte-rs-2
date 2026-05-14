@@ -100,25 +100,25 @@ function normalizeCompileOptions(options = {}) {
   return {
     dev: Boolean(options.dev),
     filename: typeof options.filename === 'string' ? options.filename : '(unknown)',
-    root_dir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
+    rootDir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
     name: typeof options.name === 'string' ? options.name : undefined,
-    custom_element: Boolean(options.customElement),
+    customElement: Boolean(options.customElement),
     namespace:
       options.namespace === 'svg' || options.namespace === 'mathml' ? options.namespace : 'html',
     css: options.css === 'injected' ? 'injected' : 'external',
     runes: typeof options.runes === 'boolean' ? options.runes : undefined,
-    preserve_comments: Boolean(options.preserveComments),
-    preserve_whitespace: Boolean(options.preserveWhitespace),
-    disclose_version:
+    preserveComments: Boolean(options.preserveComments),
+    preserveWhitespace: Boolean(options.preserveWhitespace),
+    discloseVersion:
       typeof options.discloseVersion === 'boolean' ? options.discloseVersion : undefined,
     hmr: Boolean(options.hmr),
     accessors: Boolean(options.accessors),
     immutable: Boolean(options.immutable),
-    compatibility_component_api:
+    compatibilityComponentApi:
       typeof options.compatibility?.componentApi === 'number'
         ? options.compatibility.componentApi
         : undefined,
-    experimental_async: Boolean(options.experimental?.async),
+    experimentalAsync: Boolean(options.experimental?.async),
     generate: normalizeGenerate(options.generate)
   };
 }
@@ -129,7 +129,7 @@ function normalizeModuleCompileOptions(options = {}) {
   return {
     dev: Boolean(options.dev),
     filename: typeof options.filename === 'string' ? options.filename : '(unknown)',
-    root_dir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
+    rootDir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
     generate: normalizeGenerate(options.generate)
   };
 }

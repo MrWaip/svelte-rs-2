@@ -147,14 +147,33 @@ pub(super) fn prepare<'a>(
                     continue;
                 }
 
-                let part = match trimmed {
-                    Cow::Borrowed(s) if text.decoded.is_none() && is_slice_of(ctx.source, s) => {
-                        let source_ptr = ctx.source.as_ptr() as usize;
-                        let offset = s.as_ptr() as usize - source_ptr;
-                        ConcatPart::Static(Span::new(offset as u32, (offset + s.len()) as u32))
+                let part = if text.decoded.is_some() {
+                    let html_trimmed = if preserve {
+                        Cow::Borrowed(text.raw_value(ctx.source))
+                    } else {
+                        trim_text(
+                            text.raw_value(ctx.source),
+                            is_first,
+                            is_last,
+                            prev_is_expr,
+                            next_is_expr,
+                            prev_text_ends_ws,
+                        )
+                    };
+                    ConcatPart::StaticEntities {
+                        html: html_trimmed.into_owned(),
+                        text: trimmed.into_owned(),
                     }
-                    Cow::Borrowed(s) => ConcatPart::StaticOwned(s.to_string()),
-                    Cow::Owned(s) => ConcatPart::StaticOwned(s),
+                } else {
+                    match trimmed {
+                        Cow::Borrowed(s) if is_slice_of(ctx.source, s) => {
+                            let source_ptr = ctx.source.as_ptr() as usize;
+                            let offset = s.as_ptr() as usize - source_ptr;
+                            ConcatPart::Static(Span::new(offset as u32, (offset + s.len()) as u32))
+                        }
+                        Cow::Borrowed(s) => ConcatPart::StaticOwned(s.to_string()),
+                        Cow::Owned(s) => ConcatPart::StaticOwned(s),
+                    }
                 };
                 buf.push(BufItem::Text(part));
             }

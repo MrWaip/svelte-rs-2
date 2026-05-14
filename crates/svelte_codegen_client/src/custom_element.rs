@@ -1,6 +1,8 @@
+use std::iter;
+
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
-use svelte_parser::{CePropConfig, CeShadowMode, ParsedCeConfig};
+use svelte_parser::{CePropConfig, CeDomMode, ParsedCeConfig};
 
 use crate::context::Ctx;
 use svelte_ast_builder::{Arg, ObjProp};
@@ -37,7 +39,7 @@ pub fn gen_custom_element<'a>(
         Arg::StrRef(name)
     }));
 
-    let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
+    let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeDomMode::None);
     let delegates_focus = parsed.is_some_and(|o| o.delegates_focus);
 
     let extend_arg = take_extend_expr(ctx, ce_config);
@@ -138,7 +140,7 @@ fn build_props_metadata<'a>(ctx: &Ctx<'a>, parsed_opts: Option<&ParsedCeConfig>)
             }
             obj_props.push(ObjProp::KeyValue(
                 b.alloc_str(key),
-                b.object_expr(std::iter::empty::<ObjProp<'_>>()),
+                b.object_expr(iter::empty::<ObjProp<'_>>()),
             ));
         }
     }

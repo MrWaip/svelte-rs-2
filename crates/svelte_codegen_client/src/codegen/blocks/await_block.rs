@@ -102,7 +102,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
             _ => return Ok(self.ctx.b.null_expr()),
         };
-        let inner_ctx = parent_ctx.child_of_block(
+        let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             pending_fragment,
             FragmentAnchor::CallbackParam {
@@ -110,6 +110,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, pending_fragment)?;
         let body = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -170,7 +171,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         fragment: svelte_ast::FragmentId,
         binding: &AwaitBinding,
     ) -> Result<Expression<'a>> {
-        let inner_ctx = parent_ctx.child_of_block(
+        let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             fragment,
             FragmentAnchor::CallbackParam {
@@ -178,6 +179,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, fragment)?;
         let frag_body = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -220,8 +222,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let return_obj = self.ctx.b.shorthand_object_expr(&names);
         let return_stmt = self.ctx.b.return_stmt(return_obj);
+        let helper = self.ctx.query.view.derived_helper();
         let derived_fn = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
-        let derived_call = self.ctx.b.call_expr("$.derived", [Arg::Expr(derived_fn)]);
+        let derived_call = self.ctx.b.call_expr(helper, [Arg::Expr(derived_fn)]);
         decls.push(self.ctx.b.var_stmt("$$value", derived_call));
 
         for name in &names {
@@ -231,7 +234,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .ctx
                 .b
                 .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(member)]);
-            let per_field_derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(getter_fn)]);
+            let per_field_derived = self.ctx.b.call_expr(helper, [Arg::Expr(getter_fn)]);
             decls.push(self.ctx.b.var_stmt(name, per_field_derived));
         }
 

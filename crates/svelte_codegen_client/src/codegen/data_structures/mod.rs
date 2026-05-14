@@ -1,4 +1,4 @@
-mod async_emission_plan;
+mod async_emission;
 mod codegen_error;
 mod codegen_result;
 mod concat;
@@ -9,7 +9,7 @@ mod memo;
 mod pre_anchor;
 mod template;
 
-pub(crate) use async_emission_plan::AsyncEmissionPlan;
+pub(crate) use async_emission::AsyncEmission;
 pub(crate) use codegen_error::{CodegenError, Result};
 pub(crate) use codegen_result::CodegenResult;
 pub(crate) use concat::ConcatPart;

@@ -63,6 +63,8 @@ pub struct DeclarationInfo {
     pub rune_init_refs: Vec<CompactString>,
 
     pub init_literal: Option<CompactString>,
+
+    pub init_known: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

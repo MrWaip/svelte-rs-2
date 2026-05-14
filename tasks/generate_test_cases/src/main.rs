@@ -1,4 +1,11 @@
-use std::{collections::HashMap, fs::File, io::Write, path::Path, process::Command};
+use std::{
+    collections::HashMap,
+    env,
+    fs::{self, File},
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use glob::glob;
 use oxc_allocator::Allocator;
@@ -27,10 +34,13 @@ fn main() {
         .expect("Failed to read glob pattern for .svelte");
     let compiler_module_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.js")
         .expect("Failed to read glob pattern for .svelte.js");
+    let compiler_module_ts_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.ts")
+        .expect("Failed to read glob pattern for .svelte.ts");
     let diagnostic_svelte_files = glob("./tasks/diagnostic_tests/cases/**/*.svelte")
         .expect("Failed to read glob pattern for diagnostic .svelte");
     let files: Vec<String> = compiler_svelte_files
         .chain(compiler_module_files)
+        .chain(compiler_module_ts_files)
         .chain(diagnostic_svelte_files)
         .map(|entry| entry.expect("test invariant").display().to_string())
         .collect();
@@ -38,20 +48,20 @@ fn main() {
     let input_json = serde_json::to_string(&files).expect("test invariant");
 
     // Write input to temp file since /dev/stdin may not be available
-    let tmp_input = std::env::temp_dir().join("svelte_gen_input.json");
-    std::fs::write(&tmp_input, &input_json).expect("Failed to write temp input file");
+    let tmp_input = env::temp_dir().join("svelte_gen_input.json");
+    fs::write(&tmp_input, &input_json).expect("Failed to write temp input file");
 
     let output = Command::new("node")
         .arg("./tasks/generate_test_cases/generate.mjs")
         .env("INPUT_FILE", &tmp_input)
         .env("NODE_PATH", "./tasks/generate_test_cases/node_modules")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .and_then(|child| child.wait_with_output())
         .expect("Failed to run node generate.mjs");
 
-    let _ = std::fs::remove_file(&tmp_input);
+    let _ = fs::remove_file(&tmp_input);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

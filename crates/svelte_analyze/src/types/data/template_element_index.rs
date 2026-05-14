@@ -1,6 +1,7 @@
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::iter::successors;
 use std::mem;
 use svelte_ast::NodeId;
 
@@ -162,7 +163,7 @@ impl TemplateElementIndex {
     }
 
     pub fn previous_siblings(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        std::iter::successors(self.previous_sibling(id), move |&prev_id| {
+        successors(self.previous_sibling(id), move |&prev_id| {
             self.previous_sibling(prev_id)
         })
     }

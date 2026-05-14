@@ -43,7 +43,9 @@ RUN cargo binstall -y \
         cargo-sweep \
         cargo-nextest \
         samply \
-        wasm-pack
+        wasm-pack \
+        cargo-dylint \
+        dylint-link
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     . ${NVM_DIR}/nvm.sh && npm install -g @anthropic-ai/claude-code skills

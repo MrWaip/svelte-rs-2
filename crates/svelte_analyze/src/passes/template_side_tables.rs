@@ -6,7 +6,10 @@ use svelte_ast::{
 };
 
 use crate::ElementFactsEntry;
-use crate::types::data::NamespaceKind;
+use crate::types::data::{
+    AnalysisData, FragmentFacts, FragmentFactsEntry, NamespaceKind, RichContentFacts,
+    RichContentFactsEntry, RichContentParentKind,
+};
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) type FragmentBuckets = Vec<Option<Vec<NodeId>>>;
@@ -88,7 +91,7 @@ fn static_xmlns_namespace(attrs: &[Attribute], source: &str) -> Option<Namespace
 
 pub(crate) fn collect_fragment_namespaces(
     component: &svelte_ast::Component,
-    data: &mut crate::types::data::AnalysisData,
+    data: &mut AnalysisData,
 ) {
     let root_ns = root_namespace(component).as_namespace();
     collect_fragment_namespaces_in(component.root, None, root_ns, &component.store, data);
@@ -99,7 +102,7 @@ fn collect_fragment_namespaces_in(
     parent_element: Option<svelte_ast::NodeId>,
     root_ns: svelte_ast::Namespace,
     store: &svelte_ast::AstStore,
-    data: &mut crate::types::data::AnalysisData,
+    data: &mut AnalysisData,
 ) {
     let fragment_ns = fragment_namespace_for(fragment_id, parent_element, root_ns, store, data);
     data.template
@@ -177,7 +180,7 @@ fn fragment_namespace_for(
     parent_element: Option<svelte_ast::NodeId>,
     root_ns: svelte_ast::Namespace,
     store: &svelte_ast::AstStore,
-    data: &crate::types::data::AnalysisData,
+    data: &AnalysisData,
 ) -> svelte_ast::Namespace {
     use svelte_ast::FragmentRole;
     let role = store.fragment(fragment_id).role;
@@ -195,7 +198,7 @@ fn fragment_namespace_for(
 
 pub(crate) fn collect_fragment_facts(
     component: &svelte_ast::Component,
-    data: &mut crate::types::data::AnalysisData,
+    data: &mut AnalysisData,
 ) {
     collect_fragment_facts_in(
         component.root,
@@ -207,7 +210,7 @@ pub(crate) fn collect_fragment_facts(
 
 pub(crate) fn collect_rich_content_facts(
     component: &svelte_ast::Component,
-    data: &mut crate::types::data::AnalysisData,
+    data: &mut AnalysisData,
 ) {
     collect_rich_content_facts_in(
         component.root,
@@ -221,11 +224,11 @@ fn collect_fragment_facts_in(
     fragment_id: svelte_ast::FragmentId,
     store: &svelte_ast::AstStore,
     source: &str,
-    facts: &mut crate::types::data::FragmentFacts,
+    facts: &mut FragmentFacts,
 ) {
     facts.record(
         fragment_id,
-        crate::types::data::FragmentFactsEntry::from_fragment(
+        FragmentFactsEntry::from_fragment(
             store.fragment(fragment_id),
             store,
             source,
@@ -291,7 +294,7 @@ fn collect_rich_content_facts_in(
     fragment_id: svelte_ast::FragmentId,
     store: &svelte_ast::AstStore,
     source: &str,
-    facts: &mut crate::types::data::RichContentFacts,
+    facts: &mut RichContentFacts,
 ) {
     let nodes = store.fragment_nodes(fragment_id).to_vec();
     for id in nodes {
@@ -351,24 +354,24 @@ fn collect_rich_content_facts_in(
 
     facts.record(
         fragment_id,
-        crate::types::data::RichContentFactsEntry::new(
+        RichContentFactsEntry::new(
             fragment_has_rich_content(
                 fragment_id,
-                crate::types::data::RichContentParentKind::Select,
+                RichContentParentKind::Select,
                 store,
                 source,
                 facts,
             ),
             fragment_has_rich_content(
                 fragment_id,
-                crate::types::data::RichContentParentKind::Optgroup,
+                RichContentParentKind::Optgroup,
                 store,
                 source,
                 facts,
             ),
             fragment_has_rich_content(
                 fragment_id,
-                crate::types::data::RichContentParentKind::Option,
+                RichContentParentKind::Option,
                 store,
                 source,
                 facts,
@@ -379,10 +382,10 @@ fn collect_rich_content_facts_in(
 
 fn fragment_has_rich_content(
     fragment_id: svelte_ast::FragmentId,
-    parent: crate::types::data::RichContentParentKind,
+    parent: RichContentParentKind,
     store: &svelte_ast::AstStore,
     source: &str,
-    facts: &crate::types::data::RichContentFacts,
+    facts: &RichContentFacts,
 ) -> bool {
     let nodes = store.fragment_nodes(fragment_id);
     for &id in nodes {
@@ -437,25 +440,24 @@ fn fragment_has_rich_content(
             Node::Text(text) => {
                 if matches!(
                     parent,
-                    crate::types::data::RichContentParentKind::Select
-                        | crate::types::data::RichContentParentKind::Optgroup
+                    RichContentParentKind::Select | RichContentParentKind::Optgroup
                 ) && !text.raw_value(source).trim().is_empty()
                 {
                     return true;
                 }
             }
             Node::Element(child_el) => match parent {
-                crate::types::data::RichContentParentKind::Select => {
+                RichContentParentKind::Select => {
                     if child_el.name != "option" && child_el.name != "optgroup" {
                         return true;
                     }
                 }
-                crate::types::data::RichContentParentKind::Optgroup => {
+                RichContentParentKind::Optgroup => {
                     if child_el.name != "option" {
                         return true;
                     }
                 }
-                crate::types::data::RichContentParentKind::Option => return true,
+                RichContentParentKind::Option => return true,
             },
             _ => return true,
         }
@@ -512,7 +514,7 @@ fn record_legacy_slot_wrappers(
 }
 
 fn record_custom_element_slot_name(
-    data: &mut crate::types::data::AnalysisData,
+    data: &mut AnalysisData,
     attrs: &[Attribute],
     source: &str,
 ) {
@@ -718,6 +720,30 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_svelte_component_legacy(
         &mut self,
         cn: &SvelteComponentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        ctx.data
+            .template
+            .template_topology
+            .record_node_parent(cn.id, ctx.parent());
+        ctx.data.record_element_facts(
+            cn.id,
+            ElementFactsEntry::build(
+                &cn.attributes,
+                ctx.source,
+                inherited_namespace(self.component, ctx, ctx.nearest_element()),
+                inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
+                false,
+                false,
+            ),
+        );
+        record_component_snippets(cn.id, cn.fragment, ctx);
+        record_legacy_slot_wrappers(&cn.legacy_slots, ctx);
+    }
+
+    fn visit_svelte_self(
+        &mut self,
+        cn: &svelte_ast::SvelteSelf,
         ctx: &mut VisitContext<'_, '_>,
     ) {
         ctx.data

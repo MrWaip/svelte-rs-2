@@ -32,14 +32,14 @@ pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics, DerivedDeclarationSemantics,
-    DerivedKind, DerivedLowering, EachIndexStrategy, EachItemStrategy,
+    DerivedKind, DerivedEmit, EachIndexStrategy, EachItemStrategy,
     LegacyBindablePropSemantics, OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics,
-    PropDefaultLowering, PropLoweringMode, PropReferenceSemantics, ReactivitySemantics,
+    PropDefaultEmit, PropEmitMode, PropReferenceSemantics, PropsDeclKind, ReactivitySemantics,
     ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
     StateBindingSemantics, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
 };
 pub use analysis::{
-    AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis, TemplateAnalysis,
+    AnalysisData, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis, TemplateAnalysis,
 };
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
@@ -48,8 +48,8 @@ pub use css::CssAnalysis;
 pub use directive_modifier_flags::EventModifier;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
-    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
-    EventHandlerMode,
+    ClassDirectiveInfo, ComponentBindMode, ComponentCssProp, ComponentCssPropValue,
+    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;
@@ -58,7 +58,7 @@ pub use pickled_awaits::PickledAwaits;
 pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::LegacyInit;
-pub use runtime::RuntimePlan;
+pub use runtime::RuntimeInfo;
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
     ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,

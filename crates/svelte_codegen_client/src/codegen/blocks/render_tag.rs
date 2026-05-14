@@ -1,9 +1,13 @@
-use oxc_allocator::Vec as OxcVec;
-use oxc_ast::ast::{Argument, Expression, Statement};
+use std::iter;
+
+use oxc_allocator::{CloneIn, Vec as OxcVec};
+use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use oxc_span::GetSpan;
 
+use crate::context::Ctx;
+
 use svelte_analyze::{
-    RenderArgLowering, RenderAsyncKind, RenderCalleeShape, RenderTagBlockSemantics,
+    RenderArgEmit, RenderAsyncKind, RenderCalleeKind, RenderTagBlockSemantics,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -27,7 +31,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let is_static_shape = matches!(
             sem.callee_shape,
-            RenderCalleeShape::Static | RenderCalleeShape::StaticChain
+            RenderCalleeKind::Static | RenderCalleeKind::StaticChain
         );
         let is_standalone = matches!(
             ctx.anchor,
@@ -60,7 +64,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let call = match expr {
             Expression::CallExpression(call) => call,
             Expression::ChainExpression(chain) => match chain.unbox().expression {
-                oxc_ast::ast::ChainElement::CallExpression(call) => call,
+                ChainElement::CallExpression(call) => call,
                 _ => {
                     return CodegenError::unexpected_node(
                         id,
@@ -87,8 +91,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut async_memo_count: u32 = 0;
         for arg in &sem.args {
             match arg {
-                RenderArgLowering::MemoSync => sync_memo_count += 1,
-                RenderArgLowering::MemoAsync => async_memo_count += 1,
+                RenderArgEmit::MemoSync => sync_memo_count += 1,
+                RenderArgEmit::MemoAsync => async_memo_count += 1,
                 _ => {}
             }
         }
@@ -96,7 +100,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let inner_anchor_expr = if needs_async {
             self.ctx.b.rid_expr(anchor_name)
         } else {
-            use oxc_allocator::CloneIn;
             anchor_expr.clone_in(self.ctx.b.ast.allocator)
         };
 
@@ -203,7 +206,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if is_standalone {
             state
                 .init
-                .push(self.ctx.b.call_stmt("$.next", std::iter::empty::<Arg>()));
+                .push(self.ctx.b.call_stmt("$.next", iter::empty::<Arg>()));
         }
     }
 
@@ -222,15 +225,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for (arg, arg_sem) in arguments.into_iter().zip(sem.args.iter()) {
             let arg_expr = arg.into_expression();
             match *arg_sem {
-                RenderArgLowering::PropSource { sym } => {
+                RenderArgEmit::PropSource { sym } => {
                     let name = self.ctx.symbol_name(sym).to_string();
                     thunks.push(Arg::Expr(self.ctx.b.rid_expr(&name)));
                 }
-                RenderArgLowering::MemoSync => {
+                RenderArgEmit::MemoSync => {
                     let name = format!("${sync_seen}");
                     sync_seen += 1;
+                    let helper = self.ctx.query.view.derived_helper();
                     let thunk = self.ctx.b.thunk(arg_expr);
-                    let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+                    let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
                     memo_stmts.push(self.ctx.b.let_init_stmt(&name, derived));
                     let name_ref = self.ctx.b.alloc_str(&name);
                     let get = self.ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
@@ -240,7 +244,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(get)]);
                     thunks.push(Arg::Expr(read_thunk));
                 }
-                RenderArgLowering::MemoAsync => {
+                RenderArgEmit::MemoAsync => {
                     async_values.push(self.ctx.b.clone_expr(&arg_expr));
                     let param_name = format!("${}", sync_memo_count + async_seen);
                     async_seen += 1;
@@ -252,7 +256,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(get)]);
                     thunks.push(Arg::Expr(read_thunk));
                 }
-                RenderArgLowering::Plain => {
+                RenderArgEmit::Plain => {
                     let thunk = self
                         .ctx
                         .b
@@ -266,7 +270,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 }
 
 fn async_value_thunk<'a>(
-    ctx: &mut crate::context::Ctx<'a>,
+    ctx: &mut Ctx<'a>,
     expr: Expression<'a>,
 ) -> Expression<'a> {
     if let Expression::AwaitExpression(await_expr) = expr {
@@ -281,15 +285,15 @@ fn async_value_thunk<'a>(
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_render_final_call(
         &mut self,
-        shape: RenderCalleeShape,
+        shape: RenderCalleeKind,
         callee_expr: Expression<'a>,
         callee_text: &'a str,
         anchor_expr: Expression<'a>,
         arg_thunks: Vec<Arg<'a, 'static>>,
     ) -> Expression<'a> {
         match shape {
-            RenderCalleeShape::Dynamic | RenderCalleeShape::DynamicChain => {
-                let is_chain = matches!(shape, RenderCalleeShape::DynamicChain);
+            RenderCalleeKind::Dynamic | RenderCalleeKind::DynamicChain => {
+                let is_chain = matches!(shape, RenderCalleeKind::DynamicChain);
                 let callee_arg = if is_chain {
                     let coalesced = self
                         .ctx
@@ -306,13 +310,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 snippet_args.extend(arg_thunks);
                 self.ctx.b.call_expr("$.snippet", snippet_args)
             }
-            RenderCalleeShape::StaticChain => {
+            RenderCalleeKind::StaticChain => {
                 let callee = self.ctx.b.rid_expr(callee_text);
                 let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
                 all_args.extend(arg_thunks);
                 self.ctx.b.maybe_call_expr(callee, all_args)
             }
-            RenderCalleeShape::Static => {
+            RenderCalleeKind::Static => {
                 let callee = self.ctx.b.rid_expr(callee_text);
                 let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
                 all_args.extend(arg_thunks);

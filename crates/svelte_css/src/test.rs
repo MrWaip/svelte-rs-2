@@ -750,6 +750,21 @@ fn recovery_empty_declaration_value() {
 }
 
 #[test]
+fn declaration_missing_colon_with_value_no_diagnostic() {
+    let src = ".x { // single-line scss comment, illegal in plain css\n color: red; }";
+    let (ss, diags) = parse(src);
+    assert!(diags.is_empty(), "expected no diagnostics, got: {diags:?}");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration for junk line");
+    };
+    assert_eq!(decl.property.source_text(src), "//");
+    assert!(decl.value.source_text(src).contains("color: red"));
+}
+
+#[test]
 fn error_node_span_covers_skipped_content() {
     let src = "!bad { x: 1; } p { color: red; }";
     let (ss, _) = parse(src);

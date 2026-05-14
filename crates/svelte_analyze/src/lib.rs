@@ -10,12 +10,13 @@ pub use attribute_semantics::{
     ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
     ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    ConcatPartEmit, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
     EventSemantics, HandlerEmit, HtmlBindKind, WindowBindSemantics,
 };
 pub use expression_semantics::{
-    ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
-    Memoization,
+    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore,
+    KnownValue, LegacyWrap, ValueClass,
 };
 
 pub use passes::css_analyze::analyze_css_pass;
@@ -30,7 +31,7 @@ pub use block_semantics::{
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
     IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
-    KeyBlockSemantics, RenderArgLowering, RenderAsyncKind, RenderCalleeShape,
+    KeyBlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind,
     RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 pub use scope::ComponentScoping;
@@ -38,19 +39,20 @@ pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
-    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
+    ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
     ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedLowering,
+    DerivedDeclarationSemantics, DerivedKind, DerivedEmit,
     DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
     ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier,
     FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
-    MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputPlanData, ParentKind, ParentRef,
-    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultLowering,
-    PropLoweringMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
+    MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
+    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultEmit,
+    PropEmitMode, PropReferenceSemantics, PropsDeclKind, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimePlan, RuntimeRuneKind, ScriptAnalysis,
+    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis,
     SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
     StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
@@ -61,9 +63,6 @@ pub use types::script::{
 pub use utils::script_info::{BINDABLE_RUNE_NAME, detect_rune_from_call};
 
 bitflags::bitflags! {
-
-
-
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
     pub struct PropsFlags: u32 {
         const IMMUTABLE    = 1;
@@ -172,25 +171,33 @@ pub fn analyze_with_options<'a>(
         data.scoping.semantics(),
         &data.reactivity,
         &data.scoping,
+        &data.template.snippets,
         data.script.has_class_state_fields,
         data.blocker_data(),
+        data.script.runes_mode,
         component.node_count(),
+        data.script.dev,
     );
     if !data.output.needs_context && expressions_v2.is_context_required() {
         data.output.needs_context = true;
     }
     data.expressions_v2 = expressions_v2;
 
-    data.attributes = attribute_semantics::build(
+    let (attributes, binding_groups) = attribute_semantics::build(
         component,
         &parsed,
         data.scoping.semantics(),
         &data.reactivity,
+        &data.scoping,
+        &data.expressions_v2,
         data.blocker_data(),
         &data.output.ignore_data,
         options.dev,
         component.node_count(),
     );
+    data.attributes = attributes;
+    data.template.bind_semantics.binding_group_id_by_attr = binding_groups.ids;
+    data.template.bind_semantics.binding_group_count = binding_groups.count;
 
     for &key in passes::TEMPLATE_EXECUTION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
@@ -212,7 +219,7 @@ pub fn analyze_with_options<'a>(
         data.output.needs_sanitized_legacy_slots = true;
     }
 
-    data.output.runtime_plan = build_runtime_plan(&data, options.dev);
+    data.output.runtime_plan = build_runtime_info(component, &data, options.dev);
 
     (data, parsed, diags)
 }
@@ -264,7 +271,11 @@ pub fn analyze_module<'a>(
 
     (data, parsed, diags)
 }
-fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
+fn build_runtime_info(
+    component: &svelte_ast::Component,
+    data: &AnalysisData<'_>,
+    dev: bool,
+) -> RuntimeInfo {
     let legacy_symbols = data.reactivity.legacy_bindable_prop_symbols();
     let has_legacy_bindable_prop = !legacy_symbols.is_empty();
     let has_legacy_member_mutated = data.reactivity.legacy_has_member_mutated();
@@ -312,20 +323,34 @@ fn build_runtime_plan(data: &AnalysisData<'_>, dev: bool) -> RuntimePlan {
             .props_declaration()
             .is_some_and(|d| d.props.iter().any(|p| !p.is_rest && !p.is_reserved()));
     let has_component_exports = has_exports || has_ce_props || has_legacy_accessor_props || dev;
-    let needs_props_param =
-        data.script.props_declaration().is_some() || needs_push || has_legacy_bindable_prop;
+    let has_component_bubble_event_legacy = (0..component.node_count()).any(|raw| {
+        let id = svelte_ast::NodeId(raw);
+        let Some(view) = component.store.get(id).as_component_like() else {
+            return false;
+        };
+        view.attributes.iter().any(|a| {
+            matches!(
+                a,
+                svelte_ast::Attribute::OnDirectiveLegacy(od) if od.expression.is_none()
+            )
+        })
+    });
+    let needs_props_param = data.script.props_declaration().is_some()
+        || needs_push
+        || has_legacy_bindable_prop
+        || has_component_bubble_event_legacy;
 
     let legacy_init = if data.uses_runes() {
-        crate::types::data::LegacyInit::None
+        LegacyInit::None
     } else if data.script.immutable {
-        crate::types::data::LegacyInit::Immutable
+        LegacyInit::Immutable
     } else if has_legacy_member_mutated || has_legacy_props_read || data.output.needs_context {
-        crate::types::data::LegacyInit::Plain
+        LegacyInit::Plain
     } else {
-        crate::types::data::LegacyInit::None
+        LegacyInit::None
     };
 
-    RuntimePlan {
+    RuntimeInfo {
         needs_push,
         has_component_exports,
         has_exports,

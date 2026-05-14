@@ -1,11 +1,13 @@
-use svelte_ast::{Attribute, ComponentNode, Element, SVELTE_SELF, is_mathml, is_svg, is_void};
+use svelte_ast::{Attribute, ComponentNode, Element, is_mathml, is_svg, is_void};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{
-    BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo,
-    ComponentPropKind, EventHandlerMode, EventModifier, ParentKind, RichContentParentKind,
+    BindingSemantics, BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
+    ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
+    ParentKind, PropBindingKind, PropBindingSemantics, RichContentParentKind,
 };
+use crate::utils::{is_delegatable_event, is_passive_event, is_simple_identifier, strip_capture_event};
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -112,6 +114,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .bind_semantics
                 .has_bind_group
                 .insert(el.id);
+            ctx.data.template.bind_semantics.any_bind_group = true;
         }
 
         let has_contenteditable =
@@ -176,14 +179,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
-                    let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw)
+                    let (name, capture) = if let Some(base) = strip_capture_event(raw)
                     {
                         (base, true)
                     } else {
                         (raw, false)
                     };
-                    let passive = crate::utils::is_passive_event(name);
-                    let mode = if !capture && crate::utils::is_delegatable_event(name) {
+                    let passive = is_passive_event(name);
+                    let mode = if !capture && is_delegatable_event(name) {
                         EventHandlerMode::Delegated { passive }
                     } else {
                         EventHandlerMode::Direct { capture, passive }
@@ -222,33 +225,52 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         cn: &svelte_ast::SvelteComponentLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        self.process_component_like(cn.id, svelte_ast::SVELTE_COMPONENT, &cn.attributes, ctx);
+        self.process_component_like(cn.id, &cn.attributes, ctx);
+        self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
-        self.process_component_like(cn.id, cn.name.as_str(), &cn.attributes, ctx);
+        self.process_component_like(cn.id, &cn.attributes, ctx);
+        self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
+    }
+
+    fn visit_svelte_self(
+        &mut self,
+        cn: &svelte_ast::SvelteSelf,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        self.process_component_like(cn.id, &cn.attributes, ctx);
+        self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
     }
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
+    fn mark_bind_group_if_present(
+        &self,
+        node_id: svelte_ast::NodeId,
+        attributes: &[Attribute],
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let has_group = attributes.iter().any(|attr| {
+            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
+        });
+        if has_group {
+            ctx.data
+                .template
+                .bind_semantics
+                .has_bind_group
+                .insert(node_id);
+            ctx.data.template.bind_semantics.any_bind_group = true;
+        }
+    }
+
     fn process_component_like(
         &self,
         cn_id: svelte_ast::NodeId,
-        cn_name: &str,
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
         let data = &mut *ctx.data;
-        let base_name = cn_name.split('.').next().unwrap_or(cn_name);
-        if let Some(sym_id) = data.scoping.find_binding(ctx.scope, base_name) {
-            data.elements
-                .flags
-                .component_binding_sym
-                .insert(cn_id, sym_id);
-        }
-        if cn_name == SVELTE_SELF {
-            data.elements.flags.is_svelte_self.insert(cn_id);
-        }
         for attr in attributes {
             let css_prop_name: Option<&str> = match attr {
                 Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
@@ -257,18 +279,28 @@ impl<'src> ElementFlagsVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = css_prop_name {
-                let expr_id = match attr {
-                    Attribute::ExpressionAttribute(a) => Some(a.expression.id()),
-                    Attribute::ConcatenationAttribute(_) => None,
-                    Attribute::StringAttribute(_) => None,
+                let value = match attr {
+                    Attribute::ExpressionAttribute(a) => {
+                        Some(ComponentCssPropValue::Expression(a.expression.id()))
+                    }
+                    Attribute::StringAttribute(a) => {
+                        Some(ComponentCssPropValue::StaticString(a.value_span))
+                    }
+                    Attribute::ConcatenationAttribute(_) => {
+                        Some(ComponentCssPropValue::Concatenation)
+                    }
                     _ => None,
                 };
-                if let Some(expr_id) = expr_id {
+                if let Some(value) = value {
                     data.elements
                         .flags
                         .component_css_props
                         .get_or_default(cn_id)
-                        .push((name.to_string(), attr.id(), expr_id));
+                        .push(ComponentCssProp {
+                            name: name.to_string(),
+                            attr_id: attr.id(),
+                            value,
+                        });
                 }
                 continue;
             }
@@ -330,7 +362,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                                     data.scoping.find_binding(root, trimmed).is_some_and(|sym| {
                                         matches!(
                                             data.binding_semantics(sym),
-                                            crate::types::data::BindingSemantics::Store(_),
+                                            BindingSemantics::Store(_),
                                         )
                                     })
                                 }
@@ -347,7 +379,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                             }
                         } else {
                             let source_lookup_name = match &expr_text {
-                                Some(text) if crate::utils::is_simple_identifier(text.trim()) => {
+                                Some(text) if is_simple_identifier(text.trim()) => {
                                     text.trim().to_string()
                                 }
                                 Some(_) => b.name.clone(),
@@ -362,18 +394,18 @@ impl<'src> ElementFlagsVisitor<'src> {
                                         .reactivity
                                         .binding_semantics(sym);
                                     match decl {
-                                        crate::types::data::BindingSemantics::Prop(
-                                            crate::types::data::PropBindingSemantics {
-                                                kind: crate::types::data::PropBindingKind::Source { .. },
+                                        BindingSemantics::Prop(
+                                            PropBindingSemantics {
+                                                kind: PropBindingKind::Source { .. },
                                                 ..
                                             },
                                         )
-                                        | crate::types::data::BindingSemantics::LegacyBindableProp(_) => {
+                                        | BindingSemantics::LegacyBindableProp(_) => {
                                             ComponentBindMode::PropSource
                                         }
-                                        crate::types::data::BindingSemantics::State(_)
-                                        | crate::types::data::BindingSemantics::Derived(_)
-                                        | crate::types::data::BindingSemantics::OptimizedRune(_) => {
+                                        BindingSemantics::State(_)
+                                        | BindingSemantics::Derived(_)
+                                        | BindingSemantics::OptimizedRune(_) => {
                                             ComponentBindMode::Rune
                                         }
                                         _ => ComponentBindMode::Plain,
@@ -390,7 +422,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 data.output.needs_component_bind_ownership = true;
                             }
                             let source_ident = match &expr_text {
-                                Some(text) if crate::utils::is_simple_identifier(text.trim()) => {
+                                Some(text) if is_simple_identifier(text.trim()) => {
                                     Some(text.trim().to_string())
                                 }
                                 _ => None,

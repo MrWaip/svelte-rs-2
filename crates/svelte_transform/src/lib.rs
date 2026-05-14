@@ -6,11 +6,21 @@ pub use data::TransformData;
 
 pub use transformer::{IgnoreQuery, TransformScriptOutput, sanitize_location, transform_script};
 
-use oxc_syntax::node::NodeId as OxcNodeId;
+use std::slice;
 
+use oxc_syntax::node::NodeId as OxcNodeId;
+use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
+
+use oxc_ast::ast::Expression;
+use svelte_analyze::{
+    AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst, PropReferenceSemantics,
+    ReferenceSemantics,
+};
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, IdentGen, JsAst};
-use svelte_ast::{Attribute, Component, ConcatPart, Node};
+use svelte_ast::{
+    Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node, NodeId as SvelteNodeId,
+    StyleDirectiveValue,
+};
 
 pub fn transform_component<'a>(
     ctx: &mut svelte_types::CompileContext<'a, '_>,
@@ -63,15 +73,26 @@ struct TransformCtx<'a, 'b> {
     ident_gen: &'b mut IdentGen,
     transform_data: TransformData,
 
-    expr_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
-    stmt_handles: Vec<(OxcNodeId, Option<svelte_ast::NodeId>)>,
+    expr_handles: Vec<(OxcNodeId, Option<SvelteNodeId>)>,
+    stmt_handles: Vec<(OxcNodeId, Option<SvelteNodeId>)>,
 
-    bind_expr_handles: Vec<(OxcNodeId, svelte_ast::NodeId)>,
+    bind_expr_handles: Vec<BindExprHandle>,
+}
+
+pub(crate) enum BindHandleKind {
+    Element,
+    Component { prop_name: String },
+}
+
+pub(crate) struct BindExprHandle {
+    pub bind_id: OxcNodeId,
+    pub owner: SvelteNodeId,
+    pub kind: BindHandleKind,
 }
 
 fn walk_fragment<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    fragment_id: svelte_ast::FragmentId,
+    fragment_id: FragmentId,
     component: &Component,
     parsed: &mut JsAst<'a>,
     scope: ScopeId,
@@ -102,7 +123,10 @@ fn walk_node<'a>(
             walk_attrs(ctx, &el.attributes, parsed);
             walk_fragment(ctx, el.fragment, component, parsed, scope);
         }
-        Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+        Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
+            if let Node::ComponentNode(cn) = node {
+                record_expr(ctx, parsed, &cn.name, Some(cn.id));
+            }
             if let Some(view) = node.as_component_like() {
                 walk_component_like(
                     ctx,
@@ -148,7 +172,7 @@ fn walk_node<'a>(
         Node::ConstTag(tag) => {
             ctx.stmt_handles.push((tag.decl.id(), Some(tag.id)));
 
-            if let svelte_analyze::BlockSemantics::ConstTag(sem) =
+            if let BlockSemantics::ConstTag(sem) =
                 ctx.analysis.block_semantics(tag.id)
                 && is_destructured_const_tag(ctx.analysis, sem.decl_node_id)
             {
@@ -213,8 +237,8 @@ fn walk_node<'a>(
 fn record_expr<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     _parsed: &JsAst<'a>,
-    expr_ref: &svelte_ast::ExprRef,
-    owner: Option<svelte_ast::NodeId>,
+    expr_ref: &ExprRef,
+    owner: Option<SvelteNodeId>,
 ) {
     ctx.expr_handles.push((expr_ref.id(), owner));
 }
@@ -223,8 +247,8 @@ fn record_expr<'a>(
 fn walk_component_like<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     attributes: &[Attribute],
-    cn_fragment: svelte_ast::FragmentId,
-    legacy_slots: &[svelte_ast::LegacySlot],
+    cn_fragment: FragmentId,
+    legacy_slots: &[LegacySlot],
     component: &Component,
     parsed: &mut JsAst<'a>,
     scope: ScopeId,
@@ -241,12 +265,12 @@ fn walk_component_like<'a>(
     };
 
     for attr in attributes {
-        walk_attrs(ctx, std::slice::from_ref(attr), parsed);
+        walk_attrs(ctx, slice::from_ref(attr), parsed);
     }
 
     walk_fragment(ctx, cn_fragment, component, parsed, default_scope);
 
-    let slot_frags: Vec<svelte_ast::FragmentId> = legacy_slots.iter().map(|s| s.fragment).collect();
+    let slot_frags: Vec<FragmentId> = legacy_slots.iter().map(|s| s.fragment).collect();
     for slot_fid in slot_frags {
         let slot_scope = ctx
             .analysis
@@ -265,15 +289,15 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             let bind_id = bind.expression.id();
             let is_user_sequence = parsed
                 .expr(bind_id)
-                .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::SequenceExpression(_)));
+                .is_some_and(|e| matches!(e, Expression::SequenceExpression(_)));
             if bind.name == "this" {
                 continue;
             }
 
             let is_window_or_document = matches!(
                 ctx.analysis.attributes.get(attr.id()),
-                svelte_analyze::AttributeSemantics::WindowBind(_)
-                    | svelte_analyze::AttributeSemantics::DocumentBind(_)
+                AttributeSemantics::WindowBind(_)
+                    | AttributeSemantics::DocumentBind(_)
             );
             if is_window_or_document {
                 continue;
@@ -283,22 +307,22 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 let mut current = expr;
                 loop {
                     match current {
-                        oxc_ast::ast::Expression::StaticMemberExpression(m) => current = &m.object,
-                        oxc_ast::ast::Expression::ComputedMemberExpression(m) => {
+                        Expression::StaticMemberExpression(m) => current = &m.object,
+                        Expression::ComputedMemberExpression(m) => {
                             current = &m.object
                         }
-                        oxc_ast::ast::Expression::Identifier(id) => {
+                        Expression::Identifier(id) => {
                             let Some(ref_id) = id.reference_id.get() else {
                                 return false;
                             };
                             return matches!(
                                 ctx.analysis.reference_semantics(ref_id),
-                                svelte_analyze::ReferenceSemantics::PropRead(
-                                    svelte_analyze::PropReferenceSemantics::Source {
+                                ReferenceSemantics::PropRead(
+                                    PropReferenceSemantics::Source {
                                         bindable: true,
                                         ..
                                     }
-                                ) | svelte_analyze::ReferenceSemantics::PropMutation {
+                                ) | ReferenceSemantics::PropMutation {
                                     bindable: true,
                                     ..
                                 }
@@ -314,7 +338,22 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             if is_user_sequence {
                 ctx.expr_handles.push((bind_id, owner));
             } else {
-                ctx.bind_expr_handles.push((bind_id, attr.id()));
+                let kind = match ctx.analysis.attributes.get(attr.id()) {
+                    AttributeSemantics::ComponentBind(_) => {
+                        BindHandleKind::Component {
+                            prop_name: bind.name.clone(),
+                        }
+                    }
+                    AttributeSemantics::ElementBind(_) => BindHandleKind::Element,
+                    _ => unreachable!(
+                        "bind directive must classify as ElementBind/ComponentBind (window/document filtered above)"
+                    ),
+                };
+                ctx.bind_expr_handles.push(BindExprHandle {
+                    bind_id,
+                    owner: attr.id(),
+                    kind,
+                });
             }
             continue;
         }
@@ -328,7 +367,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
         let concat_parts: Option<&[ConcatPart]> = match attr {
             Attribute::ConcatenationAttribute(a) => Some(&a.parts),
             Attribute::StyleDirective(a) => match &a.value {
-                svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
+                StyleDirectiveValue::Concatenation(parts) => Some(parts),
                 _ => None,
             },
             _ => None,
@@ -348,7 +387,7 @@ fn get_attr_expr_id(attr: &Attribute) -> Option<OxcNodeId> {
         Attribute::ExpressionAttribute(a) => Some(a.expression.id()),
         Attribute::ClassDirective(a) => Some(a.expression.id()),
         Attribute::StyleDirective(a) => match &a.value {
-            svelte_ast::StyleDirectiveValue::Expression => Some(a.expression.id()),
+            StyleDirectiveValue::Expression => Some(a.expression.id()),
             _ => None,
         },
 
@@ -385,8 +424,8 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
 }
 
 fn is_destructured_const_tag(
-    analysis: &svelte_analyze::AnalysisData<'_>,
-    decl_node_id: svelte_component_semantics::OxcNodeId,
+    analysis: &AnalysisData<'_>,
+    decl_node_id: SemOxcNodeId,
 ) -> bool {
     use oxc_ast::{AstKind, ast::BindingPattern};
     let Some(AstKind::VariableDeclaration(decl)) = analysis.scoping.js_kind(decl_node_id) else {
@@ -404,13 +443,13 @@ mod tests {
     use oxc_allocator::Allocator;
     use oxc_ast::ast::Expression;
     use svelte_analyze::{IdentGen, analyze};
-    use svelte_ast::{Component, Node};
+    use svelte_ast::{Component, ExpressionTag, Node, SnippetBlock};
 
     fn find_snippet_block<'a>(
-        fragment_id: svelte_ast::FragmentId,
+        fragment_id: FragmentId,
         component: &'a Component,
         name: &str,
-    ) -> Option<&'a svelte_ast::SnippetBlock> {
+    ) -> Option<&'a SnippetBlock> {
         let nodes = component.fragment_nodes(fragment_id).to_vec();
         for id in nodes {
             match component.store.get(id) {
@@ -459,10 +498,10 @@ mod tests {
     }
 
     fn find_expr_tag<'a>(
-        fragment_id: svelte_ast::FragmentId,
+        fragment_id: FragmentId,
         component: &'a Component,
         needle: &str,
-    ) -> Option<&'a svelte_ast::ExpressionTag> {
+    ) -> Option<&'a ExpressionTag> {
         let nodes = component.fragment_nodes(fragment_id).to_vec();
         for id in nodes {
             match component.store.get(id) {

@@ -1,8 +1,12 @@
+use std::iter;
+
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::{
-    AssignmentPattern, BindingPattern, ChainElement, Expression, FormalParameter, FormalParameters,
-    PropertyKey, Statement,
+    AssignmentPattern, BindingPattern, BindingProperty, ChainElement, Expression, FormalParameter,
+    FormalParameters, ObjectPattern, PropertyKey, Statement,
 };
 use oxc_span::SPAN;
+use rustc_hash::FxHashSet;
 use svelte_analyze::{SnippetBlockSemantics, SnippetParam};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -48,10 +52,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sem: &SnippetBlockSemantics,
         prepend_stmts: Vec<Statement<'a>>,
     ) -> Result<Statement<'a>> {
-        self.enter_snippet_build();
-        let res = self.build_snippet_const_inner(block_id, sem, prepend_stmts);
-        self.exit_snippet_build();
-        res
+        self.build_snippet_const_inner(block_id, sem, prepend_stmts)
     }
 
     fn build_snippet_const_inner(
@@ -109,7 +110,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .call_expr("$.wrap_snippet", [Arg::Expr(component), Arg::Expr(fn_expr)])
         } else {
-            let arrow = self.ctx.b.arrow(params, all);
+            let arrow = self.ctx.b.arrow_block(params, all);
             Expression::ArrowFunctionExpression(self.ctx.b.alloc(arrow))
         };
         Ok(self.ctx.b.const_stmt(&name, snippet_expr))
@@ -159,9 +160,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         arg_name: &str,
         decls: &mut Vec<Statement<'a>>,
     ) {
-        use rustc_hash::FxHashSet;
         let b = &self.ctx.state.b;
-        let access = b.maybe_call_expr(b.rid_expr(arg_name), std::iter::empty::<Arg<'_, '_>>());
+        let access = b.maybe_call_expr(b.rid_expr(arg_name), iter::empty::<Arg<'_, '_>>());
         let mut inserts: Vec<SnippetInsert<'a>> = Vec::new();
         let mut paths: Vec<SnippetPath<'a>> = Vec::new();
         self.collect_binding_pattern(pattern, access, false, &mut inserts, &mut paths);
@@ -193,7 +193,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 } else {
                     self.ctx
                         .b
-                        .call_stmt(&path.name, std::iter::empty::<Arg<'_, '_>>())
+                        .call_stmt(&path.name, iter::empty::<Arg<'_, '_>>())
                 };
                 decls.push(eager);
             }
@@ -329,7 +329,6 @@ fn extract_pattern_params<'a>(
     expected: usize,
     allocator: &'a oxc_allocator::Allocator,
 ) -> Vec<Option<BindingPattern<'a>>> {
-    use oxc_allocator::CloneIn;
     let mut out: Vec<Option<BindingPattern<'a>>> = Vec::with_capacity(expected);
     let Statement::VariableDeclaration(decl) = stmt else {
         for _ in 0..expected {
@@ -367,7 +366,7 @@ fn extract_pattern_params<'a>(
 fn build_object_property_access<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
     access: &Expression<'a>,
-    prop: &oxc_ast::ast::BindingProperty<'a>,
+    prop: &BindingProperty<'a>,
 ) -> Expression<'a> {
     if !prop.computed
         && let PropertyKey::StaticIdentifier(id) = &prop.key
@@ -436,7 +435,7 @@ fn build_chain_computed_member<'a, 'ctx>(
 fn rewrite_array_reads<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
     expr: &mut Expression<'a>,
-    array_insert_names: &rustc_hash::FxHashSet<String>,
+    array_insert_names: &FxHashSet<String>,
 ) {
     match expr {
         Expression::StaticMemberExpression(member) => {
@@ -519,7 +518,7 @@ fn clone_chain_element_expr<'a, 'ctx>(
 fn build_object_rest_expr<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
     access: &Expression<'a>,
-    obj: &oxc_ast::ast::ObjectPattern<'a>,
+    obj: &ObjectPattern<'a>,
 ) -> Expression<'a> {
     use oxc_allocator::CloneIn;
     let excluded = cg.ctx.b.array_expr(

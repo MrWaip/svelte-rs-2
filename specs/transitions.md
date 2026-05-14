@@ -1,9 +1,9 @@
 # Transitions
 
 ## Current state
-- **Working**: 16/16 use cases
-- **Tests**: 19/19 green
-- Last updated: 2026-05-01
+- **Working**: 19/19 use cases
+- **Tests**: 22/22 green
+- Last updated: 2026-05-13
 
 ## Source
 
@@ -46,6 +46,9 @@
 - [x] Reject `transition:` together with `in:` on one element via `transition_conflict`.
 - [x] Reject `transition:` together with `out:` on one element via `transition_conflict`.
 - [x] Reject `await` expressions inside transition directive values via `illegal_await_expression`.
+- [x] Emit `$.transition(...)` after `$.delegated(...)` calls on the same element so registration order matches reference (test: `transition_after_delegated`).
+- [x] Emit `$.transition(...)` after `$.delegated(...)` calls when the transition target is an ancestor of the delegated-event element, not just the same element (test: `transition_after_delegated_descendant`).
+- [x] Emit `$.transition(...)` before non-delegated `$.event(...)` calls on the same element so transition setup precedes lifecycle event listeners like `introstart` / `outroend` (test: `transition_before_lifecycle_events`).
 
 ## Out of scope
 
@@ -94,3 +97,6 @@
 - [x] `validate_transition_conflict_in`
 - [x] `validate_transition_conflict_out`
 - [x] `validate_transition_illegal_await_expression`
+- [x] `transition_after_delegated`
+- [x] `transition_after_delegated_descendant`
+- [x] `transition_before_lifecycle_events`

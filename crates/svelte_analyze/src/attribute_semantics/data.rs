@@ -1,8 +1,10 @@
+use crate::expression_semantics::LegacyWrap;
 use crate::scope::SymbolId;
 use crate::types::data::{
     ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, ImageNaturalSizeKind,
     MediaBindKind, ResizeObserverKind, WindowBindKind,
 };
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_ast::NodeId;
 
@@ -21,6 +23,42 @@ pub enum AttributeSemantics {
     ComponentSpread(ComponentSpreadSemantics),
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
+    HtmlConcat(HtmlConcatSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HtmlConcatSemantics {
+    pub effect: TemplateEffect,
+    pub parts: SmallVec<[HtmlConcatPart; 4]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TemplateEffect {
+    None,
+    Sync,
+    Async,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlConcatPart {
+    StaticText(CompactString),
+    Inline {
+        part_id: NodeId,
+        defined: bool,
+        wrap: LegacyWrap,
+    },
+    SyncMemoSlot {
+        index: u8,
+        part_id: NodeId,
+        defined: bool,
+        wrap: LegacyWrap,
+    },
+    AsyncMemoSlot {
+        index: u8,
+        part_id: NodeId,
+        defined: bool,
+        wrap: LegacyWrap,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,6 +70,7 @@ pub struct ComponentSpreadSemantics {
 pub enum ComponentSpreadEmit {
     Inline,
     Thunk,
+    MemoThunk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,6 +110,14 @@ pub struct ComponentPropExpressionSemantics {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentPropConcatSemantics {
     pub memo: ComponentPropMemo,
+    pub plan: SmallVec<[ConcatPartEmit; 4]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConcatPartEmit {
+    Static,
+    Inline,
+    HoistDerived,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,6 +162,7 @@ pub struct ComponentBindSemantics {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComponentBindKind {
     Expression,
+    FunctionPair,
     Identifier {
         symbol: SymbolId,
         target: ComponentBindTarget,
@@ -132,6 +180,8 @@ pub enum ComponentBindKind {
 pub enum ComponentBindTarget {
     Plain,
     Rune,
+    RuneDerived,
+    LegacyState,
     PropSource,
     PropSourceOwned,
 }
@@ -143,6 +193,7 @@ pub struct ElementBindSemantics {
     pub blockers: SmallVec<[u32; 2]>,
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
     pub group_value_attr: Option<NodeId>,
+    pub group_id: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,6 +231,7 @@ pub struct DocumentBindSemantics {
 pub enum HtmlBindKind {
     Plain,
     Rune,
+    LegacyState,
     BindableProp,
     StoreSubscribed { base_symbol: SymbolId },
 }

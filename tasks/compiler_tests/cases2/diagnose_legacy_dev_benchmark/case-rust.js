@@ -72,11 +72,11 @@ var root_14 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), Ap
 var root_15 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[254, 8]]);
 var root_16 = $.add_locations($.from_html(`<p class="svelte-13nvtxg">Loading chunk 0...</p>`), App[$.FILENAME], [[250, 8]]);
 var root_17 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[258, 8]]);
-var root_19 = $.add_locations($.from_html(`<strong class="svelte-13nvtxg"></strong>`), App[$.FILENAME], [[280, 8]]);
+var root_19 = $.add_locations($.from_html(`<strong class="svelte-13nvtxg"> </strong>`), App[$.FILENAME], [[280, 8]]);
 var root_20 = $.add_locations($.from_html(`<div slot="footer" class="svelte-13nvtxg"> </div>`), App[$.FILENAME], [[281, 8]]);
 var root_21 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[295, 12]]);
-var root_22 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"></p>`), App[$.FILENAME], [[293, 8]]);
-var root = $.add_locations($.from_html(`<div class="chunk-shell benchmark-reset benchmark-host svelte-13nvtxg" data-kind="chunk-0"> <p class="svelte-13nvtxg"></p> <p class="svelte-13nvtxg"> </p> <!> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+var root_22 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[293, 8]]);
+var root = $.add_locations($.from_html(`<div class="chunk-shell benchmark-reset benchmark-host svelte-13nvtxg" data-kind="chunk-0"> <p class="svelte-13nvtxg"> </p> <p class="svelte-13nvtxg"> </p> <!> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua. <!></div> <!> <!> <!> <!> <!> <input class="svelte-13nvtxg"/> <textarea class="svelte-13nvtxg"></textarea> <select class="svelte-13nvtxg"><option class="svelte-13nvtxg">Zero</option><option class="svelte-13nvtxg">One</option></select> <input type="checkbox" class="svelte-13nvtxg"/> <input type="radio" class="svelte-13nvtxg"/> <div contenteditable="" class="svelte-13nvtxg">editable</div> <video class="svelte-13nvtxg"></video> <div class="svelte-13nvtxg">action target</div> <div class="svelte-13nvtxg">transition target</div> <div class="svelte-13nvtxg">in/out target</div> <!> <!> <!> <!> <!> <!> <button class="svelte-13nvtxg">Update store</button> <p class="svelte-13nvtxg"> </p> <!></div>`, 2), App[$.FILENAME], [[
 	187,
 	0,
@@ -107,7 +107,10 @@ export default function App($$anchor, $$props) {
 	$.push($$props, false, App);
 	const $bindable = () => ($.validate_store(bindable, "bindable"), $.store_get(bindable, "$bindable", $$stores));
 	const $props = () => ($.validate_store(props, "props"), $.store_get(props, "$props", $$stores));
+	const $state = () => ($.validate_store($.get(state), "state"), $.store_get($.get(state), "$state", $$stores));
 	const $derived = () => ($.validate_store(derived, "derived"), $.store_get(derived, "$derived", $$stores));
+	const $metrics = () => ($.validate_store($.get(metrics), "metrics"), $.store_get($.get(metrics), "$metrics", $$stores));
+	const $labelStore = () => ($.validate_store($.get(labelStore), "labelStore"), $.store_get($.get(labelStore), "$labelStore", $$stores));
 	const $effect = () => ($.validate_store(effect, "effect"), $.store_get(effect, "$effect", $$stores));
 	const $inspect = () => ($.validate_store(inspect, "inspect"), $.store_get(inspect, "$inspect", $$stores));
 	const [$$stores, $$cleanup] = $.setup_stores();
@@ -151,9 +154,9 @@ export default function App($$anchor, $$props) {
 	let group = $.mutable_source($state()([]));
 	let volume = $.mutable_source($state()(.5));
 	let selected = $.mutable_source($state()("opt-0"));
-	let inputEl;
-	let componentRef;
-	let dynamicEl;
+	let inputEl = $.mutable_source();
+	let componentRef = $.mutable_source();
+	let dynamicEl = $.mutable_source();
 	let metrics = $.mutable_source(writable([
 		1,
 		2,
@@ -168,7 +171,7 @@ export default function App($$anchor, $$props) {
 		return items.length * multiplier + $.get(counter);
 	});
 	let moduleSummary = $derived()(moduleLabel(title) + ":" + MODULE_SCALE);
-	let storeSummary = $derived()($.get($metrics).length + ":" + $.get($labelStore));
+	let storeSummary = $derived()($metrics().length + ":" + $labelStore());
 	let snapshot = $state().snapshot(rawData);
 	$effect()(() => {
 		console.log(...$.log_if_contains_state("log", "Title:", title, "Count:", count));
@@ -183,8 +186,8 @@ export default function App($$anchor, $$props) {
 		return prefix + ": " + title;
 	}
 	function addMetric() {
-		$.set($metrics, [...$.get($metrics), $.get(counter)]);
-		$.set($labelStore, title);
+		$.store_set($.get(metrics), [...$metrics(), $.get(counter)]);
+		$.store_set($.get(labelStore), title);
 	}
 	function action(node, arg) {
 		return { destroy() {} };
@@ -213,7 +216,7 @@ export default function App($$anchor, $$props) {
 	$.head("q2w0q4", ($$anchor) => {
 		var fragment = root_1();
 		$.next(2);
-		$.effect(() => {
+		$.deferred_template_effect(() => {
 			$.document.title = `${title ?? ""} - Benchmark`;
 		});
 		$.append($$anchor, fragment);
@@ -221,19 +224,20 @@ export default function App($$anchor, $$props) {
 	$.event("scroll", $.window, handleClick);
 	$.event("visibilitychange", $.document, handleClick);
 	$.event("mouseenter", $.document.body, handleClick);
-	$.action($.document.body, ($$node, $$action_arg) => action?.($$node, $$action_arg), () => $.get(state));
+	$.action($.document.body, ($$node, $$action_arg) => action?.($$node, $$action_arg), $state);
 	$.template_effect(() => {
 		console.log({
 			counter: $.untrack(() => $.snapshot($.get(counter))),
-			state: $.untrack(() => $.snapshot($.get(state)))
+			state: $.untrack(() => $.snapshot($state()))
 		});
 		debugger;
 	});
 	var text_6 = $.child(div_1);
 	var p_1 = $.sibling(text_6);
-	p_1.textContent = `Props: title=${title ?? ""}, count=${count ?? ""}, doubled=${doubled ?? ""}, computed=${computed ?? ""}`;
+	var text_7 = $.child(p_1);
+	$.reset(p_1);
 	var p_2 = $.sibling(p_1, 2);
-	var text_7 = $.child(p_2);
+	var text_8 = $.child(p_2);
 	$.reset(p_2);
 	var node_3 = $.sibling(p_2, 2);
 	$.html(node_3, () => "<b>raw html chunk 0</b>");
@@ -244,17 +248,17 @@ export default function App($$anchor, $$props) {
 	var node_4 = $.sibling($.child(div_2));
 	{
 		var consequent = ($$anchor) => {
-			const localLen = $.tag($.derived_safe_equal(() => $.get(state).length), "localLen");
+			const localLen = $.tag($.derived_safe_equal(() => $state().length), "localLen");
 			$.get(localLen);
 			var span_2 = root_6();
-			$.set_attribute(span_2, "title", `${title ?? ""}: ${doubled ?? ""}`);
-			$.set_attribute(span_2, "count", count);
-			var text_8 = $.child(span_2);
+			var text_9 = $.child(span_2);
 			$.reset(span_2);
 			$.template_effect(() => {
-				$.set_attribute(span_2, "state", $.get(state));
+				$.set_attribute(span_2, "title", `${title ?? ""}: ${doubled}`);
+				$.set_attribute(span_2, "state", $state());
 				$.set_attribute(span_2, "counter", $.get(counter));
-				$.set_text(text_8, `Duis aute irure dolor: ${$.get(localLen) ?? ""}. Chunk 0.`);
+				$.set_attribute(span_2, "count", count);
+				$.set_text(text_9, `Duis aute irure dolor: ${$.get(localLen) ?? ""}. Chunk 0.`);
 			});
 			$.append($$anchor, span_2);
 		};
@@ -263,19 +267,17 @@ export default function App($$anchor, $$props) {
 			var div_3 = $.first_child(fragment_1);
 			var input = $.child(div_3);
 			$.remove_input_defaults(input);
-			$.set_attribute(input, "title", title);
-			$.set_value(input, count);
 			$.reset(div_3);
 			var node_5 = $.sibling(div_3, 2);
 			{
 				var consequent_1 = ($$anchor) => {
 					var h1 = root_8();
-					$.template_effect(() => $.set_attribute(h1, "state", $.get(state)));
+					$.template_effect(() => $.set_attribute(h1, "state", $state()));
 					$.append($$anchor, h1);
 				};
 				var consequent_2 = ($$anchor) => {
-					var text_9 = $.text("Lorem ipsum dolor sit amet. Chunk 0.");
-					$.append($$anchor, text_9);
+					var text_10 = $.text("Lorem ipsum dolor sit amet. Chunk 0.");
+					$.append($$anchor, text_10);
 				};
 				var alternate = ($$anchor) => {
 					var h2 = root_10();
@@ -287,22 +289,26 @@ export default function App($$anchor, $$props) {
 					else $$render(alternate, -1);
 				}), "if", App, 224, 12);
 			}
-			$.template_effect(() => $.set_attribute(input, "state", $.get(state)));
+			$.template_effect(() => {
+				$.set_attribute(input, "title", title);
+				$.set_attribute(input, "state", $state());
+				$.set_value(input, count);
+			});
 			$.append($$anchor, fragment_1);
 		};
 		$.add_svelte_meta(() => $.if(node_4, ($$render) => {
-			if ($.get(state)) $$render(consequent);
+			if ($state()) $$render(consequent);
 			else $$render(alternate_1, -1);
 		}), "if", App, 214, 8);
 	}
 	$.reset(div_2);
-	$.bind_this(div_2, ($$value) => dynamicEl = $$value, () => dynamicEl);
+	$.bind_this(div_2, ($$value) => $.set(dynamicEl, $$value), () => $.get(dynamicEl));
 	var node_6 = $.sibling(div_2, 2);
 	$.add_svelte_meta(() => $.key(node_6, () => $.get(counter), ($$anchor) => {
 		var p_3 = root_11();
-		var text_10 = $.child(p_3);
+		var text_11 = $.child(p_3);
 		$.reset(p_3);
-		$.template_effect(() => $.set_text(text_10, `Keyed content chunk 0: ${$.get(counter) ?? ""}`));
+		$.template_effect(() => $.set_text(text_11, `Keyed content chunk 0: ${$.get(counter) ?? ""}`));
 		$.transition(3, p_3, () => slide);
 		$.append($$anchor, p_3);
 	}), "key", App, 236, 4);
@@ -315,9 +321,9 @@ export default function App($$anchor, $$props) {
 			...rest,
 			"data-index": `chunk-0-${$.get(idx) ?? ""}`
 		}), void 0, void 0, void 0, "svelte-13nvtxg");
-		var text_11 = $.child(p_4, true);
+		var text_12 = $.child(p_4, true);
 		$.reset(p_4);
-		$.template_effect(() => $.set_text(text_11, $.get(itemLabel)));
+		$.template_effect(() => $.set_text(text_12, $.get(itemLabel)));
 		$.animation(p_4, () => flip, null);
 		$.append($$anchor, p_4);
 	}), "each", App, 240, 4);
@@ -332,23 +338,23 @@ export default function App($$anchor, $$props) {
 		$.append($$anchor, p_7);
 	}, ($$anchor, value) => {
 		var p_5 = root_14();
-		var text_12 = $.child(p_5);
+		var text_13 = $.child(p_5);
 		$.reset(p_5);
-		$.template_effect(() => $.set_text(text_12, `Resolved: ${$.get(value) ?? ""}`));
+		$.template_effect(() => $.set_text(text_13, `Resolved: ${$.get(value) ?? ""}`));
 		$.append($$anchor, p_5);
 	}, ($$anchor, error) => {
 		var p_6 = root_15();
-		var text_13 = $.child(p_6);
+		var text_14 = $.child(p_6);
 		$.reset(p_6);
-		$.template_effect(() => $.set_text(text_13, `Error: ${($.deep_read_state($.get(error)), $.untrack(() => $.get(error).message)) ?? ""}`));
+		$.template_effect(() => $.set_text(text_14, `Error: ${($.deep_read_state($.get(error)), $.untrack(() => $.get(error).message)) ?? ""}`));
 		$.append($$anchor, p_6);
 	}), "await", App, 249, 4);
 	var node_10 = $.sibling(node_9, 2);
 	$.add_svelte_meta(() => $.await(node_10, () => promise, null, ($$anchor, quickValue) => {
 		var p_8 = root_17();
-		var text_14 = $.child(p_8);
+		var text_15 = $.child(p_8);
 		$.reset(p_8);
-		$.template_effect(() => $.set_text(text_14, `Quick resolved: ${$.get(quickValue) ?? ""}`));
+		$.template_effect(() => $.set_text(text_15, `Quick resolved: ${$.get(quickValue) ?? ""}`));
 		$.append($$anchor, p_8);
 	}), "await", App, 257, 4);
 	var input_1 = $.sibling(node_10, 2);
@@ -367,47 +373,51 @@ export default function App($$anchor, $$props) {
 	$.remove_input_defaults(input_3);
 	input_3.value = input_3.__value = "opt-0";
 	var div_4 = $.sibling(input_3, 2);
-	$.bind_this(div_4, ($$value) => inputEl = $$value, () => inputEl);
+	$.bind_this(div_4, ($$value) => $.set(inputEl, $$value), () => $.get(inputEl));
 	var video = $.sibling(div_4, 2);
 	var div_5 = $.sibling(video, 2);
-	$.action(div_5, ($$node, $$action_arg) => action?.($$node, $$action_arg), () => $.get(state));
+	$.action(div_5, ($$node, $$action_arg) => action?.($$node, $$action_arg), $state);
 	var div_6 = $.sibling(div_5, 2);
 	var div_7 = $.sibling(div_6, 2);
 	var node_11 = $.sibling(div_7, 2);
 	{
-		$.validate_dynamic_element_tag(() => $.get(state) ? "div" : "span");
-		$.validate_void_dynamic_element(() => $.get(state) ? "div" : "span");
-		$.element(node_11, () => $.get(state) ? "div" : "span", false, ($$element, $$anchor) => {
+		$.validate_dynamic_element_tag(() => $state() ? "div" : "span");
+		$.validate_void_dynamic_element(() => $state() ? "div" : "span");
+		$.element(node_11, () => $state() ? "div" : "span", false, ($$element, $$anchor) => {
 			$.set_class($$element, 0, "dynamic-0 svelte-13nvtxg");
-			var text_15 = $.text();
-			text_15.nodeValue = `Dynamic element chunk 0: ${title ?? ""}`;
-			$.append($$anchor, text_15);
+			var text_16 = $.text();
+			$.template_effect(() => $.set_text(text_16, `Dynamic element chunk 0: ${title ?? ""}`));
+			$.append($$anchor, text_16);
 		}, void 0, [275, 4]);
 	}
 	var node_12 = $.sibling(node_11, 2);
 	{
-		let $0 = $.derived(getHandler);
+		let $0 = $.derived_safe_equal(getHandler);
 		$.add_svelte_meta(() => $.bind_this(ChildComponent(node_12, {
-			title,
+			get title() {
+				return title;
+			},
 			get onclick() {
 				return $.get($0);
 			},
 			children: $.wrap_snippet(App, ($$anchor, $$slotProps) => {
 				var strong = root_19();
-				strong.textContent = `Inline child chunk 0: ${title ?? ""}`;
+				var text_17 = $.child(strong);
+				$.reset(strong);
+				$.template_effect(() => $.set_text(text_17, `Inline child chunk 0: ${title ?? ""}`));
 				$.append($$anchor, strong);
 			}),
 			$$slots: {
 				default: true,
 				footer: ($$anchor, $$slotProps) => {
 					var div_8 = root_20();
-					var text_16 = $.child(div_8);
+					var text_18 = $.child(div_8);
 					$.reset(div_8);
-					$.template_effect(() => $.set_text(text_16, `Footer chunk 0: ${$.get(counter) ?? ""}`));
+					$.template_effect(() => $.set_text(text_18, `Footer chunk 0: ${$.get(counter) ?? ""}`));
 					$.append($$anchor, div_8);
 				}
 			}
-		}), ($$value) => componentRef = $$value, () => componentRef), "component", App, 279, 4, { componentTag: "ChildComponent" });
+		}), ($$value) => $.set(componentRef, $$value), () => $.get(componentRef)), "component", App, 279, 4, { componentTag: "ChildComponent" });
 	}
 	var node_13 = $.sibling(node_12, 2);
 	$.add_svelte_meta(() => badge(node_13, () => "chunk-0", () => "secondary"), "render", App, 284, 4);
@@ -427,16 +437,16 @@ export default function App($$anchor, $$props) {
 	$.add_svelte_meta(() => show?.(node_16), "render", App, 287, 4);
 	var button = $.sibling(node_16, 2);
 	var p_9 = $.sibling(button, 2);
-	var text_17 = $.child(p_9);
+	var text_19 = $.child(p_9);
 	$.reset(p_9);
 	var node_17 = $.sibling(p_9, 2);
 	{
 		const failed = $.wrap_snippet(App, function($$anchor, error = $.noop) {
 			$.validate_snippet_args(...arguments);
 			var p_10 = root_21();
-			var text_18 = $.child(p_10);
+			var text_20 = $.child(p_10);
 			$.reset(p_10);
-			$.template_effect(() => $.set_text(text_18, `Error in chunk 0: ${(error(), $.untrack(() => error().message)) ?? ""}`));
+			$.template_effect(() => $.set_text(text_20, `Error in chunk 0: ${(error(), $.untrack(() => error().message)) ?? ""}`));
 			$.append($$anchor, p_10);
 		});
 		$.boundary(node_17, {
@@ -444,30 +454,33 @@ export default function App($$anchor, $$props) {
 			failed
 		}, ($$anchor) => {
 			var p_11 = root_22();
-			p_11.textContent = `Boundary chunk 0: ${title ?? ""}`;
+			var text_21 = $.child(p_11);
+			$.reset(p_11);
+			$.template_effect(() => $.set_text(text_21, `Boundary chunk 0: ${title ?? ""}`));
 			$.append($$anchor, p_11);
 		});
 	}
 	$.reset(div_1);
 	$.template_effect(() => {
-		$.set_text(text_6, `Chunk 0: Lorem ${$.get(state) ?? ""} + ${$.get(state) ?? ""} = Ipsum; `);
-		$.set_text(text_7, `Module: ${moduleSummary ?? ""} | Store: ${storeSummary ?? ""} | Label: ${$.get($labelStore) ?? ""}`);
+		$.set_text(text_6, `Chunk 0: Lorem ${$state() ?? ""} + ${$state() ?? ""} = Ipsum; `);
+		$.set_text(text_7, `Props: title=${title ?? ""}, count=${count ?? ""}, doubled=${doubled}, computed=${computed ?? ""}`);
+		$.set_text(text_8, `Module: ${moduleSummary} | Store: ${storeSummary} | Label: ${$labelStore() ?? ""}`);
 		classes_1 = $.set_class(div_2, 1, $.clsx({
 			active: $.get(checked),
 			big: $.get(counter) > 10
 		}), "svelte-13nvtxg", classes_1, {
-			state: $.get(state),
+			state: $state(),
 			staticly: true,
 			invinsible,
 			reactive: $.get(counter)
 		});
 		styles = $.set_style(div_2, "", styles, {
-			color: $.get(state),
+			color: $state(),
 			"font-size": "14px",
 			opacity: $.get(counter) / 100,
 			"--custom": "value-0"
 		});
-		$.set_text(text_17, `Metric count: ${($.get(metrics), $.untrack(() => $.get($metrics).length)) ?? ""}`);
+		$.set_text(text_19, `Metric count: ${($metrics(), $.untrack(() => $metrics().length)) ?? ""}`);
 	});
 	$.delegated("click", div_2, handleClick);
 	$.event("scroll", div_2, handleClick);
@@ -476,14 +489,14 @@ export default function App($$anchor, $$props) {
 		$.apply(() => $.get(event_handler), this, $$args, App, [208, 17], true, true);
 	});
 	$.bind_value(input_1, function get() {
-		return $.get(state);
+		return state;
 	}, function set($$value) {
-		$.set(state, $$value);
+		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
 	$.bind_value(textarea, function get() {
-		return $.get(state);
+		return state;
 	}, function set($$value) {
-		$.set(state, $$value);
+		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
 	$.bind_select_value(select, function get() {
 		return $.get(selected);
@@ -504,9 +517,9 @@ export default function App($$anchor, $$props) {
 		$.set(counter, $$value);
 	});
 	$.bind_content_editable("innerHTML", div_4, function get() {
-		return $.get(state);
+		return state;
 	}, function set($$value) {
-		$.set(state, $$value);
+		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
 	$.bind_volume(video, function get() {
 		return $.get(volume);

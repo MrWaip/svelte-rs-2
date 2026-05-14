@@ -10,6 +10,7 @@ pub enum ParentKind {
     SnippetBlock,
     ComponentNode,
     SvelteComponentLegacy,
+    SvelteSelf,
     KeyBlock,
     SvelteHead,
     SvelteFragmentLegacy,
@@ -77,6 +78,7 @@ impl ParentKind {
             | Self::SnippetBlock
             | Self::ComponentNode
             | Self::SvelteComponentLegacy
+            | Self::SvelteSelf
             | Self::KeyBlock
             | Self::SvelteHead
             | Self::SvelteFragmentLegacy

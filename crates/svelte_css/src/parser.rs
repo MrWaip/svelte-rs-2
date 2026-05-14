@@ -885,14 +885,7 @@ impl<'src> Parser<'src> {
 
         self.scanner.skip_whitespace();
 
-        if !self.scanner.eat(TokenKind::Colon) {
-            self.recover(
-                DiagnosticKind::CssExpectedToken { token: ":".into() },
-                self.scanner.span_from(start),
-            );
-            self.skip_to_semicolon_or_block_end();
-            return None;
-        }
+        self.scanner.eat(TokenKind::Colon);
 
         self.scanner.skip_whitespace();
 

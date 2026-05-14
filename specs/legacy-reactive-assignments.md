@@ -1,9 +1,9 @@
 # $: reactive assignments
 
 ## Current state
-- **Working**: 12/12 use cases
-- **Tests**: 5/5 e2e + 3/3 diagnostics green
-- Last updated: 2026-04-29
+- **Working**: 13/13 use cases
+- **Tests**: 6/6 e2e + 3/3 diagnostics green
+- Last updated: 2026-05-12
 
 ## Source
 
@@ -42,6 +42,7 @@
 - [x] Validation emits `reactive_declaration_invalid_placement` when `$:` appears outside top-level instance script, rather than treating nested labeled statements as reactive declarations (test: `validate_reactive_declaration_invalid_placement`)
 - [x] Validation emits `reactive_declaration_module_script_dependency` when a reactive statement depends on reassigned module-script state, and emits `reactive_declaration_cycle` for cyclic reactive assignment graphs (test: `validate_reactive_declaration_module_script_dependency`, `validate_reactive_declaration_cycle`)
 - [x] Implicit reactive locals introduced by direct `$:` assignments are materialized into a `LegacyReactivitySemantics::is_implicit_reactive_local(sym)` set; nested-function writes (e.g. inside arrow IIFE inside `$:`) intentionally stay unresolved globals (test: `legacy_reactive_skips_implicit_decl_in_nested_iife`, `legacy_reactive_marks_implicit_reactive_local`)
+- [x] Legacy `$:` dependency capture treats `$store` auto-subscriptions as deps — `$: x = fn($store)` lowers the deps thunk to `() => $store()` (calling the store-thunk getter), not collapsing it to a bare identifier read of the called function (test: `legacy_pre_effect_store_subscription_dep`)
 
 ## Out of scope
 
@@ -76,6 +77,7 @@ E2E:
 - [x] `legacy_reactive_assignment_block_destructure`
 - [x] `legacy_reactive_assignment_coarse_deps`
 - [x] `legacy_reactive_assignment_import_topology`
+- [x] `legacy_pre_effect_store_subscription_dep`
 
 Diagnostics:
 - [x] `validate_reactive_declaration_invalid_placement`

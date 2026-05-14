@@ -1,26 +1,37 @@
+use std::marker::PhantomData;
+use std::mem;
+
 use oxc_ast::ast::{
-    AssignmentOperator, BindingPattern, CallExpression, Expression, ExpressionStatement,
-    ImportDeclarationSpecifier, MemberExpression, MethodDefinitionKind, ModuleExportName,
-    PropertyDefinition, Statement, VariableDeclarator,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
+    BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
+    ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
+    IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
+    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey,
+    StaticMemberExpression, Statement, VariableDeclarator,
 };
+use oxc_semantic::{ScopeFlags, ScopeId};
+use oxc_span::Span as OxcSpan;
+use oxc_syntax::symbol::SymbolId;
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_expression_statement, walk_function, walk_member_expression, walk_method_definition,
-    walk_property_definition,
+    walk_export_default_declaration, walk_expression_statement, walk_function,
+    walk_member_expression, walk_method_definition, walk_property_definition,
+    walk_static_member_expression,
 };
 use oxc_span::GetSpan;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::{detect_rune, detect_rune_from_call};
-use crate::{AnalysisData, BindingSemantics, StateKind, types::script::RuneKind};
+use crate::validate::span_already_taken;
+use crate::{AnalysisData, BindingSemantics, StateDeclarationSemantics, StateKind, PropBindingKind, PropBindingSemantics, types::script::RuneKind};
 
-fn is_this_member_assign(target: &oxc_ast::ast::AssignmentTarget<'_>) -> bool {
+fn is_this_member_assign(target: &AssignmentTarget<'_>) -> bool {
     let object = match target {
-        oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => &m.object,
-        oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(m) => &m.object,
-        oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => &m.object,
+        AssignmentTarget::StaticMemberExpression(m) => &m.object,
+        AssignmentTarget::PrivateFieldExpression(m) => &m.object,
+        AssignmentTarget::ComputedMemberExpression(m) => &m.object,
         _ => return false,
     };
     matches!(object, Expression::ThisExpression(_))
@@ -28,7 +39,7 @@ fn is_this_member_assign(target: &oxc_ast::ast::AssignmentTarget<'_>) -> bool {
 
 pub(super) fn validate(
     data: &AnalysisData,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -42,7 +53,7 @@ pub(super) fn validate(
 }
 
 fn validate_invalid_lifecycle_imports(
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -83,7 +94,7 @@ fn validate_invalid_lifecycle_imports(
 
 pub(super) fn validate_module_props_runes(
     data: &AnalysisData,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -104,9 +115,9 @@ struct RuneValidator<'a> {
 
     in_expression_statement_expr: bool,
 
-    current_expr_stmt_span: Option<oxc_span::Span>,
+    current_expr_stmt_span: Option<OxcSpan>,
 
-    fn_body_first_stmt_span: Option<oxc_span::Span>,
+    fn_body_first_stmt_span: Option<OxcSpan>,
 
     in_generator: bool,
 
@@ -147,7 +158,7 @@ impl RuneValidator<'_> {
         }
     }
 
-    fn span(&self, oxc: oxc_span::Span) -> Span {
+    fn span(&self, oxc: OxcSpan) -> Span {
         Span::new(oxc.start, oxc.end)
     }
 
@@ -171,7 +182,7 @@ impl RuneValidator<'_> {
                 continue;
             }
 
-            if let oxc_ast::ast::PropertyKey::StaticIdentifier(key) = &prop.key
+            if let PropertyKey::StaticIdentifier(key) = &prop.key
                 && key.name.starts_with("$$")
             {
                 self.diags.push(Diagnostic::error(
@@ -231,16 +242,16 @@ impl RuneValidator<'_> {
 
 pub(super) fn validate_invalid_exports(
     data: &AnalysisData,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     check_decl: bool,
-    specifier_scope: Option<oxc_semantic::ScopeId>,
+    specifier_scope: Option<ScopeId>,
     diags: &mut Vec<Diagnostic>,
 ) {
     if !check_decl && specifier_scope.is_none() {
         return;
     }
     for stmt in &program.body {
-        let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt else {
+        let Statement::ExportNamedDeclaration(export) = stmt else {
             continue;
         };
         if let Some(decl) = export.declaration.as_ref() {
@@ -273,13 +284,13 @@ pub(super) fn validate_invalid_exports(
 
 fn declaration_export_kind(
     data: &AnalysisData,
-    decl: &oxc_ast::ast::Declaration<'_>,
+    decl: &Declaration<'_>,
 ) -> Option<DiagnosticKind> {
-    let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
+    let Declaration::VariableDeclaration(var_decl) = decl else {
         return None;
     };
     var_decl.declarations.iter().find_map(|declarator| {
-        let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
+        let BindingPattern::BindingIdentifier(ident) = &declarator.id else {
             return None;
         };
         let sym_id = ident.symbol_id.get()?;
@@ -289,11 +300,11 @@ fn declaration_export_kind(
 
 fn export_kind_for_symbol(
     data: &AnalysisData,
-    sym_id: oxc_semantic::SymbolId,
+    sym_id: SymbolId,
 ) -> Option<DiagnosticKind> {
     match data.binding_semantics(sym_id) {
         BindingSemantics::Derived(_) => Some(DiagnosticKind::DerivedInvalidExport),
-        BindingSemantics::State(crate::StateDeclarationSemantics {
+        BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::State | StateKind::StateRaw,
             ..
         }) if data.scoping.is_mutated(sym_id) => Some(DiagnosticKind::StateInvalidExport),
@@ -302,14 +313,14 @@ fn export_kind_for_symbol(
 }
 
 fn push_unique(diags: &mut Vec<Diagnostic>, kind: DiagnosticKind, span: Span) {
-    if !crate::validate::span_already_taken(diags, span) {
+    if !span_already_taken(diags, span) {
         diags.push(Diagnostic::error(kind, span));
     }
 }
 
 fn validate_state_referenced_locally_derived(
     data: &AnalysisData<'_>,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StateRefLocallyValidator {
@@ -318,7 +329,7 @@ fn validate_state_referenced_locally_derived(
         in_state_rune_arg: false,
         call_depth_offset: 0,
         in_illegal_prop_member_object: false,
-        _phantom: std::marker::PhantomData,
+        _phantom: PhantomData,
     };
     v.visit_program(program);
 }
@@ -331,11 +342,11 @@ struct StateRefLocallyValidator<'a, 'b> {
     call_depth_offset: u32,
 
     in_illegal_prop_member_object: bool,
-    _phantom: std::marker::PhantomData<&'a ()>,
+    _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let Some(ref_id) = ident.reference_id.get() else {
             return;
         };
@@ -400,7 +411,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         match detect_rune_from_call(call) {
             Some(RuneKind::State | RuneKind::StateRaw) => {
                 self.visit_expression(&call.callee);
-                let prev = std::mem::replace(&mut self.in_state_rune_arg, true);
+                let prev = mem::replace(&mut self.in_state_rune_arg, true);
                 for arg in &call.arguments {
                     self.visit_argument(arg);
                 }
@@ -428,10 +439,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 
     fn visit_arrow_function_expression(
         &mut self,
-        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        arrow: &ArrowFunctionExpression<'a>,
     ) {
-        let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_call_depth = std::mem::replace(&mut self.call_depth_offset, 0);
+        let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_arrow_function_expression(self, arrow);
         self.in_state_rune_arg = prev_state_arg;
         self.call_depth_offset = prev_call_depth;
@@ -439,45 +450,45 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 
     fn visit_function(
         &mut self,
-        func: &oxc_ast::ast::Function<'a>,
-        flags: oxc_semantic::ScopeFlags,
+        func: &Function<'a>,
+        flags: ScopeFlags,
     ) {
-        let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_call_depth = std::mem::replace(&mut self.call_depth_offset, 0);
+        let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_function(self, func, flags);
         self.in_state_rune_arg = prev_state_arg;
         self.call_depth_offset = prev_call_depth;
     }
 
-    fn visit_static_member_expression(&mut self, expr: &oxc_ast::ast::StaticMemberExpression<'a>) {
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
         if is_props_illegal_name_member(expr, self.data) {
-            let prev = std::mem::replace(&mut self.in_illegal_prop_member_object, true);
+            let prev = mem::replace(&mut self.in_illegal_prop_member_object, true);
             self.visit_expression(&expr.object);
             self.in_illegal_prop_member_object = prev;
         } else {
-            oxc_ast_visit::walk::walk_static_member_expression(self, expr);
+            walk_static_member_expression(self, expr);
         }
     }
 
-    fn visit_export_specifier(&mut self, _spec: &oxc_ast::ast::ExportSpecifier<'a>) {}
+    fn visit_export_specifier(&mut self, _spec: &ExportSpecifier<'a>) {}
 
     fn visit_export_default_declaration(
         &mut self,
-        export: &oxc_ast::ast::ExportDefaultDeclaration<'a>,
+        export: &ExportDefaultDeclaration<'a>,
     ) {
         if matches!(
             export.declaration,
-            oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(_)
+            ExportDefaultDeclarationKind::Identifier(_)
         ) {
             return;
         }
-        oxc_ast_visit::walk::walk_export_default_declaration(self, export);
+        walk_export_default_declaration(self, export);
     }
 }
 
 impl<'a> Visit<'a> for RuneValidator<'_> {
     fn visit_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) {
-        let prev = std::mem::replace(&mut self.in_expression_statement_expr, true);
+        let prev = mem::replace(&mut self.in_expression_statement_expr, true);
         let prev_span = self.current_expr_stmt_span.replace(stmt.span);
         walk_expression_statement(self, stmt);
         self.in_expression_statement_expr = prev;
@@ -485,7 +496,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        let is_expr_stmt = std::mem::replace(&mut self.in_expression_statement_expr, false);
+        let is_expr_stmt = mem::replace(&mut self.in_expression_statement_expr, false);
 
         if self.check_deprecated_rune(call) {
             return;
@@ -762,19 +773,19 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
     fn visit_function(
         &mut self,
-        func: &oxc_ast::ast::Function<'a>,
-        flags: oxc_semantic::ScopeFlags,
+        func: &Function<'a>,
+        flags: ScopeFlags,
     ) {
         self.function_depth += 1;
-        let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
-        let prev_first = std::mem::replace(
+        let prev_props = mem::replace(&mut self.in_props_destructure, false);
+        let prev_first = mem::replace(
             &mut self.fn_body_first_stmt_span,
             func.body
                 .as_ref()
                 .and_then(|b| b.statements.first())
-                .map(oxc_span::GetSpan::span),
+                .map(GetSpan::span),
         );
-        let prev_generator = std::mem::replace(&mut self.in_generator, func.generator);
+        let prev_generator = mem::replace(&mut self.in_generator, func.generator);
         walk_function(self, func, flags);
         self.in_props_destructure = prev_props;
         self.fn_body_first_stmt_span = prev_first;
@@ -784,18 +795,18 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
     fn visit_arrow_function_expression(
         &mut self,
-        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        arrow: &ArrowFunctionExpression<'a>,
     ) {
         self.function_depth += 1;
-        let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
+        let prev_props = mem::replace(&mut self.in_props_destructure, false);
 
         let first_stmt = if arrow.expression {
             None
         } else {
-            arrow.body.statements.first().map(oxc_span::GetSpan::span)
+            arrow.body.statements.first().map(GetSpan::span)
         };
-        let prev_first = std::mem::replace(&mut self.fn_body_first_stmt_span, first_stmt);
-        let prev_generator = std::mem::replace(&mut self.in_generator, false);
+        let prev_first = mem::replace(&mut self.fn_body_first_stmt_span, first_stmt);
+        let prev_generator = mem::replace(&mut self.in_generator, false);
         walk_arrow_function_expression(self, arrow);
         self.in_props_destructure = prev_props;
         self.fn_body_first_stmt_span = prev_first;
@@ -817,7 +828,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         }
     }
 
-    fn visit_method_definition(&mut self, it: &oxc_ast::ast::MethodDefinition<'a>) {
+    fn visit_method_definition(&mut self, it: &MethodDefinition<'a>) {
         let prev = self.in_constructor_body;
         if it.kind == MethodDefinitionKind::Constructor {
             self.in_constructor_body = true;
@@ -826,7 +837,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         self.in_constructor_body = prev;
     }
 
-    fn visit_assignment_expression(&mut self, it: &oxc_ast::ast::AssignmentExpression<'a>) {
+    fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
         if self.in_constructor_body
             && it.operator == AssignmentOperator::Assign
             && is_this_member_assign(&it.left)
@@ -843,13 +854,13 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
 fn validate_rest_prop_illegal_access(
     data: &AnalysisData<'_>,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = RestPropAccessValidator {
         data,
         diags,
-        _phantom: std::marker::PhantomData,
+        _phantom: PhantomData,
     };
     v.visit_program(program);
 }
@@ -857,7 +868,7 @@ fn validate_rest_prop_illegal_access(
 struct RestPropAccessValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
     diags: &'b mut Vec<Diagnostic>,
-    _phantom: std::marker::PhantomData<&'a ()>,
+    _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
@@ -878,7 +889,7 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
 }
 
 fn is_props_illegal_name_member(
-    member: &oxc_ast::ast::StaticMemberExpression<'_>,
+    member: &StaticMemberExpression<'_>,
     data: &AnalysisData<'_>,
 ) -> bool {
     let Expression::Identifier(obj) = &member.object else {
@@ -897,8 +908,8 @@ fn is_props_illegal_name_member(
     };
     matches!(
         data.binding_semantics(sym_id),
-        crate::types::data::BindingSemantics::Prop(crate::types::data::PropBindingSemantics {
-            kind: crate::types::data::PropBindingKind::Rest,
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Rest,
             ..
         }),
     )

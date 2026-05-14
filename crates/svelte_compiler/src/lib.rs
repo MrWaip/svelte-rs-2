@@ -14,6 +14,19 @@ pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+fn filename_relative_to_root_dir(filename: &str, root_dir: Option<&str>) -> String {
+    let normalized = filename.replace('\\', "/");
+    let Some(rd) = root_dir else {
+        return normalized;
+    };
+    let rd_norm = rd.replace('\\', "/");
+    if let Some(rest) = normalized.strip_prefix(&rd_norm) {
+        rest.trim_start_matches('/').to_string()
+    } else {
+        normalized
+    }
+}
+
 fn apply_compile_options_to_component(
     component: &mut svelte_ast::Component,
     options: &CompileOptions,
@@ -140,6 +153,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 &component,
                 &ss,
                 &parsed,
+                &options.filename,
+                options.root_dir.as_deref(),
                 inject_styles,
                 &mut analysis,
                 &mut analyze_diags,
@@ -237,7 +252,10 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let codegen_options = svelte_types::CodegenOptions {
             dev: options.dev,
             experimental_async: options.experimental.async_,
-            filename: options.filename.clone(),
+            filename: filename_relative_to_root_dir(
+                &options.filename,
+                options.root_dir.as_deref(),
+            ),
             sourcemap_kind: options.sourcemap_kind,
         };
         let compile_ctx = svelte_types::CompileContext {

@@ -1,12 +1,16 @@
 use compact_str::CompactString;
+use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    AssignmentExpression, AssignmentOperator, AssignmentTarget, Expression, IdentifierReference,
+    AssignmentExpression, AssignmentOperator, AssignmentTarget, AssignmentTargetMaybeDefault,
+    AssignmentTargetProperty, Expression, IdentifierReference, ImportDeclarationSpecifier,
     LabeledStatement, SimpleAssignmentTarget, Statement, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::{walk_assignment_expression, walk_update_expression};
+use oxc_syntax::scope::ScopeId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_component_semantics::OxcNodeId;
+use svelte_component_semantics::{OxcNodeId, ReferenceId, SymbolOwner};
 
 use super::super::data::{BindingSemantics, LegacyStateSemantics, ReferenceFacts};
 use super::super::legacy_reactive::{LegacyReactiveKind, LegacyReactiveStatement};
@@ -30,13 +34,9 @@ pub(super) fn collect_top_level_meta<'a>(
             };
             for spec in specifiers {
                 let local_name = match spec {
-                    oxc_ast::ast::ImportDeclarationSpecifier::ImportSpecifier(s) => {
-                        s.local.name.as_str()
-                    }
-                    oxc_ast::ast::ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
-                        s.local.name.as_str()
-                    }
-                    oxc_ast::ast::ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
+                    ImportDeclarationSpecifier::ImportSpecifier(s) => s.local.name.as_str(),
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => s.local.name.as_str(),
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
                         s.local.name.as_str()
                     }
                 };
@@ -68,7 +68,7 @@ pub(super) fn collect_top_level_meta<'a>(
                 }
                 AssignmentTarget::ObjectAssignmentTarget(obj) => {
                     for prop in &obj.properties {
-                        if let oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) = prop {
+                        if let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) = prop {
                             push_implicit_name(implicit_names, shorthand.binding.name.as_str());
                         }
                     }
@@ -108,7 +108,7 @@ pub(super) fn build_from_collected<'a>(
 
     let mut statements: Vec<LegacyReactiveStatement> = Vec::with_capacity(labeled_nodes.len());
     for node_id in &labeled_nodes {
-        let Some(oxc_ast::AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(*node_id)
+        let Some(AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(*node_id)
         else {
             continue;
         };
@@ -185,7 +185,7 @@ fn collect_destructure_target_syms(
         return (targets, implicits);
     };
     for prop in &obj.properties {
-        let oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) =
+        let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) =
             prop
         else {
             continue;
@@ -225,7 +225,7 @@ fn unwrap_assignment_expression<'r, 'a>(
 fn add_implicit_binding(
     map: &mut FxHashMap<CompactString, SymbolId>,
     data: &AnalysisData<'_>,
-    instance_scope: oxc_syntax::scope::ScopeId,
+    instance_scope: ScopeId,
     name: &str,
 ) {
     let Some(sym) = data.scoping.find_binding(instance_scope, name) else {
@@ -233,7 +233,7 @@ fn add_implicit_binding(
     };
     if !matches!(
         data.scoping.symbol_owner(sym),
-        svelte_component_semantics::SymbolOwner::Synthetic
+        SymbolOwner::Synthetic
     ) {
         return;
     }
@@ -270,13 +270,13 @@ fn record_implicit_state_bindings(
 }
 
 struct Prelim {
-    shape: PrelimShape,
+    shape: PrelimKind,
 }
 
-enum PrelimShape {
+enum PrelimKind {
     SimpleAssignmentIdent {
         target_name: CompactString,
-        target_ref_id: Option<svelte_component_semantics::ReferenceId>,
+        target_ref_id: Option<ReferenceId>,
     },
     DestructureAssignment,
 
@@ -297,7 +297,7 @@ fn classify_statement(labeled: &LabeledStatement<'_>) -> Prelim {
                     AssignmentTarget::AssignmentTargetIdentifier(id) => {
                         let name = CompactString::from(id.name.as_str());
                         return Prelim {
-                            shape: PrelimShape::SimpleAssignmentIdent {
+                            shape: PrelimKind::SimpleAssignmentIdent {
                                 target_name: name,
                                 target_ref_id: id.reference_id.get(),
                             },
@@ -306,24 +306,24 @@ fn classify_statement(labeled: &LabeledStatement<'_>) -> Prelim {
                     AssignmentTarget::ArrayAssignmentTarget(_)
                     | AssignmentTarget::ObjectAssignmentTarget(_) => {
                         return Prelim {
-                            shape: PrelimShape::DestructureAssignment,
+                            shape: PrelimKind::DestructureAssignment,
                         };
                     }
                     _ => {}
                 }
             }
             Prelim {
-                shape: PrelimShape::ExpressionOnly,
+                shape: PrelimKind::ExpressionOnly,
             }
         }
         Statement::BlockStatement(_) => Prelim {
-            shape: PrelimShape::Block,
+            shape: PrelimKind::Block,
         },
         Statement::IfStatement(_) | Statement::SwitchStatement(_) => Prelim {
-            shape: PrelimShape::Conditional,
+            shape: PrelimKind::Conditional,
         },
         _ => Prelim {
-            shape: PrelimShape::ExpressionOnly,
+            shape: PrelimKind::ExpressionOnly,
         },
     }
 }
@@ -335,7 +335,7 @@ fn build_statement<'a>(
     data: &AnalysisData<'a>,
 ) -> LegacyReactiveStatement {
     let kind = match &prelim.shape {
-        PrelimShape::SimpleAssignmentIdent {
+        PrelimKind::SimpleAssignmentIdent {
             target_name,
             target_ref_id,
         } => {
@@ -351,7 +351,7 @@ fn build_statement<'a>(
                 None => LegacyReactiveKind::ExpressionOnly,
             }
         }
-        PrelimShape::DestructureAssignment => {
+        PrelimKind::DestructureAssignment => {
             let (target_syms, implicit_decl_syms) =
                 collect_destructure_target_syms(labeled, implicit_map, data);
             LegacyReactiveKind::DestructureAssignment {
@@ -359,9 +359,9 @@ fn build_statement<'a>(
                 implicit_decl_syms,
             }
         }
-        PrelimShape::Block => LegacyReactiveKind::Block,
-        PrelimShape::Conditional => LegacyReactiveKind::Conditional,
-        PrelimShape::ExpressionOnly => LegacyReactiveKind::ExpressionOnly,
+        PrelimKind::Block => LegacyReactiveKind::Block,
+        PrelimKind::Conditional => LegacyReactiveKind::Conditional,
+        PrelimKind::ExpressionOnly => LegacyReactiveKind::ExpressionOnly,
     };
 
     let mut analyzer = LegacyBodyAnalyzer {
@@ -393,7 +393,7 @@ struct LegacyBodyAnalyzer<'d, 'a> {
     dependencies: SmallVec<[SymbolId; 8]>,
     seen_assignments: FxHashSet<SymbolId>,
     seen_deps: FxHashSet<SymbolId>,
-    direct_assign_skip: FxHashSet<svelte_component_semantics::ReferenceId>,
+    direct_assign_skip: FxHashSet<ReferenceId>,
     uses_props: bool,
     uses_rest_props: bool,
 }
@@ -413,10 +413,10 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
             AssignmentTarget::ObjectAssignmentTarget(obj) => {
                 for prop in &obj.properties {
                     match prop {
-                        oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
+                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
                             shorthand,
                         ) => self.record_assignment_ident(&shorthand.binding),
-                        oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(
+                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(
                             kv,
                         ) => self.record_assignment_maybe_default(&kv.binding),
                     }
@@ -439,10 +439,10 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
 
     fn record_assignment_maybe_default(
         &mut self,
-        target: &oxc_ast::ast::AssignmentTargetMaybeDefault<'_>,
+        target: &AssignmentTargetMaybeDefault<'_>,
     ) {
         match target {
-            oxc_ast::ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_def) => {
+            AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_def) => {
                 self.record_assignment_target(&with_def.binding);
             }
             other => {
@@ -492,9 +492,6 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
     }
 
     fn is_reactive_dep(&self, sym: SymbolId) -> bool {
-        if self.data.scoping.is_import(sym) {
-            return true;
-        }
         !matches!(
             self.data.reactivity.binding_semantics(sym),
             BindingSemantics::NonReactive | BindingSemantics::Unresolved
@@ -508,12 +505,12 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
         if matches!(expr.operator, AssignmentOperator::Assign) {
             collect_direct_assign_lhs_ref(&expr.left, &mut self.direct_assign_skip);
         }
-        oxc_ast_visit::walk::walk_assignment_expression(self, expr);
+        walk_assignment_expression(self, expr);
     }
 
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         self.record_simple_assignment_target(&expr.argument);
-        oxc_ast_visit::walk::walk_update_expression(self, expr);
+        walk_update_expression(self, expr);
     }
 
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
@@ -523,10 +520,14 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
         if self.direct_assign_skip.contains(&ref_id) {
             return;
         }
-        let sym = self
-            .data
-            .scoping
-            .symbol_for_reference(ref_id)
+        let store_sym = match self.data.reactivity.reference_facts(ref_id) {
+            Some(ReferenceFacts::StoreRead { symbol })
+            | Some(ReferenceFacts::StoreUpdate { symbol })
+            | Some(ReferenceFacts::StoreWrite { symbol }) => Some(*symbol),
+            _ => None,
+        };
+        let sym = store_sym
+            .or_else(|| self.data.scoping.symbol_for_reference(ref_id))
             .or_else(|| self.implicit_map.get(ident.name.as_str()).copied());
         let Some(sym) = sym else {
             match ident.name.as_str() {
@@ -547,7 +548,7 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
 
 fn collect_direct_assign_lhs_ref(
     target: &AssignmentTarget<'_>,
-    skips: &mut FxHashSet<svelte_component_semantics::ReferenceId>,
+    skips: &mut FxHashSet<ReferenceId>,
 ) {
     match target {
         AssignmentTarget::AssignmentTargetIdentifier(id) => {
@@ -567,7 +568,7 @@ fn collect_direct_assign_lhs_ref(
 
 fn collect_member_root_ref(
     expr: &Expression<'_>,
-    skips: &mut FxHashSet<svelte_component_semantics::ReferenceId>,
+    skips: &mut FxHashSet<ReferenceId>,
 ) {
     match expr {
         Expression::Identifier(id) => {

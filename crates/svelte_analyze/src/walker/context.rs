@@ -1,3 +1,5 @@
+use std::mem;
+
 use super::*;
 use svelte_diagnostics::DiagnosticKind;
 
@@ -123,7 +125,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn push_ignore(&mut self, codes: Vec<String>) {
-        let prev = std::mem::take(&mut self.ignore_current);
+        let prev = mem::take(&mut self.ignore_current);
         let mut next = prev.clone();
         next.extend(codes);
         self.ignore_stack.push(prev);
@@ -157,7 +159,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.warnings)
+        mem::take(&mut self.warnings)
     }
 
     pub(crate) fn push_warning_if_not_ignored(

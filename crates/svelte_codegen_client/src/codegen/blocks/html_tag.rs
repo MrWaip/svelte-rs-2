@@ -2,7 +2,7 @@ use svelte_analyze::block_semantics::{HtmlTagNamespace, HtmlTagSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
-use super::super::data_structures::AsyncEmissionPlan;
+use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, Result};
@@ -47,7 +47,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let is_mathml = !is_controlled && matches!(sem.parent_strategy, HtmlTagNamespace::MathMl);
         let hydration_ignored = sem.hydration_html_changed_ignored;
 
-        let plan = AsyncEmissionPlan::for_node(self.ctx, id);
+        let plan = AsyncEmission::for_node(self.ctx, id);
 
         if plan.needs_async() {
             let expression = self.take_node_expr(id)?;

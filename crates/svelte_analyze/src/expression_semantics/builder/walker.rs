@@ -1,11 +1,16 @@
 use super::super::ExpressionSemanticsStore;
 use super::super::ContextSignal;
-use super::super::data::{ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, Memoization};
-use super::collector::{ExprFacts, TopLevelShape, collect};
+use super::super::data::{
+    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap,
+};
+use super::super::evaluator::{self, EvalCtx};
+use rustc_hash::{FxHashMap, FxHashSet};
+use super::collector::{ExprFacts, collect};
 use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::scope::ComponentScoping;
-use crate::types::data::{BlockerData, JsAst};
+use crate::scope::{ComponentScoping, SymbolId};
+use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData};
+use oxc_ast::ast::{BindingPattern, Declaration, Expression, Function, Statement, VariableDeclaration};
 use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, Component, ConcatPart, Element, FragmentId, Node, NodeId, StyleDirectiveValue,
@@ -19,21 +24,86 @@ pub(super) fn populate<'a>(
     semantics: &ComponentSemantics<'a>,
     reactivity: &ReactivitySemantics,
     scoping: &ComponentScoping,
+    snippets: &SnippetData,
     has_class_state_fields: bool,
     blockers: &BlockerData,
+    runes_mode: svelte_ast::RunesMode,
     store: &mut ExpressionSemanticsStore,
+    dev: bool,
 ) {
+    let (bindings_init, function_decls) = collect_bindings_init(parsed);
     let ctx = Ctx {
         parsed,
         semantics,
         reactivity,
         scoping,
+        snippets,
         has_class_state_fields,
         blockers,
-        runes: reactivity.uses_runes(),
+        uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
+        bindings_init,
+        function_decls,
+        dev,
     };
     let mut sink = Sink { store };
     visit_fragment(component, component.root, &ctx, &mut sink);
+}
+
+fn collect_bindings_init<'c, 'a>(
+    parsed: &'c JsAst<'a>,
+) -> (
+    FxHashMap<SymbolId, &'c Expression<'a>>,
+    FxHashSet<SymbolId>,
+) {
+    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
+    let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
+
+    fn ingest_var_decl<'c, 'a>(
+        vd: &'c VariableDeclaration<'a>,
+        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
+    ) {
+        for decl in &vd.declarations {
+            let Some(init) = decl.init.as_ref() else {
+                continue;
+            };
+            let BindingPattern::BindingIdentifier(id) = &decl.id else {
+                continue;
+            };
+            if let Some(sym) = id.symbol_id.get() {
+                map.insert(sym, init);
+            }
+        }
+    }
+
+    fn ingest_fn_decl<'c, 'a>(
+        fd: &'c Function<'a>,
+        fn_decls: &mut FxHashSet<SymbolId>,
+    ) {
+        if let Some(id) = &fd.id
+            && let Some(sym) = id.symbol_id.get()
+        {
+            fn_decls.insert(sym);
+        }
+    }
+
+    let programs = [parsed.program.as_ref(), parsed.module_program.as_ref()];
+    for prog in programs.into_iter().flatten() {
+        for stmt in &prog.body {
+            match stmt {
+                Statement::VariableDeclaration(vd) => ingest_var_decl(vd, &mut map),
+                Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
+                Statement::ExportNamedDeclaration(en) => match &en.declaration {
+                    Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
+                    Some(Declaration::FunctionDeclaration(fd)) => {
+                        ingest_fn_decl(fd, &mut fn_decls)
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+    (map, fn_decls)
 }
 
 pub(super) struct Ctx<'c, 'a> {
@@ -41,9 +111,13 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) scoping: &'c ComponentScoping<'a>,
+    pub(super) snippets: &'c SnippetData,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
-    pub(super) runes: bool,
+    pub(super) uses_legacy_coarse_wrap: bool,
+    pub(super) bindings_init: FxHashMap<SymbolId, &'c Expression<'a>>,
+    pub(super) function_decls: FxHashSet<SymbolId>,
+    pub(super) dev: bool,
 }
 
 struct Sink<'s> {
@@ -107,6 +181,14 @@ fn visit_fragment(
             Node::SvelteComponentLegacy(cn) => {
                 visit_attributes(&cn.attributes, ctx, sink);
                 visit_fragment(component, cn.fragment, ctx, sink);
+            }
+            Node::SvelteSelf(cn) => {
+                visit_attributes(&cn.attributes, ctx, sink);
+                visit_fragment(component, cn.fragment, ctx, sink);
+                let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
+                for fid in slot_frags {
+                    visit_fragment(component, fid, ctx, sink);
+                }
             }
             Node::SlotElementLegacy(el) => {
                 visit_attributes(&el.attributes, ctx, sink);
@@ -265,15 +347,9 @@ fn store_render_tag(
         return;
     };
     let (data, facts) = compute(expr, ctx);
-    let context_sensitive_shape = matches!(
-        facts.top_level_shape,
-        TopLevelShape::Member | TopLevelShape::Call
-    );
-    if context_sensitive_shape {
-        for &sym in facts.references.iter() {
-            if ctx.scoping.is_rest_prop(sym) {
-                sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
-            }
+    for &sym in facts.member_or_call_roots.iter() {
+        if ctx.scoping.is_rest_prop(sym) {
+            sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
     if facts.has_store_member_mutation {
@@ -288,7 +364,7 @@ fn store_const_tag(
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
-    let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = ctx.parsed.stmt(stmt_id) else {
+    let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmt(stmt_id) else {
         return;
     };
     let Some(d) = decl.declarations.first() else {
@@ -318,7 +394,6 @@ fn store_aggregate(
         let (part, facts) = compute(expr, ctx);
         update_aggregates(sink.store, &facts, ctx);
         acc.kind = max_kind(&acc.kind, &part.kind);
-        acc.memoization = max_memoization(acc.memoization, part.memoization);
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
             if !acc.blockers.contains(&b) {
@@ -340,33 +415,30 @@ fn store_aggregate(
 
 fn empty_data() -> ExpressionData {
     ExpressionData {
-        kind: ExprKind::Static,
+        kind: ExprKind::Computed { reactive: false },
+        evaluation: Evaluation::unknown(),
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
-        memoization: Memoization::None,
         references: SmallVec::new(),
     }
 }
 
 fn compute<'a>(
-    expr: &oxc_ast::ast::Expression<'a>,
+    expr: &Expression<'a>,
     ctx: &Ctx<'_, 'a>,
 ) -> (ExpressionData, ExprFacts) {
     let facts = collect(expr, ctx.semantics, ctx.reactivity);
 
-    if matches!(expr, oxc_ast::ast::Expression::Identifier(_))
-        && facts.references.len() == 1
-        && let Some(folded) = ctx.scoping.known_value_by_sym(facts.references[0])
-    {
-        let data = ExpressionData {
-            kind: ExprKind::Folded(folded.into()),
-            blockers: SmallVec::new(),
-            legacy_wrap: LegacyWrap::None,
-            memoization: Memoization::None,
-            references: SmallVec::new(),
-        };
-        return (data, facts);
-    }
+    let eval_ctx = EvalCtx {
+        scoping: ctx.scoping,
+        semantics: ctx.semantics,
+        reactivity: ctx.reactivity,
+        snippets: ctx.snippets,
+        bindings_init: &ctx.bindings_init,
+        function_decls: &ctx.function_decls,
+        dev: ctx.dev,
+    };
+    let evaluation = evaluator::evaluate(expr, &eval_ctx);
 
     let is_dynamic = derive::is_dynamic_template(
         &facts,
@@ -375,12 +447,28 @@ fn compute<'a>(
         ctx.has_class_state_fields,
     );
     let blockers = derive::blockers(&facts, ctx.blockers);
-    let kind = derive::kind(&facts, !blockers.is_empty(), is_dynamic);
+    let kind = derive::kind(&facts, !blockers.is_empty(), is_dynamic, &evaluation);
+    let has_context_member_root = facts.member_or_call_roots.iter().any(|&sym| {
+        matches!(
+            ctx.reactivity.binding_semantics(sym),
+            BindingSemantics::MaybeReactive
+                | BindingSemantics::Prop(PropBindingSemantics {
+                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
+                    ..
+                })
+                | BindingSemantics::LegacyBindableProp(_)
+                | BindingSemantics::Contextual(_)
+        )
+    });
     let data = ExpressionData {
         kind,
+        evaluation,
         blockers,
-        legacy_wrap: derive::legacy_wrap(ctx.runes, &facts),
-        memoization: derive::memoization(&facts),
+        legacy_wrap: derive::legacy_wrap(
+            ctx.uses_legacy_coarse_wrap,
+            &facts,
+            has_context_member_root,
+        ),
         references: facts.references.clone(),
     };
     (data, facts)
@@ -391,46 +479,40 @@ fn update_aggregates(
     facts: &ExprFacts,
     ctx: &Ctx<'_, '_>,
 ) {
-    let context_sensitive_shape = matches!(
-        facts.top_level_shape,
-        TopLevelShape::Member | TopLevelShape::Call
-    );
-    if context_sensitive_shape {
-        for &sym in facts.references.iter() {
-            if ctx.scoping.is_import(sym) || is_prop_source_or_non_source(sym, ctx.reactivity) {
-                store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
-            }
-            if ctx.scoping.is_rest_prop(sym) {
-                store.note_context(ContextSignal::REST_PROP_MEMBER);
-            }
+    for &sym in facts.member_or_call_roots.iter() {
+        if matches!(
+            ctx.reactivity.binding_semantics(sym),
+            BindingSemantics::MaybeReactive
+                | BindingSemantics::Prop(PropBindingSemantics {
+                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
+                    ..
+                })
+                | BindingSemantics::LegacyBindableProp(_)
+        ) {
+            store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
         }
+        if ctx.scoping.is_rest_prop(sym) {
+            store.note_context(ContextSignal::REST_PROP_MEMBER);
+        }
+    }
+    if facts.has_runtime_root {
+        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
     if facts.has_store_member_mutation {
         store.note_context(ContextSignal::STORE_MUTATION);
     }
 }
 
-fn is_prop_source_or_non_source(
-    sym: crate::scope::SymbolId,
-    reactivity: &ReactivitySemantics,
-) -> bool {
-    use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
-    matches!(
-        reactivity.binding_semantics(sym),
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-            ..
-        }),
-    )
-}
-
 fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
     fn rank(k: &ExprKind) -> u8 {
         match k {
-            ExprKind::Folded(_) => 0,
-            ExprKind::Static => 1,
-            ExprKind::Dynamic => 2,
-            ExprKind::Async { .. } => 3,
+            ExprKind::KnownLiteral => 0,
+            ExprKind::SimpleRead { reactive: false } => 1,
+            ExprKind::Computed { reactive: false } => 2,
+            ExprKind::SimpleRead { reactive: true } => 3,
+            ExprKind::Computed { reactive: true } => 4,
+            ExprKind::Call => 5,
+            ExprKind::Async { .. } => 6,
         }
     }
     if rank(a) >= rank(b) {
@@ -438,17 +520,6 @@ fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
     } else {
         b.clone()
     }
-}
-
-fn max_memoization(a: Memoization, b: Memoization) -> Memoization {
-    fn rank(m: Memoization) -> u8 {
-        match m {
-            Memoization::None => 0,
-            Memoization::SyncMemo => 1,
-            Memoization::AsyncMemo => 2,
-        }
-    }
-    if rank(a) >= rank(b) { a } else { b }
 }
 
 fn combine_legacy_wrap(a: LegacyWrap, b: LegacyWrap) -> LegacyWrap {

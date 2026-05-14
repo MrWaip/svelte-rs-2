@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{AnalysisData, CodegenView, IdentGen, JsAst, RuntimePlan};
+use svelte_analyze::{AnalysisData, CodegenView, IdentGen, JsAst, RuntimeInfo};
 use svelte_ast::{
     AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag,
     SvelteBoundary, SvelteElement,
@@ -56,7 +56,7 @@ impl<'a> CodegenQuery<'a> {
         self.component.store.debug_tag(id)
     }
 
-    pub fn runtime_plan(&self) -> RuntimePlan {
+    pub fn runtime_plan(&self) -> RuntimeInfo {
         self.view.runtime_plan()
     }
 }
@@ -85,8 +85,6 @@ pub struct CodegenState<'a> {
     pub ident_gen: &'a mut IdentGen,
 
     pub module_hoisted: Vec<Statement<'a>>,
-
-    pub needs_binding_group: bool,
 
     pub group_index_names: FxHashMap<NodeId, String>,
 
@@ -126,7 +124,6 @@ impl<'a> CodegenState<'a> {
             parsed,
             ident_gen,
             module_hoisted: Vec::new(),
-            needs_binding_group: false,
             group_index_names: FxHashMap::default(),
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
@@ -225,9 +222,6 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.query.view.each_index_name(id).map(str::to_string)
     }
-    pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
-        self.query.view.is_each_index_sym(sym)
-    }
     pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
         self.query.view.expression_data(id)
     }
@@ -238,7 +232,7 @@ impl<'a> Ctx<'a> {
                 .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
         )
     }
-    pub fn runtime_plan(&self) -> RuntimePlan {
+    pub fn runtime_plan(&self) -> RuntimeInfo {
         self.query.runtime_plan()
     }
 
@@ -318,9 +312,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.query.view.is_expression_shorthand(id)
-    }
-    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
-        self.query.view.component_binding_sym(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
         self.query.view.has_component_css_props(id)

@@ -1,6 +1,9 @@
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
+use oxc_semantic::Scoping;
 use oxc_traverse::traverse_mut;
+
+use crate::data::TransformData;
 
 use svelte_analyze::{AnalysisData, ComponentScoping};
 use svelte_ast_builder::Builder;
@@ -29,11 +32,9 @@ pub fn transform_script<'a, 'b>(
     experimental_async: bool,
     ignore_query: IgnoreQuery<'_, 'a>,
 ) -> TransformScriptOutput {
-    let is_ts = program.source_type.is_typescript();
-
     let mut transformer = ComponentTransformer {
         mode: TransformMode::Script,
-        transform_data: crate::data::TransformData::new(),
+        transform_data: TransformData::new(),
         b,
         component_scoping,
         analysis,
@@ -44,7 +45,6 @@ pub fn transform_script<'a, 'b>(
         async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports,
         dev,
-        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         needs_ownership_validator: false,
@@ -63,7 +63,7 @@ pub fn transform_script<'a, 'b>(
         in_bind_setter_traverse: false,
     };
 
-    let empty_scoping = oxc_semantic::Scoping::default();
+    let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, program, empty_scoping, ());
 
     if let Some(analysis) = analysis {

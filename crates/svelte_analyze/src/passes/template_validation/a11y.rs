@@ -1212,6 +1212,7 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_, '_>) -> bool 
         Node::SlotElementLegacy(_) => true,
         Node::ComponentNode(_)
         | Node::SvelteComponentLegacy(_)
+        | Node::SvelteSelf(_)
         | Node::RenderTag(_)
         | Node::SvelteElement(_) => true,
         Node::IfBlock(block) => {

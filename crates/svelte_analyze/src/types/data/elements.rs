@@ -1,10 +1,25 @@
 use super::*;
+use oxc_syntax::node::NodeId as OxcNodeId;
+
+#[derive(Clone)]
+pub struct ComponentCssProp {
+    pub name: String,
+    pub attr_id: NodeId,
+    pub value: ComponentCssPropValue,
+}
+
+#[derive(Clone)]
+pub enum ComponentCssPropValue {
+    Expression(OxcNodeId),
+    StaticString(Span),
+    Concatenation,
+}
 
 pub struct ClassDirectiveInfo {
     pub id: NodeId,
     pub name: String,
     pub has_expression: bool,
-    pub expr_id: oxc_syntax::node::NodeId,
+    pub expr_id: OxcNodeId,
 }
 
 #[derive(Clone)]
@@ -26,7 +41,7 @@ pub enum ComponentPropKind {
         name: String,
         attr_id: NodeId,
 
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
         shorthand: bool,
         needs_memo: bool,
     },
@@ -37,12 +52,12 @@ pub enum ComponentPropKind {
     },
     BindThis {
         bind_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
     },
     Bind {
         name: String,
         bind_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
         mode: ComponentBindMode,
 
         expr_name: Option<String>,
@@ -51,18 +66,18 @@ pub enum ComponentPropKind {
     },
     Spread {
         attr_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
     },
     Attach {
         attr_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
     },
 
     Event {
         name: String,
         attr_id: NodeId,
 
-        expr_id: Option<oxc_syntax::node::NodeId>,
+        expr_id: Option<OxcNodeId>,
         has_expression: bool,
         has_once_modifier: bool,
     },
@@ -98,9 +113,8 @@ pub struct ElementFlags {
     pub(crate) has_dynamic_class_directives: NodeBitSet,
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
-    pub(crate) component_binding_sym: NodeTable<SymbolId>,
 
-    pub(crate) component_css_props: NodeTable<Vec<(String, NodeId, oxc_syntax::node::NodeId)>>,
+    pub(crate) component_css_props: NodeTable<Vec<ComponentCssProp>>,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
 
     pub(crate) needs_textarea_value_lowering: NodeBitSet,
@@ -112,8 +126,6 @@ pub struct ElementFlags {
     pub(crate) is_selectedcontent: NodeBitSet,
 
     pub(crate) svelte_fragment_slots: NodeBitSet,
-
-    pub(crate) is_svelte_self: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -133,7 +145,6 @@ impl ElementFlags {
             has_dynamic_class_directives: NodeBitSet::new(node_count),
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
-            component_binding_sym: NodeTable::new(node_count),
             component_css_props: NodeTable::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
@@ -141,7 +152,6 @@ impl ElementFlags {
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
             svelte_fragment_slots: NodeBitSet::new(node_count),
-            is_svelte_self: NodeBitSet::new(node_count),
         }
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
@@ -196,10 +206,7 @@ impl ElementFlags {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(id).map_or(&[], |v| v.as_slice())
     }
-    pub fn component_binding_sym(&self, id: NodeId) -> Option<SymbolId> {
-        self.component_binding_sym.get(id).copied()
-    }
-    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId, oxc_syntax::node::NodeId)] {
+    pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
         self.component_css_props
             .get(id)
             .map_or(&[], |v| v.as_slice())
@@ -224,8 +231,5 @@ impl ElementFlags {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.svelte_fragment_slots.contains(&id)
-    }
-    pub fn is_svelte_self(&self, id: NodeId) -> bool {
-        self.is_svelte_self.contains(&id)
     }
 }

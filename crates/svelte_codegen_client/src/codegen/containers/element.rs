@@ -1,10 +1,21 @@
+use std::mem;
+
 use oxc_allocator::CloneIn;
-use svelte_ast::{Namespace, Node, NodeId};
+use oxc_ast::ast::Statement;
+use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::namespace::from_namespace;
 use super::super::{Codegen, CodegenError, Result};
+
+fn is_load_error_element(name: &str) -> bool {
+    matches!(
+        name,
+        "img" | "iframe" | "link" | "script" | "source" | "style" | "track" | "body"
+    )
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn element_ident_prefix(&self, name: &str) -> String {
@@ -45,7 +56,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(el_id);
         match node {
             Node::Element(_) => self.emit_element_html(state, ctx, el_id, existing_var),
-            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
                 self.emit_component(state, ctx, el_id, existing_var)
             }
             Node::SvelteElement(_) => self.emit_svelte_element(state, ctx, el_id, existing_var),
@@ -122,12 +133,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let (attach_attrs, non_attach_attrs): (Vec<_>, Vec<_>) = attributes
             .iter()
             .cloned()
-            .partition(|a| matches!(a, svelte_ast::Attribute::AttachTag(_)));
+            .partition(|a| matches!(a, Attribute::AttachTag(_)));
 
-        let prev_pending_bind_this = std::mem::take(&mut state.pending_bind_this);
+        let prev_pending_element_init = mem::take(&mut state.pending_element_init);
+        let element_after_update_len_before = state.element_after_update.len();
         self.emit_dom_attributes(state, el_id, &el_name_hint, &el_name, &non_attach_attrs)?;
-        let my_bind_this = std::mem::take(&mut state.pending_bind_this);
-        state.pending_bind_this = prev_pending_bind_this;
+        if !is_ghost
+            && is_load_error_element(&el_name_hint)
+            && (self.ctx.has_spread(el_id)
+                || self.ctx.has_use_directive(el_id)
+                || self.ctx.has_attribute(el_id, "onload")
+                || self.ctx.has_attribute(el_id, "onerror"))
+        {
+            state.element_after_update.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.replay_events", [Arg::Ident(&el_name)]),
+            );
+        }
+        let my_element_init = mem::take(&mut state.pending_element_init);
+        state.pending_element_init = prev_pending_element_init;
 
         if !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -166,10 +191,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        state.init.extend(my_bind_this);
+        state.init.extend(my_element_init);
+        let scoped: Vec<Statement<'a>> = state
+            .element_after_update
+            .split_off(element_after_update_len_before);
+        state.after_update.extend(scoped);
 
         for attr in &attach_attrs {
-            if let svelte_ast::Attribute::AttachTag(a) = attr {
+            if let Attribute::AttachTag(a) = attr {
                 self.emit_attach_tag(state, el_id, &el_name, a)?;
             }
         }
@@ -189,19 +218,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         expr_id: NodeId,
     ) -> Result<()> {
+        let known = self
+            .ctx
+            .query
+            .view
+            .expression_data(expr_id)
+            .and_then(|d| d.evaluation.known_str());
         let expr = self.take_node_expr(expr_id)?;
-        let text_expr = if let oxc_ast::ast::Expression::Identifier(ident) = &expr {
-            self.ctx
-                .query
-                .view
-                .known_value(ident.name.as_str())
-                .map(|s| self.ctx.b.str_expr(s))
-        } else {
-            None
-        };
-
-        let text_expr = match text_expr {
-            Some(e) => e,
+        let text_expr = match known {
+            Some(s) => self.ctx.b.str_expr(&s),
             None => expr.clone_in(self.ctx.b.ast.allocator),
         };
 
@@ -272,7 +297,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let html_str = inner_state.template.as_html();
         let needs_import = inner_state.template.needs_import_node;
-        let from_fn = super::super::namespace::from_namespace(el_ns);
+        let from_fn = from_namespace(el_ns);
         let tpl_expr = self.ctx.b.template_str_expr(&html_str);
         let flags = if needs_import { 3.0 } else { 1.0 };
         let from_call = self
@@ -281,12 +306,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags)]);
         self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
 
-        let super::super::data_structures::EmitState {
+        let EmitState {
             init: inner_init,
             update: inner_update,
             after_update: inner_after,
             root_var: _,
             memo_attrs: inner_memo,
+            shared_memo: inner_shared_memo,
             script_blockers: inner_script_blockers,
             extra_blockers: inner_extra_blockers,
             ..
@@ -295,7 +321,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_name = self.ctx.state.gen_ident("anchor");
         let fragment_name = self.ctx.state.gen_ident("fragment");
 
-        let mut body: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+        let mut body: Vec<Statement<'a>> = Vec::new();
         body.push(self.ctx.b.var_stmt(
             &anchor_name,
             self.ctx.b.call_expr("$.child", [Arg::Ident(el_name)]),
@@ -333,6 +359,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             &mut body,
             inner_update,
             inner_memo,
+            inner_shared_memo,
             inner_script_blockers,
             inner_extra_blockers,
         )?;

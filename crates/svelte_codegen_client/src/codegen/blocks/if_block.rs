@@ -101,7 +101,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 svelte_ast::Node::IfBlock(block) => block.consequent,
                 _ => return CodegenError::unexpected_node(branch.block_id, "IfBlock"),
             };
-            let inner_ctx = parent_ctx.child_of_block(
+            let mut inner_ctx = parent_ctx.child_of_block(
                 self.ctx,
                 consequent,
                 FragmentAnchor::CallbackParam {
@@ -109,6 +109,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     append_inside: false,
                 },
             );
+            inner_ctx.in_block_callback = true;
             let mut inner_state = EmitState::new();
             self.emit_fragment(&mut inner_state, &inner_ctx, consequent)?;
             let body = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -122,10 +123,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let derived_name = match branch.condition {
                 IfConditionKind::Memo => {
                     let expr = self.take_node_expr(branch.block_id)?;
+                    let inner = self.maybe_wrap_legacy_coarse_expr(
+                        expr,
+                        self.ctx.expression_data(branch.block_id),
+                        true,
+                    );
                     let thunk = self
                         .ctx
                         .b
-                        .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(expr)]);
+                        .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(inner)]);
                     let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
                     let name = self.ctx.state.gen_ident("d");
                     stmts.push(self.ctx.b.var_stmt(&name, derived));
@@ -161,7 +167,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
             _ => return CodegenError::unexpected_node(last_branch_block_id, "IfBlock"),
         };
-        let inner_ctx = parent_ctx.child_of_block(
+        let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             alternate,
             FragmentAnchor::CallbackParam {
@@ -169,6 +175,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: false,
             },
         );
+        inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, alternate)?;
         let body = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -229,7 +236,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 Ok(self.ctx.b.call_expr("$.get", [Arg::Ident(name)]))
             }
-            IfConditionKind::Raw => self.take_node_expr(branch.block_id),
+            IfConditionKind::Raw => {
+                let expr = self.take_node_expr(branch.block_id)?;
+                Ok(self.maybe_wrap_legacy_coarse_expr(
+                    expr,
+                    self.ctx.expression_data(branch.block_id),
+                    false,
+                ))
+            }
         }
     }
 }

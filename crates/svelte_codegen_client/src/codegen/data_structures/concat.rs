@@ -4,5 +4,6 @@ use svelte_ast::{NodeId, Span};
 pub(crate) enum ConcatPart {
     Static(Span),
     StaticOwned(String),
+    StaticEntities { html: String, text: String },
     Expr(NodeId),
 }

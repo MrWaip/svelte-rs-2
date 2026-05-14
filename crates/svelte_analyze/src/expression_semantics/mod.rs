@@ -1,8 +1,11 @@
 pub mod builder;
 pub mod data;
+pub mod evaluator;
 
 pub use builder::build;
-pub use data::{ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, Memoization};
+pub use data::{
+    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap, ValueClass,
+};
 
 use bitflags::bitflags;
 use svelte_ast::NodeId;
@@ -23,7 +26,7 @@ pub struct ExpressionSemanticsStore {
 }
 
 impl ExpressionSemanticsStore {
-    pub fn new(node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
         let mut entries = Vec::with_capacity(node_count as usize);
         entries.resize_with(node_count as usize, ExpressionSemantics::default);
         Self {

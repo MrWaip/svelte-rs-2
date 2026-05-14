@@ -1,7 +1,9 @@
-use oxc_ast::ast::{CallExpression, Expression, IdentifierReference};
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program};
+use oxc_syntax::symbol::SymbolId;
+use svelte_component_semantics::SymbolOwner;
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, Span as OxcSpan};
 use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -11,7 +13,7 @@ use crate::{AnalysisData, BindingSemantics};
 
 pub(super) fn validate(
     data: &AnalysisData<'_>,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StoreValidator {
@@ -27,7 +29,7 @@ struct StoreValidator<'a> {
 }
 
 impl StoreValidator<'_> {
-    fn span(&self, oxc_span: oxc_span::Span) -> Span {
+    fn span(&self, oxc_span: OxcSpan) -> Span {
         Span {
             start: oxc_span.start,
             end: oxc_span.end,
@@ -62,7 +64,7 @@ impl StoreValidator<'_> {
 
 pub(super) fn validate_module(
     data: &AnalysisData<'_>,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = ModuleStoreValidator {
@@ -74,7 +76,7 @@ pub(super) fn validate_module(
 
 pub(super) fn validate_standalone_module(
     data: &AnalysisData<'_>,
-    program: &oxc_ast::ast::Program<'_>,
+    program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = StandaloneModuleStoreValidator {
@@ -93,11 +95,11 @@ struct ModuleStoreValidator<'a> {
 struct StandaloneModuleStoreValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     data: &'a AnalysisData<'a>,
-    reported_bindings: FxHashSet<oxc_syntax::symbol::SymbolId>,
+    reported_bindings: FxHashSet<SymbolId>,
 }
 
 impl ModuleStoreValidator<'_> {
-    fn span(&self, oxc_span: oxc_span::Span) -> Span {
+    fn span(&self, oxc_span: OxcSpan) -> Span {
         Span {
             start: oxc_span.start,
             end: oxc_span.end,
@@ -106,7 +108,7 @@ impl ModuleStoreValidator<'_> {
 }
 
 impl StandaloneModuleStoreValidator<'_> {
-    fn span(&self, oxc_span: oxc_span::Span) -> Span {
+    fn span(&self, oxc_span: OxcSpan) -> Span {
         Span {
             start: oxc_span.start,
             end: oxc_span.end,
@@ -206,17 +208,17 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
     }
 }
 
-fn is_synthetic_store_binding(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
+fn is_synthetic_store_binding(data: &AnalysisData, sym_id: SymbolId) -> bool {
     matches!(
         data.scoping.symbol_owner(sym_id),
-        svelte_component_semantics::SymbolOwner::Synthetic
+        SymbolOwner::Synthetic
     ) && matches!(
         data.reactivity.binding_semantics(sym_id),
         BindingSemantics::Store(_)
     )
 }
 
-fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: oxc_syntax::symbol::SymbolId) -> bool {
+fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: SymbolId) -> bool {
     matches!(
         data.reactivity.binding_semantics(sym_id),
         BindingSemantics::State(_)

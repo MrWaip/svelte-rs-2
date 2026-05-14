@@ -1,8 +1,13 @@
-use oxc_ast::ast::{Declaration, Program, Statement, VariableDeclarationKind};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, Declaration, ForOfStatement,
+    Function, MethodDefinition, ModuleExportName, Program, Statement, VariableDeclarationKind,
+};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_function, walk_method_definition, walk_program,
+    walk_arrow_function_expression, walk_await_expression, walk_for_of_statement, walk_function,
+    walk_method_definition, walk_program,
 };
+use oxc_semantic::ScopeFlags;
 use rustc_hash::FxHashSet;
 use svelte_ast::{RunesMode, RunesOption, is_rune_name};
 use svelte_parser::JsAst;
@@ -76,12 +81,12 @@ fn has_legacy_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {
                     return true;
                 }
                 for spec in &export.specifiers {
-                    if let oxc_ast::ast::ModuleExportName::IdentifierName(id) = &spec.local
+                    if let ModuleExportName::IdentifierName(id) = &spec.local
                         && top_level_let_names.contains(id.name.as_str())
                     {
                         return true;
                     }
-                    if let oxc_ast::ast::ModuleExportName::IdentifierReference(id) = &spec.local
+                    if let ModuleExportName::IdentifierReference(id) = &spec.local
                         && top_level_let_names.contains(id.name.as_str())
                     {
                         return true;
@@ -95,14 +100,14 @@ fn has_legacy_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {
 }
 
 fn collect_pattern_names<'a>(
-    pattern: &'a oxc_ast::ast::BindingPattern<'a>,
+    pattern: &'a BindingPattern<'a>,
     out: &mut FxHashSet<&'a str>,
 ) {
     match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+        BindingPattern::BindingIdentifier(id) => {
             out.insert(id.name.as_str());
         }
-        oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
+        BindingPattern::ObjectPattern(obj) => {
             for prop in &obj.properties {
                 collect_pattern_names(&prop.value, out);
             }
@@ -110,7 +115,7 @@ fn collect_pattern_names<'a>(
                 collect_pattern_names(&rest.argument, out);
             }
         }
-        oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
+        BindingPattern::ArrayPattern(arr) => {
             for element in arr.elements.iter().flatten() {
                 collect_pattern_names(element, out);
             }
@@ -118,7 +123,7 @@ fn collect_pattern_names<'a>(
                 collect_pattern_names(&rest.argument, out);
             }
         }
-        oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+        BindingPattern::AssignmentPattern(assign) => {
             collect_pattern_names(&assign.left, out);
         }
     }
@@ -146,37 +151,37 @@ impl<'a> Visit<'a> for TopLevelAwaitVisitor {
         walk_program(self, program);
     }
 
-    fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: oxc_semantic::ScopeFlags) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         self.depth += 1;
         walk_function(self, func, flags);
         self.depth -= 1;
     }
 
-    fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.depth += 1;
         walk_arrow_function_expression(self, arrow);
         self.depth -= 1;
     }
 
-    fn visit_method_definition(&mut self, method: &oxc_ast::ast::MethodDefinition<'a>) {
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
         self.depth += 1;
         walk_method_definition(self, method);
         self.depth -= 1;
     }
 
-    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
         if self.depth == 0 {
             self.found = true;
             return;
         }
-        oxc_ast_visit::walk::walk_await_expression(self, expr);
+        walk_await_expression(self, expr);
     }
 
-    fn visit_for_of_statement(&mut self, stmt: &oxc_ast::ast::ForOfStatement<'a>) {
+    fn visit_for_of_statement(&mut self, stmt: &ForOfStatement<'a>) {
         if self.depth == 0 && stmt.r#await {
             self.found = true;
             return;
         }
-        oxc_ast_visit::walk::walk_for_of_statement(self, stmt);
+        walk_for_of_statement(self, stmt);
     }
 }

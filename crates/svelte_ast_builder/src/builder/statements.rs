@@ -89,7 +89,7 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
-    pub fn var_init_stmt(&self, declarator: oxc_ast::ast::VariableDeclarator<'a>) -> Statement<'a> {
+    pub fn var_init_stmt(&self, declarator: ast::VariableDeclarator<'a>) -> Statement<'a> {
         let declaration = self.ast.variable_declaration(
             SPAN,
             VariableDeclarationKind::Var,
@@ -249,28 +249,11 @@ impl<'a> Builder<'a> {
             .expression_object(SPAN, self.ast.vec_from_iter(properties))
     }
 
-    pub fn const_object_destruct_stmt(
+    pub fn const_destruct_stmt(
         &self,
-        names: &[String],
+        pattern: ast::BindingPattern<'a>,
         init: Expression<'a>,
     ) -> Statement<'a> {
-        let properties: Vec<_> = names
-            .iter()
-            .map(|name| {
-                let atom = self.ast.atom(name.as_str());
-                let key = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, atom)),
-                );
-                let value = self
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
-                self.ast.binding_property(SPAN, key, value, true, false)
-            })
-            .collect();
-        let object_pattern =
-            self.ast
-                .object_pattern(SPAN, self.ast.vec_from_iter(properties), NONE);
-        let pattern = ast::BindingPattern::ObjectPattern(self.alloc(object_pattern));
         let decl = self.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Const,

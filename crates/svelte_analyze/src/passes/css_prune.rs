@@ -1,11 +1,18 @@
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, LogicalOperator, PropertyKey};
+use oxc_ast::ast::{Expression, LogicalOperator, ObjectPropertyKind, PropertyKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, Component as SvelteComponent, ConcatPart, Node, NodeId};
+use svelte_ast::{
+    Attribute, Component as SvelteComponent, ConcatPart, ExpressionAttribute, FragmentId,
+    FragmentRole, Node, NodeId,
+};
 use svelte_css::{
-    AtRule, Combinator, CombinatorKind, ComplexSelector, CssNodeId, PseudoClassSelector,
-    RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
+    AtRule, BlockChild, Combinator, CombinatorKind, ComplexSelector, CssNodeId,
+    PseudoClassSelector, RelativeSelector, Rule, SelectorList, SimpleSelector, StyleRule,
+    StyleSheet, StyleSheetChild, Visit,
+};
+use svelte_css::visit::{
+    walk_at_rule, walk_complex_selector, walk_style_rule,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_parser::JsAst;
@@ -14,9 +21,11 @@ use svelte_span::GetSpan;
 use super::css_prune_index::{
     CandidateKind, CandidateNode, CssPruneIndex, NodeExistsValue, SiblingCandidate,
 };
-use crate::AnalysisData;
-use crate::scope::SymbolId;
+use super::fragment_topology::fragment_items;
 use crate::expression_semantics::ExpressionData;
+use crate::scope::SymbolId;
+use crate::{AnalysisData, BlockSemantics};
+use std::iter::once;
 use crate::types::data::{
     BindingSemantics, ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis,
     TemplateElementIndex,
@@ -68,7 +77,7 @@ enum Direction {
     Backward,
 }
 
-struct SelectorPlan {
+struct SelectorRewrite {
     complex_id: CssNodeId,
     relatives: Vec<RelativeSelector>,
     is_all_global: bool,
@@ -171,26 +180,26 @@ fn collect_style_rules<'a>(
     rules: &mut FxHashMap<CssNodeId, &'a StyleRule>,
 ) {
     for child in &stylesheet.children {
-        if let svelte_css::StyleSheetChild::Rule(rule) = child {
+        if let StyleSheetChild::Rule(rule) = child {
             collect_rule(rule, rules);
         }
     }
 }
 
-fn collect_rule<'a>(rule: &'a svelte_css::Rule, rules: &mut FxHashMap<CssNodeId, &'a StyleRule>) {
+fn collect_rule<'a>(rule: &'a Rule, rules: &mut FxHashMap<CssNodeId, &'a StyleRule>) {
     match rule {
-        svelte_css::Rule::Style(style) => {
+        Rule::Style(style) => {
             rules.insert(style.id, style);
             for child in &style.block.children {
-                if let svelte_css::BlockChild::Rule(rule) = child {
+                if let BlockChild::Rule(rule) = child {
                     collect_rule(rule, rules);
                 }
             }
         }
-        svelte_css::Rule::AtRule(at_rule) => {
+        Rule::AtRule(at_rule) => {
             if let Some(block) = &at_rule.block {
                 for child in &block.children {
-                    if let svelte_css::BlockChild::Rule(rule) = child {
+                    if let BlockChild::Rule(rule) = child {
                         collect_rule(rule, rules);
                     }
                 }
@@ -207,7 +216,7 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
     elements: &'b TemplateElementIndex,
     element_facts: &'b ElementFacts,
     index: CssPruneIndex,
-    used: &'b mut FxHashSet<svelte_css::CssNodeId>,
+    used: &'b mut FxHashSet<CssNodeId>,
     scoped: &'b mut NodeBitSet,
     in_global_block: bool,
     rule_lookup: &'s FxHashMap<CssNodeId, &'s StyleRule>,
@@ -216,7 +225,7 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
 
 impl Visit for PruneVisitor<'_, '_, '_, '_> {
     fn visit_at_rule(&mut self, node: &AtRule) {
-        svelte_css::visit::walk_at_rule(self, node);
+        walk_at_rule(self, node);
     }
 
     fn visit_style_rule(&mut self, node: &StyleRule) {
@@ -229,7 +238,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         let rule_ctx = RuleContext::new(node.id, &parent_rules, self.rule_lookup);
 
         for complex in &node.prelude.children {
-            let plan = build_rule_selector_plan(complex, &rule_ctx);
+            let plan = build_rule_selector_rewrite(complex, &rule_ctx);
 
             if self.in_global_block || plan.is_all_global {
                 self.used.insert(plan.complex_id);
@@ -262,7 +271,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
             }
         }
 
-        svelte_css::visit::walk_style_rule(self, node);
+        walk_style_rule(self, node);
         self.rule_stack.truncate(parent_len);
         self.in_global_block = was_global;
     }
@@ -279,7 +288,7 @@ fn build_css_prune_index(
 }
 
 fn collect_css_prune_edges_in_fragment(
-    fragment_id: svelte_ast::FragmentId,
+    fragment_id: FragmentId,
     component: &SvelteComponent,
     parsed: &JsAst<'_>,
     data: &AnalysisData,
@@ -294,7 +303,7 @@ fn collect_css_prune_edges_in_fragment(
             Node::SlotElementLegacy(el) => {
                 collect_css_prune_edges_in_fragment(el.fragment, component, parsed, data, edges);
             }
-            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
                 if let Some(view) = component.store.get(id).as_component_like() {
                     let snippets =
                         component_possible_snippets(view.id, view.attributes, parsed, data);
@@ -386,7 +395,7 @@ fn record_possible_snippets(
 
 fn render_tag_possible_snippets(id: NodeId, data: &AnalysisData) -> Vec<NodeId> {
     let callee_sym = match data.block_semantics(id) {
-        crate::BlockSemantics::Render(sem) => sem.callee_sym,
+        BlockSemantics::Render(sem) => sem.callee_sym,
         _ => None,
     };
     if let Some(sym_id) = callee_sym {
@@ -453,11 +462,11 @@ fn component_possible_snippets(
 
 fn collect_component_attr_snippets(
     data: &AnalysisData,
-    expr: &oxc_ast::ast::Expression<'_>,
+    expr: &Expression<'_>,
     expr_data: Option<&ExpressionData>,
     snippets: &mut Vec<NodeId>,
 ) -> bool {
-    if let oxc_ast::ast::Expression::Identifier(ident) = expr {
+    if let Expression::Identifier(ident) = expr {
         let name = ident.name.as_str();
         let sym_id = expr_data
             .and_then(|d| d.references.first().copied())
@@ -479,10 +488,10 @@ fn collect_component_attr_snippets(
     } else {
         matches!(
             expr,
-            oxc_ast::ast::Expression::StringLiteral(_)
-                | oxc_ast::ast::Expression::NumericLiteral(_)
-                | oxc_ast::ast::Expression::BooleanLiteral(_)
-                | oxc_ast::ast::Expression::NullLiteral(_),
+            Expression::StringLiteral(_)
+                | Expression::NumericLiteral(_)
+                | Expression::BooleanLiteral(_)
+                | Expression::NullLiteral(_),
         )
     }
 }
@@ -496,7 +505,7 @@ fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
 }
 
-fn build_rule_selector_plan(complex: &ComplexSelector, rule_ctx: &RuleContext<'_>) -> SelectorPlan {
+fn build_rule_selector_rewrite(complex: &ComplexSelector, rule_ctx: &RuleContext<'_>) -> SelectorRewrite {
     let mut relatives = build_truncated_relatives(complex);
 
     if rule_ctx.parent_rule().is_some()
@@ -509,7 +518,7 @@ fn build_rule_selector_plan(complex: &ComplexSelector, rule_ctx: &RuleContext<'_
         relatives.insert(0, synthetic_nesting_relative());
     }
 
-    SelectorPlan {
+    SelectorRewrite {
         complex_id: complex.id,
         needs_full_scan: relatives.last().is_some_and(requires_full_scan),
         is_all_global: is_all_global(&relatives, rule_ctx),
@@ -604,7 +613,7 @@ fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
 
     let mut explicitly_global = false;
     for simple in &selector.selectors {
-        let mut selector_list: Option<&svelte_css::SelectorList> = None;
+        let mut selector_list: Option<&SelectorList> = None;
         let mut can_be_global = false;
         let mut nested_rule_ctx = None;
 
@@ -948,7 +957,7 @@ fn relative_selector_matches(
                             && first.combinator.is_some()
                         {
                             *first = RelativeSelector {
-                                id: svelte_css::CssNodeId(0),
+                                id: CssNodeId(0),
                                 combinator: None,
                                 selectors: first.selectors.clone(),
                                 span: first.span,
@@ -970,7 +979,7 @@ fn relative_selector_matches(
 
                     let mut excluding_self = Vec::with_capacity(inner.len() + 1);
                     excluding_self.push(RelativeSelector {
-                        id: svelte_css::CssNodeId(0),
+                        id: CssNodeId(0),
                         combinator: None,
                         selectors: vec![SimpleSelector::Type {
                             span: svelte_span::Span::new(0, 0),
@@ -984,8 +993,8 @@ fn relative_selector_matches(
                         first
                     } else {
                         RelativeSelector {
-                            id: svelte_css::CssNodeId(0),
-                            combinator: Some(svelte_css::Combinator {
+                            id: CssNodeId(0),
+                            combinator: Some(Combinator {
                                 kind: CombinatorKind::Descendant,
                                 span: svelte_span::Span::new(0, 0),
                             }),
@@ -1061,7 +1070,7 @@ fn relative_selector_matches(
                         for complex in &args.children {
                             pruner.used.insert(complex.id);
                             if complex.children.len() > 1 {
-                                for ancestor in std::iter::once(elem_id)
+                                for ancestor in once(elem_id)
                                     .chain(get_ancestor_elements(pruner, elem_id, false))
                                 {
                                     pruner.scoped.insert(ancestor);
@@ -1117,7 +1126,7 @@ fn relative_selector_matches(
                 );
                 let mut matched = false;
                 for complex in &parent_rule.prelude.children {
-                    let parent_plan = build_rule_selector_plan(complex, &parent_rule_ctx);
+                    let parent_plan = build_rule_selector_rewrite(complex, &parent_rule_ctx);
                     if apply_selector(
                         pruner,
                         &parent_plan.relatives,
@@ -1182,7 +1191,7 @@ fn pseudo_is_or_where_matches(
             pruner.used.insert(complex.id);
             matched = true;
             for ancestor in
-                std::iter::once(elem_id).chain(get_ancestor_elements(pruner, elem_id, false))
+                once(elem_id).chain(get_ancestor_elements(pruner, elem_id, false))
             {
                 pruner.scoped.insert(ancestor);
             }
@@ -1197,7 +1206,7 @@ fn has_global_or_root_selector(rule_ctx: &RuleContext<'_>) -> bool {
         .parent_rules
         .iter()
         .copied()
-        .chain(std::iter::once(rule_ctx.rule_id))
+        .chain(once(rule_ctx.rule_id))
         .any(|rule_id| {
             let nested_ctx = RuleContext::new(rule_id, &[], rule_ctx.rule_lookup);
             let rule = nested_ctx.rule();
@@ -1361,13 +1370,13 @@ fn collect_descendants_from_node(
 
 fn collect_descendants_from_fragment(
     pruner: &mut PruneVisitor<'_, '_, '_, '_>,
-    fragment_id: svelte_ast::FragmentId,
+    fragment_id: FragmentId,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
     let lowered =
-        crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
+        fragment_items(&pruner.component.store, fragment_id);
 
     let store = &pruner.component.store;
     for &id in &lowered {
@@ -1447,7 +1456,7 @@ fn collect_possible_siblings(
 
     while let Some(fragment_id) = current_fragment {
         let lowered =
-            crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
+            fragment_items(&pruner.component.store, fragment_id);
         let fragment_meta = pruner.component.store.fragment(fragment_id);
         let owner_opt = fragment_meta.owner;
         let role = fragment_meta.role;
@@ -1577,7 +1586,7 @@ fn collect_possible_siblings(
                 }
                 break;
             }
-            Node::EachBlock(_) if role == svelte_ast::FragmentRole::EachBody => {
+            Node::EachBlock(_) if role == FragmentRole::EachBody => {
                 let nested = get_possible_nested_siblings(
                     pruner,
                     owner_id,
@@ -1604,7 +1613,7 @@ fn get_possible_nested_siblings(
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
-    let mut fragments: Vec<svelte_ast::FragmentId> = Vec::new();
+    let mut fragments: Vec<FragmentId> = Vec::new();
     let mut exhaustive = true;
 
     match pruner.component.store.get(node_id) {
@@ -1683,14 +1692,14 @@ fn get_possible_nested_siblings(
 
 fn loop_child(
     pruner: &mut PruneVisitor<'_, '_, '_, '_>,
-    fragment_id: svelte_ast::FragmentId,
+    fragment_id: FragmentId,
     direction: Direction,
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
     let mut result = FxHashMap::default();
     let lowered =
-        crate::passes::fragment_topology::fragment_items(&pruner.component.store, fragment_id);
+        fragment_items(&pruner.component.store, fragment_id);
 
     let indices: Box<dyn Iterator<Item = usize>> = match direction {
         Direction::Forward => Box::new(0..lowered.len()),
@@ -2022,7 +2031,7 @@ fn attribute_name_matches_selector(
 
 fn attribute_chunks_for_expression_attr<'a>(
     pruner: &'a PruneVisitor<'_, '_, 'a, '_>,
-    attr: &svelte_ast::ExpressionAttribute,
+    attr: &ExpressionAttribute,
 ) -> Option<Vec<AttributeChunk<'a>>> {
     let expr = pruner.parsed.expr(attr.expression.id())?;
     Some(vec![AttributeChunk::Expr(expr)])
@@ -2217,7 +2226,7 @@ fn gather_possible_values(
         }
         Expression::ObjectExpression(object) if is_class => {
             for property in &object.properties {
-                let oxc_ast::ast::ObjectPropertyKind::ObjectProperty(property) = property else {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
                     return false;
                 };
                 if property.computed {
@@ -2358,7 +2367,7 @@ fn warn_unused(
     stylesheet: &StyleSheet,
     css_source: &str,
     css_offset: u32,
-    used: &FxHashSet<svelte_css::CssNodeId>,
+    used: &FxHashSet<CssNodeId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let mut warner = UnusedWarner {
@@ -2377,7 +2386,7 @@ fn warn_unused(
 struct UnusedWarner<'a> {
     css_source: &'a str,
     css_offset: u32,
-    used: &'a FxHashSet<svelte_css::CssNodeId>,
+    used: &'a FxHashSet<CssNodeId>,
     diagnostics: &'a mut Vec<Diagnostic>,
     in_keyframes: bool,
     in_global_block: bool,
@@ -2389,10 +2398,10 @@ impl Visit for UnusedWarner<'_> {
     fn visit_at_rule(&mut self, node: &AtRule) {
         if node.name == "keyframes" {
             self.in_keyframes = true;
-            svelte_css::visit::walk_at_rule(self, node);
+            walk_at_rule(self, node);
             self.in_keyframes = false;
         } else {
-            svelte_css::visit::walk_at_rule(self, node);
+            walk_at_rule(self, node);
         }
     }
 
@@ -2404,7 +2413,7 @@ impl Visit for UnusedWarner<'_> {
             self.in_global_block = was_global;
             return;
         }
-        svelte_css::visit::walk_style_rule(self, node);
+        walk_style_rule(self, node);
         self.in_global_block = was_global;
     }
 
@@ -2436,7 +2445,7 @@ impl Visit for UnusedWarner<'_> {
                 span,
             ));
         }
-        svelte_css::visit::walk_complex_selector(self, node);
+        walk_complex_selector(self, node);
         self.complex_used_stack.pop();
     }
 

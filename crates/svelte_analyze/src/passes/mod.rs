@@ -208,7 +208,7 @@ pub(crate) fn default_stage_execution_order() -> Vec<PassKey> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PassPlanError {
+pub(crate) enum PassError {
     DuplicatePassKey(PassKey),
     MissingRequirement {
         pass: PassKey,
@@ -224,11 +224,11 @@ pub(crate) enum PassPlanError {
 
 pub(crate) fn resolve_execution_order(
     descriptors: &[PassDescriptor],
-) -> Result<Vec<PassKey>, PassPlanError> {
+) -> Result<Vec<PassKey>, PassError> {
     let mut pass_by_key: FxHashMap<PassKey, PassDescriptor> = FxHashMap::default();
     for descriptor in descriptors {
         if pass_by_key.insert(descriptor.key, *descriptor).is_some() {
-            return Err(PassPlanError::DuplicatePassKey(descriptor.key));
+            return Err(PassError::DuplicatePassKey(descriptor.key));
         }
     }
 
@@ -236,7 +236,7 @@ pub(crate) fn resolve_execution_order(
     for descriptor in descriptors {
         for &token in descriptor.produces {
             if let Some(first) = produced_by.insert(token, descriptor.key) {
-                return Err(PassPlanError::DuplicateProducedToken {
+                return Err(PassError::DuplicateProducedToken {
                     token,
                     first,
                     second: descriptor.key,
@@ -256,7 +256,7 @@ pub(crate) fn resolve_execution_order(
         let mut unique_deps: FxHashSet<PassKey> = FxHashSet::default();
         for &required in descriptor.requires {
             let Some(&producer) = produced_by.get(&required) else {
-                return Err(PassPlanError::MissingRequirement {
+                return Err(PassError::MissingRequirement {
                     pass: descriptor.key,
                     token: required,
                 });
@@ -301,12 +301,12 @@ pub(crate) fn resolve_execution_order(
     }
 
     if order.len() != descriptors.len() {
-        return Err(PassPlanError::DependencyCycle);
+        return Err(PassError::DependencyCycle);
     }
     Ok(order)
 }
 
-pub(crate) fn resolve_default_execution_order() -> Result<Vec<PassKey>, PassPlanError> {
+pub(crate) fn resolve_default_execution_order() -> Result<Vec<PassKey>, PassError> {
     resolve_execution_order(PASS_DESCRIPTORS)
 }
 
@@ -352,7 +352,7 @@ mod tests {
         ];
         let err = resolve_execution_order(DESCRIPTORS).expect_err("must fail");
 
-        assert_eq!(err, PassPlanError::DependencyCycle);
+        assert_eq!(err, PassError::DependencyCycle);
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
 
         assert_eq!(
             err,
-            PassPlanError::MissingRequirement {
+            PassError::MissingRequirement {
                 pass: PassKey::ScanIgnoreComments,
                 token: DataToken::ScriptInfo
             }

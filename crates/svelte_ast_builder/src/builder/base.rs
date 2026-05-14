@@ -94,7 +94,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn move_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
-        std::mem::replace(expr, self.cheap_expr())
+        mem::replace(expr, self.cheap_expr())
     }
 
     pub fn cheap_expr(&self) -> Expression<'a> {

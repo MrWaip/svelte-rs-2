@@ -1,9 +1,9 @@
 # Each Block
 
 ## Current state
-- **Working**: 20/20 use cases
-- **Tests**: 31/31 green
-- Last updated: 2026-05-01
+- **Working**: 23/23 use cases
+- **Tests**: 34/34 green
+- Last updated: 2026-05-14
 
 ## Source
 
@@ -45,6 +45,9 @@
 - [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
 - [x] Parser support for item-less each blocks with index: `{#each expression, index}`. Compiler coverage exists via `each_block_no_item_with_index`; the stale ignored parser unit test should not keep the roadmap feature open.
 - [x] Nested each callback params in runes mode remain plain identifiers in template-attribute expressions (no `$.get(...)` wrapping and no extra fallback coercion noise) when the collection expression is non-reactive literals. (test: `clock_svg_derived_onmount`)
+- [x] Legacy-mode each-collection call expression that reads a reactive binding wraps the getter as `($.deep_read_state(<state-read>), $.untrack(() => <call>))` (test: `each_collection_call_reads_state`)
+- [x] Legacy-mode each-collection member chain over an auto-subscribed store thunk (`{#each $store.member as item}`) wraps the iterable as `($store(), $.untrack(() => $store().member))` (test: `store_legacy_each_member_iterable`)
+- [x] Nested each: inner each with non-shadowing destructure pattern (e.g. `{#each links as { name, href }}` inside `{#each groups as [group, links]}`) must NOT add `$$index, $$array` to the inner render-callback. Our codegen currently emits them, which also forces the outer destructure helper to rename `$$array` → `$$array_1`. Reference keeps `($$anchor, $$item)` and `$$array`. (test: `each_nested_array_destructure_no_inner_shadow`)
 
 ## Out of scope
 
@@ -105,3 +108,6 @@
 - [x] `validate_each_item_invalid_assignment_nested_object_destructure`
 - [x] `validate_each_key_without_as`
 - [x] `clock_svg_derived_onmount`
+- [x] `each_collection_call_reads_state`
+- [x] `store_legacy_each_member_iterable`
+- [x] `each_nested_array_destructure_no_inner_shadow`

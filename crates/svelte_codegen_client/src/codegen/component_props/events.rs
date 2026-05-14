@@ -1,6 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::{Attribute, NodeId};
-use svelte_ast_builder::ObjProp;
+use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::{Codegen, CodegenError, Result};
 use super::dispatch::{EventRaw, PropOrSpread};
@@ -40,43 +40,39 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut event_groups: Vec<(String, Vec<Expression<'a>>)> = Vec::new();
         for ev in events {
-            if !ev.has_expression {
-                continue;
-            }
-            let Some(expr_offset) = event_expr_offsets
-                .iter()
-                .find_map(|(id, offset)| (*id == ev.attr_id).then_some(*offset))
-            else {
-                return CodegenError::missing_expression(ev.attr_id);
+            let handler = if let Some(expr_id) = ev.expr_id {
+                let expr_offset = event_expr_offsets
+                    .iter()
+                    .find_map(|(id, offset)| (*id == ev.attr_id).then_some(*offset))
+                    .ok_or(CodegenError::MissingExpression(ev.attr_id))?;
+                let handler_emit = match self.ctx.query.analysis.attributes.get(ev.attr_id) {
+                    svelte_analyze::AttributeSemantics::Event(esem) => match &esem.emit {
+                        svelte_analyze::EventEmit::HtmlDelegated { handler }
+                        | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
+                        | svelte_analyze::EventEmit::Component { handler } => *handler,
+                        svelte_analyze::EventEmit::HtmlBubble => {
+                            svelte_analyze::HandlerEmit::Direct
+                        }
+                    },
+                    _ => svelte_analyze::HandlerEmit::Direct,
+                };
+                let Some(handler_expr) = self.ctx.state.parsed.take_expr(expr_id) else {
+                    return CodegenError::missing_expression(ev.attr_id);
+                };
+                let handler_expr = self.maybe_wrap_legacy_slots_read(handler_expr);
+                let handler = self.build_event_handler_s5(
+                    ev.attr_id,
+                    handler_expr,
+                    handler_emit,
+                    init,
+                    expr_offset,
+                );
+                self.dev_event_handler(ev.attr_id, handler, &ev.name)?
+            } else {
+                self.build_bubble_event_method_legacy()
             };
-            let handler_emit = match self.ctx.query.analysis.attributes.get(ev.attr_id) {
-                svelte_analyze::AttributeSemantics::Event(esem) => match &esem.emit {
-                    svelte_analyze::EventEmit::HtmlDelegated { handler }
-                    | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
-                    | svelte_analyze::EventEmit::Component { handler } => *handler,
-                    svelte_analyze::EventEmit::HtmlBubble => svelte_analyze::HandlerEmit::Direct,
-                },
-                _ => svelte_analyze::HandlerEmit::Direct,
-            };
-            let Some(expr_id) = ev.expr_id else {
-                return CodegenError::missing_expression(ev.attr_id);
-            };
-            let Some(handler_expr) = self.ctx.state.parsed.take_expr(expr_id) else {
-                return CodegenError::missing_expression(ev.attr_id);
-            };
-            let handler_expr = self.maybe_wrap_legacy_slots_read(handler_expr);
-            let handler = self.build_event_handler_s5(
-                ev.attr_id,
-                handler_expr,
-                handler_emit,
-                init,
-                expr_offset,
-            );
-            let handler = self.dev_event_handler(ev.attr_id, handler, &ev.name)?;
             let handler = if ev.has_once_modifier {
-                self.ctx
-                    .b
-                    .call_expr("$.once", [svelte_ast_builder::Arg::Expr(handler)])
+                self.ctx.b.call_expr("$.once", [Arg::Expr(handler)])
             } else {
                 handler
             };
@@ -124,5 +120,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )));
 
         Ok(())
+    }
+
+    fn build_bubble_event_method_legacy(&self) -> Expression<'a> {
+        let bubble_call = self
+            .ctx
+            .b
+            .static_member_expr(self.ctx.b.rid_expr("$.bubble_event"), "call");
+        let call = self.ctx.b.call_expr_callee(
+            bubble_call,
+            [
+                Arg::Expr(self.ctx.b.this_expr()),
+                Arg::Ident("$$props"),
+                Arg::Ident("$$arg"),
+            ],
+        );
+        self.ctx.b.function_expr(
+            self.ctx.b.params(["$$arg"]),
+            vec![self.ctx.b.expr_stmt(call)],
+        )
     }
 }

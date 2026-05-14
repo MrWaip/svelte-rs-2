@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{ExpressionData, Memoization};
+use svelte_analyze::{ExprKind, ExpressionData};
 use svelte_ast::NodeId;
 
 use crate::context::Ctx;
@@ -53,18 +53,22 @@ impl<'a> TemplateMemoState<'a> {
         expr: Expression<'a>,
     ) -> Option<MemoValueRef> {
         self.push_expression_data(ctx, data);
-        match data.memoization {
-            Memoization::None => None,
-            Memoization::AsyncMemo => {
+        match data.kind {
+            ExprKind::Async { has_await: true } => {
                 let index = self.async_values.len();
                 self.async_values.push(expr);
                 Some(MemoValueRef::Async(index))
             }
-            Memoization::SyncMemo => {
+            ExprKind::Call if !data.references.is_empty() => {
                 let index = self.sync_values.len();
                 self.sync_values.push(expr);
                 Some(MemoValueRef::Sync(index))
             }
+            ExprKind::KnownLiteral
+            | ExprKind::SimpleRead { .. }
+            | ExprKind::Computed { .. }
+            | ExprKind::Call
+            | ExprKind::Async { has_await: false } => None,
         }
     }
 

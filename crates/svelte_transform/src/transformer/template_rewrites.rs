@@ -1,4 +1,7 @@
-use oxc_ast::ast::Expression;
+use std::mem;
+
+use oxc_ast::{NONE, ast::Expression};
+use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
 
 use super::equals::wrap_binary_equals_dev;
@@ -50,9 +53,9 @@ pub(crate) fn rewrite_template_exit<'a>(
         let is_pickled = analysis.pickled_awaits.contains(await_expr.node_id());
 
         let ast = t.b.ast;
-        let arg = std::mem::replace(
+        let arg = mem::replace(
             &mut await_expr.argument,
-            ast.expression_identifier(oxc_span::SPAN, ast.atom("")),
+            ast.expression_identifier(SPAN, ast.atom("")),
         );
 
         if is_pickled {
@@ -62,8 +65,8 @@ pub(crate) fn rewrite_template_exit<'a>(
                 unreachable!()
             };
             let awaited =
-                std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
-            *it = ast.expression_call(oxc_span::SPAN, awaited, oxc_ast::NONE, ast.vec(), false);
+                mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else if t.dev && !ignored {
             let track_call = t.make_dollar_call("track_reactivity_loss", arg);
@@ -72,8 +75,8 @@ pub(crate) fn rewrite_template_exit<'a>(
                 unreachable!()
             };
             let awaited =
-                std::mem::replace(it, ast.expression_identifier(oxc_span::SPAN, ast.atom("")));
-            *it = ast.expression_call(oxc_span::SPAN, awaited, oxc_ast::NONE, ast.vec(), false);
+                mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else {
             await_expr.argument = arg;

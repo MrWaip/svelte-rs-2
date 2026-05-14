@@ -1,22 +1,31 @@
 import { compile, compileModule } from "svelte/compiler";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { transformSync as oxcTransformSync } from "oxc-transform";
 
-// Read from temp file written by the Rust caller, or fall back to /dev/stdin
+function stripTsToJs(source) {
+  return oxcTransformSync("input.ts", source).code;
+}
+
 const inputPath = process.env.INPUT_FILE || "/dev/stdin";
 const files = JSON.parse(readFileSync(inputPath, "utf8"));
+const quickCheckOverride = process.env.QUICK_CHECK_CONFIG
+  ? JSON.parse(process.env.QUICK_CHECK_CONFIG)
+  : null;
 const results = {};
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const isModule = file.endsWith('.svelte.js') || file.endsWith('.svelte.ts');
   const isDiagnosticCase = file.includes('tasks/diagnostic_tests/cases/');
 
-  // Per-case config override
   const caseDir = dirname(file);
   const configPath = join(caseDir, "config.json");
   let caseConfig = {};
   if (existsSync(configPath)) {
     caseConfig = JSON.parse(readFileSync(configPath, "utf8"));
+  }
+  if (quickCheckOverride) {
+    caseConfig = { ...caseConfig, ...quickCheckOverride };
   }
 
   if (isDiagnosticCase) {
@@ -37,8 +46,13 @@ for (const file of files) {
   if (compileConfig.runes === null) {
     delete compileConfig.runes;
   }
+  if (compileConfig.name === null) {
+    delete compileConfig.name;
+  }
+  const isTsModule = isModule && file.endsWith('.svelte.ts');
+  const moduleSource = isTsModule ? stripTsToJs(text) : text;
   const result = isModule
-    ? compileModule(text, { dev: false, ...caseConfig })
+    ? compileModule(moduleSource, { dev: false, filename: isTsModule ? 'case.svelte.ts' : 'case.svelte.js', ...caseConfig })
     : compile(text, compileConfig);
   let code = result.js.code;
   // Strip version comment from module output (we don't emit it)
@@ -60,6 +74,9 @@ function generateDiagnostics(source, caseConfig) {
   };
   if (compileConfig.runes === null) {
     delete compileConfig.runes;
+  }
+  if (compileConfig.name === null) {
+    delete compileConfig.name;
   }
   try {
     const result = compile(source, compileConfig);

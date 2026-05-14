@@ -1,18 +1,18 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 use std::ops::{Deref, DerefMut};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolFlags, SymbolOwner};
 
 pub use svelte_component_semantics::{ScopeId, SymbolId};
 
-mod sym_class {
+mod symbol_class {
 
     pub const EACH_INDEX_NON_DYNAMIC: u32 = 1 << 14;
 }
 
 pub struct ComponentScoping<'a> {
     semantics: ComponentSemantics<'a>,
-    known_values: FxHashMap<SymbolId, String>,
     rest_prop_sym: Option<SymbolId>,
+    init_known_syms: FxHashSet<SymbolId>,
 }
 
 impl<'a> Deref for ComponentScoping<'a> {
@@ -40,8 +40,8 @@ impl<'a> ComponentScoping<'a> {
     pub fn from_semantics(semantics: ComponentSemantics<'a>) -> Self {
         Self {
             semantics,
-            known_values: FxHashMap::default(),
             rest_prop_sym: None,
+            init_known_syms: FxHashSet::default(),
         }
     }
 
@@ -74,22 +74,14 @@ impl<'a> ComponentScoping<'a> {
             .contains(SymbolFlags::Import)
     }
 
-    pub(crate) fn set_known_value(&mut self, sym_id: SymbolId, value: String) {
-        self.known_values.insert(sym_id, value);
-    }
-
-    pub(crate) fn known_value_by_sym(&self, sym_id: SymbolId) -> Option<&str> {
-        self.known_values.get(&sym_id).map(|s| s.as_str())
-    }
-
     pub(crate) fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
         self.semantics
-            .set_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC);
+            .set_symbol_state(sym_id, symbol_class::EACH_INDEX_NON_DYNAMIC);
     }
 
     pub(crate) fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
         self.semantics
-            .has_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC)
+            .has_symbol_state(sym_id, symbol_class::EACH_INDEX_NON_DYNAMIC)
     }
 
     pub(crate) fn mark_rest_prop_sym(&mut self, sym_id: SymbolId) {
@@ -98,6 +90,14 @@ impl<'a> ComponentScoping<'a> {
 
     pub(crate) fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
         self.rest_prop_sym == Some(sym_id)
+    }
+
+    pub(crate) fn mark_init_known(&mut self, sym_id: SymbolId) {
+        self.init_known_syms.insert(sym_id);
+    }
+
+    pub fn is_init_known(&self, sym_id: SymbolId) -> bool {
+        self.init_known_syms.contains(&sym_id)
     }
 
     pub fn add_unique_synthetic_binding(

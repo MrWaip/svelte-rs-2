@@ -1,7 +1,11 @@
+use std::iter;
+
+use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::Arg;
 
+use crate::codegen::concatenation::ConcatenationAnchor;
 use crate::codegen::data_structures::{ConcatPart, EmitState, FragmentAnchor, FragmentCtx};
 use crate::codegen::fragment::types::{Child, ChildAnchor};
 use crate::codegen::{Codegen, CodegenError, Result};
@@ -48,7 +52,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for (idx, child) in children.iter().enumerate() {
             match child {
                 Child::Text(part) => {
-                    if let Some(text) = ctx.static_text_of(part) {
+                    if let Some(text) = ctx.static_html_of(part) {
                         state.template.push_text(text);
                     }
                     skipped += 1;
@@ -67,7 +71,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.emit_concatenation(
                         state,
                         ctx,
-                        crate::codegen::concatenation::ConcatenationAnchor::SiblingTextNode {
+                        ConcatenationAnchor::SiblingTextNode {
                             node_var: node_name,
                         },
                         &[ConcatPart::Expr(*id)],
@@ -89,7 +93,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.emit_concatenation(
                         state,
                         ctx,
-                        crate::codegen::concatenation::ConcatenationAnchor::SiblingTextNode {
+                        ConcatenationAnchor::SiblingTextNode {
                             node_var: node_name,
                         },
                         parts,
@@ -138,7 +142,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             if trailing == 1 {
                 state
                     .init
-                    .push(b.call_stmt("$.next", std::iter::empty::<Arg<'a, '_>>()));
+                    .push(b.call_stmt("$.next", iter::empty::<Arg<'a, '_>>()));
             } else {
                 state
                     .init
@@ -191,6 +195,38 @@ fn emit_child_node<'a, 'ctx>(
         | Node::KeyBlock(_)
         | Node::HtmlTag(_)
         | Node::RenderTag(_) => {
+            let is_css_wrapped_component = matches!(
+                node,
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_)
+            ) && cg.ctx.has_component_css_props(id);
+
+            if is_css_wrapped_component {
+                let namespace = ctx.namespace;
+                if matches!(namespace, svelte_ast::Namespace::Svg) {
+                    state.template.push_element("g", false);
+                } else {
+                    state.template.push_element("svelte-css-wrapper", true);
+                    state
+                        .template
+                        .set_attribute("style", Some("display: contents".to_string()));
+                }
+                state.template.push_comment(None);
+                state.template.pop_element();
+
+                let expr = make_sibling_expr(cg, prev, *skipped, initial, false)?;
+                let node_name = match state.pending_anchor_idents.take() {
+                    Some((_, n)) if !n.is_empty() => n,
+                    _ => cg.ctx.state.gen_ident("node"),
+                };
+                let b = &cg.ctx.state.b;
+                state.init.push(b.var_stmt(&node_name, expr));
+                *prev = Some(node_name.clone());
+                *skipped = 1;
+
+                cg.emit_css_props_wrapper_block(state, ctx, id, &node_name, namespace)?;
+                return Ok(());
+            }
+
             state.template.push_comment(None);
             let expr = make_sibling_expr(cg, prev, *skipped, initial, false)?;
             let node_name = match state.pending_anchor_idents.take() {
@@ -261,7 +297,7 @@ fn make_sibling_expr<'a, 'ctx>(
     skipped: u32,
     initial: &mut Option<ChildAnchor>,
     is_text: bool,
-) -> Result<oxc_ast::ast::Expression<'a>> {
+) -> Result<Expression<'a>> {
     let b = &cg.ctx.state.b;
     if let Some(prev_name) = prev {
         if skipped == 0 {

@@ -146,26 +146,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn make_store_set(
         &self,
-        base_name: &str,
+        base: Expression<'a>,
         value: Expression<'a>,
-        base_via_legacy_state: bool,
     ) -> Expression<'a> {
         let ast = self.b.ast;
         let callee = self.make_dollar_member("store_set");
-        let base_ident = ast.expression_identifier(SPAN, ast.atom(base_name));
-        let name_expr = if base_via_legacy_state {
-            let get_callee = self.make_dollar_member("get");
-            ast.expression_call(
-                SPAN,
-                get_callee,
-                NONE,
-                ast.vec1(Argument::from(base_ident)),
-                false,
-            )
-        } else {
-            base_ident
-        };
-        let name_arg = Argument::from(name_expr);
+        let name_arg = Argument::from(base);
         let value_arg = Argument::from(value);
         ast.expression_call(
             SPAN,
@@ -174,6 +160,44 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ast.vec_from_array([name_arg, value_arg]),
             false,
         )
+    }
+
+    pub(crate) fn make_store_base_expr(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        base_sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        let ast = self.b.ast;
+        let base_name = analysis.scoping.symbol_name(base_sym);
+        let semantics = analysis.binding_semantics(base_sym);
+        if matches!(
+            semantics,
+            svelte_analyze::BindingSemantics::LegacyState(_)
+                | svelte_analyze::BindingSemantics::State(_)
+                | svelte_analyze::BindingSemantics::Derived(_)
+        ) {
+            let ident = ast.expression_identifier(SPAN, ast.atom(base_name));
+            let get_callee = self.make_dollar_member("get");
+            return ast.expression_call(
+                SPAN,
+                get_callee,
+                NONE,
+                ast.vec1(Argument::from(ident)),
+                false,
+            );
+        }
+        if let svelte_analyze::BindingSemantics::Prop(svelte_analyze::PropBindingSemantics {
+            kind: svelte_analyze::PropBindingKind::NonSource,
+            lowering_mode: svelte_analyze::PropEmitMode::Standard,
+        }) = semantics
+        {
+            let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
+            let property = ast.identifier_name(SPAN, ast.atom(base_name));
+            return Expression::StaticMemberExpression(
+                ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
+            );
+        }
+        ast.expression_identifier(SPAN, ast.atom(base_name))
     }
 
     pub(crate) fn make_store_update(

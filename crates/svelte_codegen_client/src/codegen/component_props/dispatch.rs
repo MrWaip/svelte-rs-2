@@ -1,9 +1,12 @@
+use std::mem;
+
 use oxc_ast::ast::{Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{
     AttributeSemantics, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
     ComponentPropSemantics, ComponentSpreadSemantics, EventEmit, EventModifier, EventSemantics,
 };
-use svelte_ast::{Attribute, NodeId, SVELTE_COMPONENT};
+use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::{Codegen, CodegenError, Result};
@@ -16,18 +19,19 @@ pub(in super::super) enum PropOrSpread<'a> {
 pub(in super::super) struct EventRaw {
     pub name: String,
     pub attr_id: NodeId,
-    pub expr_id: Option<oxc_syntax::node::NodeId>,
-    pub has_expression: bool,
+    pub expr_id: Option<OxcNodeId>,
     pub has_once_modifier: bool,
 }
 
 pub(in super::super) struct ComponentPropsOutput<'a> {
     pub items: Vec<PropOrSpread<'a>>,
+    pub deferred_items: Vec<PropOrSpread<'a>>,
     pub bind_this: Option<NodeId>,
     pub events: Vec<EventRaw>,
     pub svelte_component_this: Option<Expression<'a>>,
     pub memo_decls: Vec<Statement<'a>>,
     pub ownership_bindings: Vec<OwnershipBinding<'a>>,
+    pub bind_init_stmts: Vec<Statement<'a>>,
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
@@ -39,15 +43,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_component_props(
         &mut self,
         el_id: NodeId,
-        cn_name: &str,
+        is_svelte_component_legacy: bool,
+        in_block_callback: bool,
     ) -> Result<ComponentPropsOutput<'a>> {
         let mut out = ComponentPropsOutput {
             items: Vec::new(),
+            deferred_items: Vec::new(),
             bind_this: None,
             events: Vec::new(),
             svelte_component_this: None,
             memo_decls: Vec::new(),
             ownership_bindings: Vec::new(),
+            bind_init_stmts: Vec::new(),
         };
         let mut memo_counter: u32 = 0;
 
@@ -86,6 +93,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         sa.expression.id(),
                         *emit,
                         &mut out.items,
+                        &mut out.memo_decls,
+                        &mut memo_counter,
                     )?;
                 }
                 AttributeSemantics::ComponentAttach(ComponentAttachSemantics { emit }) => {
@@ -109,7 +118,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             "ComponentProp::Expression requires ExpressionAttribute",
                         );
                     };
-                    if cn_name == SVELTE_COMPONENT && ea.name == "this" {
+                    if is_svelte_component_legacy && ea.name == "this" {
                         let expr = self
                             .ctx
                             .state
@@ -125,6 +134,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ea.expression.id(),
                         e.shorthand,
                         e.memo,
+                        in_block_callback,
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
@@ -142,7 +152,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ca.id,
                         &ca.parts,
                         c.memo,
+                        &c.plan,
+                        in_block_callback,
                         &mut out.items,
+                        &mut out.memo_decls,
+                        &mut memo_counter,
                     )?;
                 }
                 AttributeSemantics::Event(EventSemantics { modifiers, emit }) => {
@@ -162,7 +176,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         name: d.name.clone(),
                         attr_id: d.id,
                         expr_id: d.expression.as_ref().map(|r| r.id()),
-                        has_expression: d.expression.is_some(),
                         has_once_modifier: modifiers.contains(EventModifier::ONCE),
                     });
                 }
@@ -189,6 +202,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
         }
+        out.items.append(&mut out.deferred_items);
         Ok(out)
     }
 
@@ -218,7 +232,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 PropOrSpread::Spread(expr) => {
                     if !current_props.is_empty() {
                         args.push(Arg::Expr(
-                            self.ctx.b.object_expr(std::mem::take(&mut current_props)),
+                            self.ctx.b.object_expr(mem::take(&mut current_props)),
                         ));
                     }
                     args.push(Arg::Expr(expr));
@@ -251,8 +265,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 Ok(())
             }
             ComponentBindKind::Expression => {
-                self.emit_bind_plain(&d.name, &d.name, &mut out.items);
-                Ok(())
+                let Some(expr) = self.take_expr_by_ref(&d.expression) else {
+                    return CodegenError::missing_expression(d.id);
+                };
+                self.emit_bind_member_expr(d.id, expr, &mut out.deferred_items)
+            }
+            ComponentBindKind::FunctionPair => {
+                let Some(expr) = self.take_expr_by_ref(&d.expression) else {
+                    return CodegenError::missing_expression(d.id);
+                };
+                self.emit_bind_function_pair(
+                    d.id,
+                    &d.name,
+                    expr,
+                    &mut out.items,
+                    &mut out.bind_init_stmts,
+                )
             }
             ComponentBindKind::Identifier { symbol, target } => {
                 let symbol_name = self.ctx.query.view.symbol_name(*symbol).to_string();
@@ -261,14 +289,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &d.name,
                     &symbol_name,
                     *target,
-                    &mut out.items,
+                    &mut out.deferred_items,
                     &mut out.ownership_bindings,
                 );
                 Ok(())
             }
             ComponentBindKind::StoreSubscribed { base_symbol } => {
-                let base_name = self.ctx.query.view.symbol_name(*base_symbol).to_string();
-                self.emit_bind_store(&d.name, &base_name, &mut out.items);
+                self.emit_bind_store(&d.name, *base_symbol, &mut out.deferred_items);
                 Ok(())
             }
         }

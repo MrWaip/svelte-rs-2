@@ -1,4 +1,4 @@
-use oxc_ast::ast::{ArrowFunctionExpression, Function};
+use oxc_ast::ast::{ArrowFunctionExpression, Function, IdentifierReference};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
 use oxc_semantic::{ScopeFlags, SymbolId};
@@ -7,7 +7,8 @@ use svelte_ast::{Attribute, Component, ConcatPart, FragmentId, Node, StyleDirect
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::{AnalysisData, JsAst};
+use crate::scope::SymbolId as ComponentSymbolId;
+use crate::{AnalysisData, BindingSemantics, JsAst};
 
 pub(super) fn validate(
     component: &Component,
@@ -79,6 +80,12 @@ impl<'a> TemplateValidator<'a, '_> {
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteComponentLegacy(node) => {
+                    let f = node.fragment;
+                    let attrs = node.attributes.clone();
+                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_fragment(f, in_dynamic_block);
+                }
+                Node::SvelteSelf(node) => {
                     let f = node.fragment;
                     let attrs = node.attributes.clone();
                     self.visit_attributes(&attrs, in_dynamic_block);
@@ -316,7 +323,7 @@ struct ReferenceVisitor<'a, 'b> {
 }
 
 impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
-    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let Some(ref_id) = ident.reference_id.get() else {
             return;
         };
@@ -366,8 +373,7 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
     }
 }
 
-fn is_reactive_binding(data: &AnalysisData<'_>, sym: crate::scope::SymbolId) -> bool {
-    use crate::types::data::BindingSemantics;
+fn is_reactive_binding(data: &AnalysisData<'_>, sym: ComponentSymbolId) -> bool {
     !matches!(
         data.binding_semantics(sym),
         BindingSemantics::NonReactive | BindingSemantics::Unresolved,

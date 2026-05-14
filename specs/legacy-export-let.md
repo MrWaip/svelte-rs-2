@@ -1,9 +1,9 @@
 # Legacy export let props
 
 ## Current state
-- **Working**: 20/20 use cases (analyzer + transform + codegen)
-- **Tests**: 17/17 e2e compiler tests green; analyzer unit tests cover the classification surface.
-- Last updated: 2026-04-29
+- **Working**: 23/23 use cases (analyzer + transform + codegen)
+- **Tests**: 20/20 e2e compiler tests green; analyzer unit tests cover the classification surface.
+- Last updated: 2026-05-12
 - Architecture: every legacy bindable prop is classified as `DeclarationSemantics::LegacyBindableProp(LegacyBindablePropSemantics { default_lowering, flags })`. `flags` is the precomputed `$.prop(...)` bitfield, with `PROPS_IS_LAZY_INITIAL` always set for destructured leaves. `$$props` / `$$restProps` reads carry `ReferenceSemantics::LegacyPropsIdentifierRead` / `LegacyRestPropsIdentifierRead`. Read/write/member-mutation sites reuse the runes `PropRead(Source)` / `PropMutation` / `PropSourceMemberMutationRoot` channels. Aggregates (`legacy_bindable_prop_symbols`, `legacy_uses_props`, `legacy_uses_rest_props`, `legacy_has_member_mutated`) live on `ReactivitySemantics`; `RuntimePlan` carries a precomputed `LegacyInit` enum + `has_legacy_runtime_init` summary; codegen reads dumb. `ExpressionInfo.uses_legacy_sanitized_props` drives the `$.deep_read_state` / `$.untrack` coarse-wrap around member reads of `$$sanitized_props`. Transform `process_legacy_export_props` lowers inline + specifier + destructured forms to `let foo = $.prop(...)` (destructure: `tmp = init` + `$$array = $.derived(() => $.to_array(tmp.<key>, len))` helpers + per-leaf `$.prop($$props, "<name>", flags, () => $.fallback(tmp.<key>, default))`). Identifier-target `PropMutation` rewrites live in shared `rewrite_prop_identifier_assignment` / `rewrite_prop_identifier_update` helpers in `transformer/rewrites.rs`, called from both `transform_assignment` / `transform_update` (script body) and `template_rewrites::rewrite_template_enter` / `rewrite_template_exit` (template). Assignment helper preserves compound operators via `build_compound_value` so `count -= 7` lowers to `count(count() - 7)`. Update helper emits `$.update_prop(name)` or `$.update_pre_prop(name[, -1])`, with the legacy coarse-wrap kicking in via the new `ExpressionKind::Update` (parity with reference's `metadata.has_assignment`) so `{count++}` becomes `($.deep_read_state(count()), $.untrack(() => $.update_prop(count)))`.
 - Unified reactivity dependency status: satisfied.
 
@@ -49,6 +49,9 @@ ROADMAP.md — Legacy Svelte 4: `export let` props
 - [x] `++` / `--` on a legacy `export let` prop inside template expressions wraps as `($.deep_read_state(<prop>()), $.untrack(() => $.update_prop(<prop>)))`. `template_rewrites::rewrite_template_enter` dispatches `rewrite_prop_identifier_update` before signal/store/deep-store; legacy coarse-wrap activates because UpdateExpression now maps to `ExpressionKind::Update`, parity with reference's `metadata.has_assignment` (test: `legacy_export_let_update_prop_in_template`).
 - [x] Plain assignment to a legacy `export let` prop inside a template expression (`{count = 42}`) lowers through the same `rewrite_prop_identifier_assignment` path during template-exit and is wrapped as `($.deep_read_state(count()), $.untrack(() => count(42)))` by the legacy coarse-wrap (test: `legacy_export_let_assign_prop_in_template`).
 - [x] Member-target update of a legacy bindable `export let` prop inside a template expression (`{obj.x++}`) lowers through the shared `rewrite_prop_member_update` (extracted from `transform_update`), wrapping the update as `obj(obj().x++, true)` for bindable sources and emitting the legacy coarse-wrap as `($.deep_read_state(obj()), $.untrack(() => obj(obj().x++, true)))`. The dev ownership-validator hook `rewrite_prop_update_ownership_exit` is now also wired into `rewrite_template_exit` (test: `legacy_export_let_member_update_in_template`).
+- [x] TS-cast default value on a function-typed `export let` collapses through the cast — `export let cb: Cb = (() => {}) as unknown as Cb` lowers as `$.prop($$props, "cb", 8, () => {})`, not as lazy-initial flag 24 wrapping `() => (() => {})` (test: `legacy_export_let_default_typed_cast_arrow`).
+- [x] `{#key prop.field}` over a legacy `export let` prop member emits the legacy coarse-wrap in the key expression itself — `$.key(node, () => ($.deep_read_state(prop()), $.untrack(() => prop().field)), …)` — same wrap shape applied inside `template_effect` (test: `legacy_export_let_key_block_member_coarse_wrap`).
+- [x] `bind:this={prop}` on a regular element where `prop` is a legacy bindable `export let` emits `$.bind_this(div, ($$value) => prop($$value), () => prop())` — the prop accessor is called as a function in both setter and getter callbacks. Test: `diagnose_legacy_export_let_element_bind_this`.
 
 ## Out of scope
 
@@ -113,6 +116,9 @@ Compiler tests (`tasks/compiler_tests/cases2/`):
 - [x] `legacy_export_let_update_prop_in_template`
 - [x] `legacy_export_let_assign_prop_in_template`
 - [x] `legacy_export_let_member_update_in_template`
+- [x] `legacy_export_let_default_typed_cast_arrow`
+- [x] `legacy_export_let_key_block_member_coarse_wrap`
+- [x] `diagnose_legacy_export_let_element_bind_this`
 - [x] e2e smoke: `smoke_legacy_reactive_mutations_all` — covers every assignment + update operator (`=`, `+=`, `-=`, `++`, `--`, `++` prefix, `--` prefix, `&&=`, `||=`, `??=`) for legacy bindable `export let` identifier and member targets — including static (`obj.x`), computed string (`obj["x"]`), computed dynamic (`obj[key]`), and deep chains (`obj.a.b.c.x`, `obj["a"]["b"]["c"]["x"]`, mixed `obj[k1].b[k2]`) plus optional-chain reads (`obj?.a?.b?.c?.x`) — in both script body and template expressions, alongside legacy state, store, and deep-store paths. Companion `smoke_legacy_contextual_mutations_all` (ignored) extends the matrix to `{#each}` items, `{#snippet}` params, `{@const}` aliases, `{#await}` resolved/error values, and exposes the legacy mutable_source upgrade + invalidate_inner_signals chain gap tracked in debt.md.
 
 Diagnostic tests (`tasks/diagnostic_tests/cases/`):

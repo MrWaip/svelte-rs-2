@@ -1,5 +1,5 @@
 use svelte_analyze::{
-    AttributeSemantics, EventEmit, EventSemantics, Memoization, normalize_regular_attribute_name,
+    AttributeSemantics, EventEmit, EventSemantics, ExprKind, normalize_regular_attribute_name,
 };
 use svelte_ast::{ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
@@ -55,12 +55,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let attr_id = attr.id;
         let is_dyn = self.ctx.is_dynamic_attr(attr_id);
         let needs_memo = is_dyn
-            && self
-                .ctx
-                .expression_data(attr_id)
-                .is_some_and(|d| !matches!(d.memoization, Memoization::None));
+            && self.ctx.expression_data(attr_id).is_some_and(|d| match d.kind {
+                ExprKind::Async { has_await: true } => true,
+                ExprKind::Call => !d.references.is_empty(),
+                ExprKind::KnownLiteral
+                | ExprKind::SimpleRead { .. }
+                | ExprKind::Computed { .. }
+                | ExprKind::Async { has_await: false } => false,
+            });
 
         let expr = self.take_attr_expr(attr_id, &attr.expression)?;
+        let expr = {
+            let data = self.ctx.expression_data(attr_id).cloned();
+            self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref(), false)
+        };
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
         let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);

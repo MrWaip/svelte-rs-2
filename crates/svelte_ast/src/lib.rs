@@ -1,3 +1,5 @@
+use std::mem;
+
 use svelte_span::GetSpan;
 pub use svelte_span::Span;
 
@@ -407,6 +409,7 @@ impl_node_enum! {
     SvelteWindow(SvelteWindow)       => is_svelte_window / as_svelte_window,
     SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
     SvelteBody(SvelteBody)           => is_svelte_body / as_svelte_body,
+    SvelteSelf(SvelteSelf)           => is_svelte_self / as_svelte_self,
     SvelteBoundary(SvelteBoundary)   => is_svelte_boundary / as_svelte_boundary,
     AwaitBlock(AwaitBlock)           => is_await_block / as_await_block,
     Error(ErrorNode)                 => is_error / as_error,
@@ -454,7 +457,7 @@ pub struct SlotElementLegacy {
 pub struct ComponentNode {
     pub id: NodeId,
     pub span: Span,
-    pub name: String,
+    pub name: ExprRef,
     pub self_closing: bool,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
@@ -596,7 +599,6 @@ pub struct SvelteComponentLegacy {
 
 pub struct ComponentLikeView<'a> {
     pub id: NodeId,
-    pub name: &'a str,
     pub attributes: &'a [Attribute],
     pub fragment: FragmentId,
     pub legacy_slots: &'a [LegacySlot],
@@ -609,7 +611,6 @@ impl Node {
         match self {
             Node::ComponentNode(cn) => Some(ComponentLikeView {
                 id: cn.id,
-                name: &cn.name,
                 attributes: &cn.attributes,
                 fragment: cn.fragment,
                 legacy_slots: &cn.legacy_slots,
@@ -618,7 +619,14 @@ impl Node {
             }),
             Node::SvelteComponentLegacy(cn) => Some(ComponentLikeView {
                 id: cn.id,
-                name: SVELTE_COMPONENT,
+                attributes: &cn.attributes,
+                fragment: cn.fragment,
+                legacy_slots: &cn.legacy_slots,
+                span: cn.span,
+                self_closing: cn.self_closing,
+            }),
+            Node::SvelteSelf(cn) => Some(ComponentLikeView {
+                id: cn.id,
                 attributes: &cn.attributes,
                 fragment: cn.fragment,
                 legacy_slots: &cn.legacy_slots,
@@ -688,6 +696,15 @@ pub struct SvelteBody {
     pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: FragmentId,
+}
+
+pub struct SvelteSelf {
+    pub id: NodeId,
+    pub span: Span,
+    pub self_closing: bool,
+    pub attributes: Vec<Attribute>,
+    pub fragment: FragmentId,
+    pub legacy_slots: Vec<LegacySlot>,
 }
 
 pub struct SvelteBoundary {
@@ -1198,7 +1215,7 @@ impl AstStore {
     }
 
     pub fn take(&mut self, id: NodeId) -> Node {
-        std::mem::replace(
+        mem::replace(
             &mut self.nodes[id.0 as usize],
             Node::Error(ErrorNode {
                 id,
@@ -1264,6 +1281,7 @@ impl_store_accessors! {
     svelte_window -> SvelteWindow / as_svelte_window,
     svelte_document -> SvelteDocument / as_svelte_document,
     svelte_body -> SvelteBody / as_svelte_body,
+    svelte_self -> SvelteSelf / as_svelte_self,
     svelte_boundary -> SvelteBoundary / as_svelte_boundary,
     await_block -> AwaitBlock / as_await_block,
     error_node -> ErrorNode / as_error,

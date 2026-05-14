@@ -136,7 +136,7 @@ fn stringify(node: &TemplateNode, out: &mut String) {
             for (key, value) in attributes {
                 out.push(' ');
                 if *is_html {
-                    push_ascii_lower(out, key);
+                    push_ascii_lowercase(out, key);
                 } else {
                     out.push_str(key);
                 }
@@ -157,7 +157,7 @@ fn stringify(node: &TemplateNode, out: &mut String) {
     }
 }
 
-fn push_ascii_lower(out: &mut String, s: &str) {
+fn push_ascii_lowercase(out: &mut String, s: &str) {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {

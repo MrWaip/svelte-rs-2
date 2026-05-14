@@ -1,3 +1,5 @@
+use std::mem;
+
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::NamespaceKind;
 use svelte_ast::{Attribute, Node, NodeId};
@@ -27,7 +29,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .collect();
 
         let tag_async_plan =
-            super::super::data_structures::AsyncEmissionPlan::for_node(self.ctx, el_id);
+            super::super::data_structures::AsyncEmission::for_node(self.ctx, el_id);
         let needs_async_tag = tag_async_plan.needs_async();
 
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
@@ -102,7 +104,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             child_ns,
             FragmentAnchor::CallbackParam {
                 name: "$$anchor".to_string(),
-                append_inside: true,
+                append_inside: false,
             },
         );
         let mut inner_state = EmitState::new();
@@ -156,7 +158,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         inner_state
             .init
-            .extend(std::mem::take(&mut inner_state.pending_bind_this));
+            .extend(mem::take(&mut inner_state.pending_element_init));
         self.emit_fragment(&mut inner_state, &inner_ctx, svelte_el_fragment)?;
         let inner_body: Vec<Statement<'a>> = self.pack_callback_body(inner_state, "$$anchor")?;
 

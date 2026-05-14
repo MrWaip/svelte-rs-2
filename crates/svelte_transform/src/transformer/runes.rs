@@ -1,3 +1,8 @@
+use std::{iter, mem};
+
+use oxc_ast::ast::{Argument, BindingPattern, Expression, UnaryOperator, VariableDeclarator};
+use oxc_semantic::SymbolId;
+use oxc_span::SPAN;
 use oxc_traverse::{Ancestor, TraverseCtx};
 
 use svelte_analyze::{
@@ -9,14 +14,12 @@ use super::model::AsyncDerivedMode;
 use svelte_ast_builder::Arg;
 
 use super::model::ComponentTransformer;
+use crate::rune_refs::should_proxy;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_variable_rune_init(
-        &mut self,
-        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
-    ) {
+    pub(crate) fn rewrite_variable_rune_init(&mut self, node: &mut VariableDeclarator<'a>) {
         let (sym_id, binding_name) = {
-            let oxc_ast::ast::BindingPattern::BindingIdentifier(binding) = &node.id else {
+            let BindingPattern::BindingIdentifier(binding) = &node.id else {
                 return;
             };
             (
@@ -39,6 +42,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     } else {
                         self.b.call_expr("$.mutable_source", [Arg::Expr(init_expr)])
                     };
+                    node.init = Some(call);
+                } else {
+                    let call = self.b.call_expr("$.mutable_source", iter::empty::<Arg>());
                     node.init = Some(call);
                 }
             }
@@ -76,7 +82,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     fn rewrite_state_binding_init(
         &mut self,
-        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
+        node: &mut VariableDeclarator<'a>,
         binding_name: &'a str,
         kind: StateKind,
         binding_semantic: Option<StateBindingSemantics>,
@@ -91,7 +97,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
+        let Expression::CallExpression(mut call) = init_expr else {
             return;
         };
         let is_state_source = matches!(
@@ -103,25 +109,25 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
             if call.arguments.is_empty() {
                 let void_zero = self.b.ast.expression_unary(
-                    oxc_span::SPAN,
-                    oxc_ast::ast::UnaryOperator::Void,
+                    SPAN,
+                    UnaryOperator::Void,
                     self.b.num_expr(0.0),
                 );
                 call.arguments.push(void_zero.into());
             } else if matches!(kind, StateKind::State) {
                 let needs_proxy = call.arguments[0]
                     .as_expression()
-                    .is_some_and(crate::rune_refs::should_proxy);
+                    .is_some_and(should_proxy);
                 if needs_proxy {
-                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                    std::mem::swap(&mut call.arguments[0], &mut dummy);
+                    let mut dummy = Argument::from(self.b.cheap_expr());
+                    mem::swap(&mut call.arguments[0], &mut dummy);
                     let inner = dummy.into_expression();
                     let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
-                    call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
+                    call.arguments[0] = Argument::from(proxied);
                 }
             }
 
-            let state_expr = oxc_ast::ast::Expression::CallExpression(call);
+            let state_expr = Expression::CallExpression(call);
             node.init = if self.dev {
                 Some(
                     self.b
@@ -133,17 +139,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         } else {
             let value = if call.arguments.is_empty() {
                 self.b.ast.expression_unary(
-                    oxc_span::SPAN,
-                    oxc_ast::ast::UnaryOperator::Void,
+                    SPAN,
+                    UnaryOperator::Void,
                     self.b.num_expr(0.0),
                 )
             } else {
-                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                std::mem::swap(&mut call.arguments[0], &mut dummy);
+                let mut dummy = Argument::from(self.b.cheap_expr());
+                mem::swap(&mut call.arguments[0], &mut dummy);
                 dummy.into_expression()
             };
-            let is_proxy =
-                matches!(kind, StateKind::State) && crate::rune_refs::should_proxy(&value);
+            let is_proxy = matches!(kind, StateKind::State) && should_proxy(&value);
             let value = if is_proxy {
                 self.b.call_expr("$.proxy", [Arg::Expr(value)])
             } else {
@@ -161,16 +166,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     fn rewrite_derived_binding_init(
         &mut self,
-        node: &mut oxc_ast::ast::VariableDeclarator<'a>,
+        node: &mut VariableDeclarator<'a>,
         binding_name: &'a str,
         kind: DerivedKind,
-        sym_id: Option<oxc_semantic::SymbolId>,
+        sym_id: Option<SymbolId>,
     ) {
         let Some(init) = node.init.as_mut() else {
             return;
         };
         let init_expr = self.b.move_expr(init);
-        let oxc_ast::ast::Expression::CallExpression(mut call) = init_expr else {
+        let Expression::CallExpression(mut call) = init_expr else {
             return;
         };
 
@@ -184,7 +189,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         .arguments
                         .first()
                         .and_then(|a| a.as_expression())
-                        .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::AwaitExpression(_)));
+                        .is_some_and(|e| matches!(e, Expression::AwaitExpression(_)));
                     if is_async_init {
                         let mode = if self.strip_exports && self.function_info_stack.len() > 1 {
                             AsyncDerivedMode::Save
@@ -194,11 +199,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         self.async_derived_pending.insert(sym, mode);
                     }
                 }
-                node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
+                node.init = Some(Expression::CallExpression(call));
             }
             DerivedKind::DerivedBy => {
                 call.callee = self.b.rid_expr("$.derived");
-                let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
+                let derived_expr = Expression::CallExpression(call);
                 node.init = if self.dev {
                     Some(self.b.call_expr(
                         "$.tag",
@@ -211,24 +216,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    fn rewrite_effect_pending_init(&mut self, node: &mut oxc_ast::ast::VariableDeclarator<'a>) {
+    fn rewrite_effect_pending_init(&mut self, node: &mut VariableDeclarator<'a>) {
         let Some(init) = node.init.as_mut() else {
             return;
         };
         let init_expr = self.b.move_expr(init);
-        let oxc_ast::ast::Expression::CallExpression(_) = init_expr else {
+        let Expression::CallExpression(_) = init_expr else {
             return;
         };
         let pending_call = self
             .b
-            .call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+            .call_expr("$.pending", iter::empty::<Arg<'a, '_>>());
         node.init = Some(
             self.b
                 .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),
         );
     }
 
-    pub(crate) fn rewrite_call_expression(&mut self, node: &mut oxc_ast::ast::Expression<'a>) {
+    pub(crate) fn rewrite_call_expression(&mut self, node: &mut Expression<'a>) {
         if !self
             .analysis
             .as_ref()
@@ -236,7 +241,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             return;
         }
-        let oxc_ast::ast::Expression::CallExpression(call) = &*node else {
+        let Expression::CallExpression(call) = &*node else {
             return;
         };
         let Some(rune_kind) = detect_rune_from_call(call) else {
@@ -264,7 +269,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             _ => None,
         };
         if let Some(callee_name) = new_callee {
-            let oxc_ast::ast::Expression::CallExpression(call) = node else {
+            let Expression::CallExpression(call) = node else {
                 unreachable!()
             };
             call.callee = self.b.rid_expr(callee_name);
@@ -273,7 +278,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn rewrite_static_member_expression(
         &mut self,
-        node: &mut oxc_ast::ast::Expression<'a>,
+        node: &mut Expression<'a>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.analysis.is_none() {
@@ -286,10 +291,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.rewrite_rest_prop_member(node, is_lhs);
     }
 
-    pub(crate) fn rewrite_identifier_expression(
-        &mut self,
-        node: &mut oxc_ast::ast::Expression<'a>,
-    ) {
+    pub(crate) fn rewrite_identifier_expression(&mut self, node: &mut Expression<'a>) {
         let _ = self.dispatch_identifier_read(node);
     }
 }

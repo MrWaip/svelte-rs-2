@@ -1,62 +1,55 @@
-# Unknown problems
+# Unknown / unowned diagnose findings
 
 ## Current state
-- **Working**: 11/11 use cases (use case #27 moved to `specs/legacy-reactivity-system.md` as a decomposition; #24 closed as inverse-formulation false positive — see below)
-- **Tests**: 7/7 green. Broad repro `diagnose_runes_dev_ce_benchmark` removed 2026-05-04 — every use case is now anchored by a focused guard test (CSS-whitespace divergence is intentional and explicitly out of contract per `specs/css-pipeline.md:15`, so no guard is owed). `diagnose_legacy_dev_benchmark` migrated to `specs/legacy-reactivity-system.md`.
-- Last updated: 2026-05-04
+- Working: 3 unchecked unknown items
+- Tests: 13/15 passing
+- Last updated: 2026-05-14
 
-## Source
+## Probes with no reproduction
 
-- User request: create a durable triage spec for problems that do not yet map to one owning feature spec
-- `/diagnose` benchmark component (dev=true, runes=true, customElement=true) — broad repro originally tracked as `diagnose_runes_dev_ce_benchmark`; every owning use case has been distilled into a focused guard test, so the broad repro itself is no longer carried in the test suite
-- `/diagnose` benchmark component (dev=true only, no runes/customElement overrides) — narrower repro `diagnose_dev_benchmark` exercising the same dev-codegen mismatches without CE/runes noise
+- 2026-05-12 / re-confirmed 2026-05-13 (twice) — runes component combining `$props`/`$state`/`$derived`/`$effect`, `Tween.of` from `svelte/motion`, `{@attach}`, `bind:clientHeight`, multi-arm `{#if}`/`{:else if}` with union-type discriminant (`typeof`/`'key' in obj`), `use:`-actions with reactive object args, `transition:`/`in:`/`out:` (including `slideAndFade` with arg object), snippet children + `{@render snippet?.()}` inside conditional branches, `style:` directive bound to derived value, scss with custom-media + var fallbacks, ts script. Mode default (runes auto), `generate=client`, no `--dev`. Result: full JS+CSS parity (207 lines js). No follow-up.
 
 ## Use cases
 
-- [x] dev-mode `==` and `===` comparisons in template/snippet expressions are not wrapped with `$.equals` / `$.strict_equals`; layer: transform; repro/test: state_raw_dev_ce_with_props_rest, diagnose_dev_benchmark; candidate specs: text-expression-tag.md, if-block.md; suggested spec: none — closed 2026-05-04: implemented in `crates/svelte_transform/src/transformer/equals.rs`, wired into `exit_expression` (script) and `rewrite_template_exit` (template) under `dev` gate; covered by `dev_binary_equals_wrap` (`==`, `===`, `!=`, `!==`)
-- [x] `<svelte:head>` `add_locations` array contains a phantom leading entry for the dynamic `<title>` that codegen hoists into `$.head(...)` and removes from the static `from_html` template; reference omits any element absent from the rendered template literal; layer: codegen (fragment); repro/test: diagnose_dev_benchmark, add_locations_svelte_head_skips_hoisted_title; candidate specs: source-maps.md, svelte-head-title.md; suggested spec: none — closed 2026-05-04: `push_node_locations` (`crates/svelte_codegen_client/src/codegen/fragment/mod.rs`) now skips nodes that `prepare` would have hoisted out of the rendered template via `is_hoisted_out_of_template`, including dynamic `<title>` inside `<svelte:head>`; covered by `add_locations_svelte_head_skips_hoisted_title`
-- [x] Named-slot standalone fragment `add_locations` is `[]` instead of `[[slot_wrapper_line, col]]`; the slot's root fragment is built from the wrapper element's children fragment, so the wrapper `<div slot="...">` (which IS in the slot template's `from_html` literal) never contributes its own location; layer: codegen (fragment/legacy_slot_fragment); repro/test: diagnose_dev_benchmark, add_locations_named_slot_wrapper; candidate specs: legacy-slots.md, source-maps.md; suggested spec: legacy-slots.md — closed 2026-05-04: `finalize_slot_root_template` now threads `slot_el_id` to a dedicated `build_slot_root_locations` that wraps the slot element's own line/col around its child locations; covered by `add_locations_named_slot_wrapper`
-- [x] Dev-mode named-slot child arrow on a static component is incorrectly wrapped with `$.wrap_snippet(App, ($$anchor, $$slotProps) => { ... })`; reference emits the bare arrow for `$$slots: { footer: ($$anchor, $$slotProps) => { ... } }` and only wraps the synthesized default-children entry. Inverse of `component_dev_default_children_wrap_snippet`; layer: transform; repro/test: diagnose_dev_benchmark; candidate specs: legacy-slots.md, component-node.md; suggested spec: legacy-slots.md — closed 2026-05-04: removed `maybe_wrap_slot_snippet_dev` for named slots in `containers/component.rs:98-107` and dropped `FragmentRole::NamedSlot` from `role_needs_text_first_next` (`fragment/mod.rs:23`), since `$.next()` was tied to the wrap; covered by `component_dev_named_slot_no_wrap_snippet`
-- [x] `$state.raw({...})` declarator in a script that combines `$props()` rest, dev mode, and `customElement: true` is emitted as a plain object literal instead of `$.tag($.state({...}), "name")`, and the corresponding `$state.snapshot(rawData)` reads `rawData` directly instead of `$.get(rawData)`; layer: analyze; repro/test: `state_raw_dev_ce_with_props_rest` (focused guard added 2026-05-04); candidate specs: state-rune.md, custom-elements.md; suggested spec: state-rune.md — closed 2026-05-04: real owning layer was analyze, not transform. `analyze_with_options` (`crates/svelte_analyze/src/lib.rs:123-136`) now derives `data.script.immutable = runes || options.immutable` and `data.script.accessors = is_custom_element_target || (!runes && options.accessors)`, matching reference `phases/2-analyze/index.js:518,533-537`. `record_state_root_declaration` (`crates/svelte_analyze/src/reactivity_semantics/builder_v2/mod.rs:592-596`) and the leaf `state_binding_semantic` use the reference formula `is_state_source = !immutable || reassigned || accessors` instead of raw mutation. `classify_reference_semantics` (`crates/svelte_analyze/src/reactivity_semantics/builder_v2/references.rs:71-75`) consults the same formula so reads emit `$.get(...)` whenever the declarator was wrapped. Transform's `runes.rs::rewrite_state_binding_init` keys off `StateBindingSemantics` instead of `is_mutated`, eliminating the analyze/transform double-decision. Codegen's `has_explicit_exports` (`crates/svelte_codegen_client/src/lib.rs:216-223`) gates legacy accessor emission on `!runes && accessors && has_props` so the new auto-`accessors` does not introduce empty `$$exports` objects in runes-mode custom elements. Covered by the rawData+snapshot region of `diagnose_runes_dev_ce_benchmark`.
-- [x] Dev-mode console method calls referencing reactive state are wrapped via `$.log_if_contains_state(method, ...args)` (e.g. `console.log("count:", count)` → `console.log(...$.log_if_contains_state("log", "count:", $.get(count)))`); currently not emitted on the `.svelte.js` / `.svelte.ts` standalone module path — layer: codegen + transform; repro/test: `module_dev_console_log_wrap`; candidate specs: `inspect-runes.md` (related but only covers `$inspect`), none cover console-method auto-instrumentation; suggested spec: new `dev-console-instrumentation.md` covering `console.{log,debug,info,warn,error,trace,dir,group,groupCollapsed}` dev wrapping for both component scripts and `.svelte.js` modules — closed 2026-05-04: `module_dev_console_log_wrap` passes; module-side console wrapping is emitted via the threaded `dev` flag from use case below
-- [x] `compile_module` (`.svelte.js` / `.svelte.ts`) does not thread `dev` flag into the codegen-side transform pipeline — `svelte_codegen_client::generate_module` discards `dev`, and `script::pipeline::transform_module_program` hardcodes `dev: false` into `run_transform`. Cross-cutting: this is the shared root cause for `module_dev_state_tag` (owned by `state-rune.md`), `module_dev_derived_tag` (owned by `derived-state.md`), and `module_dev_console_log_wrap` (above) — layer: codegen; repro/test: any of the three above; candidate specs: `state-rune.md` + `derived-state.md` already track their slice, this entry tracks the shared infrastructure fix — closed 2026-05-04: `compile_module` (`crates/svelte_compiler/src/lib.rs:274`) threads `dev` into `generate_module` (`crates/svelte_codegen_client/src/lib.rs:610`) and `transform_module_program` (`crates/svelte_codegen_client/src/script/pipeline.rs:70`); all three dependent tests pass
-- [x] CSS pipeline emits stylesheet content (the value of `$$css.code`) collapsed onto a single line; reference compiler preserves original source whitespace and comment markers; layer: css-pipeline; repro/test: `diagnose_runes_dev_ce_benchmark`; candidate specs: `css-pipeline.md`; suggested spec: `css-pipeline.md` — closed 2026-05-04 by project decision: whitespace inside `$$css.code` is intentionally not part of our contract (matches `css-pipeline.md:15`). Reference preserves whitespace as side effect of `MagicString` in-place rewrites; we serialize from CSS AST. Byte-for-byte parity in injected CSS is explicitly out of scope
-- [x] Instance-script leading JSDoc / line comments on simple declarations (e.g. `/** @type {Function | undefined} */ let show;`) — closed 2026-05-04 as inverse-formulation false positive. Original spec text claimed our compiler stripped these comments while reference retained them. Investigation under the new narrow test `script_jsdoc_preserve` (dev=true, runes=true, customElement=true) shows the opposite: our codegen preserves the leading JSDoc verbatim, reference compiler intermittently loses it inside `diagnose_runes_dev_ce_benchmark` because MagicString rewrites of adjacent rune declarators (`let counter = $.tag($.state(0), "counter")`) shift offsets across the `/** @type ... */ let show;` boundary. Our path constructs the new declarators through `svelte_ast_builder` and never disturbs the leading comment of unrelated statements, which is observably more correct from a tooling perspective. We intentionally diverge from reference here, similar to the closed CSS-whitespace decision (`$$css.code` whitespace). `script_jsdoc_preserve` is the guard test.
-- [x] `validate_options_custom_element_warns_without_compiler_flag` diagnostic emits span 0..0 instead of spanning the `customElement` option attribute as reference does; layer: analyze (validate); repro/test: `validate_options_custom_element_warns_without_compiler_flag`; candidate specs: `diagnostics-infrastructure.md`, `custom-elements.md`; suggested spec: `diagnostics-infrastructure.md` — closed 2026-05-04: `crates/svelte_analyze/src/validate/mod.rs:410-423` builds the warning via `attr.span()`, diagnostic now produces span `16..37` matching reference
-- [x] `script-tag-with-script-wrapper` — template-level `<script>` element is not wrapped via `$.with_script(...)` and the closing `<!>` anchor is absent from our `from_html` template. Reference: `phases/3-transform/client/transform-template/index.js:47-55` wraps the builder call when `state.template.contains_script_tag` is true; `phases/3-transform/client/transform-template/template.js:12` documents `create_fragment_with_script_from_html` rationale. Repro/test: `preserve_whitespace_script_element` (currently `#[ignore]`); layer: codegen template-builder; suggested spec: new `script-template-emission.md` once audited — closed 2026-05-04: `containers/element.rs` pushes `<!>` after `<script>` pop_element; `fragment/mod.rs::finalize_root_template` wraps `from_html(...)` in `$.with_script(...)` when `contains_script_tag`; ignore removed from `preserve_whitespace_script_element`.
-- [→] Rune-shaped calls in `runes:false` mode must fall back to legacy store-subscription codegen instead of raising `rune_invalid_usage` — moved to `specs/legacy-reactivity-system.md` on 2026-05-04 as the new "Rune-in-legacy fallback" use case set; covers `$derived`, `$derived.by`, `$state`, `$state.raw`, `$state.snapshot`, `$props`, `$props.id`, `$bindable`, `$effect`, `$effect.pre`, `$effect.tracking`, `$inspect`. Also requires removing the hard-error at `crates/svelte_analyze/src/validate/runes.rs:744` and snapping the false-positive `[x] rune_invalid_usage in non-runes mode` claim in `specs/derived-state.md`. Repro: `diagnose_legacy_dev_benchmark`.
+- [x] Element with class:directive bound to state and a child text expression that needs memo deps now merge into a single `$.template_effect` — codegen routes memoized text concat through `EmitState.shared_memo` instead of a separate `emit_effect_call_extern` to `after_update`; `emit_template_effect_with_memo` folds shared_memo's deps with `memo_attrs` and `regular_updates` into one effect (test: template_effect_merge_class_state_with_memo_text)
 
-## Out of scope
+- [x] Full `typescript_invalid_feature` diagnostic parity with reference `remove_typescript_nodes.js`: parameter properties (`private readonly x` in constructor), decorators, accessor fields, enums, namespaces with non-type nodes. Single validator in `crates/svelte_analyze/src/validate/typescript.rs` wired from `validate_program` (`<script lang="ts">`), module-script branch (`<script module lang="ts">`), and `validate_standalone_module` (`.svelte.ts`). Tests: `typescript::parameter_property_accessibility`, `typescript::decorator`, `typescript::accessor_field`, `typescript::enum_declaration`, `typescript::namespace_with_value`; unit: `analyze_module_reports_typescript_parameter_property`.
 
-- Implementing compiler fixes directly in this spec
-- Keeping items here after they have been mapped to an owning feature spec
+- [ ] `generate.mjs` and `cli.mjs` (sweep) use `remove_typescript_nodes` to pre-strip TypeScript from `.svelte.ts` files before passing to reference `compileModule`; this fails for TypeScript parameter properties because `remove_typescript_nodes` throws `typescript_invalid_feature` instead of expanding them — layer: tooling (`tasks/generate_test_cases/generate.mjs`, `packages/svelte-rs2-sweep/cli.mjs`); repro/test: none; candidate specs: none; suggested spec: none (tooling-only fix)
 
-## Reference
-### Svelte
+- [ ] Element with both a `bind:` directive and a delegated event handler emits `$.bind_*` after `$.delegated`; reference compiler emits `$.delegated` after `$.bind_*` — layer: codegen; repro/test: none yet (observed in narrowed `store_runes_prop_assign_bind` original draft `<input bind:value={$x} onchange={reset}>`); candidate specs: `bind-directives.md`, `events.md`; suggested spec: `events.md`
 
-- None. This spec is a project triage queue, not a language feature spec.
+- [x] Component invocation with a `{#snippet}` child whose body contains nested template descendants now allocates the host's anchor `node` ident before entering the snippet body, matching reference. `emit_component` pre-allocates the host anchor through `direct_anchor_expr` (static path) or `comment_anchor_node_name` (dynamic path) before calling `build_component_snippet_children`; `emit_dynamic_component` accepts the pre-allocated anchor name instead of allocating its own. Shared `IdentGen` counter for `node` now consumes the host's id first, then descends into snippet bodies. (test: `component_snippet_node_ident_ordering`)
 
-### Our code
+- [x] `fragment_N` template-id counter aligned with reference for fragment-level `SingleExpr` / `SingleConcat` strategies. Implemented in `emit_fragment` in `crates/svelte_codegen_client/src/codegen/fragment/mod.rs`: consumes one phantom `gen_ident("fragment")` before strategy emission, mirroring reference `Fragment.js` `trimmed.length > 0` branch where the outer `fragment_N` ident is allocated and then shadowed by the inner `text` id when `use_space_template` holds. (test: `diagnose_fragment_id_after_component_with_snippet`)
 
-- `ROADMAP.md`
-- `.claude/skills/diagnose/SKILL.md`
-- `.claude/skills/port/SKILL.md`
-- `tasks/compiler_tests/test_v3.rs`
-- `tasks/compiler_tests/cases2/`
-- `crates/svelte_compiler/src/lib.rs:274` — `compile_module` threads `dev` to analyze and codegen
-- `crates/svelte_codegen_client/src/lib.rs:610` — `generate_module` accepts and forwards `dev`
-- `crates/svelte_codegen_client/src/script/pipeline.rs:70` — `transform_module_program` accepts `dev` and forwards to `run_transform`
-- `crates/svelte_transform/src/transformer/inspect.rs` — `transform_console_log` (gated on `self.dev`)
-- `crates/svelte_analyze/src/validate/mod.rs:410-423` — `OptionsMissingCustomElement` warning span via `attr.span()`
-- `tasks/compiler_tests/cases2/script_jsdoc_preserve/` — narrow guard for JSDoc preservation under dev/runes/customElement
-- `tasks/compiler_tests/cases2/state_raw_dev_ce_with_props_rest/` — narrow guard for use case #20 (`$state.raw` + `$state.snapshot` under dev/CE/props rest)
+- [x] Component invocation `bind:<prop>={localState}` setter emits `$.set(local, $$value, true)` for runes-mode `$state` local. Codegen `bind_prop.rs::emit_bind_identifier` for `ComponentBindTarget::Rune` passes `Arg::Bool(true)` as third argument (test: `component_bind_ref_state_flag`)
+
+- [x] Component invocation prop ordering: every `bind:<prop>={...}` getter/setter pair lives in `ComponentPropsOutput::deferred_items` and is appended to `items` after all regular props/spreads, mirroring reference compiler's "delay bind props to avoid spread overwrite" (test: `component_bind_prop_order`)
+
+- [x] `{#snippet}` declared as a direct fragment child of an `{#each}` block callback (alongside `{@render}` of the same snippet) emits the `const row = …` declaration inline at the top of the each callback's body — no `{ … }` wrapper, before sibling content. Layer: codegen. Test: `diagnose_snippet_inside_each_callback`.
+
+- [x] In legacy mode, a snippet-param destructure leaf (`{#snippet row({ value })}`) accessed as `value.x` inside a child-component prop getter wraps as `value(), $.untrack(() => value().x)`. Test: `diagnose_legacy_snippet_param_member_to_component_prop`.
+
+- [x] Object-literal property whose value is an anonymous `FunctionExpression` is printed as method shorthand: `{ run: function (x) { … } }` → `{ run(x) { … } }`. Mutation lives in `enter_object_property` hook (`crates/svelte_transform/src/transformer/mod.rs`) via `normalize_object_property_method_shorthand` — sets `ObjectProperty.method = true` when `kind == Init` and value is `FunctionExpression`, mirroring esrap. Script mode only. (test: `diagnose_js_object_method_shorthand`)
+
+- [ ] Free-standing `//` line comment sitting between two top-level script imports gets emitted by reference attached to the first non-import statement inside `export default function App(...)` (e.g. before `const x = ...`), but our compiler preserves it in its source position between imports at module scope. Likely an OXC comment-attachment / printer effect when imports are hoisted ahead of the rest of the script body — layer: codegen (script JS print) or transform; repro/test: `diagnose_script_line_comment_between_imports` (ignored); candidate specs: none; suggested spec: none
 
 ## Test cases
-- [x] `diagnose_dev_benchmark`
-- [x] `module_dev_console_log_wrap`
-- [x] `preserve_whitespace_script_element`
-- [x] `add_locations_svelte_head_skips_hoisted_title`
-- [x] `add_locations_named_slot_wrapper`
-- [x] `script_jsdoc_preserve` — guard test added 2026-05-04 to lock in JSDoc preservation under dev/runes/customElement.
-- [x] `state_raw_dev_ce_with_props_rest` — guard test added 2026-05-04 for use case #20 (`$state.raw` + `$state.snapshot` under dev+CE+`$props()` rest).
-- [→] `diagnose_legacy_dev_benchmark` — moved to `specs/legacy-reactivity-system.md` (rune-in-legacy fallback set).
+
+- [x] template_effect_merge_class_state_with_memo_text
+- [x] typescript::parameter_property_accessibility
+- [x] typescript::decorator
+- [x] typescript::accessor_field
+- [x] typescript::enum_declaration
+- [x] typescript::namespace_with_value
+- [ ] generate_mjs_ts_parameter_property_tooling
+- [ ] bind_value_and_delegated_event_emit_order
+- [x] component_snippet_node_ident_ordering
+- [x] diagnose_fragment_id_after_component_with_snippet
+- [x] component_bind_ref_state_flag
+- [x] component_bind_prop_order
+- [x] diagnose_snippet_inside_each_callback
+- [x] diagnose_legacy_snippet_param_member_to_component_prop
+- [x] diagnose_js_object_method_shorthand
+- [ ] diagnose_script_line_comment_between_imports

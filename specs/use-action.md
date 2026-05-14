@@ -1,9 +1,9 @@
 # `use:action`
 
 ## Current state
-- **Working**: 11/11 use cases
-- **Tests**: 13/13 green
-- Last updated: 2026-05-01
+- **Working**: 12/12 use cases
+- **Tests**: 14/14 green
+- Last updated: 2026-05-10
 
 ## Source
 
@@ -32,6 +32,7 @@
 - [x] Defer non-`bind:this` bindings to init-time `$.effect(...)` when a sibling `use:` directive is present, matching reference ordering with bindings/events.
 - [x] Wrap action setup in `$.run_after_blockers(...)` when the action argument depends on async blockers.
 - [x] Emit actions inside control-flow blocks and on `<svelte:body>`.
+- [x] Emit `$.action(...)` after the parent element's child traversal/`$.reset(...)` chain instead of immediately after `var <el> = root();`. Codegen routes action statements through a per-element `pending_post_init` buffer (mirroring reference's `element_state.init`), drained after the child fragment + `$.reset(...)`. Use-deferred bind effects share the buffer to keep source order with action calls (test: `use_action_with_children`, regression-guarded by `bind_use_deferral`).
 
 ## Out of scope
 
@@ -80,6 +81,7 @@
 - `tasks/compiler_tests/cases2/svelte_body_combined/`
 - `tasks/compiler_tests/cases2/bind_use_deferral/`
 - `tasks/compiler_tests/cases2/action_blockers/`
+- `tasks/compiler_tests/cases2/use_action_with_children/`
 - `tasks/compiler_tests/test_v3.rs`
 - `crates/svelte_analyze/src/tests.rs`
 
@@ -97,4 +99,5 @@
 - [x] `svelte_body_combined`
 - [x] `bind_use_deferral`
 - [x] `action_blockers`
+- [x] `use_action_with_children`
 - [x] analyzer validation: `await` inside `use:` directive value

@@ -1,3 +1,5 @@
+use oxc_ast::ast::Expression;
+use std::iter::empty;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use super::data_structures::{ConcatPart, EmitState, FragmentCtx, TemplateMemoState};
@@ -19,11 +21,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         anchor: ConcatenationAnchor,
         parts: &[ConcatPart],
     ) -> Result<()> {
-        let (tpl_parts, memo_deps, mut needs_effect, extra_blockers) =
-            self.build_concatenation_parts(ctx, parts)?;
+        let shared_sync_before = state.shared_memo.sync_values.len();
+        let shared_async_before = state.shared_memo.async_values.len();
+        let (tpl_parts, mut needs_effect, extra_blockers) =
+            self.build_concatenation_parts(ctx, &mut state.shared_memo, parts)?;
         if !extra_blockers.is_empty() {
             needs_effect = true;
         }
+        let has_memo = state.shared_memo.sync_values.len() > shared_sync_before
+            || state.shared_memo.async_values.len() > shared_async_before;
         let tpl_expr = self.assemble_concatenation_expr(tpl_parts);
         self.emit_concatenation_to_anchor(
             state,
@@ -31,7 +37,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             anchor,
             tpl_expr,
             needs_effect,
-            memo_deps,
+            has_memo,
             extra_blockers,
         )
     }
@@ -39,19 +45,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_concatenation_parts(
         &mut self,
         ctx: &FragmentCtx<'a>,
+        memo_deps: &mut TemplateMemoState<'a>,
         parts: &[ConcatPart],
-    ) -> Result<(
-        Vec<TemplatePart<'a>>,
-        TemplateMemoState<'a>,
-        bool,
-        Vec<oxc_ast::ast::Expression<'a>>,
-    )> {
-        use svelte_analyze::{ExprKind, ExpressionSemantics, Memoization};
+    ) -> Result<(Vec<TemplatePart<'a>>, bool, Vec<Expression<'a>>)> {
+        use svelte_analyze::ExpressionSemantics;
 
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(parts.len());
-        let mut memo_deps = TemplateMemoState::default();
         let mut needs_effect = false;
-        let mut extra_blockers: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
+        let mut extra_blockers: Vec<Expression<'a>> = Vec::new();
 
         for part in parts {
             if let Some(s) = ctx.static_text_of(part) {
@@ -66,55 +67,73 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
             if let ExpressionSemantics::Expression(data) =
                 self.ctx.query.view.expression_semantics(*id)
-                && let ExprKind::Folded(s) = &data.kind
+                && let Some(s) = data.evaluation.known_str()
             {
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                    prev.push_str(s);
+                    prev.push_str(&s);
                 } else {
-                    tpl_parts.push(TemplatePart::Str(s.to_string()));
+                    tpl_parts.push(TemplatePart::Str(s));
                 }
                 continue;
             }
 
             let expr = self.take_node_expr(*id)?;
-            let defined = self.is_node_expr_definitely_defined(*id, &expr);
+            use svelte_analyze::{Evaluation, ExprKind};
+            let source_defined = match self.ctx.query.view.expression_semantics(*id) {
+                ExpressionSemantics::Expression(data) => match data.evaluation {
+                    Evaluation::Known(_) | Evaluation::Defined { .. } => true,
+                    Evaluation::MaybeNullish { .. } => false,
+                },
+                ExpressionSemantics::NonSpecial => false,
+            };
             let const_blockers = self.ctx.const_tag_blocker_exprs(*id);
             if !const_blockers.is_empty() {
                 needs_effect = true;
                 extra_blockers.extend(const_blockers);
             }
-            let (effective_expr, part_needs_effect) =
+            let (effective_expr, part_needs_effect, was_memoized) =
                 match self.ctx.query.view.expression_semantics(*id) {
-                    ExpressionSemantics::NonSpecial => (expr, false),
+                    ExpressionSemantics::NonSpecial => (expr, false, false),
                     ExpressionSemantics::Expression(data) => {
-                        let part_needs_effect = data.is_dynamic();
+                        let part_needs_effect = matches!(
+                            data.kind,
+                            ExprKind::SimpleRead { reactive: true }
+                                | ExprKind::Computed { reactive: true }
+                                | ExprKind::Call
+                                | ExprKind::Async { .. }
+                        );
                         let expr =
-                            self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references);
-                        let effective = match data.memoization {
-                            Memoization::None => expr,
-                            Memoization::SyncMemo => {
+                            self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references, false);
+                        let (effective, memoized) = match data.kind {
+                            ExprKind::Call if !data.references.is_empty() => {
                                 memo_deps.push_node_deps(self.ctx, *id);
                                 let cloned = self.ctx.b.clone_expr(&expr);
                                 let index = memo_deps.sync_values_push(cloned);
-                                memo_deps.sync_param_expr(self.ctx, index)
+                                (memo_deps.sync_param_expr(self.ctx, index), true)
                             }
-                            Memoization::AsyncMemo => {
+                            ExprKind::Async { has_await: true } => {
                                 memo_deps.push_node_deps(self.ctx, *id);
                                 let cloned = self.ctx.b.clone_expr(&expr);
                                 let index = memo_deps.async_values_push(cloned);
-                                memo_deps.async_param_expr(self.ctx, index)
+                                (memo_deps.async_param_expr(self.ctx, index), true)
                             }
+                            ExprKind::KnownLiteral
+                            | ExprKind::SimpleRead { .. }
+                            | ExprKind::Computed { .. }
+                            | ExprKind::Call
+                            | ExprKind::Async { has_await: false } => (expr, false),
                         };
-                        (effective, part_needs_effect)
+                        (effective, part_needs_effect, memoized)
                     }
                 };
             if part_needs_effect {
                 needs_effect = true;
             }
+            let defined = source_defined && !was_memoized;
             tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
         }
 
-        Ok((tpl_parts, memo_deps, needs_effect, extra_blockers))
+        Ok((tpl_parts, needs_effect, extra_blockers))
     }
 
     fn assemble_concatenation_expr(
@@ -140,8 +159,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         anchor: ConcatenationAnchor,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        mut memo_deps: TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        has_memo: bool,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         match anchor {
             ConcatenationAnchor::SiblingTextNode { node_var } => self.emit_to_sibling_text_node(
@@ -149,7 +168,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 &node_var,
                 tpl_expr,
                 needs_effect,
-                memo_deps,
+                has_memo,
                 extra_blockers,
             ),
             ConcatenationAnchor::SingleFragmentChild { parent_var } => self
@@ -159,7 +178,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &parent_var,
                     tpl_expr,
                     needs_effect,
-                    &mut memo_deps,
+                    has_memo,
                     extra_blockers,
                 ),
             ConcatenationAnchor::SingleFragmentRoot => self.emit_to_single_fragment_root(
@@ -167,7 +186,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ctx,
                 tpl_expr,
                 needs_effect,
-                &mut memo_deps,
+                has_memo,
                 extra_blockers,
             ),
             ConcatenationAnchor::SingleFragmentCallbackParam { append_inside } => self
@@ -177,7 +196,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     append_inside,
                     tpl_expr,
                     needs_effect,
-                    &mut memo_deps,
+                    has_memo,
                     extra_blockers,
                 ),
         }
@@ -189,8 +208,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_var: &str,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        mut memo_deps: TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        _has_memo: bool,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         let b = &self.ctx.state.b;
         let final_expr = match tpl_expr {
@@ -199,34 +218,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ConcatenationExpr::Template(e) => e,
         };
         if needs_effect {
-            if memo_deps.has_deps() {
-                let param_names = memo_deps.param_names();
-                let params = if param_names.is_empty() {
-                    self.ctx.b.no_params()
-                } else {
-                    self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-                };
-                let set_text = self
-                    .ctx
-                    .b
-                    .call_stmt("$.set_text", [Arg::Ident(node_var), Arg::Expr(final_expr)]);
-                let callback = self.ctx.b.arrow_expr(params, [set_text]);
-                crate::codegen::effect::emit_effect_call_extern(
-                    self.ctx,
-                    "$.template_effect",
-                    callback,
-                    &mut memo_deps,
-                    &mut state.after_update,
-                );
-            } else {
-                if !extra_blockers.is_empty() {
-                    state.extra_blockers.extend(extra_blockers);
-                }
-                state.update.push(b.call_stmt(
-                    "$.set_text",
-                    [Arg::Ident(node_var), Arg::Expr(final_expr)],
-                ));
+            if !extra_blockers.is_empty() {
+                state.extra_blockers.extend(extra_blockers);
             }
+            state.update.push(b.call_stmt(
+                "$.set_text",
+                [Arg::Ident(node_var), Arg::Expr(final_expr)],
+            ));
         } else {
             let member = b.static_member(b.rid_expr(node_var), "nodeValue");
             state
@@ -243,8 +241,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         parent_var: &str,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        memo_deps: &mut TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        _has_memo: bool,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         if !needs_effect {
             let b = &self.ctx.state.b;
@@ -286,35 +284,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
             return Ok(());
         }
-        if memo_deps.has_deps() {
-            let param_names = memo_deps.param_names();
-            let params = if param_names.is_empty() {
-                self.ctx.b.no_params()
-            } else {
-                self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-            };
-            let set_text = self
-                .ctx
-                .b
-                .call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(final_expr)]);
-            let callback = self.ctx.b.arrow_expr(params, [set_text]);
-            crate::codegen::effect::emit_effect_call_extern(
-                self.ctx,
-                "$.template_effect",
-                callback,
-                memo_deps,
-                &mut state.after_update,
-            );
-        } else {
-            if !extra_blockers.is_empty() {
-                state.extra_blockers.extend(extra_blockers);
-            }
-            let b = &self.ctx.state.b;
-            state.update.push(b.call_stmt(
-                "$.set_text",
-                [Arg::Ident(&name), Arg::Expr(final_expr)],
-            ));
+        if !extra_blockers.is_empty() {
+            state.extra_blockers.extend(extra_blockers);
         }
+        let b = &self.ctx.state.b;
+        state.update.push(b.call_stmt(
+            "$.set_text",
+            [Arg::Ident(&name), Arg::Expr(final_expr)],
+        ));
         Ok(())
     }
 
@@ -324,8 +301,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        memo_deps: &mut TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        _has_memo: bool,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         let name = self.ctx.state.gen_ident("text");
         let b = &self.ctx.state.b;
@@ -333,15 +310,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if role_needs_text_first_next(ctx.role) {
             state
                 .init
-                .push(b.call_stmt("$.next", std::iter::empty::<Arg<'a, '_>>()));
+                .push(b.call_stmt("$.next", empty::<Arg<'a, '_>>()));
         }
         state.init.push(b.var_stmt(
             &name,
-            b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
+            b.call_expr("$.text", empty::<Arg<'a, '_>>()),
         ));
         state.root_var = Some(name.clone());
 
-        self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, memo_deps, extra_blockers)
+        self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
     }
 
     fn emit_to_single_fragment_callback_param(
@@ -351,22 +328,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         append_inside: bool,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        memo_deps: &mut TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        _has_memo: bool,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         let name = self.ctx.state.gen_ident("text");
         let b = &self.ctx.state.b;
         if !append_inside && role_needs_text_first_next(ctx.role) {
             state
                 .init
-                .push(b.call_stmt("$.next", std::iter::empty::<Arg<'a, '_>>()));
+                .push(b.call_stmt("$.next", empty::<Arg<'a, '_>>()));
         }
         state.init.push(b.var_stmt(
             &name,
-            b.call_expr("$.text", std::iter::empty::<Arg<'a, '_>>()),
+            b.call_expr("$.text", empty::<Arg<'a, '_>>()),
         ));
         state.root_var = Some(name.clone());
-        self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, memo_deps, extra_blockers)
+        self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
     }
 
     fn finalize_text_node_emission(
@@ -375,8 +352,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_var: &str,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        memo_deps: &mut TemplateMemoState<'a>,
-        extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
+        extra_blockers: Vec<Expression<'a>>,
     ) -> Result<()> {
         let final_expr = match tpl_expr {
             ConcatenationExpr::Static(e) => e,
@@ -384,35 +360,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ConcatenationExpr::Template(e) => e,
         };
         if needs_effect {
-            if memo_deps.has_deps() {
-                let param_names = memo_deps.param_names();
-                let params = if param_names.is_empty() {
-                    self.ctx.b.no_params()
-                } else {
-                    self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-                };
-                let set_text = self.ctx.b.call_stmt(
-                    "$.set_text",
-                    [Arg::Ident(node_var), Arg::Expr(final_expr)],
-                );
-                let callback = self.ctx.b.arrow_expr(params, [set_text]);
-                crate::codegen::effect::emit_effect_call_extern(
-                    self.ctx,
-                    "$.template_effect",
-                    callback,
-                    memo_deps,
-                    &mut state.after_update,
-                );
-            } else {
-                if !extra_blockers.is_empty() {
-                    state.extra_blockers.extend(extra_blockers);
-                }
-                let b = &self.ctx.state.b;
-                state.update.push(b.call_stmt(
-                    "$.set_text",
-                    [Arg::Ident(node_var), Arg::Expr(final_expr)],
-                ));
+            if !extra_blockers.is_empty() {
+                state.extra_blockers.extend(extra_blockers);
             }
+            let b = &self.ctx.state.b;
+            state.update.push(b.call_stmt(
+                "$.set_text",
+                [Arg::Ident(node_var), Arg::Expr(final_expr)],
+            ));
         } else {
             let b = &self.ctx.state.b;
             let member = b.static_member(b.rid_expr(node_var), "nodeValue");
@@ -425,7 +380,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 }
 
 enum ConcatenationExpr<'a> {
-    Static(oxc_ast::ast::Expression<'a>),
-    BareExpr(oxc_ast::ast::Expression<'a>),
-    Template(oxc_ast::ast::Expression<'a>),
+    Static(Expression<'a>),
+    BareExpr(Expression<'a>),
+    Template(Expression<'a>),
 }

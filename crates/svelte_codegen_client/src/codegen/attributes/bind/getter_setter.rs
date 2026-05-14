@@ -1,4 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{BindPropertyKind, ImageNaturalSizeKind, MediaBindKind};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
@@ -153,10 +154,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn take_bind_getter_setter(
         &mut self,
         bind_id: NodeId,
-        expr_id: oxc_syntax::node::NodeId,
+        expr_id: OxcNodeId,
     ) -> Result<Option<(Expression<'a>, Expression<'a>)>> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
-            return crate::codegen::CodegenError::missing_expression(bind_id);
+            return CodegenError::missing_expression(bind_id);
         };
         let expr = self.maybe_wrap_legacy_slots_read(expr);
         let Expression::SequenceExpression(seq) = expr else {
