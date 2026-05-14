@@ -1,21 +1,25 @@
 ---
 name: quick-check
-description: Fast parity probe for a single Svelte component against the reference `svelte/compiler`. Use when the user pastes an ad-hoc Svelte component or points at a `.svelte` file and wants to see whether our compiler panics or produces matching JS — without registering a persistent compiler test case. No changes to compiler code or persistent tests.
+description: Fast parity probe for a single Svelte component or standalone `.svelte.js` / `.svelte.ts` module against the reference `svelte/compiler`. Use when the user pastes an ad-hoc Svelte component, module, or points at a file and wants to see whether our compiler panics or produces matching JS — without registering a persistent test case. No changes to compiler code or persistent tests.
 argument-hint: "<path-or-inline-source> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>]"
 allowed-tools: Bash, Write
 ---
 
-# Quick-check component
+# Quick-check component or module
 
-One-shot compile of a single Svelte component against the reference compiler. Compares both the emitted JS and the scoped CSS (CSS is whitespace-normalized via `compact_css_for_injection`, so indentation diffs do not trip parity). Prints `OK` on parity or a per-section diff on mismatch. Does NOT register persistent tests or modify compiler code.
+One-shot compile of a single Svelte component or standalone `.svelte.js` / `.svelte.ts` module against the reference compiler. Components compare both the emitted JS and the scoped CSS (CSS is whitespace-normalized via `compact_css_for_injection`, so indentation diffs do not trip parity). Modules compare JS only (no CSS, no template). Prints `OK` on parity or a per-section diff on mismatch. Does NOT register persistent tests or modify compiler code.
+
+The Rust side dispatches by file extension: `.svelte.js` / `.svelte.ts` → `compile_module`, anything else → `compile`. The reference side does the same.
 
 ## Step 1: Resolve the input
 
-- Argument is an existing `.svelte` path → use as-is.
-- Argument is inline Svelte source → write to a scratch file first:
-  - Path: `tasks/quick_check/scratch.svelte` (workspace-local, safe to overwrite).
+- Argument is an existing `.svelte` / `.svelte.js` / `.svelte.ts` path → use as-is.
+- Argument is inline source → write to a scratch file first. Pick the extension by content:
+  - looks like a component (has markup, `<script>`, `<style>`, or directives) → `tasks/quick_check/scratch.svelte`.
+  - looks like a standalone module (top-level `import`/`export`, `$state`/`$derived` at module scope, no markup) → `tasks/quick_check/scratch.svelte.js`.
+  - TypeScript module → `tasks/quick_check/scratch.svelte.ts`.
 
-Never write to `tasks/compiler_tests/cases2/`.
+All three scratch files are git-ignored. Never write to `tasks/compiler_tests/cases2/`.
 
 ## Step 2: Run
 
@@ -25,10 +29,10 @@ just quick-check <path> [flags]
 
 Flags (all optional, both sides — our compiler and reference — receive them):
 
-- `--mode=auto|runes|legacy` — compile mode. Default: our compiler's default (`runes` unless `<svelte:options runes={false}/>` flips it).
+- `--mode=auto|runes|legacy` — compile mode. Default: our compiler's default (`runes` unless `<svelte:options runes={false}/>` flips it). Ignored for module inputs (modules are always runes).
 - `--generate=client|server` — runtime target. Default: `client`.
 - `--dev` — dev-build flag.
-- `--filename=<name>` — override component filename (affects component-name resolution).
+- `--filename=<name>` — override filename (affects component-name resolution for components; passed to `compile_module` for modules).
 
 If the user explicitly named a mode, generate target, or dev flag, pass it through — do not assume defaults match.
 
@@ -57,6 +61,6 @@ Keep report terse. Include:
 
 - No edits to compiler crates.
 - No edits to `tasks/compiler_tests/cases2/` or `tasks/compiler_tests/test_v3.rs`.
-- Reusable scratch file only: `tasks/quick_check/scratch.svelte`.
-- Do NOT commit the scratch file — it is git-ignored.
-- If inline source appears to be SvelteKit / TypeScript / MDsveX specific, warn and skip.
+- Reusable scratch files only: `tasks/quick_check/scratch.svelte`, `tasks/quick_check/scratch.svelte.js`, `tasks/quick_check/scratch.svelte.ts`.
+- Do NOT commit scratch files — all three are git-ignored.
+- If inline source appears to be SvelteKit / MDsveX specific (uses imports/types that won't resolve in isolation), warn and skip. Pure standalone runes-in-module code is fine even with unresolved external imports — `compile_module` doesn't need them to resolve.

@@ -164,6 +164,9 @@ fn visit_fragment(
             }
             Node::EachBlock(b) => {
                 store_single(b.id, b.expression.id(), ctx, sink);
+                if let (Some(key_id), Some(key)) = (b.key_id, b.key.as_ref()) {
+                    store_single(key_id, key.id(), ctx, sink);
+                }
                 visit_fragment(component, b.body, ctx, sink);
                 if let Some(fb) = b.fallback {
                     visit_fragment(component, fb, ctx, sink);
@@ -494,7 +497,13 @@ fn compute<'a>(
         ctx.has_class_state_fields,
     );
     let blockers = derive::blockers(&facts, ctx.blockers);
-    let kind = derive::kind(&facts, !blockers.is_empty(), is_dynamic, &evaluation);
+    let kind = derive::kind(
+        &facts,
+        !blockers.is_empty(),
+        is_dynamic,
+        &evaluation,
+        ctx.reactivity,
+    );
     let has_context_member_root = facts.top_member_or_call_roots.iter().any(|&sym| {
         matches!(
             ctx.reactivity.binding_semantics(sym),

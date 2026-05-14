@@ -1,6 +1,6 @@
 use oxc_ast::ast::Expression;
 use svelte_analyze::{AttributeSemantics, EventEmit, HandlerEmit};
-use svelte_ast::{NodeId, OnDirectiveLegacy};
+use svelte_ast::{Node, NodeId, OnDirectiveLegacy};
 use svelte_ast_builder::Arg;
 
 use super::super::data_structures::EmitState;
@@ -79,7 +79,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let stmt = self.ctx.b.call_stmt("$.event", args);
-        if self.ctx.has_use_directive(owner_id) {
+        let is_svelte_element = matches!(
+            self.ctx.query.component.store.get(owner_id),
+            Node::SvelteElement(_)
+        );
+        if !is_svelte_element && self.ctx.has_use_directive(owner_id) {
             let effect_body = self.ctx.b.arrow_expr(self.ctx.b.no_params(), [stmt]);
             let wrapped = self
                 .ctx

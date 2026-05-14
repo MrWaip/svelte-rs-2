@@ -146,6 +146,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.bind_checked",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
+            ElementBindPropertyKind::Files => self.ctx.b.call_stmt(
+                "$.bind_files",
+                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
+            ),
             ElementBindPropertyKind::ElementSize(kind) => self.ctx.b.call_stmt(
                 "$.bind_element_size",
                 [

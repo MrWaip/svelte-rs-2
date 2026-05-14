@@ -1,19 +1,26 @@
 use std::iter;
 
 use oxc_ast::ast::{BinaryOperator, Expression};
+use svelte_ast::NodeId;
 use svelte_ast_builder::AssignLeft;
 
 use super::super::Codegen;
 use super::super::data_structures::EmitState;
+use super::super::expr::evaluation_is_defined;
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn emit_option_expr_value(
         &mut self,
         state: &mut EmitState<'a>,
         el_name: &str,
+        attr_id: NodeId,
         val_expr: Expression<'a>,
     ) {
-        self.emit_option_special_value(state, el_name, val_expr, OptionValueKind::Expression);
+        let needs_coalesce = !self
+            .ctx
+            .expression_data(attr_id)
+            .is_some_and(|d| evaluation_is_defined(&d.evaluation));
+        self.emit_option_special_value(state, el_name, val_expr, needs_coalesce);
     }
 
     pub(super) fn emit_option_concat_value(
@@ -22,7 +29,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         val_expr: Expression<'a>,
     ) {
-        self.emit_option_special_value(state, el_name, val_expr, OptionValueKind::Concatenation);
+        self.emit_option_special_value(state, el_name, val_expr, false);
     }
 
     fn emit_option_special_value(
@@ -30,7 +37,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         el_name: &str,
         val_expr: Expression<'a>,
-        kind: OptionValueKind,
+        needs_coalesce: bool,
     ) {
         let mut prefix = String::with_capacity(el_name.len() + 6);
         prefix.push_str(el_name);
@@ -38,7 +45,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let cache_name = self.ctx.state.gen_ident(&prefix);
 
         let init = self.ctx.b.object_expr(iter::empty());
-        state.init.push(self.ctx.b.var_stmt(&cache_name, init));
+        state
+            .pending_pre_update
+            .push(self.ctx.b.var_stmt(&cache_name, init));
 
         let val_expr2 = self.ctx.b.clone_expr(&val_expr);
 
@@ -63,12 +72,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             val_expr2,
         );
 
-        let value_rhs = match kind {
-            OptionValueKind::Expression => self
-                .ctx
+        let value_rhs = if needs_coalesce {
+            self.ctx
                 .b
-                .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr("")),
-            OptionValueKind::Concatenation => dunder_value_assign,
+                .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
+        } else {
+            dunder_value_assign
         };
 
         let value_assign = self.ctx.b.assign_stmt(
@@ -85,9 +94,4 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         state.update.push(if_stmt);
     }
-}
-
-enum OptionValueKind {
-    Expression,
-    Concatenation,
 }

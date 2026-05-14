@@ -10,7 +10,8 @@ const repoRoot = path.resolve(packageRoot, '..', '..');
 const PLATFORM_PACKAGE_BY_TARGET = {
   'darwin-arm64': 'packages/svelte-rs2-darwin-arm64',
   'darwin-x64': 'packages/svelte-rs2-darwin-x64',
-  'linux-x64': 'packages/svelte-rs2-linux-x64-gnu'
+  'linux-x64': 'packages/svelte-rs2-linux-x64-gnu',
+  'linux-arm64': 'packages/svelte-rs2-linux-arm64-gnu'
 };
 
 function currentTarget() {
@@ -34,7 +35,7 @@ function outputPackageDir() {
   if (!relPath) {
     throw new Error(
       `Unsupported target for platform package preparation: ${target}. ` +
-        'Supported targets: darwin-arm64, darwin-x64, linux-x64.'
+        'Supported targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64.'
     );
   }
   return path.resolve(repoRoot, relPath);

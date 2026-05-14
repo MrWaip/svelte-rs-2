@@ -114,7 +114,12 @@ fn walk_template_inner(
                 }
                 dispatch_opt_stmt(visitors, block.id, block.index.as_ref(), ctx);
                 if let (Some(key_id), Some(key_ref)) = (block.key_id, block.key.as_ref()) {
+                    ctx.push(ParentRef {
+                        id: block.id,
+                        kind: ParentKind::EachKey,
+                    });
                     dispatch_expr(visitors, key_id, key_ref, ctx);
+                    ctx.pop();
                 }
                 walk_template(block.body, ctx, visitors);
                 ctx.scope = saved;

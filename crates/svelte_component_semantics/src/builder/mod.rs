@@ -80,6 +80,10 @@ impl<'a> ComponentSemanticsBuilder<'a> {
         self.next_node_id
     }
 
+    pub fn finalize_unresolved_references(&mut self) {
+        self.semantics.finalize_unresolved_references();
+    }
+
     pub fn finish(self) -> ComponentSemantics<'a> {
         self.semantics
     }

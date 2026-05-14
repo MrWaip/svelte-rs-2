@@ -7,6 +7,7 @@ pub enum ParentKind {
     SlotElementLegacy,
     IfBlock,
     EachBlock,
+    EachKey,
     SnippetBlock,
     ComponentNode,
     SvelteComponentLegacy,
@@ -75,6 +76,7 @@ impl ParentKind {
             | Self::SlotElementLegacy
             | Self::IfBlock
             | Self::EachBlock
+            | Self::EachKey
             | Self::SnippetBlock
             | Self::ComponentNode
             | Self::SvelteComponentLegacy

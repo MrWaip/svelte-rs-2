@@ -6,7 +6,8 @@ use super::data::{
     ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
     EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    MustBePropertySemantics, MustBePropertyValue, TemplateEffect, WindowBindSemantics,
+    MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
+    TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
     ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -150,7 +151,11 @@ fn references_need_wrap(
             return true;
         }
         match ctx.reactivity.binding_semantics(sym) {
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+                reactive,
+                initial_is_function,
+                ..
+            }) => reactive && !initial_is_function,
             BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
                 EachIndexStrategy::Direct,
             )) => false,
@@ -165,6 +170,18 @@ fn references_need_wrap(
             }
             _ => true,
         }
+    })
+}
+
+fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> bool {
+    let Some(data) = ctx.expression_data(expr_id) else {
+        return false;
+    };
+    data.references.iter().any(|&sym| {
+        matches!(
+            ctx.reactivity.binding_semantics(sym),
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive: true, .. })
+        )
     })
 }
 
@@ -374,11 +391,29 @@ fn classify_element_attrs(
             Attribute::ExpressionAttribute(ea) => {
                 if ea.event_name.is_some() {
                     classify_html_event(ctx, ea, store);
+                } else if let Some(kind) = special_value_kind_for(el, &ea.name) {
+                    store.set(
+                        ea.id,
+                        AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                            kind,
+                            concat: None,
+                        }),
+                    );
                 }
             }
             Attribute::ConcatenationAttribute(ca) => {
                 let semantics = derive_html_concat_semantics(ctx, ca);
-                store.set(ca.id, AttributeSemantics::HtmlConcat(semantics));
+                if let Some(kind) = special_value_kind_for(el, &ca.name) {
+                    store.set(
+                        ca.id,
+                        AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                            kind,
+                            concat: Some(semantics),
+                        }),
+                    );
+                } else {
+                    store.set(ca.id, AttributeSemantics::HtmlConcat(semantics));
+                }
             }
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);
@@ -398,6 +433,25 @@ fn classify_element_attrs(
                     a.id,
                     AttributeSemantics::MustBeProperty(MustBePropertySemantics {
                         property: "muted".into(),
+                        value: MustBePropertyValue::Str(value.into()),
+                    }),
+                );
+            }
+            Attribute::BooleanAttribute(a) if a.name == "defaultValue" || a.name == "defaultChecked" => {
+                store.set(
+                    a.id,
+                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
+                        property: a.name.clone().into(),
+                        value: MustBePropertyValue::BoolTrue,
+                    }),
+                );
+            }
+            Attribute::StringAttribute(a) if a.name == "defaultValue" || a.name == "defaultChecked" => {
+                let value = a.value(&ctx.component.source).to_string();
+                store.set(
+                    a.id,
+                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
+                        property: a.name.clone().into(),
                         value: MustBePropertyValue::Str(value.into()),
                     }),
                 );
@@ -477,6 +531,38 @@ fn derive_parent_each_blocks(
         }
     }
     result
+}
+
+fn special_value_kind_for(el: Option<&Element>, attr_name: &str) -> Option<SpecialValueKind> {
+    if attr_name != "value" {
+        return None;
+    }
+    let el = el?;
+    match el.name.as_str() {
+        "select" => Some(SpecialValueKind::Select),
+        "option" => Some(SpecialValueKind::Option),
+        "input" => {
+            let mut has_group = false;
+            let mut has_checked = false;
+            for attr in &el.attributes {
+                if let Attribute::BindDirective(d) = attr {
+                    match d.name.as_str() {
+                        "group" => has_group = true,
+                        "checked" => has_checked = true,
+                        _ => {}
+                    }
+                }
+            }
+            if has_group {
+                Some(SpecialValueKind::InputBindGroup)
+            } else if has_checked {
+                Some(SpecialValueKind::InputBindChecked)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn find_value_attr_id(el: &Element) -> Option<NodeId> {
@@ -784,13 +870,12 @@ fn classify_component_attrs(
             }
             Attribute::ExpressionAttribute(ea) => {
                 let memo = derive_component_prop_memo_for_expression(ctx, ea, carrier);
+                let shorthand =
+                    ea.shorthand && !references_include_reactive_const_tag(ctx, ea.id);
                 store.set(
                     ea.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(
-                        ComponentPropExpressionSemantics {
-                            memo,
-                            shorthand: ea.shorthand,
-                        },
+                        ComponentPropExpressionSemantics { memo, shorthand },
                     )),
                 );
             }

@@ -20,6 +20,7 @@
     "@mrwaip/svelte-rs2": "file:../../mrwaip-svelte-rs2-0.0.0-canary.0.tgz",
     "@mrwaip/svelte-rs2-darwin-arm64": "file:../../mrwaip-svelte-rs2-darwin-arm64-0.0.0-canary.0.tgz",
     "@mrwaip/svelte-rs2-darwin-x64": "file:../../mrwaip-svelte-rs2-darwin-x64-0.0.0-canary.0.tgz",
-    "@mrwaip/svelte-rs2-linux-x64-gnu": "file:../../mrwaip-svelte-rs2-linux-x64-gnu-0.0.0-canary.0.tgz"
+    "@mrwaip/svelte-rs2-linux-x64-gnu": "file:../../mrwaip-svelte-rs2-linux-x64-gnu-0.0.0-canary.0.tgz",
+    "@mrwaip/svelte-rs2-linux-arm64-gnu": "file:../../mrwaip-svelte-rs2-linux-arm64-gnu-0.0.0-canary.0.tgz"
   }
 }

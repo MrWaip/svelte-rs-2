@@ -25,6 +25,21 @@ pub enum AttributeSemantics {
     BoundaryProp(BoundaryPropSemantics),
     HtmlConcat(HtmlConcatSemantics),
     MustBeProperty(MustBePropertySemantics),
+    SpecialValueAttr(SpecialValueSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpecialValueSemantics {
+    pub kind: SpecialValueKind,
+    pub concat: Option<HtmlConcatSemantics>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpecialValueKind {
+    Select,
+    Option,
+    InputBindGroup,
+    InputBindChecked,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -343,7 +343,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             BindingPattern::BindingIdentifier(id) => {
                 let name = id.name.as_str();
                 let sym_id = id.symbol_id.get();
-                let reassigned = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
+                let reassigned = sym_id.is_some_and(|s| {
+                    self.component_scoping.is_mutated(s)
+                        || self.component_scoping.is_reexported_specifier_local(s)
+                });
                 let is_signal_source = self
                     .analysis
                     .as_ref()
@@ -863,6 +866,20 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
         let mut ctor_synth_names = FxHashSet::default();
         let mut ctor_placeholder_names = FxHashSet::default();
+        let mut ctor_private_names: FxHashSet<String> = FxHashSet::default();
+        let body_private_field_names: FxHashSet<String> = body
+            .body
+            .iter()
+            .filter_map(|el| {
+                if let ClassElement::PropertyDefinition(prop) = el
+                    && let PropertyKey::PrivateIdentifier(id) = &prop.key
+                {
+                    Some(id.name.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
         for element in &body.body {
             if let ClassElement::MethodDefinition(method) = element
                 && method.kind == MethodDefinitionKind::Constructor
@@ -872,30 +889,58 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     if let Statement::ExpressionStatement(es) = stmt
                         && let Expression::AssignmentExpression(assign) = &es.expression
                         && assign.operator == AssignmentOperator::Assign
-                        && let AssignmentTarget::StaticMemberExpression(member) =
-                            &assign.left
-                        && let Expression::ThisExpression(_) = &member.object
                         && let Some(rune_kind) = self.class_field_rune_kind(assign.node_id())
                     {
-                        let name = member.property.name.to_string();
-                        if body_public_names.contains(&name)
-                            || !ctor_synth_names.insert(name.clone())
-                        {
-                            continue;
+                        match &assign.left {
+                            AssignmentTarget::StaticMemberExpression(member)
+                                if matches!(&member.object, Expression::ThisExpression(_)) =>
+                            {
+                                let name = member.property.name.to_string();
+                                if body_public_names.contains(&name)
+                                    || !ctor_synth_names.insert(name.clone())
+                                {
+                                    continue;
+                                }
+                                let mut backing = format!("#{}", name);
+                                while existing_private.contains(backing.trim_start_matches('#')) {
+                                    backing = format!("#_{}", backing.trim_start_matches('#'));
+                                }
+                                existing_private
+                                    .insert(backing.trim_start_matches('#').to_string());
+                                if placeholder_public_names.contains(&name) {
+                                    ctor_placeholder_names.insert(name.clone());
+                                }
+                                fields.push(ClassStateField {
+                                    public_name: Some(name),
+                                    private_name: backing
+                                        .trim_start_matches('#')
+                                        .to_string(),
+                                    rune_kind,
+                                });
+                            }
+                            AssignmentTarget::PrivateFieldExpression(member)
+                                if matches!(&member.object, Expression::ThisExpression(_)) =>
+                            {
+                                let name = member.field.name.to_string();
+                                if !body_private_field_names.contains(&name) {
+                                    continue;
+                                }
+                                if !ctor_private_names.insert(name.clone()) {
+                                    continue;
+                                }
+                                if fields.iter().any(|f| {
+                                    f.public_name.is_none() && f.private_name == name
+                                }) {
+                                    continue;
+                                }
+                                fields.push(ClassStateField {
+                                    public_name: None,
+                                    private_name: name,
+                                    rune_kind,
+                                });
+                            }
+                            _ => {}
                         }
-                        let mut backing = format!("#{}", name);
-                        while existing_private.contains(backing.trim_start_matches('#')) {
-                            backing = format!("#_{}", backing.trim_start_matches('#'));
-                        }
-                        existing_private.insert(backing.trim_start_matches('#').to_string());
-                        if placeholder_public_names.contains(&name) {
-                            ctor_placeholder_names.insert(name.clone());
-                        }
-                        fields.push(ClassStateField {
-                            public_name: Some(name),
-                            private_name: backing.trim_start_matches('#').to_string(),
-                            rune_kind,
-                        });
                     }
                 }
             }
@@ -1017,7 +1062,21 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
             match rune_kind {
-                Some(RuneKind::State | RuneKind::StateRaw) => {
+                Some(RuneKind::State) => {
+                    call.callee = self.b.rid_expr("$.state");
+                    if !call.arguments.is_empty() {
+                        let mut dummy = Argument::from(self.b.cheap_expr());
+                        mem::swap(&mut call.arguments[0], &mut dummy);
+                        let arg = dummy.into_expression();
+                        let wrapped = if rune_refs::should_proxy(&arg) {
+                            self.b.call_expr("$.proxy", [Arg::Expr(arg)])
+                        } else {
+                            arg
+                        };
+                        call.arguments[0] = Argument::from(wrapped);
+                    }
+                }
+                Some(RuneKind::StateRaw) => {
                     call.callee = self.b.rid_expr("$.state");
                 }
                 Some(RuneKind::Derived) => {
@@ -1171,16 +1230,36 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             .iter()
             .filter_map(|f| f.public_name.as_deref().map(|n| (n, f)))
             .collect();
+        let ctor_private_fields: HashMap<&str, &ClassStateField> = info
+            .fields
+            .iter()
+            .filter(|f| f.public_name.is_none())
+            .map(|f| (f.private_name.as_str(), f))
+            .collect();
 
         for stmt in func_body.statements.iter_mut() {
             if let Statement::ExpressionStatement(es) = stmt
                 && let Expression::AssignmentExpression(assign) = &mut es.expression
                 && assign.operator == AssignmentOperator::Assign
-                && let AssignmentTarget::StaticMemberExpression(member) = &assign.left
-                && let Expression::ThisExpression(_) = &member.object
             {
-                let name = member.property.name.to_string();
-                if let Some(field_info) = ctor_fields.get(name.as_str())
+                let (resolved_field, is_private_target, public_name) = match &assign.left {
+                    AssignmentTarget::StaticMemberExpression(member)
+                        if matches!(&member.object, Expression::ThisExpression(_)) =>
+                    {
+                        let name = member.property.name.to_string();
+                        let field = ctor_fields.get(name.as_str()).copied();
+                        (field, false, Some(name))
+                    }
+                    AssignmentTarget::PrivateFieldExpression(member)
+                        if matches!(&member.object, Expression::ThisExpression(_)) =>
+                    {
+                        let name = member.field.name.to_string();
+                        let field = ctor_private_fields.get(name.as_str()).copied();
+                        (field, true, None)
+                    }
+                    _ => (None, false, None),
+                };
+                if let Some(field_info) = resolved_field
                     && let Expression::CallExpression(call) = &mut assign.right
                 {
                     match field_info.rune_kind {
@@ -1219,14 +1298,19 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         }
                     }
                     if self.dev {
-                        let label = self.class_tag_label(&name);
+                        let label_name = public_name
+                            .as_deref()
+                            .unwrap_or(field_info.private_name.as_str());
+                        let label = self.class_tag_label(label_name);
                         let rhs = self.b.move_expr(&mut assign.right);
                         assign.right = self.b.call_expr("$.tag", [Arg::Expr(rhs), Arg::Str(label)]);
                     }
 
-                    let new_left = self.b.this_private_member(&field_info.private_name);
-                    if let Expression::PrivateFieldExpression(pfe) = new_left {
-                        assign.left = AssignmentTarget::PrivateFieldExpression(pfe);
+                    if !is_private_target {
+                        let new_left = self.b.this_private_member(&field_info.private_name);
+                        if let Expression::PrivateFieldExpression(pfe) = new_left {
+                            assign.left = AssignmentTarget::PrivateFieldExpression(pfe);
+                        }
                     }
                 }
             }

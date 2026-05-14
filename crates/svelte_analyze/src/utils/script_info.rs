@@ -1,14 +1,16 @@
 use compact_str::CompactString;
 use oxc_ast::ast::{
     BindingPattern, CallExpression, Declaration, Expression, Function, IdentifierReference,
-    Program, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
+    ModuleExportName, Program, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
 };
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
 
 use rustc_hash::FxHashSet;
+use svelte_component_semantics::walk_bindings;
 use svelte_span::Span;
 
+use crate::scope::ComponentScoping;
 use crate::types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
@@ -28,6 +30,7 @@ pub fn extract_script_info(
     program: &Program<'_>,
     source: &str,
     runes: bool,
+    scoping: &ComponentScoping,
 ) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
@@ -39,14 +42,26 @@ pub fn extract_script_info(
         match stmt {
             Statement::ExportNamedDeclaration(export) => {
                 for spec in &export.specifiers {
-                    let local = CompactString::from(spec.local.name().as_str());
-                    let exported = CompactString::from(spec.exported.name().as_str());
-                    let alias = if local != exported {
-                        Some(exported)
+                    let ModuleExportName::IdentifierReference(local) = &spec.local else {
+                        continue;
+                    };
+                    let Some(ref_id) = local.reference_id.get() else {
+                        continue;
+                    };
+                    let Some(sym) = scoping.semantics().symbol_for_reference(ref_id) else {
+                        continue;
+                    };
+                    let exported = spec.exported.name();
+                    let alias = if local.name != exported {
+                        Some(CompactString::from(exported.as_str()))
                     } else {
                         None
                     };
-                    exports.push(ExportInfo { name: local, alias });
+                    exports.push(ExportInfo {
+                        local: sym,
+                        reference_id: Some(ref_id),
+                        alias,
+                    });
                 }
                 if let Some(decl) = &export.declaration {
                     if !runes
@@ -214,35 +229,40 @@ pub fn is_rune_name(name: &str) -> bool {
     svelte_ast::is_rune_name(name)
 }
 
-fn collect_export_names_from_declaration(
-    decl: &Declaration<'_>,
+fn collect_export_names_from_declaration<'a>(
+    decl: &'a Declaration<'a>,
     exports: &mut Vec<ExportInfo>,
 ) {
     match decl {
         Declaration::VariableDeclaration(var_decl) => {
             for declarator in &var_decl.declarations {
-                let mut names: Vec<String> = Vec::new();
-                collect_binding_names(&declarator.id, &mut names);
-                for name in names {
+                walk_bindings(&declarator.id, |visit| {
                     exports.push(ExportInfo {
-                        name: CompactString::from(name),
+                        local: visit.symbol,
+                        reference_id: None,
                         alias: None,
                     });
-                }
+                });
             }
         }
         Declaration::FunctionDeclaration(func) => {
-            if let Some(ident) = &func.id {
+            if let Some(ident) = &func.id
+                && let Some(sym) = ident.symbol_id.get()
+            {
                 exports.push(ExportInfo {
-                    name: CompactString::from(ident.name.as_str()),
+                    local: sym,
+                    reference_id: None,
                     alias: None,
                 });
             }
         }
         Declaration::ClassDeclaration(cls) => {
-            if let Some(ident) = &cls.id {
+            if let Some(ident) = &cls.id
+                && let Some(sym) = ident.symbol_id.get()
+            {
                 exports.push(ExportInfo {
-                    name: CompactString::from(ident.name.as_str()),
+                    local: sym,
+                    reference_id: None,
                     alias: None,
                 });
             }

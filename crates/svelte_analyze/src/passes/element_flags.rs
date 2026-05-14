@@ -49,6 +49,11 @@ impl<'src> ElementFlagsVisitor<'src> {
     fn marks_input_defaults(name: &str) -> bool {
         matches!(name, "value" | "checked")
     }
+
+    fn skip_input_defaults_gate(ctx: &VisitContext<'_, '_>, el_id: svelte_ast::NodeId) -> bool {
+        ctx.data.has_attribute(el_id, "defaultValue")
+            || ctx.data.has_attribute(el_id, "defaultChecked")
+    }
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
@@ -131,6 +136,81 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if has_contenteditable && has_content_bind {
             ctx.data.elements.flags.bound_contenteditable.insert(el.id);
         }
+
+        if ctx.data.script.dev
+            && ctx
+                .data
+                .output
+                .ignore_data
+                .is_ignored(el.id, "hydration_attribute_changed")
+        {
+            ctx.data
+                .elements
+                .flags
+                .hydration_attribute_changed_ignored
+                .insert(el.id);
+        }
+    }
+
+    fn visit_svelte_element(
+        &mut self,
+        el: &svelte_ast::SvelteElement,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        if ctx.data.script.dev
+            && ctx
+                .data
+                .output
+                .ignore_data
+                .is_ignored(el.id, "hydration_attribute_changed")
+        {
+            ctx.data
+                .elements
+                .flags
+                .hydration_attribute_changed_ignored
+                .insert(el.id);
+        }
+
+        let mut has_spread = false;
+        let mut has_class_directive = false;
+        let mut has_style_directive = false;
+        let mut has_class_attr = false;
+        let mut has_style_attr = false;
+        for attr in &el.attributes {
+            match attr {
+                Attribute::SpreadAttribute(_) => has_spread = true,
+                Attribute::ClassDirective(_) => has_class_directive = true,
+                Attribute::StyleDirective(_) => has_style_directive = true,
+                Attribute::StringAttribute(a) => {
+                    if a.name == "class" {
+                        has_class_attr = true;
+                    } else if a.name == "style" {
+                        has_style_attr = true;
+                    }
+                }
+                Attribute::ExpressionAttribute(a) => {
+                    if a.name == "class" {
+                        has_class_attr = true;
+                    } else if a.name == "style" {
+                        has_style_attr = true;
+                    }
+                }
+                Attribute::ConcatenationAttribute(a) => {
+                    if a.name == "class" {
+                        has_class_attr = true;
+                    } else if a.name == "style" {
+                        has_style_attr = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !has_spread && has_class_directive && !has_class_attr {
+            ctx.data.elements.flags.needs_class_base.insert(el.id);
+        }
+        if !has_spread && has_style_directive && !has_style_attr {
+            ctx.data.elements.flags.needs_style_base.insert(el.id);
+        }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
@@ -177,7 +257,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 if ea.name == "class" {
                     ctx.data.elements.flags.class_attr_id.insert(el_id, ea.id);
                 }
-                if ctx.element_name() == Some("input") && Self::marks_input_defaults(&ea.name) {
+                if ctx.element_name() == Some("input")
+                    && Self::marks_input_defaults(&ea.name)
+                    && !Self::skip_input_defaults_gate(ctx, el_id)
+                {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
@@ -204,13 +287,32 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 if attr.name == "class" {
                     ctx.data.elements.flags.class_attr_id.insert(el_id, attr.id);
                 }
-                if ctx.element_name() == Some("input") && Self::marks_input_defaults(&attr.name) {
+                if ctx.element_name() == Some("input")
+                    && Self::marks_input_defaults(&attr.name)
+                    && !Self::skip_input_defaults_gate(ctx, el_id)
+                {
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
+            }
+            Attribute::BooleanAttribute(ba) => {
+                if ctx.element_name() == Some("input")
+                    && Self::marks_input_defaults(&ba.name)
+                    && !Self::skip_input_defaults_gate(ctx, el_id)
+                {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
             }
             Attribute::BindDirective(bd) => {
                 if ctx.element_name() == Some("input")
                     && matches!(bd.name.as_str(), "value" | "checked" | "group")
+                    && !Self::skip_input_defaults_gate(ctx, el_id)
+                {
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
+            }
+            Attribute::SpreadAttribute(_) => {
+                if ctx.element_name() == Some("input")
+                    && !Self::skip_input_defaults_gate(ctx, el_id)
                 {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }

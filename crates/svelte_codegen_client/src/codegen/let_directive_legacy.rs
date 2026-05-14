@@ -13,6 +13,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(owner_id);
         let attrs: &[Attribute] = match node {
             Node::Element(el) => &el.attributes,
+            Node::SlotElementLegacy(el) => &el.attributes,
             Node::SvelteFragmentLegacy(el) => &el.attributes,
             _ => match node.as_component_like() {
                 Some(view) => view.attributes,
@@ -97,10 +98,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let name = simple_name?;
             let init_expr = simple_init_clone?;
             let thunk = self.ctx.b.thunk(init_expr);
-            let derived = self
-                .ctx
-                .b
-                .call_expr("$.derived_safe_equal", [Arg::Expr(thunk)]);
+            let derived_fn = self.ctx.query.view.derived_helper();
+            let derived = self.ctx.b.call_expr(derived_fn, [Arg::Expr(thunk)]);
             return Some(self.ctx.b.const_stmt(&name, derived));
         }
 

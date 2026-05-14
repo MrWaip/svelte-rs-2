@@ -145,12 +145,13 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     fn exit_statements(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
             return;
         }
-        self.process_statement_block(stmts);
+        let is_root = ctx.current_scope_id() == ctx.scoping().root_scope_id();
+        self.process_statement_block(stmts, is_root);
     }
 
     fn enter_call_expression(

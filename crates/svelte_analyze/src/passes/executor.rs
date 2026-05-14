@@ -78,6 +78,7 @@ pub(crate) fn execute_pass<'a>(
                     program,
                     &component.source,
                     runes,
+                    &data.scoping,
                 ))
             });
             if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {

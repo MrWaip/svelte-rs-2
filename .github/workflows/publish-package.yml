@@ -1,0 +1,201 @@
+name: Publish Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: npm dist-tag to publish under
+        required: true
+        type: string
+        default: canary
+      version:
+        description: Optional exact npm version override
+        required: false
+        type: string
+
+concurrency:
+  group: publish-package-${{ inputs.dist_tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22.13.0'
+  RUST_CHANNEL: '1.94.1'
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      npm_version: ${{ steps.resolve.outputs.npm_version }}
+    steps:
+      - name: Resolve canary version
+        id: resolve
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="0.0.0-canary.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "npm_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using npm version: $VERSION"
+
+  build-platform:
+    name: Build ${{ matrix.label }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            package_dir: packages/svelte-rs2-linux-x64-gnu
+            artifact_name: platform-linux-x64-gnu
+            label: linux-x64-gnu
+          - runner: macos-15
+            package_dir: packages/svelte-rs2-darwin-arm64
+            artifact_name: platform-darwin-arm64
+            label: darwin-arm64
+          - runner: macos-15-intel
+            package_dir: packages/svelte-rs2-darwin-x64
+            artifact_name: platform-darwin-x64
+            label: darwin-x64
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          cache-target: release
+          channel: ${{ env.RUST_CHANNEL }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Stamp package versions
+        run: node scripts/set-canary-version.mjs "${{ needs.version.outputs.npm_version }}"
+
+      - name: Build release addon
+        run: cargo build -p napi_compiler --release --locked
+
+      - name: Prepare current platform package
+        run: node packages/svelte-rs2/scripts/prepare-platform-package.mjs
+
+      - name: Pack tarball
+        id: pack
+        shell: bash
+        run: |
+          npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP" --json > "$RUNNER_TEMP/pack.json"
+          FILENAME=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].filename)" "$RUNNER_TEMP/pack.json")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tarball contains native addon
+        shell: bash
+        run: tar -tzf "${{ steps.pack.outputs.tarball }}" | grep 'package/svelte-rs2.node'
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+  build-main:
+    name: Build main package
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Stamp package versions
+        run: node scripts/set-canary-version.mjs "${{ needs.version.outputs.npm_version }}"
+
+      - name: Pack tarball
+        id: pack
+        shell: bash
+        run: |
+          npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP" --json > "$RUNNER_TEMP/pack.json"
+          FILENAME=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].filename)" "$RUNNER_TEMP/pack.json")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify main package tarball
+        shell: bash
+        run: |
+          TARBALL="${{ steps.pack.outputs.tarball }}"
+          tar -tzf "$TARBALL" | grep 'package/compiler/index.js'
+          tar -tzf "$TARBALL" | grep 'package/compiler/index.d.ts'
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v6
+        with:
+          name: main-package
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: [build-platform, build-main]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Download all tarballs
+        uses: actions/download-artifact@v7
+        with:
+          path: ${{ runner.temp }}/publish
+
+      - name: List tarballs
+        run: find "$RUNNER_TEMP/publish" -name '*.tgz' | sort
+
+      - name: Verify npm authentication is configured
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is not configured for this repository." >&2
+            exit 1
+          fi
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          find "$RUNNER_TEMP/publish" -name '*.tgz' -not -path '*/main-package/*' -print0 \
+            | while IFS= read -r -d '' tgz; do
+                echo "Publishing $tgz"
+                npm publish "$tgz" --tag "${{ inputs.dist_tag }}" --provenance
+              done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          find "$RUNNER_TEMP/publish/main-package" -name '*.tgz' -print0 \
+            | while IFS= read -r -d '' tgz; do
+                echo "Publishing $tgz"
+                npm publish "$tgz" --tag "${{ inputs.dist_tag }}" --provenance
+              done

@@ -11,6 +11,8 @@ REVIEW.md
 *.tgz
 *.node
 tasks/quick_check/scratch.svelte
+tasks/quick_check/scratch.svelte.js
+tasks/quick_check/scratch.svelte.ts
 .claude/settings.local.json
 
 # Logs

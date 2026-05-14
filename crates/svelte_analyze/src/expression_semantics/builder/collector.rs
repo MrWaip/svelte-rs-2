@@ -8,9 +8,9 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_await_expression, walk_call_expression,
-    walk_function, walk_member_expression, walk_simple_assignment_target,
-    walk_spread_element, walk_update_expression,
+    walk_arrow_function_expression, walk_await_expression, walk_call_expression, walk_function,
+    walk_member_expression, walk_simple_assignment_target, walk_spread_element,
+    walk_update_expression,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -92,7 +92,7 @@ pub(super) fn collect<'a>(
     }
 }
 
-fn callee_is_pure_shape(callee: &Expression<'_>) -> bool {
+fn callee_is_pure(callee: &Expression<'_>) -> bool {
     let mut node = callee;
     loop {
         match node {
@@ -361,7 +361,7 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if self.fn_depth == 0 {
             self.has_call = true;
-            if !callee_is_pure_shape(&expr.callee) {
+            if !callee_is_pure(&expr.callee) {
                 self.has_impure_call = true;
             }
             if let Some(rune) = detect_rune_from_call(expr)
@@ -389,20 +389,13 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         walk_spread_element(self, spread);
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.fn_depth += 1;
         walk_arrow_function_expression(self, arrow);
         self.fn_depth -= 1;
     }
 
-    fn visit_function(
-        &mut self,
-        func: &Function<'a>,
-        flags: ScopeFlags,
-    ) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         self.fn_depth += 1;
         walk_function(self, func, flags);
         self.fn_depth -= 1;

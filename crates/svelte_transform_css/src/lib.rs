@@ -7,8 +7,9 @@ use svelte_css::{
         walk_at_rule_mut, walk_complex_selector_mut, walk_selector_list_mut,
         walk_simple_selector_args_mut, walk_style_rule_mut,
     },
-    AtRule, Block, BlockChild, ComplexSelector, CssNodeId, Declaration, RelativeSelector, Rule,
-    SelectorList, SimpleSelector, StyleRule, StyleSheet, StyleSheetChild, VisitMut,
+    AtRule, Block, BlockChild, Combinator, CombinatorKind, ComplexSelector, CssNodeId,
+    Declaration, RelativeSelector, Rule, SelectorList, SimpleSelector, StyleRule, StyleSheet,
+    StyleSheetChild, VisitMut,
 };
 use svelte_sourcemap::SourceMap;
 use svelte_span::Span;
@@ -470,27 +471,14 @@ fn is_entirely_global(complex: &ComplexSelector) -> bool {
 }
 
 fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
-    let needs_expand = node.children.iter().any(|rel| {
-        rel.selectors.len() == 1
-            && matches!(
-                &rel.selectors[0],
-                SimpleSelector::Global { args: Some(args), .. }
-                    if args.children.len() == 1 && args.children[0].children.len() > 1
-            )
-    });
+    let needs_expand = node.children.iter().any(is_expandable_global);
     if !needs_expand {
         return;
     }
 
     let mut out = svelte_css::RelativeSelectorVec::new();
     for mut rel in mem::take(&mut node.children) {
-        let is_expandable = rel.selectors.len() == 1
-            && matches!(
-                &rel.selectors[0],
-                SimpleSelector::Global { args: Some(args), .. }
-                    if args.children.len() == 1 && args.children[0].children.len() > 1
-            );
-        if !is_expandable {
+        if !is_expandable_global(&rel) {
             out.push(rel);
             continue;
         }
@@ -504,9 +492,10 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
         };
         let args_span = args.span;
         let inner_complex = args.children.remove(0);
+        let inner_len = inner_complex.children.len();
         for (i, inner_rel) in inner_complex.children.into_iter().enumerate() {
                 let combinator = if i == 0 {
-                    outer_combinator
+                    promoted_first_combinator(outer_combinator, inner_rel.combinator, inner_len)
                 } else {
                     inner_rel.combinator
                 };
@@ -543,6 +532,48 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
         }
     }
     node.children = out;
+}
+
+fn is_expandable_global(rel: &RelativeSelector) -> bool {
+    if rel.selectors.len() != 1 {
+        return false;
+    }
+    let SimpleSelector::Global {
+        args: Some(args), ..
+    } = &rel.selectors[0]
+    else {
+        return false;
+    };
+    if args.children.len() != 1 {
+        return false;
+    }
+    let inner = &args.children[0];
+    if inner.children.len() > 1 {
+        return true;
+    }
+    if inner.children.len() == 1 {
+        return matches!(
+            inner.children[0].combinator,
+            Some(Combinator { kind, .. }) if kind != CombinatorKind::Descendant
+        );
+    }
+    false
+}
+
+fn promoted_first_combinator(
+    outer: Option<Combinator>,
+    inner: Option<Combinator>,
+    inner_len: usize,
+) -> Option<Combinator> {
+    if inner_len == 1 {
+        match (outer, inner) {
+            (None, Some(c)) => Some(c),
+            (Some(o), Some(i)) if o.kind == CombinatorKind::Descendant => Some(i),
+            _ => outer,
+        }
+    } else {
+        outer
+    }
 }
 
 fn unwrap_global(complex: &mut ComplexSelector) {

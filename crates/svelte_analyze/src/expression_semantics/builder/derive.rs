@@ -144,6 +144,7 @@ pub(super) fn kind(
     has_blockers: bool,
     is_dynamic: bool,
     evaluation: &Evaluation,
+    reactivity: &ReactivitySemantics,
 ) -> ExprKind {
     if facts.has_await || has_blockers {
         ExprKind::Async {
@@ -156,7 +157,9 @@ pub(super) fn kind(
         } else {
             ExprKind::Call { dynamic }
         }
-    } else if matches!(evaluation, Evaluation::Known(_)) {
+    } else if matches!(evaluation, Evaluation::Known(_))
+        && !references_optimized_rune(facts, reactivity)
+    {
         ExprKind::KnownLiteral
     } else if matches!(
         facts.top_level_form,
@@ -166,6 +169,15 @@ pub(super) fn kind(
     } else {
         ExprKind::Computed { reactive: is_dynamic }
     }
+}
+
+fn references_optimized_rune(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
+    facts.references.iter().any(|&sym| {
+        matches!(
+            reactivity.binding_semantics(sym),
+            BindingSemantics::OptimizedRune(_),
+        )
+    })
 }
 
 pub(super) fn legacy_wrap(

@@ -10,7 +10,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn process_statement_block(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
+        is_root: bool,
     ) {
+        if is_root {
+            self.split_top_level_multi_declarators(stmts);
+        }
         self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
@@ -22,6 +26,42 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.expand_state_destructuring(stmts);
 
         self.expand_legacy_state_destructuring(stmts);
+    }
+
+    fn split_top_level_multi_declarators(
+        &mut self,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
+    ) {
+        let mut i = 0;
+        while i < stmts.len() {
+            let needs_split = matches!(
+                &stmts[i],
+                Statement::VariableDeclaration(decl) if decl.declarations.len() > 1
+            );
+            if !needs_split {
+                i += 1;
+                continue;
+            }
+            let Statement::VariableDeclaration(boxed) = stmts.remove(i) else {
+                unreachable!()
+            };
+            let owned = boxed.unbox();
+            let kind = owned.kind;
+            let declare = owned.declare;
+            let span = owned.span;
+            let count = owned.declarations.len();
+            for (k, d) in owned.declarations.into_iter().enumerate() {
+                let mut decls = self.b.ast.vec_with_capacity(1);
+                decls.push(d);
+                let new_decl =
+                    self.b.ast.variable_declaration(span, kind, decls, declare);
+                stmts.insert(
+                    i + k,
+                    Statement::VariableDeclaration(self.b.alloc(new_decl)),
+                );
+            }
+            i += count;
+        }
     }
 
     fn strip_export_keywords(
