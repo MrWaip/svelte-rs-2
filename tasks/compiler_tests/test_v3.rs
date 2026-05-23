@@ -5311,6 +5311,12 @@ fn diagnose_legacy_each_bind_this_indexed_by_index_variable() {
 }
 
 #[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_legacy_each_store_bind_value_item_member() {
+    assert_compiler("diagnose_legacy_each_store_bind_value_item_member");
+}
+
+#[rstest]
 fn diagnose_video_muted_static_attribute_lowers_to_property() {
     assert_compiler("diagnose_video_muted_static_attribute_lowers_to_property");
 }
@@ -5691,4 +5697,16 @@ fn legacy_await_member_chain_promise() {
 #[rstest]
 fn legacy_await_call_with_state_arg() {
     assert_compiler("legacy_await_call_with_state_arg");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_css_custom_prop_component_concat_literal_const_fold() {
+    assert_compiler("diagnose_css_custom_prop_component_concat_literal_const_fold");
+}
+
+#[rstest]
+#[ignore = "diagnose: pending fix"]
+fn diagnose_slot_element_let_directive_alias_in_named_slot_fill() {
+    assert_compiler("diagnose_slot_element_let_directive_alias_in_named_slot_fill");
 }
