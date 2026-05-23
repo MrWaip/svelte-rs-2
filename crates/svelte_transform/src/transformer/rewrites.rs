@@ -108,6 +108,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_thunk_call(name.as_str());
                 true
             }
+            ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                *expr = self.make_rune_get(name.as_str());
+                true
+            }
             ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { symbol }) => {
                 let prop_name = analysis.binding_origin_key(symbol).unwrap_or_else(|| {
                     panic!(

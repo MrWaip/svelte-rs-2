@@ -4,6 +4,7 @@ import Row from "./Row.svelte";
 export default function App($$anchor, $$props) {
 	const $store = () => $.store_get(store(), "$store", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
+	const binding_group = [];
 	let store = $.prop($$props, "store", 8);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
@@ -13,17 +14,17 @@ export default function App($$anchor, $$props) {
 		{
 			var consequent = ($$anchor) => {
 				Row($$anchor, {
-					get value() {
-						return $.get(item).value;
+					get group() {
+						return $.get(item).tag;
 					},
-					set value($$value) {
-						$.get(item).value = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store");
+					set group($$value) {
+						$.get(item).tag = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store");
 					},
 					$$legacy: true
 				});
 			};
 			$.if(node_1, ($$render) => {
-				if ($.get(item), $.untrack(() => $.get(item).value)) $$render(consequent);
+				if ($.get(item), $.untrack(() => $.get(item).tag)) $$render(consequent);
 			});
 		}
 		$.append($$anchor, fragment_1);

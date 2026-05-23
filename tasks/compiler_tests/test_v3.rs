@@ -5311,9 +5311,18 @@ fn diagnose_legacy_each_bind_this_indexed_by_index_variable() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_each_store_bind_value_item_member() {
     assert_compiler("diagnose_legacy_each_store_bind_value_item_member");
+}
+
+#[rstest]
+fn diagnose_legacy_each_store_bind_checked_item_member() {
+    assert_compiler("diagnose_legacy_each_store_bind_checked_item_member");
+}
+
+#[rstest]
+fn diagnose_legacy_each_store_bind_group_item_member() {
+    assert_compiler("diagnose_legacy_each_store_bind_group_item_member");
 }
 
 #[rstest]

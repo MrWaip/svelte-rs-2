@@ -13,17 +13,17 @@ export default function App($$anchor, $$props) {
 		{
 			var consequent = ($$anchor) => {
 				Row($$anchor, {
-					get value() {
-						return $.get(item).value;
+					get checked() {
+						return $.get(item).enabled;
 					},
-					set value($$value) {
-						$.get(item).value = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store");
+					set checked($$value) {
+						$.get(item).enabled = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store");
 					},
 					$$legacy: true
 				});
 			};
 			$.if(node_1, ($$render) => {
-				if ($.get(item), $.untrack(() => $.get(item).value)) $$render(consequent);
+				if ($.get(item), $.untrack(() => $.get(item).enabled)) $$render(consequent);
 			});
 		}
 		$.append($$anchor, fragment_1);
