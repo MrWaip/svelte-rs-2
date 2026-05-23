@@ -39,6 +39,7 @@ jobs:
   build-platform:
     name: Pack Platform (${{ matrix.package_name }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || matrix.runner == 'ubuntu-24.04'
     strategy:
       fail-fast: false
       matrix:
