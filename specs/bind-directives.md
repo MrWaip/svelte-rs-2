@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: 44/44 use cases
-- **Tests**: 92/92 green
-- Last updated: 2026-05-20
+- **Working**: 49/49 use cases
+- **Tests**: 97/97 green
+- Last updated: 2026-05-23
 
 ## Source
 
@@ -81,6 +81,9 @@ ROADMAP.md — Bindings
 - [x] Component `bind:value` against a legacy implicit reactive declaration target (`$: value = expr;` in non-runes mode) compiles — analyze treats `LegacyState` and `LegacyBindableProp` as writable bind targets alongside `State` / `Prop` in `validate_bind_identifier_value` (test: `diagnose_legacy_bind_value_on_implicit_reactive_declaration`)
 - [x] Legacy `bind:this={refs[item.key]}` on an element inside `{#each items as item}` where `refs` is a top-level legacy `let` (mutable_source) emits the per-item form: `$.bind_this(div, ($$value, item) => $.mutate(refs, $.get(refs)[item.key] = $$value), (item) => $.get(refs)?.[item.key], () => [$.get(item)])` — the setter routes through `$.mutate` on the reactive container, the getter uses optional-chaining on `$.get(refs)`, and the trailing dependency thunk threads the each-item id into both callbacks. Currently emits the plain `($$value) => refs[item.key] = $$value`, `() => refs[item.key]` form with no `$.mutate`, no optional chain, and no item dep array. Test: `diagnose_legacy_each_bind_this_indexed_reactive`.
 - [x] Legacy `bind:this={refs[idx]}` on an element inside `{#each items as item, idx}` where `idx` is the each-block index identifier emits the dependency thunk with the bare local: `() => [idx]`, not `() => [$.get(idx)]`. The each-block index is a plain JS parameter of the render callback and never carries a `mutable_source`; the inner setter/getter closures already shadow `idx` correctly, only the trailing dep thunk needed routing through the existing reactive-dep dispatcher. Owner: 4 codegen — `try_emit_bind_this_each_reactive_member` in `crates/svelte_codegen_client/src/codegen/attributes/bind/this.rs` builds the dep-array per symbol through `build_reactive_dep_expr_legacy` in `expr.rs`, which already maps `Contextual(EachIndex(Direct))` → bare ident and `Contextual(*(Signal))` → `$.get(name)`. Test: `diagnose_legacy_each_bind_this_indexed_by_index_variable`.
+- [x] Component prop `bind:<name>={item.member}` inside `{#if item.member}` nested in a legacy `{#each $store as item (item.id)}` emits the getter `return $.get(item).<member>;`, not bare `return item.<member>;`. Setter side was already correct via `rewrite_each_item_member_store_invalidate_assignment` / `rewrite_legacy_each_item_member_assignment`; only the getter-side read was unwired. Owner: transform — `dispatch_identifier_read` in `crates/svelte_transform/src/transformer/rewrites.rs` gained an arm covering both `ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }` and `ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }` guarded by `!self.in_bind_setter_traverse`, emitting `make_rune_get(name)`. Family-wide: same arm closes `bind:value`, `bind:checked`, `bind:group` (all component-prop variants). Tests: `diagnose_legacy_each_store_bind_value_item_member`, `diagnose_legacy_each_store_bind_checked_item_member`, `diagnose_legacy_each_store_bind_group_item_member`.
+- [x] Element `bind:value={item.member}` on `<input>` inside legacy `{#each $store as item (item.id)}` emits `$.bind_value(input, () => $.get(item).<member>, ($$value) => ($.get(item).<member> = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store")))` — getter path closed by the same `dispatch_identifier_read` arm covering `LegacyEachItemMemberMutationRoot` / `EachItemMemberMutationStoreInvalidate` that the component-prop variants use; element-bind shares the same get/set traverse. (test: `diagnose_legacy_each_store_bind_value_element_item_member`)
+- [x] Element `bind:checked={item.member}` on `<input type="checkbox">` inside legacy `{#each $store as item (item.id)}` — same coverage; `$.bind_checked` getter/setter shapes share the same lowering path. (test: `diagnose_legacy_each_store_bind_checked_element_item_member`)
 
 ## Reference
 
@@ -149,6 +152,11 @@ ROADMAP.md — Bindings
 - [x] `bind_group_each_legacy_item_member_untrack`
 - [x] `diagnose_legacy_each_bind_this_indexed_reactive`
 - [x] `diagnose_legacy_each_bind_this_indexed_by_index_variable`
+- [x] `diagnose_legacy_each_store_bind_value_item_member`
+- [x] `diagnose_legacy_each_store_bind_checked_item_member`
+- [x] `diagnose_legacy_each_store_bind_group_item_member`
+- [x] `diagnose_legacy_each_store_bind_value_element_item_member`
+- [x] `diagnose_legacy_each_store_bind_checked_element_item_member`
 - [x] `props_bindable_checkbox_disabled_shorthand_ts`
 - [x] `svelte_document_bindings`
 - [x] `svelte_element_bind`

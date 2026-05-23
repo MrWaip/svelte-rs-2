@@ -5326,6 +5326,16 @@ fn diagnose_legacy_each_store_bind_group_item_member() {
 }
 
 #[rstest]
+fn diagnose_legacy_each_store_bind_value_element_item_member() {
+    assert_compiler("diagnose_legacy_each_store_bind_value_element_item_member");
+}
+
+#[rstest]
+fn diagnose_legacy_each_store_bind_checked_element_item_member() {
+    assert_compiler("diagnose_legacy_each_store_bind_checked_element_item_member");
+}
+
+#[rstest]
 fn diagnose_video_muted_static_attribute_lowers_to_property() {
     assert_compiler("diagnose_video_muted_static_attribute_lowers_to_property");
 }
