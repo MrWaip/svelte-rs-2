@@ -1,6 +1,7 @@
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, BindingPattern, Declaration, ForOfStatement,
-    Function, MethodDefinition, ModuleExportName, Program, Statement, VariableDeclarationKind,
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, Declaration, Expression,
+    ForOfStatement, Function, MethodDefinition, ModuleExportName, Program, Statement,
+    VariableDeclarationKind,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -42,15 +43,87 @@ pub(crate) fn resolve(
 }
 
 fn resolves_to_runes_via_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {
-    if scoping
-        .root_unresolved_references()
-        .keys()
-        .any(|name| is_rune_name(name))
-    {
+    let mut store_autosub_bases: FxHashSet<String> = FxHashSet::default();
+    collect_top_level_non_rune_init_names(parsed.module_program.as_ref(), &mut store_autosub_bases);
+    collect_top_level_non_rune_init_names(parsed.program.as_ref(), &mut store_autosub_bases);
+
+    if scoping.root_unresolved_references().keys().any(|name| {
+        if !is_rune_name(name) {
+            return false;
+        }
+        !store_autosub_bases.contains(&name[1..])
+    }) {
         return true;
     }
     has_top_level_await(parsed.module_program.as_ref())
         || has_top_level_await(parsed.program.as_ref())
+}
+
+fn collect_top_level_non_rune_init_names(
+    program: Option<&Program<'_>>,
+    out: &mut FxHashSet<String>,
+) {
+    let Some(program) = program else {
+        return;
+    };
+    for stmt in &program.body {
+        let decl = match stmt {
+            Statement::VariableDeclaration(d) => &**d,
+            Statement::ExportNamedDeclaration(e) => match &e.declaration {
+                Some(Declaration::VariableDeclaration(d)) => &**d,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        for declarator in &decl.declarations {
+            if init_is_rune_call(declarator.init.as_ref()) {
+                continue;
+            }
+            collect_pattern_name_strings(&declarator.id, out);
+        }
+    }
+}
+
+fn init_is_rune_call(init: Option<&Expression<'_>>) -> bool {
+    let Some(Expression::CallExpression(call)) = init else {
+        return false;
+    };
+    callee_is_rune(&call.callee)
+}
+
+fn callee_is_rune(callee: &Expression<'_>) -> bool {
+    match callee {
+        Expression::Identifier(id) => is_rune_name(id.name.as_str()),
+        Expression::StaticMemberExpression(member) => callee_is_rune(&member.object),
+        _ => false,
+    }
+}
+
+fn collect_pattern_name_strings(pattern: &BindingPattern<'_>, out: &mut FxHashSet<String>) {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => {
+            out.insert(id.name.to_string());
+        }
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                collect_pattern_name_strings(&prop.value, out);
+            }
+            if let Some(rest) = &obj.rest {
+                collect_pattern_name_strings(&rest.argument, out);
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for element in arr.elements.iter().flatten() {
+                collect_pattern_name_strings(element, out);
+            }
+            if let Some(rest) = &arr.rest {
+                collect_pattern_name_strings(&rest.argument, out);
+            }
+        }
+        BindingPattern::AssignmentPattern(assign) => {
+            collect_pattern_name_strings(&assign.left, out);
+        }
+    }
 }
 
 fn has_legacy_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {

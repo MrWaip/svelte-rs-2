@@ -32,6 +32,7 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub memo_decls: Vec<Statement<'a>>,
     pub ownership_bindings: Vec<OwnershipBinding<'a>>,
     pub bind_init_stmts: Vec<Statement<'a>>,
+    pub validate_binding_stmts: Vec<Statement<'a>>,
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
@@ -44,7 +45,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         el_id: NodeId,
         is_svelte_component_legacy: bool,
-        in_block_callback: bool,
+        initial_memo_counter: u32,
     ) -> Result<ComponentPropsOutput<'a>> {
         let mut out = ComponentPropsOutput {
             items: Vec::new(),
@@ -55,8 +56,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             memo_decls: Vec::new(),
             ownership_bindings: Vec::new(),
             bind_init_stmts: Vec::new(),
+            validate_binding_stmts: Vec::new(),
         };
-        let mut memo_counter: u32 = 0;
+        let mut memo_counter: u32 = initial_memo_counter;
 
         let attrs: Vec<Attribute> = match self
             .ctx
@@ -134,7 +136,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ea.expression.id(),
                         e.shorthand,
                         e.memo,
-                        in_block_callback,
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
@@ -153,7 +154,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &ca.parts,
                         c.memo,
                         &c.plan,
-                        in_block_callback,
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
@@ -181,7 +181,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
-                        self.emit_component_prop_string(&a.name, a.value_span, &mut out.items);
+                        let value = a.value(&self.ctx.query.component.source);
+                        self.emit_component_prop_string(&a.name, value, &mut out.items);
                     }
                     Attribute::BooleanAttribute(a) => {
                         self.emit_component_prop_boolean(&a.name, &mut out.items);
@@ -268,7 +269,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let Some(expr) = self.take_expr_by_ref(&d.expression) else {
                     return CodegenError::missing_expression(d.id);
                 };
-                self.emit_bind_member_expr(d.id, expr, &mut out.deferred_items)
+                self.emit_bind_member_expr(
+                    d,
+                    bind,
+                    expr,
+                    &mut out.deferred_items,
+                    &mut out.validate_binding_stmts,
+                )
             }
             ComponentBindKind::FunctionPair => {
                 let Some(expr) = self.take_expr_by_ref(&d.expression) else {

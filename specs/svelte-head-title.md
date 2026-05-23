@@ -1,9 +1,9 @@
 # `<svelte:head>` / `<title>`
 
 ## Current state
-- **Working**: 12/12 use cases
-- **Tests**: 17/17 green
-- Last updated: 2026-05-14
+- **Working**: 16/16 use cases
+- **Tests**: 21/21 green
+- Last updated: 2026-05-17
 
 ## Source
 
@@ -39,6 +39,10 @@
 - [x] Reject non-text / non-expression children inside `<title>` with `title_invalid_content`.
 - [x] Emit body template-fragment declaration (`var fragment = $.comment();` and analogues) BEFORE the `$.head(...)` call when component body root resolves to a `$.comment()` fragment (multi-root body, body that starts with `{#if}`/`{#each}`/`{#await}`/`{#key}`/`{#snippet}` consumer, etc.).
 - [x] Do not emit a stray `var fragment = $.comment();` after `var fragment = root();` when the component body mixes a `from_html` root template with a top-level `{@render ...}` snippet call and `<svelte:head>` is present — only the single `root()` fragment declaration should appear.
+- [x] `<svelte:head>` containing a `<script>` element inside a control-flow branch (e.g. `{#if}`) — fragment prepare injects a synthetic trailing `Comment` child when the only fragment child is a `<script>` element, so classification picks `Multi` and emit produces `var fragment_N = root_M(); var script = $.first_child(fragment_N); ... $.append($$anchor, fragment_N);` with `$.from_html(..., 1)` under `$.with_script`.
+- [x] Fragment / node id allocation order — when `<svelte:head>` body needs a `$.comment()` fragment AND the outer body also needs one, the `$.head(...)` callback must claim the unsuffixed `fragment` / `node` names first, with the outer body taking `fragment_1` / `node_1`. Currently we allocate outer first, swapping the suffixes. layer: codegen; repro/test: head_nested_if_with_body_if_id_order; candidate specs: svelte-head-title; suggested spec: svelte-head-title.
+- [x] Effect emit order inside `<svelte:head>` — `$.deferred_template_effect(() => { $.document.title = ... })` for `<title>` must come AFTER sibling `$.template_effect(...)` calls for reactive head children (e.g. `<meta content={x}/>`). Currently we emit the deferred title effect in source order, which puts it before sibling element effects. layer: codegen; repro/test: head_title_then_meta_effect_order; candidate specs: svelte-head-title; suggested spec: svelte-head-title.
+- [x] Inline `<script>` body containing a JS template literal — backticks and `${` inside the script source are embedded raw into the generated `$.from_html(\`...\`)` template literal, producing syntactically invalid JS. `template_str_expr` (`crates/svelte_ast_builder/src/builder/templates.rs:14`) calls `self.ast.atom(value)` without escaping ``\` `` or `${`. layer: codegen; repro/test: diagnose_head_inline_script_template_literal; candidate specs: svelte-head-title; suggested spec: svelte-head-title.
 
 ## Out of scope
 
@@ -84,3 +88,7 @@
 - [x] `svelte_meta_invalid_placement_head`
 - [x] `head_with_if_body`
 - [x] `head_with_render_and_component`
+- [x] `diagnose_head_script_in_if`
+- [x] `head_nested_if_with_body_if_id_order`
+- [x] `head_title_then_meta_effect_order`
+- [x] `diagnose_head_inline_script_template_literal`

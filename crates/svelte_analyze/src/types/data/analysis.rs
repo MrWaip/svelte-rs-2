@@ -5,6 +5,8 @@ use crate::types::data::DeclaratorSemantics;
 use crate::attribute_semantics::{AttributeSemanticsStore, data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics}};
 use crate::block_semantics::{BlockSemanticsStore, BlockSemantics, EachIndexKind, EachItemKind};
 use crate::expression_semantics::{ExpressionSemanticsStore, ExpressionSemantics, ExpressionData, ExprKind};
+use crate::utils::node_id_utils::expression_node_id;
+use oxc_ast::ast::Expression;
 use crate::passes::dynamism::DynamismData;
 use crate::passes::fragment_topology::fragment_items;
 use oxc_ast::ast::IdentifierReference;
@@ -232,6 +234,18 @@ impl<'a> AnalysisData<'a> {
             ExpressionSemantics::Expression(d) => Some(d),
             ExpressionSemantics::NonSpecial => None,
         }
+    }
+    pub fn expression_data_by_oxc(&self, id: OxcNodeId) -> Option<&ExpressionData> {
+        match self.expressions_v2.get_by_oxc(id) {
+            ExpressionSemantics::Expression(d) => Some(d),
+            ExpressionSemantics::NonSpecial => None,
+        }
+    }
+    pub fn expression_data_for(
+        &self,
+        expr: &Expression<'_>,
+    ) -> Option<&ExpressionData> {
+        self.expression_data_by_oxc(expression_node_id(expr))
     }
     pub fn expr_is_async(&self, id: NodeId) -> bool {
         self.expression_data(id).is_some_and(|d| {
@@ -591,7 +605,7 @@ impl<'a> AnalysisData<'a> {
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expression_data(id).is_some_and(|d| match d.kind {
             ExprKind::Async { has_await: true } => true,
-            ExprKind::Call => !d.references.is_empty(),
+            ExprKind::Call { dynamic } => dynamic,
             ExprKind::KnownLiteral
             | ExprKind::SimpleRead { .. }
             | ExprKind::Computed { .. }

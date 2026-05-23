@@ -1,0 +1,26 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Workflow migration: specs → PRD + Task Master tags",
+        "description": "Перевести весь workflow (skills, команды, все .md-документы, спеки) на схему PRD + 1-к-1 tag в Task Master перед стартом HMR/SSR.",
+        "details": "Цель: убить specs/* как task-tracker, сделать Task Master единственным трекером, PRD-файлы — единственной рамкой/контрактом.\n\n== Конвенции (фиксировать в CLAUDE.md / .taskmaster/README.md) ==\n- PRD-slug = Task Master tag (1-к-1)\n- В шапке PRD строка: label: <slug>\n- Одна задача — один tag, дублирование запрещено\n- parse_prd — однократная инициализация PRD; дальше только add_task / expand_task (perparse перетирает ручные задачи)\n- Стиль PRD: без чек-листов, без детального API (только имена типов/методов), «оборачивается в $.proxy» (не «проксируется»), «кодген на выходе» (не «эмитится»), секции Client emit + Server emit (заглушка → /audit), указывать .svelte.js/.ts применимость, ссылки на оригинал в reference/\n\n== Skills (.claude/skills/*) — все 26 пройти ==\nПереписать:\n- diagnose — failing test + add_task(tag=<slug>); не править PRD/specs\n- port — вход = tag-slug; get_tasks → pending → impl → снять #[ignore] → set_task_status done; гейты just test-compiler / test-diagnostics / lint\n- audit — создаёт PRD + первый набор задач (или deprecate)\n- to-prd / to-issues — выровнять с новой схемой (если оставляем)\nDeprecate / удалить:\n- spec-template\nПроверить, что не пишут в specs/:\n- add-test, add-diagnostic-test, tdd, fix-test, triage, quick-check\nНе трогать (вне scope миграции):\n- caveman, eli5, dump-ast, profile, legacy-conventions, write-a-skill, zoom-out, grill-it, grill-me, grill-with-docs, improve-codebase-architecture, diagnose-diagnostics, diagnose-matt, setup-matt-pocock-skills — пройти глазами и обновить только упоминания specs/\n\n== Commands (.claude/commands/*) ==\n- eli5.md / grill-it.md — проверить упоминания specs/\n\n== Документация (все ~170 .md-файлов в проекте) ==\nОбязательно пересмотреть:\n- CLAUDE.md — заменить упоминания specs/ на .taskmaster/docs/ + Task Master; зафиксировать workflow и конвенции\n- ARCHITECTURE.md (особенно §7.3) — specs/ → Task Master + PRDs\n- CONTEXT.md — упоминания specs/audit/port\n- ROADMAP.md — превратить в индекс PRD-файлов (ссылки на .taskmaster/docs/*.txt), без чекбоксов\n- debt.md — оставить как есть (это отдельный трекер), упоминания specs/ обновить\n- README.md (если есть) — синхронизировать\nПройтись остальным find . -name '*.md' -not -path ./reference/* -not -path ./node_modules/* -not -path ./target/*: ищем по подстрокам \"specs/\", \"spec-template\", \"/audit\", \"/port\", \"/diagnose\", чекбоксы — обновляем под новый workflow.\n\n== Миграция specs ==\n- Лениво, по мере касания фичи: spec → .taskmaster/docs/<slug>.txt + tag в TM; открытые [ ] → задачи в этом tag\n- Старые specs помечаются deprecated в шапке, удаляются по мере конверсии\n- В рамках этой задачи целиком specs/ НЕ конвертируем — только готовим инфраструктуру\n\n== Task Master конфигурация ==\n- Проверить .taskmaster/config.json: что нужно для tag-based workflow\n- Решить: parse_prd guard (как защитить от повторного запуска)\n- Документировать в .taskmaster/README.md\n\n== Порядок исполнения ==\n1. Зафиксировать конвенции в CLAUDE.md\n2. Обновить ARCHITECTURE.md / ROADMAP.md / CONTEXT.md / debt.md\n3. Пройтись по остальным .md (~170 файлов) — поиск по подстрокам, точечные правки\n4. Переписать diagnose, port, audit\n5. Пройтись по 26 skills — обновить упоминания specs/\n6. Проверить commands\n7. Обновить .taskmaster/README.md (новая шпаргалка по workflow)\n8. Обкатать на HMR (первый PRD в новой схеме)\n9. SSR\n\n== Definition of Done ==\n- В проекте не осталось упоминаний specs/ как activeтрекера (кроме самой папки specs/ — она живёт до полной миграции)\n- diagnose/port/audit работают через add_task / get_tasks / set_task_status\n- ROADMAP.md без чекбоксов\n- CLAUDE.md содержит полный документированный workflow\n- Можно завести новый PRD (HMR) и пройти от создания тега → задач → реализации без правок specs/",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-05-21T19:46:48.001Z",
+      "taskCount": 15,
+      "completedCount": 13,
+      "tags": [
+        "master"
+      ]
+    }
+  }
+}

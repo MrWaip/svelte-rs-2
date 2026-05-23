@@ -127,6 +127,11 @@ impl<'src> Scanner<'src> {
     }
 
     #[inline(always)]
+    pub fn source(&self) -> &'src str {
+        self.src
+    }
+
+    #[inline(always)]
     pub fn peek(&self) -> Token {
         self.tokens[self.pos]
     }

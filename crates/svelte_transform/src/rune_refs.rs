@@ -11,6 +11,7 @@ pub fn is_non_coercive_operator(op: AssignmentOperator) -> bool {
 }
 
 pub fn should_proxy(e: &Expression) -> bool {
+    let e = e.get_inner_expression();
     if e.is_literal() {
         return false;
     }

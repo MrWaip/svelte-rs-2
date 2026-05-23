@@ -76,58 +76,16 @@ fn eval_set(
             None => smallvec![EvalAtom::Unknown],
         },
         Expression::ParenthesizedExpression(p) => eval_set(&p.expression, ctx, guard),
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         _ => smallvec![EvalAtom::Unknown],
     }
 }
 
-fn expression_node_id(expr: &Expression<'_>) -> OxcNodeId {
-    use oxc_ast::ast::Expression::*;
-    match expr {
-        BooleanLiteral(e) => e.node_id(),
-        NullLiteral(e) => e.node_id(),
-        NumericLiteral(e) => e.node_id(),
-        BigIntLiteral(e) => e.node_id(),
-        RegExpLiteral(e) => e.node_id(),
-        StringLiteral(e) => e.node_id(),
-        TemplateLiteral(e) => e.node_id(),
-        Identifier(e) => e.node_id(),
-        MetaProperty(e) => e.node_id(),
-        Super(e) => e.node_id(),
-        ArrayExpression(e) => e.node_id(),
-        ArrowFunctionExpression(e) => e.node_id(),
-        AssignmentExpression(e) => e.node_id(),
-        AwaitExpression(e) => e.node_id(),
-        BinaryExpression(e) => e.node_id(),
-        CallExpression(e) => e.node_id(),
-        ChainExpression(e) => e.node_id(),
-        ClassExpression(e) => e.node_id(),
-        ConditionalExpression(e) => e.node_id(),
-        FunctionExpression(e) => e.node_id(),
-        ImportExpression(e) => e.node_id(),
-        LogicalExpression(e) => e.node_id(),
-        NewExpression(e) => e.node_id(),
-        ObjectExpression(e) => e.node_id(),
-        ParenthesizedExpression(e) => e.node_id(),
-        SequenceExpression(e) => e.node_id(),
-        TaggedTemplateExpression(e) => e.node_id(),
-        ThisExpression(e) => e.node_id(),
-        UnaryExpression(e) => e.node_id(),
-        UpdateExpression(e) => e.node_id(),
-        YieldExpression(e) => e.node_id(),
-        PrivateInExpression(e) => e.node_id(),
-        JSXElement(e) => e.node_id(),
-        JSXFragment(e) => e.node_id(),
-        TSAsExpression(e) => e.node_id(),
-        TSSatisfiesExpression(e) => e.node_id(),
-        TSTypeAssertion(e) => e.node_id(),
-        TSNonNullExpression(e) => e.node_id(),
-        TSInstantiationExpression(e) => e.node_id(),
-        V8IntrinsicExpression(e) => e.node_id(),
-        ComputedMemberExpression(e) => e.node_id(),
-        StaticMemberExpression(e) => e.node_id(),
-        PrivateFieldExpression(e) => e.node_id(),
-    }
-}
+use crate::utils::node_id_utils::expression_node_id;
 
 fn eval_call(
     c: &CallExpression<'_>,
@@ -289,7 +247,7 @@ fn eval_rune_call(
         },
         PropsId => smallvec![EvalAtom::Class(ValueClass::String)],
         EffectTracking => smallvec![EvalAtom::Class(ValueClass::Boolean)],
-        DerivedBy => match arg0 {
+        DerivedBy => match arg0.map(|e| e.get_inner_expression()) {
             Some(Expression::ArrowFunctionExpression(arrow)) if !arrow.body.is_empty() => {
                 if let Some(stmt) = arrow.body.statements.first()
                     && let Statement::ExpressionStatement(es) = stmt
@@ -306,7 +264,7 @@ fn eval_rune_call(
 }
 
 fn call_global_keypath(callee: &Expression<'_>, ctx: &EvalCtx<'_, '_>) -> Option<String> {
-    match callee {
+    match callee.get_inner_expression() {
         Expression::Identifier(id) => {
             if ctx.semantics.symbol_for_identifier_reference(id).is_some() {
                 return None;
@@ -314,7 +272,7 @@ fn call_global_keypath(callee: &Expression<'_>, ctx: &EvalCtx<'_, '_>) -> Option
             Some(id.name.to_string())
         }
         Expression::StaticMemberExpression(m) => {
-            let Expression::Identifier(obj) = &m.object else {
+            let Expression::Identifier(obj) = m.object.get_inner_expression() else {
                 return None;
             };
             if ctx.semantics.symbol_for_identifier_reference(obj).is_some() {
@@ -340,7 +298,7 @@ fn eval_new(
     n: &NewExpression<'_>,
     ctx: &EvalCtx<'_, '_>,
 ) -> EvalSet {
-    if let Expression::Identifier(callee) = &n.callee {
+    if let Expression::Identifier(callee) = n.callee.get_inner_expression() {
         let is_global = ctx
             .semantics
             .symbol_for_identifier_reference(callee)
@@ -357,7 +315,7 @@ fn eval_static_member(
     ctx: &EvalCtx<'_, '_>,
     _guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
-    if let Expression::Identifier(obj) = &m.object {
+    if let Expression::Identifier(obj) = m.object.get_inner_expression() {
         let prop = m.property.name.as_str();
         let obj_name = obj.name.as_str();
         let is_global = ctx
@@ -561,7 +519,7 @@ fn eval_identifier(
     let Some(&init_expr) = ctx.bindings_init.get(&sym) else {
         return smallvec![EvalAtom::Unknown];
     };
-    if let Expression::CallExpression(call) = init_expr
+    if let Expression::CallExpression(call) = init_expr.get_inner_expression()
         && detect_rune_from_call(call)
             == Some(RuneKind::PropsId)
     {

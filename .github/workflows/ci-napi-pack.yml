@@ -2,6 +2,7 @@ name: CI N-API Pack
 
 on:
   push:
+    branches: [master]
     paths:
       - '.github/workflows/ci-napi-pack.yml'
       - '.github/workflows/canary-publish.yml'
@@ -11,6 +12,7 @@ on:
       - 'packages/**'
       - 'scripts/set-canary-version.mjs'
   pull_request:
+    branches: [master]
     paths:
       - '.github/workflows/ci-napi-pack.yml'
       - '.github/workflows/canary-publish.yml'
@@ -21,18 +23,23 @@ on:
       - 'scripts/set-canary-version.mjs'
   workflow_dispatch:
 
+concurrency:
+  group: napi-pack-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: '22.13.0'
   RUST_CHANNEL: '1.94.1'
-  NPM_CONFIG_CACHE: ${{ github.workspace }}/.npm-cache
 
 jobs:
   build-platform:
     name: Pack Platform (${{ matrix.package_name }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || matrix.runner == 'ubuntu-24.04'
     strategy:
       fail-fast: false
       matrix:
@@ -40,17 +47,14 @@ jobs:
           - runner: ubuntu-24.04
             package_dir: packages/svelte-rs2-linux-x64-gnu
             package_name: '@mrwaip/svelte-rs2-linux-x64-gnu'
-            tarball_name: mrwaip-svelte-rs2-linux-x64-gnu-0.0.0-canary.0.tgz
           - runner: macos-15
             package_dir: packages/svelte-rs2-darwin-arm64
             package_name: '@mrwaip/svelte-rs2-darwin-arm64'
-            tarball_name: mrwaip-svelte-rs2-darwin-arm64-0.0.0-canary.0.tgz
           - runner: macos-15-intel
             package_dir: packages/svelte-rs2-darwin-x64
             package_name: '@mrwaip/svelte-rs2-darwin-x64'
-            tarball_name: mrwaip-svelte-rs2-darwin-x64-0.0.0-canary.0.tgz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust toolchain
         uses: moonrepo/setup-rust@v1
@@ -61,45 +65,55 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Run smoke tests
         run: node packages/svelte-rs2/scripts/smoke.mjs
 
       - name: Build release addon
-        run: cargo build -p napi_compiler --release
+        run: cargo build -p napi_compiler --release --locked
 
       - name: Prepare current platform package
         run: node packages/svelte-rs2/scripts/prepare-platform-package.mjs
 
       - name: Pack current platform package
-        run: npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP"
+        id: pack
+        shell: bash
+        run: |
+          OUTPUT=$(npm pack "./${{ matrix.package_dir }}" --pack-destination "$RUNNER_TEMP" --json)
+          FILENAME=$(node -e "process.stdout.write(JSON.parse(process.argv[1])[0].filename)" "$OUTPUT")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
 
       - name: Verify tarball contains native addon
         shell: bash
-        run: |
-          TARBALL="$RUNNER_TEMP/${{ matrix.tarball_name }}"
-          tar -tzf "$TARBALL" | grep 'package/svelte-rs2.node'
+        run: tar -tzf "${{ steps.pack.outputs.tarball }}" | grep 'package/svelte-rs2.node'
 
   pack-main:
     name: Pack Main Package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Pack main package
-        run: npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP"
+        id: pack
+        shell: bash
+        run: |
+          OUTPUT=$(npm pack ./packages/svelte-rs2 --pack-destination "$RUNNER_TEMP" --json)
+          FILENAME=$(node -e "process.stdout.write(JSON.parse(process.argv[1])[0].filename)" "$OUTPUT")
+          echo "tarball=$RUNNER_TEMP/$FILENAME" >> "$GITHUB_OUTPUT"
 
       - name: Verify main package tarball
         shell: bash
         run: |
-          TARBALL="$RUNNER_TEMP/mrwaip-svelte-rs2-0.0.0-canary.0.tgz"
+          TARBALL="${{ steps.pack.outputs.tarball }}"
           tar -tzf "$TARBALL" | grep 'package/compiler/index.js'
           tar -tzf "$TARBALL" | grep 'package/compiler/index.d.ts'

@@ -8,7 +8,7 @@ mod containers;
 pub(in crate::codegen) mod data_structures;
 mod dev;
 mod effect;
-mod expr;
+pub(crate) mod expr;
 mod fragment;
 mod hoisted;
 mod let_directive_legacy;
@@ -62,7 +62,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             after_update,
             root_var,
             special_elements,
-            memo_attrs,
             shared_memo,
             script_blockers,
             extra_blockers,
@@ -77,7 +76,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx,
             &mut body,
             update,
-            memo_attrs,
             shared_memo,
             script_blockers,
             extra_blockers,

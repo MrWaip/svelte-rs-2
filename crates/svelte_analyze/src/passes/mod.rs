@@ -38,6 +38,8 @@ pub(crate) enum PassKey {
     BuildFragmentTopology,
     ReactivityWalk,
     TemplateClassificationWalk,
+    BuildExpressionSemantics,
+    BuildAttributeSemantics,
     BuildBlockSemantics,
     ValidateTemplate,
     Validate,
@@ -58,6 +60,8 @@ pub(crate) enum DataToken {
     NeedsContext,
     PostResolve,
     ReactivitySemantics,
+    ExpressionSemantics,
+    AttributeSemantics,
     BlockSemantics,
     FragmentTopology,
     Reactivity,
@@ -136,7 +140,10 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::BuildFragmentTopology,
-        requires: &[DataToken::ReactivitySemantics],
+        requires: &[
+            DataToken::ReactivitySemantics,
+            DataToken::AttributeSemantics,
+        ],
         produces: &[DataToken::FragmentTopology],
     },
     PassDescriptor {
@@ -150,10 +157,24 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::TemplateClassification],
     },
     PassDescriptor {
+        key: PassKey::BuildExpressionSemantics,
+        requires: &[DataToken::ReactivitySemantics, DataToken::PostResolve],
+        produces: &[DataToken::ExpressionSemantics],
+    },
+    PassDescriptor {
+        key: PassKey::BuildAttributeSemantics,
+        requires: &[
+            DataToken::ReactivitySemantics,
+            DataToken::ExpressionSemantics,
+        ],
+        produces: &[DataToken::AttributeSemantics],
+    },
+    PassDescriptor {
         key: PassKey::BuildBlockSemantics,
         requires: &[
             DataToken::ReactivitySemantics,
             DataToken::TemplateClassification,
+            DataToken::ExpressionSemantics,
         ],
         produces: &[DataToken::BlockSemantics],
     },
@@ -186,6 +207,8 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
     PassKey::ClassifyNeedsContext,
     PassKey::PostResolve,
+    PassKey::BuildExpressionSemantics,
+    PassKey::BuildAttributeSemantics,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[

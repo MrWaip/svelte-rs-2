@@ -146,8 +146,13 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                         args.push(Arg::Num(flags as f64));
                                     }
                                 }
-                                PropDefaultEmit::Eager | PropDefaultEmit::Lazy => {
-                                    if matches!(default_lowering, PropDefaultEmit::Lazy) {
+                                PropDefaultEmit::Eager
+                                | PropDefaultEmit::Lazy
+                                | PropDefaultEmit::LazyAccessor => {
+                                    if matches!(
+                                        default_lowering,
+                                        PropDefaultEmit::Lazy | PropDefaultEmit::LazyAccessor
+                                    ) {
                                         flags |= PROPS_IS_LAZY_INITIAL;
                                     }
                                     args.push(Arg::Num(flags as f64));
@@ -293,15 +298,20 @@ fn prop_assignment_default_expr<'a>(
         return Some(expr);
     }
 
-    let Expression::CallExpression(mut call) = expr else {
+    let is_bindable_call = matches!(
+        expr.get_inner_expression(),
+        Expression::CallExpression(c)
+            if matches!(
+                c.callee.get_inner_expression(),
+                Expression::Identifier(id) if id.name.as_str() == BINDABLE_RUNE_NAME,
+            )
+    );
+    if !is_bindable_call {
         return Some(expr);
-    };
-    let Expression::Identifier(ident) = &call.callee else {
-        return Some(Expression::CallExpression(call));
-    };
-    if ident.name.as_str() != BINDABLE_RUNE_NAME {
-        return Some(Expression::CallExpression(call));
     }
+    let Expression::CallExpression(mut call) = expr.into_inner_expression() else {
+        return None;
+    };
 
     call.arguments.drain(..).next().and_then(|arg| match arg {
         Argument::SpreadElement(_) => None,

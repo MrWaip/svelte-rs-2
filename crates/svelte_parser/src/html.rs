@@ -8,6 +8,14 @@ const WINDOWS_1252: [u32; 32] = [
 const MAX_ENTITY_LEN: usize = 40;
 
 pub(crate) fn decode_text(input: &str) -> Option<String> {
+    decode_with_mode(input, false)
+}
+
+pub(crate) fn decode_attribute_value(input: &str) -> Option<String> {
+    decode_with_mode(input, true)
+}
+
+fn decode_with_mode(input: &str, is_attribute_value: bool) -> Option<String> {
     let bytes = input.as_bytes();
     let first = memchr::memchr(b'&', bytes)?;
 
@@ -17,7 +25,7 @@ pub(crate) fn decode_text(input: &str) -> Option<String> {
     let mut changed = false;
 
     loop {
-        if let Some((decoded, consumed)) = decode_entity(&input[cursor + 1..]) {
+        if let Some((decoded, consumed)) = decode_entity(&input[cursor + 1..], is_attribute_value) {
             out.push(decoded);
             cursor += 1 + consumed;
             changed = true;
@@ -43,12 +51,12 @@ pub(crate) fn decode_text(input: &str) -> Option<String> {
     Some(out)
 }
 
-fn decode_entity(rest: &str) -> Option<(char, usize)> {
+fn decode_entity(rest: &str, is_attribute_value: bool) -> Option<(char, usize)> {
     if let Some(decoded) = decode_numeric_entity(rest) {
         return Some(decoded);
     }
 
-    decode_named_entity(rest)
+    decode_named_entity(rest, is_attribute_value)
 }
 
 fn decode_numeric_entity(rest: &str) -> Option<(char, usize)> {
@@ -84,7 +92,7 @@ fn decode_numeric_entity(rest: &str) -> Option<(char, usize)> {
     Some((decoded, consumed))
 }
 
-fn decode_named_entity(rest: &str) -> Option<(char, usize)> {
+fn decode_named_entity(rest: &str, is_attribute_value: bool) -> Option<(char, usize)> {
     let bytes = rest.as_bytes();
     let limit = bytes.len().min(MAX_ENTITY_LEN);
     let ascii_len = bytes[..limit].iter().take_while(|b| b.is_ascii()).count();
@@ -93,6 +101,17 @@ fn decode_named_entity(rest: &str) -> Option<(char, usize)> {
     for end in 1..=ascii_len {
         let candidate = &rest[..end];
         if let Ok(index) = NAMED_ENTITIES.binary_search_by_key(&candidate, |(name, _)| *name) {
+            let name = NAMED_ENTITIES[index].0;
+            if is_attribute_value && !name.ends_with(';') {
+                let next = bytes.get(end).copied();
+                let blocks = match next {
+                    None => false,
+                    Some(b) => b == b'=' || b.is_ascii_alphanumeric(),
+                };
+                if blocks {
+                    continue;
+                }
+            }
             best = Some((NAMED_ENTITIES[index].1, end));
         }
     }
@@ -120,7 +139,7 @@ fn validate_code(code: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_text;
+    use super::{decode_attribute_value, decode_text};
 
     #[test]
     fn decodes_named_entities_in_text() {
@@ -153,5 +172,41 @@ mod tests {
             decode_text("a&nbsp;\u{42f}b\u{2603}c"),
             Some("a\u{a0}\u{42f}b\u{2603}c".into()),
         );
+    }
+
+    #[test]
+    fn attr_decodes_terminated_entities() {
+        assert_eq!(
+            decode_attribute_value("a&nbsp;b&amp;c&lt;d"),
+            Some("a\u{a0}b&c<d".into()),
+        );
+    }
+
+    #[test]
+    fn attr_keeps_unterminated_entity_when_followed_by_equals() {
+        assert_eq!(decode_attribute_value("&amp=q"), None);
+        assert_eq!(decode_attribute_value("&nbsp=q"), None);
+    }
+
+    #[test]
+    fn attr_keeps_unterminated_entity_when_followed_by_alnum() {
+        assert_eq!(decode_attribute_value("&ampoule"), None);
+    }
+
+    #[test]
+    fn attr_decodes_unterminated_entity_at_word_boundary() {
+        assert_eq!(decode_attribute_value("&lt foo"), Some("< foo".into()));
+        assert_eq!(decode_attribute_value("&copy bar"), Some("\u{a9} bar".into()));
+    }
+
+    #[test]
+    fn attr_decodes_unterminated_entity_at_end_of_input() {
+        assert_eq!(decode_attribute_value("&nbsp"), Some("\u{a0}".into()));
+    }
+
+    #[test]
+    fn attr_decodes_numeric_entity_without_semicolon() {
+        assert_eq!(decode_attribute_value("&#38"), Some("&".into()));
+        assert_eq!(decode_attribute_value("&#x3c;"), Some("<".into()));
     }
 }

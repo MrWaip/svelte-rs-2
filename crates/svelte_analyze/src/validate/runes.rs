@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::mem;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
-    BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentPattern,
+    AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
     ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
     IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
     MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey,
@@ -20,12 +20,20 @@ use oxc_ast_visit::walk::{
     walk_static_member_expression,
 };
 use oxc_span::GetSpan;
+use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::{detect_rune, detect_rune_from_call};
 use crate::validate::span_already_taken;
 use crate::{AnalysisData, BindingSemantics, StateDeclarationSemantics, StateKind, PropBindingKind, PropBindingSemantics, types::script::RuneKind};
+
+fn is_direct_bindable_call(expr: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
+        return false;
+    };
+    matches!(detect_rune_from_call(call), Some(RuneKind::Bindable))
+}
 
 fn is_this_member_assign(target: &AssignmentTarget<'_>) -> bool {
     let object = match target {
@@ -34,7 +42,7 @@ fn is_this_member_assign(target: &AssignmentTarget<'_>) -> bool {
         AssignmentTarget::ComputedMemberExpression(m) => &m.object,
         _ => return false,
     };
-    matches!(object, Expression::ThisExpression(_))
+    matches!(object.get_inner_expression(), Expression::ThisExpression(_))
 }
 
 pub(super) fn validate(
@@ -129,6 +137,8 @@ struct RuneValidator<'a> {
 
     in_props_destructure: bool,
 
+    in_props_default_position: bool,
+
     is_instance_script: bool,
     custom_element: bool,
 }
@@ -152,6 +162,7 @@ impl RuneValidator<'_> {
             function_depth: 0,
             has_props_rune: false,
             has_props_id: false,
+            in_props_default_position: false,
             in_props_destructure: false,
             is_instance_script,
             custom_element: data.output.is_custom_element_target,
@@ -205,10 +216,10 @@ impl RuneValidator<'_> {
     }
 
     fn check_deprecated_rune(&mut self, call: &CallExpression<'_>) -> bool {
-        let Expression::StaticMemberExpression(member) = &call.callee else {
+        let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
             return false;
         };
-        let Expression::Identifier(obj) = &member.object else {
+        let Expression::Identifier(obj) = member.object.get_inner_expression() else {
             return false;
         };
         if obj.name != "$state" {
@@ -497,6 +508,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         let is_expr_stmt = mem::replace(&mut self.in_expression_statement_expr, false);
+        let allowed_bindable_position = mem::take(&mut self.in_props_default_position);
 
         if self.check_deprecated_rune(call) {
             return;
@@ -674,7 +686,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                     self.span(call.span),
                 ));
             }
-            if !self.in_props_destructure {
+            if !allowed_bindable_position {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::BindableInvalidLocation,
                     self.span(call.span),
@@ -741,6 +753,14 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         }
 
         walk_call_expression(self, call);
+    }
+
+    fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
+        self.visit_binding_pattern(&pat.left);
+        let allow = self.in_props_destructure && is_direct_bindable_call(&pat.right);
+        let prev = mem::replace(&mut self.in_props_default_position, allow);
+        self.visit_expression(&pat.right);
+        self.in_props_default_position = prev;
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
@@ -892,7 +912,7 @@ fn is_props_illegal_name_member(
     member: &StaticMemberExpression<'_>,
     data: &AnalysisData<'_>,
 ) -> bool {
-    let Expression::Identifier(obj) = &member.object else {
+    let Expression::Identifier(obj) = member.object.get_inner_expression() else {
         return false;
     };
     if !member.property.name.starts_with("$$") {
@@ -913,4 +933,60 @@ fn is_props_illegal_name_member(
             ..
         }),
     )
+}
+
+pub fn validate_const_tag_runes(
+    component: &Component,
+    parsed: &crate::types::data::JsAst,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for node in component.store.iter_nodes() {
+        let svelte_ast::Node::ConstTag(tag) = node else {
+            continue;
+        };
+        let Some(stmt) = parsed.stmt(tag.decl.id()) else {
+            continue;
+        };
+        let Statement::VariableDeclaration(decl) = stmt else {
+            continue;
+        };
+        for declarator in &decl.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+            let mut probe = ConstTagRuneProbe { diags };
+            probe.visit_expression(init);
+        }
+    }
+}
+
+struct ConstTagRuneProbe<'d> {
+    diags: &'d mut Vec<Diagnostic>,
+}
+
+impl<'a> Visit<'a> for ConstTagRuneProbe<'_> {
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if let Some(rune) = detect_rune_from_call(call) {
+            let span = Span::new(call.span.start, call.span.end);
+            let kind = match rune {
+                RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy => {
+                    Some(DiagnosticKind::StateInvalidPlacement {
+                        rune: rune.display_name().into(),
+                    })
+                }
+                RuneKind::Props => Some(DiagnosticKind::PropsInvalidPlacement),
+                RuneKind::PropsId => Some(DiagnosticKind::PropsIdInvalidPlacement),
+                RuneKind::Bindable => Some(DiagnosticKind::BindableInvalidLocation),
+                RuneKind::Host => Some(DiagnosticKind::HostInvalidPlacement),
+                RuneKind::Effect | RuneKind::EffectPre => {
+                    Some(DiagnosticKind::EffectInvalidPlacement)
+                }
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                self.diags.push(Diagnostic::error(kind, span));
+            }
+        }
+        walk_call_expression(self, call);
+    }
 }

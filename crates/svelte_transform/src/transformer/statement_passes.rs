@@ -11,8 +11,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
     ) {
-        self.strip_ts_specifiers_and_statements(stmts);
-
         self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);

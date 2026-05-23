@@ -31,6 +31,7 @@ const FROZEN_APIS: &[(&str, &str, &[&str])] = &[
             "legacy_has_member_mutated",
             "legacy_reactive",
             "uses_runes",
+            "runes_mode",
             "uses_props_rune",
             "uses_rest_props",
             "uses_dollar_dollar_props",

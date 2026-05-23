@@ -1,4 +1,4 @@
-use oxc_ast::ast::IdentifierReference;
+use oxc_ast::ast::{Expression, IdentifierReference};
 use svelte_component_semantics::{OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
@@ -66,6 +66,18 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             ExpressionSemantics::NonSpecial => None,
         }
     }
+    pub fn expression_data_by_oxc(
+        &self,
+        id: SemOxcNodeId,
+    ) -> Option<&ExpressionData> {
+        self.data.expression_data_by_oxc(id)
+    }
+    pub fn expression_data_for(
+        &self,
+        expr: &Expression<'_>,
+    ) -> Option<&ExpressionData> {
+        self.data.expression_data_for(expr)
+    }
     pub fn exports(&self) -> &[ExportInfo] {
         &self.data.script.exports
     }
@@ -92,18 +104,49 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
-        self.data
-            .reactivity
-            .legacy_bindable_prop_symbols()
+        let key_for = |sym| {
+            self.data
+                .scoping
+                .binding_origin_key(sym)
+                .unwrap_or_else(|| self.data.scoping.symbol_name(sym))
+                .to_string()
+        };
+        let exported_symbols: Vec<SymbolId> = self
+            .data
+            .script
+            .exports
             .iter()
-            .map(|&sym| {
+            .filter_map(|exp| {
+                let instance_scope = self.data.scoping.instance_scope_id()?;
                 self.data
                     .scoping
-                    .binding_origin_key(sym)
-                    .unwrap_or_else(|| self.data.scoping.symbol_name(sym))
-                    .to_string()
+                    .find_binding(instance_scope, exp.name.as_str())
             })
-            .collect()
+            .collect();
+        let is_variant = |sym: SymbolId, want_api: bool| match self
+            .data
+            .reactivity
+            .binding_semantics(sym)
+        {
+            crate::BindingSemantics::LegacyApiExport => want_api,
+            crate::BindingSemantics::LegacyBindableProp(_) => !want_api,
+            _ => false,
+        };
+        let mut keys: Vec<String> = exported_symbols
+            .iter()
+            .copied()
+            .filter(|&sym| is_variant(sym, true))
+            .map(key_for)
+            .collect();
+        keys.extend(
+            self.data
+                .reactivity
+                .legacy_bindable_prop_symbols()
+                .iter()
+                .copied()
+                .map(key_for),
+        );
+        keys
     }
     pub fn custom_element_slot_names(&self) -> &[String] {
         self.data.custom_element_slot_names()

@@ -2,6 +2,8 @@ use svelte_ast::{Attribute, ComponentNode, Element, is_mathml, is_svg, is_void};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::attribute_semantics::data::ComponentPropMemo;
+use crate::expression_semantics::ExprKind;
 use crate::types::data::{
     BindingSemantics, BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
     ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
@@ -279,17 +281,23 @@ impl<'src> ElementFlagsVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = css_prop_name {
-                let value = match attr {
+                let (value, memo) = match attr {
                     Attribute::ExpressionAttribute(a) => {
-                        Some(ComponentCssPropValue::Expression(a.expression.id()))
+                        let memo = derive_css_prop_memo(data, a.id);
+                        (
+                            Some(ComponentCssPropValue::Expression(a.expression.id())),
+                            memo,
+                        )
                     }
-                    Attribute::StringAttribute(a) => {
-                        Some(ComponentCssPropValue::StaticString(a.value_span))
-                    }
-                    Attribute::ConcatenationAttribute(_) => {
-                        Some(ComponentCssPropValue::Concatenation)
-                    }
-                    _ => None,
+                    Attribute::StringAttribute(a) => (
+                        Some(ComponentCssPropValue::StaticString(a.value_span)),
+                        ComponentPropMemo::Inline,
+                    ),
+                    Attribute::ConcatenationAttribute(_) => (
+                        Some(ComponentCssPropValue::Concatenation),
+                        ComponentPropMemo::Inline,
+                    ),
+                    _ => (None, ComponentPropMemo::Inline),
                 };
                 if let Some(value) = value {
                     data.elements
@@ -300,6 +308,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                             name: name.to_string(),
                             attr_id: attr.id(),
                             value,
+                            memo,
                         });
                 }
                 continue;
@@ -461,5 +470,17 @@ impl<'src> ElementFlagsVisitor<'src> {
                 .get_or_default(cn_id)
                 .push(ComponentPropInfo { kind, is_dynamic });
         }
+    }
+}
+
+fn derive_css_prop_memo(
+    data: &crate::types::data::AnalysisData,
+    attr_id: svelte_ast::NodeId,
+) -> ComponentPropMemo {
+    match data.expression_data(attr_id) {
+        Some(d) if matches!(d.kind, ExprKind::Call { .. } | ExprKind::Async { .. }) => {
+            ComponentPropMemo::Derived
+        }
+        _ => ComponentPropMemo::Inline,
     }
 }

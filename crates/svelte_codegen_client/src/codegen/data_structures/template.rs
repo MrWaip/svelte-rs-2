@@ -181,6 +181,7 @@ fn escape_html_attr(s: &str) -> String {
         match ch {
             '&' => out.push_str("&amp;"),
             '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
             _ => out.push(ch),
         }
     }

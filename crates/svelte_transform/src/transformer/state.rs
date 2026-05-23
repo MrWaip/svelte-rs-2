@@ -427,7 +427,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 }
             }
             BindingPattern::ArrayPattern(arr) => {
-                let array_name = self.gen_unique_name("$$array");
+                let array_name = self.ident_gen.generate("$$array");
                 let array_name_str: &str = self.b.alloc_str(&array_name);
 
                 let len_arg = if arr.rest.is_some() {
@@ -524,6 +524,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         rune_kind: RuneKind,
         is_signal_source: bool,
     ) -> Expression<'a> {
+        let value = value.into_inner_expression();
         match rune_kind {
             RuneKind::State => {
                 let proxied = if rune_refs::should_proxy(&value) {
@@ -697,7 +698,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 }
             }
             BindingPattern::ArrayPattern(arr) => {
-                let array_name = self.gen_unique_name("$$array");
+                let array_name = self.ident_gen.generate("$$array");
                 let array_name_str = self.b.alloc_str(&array_name);
 
                 let len_arg = if arr.rest.is_some() {
@@ -762,7 +763,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     pub(crate) fn property_key_name(key: &PropertyKey<'_>) -> Option<String> {
-        property_key_static_name(key).map(str::to_string)
+        property_key_static_name(key).map(|s| s.into_owned())
     }
 
     pub(crate) fn build_object_member_access(
@@ -1011,6 +1012,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
     fn rewrite_private_field_callee(&self, prop: &mut PropertyDefinition<'a>) {
         let rune_kind = self.class_field_rune_kind(prop.node_id());
+        if let Some(value) = prop.value.take() {
+            prop.value = Some(value.into_inner_expression());
+        }
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
             match rune_kind {
                 Some(RuneKind::State | RuneKind::StateRaw) => {
@@ -1056,7 +1060,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         field_info: &ClassStateField,
         name: &str,
     ) {
-        let arg = if let Some(Expression::CallExpression(mut call)) = prop.value.take() {
+        let arg = if let Some(Expression::CallExpression(mut call)) =
+            prop.value.take().map(|v| v.into_inner_expression())
+        {
             if call.arguments.is_empty() {
                 None
             } else {
@@ -1283,6 +1289,6 @@ fn derived_destructure_emit(
         BindingSemantics::Store(_) => None,
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => None,
         BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => None,
-        BindingSemantics::Unresolved => None,
+        BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => None,
     }
 }

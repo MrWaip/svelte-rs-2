@@ -1,15 +1,18 @@
 use super::super::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
-use super::common::expression_async_facts;
 use super::walker::Ctx;
+use crate::expression_semantics::{ExprKind, ExpressionSemantics};
 use smallvec::SmallVec;
 use svelte_ast::KeyBlock;
 
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
     ctx.visit_fragment(block.fragment);
 
-    let (has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
-        Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
-        None => (false, SmallVec::new()),
+    let (has_await, blockers) = match ctx.expressions.get(block.id) {
+        ExpressionSemantics::Expression(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            (has_await, d.blockers.clone())
+        }
+        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
     };
 
     let async_kind = if !has_await && blockers.is_empty() {

@@ -10,7 +10,7 @@ use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
     ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
-    LegacyStateSemantics, SnippetParamStrategy,
+    LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -143,10 +143,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         for sym in syms.iter().copied() {
             ctx.data
                 .reactivity
-                .record_const_binding(sym, is_destructured);
-            if is_destructured {
-                ctx.data.reactivity.record_const_alias_owner(sym, tag.id);
-            }
+                .record_const_binding(sym, is_destructured, tag.id);
         }
     }
 
@@ -575,7 +572,10 @@ pub(super) fn classify_contextual_read_kind(
         }
         ContextualBindingSemantics::AwaitValue => ContextualReadKind::AwaitValue,
         ContextualBindingSemantics::AwaitError => ContextualReadKind::AwaitError,
-        ContextualBindingSemantics::LetDirective => ContextualReadKind::LetDirective,
+        ContextualBindingSemantics::LetDirective
+        | ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => {
+            ContextualReadKind::LetDirective
+        }
         ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
             ContextualReadKind::SnippetParam {
                 accessor: true,
@@ -620,11 +620,20 @@ fn run_each_index_marker<'a>(
     let Some(stmt) = block.index.as_ref().and_then(|r| parsed.stmt(r.id())) else {
         return;
     };
+    let idx_name = declarator_from_stmt_local(stmt)
+        .and_then(|d| d.id.get_binding_identifier())
+        .map(|ident| ident.name.as_str());
+    let key_is_index = match (block.key.as_ref(), idx_name) {
+        (Some(r), Some(name)) => parsed
+            .expr(r.id())
+            .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::Identifier(ident) if ident.name.as_str() == name)),
+        _ => false,
+    };
     let mut marker = EachIndexMarker {
         data: ctx.data,
         staging,
         owner_node: block.id,
-        mark_non_reactive: block.key.is_none(),
+        mark_non_reactive: block.key.is_none() || key_is_index,
     };
     marker.visit_statement(stmt);
 }
@@ -662,7 +671,18 @@ fn each_collection_has_external_deps(
     let mut collector = ExprRefCollector { refs: Vec::new() };
     collector.visit_expression(expr);
     for ref_id in collector.refs {
-        let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+        let sym = ctx
+            .data
+            .scoping
+            .get_reference(ref_id)
+            .symbol_id()
+            .or_else(|| match ctx.data.reactivity.reference_semantics(ref_id) {
+                ReferenceSemantics::StoreRead { symbol }
+                | ReferenceSemantics::StoreWrite { symbol }
+                | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+                _ => None,
+            });
+        let Some(sym) = sym else {
             continue;
         };
         let decl_scope = ctx.data.scoping.symbol_scope_id(sym);
@@ -721,7 +741,7 @@ fn mark_key_is_item_each_binding(
     };
     let key_resolves_to_ctx = parsed
         .expr(key_ref.id())
-        .and_then(|expr| match expr {
+        .and_then(|expr| match expr.get_inner_expression() {
             Expression::Identifier(ident) => ident.reference_id.get(),
             _ => None,
         })
@@ -777,6 +797,9 @@ impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
         self.record_declaration(sym_id);
         if self.classify_leaves {
             self.data.reactivity.mark_each_rest(sym_id);
+            if !self.in_default {
+                self.staging.mark_getter(sym_id);
+            }
         }
     }
 

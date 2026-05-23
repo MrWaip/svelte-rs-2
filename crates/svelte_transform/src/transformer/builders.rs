@@ -3,22 +3,19 @@ use oxc_ast::ast::{Argument, Expression, NumberBase};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
+use svelte_emit_builders::props::props_member;
+use svelte_emit_builders::runes::{member_get_via_get, rune_get, rune_safe_get, rune_set};
+use svelte_emit_builders::runtime::{thunk_call, untrack_ident};
 
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn make_rune_get(&self, name: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("get");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
-        ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
+        rune_get(self.b, name)
     }
 
     pub(crate) fn make_rune_safe_get(&self, name: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("safe_get");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
-        ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
+        rune_safe_get(self.b, name)
     }
 
     pub(crate) fn make_rune_set(
@@ -27,28 +24,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         value: Expression<'a>,
         proxy: bool,
     ) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("set");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
-        let value_arg = Argument::from(value);
-        if proxy {
-            let true_arg = Argument::from(ast.expression_boolean_literal(SPAN, true));
-            ast.expression_call(
-                SPAN,
-                callee,
-                NONE,
-                ast.vec_from_array([name_arg, value_arg, true_arg]),
-                false,
-            )
-        } else {
-            ast.expression_call(
-                SPAN,
-                callee,
-                NONE,
-                ast.vec_from_array([name_arg, value_arg]),
-                false,
-            )
-        }
+        rune_set(self.b, name, value, proxy)
     }
 
     pub(crate) fn make_rune_update(
@@ -78,27 +54,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     pub(crate) fn make_thunk_call(&self, name: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = ast.expression_identifier(SPAN, ast.atom(name));
-        ast.expression_call(SPAN, callee, NONE, ast.vec(), false)
+        thunk_call(self.b, name)
     }
 
     pub(crate) fn make_member_get(&self, signal_name: &str, prop: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let get_call = self.make_rune_get(signal_name);
-        let property = ast.identifier_name(SPAN, ast.atom(prop));
-        Expression::StaticMemberExpression(
-            ast.alloc(ast.static_member_expression(SPAN, get_call, property, false)),
-        )
+        member_get_via_get(self.b, signal_name, prop)
     }
 
     pub(crate) fn make_props_access(&self, prop_name: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
-        let property = ast.identifier_name(SPAN, ast.atom(prop_name));
-        Expression::StaticMemberExpression(
-            ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
-        )
+        props_member(self.b, prop_name)
     }
 
     pub(crate) fn make_eager_thunk(&self, arg: Expression<'a>) -> Expression<'a> {
@@ -144,100 +108,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         )
     }
 
-    pub(crate) fn make_store_set(
-        &self,
-        base: Expression<'a>,
-        value: Expression<'a>,
-    ) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("store_set");
-        let name_arg = Argument::from(base);
-        let value_arg = Argument::from(value);
-        ast.expression_call(
-            SPAN,
-            callee,
-            NONE,
-            ast.vec_from_array([name_arg, value_arg]),
-            false,
-        )
-    }
-
-    pub(crate) fn make_store_base_expr(
-        &self,
-        analysis: &svelte_analyze::AnalysisData<'_>,
-        base_sym: svelte_component_semantics::SymbolId,
-    ) -> Expression<'a> {
-        let ast = self.b.ast;
-        let base_name = analysis.scoping.symbol_name(base_sym);
-        let semantics = analysis.binding_semantics(base_sym);
-        if matches!(
-            semantics,
-            svelte_analyze::BindingSemantics::LegacyState(_)
-                | svelte_analyze::BindingSemantics::State(_)
-                | svelte_analyze::BindingSemantics::Derived(_)
-        ) {
-            let ident = ast.expression_identifier(SPAN, ast.atom(base_name));
-            let get_callee = self.make_dollar_member("get");
-            return ast.expression_call(
-                SPAN,
-                get_callee,
-                NONE,
-                ast.vec1(Argument::from(ident)),
-                false,
-            );
-        }
-        if let svelte_analyze::BindingSemantics::Prop(svelte_analyze::PropBindingSemantics {
-            kind: svelte_analyze::PropBindingKind::NonSource,
-            lowering_mode: svelte_analyze::PropEmitMode::Standard,
-        }) = semantics
-        {
-            let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
-            let property = ast.identifier_name(SPAN, ast.atom(base_name));
-            return Expression::StaticMemberExpression(
-                ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
-            );
-        }
-        ast.expression_identifier(SPAN, ast.atom(base_name))
-    }
-
-    pub(crate) fn make_store_update(
-        &self,
-        base_name: &str,
-        dollar_name: &str,
-        is_prefix: bool,
-        is_increment: bool,
-    ) -> Expression<'a> {
-        let ast = self.b.ast;
-        let fn_name = if is_prefix {
-            "update_pre_store"
-        } else {
-            "update_store"
-        };
-        let callee = self.make_dollar_member(fn_name);
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
-        let thunk_call = self.make_thunk_call(dollar_name);
-        let thunk_arg = Argument::from(thunk_call);
-
-        let args = if is_increment {
-            ast.vec_from_array([name_arg, thunk_arg])
-        } else {
-            let delta = Argument::from(ast.expression_numeric_literal(
-                SPAN,
-                -1.0,
-                None,
-                NumberBase::Decimal,
-            ));
-            ast.vec_from_array([name_arg, thunk_arg, delta])
-        };
-
-        ast.expression_call(SPAN, callee, NONE, args, false)
-    }
-
     pub(crate) fn make_untrack(&self, dollar_name: &str) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("untrack");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(dollar_name)));
-        ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
+        untrack_ident(self.b, dollar_name)
     }
 
     pub(crate) fn make_invalidate_store_seq(
@@ -341,26 +213,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             callee,
             NONE,
             ast.vec_from_array([name_arg, mutation_arg]),
-            false,
-        )
-    }
-
-    pub(crate) fn make_store_mutate(
-        &self,
-        base_name: &str,
-        mutation: Expression<'a>,
-        untracked: Expression<'a>,
-    ) -> Expression<'a> {
-        let ast = self.b.ast;
-        let callee = self.make_dollar_member("store_mutate");
-        let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
-        let mutation_arg = Argument::from(mutation);
-        let untracked_arg = Argument::from(untracked);
-        ast.expression_call(
-            SPAN,
-            callee,
-            NONE,
-            ast.vec_from_array([name_arg, mutation_arg, untracked_arg]),
             false,
         )
     }

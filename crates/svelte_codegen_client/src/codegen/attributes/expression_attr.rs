@@ -1,11 +1,12 @@
+use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{
     AttributeSemantics, EventEmit, EventSemantics, ExprKind, normalize_regular_attribute_name,
 };
 use svelte_ast::{ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
 
-use super::super::data_structures::EmitState;
-use super::super::{Codegen, Result};
+use super::super::data_structures::{EmitState, MemoValueRef};
+use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_attr_expression(
@@ -41,8 +42,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if attr.name == "value" && owner_tag == "input" && self.ctx.has_bind_group(owner_id) {
+            let backup = self
+                .ctx
+                .state
+                .parsed
+                .expr(attr.expression.id())
+                .map(|e| self.ctx.b.clone_expr(e));
             let val = self.take_attr_expr(attr.id, &attr.expression)?;
-            self.emit_bind_group_value(state, owner_var, val);
+            if let Some(backup) = backup {
+                self.ctx
+                    .state
+                    .parsed
+                    .replace_expr(attr.expression.id(), backup);
+            }
+            self.emit_bind_group_value(state, owner_var, attr.id, val);
             return Ok(());
         }
 
@@ -57,30 +70,33 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_memo = is_dyn
             && self.ctx.expression_data(attr_id).is_some_and(|d| match d.kind {
                 ExprKind::Async { has_await: true } => true,
-                ExprKind::Call => !d.references.is_empty(),
+                ExprKind::Call { dynamic: true } => true,
                 ExprKind::KnownLiteral
                 | ExprKind::SimpleRead { .. }
                 | ExprKind::Computed { .. }
+                | ExprKind::Call { dynamic: false }
                 | ExprKind::Async { has_await: false } => false,
             });
 
         let expr = self.take_attr_expr(attr_id, &attr.expression)?;
         let expr = {
             let data = self.ctx.expression_data(attr_id).cloned();
-            self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref(), false)
+            coarse_wrap(self.ctx, expr, data.as_ref())
         };
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
         let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);
 
         if needs_memo {
-            self.memoize_regular_attr_update(
-                &mut state.memo_attrs,
-                attr_id,
-                owner_var,
-                attr_update,
-                expr,
-            );
+            let Some(data) = self.ctx.expression_data(attr_id).cloned() else {
+                return CodegenError::missing_expression_deps(attr_id);
+            };
+            let placeholder = match state.shared_memo.add_memoized_expr(self.ctx, &data, expr) {
+                Some(MemoValueRef::Sync(i)) => state.shared_memo.sync_param_expr(self.ctx, i),
+                Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
+                None => return CodegenError::missing_expression_deps(attr_id),
+            };
+            self.push_regular_attr_update(&mut state.update, owner_var, attr_update, placeholder);
         } else {
             let target = if is_dyn {
                 &mut state.update

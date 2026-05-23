@@ -1,7 +1,12 @@
-use oxc_ast::ast::{Expression, Statement};
+use svelte_emit_builders::runes::rune_get;
+use svelte_emit_builders::store::build_store_base_read;
+use oxc_allocator::CloneIn;
+use oxc_ast::ast::{
+    Expression, ObjectPropertyKind, PropertyKind, Statement,
+};
 use svelte_analyze::scope::SymbolId;
-use svelte_analyze::{BindingSemantics, ComponentBindTarget, PropBindingKind, PropBindingSemantics};
-use svelte_ast::NodeId;
+use svelte_analyze::{ComponentBindSemantics, ComponentBindTarget};
+use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use super::super::Codegen;
@@ -10,21 +15,93 @@ use super::dispatch::{OwnershipBinding, PropOrSpread};
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn emit_bind_member_expr(
         &mut self,
-        bind_id: NodeId,
+        directive: &BindDirective,
+        bind: &ComponentBindSemantics,
         expr: Expression<'a>,
         items: &mut Vec<PropOrSpread<'a>>,
+        validate_binding_stmts: &mut Vec<Statement<'a>>,
     ) -> super::super::Result<()> {
         let Expression::ObjectExpression(obj) = expr else {
             return super::super::CodegenError::unexpected_node(
-                bind_id,
+                directive.id,
                 "ComponentBind Expression: get/set object expected",
             );
         };
         let obj = obj.unbox();
+        if self.ctx.state.dev
+            && let Some(stmt) = self.build_validate_binding_stmt(directive, bind, &obj.properties)
+        {
+            validate_binding_stmts.push(stmt);
+        }
         for prop in obj.properties {
             items.push(PropOrSpread::Prop(ObjProp::Raw(prop)));
         }
         Ok(())
+    }
+
+    fn build_validate_binding_stmt(
+        &self,
+        directive: &BindDirective,
+        bind: &ComponentBindSemantics,
+        properties: &oxc_allocator::Vec<'a, ObjectPropertyKind<'a>>,
+    ) -> Option<Statement<'a>> {
+        let getter_prop = properties.iter().find_map(|p| match p {
+            ObjectPropertyKind::ObjectProperty(op) if op.kind == PropertyKind::Get => Some(op),
+            _ => None,
+        })?;
+        let Expression::FunctionExpression(func) = &getter_prop.value else {
+            return None;
+        };
+        let body = func.body.as_ref()?;
+        let return_stmt = body.statements.iter().find_map(|s| match s {
+            Statement::ReturnStatement(r) => Some(r),
+            _ => None,
+        })?;
+        let member_expr = return_stmt.argument.as_ref()?;
+        let alloc = self.ctx.b.ast.allocator;
+        let (object_clone, property_thunk) = match member_expr {
+            Expression::StaticMemberExpression(m) => {
+                let object = m.object.clone_in(alloc);
+                let name = m.property.name.as_str().to_string();
+                let leaf = self.ctx.b.thunk(self.ctx.b.str_expr(&name));
+                (object, leaf)
+            }
+            Expression::ComputedMemberExpression(m) => {
+                let object = m.object.clone_in(alloc);
+                let leaf = self.ctx.b.thunk(m.expression.clone_in(alloc));
+                (object, leaf)
+            }
+            _ => return None,
+        };
+        let object_thunk = self.ctx.b.thunk(object_clone);
+        let source_text = self
+            .ctx
+            .query
+            .component
+            .source_text(directive.span)
+            .to_string();
+        let each_ids: Vec<Expression<'a>> = bind
+            .each_context_vars
+            .iter()
+            .map(|sym| {
+                let name = self.ctx.query.view.symbol_name(*sym);
+                let alloc_name = self.ctx.b.alloc_str(name);
+                self.ctx.b.rid_expr(alloc_name)
+            })
+            .collect();
+        let each_array = self.ctx.b.array_expr(each_ids);
+        let (line, col) = self.ctx.state.line_index.line_col(directive.span.start);
+        Some(self.ctx.b.call_stmt(
+            "$.validate_binding",
+            [
+                Arg::Str(source_text),
+                Arg::Expr(each_array),
+                Arg::Expr(object_thunk),
+                Arg::Expr(property_thunk),
+                Arg::Num(line as f64),
+                Arg::Num(col as f64),
+            ],
+        ))
     }
 
     pub(super) fn emit_bind_function_pair(
@@ -132,7 +209,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
             ComponentBindTarget::Rune => {
-                let get_body = self.ctx.b.call_expr("$.get", [Arg::Ident(source_ref)]);
+                let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                 let set_body = self.ctx.b.call_expr(
                     "$.set",
@@ -150,7 +227,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )));
             }
             ComponentBindTarget::RuneDerived => {
-                let get_body = self.ctx.b.call_expr("$.get", [Arg::Ident(source_ref)]);
+                let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                 let set_body = self.ctx.b.call_expr(
                     "$.set",
@@ -164,11 +241,34 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )));
             }
             ComponentBindTarget::LegacyState => {
-                let get_body = self.ctx.b.call_expr("$.get", [Arg::Ident(source_ref)]);
+                let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                 let set_body = self.ctx.b.call_expr(
                     "$.set",
                     [Arg::Ident(source_ref), Arg::Ident("$$value")],
+                );
+                items.push(PropOrSpread::Prop(ObjProp::Setter(
+                    key,
+                    "$$value",
+                    None,
+                    vec![self.ctx.b.expr_stmt(set_body)],
+                )));
+            }
+            ComponentBindTarget::LegacyStateSubscribed => {
+                let get_body = rune_get(&self.ctx.b, source_ref);
+                items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
+                let set_call = self.ctx.b.call_expr(
+                    "$.set",
+                    [Arg::Ident(source_ref), Arg::Ident("$$value")],
+                );
+                let store_literal = format!("${source_text}");
+                let set_body = self.ctx.b.call_expr(
+                    "$.store_unsub",
+                    [
+                        Arg::Expr(set_call),
+                        Arg::Str(store_literal),
+                        Arg::Ident("$$stores"),
+                    ],
                 );
                 items.push(PropOrSpread::Prop(ObjProp::Setter(
                     key,
@@ -205,32 +305,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             vec![mark_stmt, return_stmt],
         )));
 
-        let base_expr = match self.ctx.query.view.binding_semantics(base_symbol) {
-            BindingSemantics::Prop(PropBindingSemantics {
-                kind: PropBindingKind::NonSource,
-                ..
-            }) => {
-                let prop_name = self
-                    .ctx
-                    .query
-                    .view
-                    .binding_origin_key(base_symbol)
-                    .unwrap_or(base_name);
-                self.ctx
-                    .b
-                    .static_member_expr(self.ctx.b.rid_expr("$$props"), prop_name)
-            }
-            BindingSemantics::State(_) | BindingSemantics::Derived(_) => {
-                let base_id: &str = self.ctx.b.alloc_str(base_name);
-                self.ctx
-                    .b
-                    .call_expr("$.get", [Arg::Ident(base_id)])
-            }
-            _ => {
-                let base_id: &str = self.ctx.b.alloc_str(base_name);
-                self.ctx.b.rid_expr(base_id)
-            }
-        };
+        let base_expr = build_store_base_read(
+            &self.ctx.b,
+            self.ctx.query.analysis,
+            base_symbol,
+        );
         let set_body = self
             .ctx
             .b

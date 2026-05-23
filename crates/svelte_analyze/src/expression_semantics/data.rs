@@ -141,7 +141,7 @@ pub enum ExprKind {
     KnownLiteral,
     SimpleRead { reactive: bool },
     Computed { reactive: bool },
-    Call,
+    Call { dynamic: bool },
     Async { has_await: bool },
 }
 
@@ -149,6 +149,13 @@ pub enum ExprKind {
 pub enum LegacyWrap {
     None,
     CoarseWrap,
+    Synthetic(SyntheticPropsCarrier),
+    CoarseAndSynthetic(SyntheticPropsCarrier),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SyntheticPropsCarrier {
     SanitizedProps,
-    CoarseAndSanitized,
+    RestProps,
+    Both,
 }

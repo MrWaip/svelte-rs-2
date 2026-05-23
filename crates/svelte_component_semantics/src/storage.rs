@@ -498,7 +498,6 @@ impl<'a> ComponentSemantics<'a> {
     pub fn collect_component_top_level_symbol_names(&self) -> FxHashSet<CompactString> {
         self.symbol_ids()
             .filter(|&sym| self.is_component_top_level_symbol(sym))
-            .filter(|&sym| !self.symbols.symbol_flags(sym).contains(SymbolFlags::TypeImport))
             .map(|sym| CompactString::from(self.symbol_name(sym)))
             .collect()
     }

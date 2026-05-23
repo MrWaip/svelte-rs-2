@@ -1,6 +1,8 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_ast::BindDirective;
+use svelte_analyze::types::data::binding_group_name;
+use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::super::super::data_structures::EmitState;
@@ -21,7 +23,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 _ => (smallvec::SmallVec::new(), 0),
             };
-        let group_name = crate::binding_group_name(group_id);
+        let group_name = binding_group_name(group_id);
         let group_name_ref: &str = self.ctx.b.alloc_str(&group_name);
         let index_array = if parent_eaches.is_empty() {
             self.ctx.b.empty_array_expr()
@@ -76,6 +78,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .and_then(|id| self.ctx.state.parsed.expr(id))
                     .map(|expr| self.ctx.b.clone_expr(expr))
                     .unwrap_or_else(|| self.ctx.b.str_expr(""))
+            };
+            let val_expr = {
+                let data = self.ctx.expression_data(val_attr_id).cloned();
+                coarse_wrap(self.ctx, val_expr, data.as_ref())
             };
             let val_stmt = self.ctx.b.expr_stmt(val_expr);
 
@@ -137,8 +143,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         el_name: &str,
+        attr_id: NodeId,
         val_expr: Expression<'a>,
     ) {
+        let val_expr = {
+            let data = self.ctx.expression_data(attr_id).cloned();
+            coarse_wrap(self.ctx, val_expr, data.as_ref())
+        };
         let mut prefix = String::with_capacity(el_name.len() + 6);
         prefix.push_str(el_name);
         prefix.push_str("_value");
@@ -186,14 +197,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let if_body = self.ctx.b.block_stmt(vec![value_assign]);
         let if_stmt = self.ctx.b.if_stmt(test, if_body, None);
 
-        let effect_fn = self
-            .ctx
-            .b
-            .arrow_block_expr(self.ctx.b.no_params(), vec![if_stmt]);
-        let effect_call = self
-            .ctx
-            .b
-            .call_stmt("$.template_effect", [Arg::Expr(effect_fn)]);
-        state.init.push(effect_call);
+        state.update.push(if_stmt);
     }
 }

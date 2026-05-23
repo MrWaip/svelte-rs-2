@@ -114,7 +114,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
         if let Some(var_decl) = var_decl {
             for declarator in &var_decl.declarations {
                 if matches!(
-                    &declarator.init,
+                    declarator.init.as_ref().map(|e| e.get_inner_expression()),
                     Some(
                         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
                     )

@@ -1,0 +1,4 @@
+
+    .b.svelte-152x0vu {
+        .a:where(.svelte-152x0vu) + & { color: red; }
+    }

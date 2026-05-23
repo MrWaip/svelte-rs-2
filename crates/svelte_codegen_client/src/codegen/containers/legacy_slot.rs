@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
@@ -54,7 +56,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let value = self
                         .ctx
                         .b
-                        .str_expr(self.ctx.query.component.source_text(a.value_span));
+                        .str_expr(a.value(&self.ctx.query.component.source));
                     props.push(ObjProp::KeyValue(key, value));
                 }
                 Attribute::BooleanAttribute(a) => {
@@ -74,36 +76,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let expr = self.take_attr_expr(attr_id, &a.expression)?;
-                    let needs_derived = matches!(
-                        self.ctx.query.analysis.attributes.get(attr_id),
+                    let (memo, shorthand) = match self.ctx.query.analysis.attributes.get(attr_id) {
                         svelte_analyze::AttributeSemantics::ComponentProp(
-                            svelte_analyze::ComponentPropSemantics::Expression(
-                                svelte_analyze::ComponentPropExpressionSemantics {
-                                    memo: svelte_analyze::ComponentPropMemo::Derived,
-                                    ..
-                                },
-                            ),
-                        )
-                    );
-                    if needs_derived {
-                        let name = format!("${}", memo_stmts.len());
-                        let name_ref = self.ctx.b.alloc_str(&name);
-                        let untrack = self
-                            .ctx
-                            .b
-                            .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]);
-                        let derived = self
-                            .ctx
-                            .b
-                            .call_expr(derived_fn, [Arg::Expr(self.ctx.b.thunk(untrack))]);
-                        memo_stmts.push(self.ctx.b.let_init_stmt(name_ref, derived));
-                        let get_call = self.ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
-                        props.push(ObjProp::Getter(key, get_call));
-                    } else {
-                        let is_dyn = self.ctx.is_dynamic_attr(attr_id);
-                        if is_dyn {
-                            props.push(ObjProp::Getter(key, expr));
-                        } else {
+                            svelte_analyze::ComponentPropSemantics::Expression(e),
+                        ) => (e.memo, e.shorthand),
+                        _ => (svelte_analyze::ComponentPropMemo::Inline, false),
+                    };
+                    let data = self.ctx.expression_data(attr_id).cloned();
+                    match memo {
+                        svelte_analyze::ComponentPropMemo::Derived => {
+                            let name = format!("${}", memo_stmts.len());
+                            let name_ref = self.ctx.b.alloc_str(&name);
+                            let wrapped = coarse_wrap(self.ctx, expr, data.as_ref());
+                            let derived = self
+                                .ctx
+                                .b
+                                .call_expr(derived_fn, [Arg::Expr(self.ctx.b.thunk(wrapped))]);
+                            memo_stmts.push(self.ctx.b.let_init_stmt(name_ref, derived));
+                            let get_call =
+                                rune_get(&self.ctx.b, name_ref);
+                            props.push(ObjProp::Getter(key, get_call));
+                        }
+                        svelte_analyze::ComponentPropMemo::Getter => {
+                            let wrapped = coarse_wrap(self.ctx, expr, data.as_ref());
+                            props.push(ObjProp::Getter(key, wrapped));
+                        }
+                        svelte_analyze::ComponentPropMemo::Inline if shorthand => {
+                            props.push(ObjProp::Shorthand(key));
+                        }
+                        svelte_analyze::ComponentPropMemo::Inline => {
                             props.push(ObjProp::KeyValue(key, expr));
                         }
                     }
@@ -169,12 +170,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             if let Attribute::StringAttribute(sa) = attr
                 && sa.name == "name"
             {
-                return self
-                    .ctx
-                    .query
-                    .component
-                    .source_text(sa.value_span)
-                    .to_string();
+                return sa.value(&self.ctx.query.component.source).to_string();
             }
         }
         "default".to_string()

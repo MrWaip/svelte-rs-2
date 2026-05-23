@@ -1,9 +1,9 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 11/11 use cases
-- **Tests**: 13/13 green
-- Last updated: 2026-04-12
+- **Working**: 12/12 use cases
+- **Tests**: 14/14 green
+- Last updated: 2026-05-22
 
 ## Source
 - ROADMAP: `## <script module> in Components`
@@ -31,12 +31,12 @@
 - [x] `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
 - [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
 - [x] Module exports ordering when instance template uses snippets — module exports sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; module-exported plain functions stay direct at render call sites instead of being wrapped in `$.get(...)` (tests: `script_module_exports_ordering_with_snippets`, `module_exported_render_tag_callee_stays_direct_with_snippets`)
+- [x] Standalone `.svelte.js` module preserves source order of top-level `ImportDeclaration` statements. A second `import { … } from "…"` between two top-level declarations (e.g. between a `function` and a `var`) stays in source position. Layer: codegen (`generate_module` via `transform_module_program` passes `partition_imports=false` to `run_transform`). (test: `diagnose_module_import_between_top_level_statements`)
 
 ## Out of scope
 
 - SSR codegen for module scripts
 - Legacy mode (non-runes) `export let` prop semantics in module scripts
-- `.svelte.js` standalone module files (already working via `generate_module()`)
 - `$props()` in module script (invalid by design, no explicit compile-time guard in reference)
 - Store subscriptions in module script (`store_invalid_subscription` diagnostic — separate feature)
 
@@ -78,3 +78,4 @@
 - [x] `validate_module_illegal_default_export`
 - [x] `validate_module_illegal_default_export_function`
 - [x] `validate_module_illegal_default_export_specifier`
+- [x] `diagnose_module_import_between_top_level_statements`

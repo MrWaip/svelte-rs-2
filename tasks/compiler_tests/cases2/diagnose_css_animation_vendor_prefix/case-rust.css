@@ -1,0 +1,9 @@
+@keyframes svelte-13p96nx-spin {
+        0% { transform: rotate(0); }
+        100% { transform: rotate(360deg); }
+    }
+
+.box.svelte-13p96nx {
+  -webkit-animation: svelte-13p96nx-spin 1s linear infinite;
+  animation: svelte-13p96nx-spin 1s linear infinite;
+}

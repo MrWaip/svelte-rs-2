@@ -59,7 +59,7 @@ impl<'a> TemplateMemoState<'a> {
                 self.async_values.push(expr);
                 Some(MemoValueRef::Async(index))
             }
-            ExprKind::Call if !data.references.is_empty() => {
+            ExprKind::Call { dynamic: true } => {
                 let index = self.sync_values.len();
                 self.sync_values.push(expr);
                 Some(MemoValueRef::Sync(index))
@@ -67,7 +67,7 @@ impl<'a> TemplateMemoState<'a> {
             ExprKind::KnownLiteral
             | ExprKind::SimpleRead { .. }
             | ExprKind::Computed { .. }
-            | ExprKind::Call
+            | ExprKind::Call { dynamic: false }
             | ExprKind::Async { has_await: false } => None,
         }
     }
@@ -159,20 +159,3 @@ impl<'a> TemplateMemoState<'a> {
     }
 }
 
-pub(crate) enum MemoAttrUpdate {
-    Call {
-        setter_fn: &'static str,
-        attr_name: Option<String>,
-    },
-    Assignment {
-        property: String,
-    },
-}
-
-pub(crate) struct MemoAttr<'a> {
-    pub attr_id: NodeId,
-    pub el_name: String,
-    pub update: MemoAttrUpdate,
-    pub expr: Expression<'a>,
-    pub is_node_site: bool,
-}

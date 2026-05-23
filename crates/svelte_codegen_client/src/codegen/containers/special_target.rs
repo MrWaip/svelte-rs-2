@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
@@ -103,13 +104,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Window(WindowBindKind),
             Document(DocumentBindKind),
         }
-        let (host_prop, is_rune) = match self.ctx.query.analysis.attributes.get(bind.id) {
+        let (host_prop, bind_kind) = match self.ctx.query.analysis.attributes.get(bind.id) {
             AttributeSemantics::WindowBind(WindowBindSemantics {
                 property, kind, ..
-            }) => (HostProp::Window(*property), matches!(kind, HtmlBindKind::Rune | HtmlBindKind::LegacyState)),
+            }) => (HostProp::Window(*property), kind.clone()),
             AttributeSemantics::DocumentBind(DocumentBindSemantics {
                 property, kind, ..
-            }) => (HostProp::Document(*property), matches!(kind, HtmlBindKind::Rune | HtmlBindKind::LegacyState)),
+            }) => (HostProp::Document(*property), kind.clone()),
             _ => return Ok(()),
         };
 
@@ -127,53 +128,53 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let stmt = match host_prop {
             HostProp::Window(WindowBindKind::ScrollX) => {
-                let getter = self.build_binding_getter(&var_name, is_rune);
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let getter = self.build_binding_getter(&var_name, &bind_kind);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.ctx.b.call_stmt(
                     "$.bind_window_scroll",
                     [Arg::StrRef("x"), Arg::Expr(getter), Arg::Expr(setter)],
                 )
             }
             HostProp::Window(WindowBindKind::ScrollY) => {
-                let getter = self.build_binding_getter(&var_name, is_rune);
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let getter = self.build_binding_getter(&var_name, &bind_kind);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.ctx.b.call_stmt(
                     "$.bind_window_scroll",
                     [Arg::StrRef("y"), Arg::Expr(getter), Arg::Expr(setter)],
                 )
             }
             HostProp::Window(
-                kind @ (WindowBindKind::InnerWidth
+                size_kind @ (WindowBindKind::InnerWidth
                 | WindowBindKind::InnerHeight
                 | WindowBindKind::OuterWidth
                 | WindowBindKind::OuterHeight),
             ) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.ctx.b.call_stmt(
                     "$.bind_window_size",
-                    [Arg::StrRef(kind.name()), Arg::Expr(setter)],
+                    [Arg::StrRef(size_kind.name()), Arg::Expr(setter)],
                 )
             }
             HostProp::Window(WindowBindKind::Online) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.ctx.b.call_stmt("$.bind_online", [Arg::Expr(setter)])
             }
             HostProp::Window(WindowBindKind::DevicePixelRatio) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.bind_property_stmt("devicePixelRatio", "resize", owner_var, setter)
             }
             HostProp::Document(DocumentBindKind::ActiveElement) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.ctx
                     .b
                     .call_stmt("$.bind_active_element", [Arg::Expr(setter)])
             }
             HostProp::Document(DocumentBindKind::FullscreenElement) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.bind_property_stmt("fullscreenElement", "fullscreenchange", owner_var, setter)
             }
             HostProp::Document(DocumentBindKind::PointerLockElement) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.bind_property_stmt(
                     "pointerLockElement",
                     "pointerlockchange",
@@ -182,37 +183,41 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )
             }
             HostProp::Document(DocumentBindKind::VisibilityState) => {
-                let setter = self.build_binding_setter_silent(&var_name, is_rune);
+                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
                 self.bind_property_stmt("visibilityState", "visibilitychange", owner_var, setter)
             }
         };
 
-        state.init.push(stmt);
+        state.after_update.push(stmt);
         Ok(())
     }
 
-    fn build_binding_getter(&self, var: &str, is_rune: bool) -> Expression<'a> {
-        let body = if is_rune {
-            self.ctx.b.call_expr("$.get", [Arg::Ident(var)])
-        } else {
-            self.ctx.b.rid_expr(var)
+    fn build_binding_getter(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
+        let body = match kind {
+            HtmlBindKind::Rune | HtmlBindKind::LegacyState => {
+                rune_get(&self.ctx.b, var)
+            }
+            _ => self.ctx.b.rid_expr(var),
         };
         self.ctx
             .b
             .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])
     }
 
-    fn build_binding_setter_silent(&self, var: &str, is_rune: bool) -> Expression<'a> {
-        let body = if is_rune {
-            self.ctx.b.call_expr(
+    fn build_binding_setter_silent(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
+        let body = match kind {
+            HtmlBindKind::Rune => self.ctx.b.call_expr(
                 "$.set",
                 [Arg::Ident(var), Arg::Ident("$$value"), Arg::Bool(true)],
-            )
-        } else {
-            self.ctx.b.assign_expr(
+            ),
+            HtmlBindKind::LegacyState => self
+                .ctx
+                .b
+                .call_expr("$.set", [Arg::Ident(var), Arg::Ident("$$value")]),
+            _ => self.ctx.b.assign_expr(
                 AssignLeft::Ident(var.to_string()),
                 self.ctx.b.rid_expr("$$value"),
-            )
+            ),
         };
         self.ctx
             .b

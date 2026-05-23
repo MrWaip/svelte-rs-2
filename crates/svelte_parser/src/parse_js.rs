@@ -1,18 +1,14 @@
-use std::cell::Cell;
-use std::mem;
-
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, NullLiteral, Program, Statement};
+use oxc_ast::ast::{Expression, Program, Statement};
 use oxc_parser::Parser as OxcParser;
 use oxc_span::SourceType;
-use oxc_syntax::node::NodeId;
 
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 
-use crate::span_shift::{
-    shift_binding_pattern, shift_expression, shift_formal_parameters, shift_program,
-    shift_statement, wrapper_delta,
+use crate::js_postprocess::{
+    process_binding_pattern, process_expression, process_formal_parameters, process_program,
+    process_statement, wrapper_delta,
 };
 
 pub fn parse_expression_with_alloc<'a>(
@@ -30,10 +26,7 @@ pub fn parse_expression_with_alloc<'a>(
     let mut expr = parser.parse_expression().map_err(|_| {
         Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
     })?;
-    if typescript {
-        strip_ts_expression(&mut expr, alloc);
-    }
-    shift_expression(&mut expr, wrapper_delta(offset, 0, 0));
+    process_expression(alloc, &mut expr, wrapper_delta(offset, 0, 0), typescript);
     Ok(expr)
 }
 
@@ -62,7 +55,7 @@ pub fn parse_script_with_alloc<'a>(
     }
 
     let mut program = result.program;
-    shift_program(&mut program, wrapper_delta(offset, 0, 0));
+    process_program(alloc, &mut program, wrapper_delta(offset, 0, 0), typescript);
     Ok(program)
 }
 
@@ -97,15 +90,12 @@ pub fn parse_const_declaration_with_alloc<'a>(
         Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
     })?;
 
-    if typescript
-        && let Statement::VariableDeclaration(var_decl) = &mut stmt
-        && let Some(declarator) = var_decl.declarations.first_mut()
-        && let Some(init) = &mut declarator.init
-    {
-        strip_ts_expression(init, alloc);
-    }
-
-    shift_statement(&mut stmt, wrapper_delta(offset, 0, PREFIX.len() as i64));
+    process_statement(
+        alloc,
+        &mut stmt,
+        wrapper_delta(offset, 0, PREFIX.len() as i64),
+        typescript,
+    );
     Ok(stmt)
 }
 
@@ -133,9 +123,11 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
     }
 
     let mut stmt = result.program.body.into_iter().next()?;
-    shift_statement(
+    process_statement(
+        alloc,
         &mut stmt,
         wrapper_delta(offset, leading_ws, PREFIX.len() as i64),
+        typescript,
     );
     Some(stmt)
 }
@@ -158,9 +150,11 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
     }
 
     let mut stmt = result.program.body.into_iter().next()?;
-    shift_statement(
+    process_statement(
+        alloc,
         &mut stmt,
         wrapper_delta(offset, leading_ws, PREFIX.len() as i64),
+        false,
     );
     Some(stmt)
 }
@@ -200,16 +194,20 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     if let Statement::VariableDeclaration(var_decl) = &mut stmt
         && let Some(declarator) = var_decl.declarations.first_mut()
     {
-        shift_binding_pattern(
+        process_binding_pattern(
+            alloc,
             &mut declarator.id,
             wrapper_delta(offset, leading_ws, name_prefix),
+            typescript,
         );
         if paren_pos.is_some()
             && let Some(Expression::ArrowFunctionExpression(arrow)) = &mut declarator.init
         {
-            shift_formal_parameters(
+            process_formal_parameters(
+                alloc,
                 &mut arrow.params,
                 wrapper_delta(offset, leading_ws, params_prefix),
+                typescript,
             );
         }
     }
@@ -231,31 +229,4 @@ pub(crate) fn parse_slot_let_decl_with_alloc<'a>(
     let source = format!("{pattern_source} = $$slotProps.{slot_prop_name}");
     let source: &'a str = alloc.alloc_str(&source);
     parse_const_declaration_with_alloc(alloc, source, offset, typescript)
-}
-
-fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
-    let dummy = || {
-        Expression::NullLiteral(oxc_allocator::Box::new_in(
-            NullLiteral {
-                span: oxc_span::SPAN,
-                node_id: Cell::new(NodeId::DUMMY),
-            },
-            alloc,
-        ))
-    };
-
-    loop {
-        let inner = match mem::replace(expr, dummy()) {
-            Expression::TSAsExpression(ts) => ts.unbox().expression,
-            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
-            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
-            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
-            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
-            other => {
-                *expr = other;
-                break;
-            }
-        };
-        *expr = inner;
-    }
 }

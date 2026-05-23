@@ -1,14 +1,13 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{ArrayPattern, BindingPattern, Expression, ObjectPattern, Statement};
-use oxc_span::SPAN;
-use smallvec::SmallVec;
 use svelte_analyze::{
-    EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor, EachIndexKind,
+    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
-use svelte_component_semantics::SymbolId;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -38,9 +37,7 @@ struct EachEmit {
     key_is_index: bool,
     has_fallback: bool,
     item_reactive: bool,
-    is_prop_source: bool,
-    legacy_deep_read_symbols: SmallVec<[SymbolId; 2]>,
-    legacy_store_member_root: Option<SymbolId>,
+    collection_source: EachCollectionSource,
     needs_async: bool,
     has_await: bool,
     blockers: Vec<u32>,
@@ -237,17 +234,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             item_reactive: sem.each_flags.contains(EachFlags::ITEM_REACTIVE),
-            is_prop_source: matches!(sem.collection_kind, EachCollectionKind::PropSource),
-            legacy_deep_read_symbols: match &sem.collection_kind {
-                EachCollectionKind::LegacyCallReadsState { deep_read_symbols } => {
-                    deep_read_symbols.clone()
-                }
-                _ => SmallVec::new(),
-            },
-            legacy_store_member_root: match &sem.collection_kind {
-                EachCollectionKind::LegacyStoreMemberChain { store_sym } => Some(*store_sym),
-                _ => None,
-            },
+            collection_source: sem.collection.source.clone(),
             needs_async,
             has_await,
             blockers,
@@ -286,48 +273,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(self
                 .ctx
                 .b
-                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident("$$collection")])));
+                .thunk(rune_get(&self.ctx.b, "$$collection")));
         }
-        if plan.is_prop_source {
-            let block = self.ctx.query.each_block(block_id);
-            let src = self
-                .ctx
-                .query
-                .component
-                .source_text(block.expression.span)
-                .trim();
-            return Ok(self.ctx.b.rid_expr(src));
+        if let EachCollectionSource::Prop { sym } = &plan.collection_source {
+            let name = self.ctx.query.symbol_name(*sym).to_string();
+            return Ok(self.ctx.b.rid_expr(&name));
         }
         let expr = self.take_node_expr(block_id)?;
-        if let Some(store_sym) = plan.legacy_store_member_root {
-            let b = &self.ctx.b;
-            let name: &str = b.ast.allocator.alloc_str(self.ctx.query.symbol_name(store_sym));
-            let args: [Arg<'a, '_>; 0] = [];
-            let store_call = b.call_expr(name, args);
-            let untracked = b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]);
-            let sequence = b
-                .ast
-                .expression_sequence(SPAN, b.ast.vec_from_iter([store_call, untracked]));
-            return Ok(b.thunk(sequence));
-        }
-        if plan.legacy_deep_read_symbols.is_empty() {
-            return Ok(self.ctx.b.thunk(expr));
-        }
-
-        let b = &self.ctx.b;
-        let mut parts: Vec<Expression<'a>> =
-            Vec::with_capacity(plan.legacy_deep_read_symbols.len() + 1);
-        for sym in &plan.legacy_deep_read_symbols {
-            let name: &str = b.ast.allocator.alloc_str(self.ctx.query.symbol_name(*sym));
-            let args: [Arg<'a, '_>; 0] = [];
-            let getter = b.call_expr(name, args);
-            parts.push(b.call_expr("$.deep_read_state", [Arg::Expr(getter)]));
-        }
-        parts.push(b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]));
-        let sequence = b
-            .ast
-            .expression_sequence(SPAN, b.ast.vec_from_iter(parts));
-        Ok(b.thunk(sequence))
+        let wrapped = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
+        Ok(self.ctx.b.thunk(wrapped))
     }
 
     fn build_each_key_fn(
@@ -453,7 +407,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn item_read_expr(&self, item_reactive: bool) -> Expression<'a> {
         if item_reactive {
-            self.ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
+            rune_get(&self.ctx.b, "$$item")
         } else {
             self.ctx.b.rid_expr("$$item")
         }
@@ -464,15 +418,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         arr: ArrayPattern<'a>,
         item_reactive: bool,
     ) -> Vec<Statement<'a>> {
+        let has_rest = arr.rest.is_some();
+        let rest = arr.rest;
         let elements: Vec<_> = arr.elements.into_iter().flatten().collect();
         let count = elements.len();
         let array_name = self.ctx.state.gen_ident("$$array");
 
         let item_expr = self.item_read_expr(item_reactive);
-        let to_array = self
-            .ctx
-            .b
-            .call_expr("$.to_array", [Arg::Expr(item_expr), Arg::Num(count as f64)]);
+        let to_array = if has_rest {
+            self.ctx.b.call_expr("$.to_array", [Arg::Expr(item_expr)])
+        } else {
+            self.ctx
+                .b
+                .call_expr("$.to_array", [Arg::Expr(item_expr), Arg::Num(count as f64)])
+        };
         let derived = self
             .ctx
             .b
@@ -483,12 +442,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let Some(name) = array_element_name(&elem) else {
                 continue;
             };
-            let get_array = self.ctx.b.call_expr("$.get", [Arg::Ident(&array_name)]);
+            let get_array = rune_get(&self.ctx.b, &array_name);
             let access = self
                 .ctx
                 .b
                 .computed_member_expr(get_array, self.ctx.b.num_expr(i as f64));
             decls.push(self.ctx.b.let_init_stmt(&name, self.ctx.b.thunk(access)));
+        }
+        if let Some(rest) = rest
+            && let Some(rest_name) = rest
+                .argument
+                .get_binding_identifier()
+                .map(|id| id.name.as_str().to_string())
+        {
+            let get_array = rune_get(&self.ctx.b, &array_name);
+            let slice_callee = self.ctx.b.static_member_expr(get_array, "slice");
+            let slice_call = self
+                .ctx
+                .b
+                .call_expr_callee(slice_callee, [Arg::Num(count as f64)]);
+            decls.push(
+                self.ctx
+                    .b
+                    .let_init_stmt(&rest_name, self.ctx.b.thunk(slice_call)),
+            );
         }
         decls
     }
@@ -501,6 +478,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         use oxc_ast::ast::PropertyKey;
 
         let mut decls = Vec::new();
+        let mut excluded_keys: Vec<Expression<'a>> = Vec::new();
+        for prop in &obj.properties {
+            if !prop.computed {
+                match &prop.key {
+                    PropertyKey::StaticIdentifier(id) => {
+                        excluded_keys.push(self.ctx.b.str_expr(id.name.as_str()));
+                    }
+                    PropertyKey::StringLiteral(s) => {
+                        excluded_keys.push(self.ctx.b.str_expr(s.value.as_str()));
+                    }
+                    PropertyKey::NumericLiteral(n) => {
+                        excluded_keys.push(self.ctx.b.num_expr(n.value));
+                    }
+                    _ => {}
+                }
+            }
+        }
         for prop in obj.properties {
             let key_name = match &prop.key {
                 PropertyKey::StaticIdentifier(id) => Some(id.name.as_str().to_string()),
@@ -535,6 +529,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 _ => continue,
             }
+        }
+        if let Some(rest) = obj.rest
+            && let Some(rest_name) = rest
+                .argument
+                .get_binding_identifier()
+                .map(|id| id.name.as_str().to_string())
+        {
+            let item_expr = self.item_read_expr(item_reactive);
+            let excluded = self.ctx.b.array_expr(excluded_keys);
+            let exclude_call = self.ctx.b.call_expr(
+                "$.exclude_from_object",
+                [Arg::Expr(item_expr), Arg::Expr(excluded)],
+            );
+            decls.push(
+                self.ctx
+                    .b
+                    .let_init_stmt(&rest_name, self.ctx.b.thunk(exclude_call)),
+            );
         }
         decls
     }

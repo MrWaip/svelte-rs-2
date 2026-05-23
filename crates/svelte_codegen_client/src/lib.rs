@@ -1,3 +1,4 @@
+use svelte_emit_builders::store::build_store_base_read;
 pub(crate) mod codegen;
 mod context;
 mod custom_element;
@@ -21,15 +22,7 @@ use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
 
 use context::Ctx;
-use std::borrow::Cow;
-
-pub(crate) fn binding_group_name(id: u32) -> Cow<'static, str> {
-    if id == 0 {
-        Cow::Borrowed("binding_group")
-    } else {
-        Cow::Owned(format!("binding_group_{id}"))
-    }
-}
+use svelte_analyze::types::data::binding_group_name;
 
 pub fn generate<'a>(
     compile_ctx: svelte_types::CompileContext<'a, 'a>,
@@ -61,6 +54,7 @@ pub fn generate<'a>(
             program,
             Some(analysis),
             &analysis.scoping,
+            &mut *ctx.state.ident_gen,
             ctx.state.line_index,
         );
 
@@ -181,20 +175,12 @@ pub fn generate<'a>(
 
         for (base_name, dollar_name, base_symbol) in &stores {
             let dollar_name_str: &str = ctx.b.alloc_str(dollar_name);
-            let base_str: &str = ctx.b.alloc_str(base_name);
             let make_base_arg = || -> Arg<'_, '_> {
-                match ctx.query.view.binding_semantics(*base_symbol) {
-                    svelte_analyze::BindingSemantics::LegacyState(_)
-                    | svelte_analyze::BindingSemantics::State(_)
-                    | svelte_analyze::BindingSemantics::Derived(_) => {
-                        Arg::Expr(ctx.b.call_expr("$.get", [Arg::Ident(base_str)]))
-                    }
-                    svelte_analyze::BindingSemantics::Prop(_) => Arg::Expr(
-                        ctx.b
-                            .static_member_expr(ctx.b.rid_expr("$$props"), base_str),
-                    ),
-                    _ => Arg::Ident(base_str),
-                }
+                Arg::Expr(build_store_base_read(
+                    &ctx.b,
+                    ctx.query.analysis,
+                    *base_symbol,
+                ))
             };
             let store_get = ctx.b.call_expr(
                 "$.store_get",
@@ -231,11 +217,21 @@ pub fn generate<'a>(
     }
 
     {
-        let count = ctx.query.view.binding_group_count();
-        for id in 0..count {
-            let name = binding_group_name(id);
-            let name_ref: &str = ctx.b.alloc_str(&name);
-            fn_body.push(ctx.b.const_stmt(name_ref, ctx.b.empty_array_expr()));
+        let legacy_reactive_emitted_binding_groups = ctx
+            .query
+            .analysis
+            .reactivity
+            .legacy_reactive()
+            .iter_statements_topo()
+            .next()
+            .is_some();
+        if !legacy_reactive_emitted_binding_groups {
+            let count = ctx.query.view.binding_group_count();
+            for id in 0..count {
+                let name = binding_group_name(id);
+                let name_ref: &str = ctx.b.alloc_str(&name);
+                fn_body.push(ctx.b.const_stmt(name_ref, ctx.b.empty_array_expr()));
+            }
         }
     }
 
@@ -251,6 +247,7 @@ pub fn generate<'a>(
     let has_explicit_exports =
         runtime.has_exports || runtime.has_ce_props || runtime.has_legacy_accessor_props;
     let dev_legacy_only = ctx.state.dev && runtime.needs_push;
+    let mut bind_prop_stmts: Vec<Statement<'_>> = Vec::new();
     if has_explicit_exports || dev_legacy_only {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
@@ -310,6 +307,25 @@ pub fn generate<'a>(
         }
 
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
+
+        if !ctx.query.runes() {
+            for e in ctx.query.exports() {
+                let name: &str = ctx.b.alloc_str(&e.name);
+                let key: &str = e
+                    .alias
+                    .as_deref()
+                    .map(|a| ctx.b.alloc_str(a))
+                    .unwrap_or(name);
+                bind_prop_stmts.push(ctx.b.call_stmt(
+                    "$.bind_prop",
+                    [
+                        Arg::Ident("$$props"),
+                        Arg::StrRef(key),
+                        Arg::Ident(name),
+                    ],
+                ));
+            }
+        }
     }
 
     match runtime.legacy_init {
@@ -323,6 +339,8 @@ pub fn generate<'a>(
     }
 
     fn_body.extend(template_body);
+
+    fn_body.extend(bind_prop_stmts);
 
     if runtime.needs_push {
         if runtime.needs_pop_with_return && runtime.has_stores {
@@ -565,7 +583,7 @@ fn split_async_instance_body<'a>(
                 let var_decl = var_decl.unbox();
                 for declarator in var_decl.declarations {
                     if matches!(
-                        &declarator.init,
+                        declarator.init.as_ref().map(|e| e.get_inner_expression()),
                         Some(
                             Expression::ArrowFunctionExpression(_)
                                 | Expression::FunctionExpression(_)
@@ -652,11 +670,14 @@ pub fn generate_module<'a>(
     filename: &str,
     source_text: &str,
 ) -> JsOutput {
+    let mut ident_gen =
+        svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
     let script_output = script::transform_module_program(
         alloc,
         program,
         Some(analysis),
         &analysis.scoping,
+        &mut ident_gen,
         line_index,
         dev,
     );

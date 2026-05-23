@@ -10,8 +10,9 @@ mod snippet;
 mod walker;
 
 use super::BlockSemanticsStore;
+use crate::expression_semantics::ExpressionSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{BlockerData, FragmentNamespaces, IgnoreData, JsAst};
+use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
 use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
@@ -20,7 +21,7 @@ pub fn build(
     parsed: &JsAst<'_>,
     semantics: &ComponentSemantics<'_>,
     reactivity: &ReactivitySemantics,
-    blockers: &BlockerData,
+    expressions: &ExpressionSemanticsStore,
     fragment_namespaces: &FragmentNamespaces,
     ignore_data: &IgnoreData,
     dev: bool,
@@ -32,7 +33,7 @@ pub fn build(
         parsed,
         semantics,
         reactivity,
-        blockers,
+        expressions,
         fragment_namespaces,
         ignore_data,
         dev,

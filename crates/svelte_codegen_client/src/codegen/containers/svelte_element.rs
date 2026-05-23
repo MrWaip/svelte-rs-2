@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
@@ -73,7 +74,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let get_tag = if needs_async_tag {
             self.ctx
                 .b
-                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident("$$tag")]))
+                .thunk(rune_get(&self.ctx.b, "$$tag"))
         } else {
             self.ctx.b.thunk(tag_expr)
         };
@@ -112,13 +113,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let sole_static_class = if attributes.len() == 1 {
             if let Attribute::StringAttribute(sa) = &attributes[0] {
                 if sa.name.eq_ignore_ascii_case("class") {
-                    Some(
-                        self.ctx
-                            .query
-                            .component
-                            .source_text(sa.value_span)
-                            .to_string(),
-                    )
+                    Some(sa.value(&self.ctx.query.component.source).to_string())
                 } else {
                     None
                 }
@@ -159,6 +154,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         inner_state
             .init
             .extend(mem::take(&mut inner_state.pending_element_init));
+
+        if !inner_state.update.is_empty() {
+            let attr_updates = mem::take(&mut inner_state.update);
+            let attr_memo = mem::take(&mut inner_state.shared_memo);
+            let attr_blockers = mem::take(&mut inner_state.script_blockers);
+            let attr_extra = mem::take(&mut inner_state.extra_blockers);
+            super::super::effect::emit_template_effect_with_memo(
+                self.ctx,
+                &mut inner_state.init,
+                attr_updates,
+                attr_memo,
+                attr_blockers,
+                attr_extra,
+            )?;
+        }
+
         self.emit_fragment(&mut inner_state, &inner_ctx, svelte_el_fragment)?;
         let inner_body: Vec<Statement<'a>> = self.pack_callback_body(inner_state, "$$anchor")?;
 

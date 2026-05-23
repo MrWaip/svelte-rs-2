@@ -403,13 +403,19 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
         let Some(expr) = self.parsed.pending_expr(dir.expression.span.start) else {
             return;
         };
-        match expr {
+        match expr.get_inner_expression() {
             Expression::Identifier(_) => {
-                ctx.visit_js_expression_with_flags(&dir.expression, expr, ReferenceFlags::Write);
+                ctx.visit_js_expression_with_flags(
+                    &dir.expression,
+                    expr,
+                    ReferenceFlags::Read | ReferenceFlags::Write,
+                );
             }
             Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
                 ctx.visit_js_expression(&dir.expression, expr);
-                if let Some(sym_id) = bind_member_root_symbol(expr, ctx) {
+                if !bind_member_root_is_store_sub(expr)
+                    && let Some(sym_id) = bind_member_root_symbol(expr, ctx)
+                {
                     ctx.mark_symbol_member_mutated(sym_id);
                 }
             }
@@ -533,15 +539,33 @@ fn bind_member_root_symbol<'a>(
     attr_root_symbol(expr, ctx)
 }
 
+fn bind_member_root_is_store_sub<'a>(expr: &Expression<'a>) -> bool {
+    let mut current = expr.get_inner_expression();
+    loop {
+        match current {
+            Expression::StaticMemberExpression(m) => current = m.object.get_inner_expression(),
+            Expression::ComputedMemberExpression(m) => current = m.object.get_inner_expression(),
+            Expression::Identifier(ident) => {
+                let name = ident.name.as_str();
+                return name.starts_with('$')
+                    && name.len() > 1
+                    && !name.starts_with("$$")
+                    && !svelte_ast::is_rune_name(name);
+            }
+            _ => return false,
+        }
+    }
+}
+
 fn attr_root_symbol<'a>(
     expr: &Expression<'a>,
     ctx: &TemplateBuildContext<'_, 'a>,
 ) -> Option<SymbolId> {
-    let mut current = expr;
+    let mut current = expr.get_inner_expression();
     loop {
         match current {
-            Expression::StaticMemberExpression(m) => current = &m.object,
-            Expression::ComputedMemberExpression(m) => current = &m.object,
+            Expression::StaticMemberExpression(m) => current = m.object.get_inner_expression(),
+            Expression::ComputedMemberExpression(m) => current = m.object.get_inner_expression(),
             Expression::Identifier(ident) => {
                 if let Some(ref_id) = ident.reference_id.get() {
                     return ctx.semantics().get_reference(ref_id).symbol_id();
@@ -828,7 +852,9 @@ fn extract_arrow_from_const<'a>(
         return None;
     };
     let declarator = decl.declarations.first()?;
-    let Expression::ArrowFunctionExpression(arrow) = declarator.init.as_ref()? else {
+    let Expression::ArrowFunctionExpression(arrow) =
+        declarator.init.as_ref()?.get_inner_expression()
+    else {
         return None;
     };
     Some(arrow)

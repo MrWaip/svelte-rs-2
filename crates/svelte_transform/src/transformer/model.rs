@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId as SvelteNodeId;
 
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, RuneKind, StateKind,
+    AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, IdentGen, RuneKind, StateKind,
 };
 
 use svelte_ast_builder::Builder;
@@ -97,6 +97,7 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,
     pub(crate) ident_counter: u32,
+    pub(crate) ident_gen: &'b mut IdentGen,
     pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,
     pub(crate) experimental_async: bool,
@@ -134,7 +135,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             BindingSemantics::Store(_) => None,
             BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => None,
             BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => None,
-            BindingSemantics::Unresolved => None,
+            BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => None,
         }
     }
 

@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 mod legacy_slot_fragment;
 mod prepare;
 mod process_children;
@@ -5,7 +7,7 @@ mod types;
 
 use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
-use svelte_analyze::{ComponentCssProp, ComponentCssPropValue};
+use svelte_analyze::{ComponentCssProp, ComponentCssPropValue, ComponentPropMemo};
 use svelte_ast::{FragmentRole, NodeId};
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
 
@@ -236,20 +238,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let pre_emit_frag_pending = needs_anchor_reserve
             && !skip_node_reserve
             && !matches!(&strategy, ContentStrategy::Multi { .. })
-            && !bucket.svelte_head.is_empty()
+            && (!bucket.svelte_head.is_empty()
+                || !bucket.svelte_window.is_empty()
+                || !bucket.svelte_document.is_empty()
+                || !bucket.svelte_body.is_empty())
             && state.root_var.is_none()
             && !state.anchor_comment_pre_emitted;
-        if pre_emit_frag_pending {
-            let frag = self.ctx.state.gen_ident("fragment");
-            let node = self.ctx.state.gen_ident("node");
-            state.pending_anchor_idents = Some((frag.clone(), node));
-            let b = &self.ctx.state.b;
-            state
-                .init
-                .push(b.var_stmt(&frag, b.call_expr("$.comment", empty::<Arg<'a, '_>>())));
-            state.root_var = Some(frag);
-            state.anchor_comment_pre_emitted = true;
-        }
+        let pre_emit_insert_idx = pre_emit_frag_pending.then_some(state.init.len());
         for (id, kind) in ordered {
             match kind {
                 HoistedDispatchKind::Snippet => {
@@ -272,6 +267,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.emit_hoisted_svelte_body(state, ctx, id)?;
                 }
             }
+        }
+
+        if let Some(insert_idx) = pre_emit_insert_idx {
+            let frag = self.ctx.state.gen_ident("fragment");
+            let node = self.ctx.state.gen_ident("node");
+            let b = &self.ctx.state.b;
+            let stmt = b.var_stmt(&frag, b.call_expr("$.comment", empty::<Arg<'a, '_>>()));
+            state.init.insert(insert_idx, stmt);
+            state.pending_anchor_idents = Some((frag.clone(), node));
+            state.root_var = Some(frag);
+            state.anchor_comment_pre_emitted = true;
         }
 
         if needs_anchor_reserve && !pre_emit_frag_pending {
@@ -571,11 +577,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn is_css_wrapped_component(&self, id: NodeId) -> bool {
-        matches!(
-            self.ctx.query.component.store.get(id),
-            svelte_ast::Node::ComponentNode(_)
-        ) && !self.ctx.is_dynamic_component(id)
-            && self.ctx.has_component_css_props(id)
+        let node = self.ctx.query.component.store.get(id);
+        match node {
+            svelte_ast::Node::ComponentNode(_) => {
+                !self.ctx.is_dynamic_component(id) && self.ctx.has_component_css_props(id)
+            }
+            svelte_ast::Node::SvelteComponentLegacy(_) => self.ctx.has_component_css_props(id),
+            _ => false,
+        }
     }
 
     fn refine_strategy(&self, strategy: ContentStrategy, ctx: &FragmentCtx<'a>) -> ContentStrategy {
@@ -647,7 +656,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             from_fn,
             [Arg::Expr(self.ctx.b.template_str_expr(html)), Arg::Num(1.0)],
         );
-        self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
 
         let frag = self.ctx.state.gen_ident("fragment");
         let node = self.ctx.state.gen_ident("node");
@@ -662,6 +670,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ));
 
         self.emit_css_props_wrapper_block(state, ctx, component_id, &node, namespace)?;
+        self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
 
         let anchor_ident = match &ctx.anchor {
             FragmentAnchor::Root => "$$anchor".to_string(),
@@ -693,6 +702,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .component_css_props(component_id)
             .to_vec();
         let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
+        let mut css_memo_decls: Vec<Statement<'a>> = Vec::new();
+        let mut memo_counter: u32 = 0;
         for prop in css_props {
             let key = self.ctx.b.alloc_str(&prop.name);
             let expr = match prop.value {
@@ -700,19 +711,40 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                         return CodegenError::missing_expression(prop.attr_id);
                     };
-                    self.maybe_wrap_legacy_slots_read(expr)
+                    let data = self.ctx.expression_data(prop.attr_id).cloned();
+                    let expr = coarse_wrap(self.ctx, expr, data.as_ref());
+                    let expr = self.maybe_wrap_legacy_slots_read(expr);
+                    match prop.memo {
+                        ComponentPropMemo::Derived => {
+                            let helper = self.ctx.query.view.derived_helper();
+                            let memo_name = format!("${memo_counter}");
+                            memo_counter += 1;
+                            let thunk = self.ctx.b.thunk(expr);
+                            let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
+                            css_memo_decls
+                                .push(self.ctx.b.let_init_stmt(&memo_name, derived));
+                            let memo_ref = self.ctx.b.alloc_str(&memo_name);
+                            rune_get(&self.ctx.b, memo_ref)
+                        }
+                        ComponentPropMemo::Inline | ComponentPropMemo::Getter => expr,
+                    }
                 }
                 ComponentCssPropValue::StaticString(span) => {
                     let value = self.ctx.query.component.source_text(span);
                     self.ctx.b.str_expr(value)
                 }
                 ComponentCssPropValue::Concatenation => {
-                    let svelte_ast::Node::ComponentNode(cn) =
-                        self.ctx.query.component.store.get(component_id)
+                    let Some(view) = self
+                        .ctx
+                        .query
+                        .component
+                        .store
+                        .get(component_id)
+                        .as_component_like()
                     else {
                         return CodegenError::missing_expression(prop.attr_id);
                     };
-                    let Some(svelte_ast::Attribute::ConcatenationAttribute(concat)) = cn
+                    let Some(svelte_ast::Attribute::ConcatenationAttribute(concat)) = view
                         .attributes
                         .iter()
                         .find(|a| a.id() == prop.attr_id)
@@ -730,11 +762,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                                     tpl_parts.push(TemplatePart::Str(s.clone()));
                                 }
                             }
-                            svelte_ast::ConcatPart::Dynamic { expr, .. } => {
-                                let Some(part_expr) = self.ctx.state.parsed.take_expr(expr.id())
-                                else {
-                                    return CodegenError::missing_expression(prop.attr_id);
-                                };
+                            svelte_ast::ConcatPart::Dynamic { id, expr } => {
+                                let part_expr = self.take_template_expr(*id, expr)?;
                                 tpl_parts.push(TemplatePart::Expr(part_expr, false));
                             }
                         }
@@ -747,22 +776,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let props_obj = self.ctx.b.object_expr(prop_items);
         let props_thunk = self.ctx.b.thunk(props_obj);
 
-        let mut block: Vec<Statement<'a>> = Vec::new();
-        block.push(self.ctx.b.call_stmt(
-            "$.css_props",
-            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
-        ));
-
         let prev_init_len = state.init.len();
         let mut wrapper_ctx = ctx.clone();
         wrapper_ctx.anchor = FragmentAnchor::SiblingVar {
             var: format!("{}.lastChild", node_ident),
         };
         wrapper_ctx.namespace = namespace;
-        self.emit_component(state, &wrapper_ctx, component_id, None)?;
+        let mut hoisted_memo_decls: Vec<Statement<'a>> = Vec::new();
+        self.emit_component_with_hoisted_memo(
+            state,
+            &wrapper_ctx,
+            component_id,
+            None,
+            &mut hoisted_memo_decls,
+            memo_counter,
+        )?;
         let component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
-        block.extend(component_stmts);
 
+        let mut block: Vec<Statement<'a>> = Vec::new();
+        block.extend(css_memo_decls);
+        block.extend(hoisted_memo_decls);
+        block.push(self.ctx.b.call_stmt(
+            "$.css_props",
+            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
+        ));
+        block.extend(component_stmts);
         block.push(
             self.ctx
                 .b
@@ -781,11 +819,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return false;
         }
         match self.ctx.query.analysis.block_semantics(id) {
-            svelte_analyze::BlockSemantics::Render(sem) => matches!(
-                sem.callee_shape,
-                svelte_analyze::RenderCalleeKind::Static
-                    | svelte_analyze::RenderCalleeKind::StaticChain
-            ),
+            svelte_analyze::BlockSemantics::Render(sem) => {
+                let Some(sym) = sem.callee_sym else {
+                    return false;
+                };
+                matches!(
+                    self.ctx.query.view.binding_semantics(sym),
+                    svelte_analyze::BindingSemantics::MaybeReactive
+                        | svelte_analyze::BindingSemantics::NonReactive
+                        | svelte_analyze::BindingSemantics::Unresolved,
+                )
+            }
             _ => false,
         }
     }

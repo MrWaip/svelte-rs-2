@@ -12,11 +12,12 @@ pub use attribute_semantics::{
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
     ConcatPartEmit, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, HandlerEmit, HtmlBindKind, WindowBindSemantics,
+    EventSemantics, HandlerEmit, HtmlBindKind, MustBePropertySemantics, MustBePropertyValue,
+    WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore,
-    KnownValue, LegacyWrap, ValueClass,
+    KnownValue, LegacyWrap, SyntheticPropsCarrier, ValueClass,
 };
 
 pub use passes::css_analyze::analyze_css_pass;
@@ -29,9 +30,9 @@ pub(crate) mod walker;
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
-    EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
-    KeyBlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind,
+    EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
+    EachKeyKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
+    KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
     RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 pub use scope::ComponentScoping;
@@ -165,42 +166,16 @@ pub fn analyze_with_options<'a>(
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
 
-    let expressions_v2 = expression_semantics::build(
-        component,
-        &parsed,
-        data.scoping.semantics(),
-        &data.reactivity,
-        &data.scoping,
-        &data.template.snippets,
-        data.script.has_class_state_fields,
-        data.blocker_data(),
-        data.script.runes_mode,
-        component.node_count(),
-        data.script.dev,
-    );
-    if !data.output.needs_context && expressions_v2.is_context_required() {
-        data.output.needs_context = true;
-    }
-    data.expressions_v2 = expressions_v2;
-
-    let (attributes, binding_groups) = attribute_semantics::build(
-        component,
-        &parsed,
-        data.scoping.semantics(),
-        &data.reactivity,
-        &data.scoping,
-        &data.expressions_v2,
-        data.blocker_data(),
-        &data.output.ignore_data,
-        options.dev,
-        component.node_count(),
-    );
-    data.attributes = attributes;
-    data.template.bind_semantics.binding_group_id_by_attr = binding_groups.ids;
-    data.template.bind_semantics.binding_group_count = binding_groups.count;
-
     for &key in passes::TEMPLATE_EXECUTION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
+    }
+
+    if !data.output.needs_context
+        && data
+            .block_semantics_store
+            .any_legacy_each_forces_runtime_context()
+    {
+        data.output.needs_context = true;
     }
 
     for &key in passes::VALIDATION_STAGE {
@@ -313,9 +288,7 @@ fn build_runtime_info(
         || (!data.uses_runes() && data.script.immutable)
         || dev
         || (!data.uses_runes()
-            && (has_legacy_member_mutated
-                || has_legacy_props_read
-                || has_legacy_reactive_statements));
+            && (has_legacy_member_mutated || has_legacy_reactive_statements));
     let has_legacy_accessor_props = !data.uses_runes()
         && data.script.accessors
         && data
@@ -338,13 +311,15 @@ fn build_runtime_info(
     let needs_props_param = data.script.props_declaration().is_some()
         || needs_push
         || has_legacy_bindable_prop
+        || has_legacy_props_read
+        || data.reactivity.legacy_uses_rest_props()
         || has_component_bubble_event_legacy;
 
     let legacy_init = if data.uses_runes() {
         LegacyInit::None
     } else if data.script.immutable {
         LegacyInit::Immutable
-    } else if has_legacy_member_mutated || has_legacy_props_read || data.output.needs_context {
+    } else if has_legacy_member_mutated || data.output.needs_context {
         LegacyInit::Plain
     } else {
         LegacyInit::None

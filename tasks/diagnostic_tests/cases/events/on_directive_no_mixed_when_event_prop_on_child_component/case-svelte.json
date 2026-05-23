@@ -1,0 +1,8 @@
+[
+  {
+    "code": "event_directive_deprecated",
+    "end": 120,
+    "severity": "warning",
+    "start": 108
+  }
+]

@@ -8,22 +8,24 @@ use super::location::sanitize_location;
 use super::model::ComponentTransformer;
 
 pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
-    match expr {
+    match expr.get_inner_expression() {
         Expression::CallExpression(call) => {
-            if let Expression::Identifier(id) = &call.callee
+            if let Expression::Identifier(id) = call.callee.get_inner_expression()
                 && id.name.as_str() == "$inspect"
             {
                 return true;
             }
-            if let Expression::StaticMemberExpression(member) = &call.callee {
+            if let Expression::StaticMemberExpression(member) =
+                call.callee.get_inner_expression()
+            {
                 if member.property.name.as_str() == "with"
-                    && let Expression::CallExpression(inner) = &member.object
-                    && let Expression::Identifier(id) = &inner.callee
+                    && let Expression::CallExpression(inner) = member.object.get_inner_expression()
+                    && let Expression::Identifier(id) = inner.callee.get_inner_expression()
                 {
                     return id.name.as_str() == "$inspect";
                 }
                 if member.property.name.as_str() == "trace"
-                    && let Expression::Identifier(id) = &member.object
+                    && let Expression::Identifier(id) = member.object.get_inner_expression()
                 {
                     return id.name.as_str() == "$inspect";
                 }
@@ -35,10 +37,10 @@ pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
 }
 
 pub(crate) fn is_inspect_trace_call(expr: &Expression) -> bool {
-    if let Expression::CallExpression(call) = expr
-        && let Expression::StaticMemberExpression(member) = &call.callee
+    if let Expression::CallExpression(call) = expr.get_inner_expression()
+        && let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression()
         && member.property.name.as_str() == "trace"
-        && let Expression::Identifier(id) = &member.object
+        && let Expression::Identifier(id) = member.object.get_inner_expression()
     {
         return id.name.as_str() == "$inspect";
     }

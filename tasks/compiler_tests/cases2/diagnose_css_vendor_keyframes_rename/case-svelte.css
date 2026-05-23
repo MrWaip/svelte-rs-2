@@ -1,0 +1,15 @@
+
+    @-webkit-keyframes svelte-1dvholw-spin {
+        0% { transform: rotate(0); }
+        100% { transform: rotate(360deg); }
+    }
+
+    @keyframes svelte-1dvholw-spin {
+        0% { transform: rotate(0); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .box.svelte-1dvholw {
+        -webkit-animation: svelte-1dvholw-spin 1s linear infinite;
+        animation: svelte-1dvholw-spin 1s linear infinite;
+    }

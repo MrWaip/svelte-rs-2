@@ -457,9 +457,14 @@ impl Printer<'_> {
                 if let Some(matcher) = attr.matcher {
                     output.push_str(matcher.source_text(source));
                     if let Some(value) = attr.value {
-                        output.push('"');
-                        output.push_str(value.source_text(source));
-                        output.push('"');
+                        if let Some(q) = attr.quote {
+                            let quote = q as char;
+                            output.push(quote);
+                            output.push_str(value.source_text(source));
+                            output.push(quote);
+                        } else {
+                            output.push_str(value.source_text(source));
+                        }
                     }
                 }
                 if let Some(flags) = attr.flags {

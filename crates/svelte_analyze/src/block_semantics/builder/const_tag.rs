@@ -1,7 +1,9 @@
 use super::super::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
-use super::common::{declarator_from_stmt, expression_async_facts};
+use super::common::declarator_from_stmt;
 use super::walker::Ctx;
+use crate::expression_semantics::{ExprKind, ExpressionSemantics};
 use oxc_ast::ast::Statement;
+use smallvec::SmallVec;
 use svelte_ast::ConstTag;
 
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
@@ -13,13 +15,16 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
         return;
     };
     let decl_node_id = decl.node_id();
-    let Some(declarator) = declarator_from_stmt(stmt) else {
+    let Some(_) = declarator_from_stmt(stmt) else {
         return;
     };
-    let Some(init) = declarator.init.as_ref() else {
-        return;
+    let (has_await, blockers) = match ctx.expressions.get(tag.id) {
+        ExpressionSemantics::Expression(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            (has_await, d.blockers.clone())
+        }
+        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
     };
-    let (has_await, blockers) = expression_async_facts(init, ctx.semantics, ctx.blockers);
     let async_kind = if !has_await && blockers.is_empty() {
         ConstTagAsyncKind::Sync
     } else {

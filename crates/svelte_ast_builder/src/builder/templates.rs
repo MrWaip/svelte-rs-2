@@ -1,4 +1,37 @@
+use std::borrow::Cow;
+
 use super::*;
+
+fn escape_template_raw(value: &str) -> Cow<'_, str> {
+    let needs_escape = value
+        .as_bytes()
+        .windows(2)
+        .any(|w| w == b"${")
+        || value.bytes().any(|b| b == b'`' || b == b'\\');
+    if !needs_escape {
+        return Cow::Borrowed(value);
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(value.len() + 4);
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' {
+            out.extend_from_slice(b"\\\\");
+            i += 1;
+        } else if b == b'`' {
+            out.extend_from_slice(b"\\`");
+            i += 1;
+        } else if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            out.extend_from_slice(b"\\${");
+            i += 2;
+        } else {
+            out.push(b);
+            i += 1;
+        }
+    }
+    Cow::Owned(String::from_utf8(out).expect("ascii-only edits preserve utf-8"))
+}
 
 impl<'a> Builder<'a> {
     pub fn template_str_expr(&self, value: &str) -> Expression<'a> {
@@ -7,11 +40,12 @@ impl<'a> Builder<'a> {
 
     pub fn template_str(&self, value: &str) -> TemplateLiteral<'a> {
         let mut quasis = self.ast.vec();
+        let escaped = escape_template_raw(value);
         quasis.push(self.ast.template_element(
             SPAN,
             TemplateElementValue {
                 cooked: None,
-                raw: self.ast.atom(value),
+                raw: self.ast.atom(&escaped),
             },
             true,
             false,
@@ -49,11 +83,12 @@ impl<'a> Builder<'a> {
                 TemplatePart::Str(s) => {
                     pending.push_str(&s);
                     if is_last {
+                        let escaped = escape_template_raw(&pending);
                         quasis.push(self.ast.template_element(
                             SPAN,
                             TemplateElementValue {
                                 cooked: None,
-                                raw: self.ast.atom(&pending),
+                                raw: self.ast.atom(&escaped),
                             },
                             true,
                             false,
@@ -61,11 +96,12 @@ impl<'a> Builder<'a> {
                     }
                 }
                 TemplatePart::Expr(expr, defined) => {
+                    let escaped = escape_template_raw(&pending);
                     quasis.push(self.ast.template_element(
                         SPAN,
                         TemplateElementValue {
                             cooked: None,
-                            raw: self.ast.atom(&pending),
+                            raw: self.ast.atom(&escaped),
                         },
                         false,
                         false,

@@ -60,10 +60,10 @@ pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichConten
 pub use runtime::LegacyInit;
 pub use runtime::RuntimeInfo;
 pub use template_data::{
-    BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
-    ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind,
-    MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData,
-    WindowBindKind,
+    binding_group_name, BindHostKind, BindPropertyKind, BindSemanticsData, BindSource,
+    BindTargetSemantics, ContentEditableKind, DocumentBindKind, ElementSizeKind,
+    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
+    TitleElementData, WindowBindKind,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

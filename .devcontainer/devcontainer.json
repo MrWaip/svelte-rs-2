@@ -1,6 +1,8 @@
 {
   "name": "svelte-rs-2",
-  "build": { "dockerfile": "Dockerfile" },
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "remoteUser": "vscode",
   "initializeCommand": "docker run --rm --privileged --pid=host alpine sysctl -w kernel.perf_event_paranoid=1 >/dev/null 2>&1 || true",
   "runArgs": [
@@ -21,7 +23,9 @@
     "source=svelte-rs-target,target=/workspaces/svelte-rs-2/target,type=volume",
     "source=svelte-rs-node-modules,target=/workspaces/svelte-rs-2/node_modules,type=volume"
   ],
-  "remoteEnv": { "GH_TOKEN": "${localEnv:GH_TOKEN}" },
+  "remoteEnv": {
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
   "containerEnv": {
     "CARGO_HOME": "/usr/local/cargo",
     "RUSTUP_HOME": "/usr/local/rustup",
@@ -41,14 +45,13 @@
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
-        "vadimcn.vscode-lldb",
         "skellock.just",
-        "anthropic.claude-code",
         "eamodio.gitlens"
       ],
       "settings": {
         "rust-analyzer.server.path": "/usr/local/cargo/bin/rust-analyzer",
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.gpuAcceleration": "off"
       }
     }
   },

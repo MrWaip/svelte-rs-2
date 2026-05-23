@@ -1,17 +1,19 @@
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, Declaration, ExportNamedDeclaration, Expression, VariableDeclaration,
-        VariableDeclarationKind,
+        BindingPattern, Class, Declaration, ExportNamedDeclaration, Expression, Function,
+        VariableDeclaration, VariableDeclarationKind,
     },
 };
-use svelte_component_semantics::walk_bindings;
+use svelte_component_semantics::{SymbolFlags, walk_bindings};
 
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::utils::{is_let_or_var, is_simple_expression};
 
-use super::super::data::{LegacyBindablePropSemantics, PropDefaultEmit, ReferenceFacts};
+use super::super::data::{
+    BindingFacts, LegacyBindablePropSemantics, PropDefaultEmit, ReferenceFacts, ReferenceSemantics,
+};
 use crate::PropsFlags;
 
 const PROPS_NAME: &str = "$$props";
@@ -25,16 +27,61 @@ pub(super) fn classify_export_named_declaration<'a>(
         return;
     }
     if let Some(decl) = &export.declaration {
-        let Declaration::VariableDeclaration(var_decl) = decl else {
-            return;
-        };
-        if !is_let_or_var(var_decl.kind) {
-            return;
+        match decl {
+            Declaration::VariableDeclaration(var_decl) if is_let_or_var(var_decl.kind) => {
+                classify_variable_declaration(data, var_decl);
+            }
+            Declaration::VariableDeclaration(var_decl) => {
+                record_api_export_variable_symbols(data, var_decl);
+            }
+            Declaration::FunctionDeclaration(func) => {
+                record_api_export_function_symbol(data, func);
+            }
+            Declaration::ClassDeclaration(cls) => {
+                record_api_export_class_symbol(data, cls);
+            }
+            _ => {}
         }
-        classify_variable_declaration(data, var_decl);
     } else {
         classify_specifiers(data, export);
     }
+}
+
+fn record_api_export_variable_symbols<'a>(
+    data: &mut AnalysisData<'a>,
+    decl: &VariableDeclaration<'a>,
+) {
+    for declarator in &decl.declarations {
+        walk_bindings(&declarator.id, |visit| {
+            data.reactivity.record_legacy_api_export_binding(visit.symbol);
+        });
+    }
+}
+
+fn record_api_export_function_symbol<'a>(
+    data: &mut AnalysisData<'a>,
+    func: &Function<'a>,
+) {
+    let Some(ident) = func.id.as_ref() else {
+        return;
+    };
+    let Some(symbol) = ident.symbol_id.get() else {
+        return;
+    };
+    data.reactivity.record_legacy_api_export_binding(symbol);
+}
+
+fn record_api_export_class_symbol<'a>(
+    data: &mut AnalysisData<'a>,
+    cls: &Class<'a>,
+) {
+    let Some(ident) = cls.id.as_ref() else {
+        return;
+    };
+    let Some(symbol) = ident.symbol_id.get() else {
+        return;
+    };
+    data.reactivity.record_legacy_api_export_binding(symbol);
 }
 
 fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &VariableDeclaration<'a>) {
@@ -44,7 +91,7 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
         let init_default = declarator
             .init
             .as_ref()
-            .map(|init| classify_expression_default(init));
+            .map(|init| classify_expression_default(data, init));
         let pattern_has_outer = is_destructured_pattern(&declarator.id);
 
         walk_bindings(&declarator.id, |visit| {
@@ -82,13 +129,17 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             continue;
         };
         let Some((kind, init)) = lookup_let_or_var_init(data, symbol) else {
+            if declares_api_export(data, symbol) {
+                data.reactivity.record_legacy_api_export_binding(symbol);
+            }
             continue;
         };
         if !is_let_or_var(kind) {
+            data.reactivity.record_legacy_api_export_binding(symbol);
             continue;
         }
         let default_lowering = match init {
-            Some(init_expr) => classify_expression_default(init_expr),
+            Some(init_expr) => classify_expression_default(data, init_expr),
             None => PropDefaultEmit::None,
         };
 
@@ -158,23 +209,116 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
         return;
     }
     let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
-    let has_member_mutated = symbols
-        .iter()
-        .any(|&sym| data.scoping.is_member_mutated(sym));
+
+    let is_non_store_ref = |data: &AnalysisData<'_>, r| {
+        !matches!(
+            data.reactivity.reference_semantics(r),
+            ReferenceSemantics::StoreRead { .. }
+                | ReferenceSemantics::StoreWrite { .. }
+                | ReferenceSemantics::StoreUpdate { .. }
+        )
+    };
+    let prop_member_mutated = |data: &AnalysisData<'_>, sym| {
+        data.scoping
+            .get_resolved_reference_ids(sym)
+            .iter()
+            .any(|&r| data.reactivity.is_prop_member_mutation_root_ref(r) && is_non_store_ref(data, r))
+    };
+
+    let has_member_mutated = symbols.iter().any(|&sym| prop_member_mutated(data, sym));
     data.reactivity
         .set_legacy_has_member_mutated(has_member_mutated);
+
+    let immutable = data.script.immutable;
+    let accessors = data.script.accessors;
+    for sym in symbols {
+        let refs = data.scoping.get_resolved_reference_ids(sym).to_vec();
+        let non_store_write = refs
+            .iter()
+            .any(|&r| data.scoping.get_reference(r).is_write() && is_non_store_ref(data, r));
+        let member_mutated = prop_member_mutated(data, sym);
+        let updated_any = non_store_write || member_mutated;
+        let reassigned = non_store_write;
+        let updated = if immutable { reassigned } else { updated_any };
+        let new_flags = compute_flags(updated, accessors, immutable);
+        if let Some(BindingFacts::LegacyBindableProp(legacy)) =
+            data.reactivity.binding_facts_mut(sym)
+        {
+            legacy.flags = new_flags;
+        }
+    }
 }
 
 fn is_destructured_pattern(pat: &BindingPattern<'_>) -> bool {
     !matches!(pat, BindingPattern::BindingIdentifier(_))
 }
 
-fn classify_expression_default(init: &Expression<'_>) -> PropDefaultEmit {
+fn classify_expression_default<'a>(
+    data: &AnalysisData<'a>,
+    init: &Expression<'a>,
+) -> PropDefaultEmit {
     if is_simple_expression(init) {
+        if let Expression::Identifier(id) = init
+            && let Some(sym) = data.scoping.symbol_for_identifier_reference(id)
+            && matches!(
+                data.reactivity.binding_semantics(sym),
+                crate::BindingSemantics::LegacyBindableProp(_)
+            )
+        {
+            return PropDefaultEmit::LazyAccessor;
+        }
+        if references_legacy_bindable_prop(data, init) {
+            return PropDefaultEmit::Lazy;
+        }
         PropDefaultEmit::Eager
     } else {
         PropDefaultEmit::Lazy
     }
+}
+
+fn references_legacy_bindable_prop<'a>(
+    data: &AnalysisData<'a>,
+    expr: &Expression<'a>,
+) -> bool {
+    match expr {
+        Expression::Identifier(id) => data
+            .scoping
+            .symbol_for_identifier_reference(id)
+            .is_some_and(|sym| {
+                matches!(
+                    data.reactivity.binding_semantics(sym),
+                    crate::BindingSemantics::LegacyBindableProp(_)
+                )
+            }),
+        Expression::ConditionalExpression(c) => {
+            references_legacy_bindable_prop(data, &c.test)
+                || references_legacy_bindable_prop(data, &c.consequent)
+                || references_legacy_bindable_prop(data, &c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            references_legacy_bindable_prop(data, &b.left)
+                || references_legacy_bindable_prop(data, &b.right)
+        }
+        Expression::LogicalExpression(b) => {
+            references_legacy_bindable_prop(data, &b.left)
+                || references_legacy_bindable_prop(data, &b.right)
+        }
+        Expression::ParenthesizedExpression(p) => {
+            references_legacy_bindable_prop(data, &p.expression)
+        }
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
+        _ => false,
+    }
+}
+
+fn declares_api_export(data: &AnalysisData<'_>, symbol: SymbolId) -> bool {
+    data.scoping
+        .symbol_flags(symbol)
+        .intersects(SymbolFlags::Function | SymbolFlags::Class)
 }
 
 fn lookup_let_or_var_init<'a>(
