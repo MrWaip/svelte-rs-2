@@ -2,6 +2,7 @@ name: CI N-API Pack
 
 on:
   push:
+    branches: [master]
     paths:
       - '.github/workflows/ci-napi-pack.yml'
       - '.github/workflows/canary-publish.yml'
@@ -11,6 +12,7 @@ on:
       - 'packages/**'
       - 'scripts/set-canary-version.mjs'
   pull_request:
+    branches: [master]
     paths:
       - '.github/workflows/ci-napi-pack.yml'
       - '.github/workflows/canary-publish.yml'
@@ -27,6 +29,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: '22.13.0'
