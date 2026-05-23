@@ -17,12 +17,12 @@ impl<'a> Visit<'a> for SimpleExprChecker {
             | Expression::BinaryExpression(_)
             | Expression::LogicalExpression(_) => walk::walk_expression(self, expr),
             Expression::ParenthesizedExpression(inner) => self.visit_expression(&inner.expression),
-            Expression::TSAsExpression(inner) => self.visit_expression(&inner.expression),
-            Expression::TSSatisfiesExpression(inner) => self.visit_expression(&inner.expression),
-            Expression::TSNonNullExpression(inner) => self.visit_expression(&inner.expression),
-            Expression::TSTypeAssertion(inner) => self.visit_expression(&inner.expression),
-            Expression::TSInstantiationExpression(inner) => {
-                self.visit_expression(&inner.expression);
+            Expression::TSAsExpression(_)
+            | Expression::TSSatisfiesExpression(_)
+            | Expression::TSNonNullExpression(_)
+            | Expression::TSTypeAssertion(_)
+            | Expression::TSInstantiationExpression(_) => {
+                unreachable!("TS stripped at parse")
             }
             _ => self.0 = false,
         }

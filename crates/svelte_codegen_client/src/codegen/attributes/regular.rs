@@ -1,9 +1,9 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::NamespaceKind;
 use svelte_ast::{Attribute, Element, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
-use super::super::data_structures::{MemoAttr, MemoAttrUpdate};
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 
@@ -140,33 +140,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    pub(super) fn memoize_regular_attr_update(
-        &self,
-        memo_attrs: &mut Vec<MemoAttr<'a>>,
-        attr_id: NodeId,
-        el_name: &str,
-        update: RegularAttrUpdate,
-        expr: Expression<'a>,
-    ) {
-        let update = match update {
-            RegularAttrUpdate::Call {
-                setter_fn,
-                attr_name,
-            } => MemoAttrUpdate::Call {
-                setter_fn,
-                attr_name,
-            },
-            RegularAttrUpdate::Assignment { property } => MemoAttrUpdate::Assignment { property },
-        };
-        memo_attrs.push(MemoAttr {
-            attr_id,
-            el_name: el_name.to_string(),
-            update,
-            expr,
-            is_node_site: false,
-        });
-    }
-
     pub(super) fn wrap_run_after_blockers(
         &self,
         stmt: Statement<'a>,
@@ -189,7 +162,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr_id: NodeId,
         parts: &[svelte_ast::ConcatPart],
     ) -> Result<Expression<'a>> {
-        let mut tpl_parts = self.concat_to_tpl_parts(attr_id, parts, true)?;
+        let mut tpl_parts = self.concat_to_tpl_parts(attr_id, parts)?;
 
         if tpl_parts.len() == 1
             && let TemplatePart::Str(s) = &tpl_parts[0]
@@ -202,20 +175,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
 
-    pub(super) fn build_concat_expr_template(
-        &mut self,
-        attr_id: NodeId,
-        parts: &[svelte_ast::ConcatPart],
-    ) -> Result<Expression<'a>> {
-        let tpl_parts = self.concat_to_tpl_parts(attr_id, parts, false)?;
-        Ok(self.ctx.b.template_parts_expr(tpl_parts))
-    }
-
     fn concat_to_tpl_parts(
         &mut self,
         attr_id: NodeId,
         parts: &[svelte_ast::ConcatPart],
-        fold_literals: bool,
     ) -> Result<Vec<TemplatePart<'a>>> {
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
         for part in parts {
@@ -228,7 +191,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let Some(expr) = self.take_expr_by_ref(expr_ref) else {
                         return CodegenError::missing_expression(attr_id);
                     };
-                    if fold_literals && let Some(lit) = literal_value(&expr) {
+                    if let Some(lit) = literal_value(&expr) {
                         push_template_str(&mut tpl_parts, lit);
                         continue;
                     }
@@ -238,7 +201,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .as_ref()
                         .map(|d| evaluation_is_defined(&d.evaluation))
                         .unwrap_or(false);
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr, data.as_ref(), false);
+                    let wrapped = coarse_wrap(self.ctx, expr, data.as_ref());
                     tpl_parts.push(TemplatePart::Expr(wrapped, defined));
                 }
             }
@@ -267,8 +230,8 @@ fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
     }
 }
 
-fn literal_value(expr: &Expression<'_>) -> Option<String> {
-    match expr {
+pub(super) fn literal_value(expr: &Expression<'_>) -> Option<String> {
+    match expr.get_inner_expression() {
         Expression::StringLiteral(lit) => Some(lit.value.as_str().to_string()),
         Expression::NumericLiteral(lit) => Some(lit.value.to_string()),
         Expression::BooleanLiteral(lit) => Some(lit.value.to_string()),

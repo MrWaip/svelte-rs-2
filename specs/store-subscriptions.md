@@ -1,9 +1,9 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 64/64 use cases
-- **Tests**: 46/46 green
-- Last updated: 2026-05-13
+- **Working**: 72/72 use cases
+- **Tests**: 54/54 green
+- Last updated: 2026-05-22
 
 ## Source
 
@@ -170,7 +170,23 @@ In **runes mode** with `{#each $items as item}` whose collection expression is a
 
 - [x] Bare identifier `name` coexists with `$name` store subscription — bare references (method calls `name.foo()`, member reads `name.bar`, argument passes) remain unchanged; only `$name` reads/writes/updates route through the synthetic store thunk. Fix: `ImportSubscribedRead` removed from the thunk-call rewrite arm in `crates/svelte_transform/src/transformer/rewrites.rs::dispatch_identifier_read`; variant retained in analyze for `ExpressionSemantics` dynamism tracking and `BlockSemantics::render` callee resolution (test: `store_bare_identifier_method_call`)
 
+- [x] **Legacy mode: `export let prop` used as `$prop` store auto-subscription** — analyze: `ReactivitySemantics` `classify_variable_declaration` excludes store-classified writes (`StoreRead`/`StoreWrite`/`StoreUpdate` on the synthetic `$prop` store symbol whose base is `prop`) from the `updated` predicate, mirroring runes `standard_prop_source_symbols` / deferred-downgrade. Transform: `make_store_base_expr` adds `BindingSemantics::LegacyBindableProp(_)` arm emitting `prop()` getter-thunk call, mirroring runes `Prop(NonSource, Standard)` → `$$props.<name>` rule. Result: `let prop = $.prop($$props, "prop", 8)` not `12`, and `$.store_get(prop(), "$prop", $$stores)` / `$.store_set(prop(), $$value)` instead of bare `prop` (test: `diagnose_legacy_export_let_store_prop_subscription`)
+
+- [x] **Legacy mode: `<Child bind:prop={$store}>` where store base is an `export let` prop** — layer: codegen. `crates/svelte_codegen_client/src/codegen/component_props/bind_prop.rs::emit_bind_store` adds a `BindingSemantics::LegacyBindableProp(_)` arm that builds `name()` (zero-arg call on the `$.prop($$props, ..., 8)` thunk), mirroring `make_store_base_expr`'s transform-side rule and the existing `Prop(NonSource, _)` / `State|Derived` arms in the same match. Getter already emits `$name()` via the synthetic store thunk. (test: `diagnose_legacy_component_bind_store_prop`)
+
+- [x] **Legacy mode: `let X = writable(...)` where the only writes are `$X = …` store-sets** — layer: analyze 3.A.2 (`ReactivitySemantics`). New `has_non_store_mutation_legacy` predicate in `builder_v2/mod.rs` replaces the bare `is_mutated_any(sym)` gate in `record_legacy_state_declarator`: it filters resolved reference ids of the base symbol against `ComponentScoping::store_candidate_refs()` and counts a write/member-mutation only when at least one non-store reference targets the binding. Mirrors `builder_v2/legacy.rs::is_non_store_ref` (legacy `export let`) and the runes `Prop(NonSource, Standard)` exclusion in `builder_v2/references.rs`. Test: `diagnose_legacy_let_writable_store_only_assign`.
+
+- [x] **Legacy mode: `<Child bind:prop={$X.member}>` on `let X = writable(...)` must keep `X` plain** — layer: analyze 3.A.2 (`ReactivitySemantics`). Pattern: `let X = writable(...)` + component bind on a member of the auto-sub (`bind:value={$X.foo}`) + a separate `$X = …` store-set (no bare write of `X`). Reference: `let X = writable(...)` stays plain; setter is `$.store_mutate(X, $.untrack($X).foo = $$value, $.untrack($X))`; store-thunk getter reads `$.store_get(X, ...)`. Ours: declaration becomes `let X = $.mutable_source(writable(...))` and every reference unwraps via `$.get(X)` (bind setter, thunk getter, `$.store_set`). Root cause candidate: bind on a member of the synthetic store reference contributes a non-store mutation fact on the base symbol `X`, so `has_non_store_mutation_legacy` mis-classifies the binding as a reassigned legacy state. Test cases: `diagnose_legacy_bind_store_member_keeps_writable_plain`.
+
 - [ ] **`$:` reactive statement reading a store** — owned by `specs/legacy-reactive-assignments.md` but cross-references store path. Cross-link only.
+
+- [x] **Legacy mode: `<Child bind:prop={$store}>` где базовая ссылка стора — `LegacyState` `mutable_source` (например, биндинг из `$: ({ store } = …)`)** — слой: 4 кодген. Единый эмит-биндинг-чтения для базы стора: `codegen/expr.rs::build_store_base_read(ctx, base_symbol)` читает `BindingSemantics(base_symbol)` и строит выражение разворачивания носителя для всех `$.store_get` / `$.store_set` / `$.validate_store`-аргументов. Два потребителя: `lib.rs` (преамбула store-thunk’а), `component_props/bind_prop.rs::emit_bind_store` (сеттер компонент-бинда). Прежде каждый сайт держал свой match, и `emit_bind_store` пропускал ветку `LegacyState`. Тест: `diagnose_legacy_component_bind_store_reactive_destructured_base`.
+
+- [x] **Legacy mode: `<Child bind:prop={X}>` where bare `X` is a legacy state-source whose `$X` is auto-subscribed** — layer: анализ (`attribute_semantics`). Новый вариант `ComponentBindTarget::LegacyStateSubscribed` помечает совместную классификацию `LegacyState + store_shadow`; `derive_component_bind_target` в `crates/svelte_analyze/src/attribute_semantics/builder/mod.rs` выбирает его, когда `BindingSemantics::LegacyState(_)` и `ReactivitySemantics::store_shadow_of_internal(sym).is_some()`. Кодген `bind_prop.rs::emit_bind_identifier` эмитит для нового варианта тот же getter, что у `LegacyState` (`$.get(X)`), и setter, обёрнутый в `$.store_unsub($.set(X, $$value), "$X", $$stores)`. Тест: `diagnose_legacy_component_bind_base_store_unsub`.
+
+- [x] **Legacy mode: bare read of a `$:` local that holds a store, passed as a component prop** — layer: transform (`crates/svelte_transform/src/transformer/rewrites.rs::dispatch_identifier_read`). Pattern: `$: store = source;` (store-valued RHS) + `$store` auto-subscribed elsewhere + `<Child value={store} />`. Reference: getter `return $.get(store);` — read the legacy `mutable_source` holding the store. Ours: getter `return $store();` — incorrectly routed through the synthetic auto-sub thunk, dropping the `mutable_source` read and dereferencing the store. The rewriter must distinguish `LegacyStateSubscribedRead` (bare read of the store-holding local) from `StoreRead`/`ImportSubscribedRead` (auto-subscription read of `$name`). Test: `diagnose_legacy_reactive_store_value_passed_as_bare_prop`.
+
+- [x] **Legacy mode: `<input bind:value={X}>` getter unwraps `$.get(X)` for `mutable_source`-promoted legacy state** — слой: анализ + трансформ. Pattern: `let X = writable(...)` + `$X` авто-подписка → `X` промоутится в `$.mutable_source(...)`; element-level `<input bind:value={X}>` (без `$`) должен эмитить getter `() => $.get(X)`. Корневая причина: `crates/svelte_analyze/src/passes/build_component_semantics.rs::walk_bind_directive` для Identifier-цели пускал `ReferenceFlags::Write` — без `Read` ссылка классифицировалась в `LegacyStateSubscribedWrite`/`Update`, который трансформ-`dispatch_identifier_read` не разворачивал и getter оставался голым. Фикс: флаг `Read | Write` для Identifier-bind в анализе + добавлены arm'ы `LegacyStateSubscribedWrite` и `LegacyStateSubscribedUpdate { safe }` в `crates/svelte_transform/src/transformer/rewrites.rs::dispatch_identifier_read` (зеркалят `LegacyStateWrite`/`LegacyStateUpdate`). Сеттер не тронут — `dispatch_identifier_assignment` уже корректно эмитит `$.store_unsub($.set(X, $$value), "$X", $$stores)` (test: `diagnose_legacy_bind_value_writable_store_shadow`).
 
 - [ ] **Custom element: `$store` reads inside CE-targeted compile** — verify $$cleanup ordering with CE props (no targeted test)
 
@@ -275,3 +291,11 @@ In **runes mode** with `{#each $items as item}` whose collection expression is a
 - [x] `diagnose_bindable_prop_store_only`
 - [x] `diagnose_component_bind_store_derived_base`
 - [x] `store_bare_identifier_method_call`
+- [x] `diagnose_legacy_export_let_store_prop_subscription`
+- [x] `diagnose_legacy_component_bind_store_prop`
+- [x] `diagnose_legacy_reactive_store_value_passed_as_bare_prop`
+- [x] `diagnose_legacy_component_bind_store_reactive_destructured_base`
+- [x] `diagnose_legacy_let_writable_store_only_assign`
+- [x] `diagnose_legacy_bind_store_member_keeps_writable_plain`
+- [x] `diagnose_legacy_component_bind_base_store_unsub`
+- [x] `diagnose_legacy_bind_value_writable_store_shadow`

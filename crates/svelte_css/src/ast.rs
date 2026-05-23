@@ -182,6 +182,8 @@ pub struct AttributeSelector {
 
     pub value: Option<Span>,
 
+    pub quote: Option<u8>,
+
     pub flags: Option<Span>,
 }
 

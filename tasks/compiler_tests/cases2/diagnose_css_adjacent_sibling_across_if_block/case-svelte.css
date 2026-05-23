@@ -1,0 +1,5 @@
+
+  .a.svelte-13830z5 + .c:where(.svelte-13830z5),
+  .b.svelte-13830z5 + .c:where(.svelte-13830z5) {
+    color: red;
+  }

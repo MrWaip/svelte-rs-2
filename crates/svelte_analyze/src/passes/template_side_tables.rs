@@ -1,4 +1,4 @@
-use oxc_ast::ast::{BindingPattern, Statement, VariableDeclarator};
+use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
     Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, FragmentRole, HtmlTag,
     Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
@@ -185,14 +185,122 @@ fn fragment_namespace_for(
     use svelte_ast::FragmentRole;
     let role = store.fragment(fragment_id).role;
     match role {
-        FragmentRole::Root => root_ns,
-        FragmentRole::SvelteHeadBody
-        | FragmentRole::ComponentChildren
-        | FragmentRole::NamedSlot => svelte_ast::Namespace::Html,
+        FragmentRole::Root => infer_namespace_from_children(fragment_id, store, data)
+            .unwrap_or(root_ns),
+        FragmentRole::SvelteHeadBody => svelte_ast::Namespace::Html,
+        FragmentRole::ComponentChildren | FragmentRole::NamedSlot => {
+            infer_namespace_from_children(fragment_id, store, data)
+                .unwrap_or(svelte_ast::Namespace::Html)
+        }
         _ => parent_element
             .and_then(|el_id| data.namespace(el_id))
             .map(NamespaceKind::as_namespace)
             .unwrap_or(root_ns),
+    }
+}
+
+fn infer_namespace_from_children(
+    fragment_id: svelte_ast::FragmentId,
+    store: &svelte_ast::AstStore,
+    data: &AnalysisData,
+) -> Option<svelte_ast::Namespace> {
+    let mut acc: Option<svelte_ast::Namespace> = None;
+    visit_fragment_for_namespace(fragment_id, store, data, &mut acc);
+    acc
+}
+
+fn visit_fragment_for_namespace(
+    fragment_id: svelte_ast::FragmentId,
+    store: &svelte_ast::AstStore,
+    data: &AnalysisData,
+    acc: &mut Option<svelte_ast::Namespace>,
+) -> bool {
+    for &id in store.fragment_nodes(fragment_id) {
+        if !visit_node_for_namespace(id, store, data, acc) {
+            return false;
+        }
+    }
+    true
+}
+
+fn visit_node_for_namespace(
+    id: svelte_ast::NodeId,
+    store: &svelte_ast::AstStore,
+    data: &AnalysisData,
+    acc: &mut Option<svelte_ast::Namespace>,
+) -> bool {
+    match store.get(id) {
+        Node::Element(_) | Node::SvelteElement(_) => {
+            let Some(ns) = data
+                .creation_namespace(id)
+                .or_else(|| data.namespace(id).map(NamespaceKind::as_namespace))
+            else {
+                return true;
+            };
+            *acc = match *acc {
+                None => Some(ns),
+                Some(prev) if prev == ns => Some(prev),
+                Some(_) => {
+                    *acc = Some(svelte_ast::Namespace::Html);
+                    return false;
+                }
+            };
+            true
+        }
+        Node::IfBlock(block) => {
+            if !visit_fragment_for_namespace(block.consequent, store, data, acc) {
+                return false;
+            }
+            if let Some(alt) = block.alternate {
+                return visit_fragment_for_namespace(alt, store, data, acc);
+            }
+            true
+        }
+        Node::EachBlock(block) => {
+            if !visit_fragment_for_namespace(block.body, store, data, acc) {
+                return false;
+            }
+            if let Some(fb) = block.fallback {
+                return visit_fragment_for_namespace(fb, store, data, acc);
+            }
+            true
+        }
+        Node::AwaitBlock(block) => {
+            if let Some(p) = block.pending
+                && !visit_fragment_for_namespace(p, store, data, acc)
+            {
+                return false;
+            }
+            if let Some(t) = block.then
+                && !visit_fragment_for_namespace(t, store, data, acc)
+            {
+                return false;
+            }
+            if let Some(c) = block.catch {
+                return visit_fragment_for_namespace(c, store, data, acc);
+            }
+            true
+        }
+        Node::KeyBlock(block) => visit_fragment_for_namespace(block.fragment, store, data, acc),
+        Node::SvelteBoundary(b) => visit_fragment_for_namespace(b.fragment, store, data, acc),
+        Node::Text(_)
+        | Node::SlotElementLegacy(_)
+        | Node::ComponentNode(_)
+        | Node::Comment(_)
+        | Node::ExpressionTag(_)
+        | Node::SnippetBlock(_)
+        | Node::RenderTag(_)
+        | Node::HtmlTag(_)
+        | Node::ConstTag(_)
+        | Node::DebugTag(_)
+        | Node::SvelteHead(_)
+        | Node::SvelteFragmentLegacy(_)
+        | Node::SvelteComponentLegacy(_)
+        | Node::SvelteWindow(_)
+        | Node::SvelteDocument(_)
+        | Node::SvelteBody(_)
+        | Node::SvelteSelf(_)
+        | Node::Error(_) => true,
     }
 }
 
@@ -633,9 +741,17 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name
                 && let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name)
-                && block.key.is_none()
             {
-                ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
+                let key_is_index = block
+                    .key
+                    .as_ref()
+                    .and_then(|r| ctx.parsed().and_then(|p| p.expr(r.id())))
+                    .is_some_and(|expr| {
+                        matches!(expr.get_inner_expression(), Expression::Identifier(ident) if ident.name.as_str() == idx_name)
+                    });
+                if block.key.is_none() || key_is_index {
+                    ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
+                }
             }
         }
     }
@@ -694,6 +810,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+        ctx.data
+            .template
+            .template_topology
+            .record_node_parent(el.id, ctx.parent());
         record_custom_element_slot_name(ctx.data, &el.attributes, ctx.source);
     }
 

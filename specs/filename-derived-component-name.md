@@ -1,9 +1,9 @@
 # Filename-Derived Component Name
 
 ## Current state
-- **Working**: 6/6 use cases
-- **Tests**: 12/12 green
-- Last updated: 2026-04-11
+- **Working**: 8/8 use cases
+- **Tests**: 16/16 green
+- Last updated: 2026-05-18
 
 ## Source
 
@@ -28,6 +28,8 @@ compile(source, { rootDir: "/repo", filename: "/repo/src/routes/foo/+page.svelte
 - [x] Invalid identifier characters in derived names are sanitized before codegen (`+page.svelte` -> `_page`), and leading digits are prefixed (`123-widget.svelte` -> `_23_widget`). (tests: `component_name_filename_sanitized`, `component_name_filename_leading_digit_sanitized`, `compile_filename_derived_name_is_sanitized`)
 - [x] Derived or explicit component names are deconflicted against reserved words and declarations/references visible to the root semantic scope (`class.svelte`, local `App`, root unresolved names), and analyze warnings reuse that finalized name. (tests: `compile_filename_derived_name_conflict_is_deconflicted`, `svelte_self_deprecated_uses_deconflicted_component_name`, `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`)
 - [x] `rootDir` does not participate in component-name derivation; it only affects the normalized runtime `filename` used for diagnostics/dev metadata. Our compiler also ignores `root_dir` when deriving the name.
+- [x] Name deconfliction ignores TS type-only references. A type-position identifier (e.g. `export let value: App.Config`) must not count as a runtime binding conflict with the derived component name `App`; reference keeps `App`, our compiler deconflicts to `App_1`. Test: `component_name_ignores_ts_namespace_type`.
+- [x] Name deconfliction considers template-introduced bindings (slot `let:` alias, `{#each ... as alias}`, `{#snippet name(param)}`). `finalize_component_name` extends the conflict set with names of bindings whose scope `is_template_scope` (`ComponentSemantics`), so an alias colliding with the filename-derived name renames the exported function (e.g. `Modal.svelte` + `<Outer let:value={Modal}>` -> `Modal_1`). Tests: `diagnose_component_name_collides_with_slot_let_binding`, `diagnose_component_name_collides_with_each_alias_binding`, `diagnose_component_name_collides_with_snippet_param_binding`.
 
 ## Out of scope
 
@@ -63,3 +65,7 @@ compile(source, { rootDir: "/repo", filename: "/repo/src/routes/foo/+page.svelte
 - [x] `compile_filename_derived_name_conflict_is_deconflicted`
 - [x] `svelte_self_deprecated_uses_deconflicted_component_name`
 - [x] `svelte_self_deprecated_uses_reserved_word_deconflicted_component_name`
+- [x] `component_name_ignores_ts_namespace_type`
+- [x] `diagnose_component_name_collides_with_slot_let_binding`
+- [x] `diagnose_component_name_collides_with_each_alias_binding`
+- [x] `diagnose_component_name_collides_with_snippet_param_binding`

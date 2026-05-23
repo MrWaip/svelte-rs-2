@@ -1,37 +1,57 @@
 use super::super::{
-    BlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind, RenderTagBlockSemantics,
+    BlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
 };
 use super::walker::Ctx;
+use crate::expression_semantics::{ExprKind, ExpressionSemantics};
 use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
 use crate::ReferenceSemantics;
-use oxc_ast::ast::{Argument, AwaitExpression, CallExpression, ChainElement, Expression, IdentifierReference};
-use oxc_ast_visit::{Visit, walk};
+use oxc_ast::ast::{Argument, ChainElement, Expression};
 use smallvec::SmallVec;
 use svelte_ast::RenderTag;
 use svelte_component_semantics::{ReferenceId, SymbolId};
 
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     let Some(expr) = ctx.parsed.expr(tag.expression.id()) else {
+        ctx.store.set(
+            tag.id,
+            BlockSemantics::Render(RenderTagBlockSemantics {
+                call_kind: RenderCallKind::Plain,
+                callee_sym: None,
+                args: SmallVec::new(),
+                async_kind: RenderAsyncKind::Sync,
+            }),
+        );
         return;
     };
 
-    let (is_chain, call) = match expr {
+    let (call_kind, call_opt) = match expr.get_inner_expression() {
         Expression::ChainExpression(chain) => match &chain.expression {
-            ChainElement::CallExpression(call) => (true, call.as_ref()),
-            _ => return,
+            ChainElement::CallExpression(call) => (RenderCallKind::OptionalChain, Some(call.as_ref())),
+            _ => (RenderCallKind::Plain, None),
         },
-        Expression::CallExpression(call) => (false, call.as_ref()),
-        _ => return,
+        Expression::CallExpression(call) => (RenderCallKind::Plain, Some(call.as_ref())),
+        _ => (RenderCallKind::Plain, None),
     };
 
-    let callee_sym = callee_symbol(&call.callee, ctx);
-    let callee_shape = classify_callee_kind(ctx, is_chain, callee_sym);
-    let (args, async_kind) = classify_args_and_async(ctx, &call.arguments);
+    let async_kind = derive_async_kind(ctx, tag);
+    let (callee_sym, args) = match call_opt {
+        Some(call) => {
+            let callee_sym = callee_symbol(&call.callee, ctx);
+            let args: SmallVec<[RenderArgKind; 4]> = call
+                .arguments
+                .iter()
+                .map(|arg| derive_arg_kind(ctx, arg))
+                .collect();
+            (callee_sym, args)
+        }
+        None => (None, SmallVec::new()),
+    };
 
     ctx.store.set(
         tag.id,
         BlockSemantics::Render(RenderTagBlockSemantics {
-            callee_shape,
+            call_kind,
             callee_sym,
             args,
             async_kind,
@@ -39,22 +59,24 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     );
 }
 
-fn classify_callee_kind(
-    ctx: &Ctx<'_, '_>,
-    is_chain: bool,
-    callee_sym: Option<SymbolId>,
-) -> RenderCalleeKind {
-    let is_dynamic = callee_sym.is_none_or(|sym| is_reactive_symbol(ctx, sym));
-    match (is_dynamic, is_chain) {
-        (false, false) => RenderCalleeKind::Static,
-        (false, true) => RenderCalleeKind::StaticChain,
-        (true, false) => RenderCalleeKind::Dynamic,
-        (true, true) => RenderCalleeKind::DynamicChain,
+fn derive_async_kind(ctx: &Ctx<'_, '_>, tag: &RenderTag) -> RenderAsyncKind {
+    match ctx.expressions.get(tag.id) {
+        ExpressionSemantics::Expression(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            if !has_await && d.blockers.is_empty() {
+                RenderAsyncKind::Sync
+            } else {
+                RenderAsyncKind::Async {
+                    blockers: d.blockers.clone(),
+                }
+            }
+        }
+        ExpressionSemantics::NonSpecial => RenderAsyncKind::Sync,
     }
 }
 
 fn callee_symbol(callee: &Expression<'_>, ctx: &Ctx<'_, '_>) -> Option<SymbolId> {
-    let Expression::Identifier(ident) = callee else {
+    let Expression::Identifier(ident) = callee.get_inner_expression() else {
         return None;
     };
     let ref_id = ident.reference_id.get()?;
@@ -74,60 +96,40 @@ fn store_reference_symbol(ctx: &Ctx<'_, '_>, ref_id: ReferenceId) -> Option<Symb
     }
 }
 
-fn is_reactive_symbol(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
-    !matches!(
-        ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::MaybeReactive
-            | BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved,
-    )
-}
-
-fn classify_args_and_async<'a>(
-    ctx: &Ctx<'_, 'a>,
-    arguments: &oxc_allocator::Vec<'a, Argument<'a>>,
-) -> (SmallVec<[RenderArgEmit; 4]>, RenderAsyncKind) {
-    let mut args: SmallVec<[RenderArgEmit; 4]> = SmallVec::new();
-    let mut any_await = false;
-    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
-
-    for arg in arguments {
-        let Argument::SpreadElement(_) = arg else {
-            let expr = arg.to_expression();
-
-            if let Some(sym) = prop_source_arg(ctx, expr) {
-                args.push(RenderArgEmit::PropSource { sym });
-                continue;
-            }
-
-            let facts = ArgFacts::collect(expr);
-            let arg_blockers_found = union_blockers(ctx, &facts.refs, &mut blockers);
-            any_await |= facts.has_await;
-
-            args.push(match (facts.has_await, facts.has_call) {
-                (true, _) => RenderArgEmit::MemoAsync,
-                (false, true) => RenderArgEmit::MemoSync,
-                (false, false) => RenderArgEmit::Plain,
-            });
-            let _ = arg_blockers_found;
-            continue;
-        };
-
-        args.push(RenderArgEmit::Plain);
+fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind {
+    if let Argument::SpreadElement(_) = argument {
+        return RenderArgKind::InertThunk;
     }
-    blockers.sort_unstable();
+    let expr = argument.to_expression();
 
-    let async_kind = if !any_await && blockers.is_empty() {
-        RenderAsyncKind::Sync
-    } else {
-        RenderAsyncKind::Async { blockers }
+    if let Some(sym) = passthrough_prop_sym(ctx, expr) {
+        return RenderArgKind::PropPassthrough { sym };
+    }
+
+    let oxc_id = argument_node_id(argument);
+    let data = match ctx.expressions.get_by_oxc(oxc_id) {
+        ExpressionSemantics::Expression(d) => d,
+        _ => return RenderArgKind::InertThunk,
     };
 
-    (args, async_kind)
+    if matches!(data.kind, ExprKind::Async { has_await: true }) {
+        let inner_node_id = if let Expression::AwaitExpression(aw) = expr.get_inner_expression() {
+            Some(expression_node_id(&aw.argument))
+        } else {
+            None
+        };
+        return RenderArgKind::AwaitMemo { inner_node_id };
+    }
+
+    if matches!(data.kind, ExprKind::Call { dynamic: true }) {
+        return RenderArgKind::NeedsMemo;
+    }
+
+    RenderArgKind::InertThunk
 }
 
-fn prop_source_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {
-    let Expression::Identifier(ident) = arg else {
+fn passthrough_prop_sym(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {
+    let Expression::Identifier(ident) = arg.get_inner_expression() else {
         return None;
     };
     let ref_id = ident.reference_id.get()?;
@@ -145,70 +147,11 @@ fn prop_source_arg(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> 
     }
 }
 
-fn union_blockers(ctx: &Ctx<'_, '_>, refs: &[ReferenceId], out: &mut SmallVec<[u32; 2]>) -> bool {
-    let before = out.len();
-    for ref_id in refs {
-        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
-            continue;
-        };
-        if let Some(idx) = ctx.blockers.symbol_blocker(sym)
-            && !out.contains(&idx)
-        {
-            out.push(idx);
-        }
-    }
-    out.len() > before
-}
-
-struct ArgFacts {
-    has_call: bool,
-    has_await: bool,
-    refs: SmallVec<[ReferenceId; 4]>,
-}
-
-impl ArgFacts {
-    fn collect(expr: &Expression<'_>) -> Self {
-        let mut collector = ArgFactsCollector {
-            has_call: false,
-            has_await: false,
-            refs: SmallVec::new(),
-        };
-        collector.visit_expression(expr);
-        Self {
-            has_call: collector.has_call,
-            has_await: collector.has_await,
-            refs: collector.refs,
-        }
-    }
-}
-
-struct ArgFactsCollector {
-    has_call: bool,
-    has_await: bool,
-    refs: SmallVec<[ReferenceId; 4]>,
-}
-
-impl<'a> Visit<'a> for ArgFactsCollector {
-    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        self.has_call = true;
-        walk::walk_call_expression(self, expr);
-    }
-    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        self.has_await = true;
-        walk::walk_await_expression(self, expr);
-    }
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(ref_id) = ident.reference_id.get() {
-            self.refs.push(ref_id);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::tests::analyze_source;
     use crate::{
-        BlockSemantics, RenderArgEmit, RenderAsyncKind, RenderCalleeKind,
+        BlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
         RenderTagBlockSemantics,
     };
     use svelte_ast::{Component, Node, NodeId, RenderTag};
@@ -269,7 +212,8 @@ mod tests {
         assert_render(
             r#"{#snippet row()}<span></span>{/snippet}{@render row()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeKind::Static);
+                assert_eq!(sem.call_kind, RenderCallKind::Plain);
+                assert!(sem.callee_sym.is_some());
                 assert_eq!(sem.args.len(), 0);
                 assert!(matches!(sem.async_kind, RenderAsyncKind::Sync));
             },
@@ -281,7 +225,7 @@ mod tests {
         assert_render(
             r#"{#snippet row()}<span></span>{/snippet}{@render row?.()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeKind::StaticChain);
+                assert_eq!(sem.call_kind, RenderCallKind::OptionalChain);
             },
         );
     }
@@ -291,7 +235,8 @@ mod tests {
         assert_render(
             r#"<script>let { row } = $props();</script>{@render row()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeKind::Dynamic);
+                assert_eq!(sem.call_kind, RenderCallKind::Plain);
+                assert!(sem.callee_sym.is_some());
             },
         );
     }
@@ -301,20 +246,20 @@ mod tests {
         assert_render(
             r#"<script>let { row } = $props();</script>{@render row?.()}"#,
             |sem| {
-                assert_eq!(sem.callee_shape, RenderCalleeKind::DynamicChain);
+                assert_eq!(sem.call_kind, RenderCallKind::OptionalChain);
             },
         );
     }
 
     #[test]
-    fn render_arg_prop_source() {
+    fn render_arg_prop_passthrough() {
         assert_render(
             r#"<script>let { value = $bindable() } = $props(); function row(_) {} value = 1;</script>{@render row(value)}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
                 assert!(
-                    matches!(sem.args[0], RenderArgEmit::PropSource { .. }),
-                    "expected PropSource, got {:?}",
+                    matches!(sem.args[0], RenderArgKind::PropPassthrough { .. }),
+                    "expected PropPassthrough, got {:?}",
                     sem.args[0]
                 );
             },
@@ -322,23 +267,34 @@ mod tests {
     }
 
     #[test]
-    fn render_arg_has_call() {
+    fn render_arg_needs_memo() {
         assert_render(
             r#"<script>let { row } = $props(); function label(x) { return x; }</script>{@render row(label(1))}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
-                assert_eq!(sem.args[0], RenderArgEmit::MemoSync);
+                assert_eq!(sem.args[0], RenderArgKind::NeedsMemo);
             },
         );
     }
 
     #[test]
-    fn render_arg_plain_identifier() {
+    fn render_arg_inert_thunk() {
         assert_render(
             r#"<script>let { row } = $props(); const x = 1;</script>{@render row(x)}"#,
             |sem| {
                 assert_eq!(sem.args.len(), 1);
-                assert_eq!(sem.args[0], RenderArgEmit::Plain);
+                assert_eq!(sem.args[0], RenderArgKind::InertThunk);
+            },
+        );
+    }
+
+    #[test]
+    fn render_arg_logical_inert() {
+        assert_render(
+            r#"<script>let { row, a, b } = $props();</script>{@render row(a ?? b)}"#,
+            |sem| {
+                assert_eq!(sem.args.len(), 1);
+                assert_eq!(sem.args[0], RenderArgKind::InertThunk);
             },
         );
     }

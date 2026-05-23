@@ -1,9 +1,9 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 13/13 use cases
-- **Tests**: 24/24 green
-- Last updated: 2026-05-11
+- **Working**: 15/15 use cases
+- **Tests**: 26/26 green
+- Last updated: 2026-05-21
 
 ## Source
 
@@ -34,6 +34,10 @@
 - [x] Sibling-text concatenation that interpolates an imported binding (e.g. `<div>Hello {NAME} world<Other/></div>`) compiles to `$.template_effect(() => $.set_text(text, …))`, not `text.nodeValue = …`. Owning layer: **analyze**. Imports cross a module boundary that the compiler cannot evaluate (a `.svelte.js` re-export may carry `$state`), so they are classified as `BindingSemantics::MaybeReactive` — a domain answer to "we cannot prove non-reactivity". `is_symbol_dynamic` in `crates/svelte_analyze/src/expression_semantics/builder/derive.rs` (and the mirror in `passes/dynamism.rs`) returns `true` for `MaybeReactive`, feeding `ExprKind::SimpleRead { reactive: true }` so concat-context emits `template_effect`. Component / snippet binding classifiers (`is_reactive_component_binding`, `is_reactive_symbol` in `block_semantics/builder/render.rs`) treat `MaybeReactive` as static — imported `<Other />` and `{@render snip()}` keep their direct call form. (test: `diagnose_text_concat_import_uses_template_effect`)
 
 - [x] Concat-context interpolations lifted into a `template_effect` memo param (`$0`, sync or async) emit `${$0 ?? ""}` unconditionally. `build_concatenation_parts` in `crates/svelte_codegen_client/src/codegen/concatenation.rs` tracks `was_memoized` per part: when `data.kind` triggers `sync_values_push` / `async_values_push`, `defined` is forced to `false` regardless of the source expression's `ExpressionSemantics::Evaluation` because the substituted identifier `$0` carries no defined-ness. Same correction applied to `TitlePart::SyncMemo` / `TitlePart::AsyncMemo` in `crates/svelte_codegen_client/src/codegen/hoisted/title.rs` (mirror site, no failing case yet but kept consistent). Test: `text_expression_conditional_memoized_needs_nullish_fallback`.
+
+- [x] Concat-context interpolation whose codegen form is a comma `SequenceExpression` (multi-source auto-tracking from `apply_legacy_wrap`: `(deep_read_state(a), deep_read_state(b), untrack(() => expr))`) emits as `${(seq) ?? ""}` inside the `set_text` template literal, matching reference. `build_concatenation_parts` in `crates/svelte_codegen_client/src/codegen/concatenation.rs` re-checks the post-wrap `effective_expr`: when it is `Expression::SequenceExpression`, the per-part `defined` flag is forced to `false` regardless of the source expression's `Evaluation`, so the builder wraps the sequence in `LogicalExpression(Coalesce, seq, "")`. The OXC printer adds the parentheses around the comma sequence on the lhs of `??` automatically by operator precedence. (test: `diagnose_text_concat_sequence_expr_nullish_fallback`)
+
+- [x] Element whose dynamic text is reached through `$.sibling(...)` (i.e. preceded by static text and/or other nodes) emits the base anchor as `$.child(parent)` without the text hint; the `true` hint belongs only on the outer `$.sibling(..., n, true)`. Layer: **codegen** — `make_sibling_expr` in `crates/svelte_codegen_client/src/codegen/fragment/process_children.rs` (the `ChildAnchor::ElementChild` branch) gates `Arg::Bool(true)` on `$.child` by `is_text && skipped == 0`, so when the dynamic target is reached through `$.sibling`, the inner `$.child` stays unflagged. Test: `diagnose_static_text_before_dynamic_in_element`.
 
 - [x] Element with a single dynamic expression child whose source is reactive must compile to `$.child(el, true)` + `$.template_effect(() => $.set_text(text, ...))`, never to `el.textContent = $.get(...)`. The HTML template carries a single space placeholder (`<button> </button>`) so `$.child(el, true)` can attach during hydration. The codegen single-expression-child fast path already toggles between `textContent =` and the reactive form via `is_dynamic_template`; the gap was upstream in analyze. Owning layer: **analyze** — `collect_derived_init_refs` in `crates/svelte_analyze/src/reactivity_semantics/builder_v2/mod.rs` only walks the `$derived.by` argument when it's an `ArrowFunctionExpression` with `.expression == true`. Block-body arrows, function expressions, and non-arrow arguments are opaque: no refs collected, so `Derived.reactive` stays at the initial `true`, and the read-site `is_dynamic_template` correctly forces `template_effect`. Mirrors reference's `scope.evaluate` boundary — it does not peer into block bodies. (test: `diagnose_button_single_dynamic_text`)
 
@@ -92,3 +96,5 @@
 - [x] `derived_by_expression_body_tracks_inert_deps` (analyzer unit)
 - [x] `diagnose_text_concat_import_uses_template_effect`
 - [x] `text_expression_conditional_memoized_needs_nullish_fallback`
+- [x] `diagnose_text_concat_sequence_expr_nullish_fallback`
+- [x] `diagnose_static_text_before_dynamic_in_element`

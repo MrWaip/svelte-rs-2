@@ -1,7 +1,81 @@
-use oxc_ast::ast::{BindingPattern, Expression, PropertyKey};
+use oxc_ast::ast::{
+    AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty, BindingPattern,
+    Expression, IdentifierReference, PropertyKey,
+};
 use smallvec::SmallVec;
 
 use crate::SymbolId;
+
+pub fn walk_assignment_target_idents<'a, F>(
+    target: &'a AssignmentTarget<'a>,
+    mut visit: F,
+) -> bool
+where
+    F: FnMut(&'a IdentifierReference<'a>),
+{
+    walk_assignment_target_inner(target, &mut visit)
+}
+
+fn walk_assignment_target_inner<'a, F>(target: &'a AssignmentTarget<'a>, visit: &mut F) -> bool
+where
+    F: FnMut(&'a IdentifierReference<'a>),
+{
+    match target {
+        AssignmentTarget::AssignmentTargetIdentifier(id) => {
+            visit(id.as_ref());
+            true
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            if obj.rest.is_some() {
+                return false;
+            }
+            for prop in &obj.properties {
+                match prop {
+                    AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
+                        if sh.init.is_some() {
+                            return false;
+                        }
+                        visit(&sh.binding);
+                    }
+                    AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
+                        if kv.computed {
+                            return false;
+                        }
+                        let Some(inner) = kv.binding.as_assignment_target() else {
+                            return false;
+                        };
+                        if !walk_assignment_target_inner(inner, visit) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            true
+        }
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            if arr.rest.is_some() {
+                return false;
+            }
+            for elem in arr.elements.iter() {
+                let Some(elem) = elem else {
+                    return false;
+                };
+                let AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(_) = elem else {
+                    let Some(inner) = elem.as_assignment_target() else {
+                        return false;
+                    };
+                    if !walk_assignment_target_inner(inner, visit) {
+                        return false;
+                    }
+                    continue;
+                };
+                return false;
+            }
+            true
+        }
+        _ => false,
+    }
+}
 
 pub fn walk_bindings<'a, F>(pat: &'a BindingPattern<'a>, mut visit: F)
 where

@@ -1,6 +1,7 @@
 {
   "name": "@mrwaip/svelte-rs2",
   "version": "0.0.0-canary.0",
+  "license": "MIT",
   "type": "module",
   "files": [
     "README.md",

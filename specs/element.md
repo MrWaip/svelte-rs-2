@@ -1,8 +1,8 @@
 # Element
 
 ## Current state
-- **Working**: 15/15 use cases
-- **Tests**: 33/33 green
+- **Working**: 16/16 use cases
+- **Tests**: 34/34 green
 - Last updated: 2026-05-14
 
 ## Source
@@ -41,6 +41,7 @@
 - [x] Root namespace options and basic inline SVG/MathML paths compile (tests: `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`)
 - [x] Non-void self-closing tags lower to explicit open/close HTML (tests: `non_void_self_closing`, `mixed_html_elements`)
 - [x] `<noscript>` content is stripped from the static template payload (tests: `smoke`, `smoke_all`)
+- [x] `<noscript>` as the root element of a dynamic fragment (control-flow branch like `{#if}` / `{#each}` / `<svelte:head>`) emits a normal element template and bound identifier (test: `noscript_root_in_if_block`)
 - [x] Child fragment lowering respects SVG whitespace rules (tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`)
 - [x] Template validation for regular elements and element attributes — working: `element_invalid_self_closing_tag`, `textarea_invalid_content`; skipped (out of scope): `node_invalid_placement` (requires HTML content model table), `component_name_lowercase` (requires symbol ref-count access)
 - [x] `<textarea>` child-content lowering to a synthetic `value` attribute — `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (test: `textarea_child_value_dynamic`)
@@ -110,3 +111,4 @@
 - [x] `mathml_annotation_xml_fragment_html`
 - [x] `svg_foreignobject_fragment_html`
 - [x] `diagnose_sibling_after_deep_nested_elements`
+- [x] `noscript_root_in_if_block`

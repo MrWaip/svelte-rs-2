@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -163,7 +164,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let getter = if is_rune {
-            let body = self.ctx.b.call_expr("$.get", [Arg::Ident(expr_text)]);
+            let body = rune_get(&self.ctx.b, expr_text);
             self.ctx
                 .b
                 .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])

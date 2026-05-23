@@ -933,10 +933,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         if has_slot
-            && !ctx
-                .data
-                .parent(el.id)
-                .is_some_and(|p| p.kind == ParentKind::ComponentNode)
+            && !ctx.data.parent(el.id).is_some_and(|p| {
+                matches!(
+                    p.kind,
+                    ParentKind::ComponentNode
+                        | ParentKind::SvelteComponentLegacy
+                        | ParentKind::SvelteSelf
+                )
+            })
         {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1055,7 +1059,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
-        check_event_handler_value(&cn.attributes, ctx);
     }
 
     fn visit_svelte_component_legacy(
@@ -1069,7 +1072,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
-        check_event_handler_value(&cn.attributes, ctx);
     }
 
     fn visit_svelte_self(
@@ -1082,7 +1084,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
-        check_event_handler_value(&cn.attributes, ctx);
     }
 
     fn visit_svelte_fragment_legacy(
@@ -1090,9 +1091,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
         el: &SvelteFragmentLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let is_direct_child_of_component = ctx
-            .parent()
-            .is_some_and(|parent| parent.kind == ParentKind::ComponentNode);
+        let is_direct_child_of_component = ctx.parent().is_some_and(|parent| {
+            matches!(
+                parent.kind,
+                ParentKind::ComponentNode
+                    | ParentKind::SvelteComponentLegacy
+                    | ParentKind::SvelteSelf
+            )
+        });
 
         if !is_direct_child_of_component {
             ctx.warnings_mut().push(Diagnostic::error(
@@ -1255,8 +1261,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         if attr.event_name.is_some()
-            && let Some(Expression::Identifier(ident)) =
-                ctx.parsed().and_then(|p| p.expr(attr.expression.id()))
+            && let Some(Expression::Identifier(ident)) = ctx
+                .parsed()
+                .and_then(|p| p.expr(attr.expression.id()))
+                .map(|e| e.get_inner_expression())
             && ident.name.as_str() == attr.name.as_str()
             && ctx
                 .data
@@ -1273,6 +1281,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         if attr.event_name.is_some()
+            && ctx
+                .parent()
+                .is_some_and(|p| matches!(p.kind, ParentKind::Element | ParentKind::SvelteElement))
             && let Some(state) = self.element_event_state.last_mut()
         {
             state.has_s5_events = true;
@@ -1290,7 +1301,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         } else {
             ctx.parsed()
                 .and_then(|p| p.expr(dir.expression.id()))
-                .is_some_and(|expr| matches!(expr, Expression::Identifier(_)))
+                .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::Identifier(_)))
         };
 
         let shape = bind_expression_kind(dir, ctx);
@@ -1789,6 +1800,11 @@ fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionKind {
             },
             inner => classify_bind_expression(inner),
         },
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         _ if expr.as_member_expression().is_some() => BindExpressionKind::IdentifierOrMember,
         _ => BindExpressionKind::Invalid,
     }
@@ -2052,6 +2068,8 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
         decl,
         crate::BindingSemantics::State(_)
             | crate::BindingSemantics::Store(_)
+            | crate::BindingSemantics::LegacyState(_)
+            | crate::BindingSemantics::LegacyBindableProp(_)
             | crate::BindingSemantics::Prop(crate::PropBindingSemantics {
                 kind: crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource,
                 ..
@@ -2111,7 +2129,7 @@ fn bind_base_symbol(
 
     let expr = ctx.parsed()?.expr(dir.expression.id())?;
     if !matches!(
-        expr,
+        expr.get_inner_expression(),
         Expression::Identifier(_)
             | Expression::StaticMemberExpression(_)
             | Expression::ComputedMemberExpression(_)
@@ -2239,7 +2257,9 @@ impl SpecialElementKind {
             Attribute::LetDirectiveLegacy(_) => true,
             Attribute::OnDirectiveLegacy(_) => true,
             Attribute::BindDirective(_) => matches!(self, Self::Window | Self::Document),
-            Attribute::UseDirective(_) => matches!(self, Self::Body),
+            Attribute::UseDirective(_) => {
+                matches!(self, Self::Body | Self::Window | Self::Document)
+            }
             Attribute::AttachTag(_) => matches!(self, Self::Document),
             _ => false,
         }
@@ -2562,7 +2582,11 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
             }
         } else if matches!(
             ancestor.kind,
-            ParentKind::ComponentNode | ParentKind::SvelteElement | ParentKind::SnippetBlock
+            ParentKind::ComponentNode
+                | ParentKind::SvelteComponentLegacy
+                | ParentKind::SvelteSelf
+                | ParentKind::SvelteElement
+                | ParentKind::SnippetBlock
         ) {
             break;
         }
@@ -2839,7 +2863,9 @@ fn extract_arrow_params<'s, 'a: 's>(
         return None;
     };
     let declarator = decl.declarations.first()?;
-    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+    let Some(Expression::ArrowFunctionExpression(arrow)) =
+        declarator.init.as_ref().map(|e| e.get_inner_expression())
+    else {
         return None;
     };
     Some(&arrow.params)
@@ -3126,7 +3152,12 @@ fn check_event_handler_value(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>
         if name.len() <= 2 || !name.starts_with("on") {
             continue;
         }
-        if matches!(attr, Attribute::ExpressionAttribute(_)) {
+        if !matches!(
+            attr,
+            Attribute::StringAttribute(_)
+                | Attribute::BooleanAttribute(_)
+                | Attribute::ConcatenationAttribute(_)
+        ) {
             continue;
         }
         ctx.warnings_mut().push(Diagnostic::error(

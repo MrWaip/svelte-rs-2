@@ -1,3 +1,4 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, NodeId};
@@ -77,6 +78,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             directives_obj,
             has_state,
             &mut memo_deps,
+            true,
         );
 
         Ok(())
@@ -95,7 +97,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let dir_ids: Vec<NodeId> = dirs.iter().map(|cd| cd.id).collect();
         let needs_hoist = dir_ids.iter().any(|&id| {
             self.ctx.expression_data(id).is_some_and(|d| {
-                matches!(d.kind, ExprKind::Call) && !d.references.is_empty()
+                matches!(d.kind, ExprKind::Call { dynamic: true })
             })
         });
         if !needs_hoist {
@@ -133,6 +135,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Attribute::ExpressionAttribute(ea) => {
                 let mut expr = self.take_attr_expr(class_attr_id, &ea.expression)?;
                 let _ = ea;
+                let data = self.ctx.expression_data(class_attr_id).cloned();
+                expr = coarse_wrap(self.ctx, expr, data.as_ref());
                 if self.ctx.needs_clsx(class_attr_id) {
                     expr = self.ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
                 }
@@ -170,21 +174,46 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         owner_var: &str,
     ) -> Result<()> {
-        let Some(dir_obj) = self.build_class_directives_object(owner_id)? else {
+        let dir_obj_opt = self.build_class_directives_object(owner_id)?;
+        let Some(dir_obj) = dir_obj_opt else {
             return Ok(());
         };
-        let call = self.ctx.b.call_stmt(
-            "$.set_class",
-            [
-                Arg::Ident(owner_var),
-                Arg::Num(0.0),
-                Arg::StrRef(""),
-                Arg::Expr(self.ctx.b.null_expr()),
-                Arg::Expr(self.ctx.b.object_expr(Vec::<ObjProp<'a>>::new())),
-                Arg::Expr(dir_obj),
-            ],
+
+        let has_state = self.ctx.class_needs_state(owner_id);
+        let dir_obj = if has_state {
+            self.maybe_hoist_class_directives_obj(state, owner_id, dir_obj)
+        } else {
+            dir_obj
+        };
+
+        let static_value = self.ctx.static_class(owner_id).unwrap_or("").to_string();
+        let hash = self.ctx.css_hash().to_string();
+        let scoped = self.ctx.is_css_scoped(owner_id) && !hash.is_empty();
+        let value = if scoped {
+            if static_value.is_empty() {
+                hash
+            } else {
+                format!("{static_value} {hash}")
+            }
+        } else {
+            static_value
+        };
+        let class_value = self.ctx.b.str_expr(&value);
+
+        let mut memo_deps = TemplateMemoState::default();
+        emit_set_class_call(
+            self.ctx,
+            &mut state.init,
+            &mut state.update,
+            &mut state.after_update,
+            owner_var,
+            class_value,
+            None,
+            Some(dir_obj),
+            has_state,
+            &mut memo_deps,
+            false,
         );
-        state.init.push(call);
         Ok(())
     }
 
@@ -201,13 +230,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 None => return Ok(None),
             };
 
+        let needs_state = self.ctx.class_needs_state(owner_id);
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for (id, name, has_expression, expr_id) in &dir_snapshot {
             let (expr, same_name) = if *has_expression {
                 let Some(parsed) = self.ctx.state.parsed.take_expr(*expr_id) else {
                     return CodegenError::missing_expression(*id);
                 };
-                let parsed = self.maybe_wrap_legacy_slots_read(parsed);
+                let parsed = if needs_state {
+                    self.maybe_wrap_legacy_slots_read(parsed)
+                } else {
+                    parsed
+                };
                 (parsed, self.ctx.is_expression_shorthand(*id))
             } else {
                 (self.ctx.b.rid_expr(name), true)
@@ -230,6 +264,7 @@ fn emit_set_class_call<'a>(
     directives_obj: Option<Expression<'a>>,
     has_state: bool,
     memo_deps: &mut TemplateMemoState<'a>,
+    is_html: bool,
 ) {
     let scope_expr = |ctx: &mut Ctx<'a>| match scope_hash {
         Some(h) => ctx.b.str_expr(h),
@@ -244,7 +279,7 @@ fn emit_set_class_call<'a>(
                 "$.set_class",
                 [
                     Arg::Ident(el_name),
-                    Arg::Num(1.0),
+                    Arg::Num(if is_html { 1.0 } else { 0.0 }),
                     Arg::Expr(class_value),
                     Arg::Expr(scope),
                     Arg::Ident(&classes_name),
@@ -262,7 +297,7 @@ fn emit_set_class_call<'a>(
                 "$.set_class",
                 [
                     Arg::Ident(el_name),
-                    Arg::Num(1.0),
+                    Arg::Num(if is_html { 1.0 } else { 0.0 }),
                     Arg::Expr(class_value),
                     Arg::Expr(scope),
                     Arg::Expr(ctx.b.object_expr(vec![])),
@@ -272,7 +307,7 @@ fn emit_set_class_call<'a>(
             init.push(ctx.b.expr_stmt(set_class_call));
         }
     } else {
-        let mut args = vec![Arg::Ident(el_name), Arg::Num(1.0), Arg::Expr(class_value)];
+        let mut args = vec![Arg::Ident(el_name), Arg::Num(if is_html { 1.0 } else { 0.0 }), Arg::Expr(class_value)];
         if let Some(h) = scope_hash {
             args.push(Arg::Expr(ctx.b.str_expr(h)));
         }

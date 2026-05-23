@@ -2,7 +2,7 @@ use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::NodeId;
+use svelte_ast::{NodeId, RunesMode};
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +20,8 @@ pub enum BindingSemantics {
     Prop(PropBindingSemantics),
 
     LegacyBindableProp(LegacyBindablePropSemantics),
+
+    LegacyApiExport,
 
     LegacyState(LegacyStateSemantics),
 
@@ -160,6 +162,8 @@ pub enum PropDefaultEmit {
     Eager,
 
     Lazy,
+
+    LazyAccessor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,7 +174,11 @@ pub struct StoreBindingSemantics {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConstBindingSemantics {
-    ConstTag { destructured: bool, reactive: bool },
+    ConstTag {
+        destructured: bool,
+        reactive: bool,
+        owner_node: NodeId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +192,8 @@ pub enum ContextualBindingSemantics {
     AwaitError,
 
     LetDirective,
+
+    LetDirectiveCarrierMember { carrier_symbol: SymbolId },
 
     SnippetParam(SnippetParamStrategy),
 }
@@ -429,6 +439,7 @@ pub(crate) enum BindingFacts {
     Prop(PropBindingSemantics),
 
     LegacyBindableProp(LegacyBindablePropSemantics),
+    LegacyApiExport,
 
     LegacyState(LegacyStateSemantics),
     Store(StoreBindingSemantics),
@@ -565,9 +576,9 @@ pub struct ReactivitySemantics {
 
     base_to_store: FxHashMap<SymbolId, SymbolId>,
 
-    const_alias_owner: FxHashMap<SymbolId, NodeId>,
-
     uses_runes: bool,
+
+    runes_mode: RunesMode,
 
     legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics,
 }
@@ -587,7 +598,6 @@ impl ReactivitySemantics {
             each_item_indirect_sources: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
             base_to_store: FxHashMap::default(),
-            const_alias_owner: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             maybe_reactive_symbols: FxHashSet::default(),
             legacy_bindable_prop_symbols: Vec::new(),
@@ -595,6 +605,7 @@ impl ReactivitySemantics {
             legacy_uses_rest_props: false,
             legacy_has_member_mutated: false,
             uses_runes: false,
+            runes_mode: RunesMode::Runes,
             legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
         }
     }
@@ -607,6 +618,10 @@ impl ReactivitySemantics {
 
     pub fn uses_runes(&self) -> bool {
         self.uses_runes
+    }
+
+    pub fn runes_mode(&self) -> RunesMode {
+        self.runes_mode
     }
 
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
@@ -678,6 +693,10 @@ impl ReactivitySemantics {
 
     pub(crate) fn record_legacy_bindable_prop_symbol(&mut self, symbol: SymbolId) {
         self.legacy_bindable_prop_symbols.push(symbol);
+    }
+
+    pub(crate) fn record_legacy_api_export_binding(&mut self, symbol: SymbolId) {
+        self.write_binding(symbol, BindingFacts::LegacyApiExport);
     }
 
     pub(crate) fn set_legacy_unresolved_usage(&mut self, uses_props: bool, uses_rest_props: bool) {
@@ -817,6 +836,10 @@ impl ReactivitySemantics {
         self.uses_runes = uses_runes;
     }
 
+    pub(crate) fn set_runes_mode(&mut self, runes_mode: RunesMode) {
+        self.runes_mode = runes_mode;
+    }
+
     pub(crate) fn binding_facts(&self, sym: SymbolId) -> Option<BindingFacts> {
         self.lookup_binding_facts(sym).cloned()
     }
@@ -881,12 +904,18 @@ impl ReactivitySemantics {
         self.base_to_store.get(&base).copied()
     }
 
-    pub(crate) fn record_const_binding(&mut self, sym: SymbolId, destructured: bool) {
+    pub(crate) fn record_const_binding(
+        &mut self,
+        sym: SymbolId,
+        destructured: bool,
+        owner_node: NodeId,
+    ) {
         self.write_binding(
             sym,
             BindingFacts::Const(ConstBindingSemantics::ConstTag {
                 destructured,
                 reactive: true,
+                owner_node,
             }),
         );
     }
@@ -972,14 +1001,6 @@ impl ReactivitySemantics {
         self.each_item_collection_store.get(&item_sym).copied()
     }
 
-    pub(crate) fn record_const_alias_owner(&mut self, sym: SymbolId, owner_node: NodeId) {
-        self.const_alias_owner.insert(sym, owner_node);
-    }
-
-    pub(crate) fn const_alias_owner_internal(&self, sym: SymbolId) -> Option<NodeId> {
-        self.const_alias_owner.get(&sym).copied()
-    }
-
     pub(super) fn mark_each_rest(&mut self, sym: SymbolId) {
         self.each_rest_symbols.insert(sym);
     }
@@ -1038,13 +1059,16 @@ impl ReactivitySemantics {
             BindingFacts::LegacyBindableProp(legacy) => {
                 BindingSemantics::LegacyBindableProp(*legacy)
             }
+            BindingFacts::LegacyApiExport => BindingSemantics::LegacyApiExport,
             BindingFacts::LegacyState(legacy) => BindingSemantics::LegacyState(*legacy),
             BindingFacts::Store(store) => BindingSemantics::Store(*store),
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),
             BindingFacts::Contextual(kind) => BindingSemantics::Contextual(*kind),
             BindingFacts::RuntimeRune { kind } => BindingSemantics::RuntimeRune { kind: *kind },
-            BindingFacts::CarrierAlias { .. } => {
-                BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective)
+            BindingFacts::CarrierAlias { carrier } => {
+                BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveCarrierMember {
+                    carrier_symbol: *carrier,
+                })
             }
         }
     }

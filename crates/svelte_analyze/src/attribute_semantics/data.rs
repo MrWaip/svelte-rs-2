@@ -24,6 +24,19 @@ pub enum AttributeSemantics {
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
     HtmlConcat(HtmlConcatSemantics),
+    MustBeProperty(MustBePropertySemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MustBePropertySemantics {
+    pub property: CompactString,
+    pub value: MustBePropertyValue,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MustBePropertyValue {
+    BoolTrue,
+    Str(CompactString),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -182,6 +195,7 @@ pub enum ComponentBindTarget {
     Rune,
     RuneDerived,
     LegacyState,
+    LegacyStateSubscribed,
     PropSource,
     PropSourceOwned,
 }
@@ -192,6 +206,7 @@ pub struct ElementBindSemantics {
     pub kind: HtmlBindKind,
     pub blockers: SmallVec<[u32; 2]>,
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
+    pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub group_value_attr: Option<NodeId>,
     pub group_id: Option<u32>,
 }

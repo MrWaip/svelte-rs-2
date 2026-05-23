@@ -1,5 +1,5 @@
 use super::collector::{ExprFacts, TopLevelForm};
-use super::super::data::{ExprKind, LegacyWrap};
+use super::super::data::{ExprKind, LegacyWrap, SyntheticPropsCarrier};
 use super::super::Evaluation;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
@@ -105,6 +105,7 @@ fn is_symbol_dynamic(
         BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
             !scoping.is_component_top_level_symbol(sym_id)
         }
+        BindingSemantics::LegacyApiExport => false,
     }
 }
 
@@ -148,10 +149,15 @@ pub(super) fn kind(
         ExprKind::Async {
             has_await: facts.has_await,
         }
+    } else if facts.has_call {
+        let dynamic = !facts.references.is_empty() || facts.has_impure_call;
+        if !dynamic && facts.has_state_rune {
+            ExprKind::Computed { reactive: true }
+        } else {
+            ExprKind::Call { dynamic }
+        }
     } else if matches!(evaluation, Evaluation::Known(_)) {
         ExprKind::KnownLiteral
-    } else if facts.has_call {
-        ExprKind::Call
     } else if matches!(
         facts.top_level_form,
         TopLevelForm::Identifier | TopLevelForm::Member,
@@ -177,12 +183,24 @@ pub(super) fn legacy_wrap(
             TopLevelForm::Member | TopLevelForm::Assignment | TopLevelForm::Update
         )
         || has_context_member_root;
-    let uses_sanitized = facts.uses_legacy_sanitized_props;
-    match (needs_coarse, uses_sanitized) {
-        (false, false) => LegacyWrap::None,
-        (true, false) => LegacyWrap::CoarseWrap,
-        (false, true) => LegacyWrap::SanitizedProps,
-        (true, true) => LegacyWrap::CoarseAndSanitized,
+    let carrier = synthetic_props_carrier(facts.reads_legacy_props, facts.reads_legacy_rest_props);
+    match (needs_coarse, carrier) {
+        (false, None) => LegacyWrap::None,
+        (true, None) => LegacyWrap::CoarseWrap,
+        (false, Some(c)) => LegacyWrap::Synthetic(c),
+        (true, Some(c)) => LegacyWrap::CoarseAndSynthetic(c),
+    }
+}
+
+pub(super) fn synthetic_props_carrier(
+    reads_props: bool,
+    reads_rest_props: bool,
+) -> Option<SyntheticPropsCarrier> {
+    match (reads_props, reads_rest_props) {
+        (false, false) => None,
+        (true, false) => Some(SyntheticPropsCarrier::SanitizedProps),
+        (false, true) => Some(SyntheticPropsCarrier::RestProps),
+        (true, true) => Some(SyntheticPropsCarrier::Both),
     }
 }
 

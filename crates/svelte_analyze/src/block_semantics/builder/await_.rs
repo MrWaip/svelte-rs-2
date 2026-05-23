@@ -2,10 +2,9 @@ use super::super::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics,
 };
-use super::common::{
-    binding_ident_of, binding_pattern_node_id, declarator_from_stmt, expression_async_facts,
-};
+use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
+use crate::expression_semantics::{ExprKind, ExpressionSemantics};
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::AwaitBlock;
@@ -27,9 +26,12 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
         block.catch,
     );
 
-    let (expression_has_await, blockers) = match ctx.parsed.expr(block.expression.id()) {
-        Some(expr) => expression_async_facts(expr, ctx.semantics, ctx.blockers),
-        None => (false, SmallVec::new()),
+    let (expression_has_await, blockers) = match ctx.expressions.get(block.id) {
+        ExpressionSemantics::Expression(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            (has_await, d.blockers.clone())
+        }
+        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
     };
     let wrapper = if blockers.is_empty() {
         AwaitWrapper::None

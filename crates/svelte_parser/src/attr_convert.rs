@@ -9,6 +9,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::{GetSpan, Span};
 
 use crate::Parser;
+use crate::html::decode_attribute_value;
 use crate::scanner::token;
 
 fn track_duplicate<'s>(
@@ -66,11 +67,13 @@ impl<'a> Parser<'a> {
 
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
+                            let decoded = decode_attribute_value(span.source_text(self.source));
                             Attribute::StringAttribute(StringAttribute {
                                 id: attr_id,
                                 span: attr_span,
                                 name: name.to_string(),
                                 value_span: *span,
+                                decoded,
                             })
                         }
                         token::AttributeValue::ExpressionTag(expr_tag) => {
@@ -173,12 +176,12 @@ impl<'a> Parser<'a> {
                             token::AttributeValue::ExpressionTag(et) => {
                                 (StyleDirectiveValue::Expression, et.expression_span)
                             }
-                            token::AttributeValue::String(span) => (
-                                StyleDirectiveValue::String(
-                                    span.source_text(self.source).to_string(),
-                                ),
-                                *span,
-                            ),
+                            token::AttributeValue::String(span) => {
+                                let raw = span.source_text(self.source);
+                                let value = decode_attribute_value(raw)
+                                    .unwrap_or_else(|| raw.to_string());
+                                (StyleDirectiveValue::String(value), *span)
+                            }
                             token::AttributeValue::Concatenation(c) => {
                                 let span = c.span;
                                 (
@@ -342,7 +345,9 @@ impl<'a> Parser<'a> {
             .iter()
             .map(|part| match part {
                 token::ConcatenationPart::String(span) => {
-                    ConcatPart::Static(span.source_text(self.source).to_string())
+                    let raw = span.source_text(self.source);
+                    let value = decode_attribute_value(raw).unwrap_or_else(|| raw.to_string());
+                    ConcatPart::Static(value)
                 }
                 token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic {
                     id: self.reserve_id(),

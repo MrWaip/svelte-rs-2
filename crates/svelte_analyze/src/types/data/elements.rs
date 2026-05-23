@@ -1,4 +1,5 @@
 use super::*;
+use crate::attribute_semantics::data::ComponentPropMemo;
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 #[derive(Clone)]
@@ -6,6 +7,7 @@ pub struct ComponentCssProp {
     pub name: String,
     pub attr_id: NodeId,
     pub value: ComponentCssPropValue,
+    pub memo: ComponentPropMemo,
 }
 
 #[derive(Clone)]

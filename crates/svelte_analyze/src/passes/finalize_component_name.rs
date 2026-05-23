@@ -6,6 +6,12 @@ pub(crate) fn run(data: &mut AnalysisData) {
     let preferred_name = data.output.component_name.clone();
     let mut conflicts = data.scoping.collect_component_top_level_symbol_names();
     conflicts.extend(data.scoping.root_unresolved_references().keys().cloned());
+    for sym in data.scoping.symbol_ids() {
+        let scope = data.scoping.symbol_scope_id(sym);
+        if data.scoping.is_template_scope(scope) {
+            conflicts.insert(data.scoping.symbol_name(sym).into());
+        }
+    }
 
     let mut name = preferred_name.clone();
     let mut suffix = 1;

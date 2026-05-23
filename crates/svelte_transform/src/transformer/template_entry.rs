@@ -9,7 +9,8 @@ use oxc_traverse::{ReusableTraverseCtx, traverse_mut_with_ctx};
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BindingSemantics, ComponentScoping, HtmlBindKind, JsAst,
+    AnalysisData, AttributeSemantics, BindingSemantics, ComponentScoping, HtmlBindKind, IdentGen,
+    JsAst,
 };
 use svelte_ast::NodeId as SvelteNodeId;
 use svelte_ast_builder::{Arg, Builder};
@@ -22,6 +23,7 @@ pub(crate) fn run_template<'a, 'b>(
     alloc: &'a Allocator,
     analysis: &'b AnalysisData<'a>,
     component_scoping: &'b ComponentScoping<'a>,
+    ident_gen: &'b mut IdentGen,
     expr_handles: Vec<(OxcNodeId, Option<SvelteNodeId>)>,
     stmt_handles: Vec<(OxcNodeId, Option<SvelteNodeId>)>,
     bind_expr_handles: Vec<BindExprHandle>,
@@ -53,6 +55,7 @@ pub(crate) fn run_template<'a, 'b>(
         filename: "",
         next_arrow_name: None,
         ident_counter: 0,
+        ident_gen,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         experimental_async: false,

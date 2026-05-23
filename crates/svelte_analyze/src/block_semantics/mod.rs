@@ -5,12 +5,13 @@ pub use builder::build;
 pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
-    EachCollectionKind, EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
-    HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
-    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgEmit, RenderAsyncKind,
-    RenderCalleeKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
+    EachKeyKind, HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics,
+    IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
+    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
 
+use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics};
 use crate::scope::SymbolId;
 use rustc_hash::FxHashMap;
 use svelte_ast::NodeId;
@@ -19,6 +20,7 @@ use svelte_ast::NodeId;
 pub struct BlockSemanticsStore {
     entries: Vec<BlockSemantics>,
     each_index_sym_to_block: FxHashMap<SymbolId, NodeId>,
+    legacy_each_forces_runtime_context: bool,
 }
 
 impl BlockSemanticsStore {
@@ -28,7 +30,12 @@ impl BlockSemanticsStore {
         Self {
             entries,
             each_index_sym_to_block: FxHashMap::default(),
+            legacy_each_forces_runtime_context: false,
         }
+    }
+
+    pub(crate) fn mark_legacy_each_forces_runtime_context(&mut self) {
+        self.legacy_each_forces_runtime_context = true;
     }
 
     pub fn get(&self, id: NodeId) -> &BlockSemantics {
@@ -57,6 +64,10 @@ impl BlockSemanticsStore {
         self.each_index_sym_to_block.contains_key(&sym)
     }
 
+    pub(crate) fn any_legacy_each_forces_runtime_context(&self) -> bool {
+        self.legacy_each_forces_runtime_context
+    }
+
     pub(crate) fn set_snippet_hoistable(&mut self, id: NodeId, value: bool) {
         let idx = id.0 as usize;
         if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(idx) {
@@ -64,3 +75,20 @@ impl BlockSemanticsStore {
         }
     }
 }
+
+pub(crate) fn store_root_is_reactive(
+    reactivity: &ReactivitySemantics,
+    store_sym: SymbolId,
+) -> bool {
+    let mut sym = store_sym;
+    loop {
+        match reactivity.binding_semantics(sym) {
+            BindingSemantics::MaybeReactive
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_) => return true,
+            BindingSemantics::Store(s) => sym = s.base_symbol,
+            _ => return false,
+        }
+    }
+}
+

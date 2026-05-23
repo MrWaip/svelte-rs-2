@@ -96,17 +96,18 @@ impl<'src> Parser<'src> {
                 _ => {}
             }
             self.scanner.advance();
-            if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
+            if !matches!(kind, TokenKind::Whitespace) {
                 last_non_ws_end = self.scanner.prev_end;
             }
         }
     }
 
-    fn read_attribute_value(&mut self) -> Option<Span> {
+    fn read_attribute_value(&mut self) -> Option<(Span, Option<u8>)> {
         if self.scanner.is_at(TokenKind::String) {
             let tok = self.scanner.advance();
+            let quote = self.scanner.source().as_bytes().get(tok.span.start as usize).copied();
 
-            return Some(Span::new(tok.span.start + 1, tok.span.end - 1));
+            return Some((Span::new(tok.span.start + 1, tok.span.end - 1), quote));
         }
 
         let start = self.scanner.current_start();
@@ -128,7 +129,7 @@ impl<'src> Parser<'src> {
             return None;
         }
 
-        Some(Span::new(start, end))
+        Some((Span::new(start, end), None))
     }
 
     fn try_parse_nth(&mut self) -> Option<Span> {
@@ -665,11 +666,14 @@ impl<'src> Parser<'src> {
 
         let matcher = self.try_parse_attr_matcher();
 
-        let value = if matcher.is_some() {
+        let (value, quote) = if matcher.is_some() {
             self.scanner.skip_whitespace();
-            self.read_attribute_value()
+            match self.read_attribute_value() {
+                Some((span, q)) => (Some(span), q),
+                None => (None, None),
+            }
         } else {
-            None
+            (None, None)
         };
 
         self.scanner.skip_whitespace();
@@ -689,6 +693,7 @@ impl<'src> Parser<'src> {
             name: attr_name,
             matcher,
             value,
+            quote,
             flags,
         })
     }

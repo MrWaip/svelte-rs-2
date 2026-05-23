@@ -2,7 +2,7 @@ use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
 use crate::reactivity_semantics::{ReactivityInputs, build_v2};
-use crate::block_semantics;
+use crate::{attribute_semantics, block_semantics, expression_semantics};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::{ce_config, script_info};
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, walker};
@@ -181,13 +181,49 @@ pub(crate) fn execute_pass<'a>(
                 },
             );
         }
+        super::PassKey::BuildExpressionSemantics => {
+            let expressions_v2 = expression_semantics::build(
+                component,
+                parsed,
+                data.scoping.semantics(),
+                &data.reactivity,
+                &data.scoping,
+                &data.template.snippets,
+                data.script.has_class_state_fields,
+                &data.script.blocker_data,
+                data.script.runes_mode,
+                component.node_count(),
+                data.script.dev,
+            );
+            if !data.output.needs_context && expressions_v2.is_context_required() {
+                data.output.needs_context = true;
+            }
+            data.expressions_v2 = expressions_v2;
+        }
+        super::PassKey::BuildAttributeSemantics => {
+            let (attributes, binding_groups) = attribute_semantics::build(
+                component,
+                parsed,
+                data.scoping.semantics(),
+                &data.reactivity,
+                &data.scoping,
+                &data.expressions_v2,
+                &data.script.blocker_data,
+                &data.output.ignore_data,
+                options.dev,
+                component.node_count(),
+            );
+            data.attributes = attributes;
+            data.template.bind_semantics.binding_group_id_by_attr = binding_groups.ids;
+            data.template.bind_semantics.binding_group_count = binding_groups.count;
+        }
         super::PassKey::BuildBlockSemantics => {
             data.block_semantics_store = block_semantics::build(
                 component,
                 parsed,
                 data.scoping.semantics(),
                 &data.reactivity,
-                &data.script.blocker_data,
+                &data.expressions_v2,
                 &data.template.fragment_namespaces,
                 &data.output.ignore_data,
                 data.script.dev,

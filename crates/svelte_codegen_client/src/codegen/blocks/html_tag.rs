@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::block_semantics::{HtmlTagNamespace, HtmlTagSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -55,7 +57,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let html_value = self
                 .ctx
                 .b
-                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident("$$html")]));
+                .thunk(rune_get(&self.ctx.b, "$$html"));
             let mut html_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("node"), Arg::Expr(html_value)];
 
             push_html_trailing_args(
@@ -88,6 +90,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let expr = self.take_node_expr(id)?;
+        let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(id));
         let thunk = self.ctx.b.thunk(expr);
 
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&anchor_name), Arg::Expr(thunk)];

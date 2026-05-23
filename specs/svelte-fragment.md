@@ -1,9 +1,9 @@
 # svelte:fragment
 
 ## Current state
-- **Working**: 13/13 use cases
-- **Tests**: 14/14 green
-- Last updated: 2026-05-14
+- **Working**: 14/14 use cases
+- **Tests**: 15/15 green
+- Last updated: 2026-05-17
 
 ## Source
 - ROADMAP legacy item: `<slot>` + `let:` + `<svelte:fragment>` + `slot attribute` → [legacy-slots](legacy-slots.md)
@@ -47,6 +47,7 @@ Validation (`phases/2-analyze/visitors/SvelteFragment.js`): parent must be Compo
 - [x] **Validation: non-`class:` invalid directives (`bind:`, `on:`, `use:`, `transition:`, `in:`, `out:`, `animate:`, `style:`) → `svelte_fragment_invalid_attribute`** — only `class:` currently covered. Reference `visitors/SvelteFragment.js:21-23` rejects every non-`LetDirective` non-`slot` attribute uniformly. (test: `slots/svelte_fragment_invalid_attribute_bind`, missing, **quick fix**)
 - [x] **AttributeSemantics walker recurses into `SvelteFragmentLegacy.fragment`** — layer: 3.A.4 `AttributeSemantics`. Component-prop expression attribute on a `ComponentNode` nested inside `<svelte:fragment slot="X">` is classified as `NonSpecial` instead of `ComponentProp::Expression`, then codegen panics in `component_props/dispatch.rs:191` with `unsupported NonSpecial attribute on ComponentNode`. Root cause: `walk_fragment` in `crates/svelte_analyze/src/attribute_semantics/builder/mod.rs` has no arm for `Node::SvelteFragmentLegacy`, so its inner fragment is never visited; `cn.legacy_slots` walks the slot fragment but stops at the `SvelteFragmentLegacy` wrapper. Reference does this implicitly via a generic visitor descent. (test: `svelte_fragment_named_slot_component_expr_attr`, **quick fix**)
 - [x] **Explicit `slot="default"` on `<svelte:fragment>` is normalized to the default-slot group (`children` prop + `$$slots: { default: true }`)** — layer: parser. `slot="default"` is semantically identical to the absent `slot` attribute, but `Parser::slot_name_of` in `crates/svelte_parser/src/lib.rs:211` returns `Some("default")` for any non-empty `slot` value, so `partition_component_children` pushes the fragment into `legacy_slots` as a named slot called `"default"`. Codegen then emits `$$slots: { default: ($$anchor, $$slotProps) => {…} }` instead of hoisting the body to a `children` prop. Reference normalizes the value in `phases/3-transform/client/visitors/shared/component.js` (default-slot grouping). Fix candidate: treat `slot="default"` as `None` in `slot_name_of` so the fragment joins the default group. (test: `svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop`, **quick fix**)
+- [x] **`<svelte:fragment slot="X">` as direct child of `<svelte:component>` / `<svelte:self>` must validate** — layer: 3.C `validate`. `visit_svelte_fragment_legacy` in `crates/svelte_analyze/src/passes/template_validation.rs:1094-1103` only accepts `ParentKind::ComponentNode` as the direct parent, so every `<svelte:fragment>` inside `<svelte:component>` or `<svelte:self>` raises a false-positive `svelte_fragment_invalid_placement` + `slot_attribute_invalid_placement` and aborts codegen. The element-level slot check at line 935-944 already lists all three parent kinds (`ComponentNode | SvelteComponentLegacy | SvelteSelf`); apply the same set here. Spec's `Syntax variants` block already shows both `<svelte:component>` and `<svelte:self>` as legal parents. Fix candidate: extend `is_direct_child_of_component` to match `ParentKind::ComponentNode | SvelteComponentLegacy | SvelteSelf`. (test: `svelte_fragment_named_slot_inside_svelte_component`, **quick fix**)
 
 ## Out of scope
 
@@ -94,3 +95,4 @@ Validation (`phases/2-analyze/visitors/SvelteFragment.js`): parent must be Compo
 - [x] slots/svelte_fragment_invalid_attribute_bind
 - [x] svelte_fragment_named_slot_component_expr_attr
 - [x] svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop
+- [x] svelte_fragment_named_slot_inside_svelte_component

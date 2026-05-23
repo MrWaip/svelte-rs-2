@@ -12,6 +12,17 @@
         "--index-path",
         ".claude/cache"
       ]
+    },
+    "taskmaster-ai": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "task-master-ai"
+      ],
+      "env": {
+        "TASK_MASTER_TOOLS": "standard"
+      }
     }
   }
 }

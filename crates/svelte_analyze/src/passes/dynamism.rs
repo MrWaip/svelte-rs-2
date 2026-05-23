@@ -83,7 +83,7 @@ impl TemplateVisitor for DynamismVisitor {
             data.kind,
             ExprKind::SimpleRead { reactive: true }
                 | ExprKind::Computed { reactive: true }
-                | ExprKind::Call
+                | ExprKind::Call { dynamic: true }
                 | ExprKind::Async { .. }
         ) {
             ctx.data.dynamism.mark_dynamic_node(tag.id);
@@ -112,7 +112,7 @@ impl TemplateVisitor for DynamismVisitor {
         let Some(expr) = ctx.parsed.and_then(|p| p.expr(cn.name.id())) else {
             return;
         };
-        if uses_runes && matches!(expr, Expression::StaticMemberExpression(_)) {
+        if uses_runes && matches!(expr.get_inner_expression(), Expression::StaticMemberExpression(_)) {
             ctx.data.dynamism.mark_dynamic_component(cn.id);
             return;
         }
@@ -193,7 +193,7 @@ impl TemplateVisitor for DynamismVisitor {
                 data.kind,
                 ExprKind::SimpleRead { reactive: true }
                     | ExprKind::Computed { reactive: true }
-                    | ExprKind::Call
+                    | ExprKind::Call { dynamic: true }
                     | ExprKind::Async { .. }
             ) {
                 ctx.data.dynamism.mark_dynamic_node(node_id);
@@ -232,6 +232,7 @@ pub(crate) fn is_symbol_dynamic(
         BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
             !scoping.is_component_top_level_symbol(sym_id)
         }
+        BindingSemantics::LegacyApiExport => false,
     }
 }
 
@@ -240,7 +241,7 @@ fn is_dynamic_element_attr(
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if matches!(data.kind, ExprKind::Async { has_await: true }) {
+    if matches!(data.kind, ExprKind::Async { has_await: true } | ExprKind::Call { dynamic: true }) {
         return true;
     }
     if matches!(
@@ -270,7 +271,7 @@ fn has_state_component_attr(
     if matches!(data.kind, ExprKind::Async { has_await: true }) {
         return true;
     }
-    if matches!(expr, Expression::ArrowFunctionExpression(_)) {
+    if matches!(expr.get_inner_expression(), Expression::ArrowFunctionExpression(_)) {
         return false;
     }
     attr_symbols_data(data, Some(expr), scoping).any(|sym_id| {
@@ -285,7 +286,7 @@ fn attr_symbols_data<'a>(
     scoping: &'a ComponentScoping,
 ) -> impl Iterator<Item = SymbolId> + 'a {
     let fallback = if data.references.is_empty() {
-        match expr {
+        match expr.map(|e| e.get_inner_expression()) {
             Some(Expression::Identifier(ident)) => {
                 scoping.find_binding(scoping.root_scope_id(), ident.name.as_str())
             }

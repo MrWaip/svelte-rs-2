@@ -4,9 +4,9 @@
 
 - **Working**: explicit `<svelte:options runes={true|false}>`, explicit `CompileOptions.runes: RunesOption::{Runes, Legacy}`, auto-detection (`RunesOption::Auto`) via rune-name in `data.scoping.root_unresolved_references()` and top-level `await`. Shadowing handled by scope graph.
 - **Tri-state runtime mode**: `RunesMode { Runes, SoftLegacy, HardLegacy }` lives in `svelte_ast`; resolved value in `data.script.runes_mode`. `Runes` = runes mode; `SoftLegacy` = legacy without legacy-signals (no `export let`, `$:`, `$$props`/`$$restProps`) and runes not explicitly disabled; `HardLegacy` = explicit legacy or legacy with legacy-signals.
-- **Tests green**: 12 analyze-level (`maybe_runes_resolution`) + 5 compiler unit tests + 7 e2e cases (`auto_softlegacy_*`, `auto_hardlegacy_member_read_explicit`).
+- **Tests green**: 12 analyze-level (`maybe_runes_resolution`) + 5 compiler unit tests + 8 e2e cases (`auto_softlegacy_*`, `auto_hardlegacy_member_read_explicit`, `auto_hardlegacy_store_autosub_shadows_rune`).
 - **Pass placement**: `BuildReactivitySemantics` is the second pass, depends only on `ComponentSemantics`. Mode resolution is private to `reactivity_semantics::mode_resolution`.
-- **Last updated**: 2026-05-10.
+- **Last updated**: 2026-05-17.
 
 ## Source
 
@@ -36,6 +36,7 @@
 - [x] Auto-detect: rune-name in module-scope unresolved refs → `Runes`.
 - [x] Auto-detect: top-level `await` (module or instance) → `Runes`.
 - [x] Auto-detect: shadowed rune name (e.g. `let $state = ...`) does not flip mode.
+- [x] Auto-detect: `$ident` used as a store auto-subscription, where `ident` is a top-level binding, MUST NOT count as a rune-name signal — even when `$ident` happens to coincide with a rune name (`$state`, `$derived`, `$props`, ...). Reference distinguishes store autosub from rune call: a rune is a CallExpression on an unresolved global identifier, store autosub is an Identifier reference whose `$`-stripped name resolves to a root binding. Repro/test: `auto_hardlegacy_store_autosub_shadows_rune`. Owning layer: 3.A.2 `reactivity_semantics::mode_resolution::resolves_to_runes_via_signals`.
 - [x] `HardLegacy` chosen when any of `export let`, `$:`, `$$props`, `$$restProps`, or explicit disable.
 - [x] `SoftLegacy` chosen when legacy with no legacy signals and runes not explicitly disabled.
 - [ ] Downstream effect of `HardLegacy`: template-expression coarse-grained sequence wrap `($.get(x), $.untrack(() => …))` for member/call/assignment expressions reading legacy-state. Test: `auto_hardlegacy_member_read_explicit` (currently `#[ignore]`). Owning area: `specs/legacy-reactivity-system.md`.
@@ -48,6 +49,7 @@
 - `tasks/compiler_tests/cases2/auto_softlegacy_simple_template` — Auto + simple identifier read → SoftLegacy.
 - `tasks/compiler_tests/cases2/auto_softlegacy_const_only` — Auto + only `const` declarations → SoftLegacy.
 - `tasks/compiler_tests/cases2/auto_hardlegacy_member_read_explicit` — explicit `runes: false` + member-read with mutation → HardLegacy. Currently `#[ignore]` until coarse-grained wrap lands.
+- `tasks/compiler_tests/cases2/auto_hardlegacy_store_autosub_shadows_rune` — Auto (`config.json: {"runes": null}`) + `const state = writable(...)` + `$: y = $state.x` in script. `$state` is a store autosub, not a rune; expected `HardLegacy`.
 - `tasks/compiler_tests/cases2/auto_softlegacy_component_prop_derived` — Auto + child-component prop bound to a call-expression in a no-rune script (`config.json: {"runes": null}`). Guards `expression_prop.rs` `derived_helper()` selection.
 - `tasks/compiler_tests/cases2/auto_softlegacy_render_arg_memo` — Auto + `{@render snip(getArg())}` in a no-rune script. Guards `render_tag.rs` `MemoSync` `derived_helper()` selection.
 - `tasks/compiler_tests/cases2/auto_softlegacy_template_call_expr` — Auto + `{i18n(...)}` in a no-rune script (`config.json: {"runes": null}`). Guards that `template_effect` deps array stays plain `[() => i18n(...)]` and is NOT wrapped with `($.deep_read_state(i18n), $.untrack(() => i18n(...)))`.

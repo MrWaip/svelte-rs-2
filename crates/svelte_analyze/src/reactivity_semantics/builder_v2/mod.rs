@@ -26,18 +26,19 @@ use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
 use crate::utils::is_let_or_var;
 use crate::utils::script_info::detect_rune_from_call;
-use oxc_ast::AstKind;
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, ClassElement,
-    ExportNamedDeclaration, Expression, IdentifierReference, MethodDefinitionKind, Program,
-    PropertyKey, Statement, StaticMemberExpression, UpdateExpression, VariableDeclaration,
-    VariableDeclarationKind, VariableDeclarator,
+    ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
+    MethodDefinitionKind, NewExpression, Program, PropertyKey, Statement, StaticMemberExpression,
+    TaggedTemplateExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
+    VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_assignment_expression, walk_call_expression, walk_class, walk_export_named_declaration,
-    walk_program, walk_static_member_expression, walk_update_expression,
-    walk_variable_declaration, walk_variable_declarator,
+    walk_member_expression, walk_new_expression, walk_program, walk_static_member_expression,
+    walk_tagged_template_expression, walk_update_expression, walk_variable_declaration,
+    walk_variable_declarator,
 };
 use std::mem;
 
@@ -74,6 +75,7 @@ pub(crate) fn build_v2<'a>(
     data.script.accessors = data.output.is_custom_element_target || (!runes && inputs.accessors);
 
     data.reactivity.set_uses_runes(runes);
+    data.reactivity.set_runes_mode(runes_mode);
     record_maybe_reactive_imports(data);
     let lr_collected = build_script_semantics_v2(
         component,
@@ -159,7 +161,12 @@ fn compute_const_tag_reactivity<'a>(
             .as_ref()
             .is_some_and(init_expression_is_impure);
 
-        let reactive = eager_rune
+        let is_destructured =
+            syms.len() > 1 || !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
+        let legacy_destructured_signal_read = is_destructured && !data.script.runes();
+
+        let reactive = legacy_destructured_signal_read
+            || eager_rune
             || init_is_impure_member_or_call
             || refs.iter().any(|&ref_id| {
                 use super::data::ReferenceSemantics;
@@ -194,6 +201,7 @@ fn compute_const_tag_reactivity<'a>(
                     | BindingSemantics::OptimizedRune(_) => {
                         !data.scoping.is_component_top_level_symbol(sym)
                     }
+                    BindingSemantics::LegacyApiExport => false,
                 }
             });
 
@@ -208,28 +216,42 @@ fn compute_const_tag_reactivity<'a>(
     }
 }
 
-/** LEGACY(svelte4): legacy let/var promotion predicate — promote only when at least
-one reference sits at a reactive consumer site (template-side scope ancestry, `$:`
-block, or direct top-level), not solely inside a nested function body. */
+fn has_non_store_mutation_legacy(data: &AnalysisData<'_>, sym: SymbolId) -> bool {
+    let store_refs: rustc_hash::FxHashSet<ReferenceId> = data
+        .scoping
+        .store_candidate_refs()
+        .iter()
+        .map(|(_, r)| *r)
+        .collect();
+    let any_non_store_write = data
+        .scoping
+        .get_resolved_reference_ids(sym)
+        .iter()
+        .any(|&r| !store_refs.contains(&r) && data.scoping.get_reference(r).is_write());
+    any_non_store_write || data.scoping.is_member_mutated(sym)
+}
+
 fn has_reactive_consumer_reference_legacy(
     data: &AnalysisData<'_>,
     sym: SymbolId,
+    reactive_body_refs: &FxHashSet<SymbolId>,
 ) -> bool {
+    if reactive_body_refs.contains(&sym) {
+        return true;
+    }
     for &ref_id in data.scoping.get_resolved_reference_ids(sym) {
-        if is_reference_at_reactive_consumer_site_legacy(data, ref_id) {
+        if data.scoping.is_template_reference(ref_id) {
+            return true;
+        }
+        if reference_in_template_scope(data, ref_id) {
             return true;
         }
     }
     false
 }
 
-/** LEGACY(svelte4): see [`has_reactive_consumer_reference_legacy`]. */
-fn is_reference_at_reactive_consumer_site_legacy(
-    data: &AnalysisData<'_>,
-    ref_id: ReferenceId,
-) -> bool {
+fn reference_in_template_scope(data: &AnalysisData<'_>, ref_id: ReferenceId) -> bool {
     let reference = data.scoping.get_reference(ref_id);
-
     let mut scope_opt = Some(reference.scope_id());
     while let Some(scope) = scope_opt {
         if data.scoping.is_template_scope(scope) {
@@ -237,36 +259,37 @@ fn is_reference_at_reactive_consumer_site_legacy(
         }
         scope_opt = data.scoping.scope_parent_id(scope);
     }
-
-    let mut node_id = reference.node_id();
-    while let Some(parent_id) = data.scoping.js_parent_id(node_id) {
-        if matches!(
-            data.scoping.js_kind(parent_id),
-            Some(AstKind::Function(_)) | Some(AstKind::ArrowFunctionExpression(_))
-        ) {
-            return false;
-        }
-        node_id = parent_id;
-    }
-    true
+    false
 }
 
 fn init_expression_is_impure(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::StaticMemberExpression(_)
-        | Expression::ComputedMemberExpression(_)
-        | Expression::PrivateFieldExpression(_)
-        | Expression::CallExpression(_)
-        | Expression::NewExpression(_)
-        | Expression::TaggedTemplateExpression(_) => true,
-        Expression::TSNonNullExpression(inner) => init_expression_is_impure(&inner.expression),
-        Expression::TSAsExpression(inner) => init_expression_is_impure(&inner.expression),
-        Expression::TSSatisfiesExpression(inner) => init_expression_is_impure(&inner.expression),
-        Expression::ParenthesizedExpression(inner) => {
-            init_expression_is_impure(&inner.expression)
-        }
-        _ => false,
+    struct ImpureProbe {
+        has: bool,
     }
+    impl<'a> Visit<'a> for ImpureProbe {
+        fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+            self.has = true;
+            walk_member_expression(self, expr);
+        }
+        fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+            self.has = true;
+            walk_call_expression(self, expr);
+        }
+        fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+            self.has = true;
+            walk_new_expression(self, expr);
+        }
+        fn visit_tagged_template_expression(
+            &mut self,
+            expr: &TaggedTemplateExpression<'a>,
+        ) {
+            self.has = true;
+            walk_tagged_template_expression(self, expr);
+        }
+    }
+    let mut p = ImpureProbe { has: false };
+    p.visit_expression(expr);
+    p.has
 }
 
 
@@ -276,7 +299,12 @@ fn build_script_semantics_v2<'a>(
     data: &mut AnalysisData<'a>,
     prop_lowering_mode: PropEmitMode,
 ) -> LegacyReactiveCollected {
-    let mut collector = ScriptSemanticCollector::new(data, prop_lowering_mode);
+    let reactive_body_refs = parsed
+        .program
+        .as_ref()
+        .map(|program| legacy_reactive::collect_reactive_body_symbol_refs(program, data))
+        .unwrap_or_default();
+    let mut collector = ScriptSemanticCollector::new(data, prop_lowering_mode, reactive_body_refs);
     collector.collect_bind_this_legacy_state_promotion_roots(component, parsed);
     if let Some(program) = parsed.program.as_ref() {
         collector.visit_instance_program(program);
@@ -324,10 +352,15 @@ struct ScriptSemanticCollector<'d, 'a> {
     legacy_reactive_mutated_imports: SmallVec<[SymbolId; 2]>,
     deferred_const_legacy_state_syms: Vec<SymbolId>,
     deferred_const_destructured_legacy_decls: Vec<(OxcNodeId, SmallVec<[SymbolId; 4]>)>,
+    reactive_body_refs: FxHashSet<SymbolId>,
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
-    fn new(data: &'d mut AnalysisData<'a>, prop_lowering_mode: PropEmitMode) -> Self {
+    fn new(
+        data: &'d mut AnalysisData<'a>,
+        prop_lowering_mode: PropEmitMode,
+        reactive_body_refs: FxHashSet<SymbolId>,
+    ) -> Self {
         Self {
             data,
             current_decl_kind: None,
@@ -344,6 +377,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             legacy_reactive_mutated_imports: SmallVec::new(),
             deferred_const_legacy_state_syms: Vec::new(),
             deferred_const_destructured_legacy_decls: Vec::new(),
+            reactive_body_refs,
         }
     }
 
@@ -568,6 +602,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             | BindingSemantics::OptimizedRune(_) => {
                 !self.data.scoping.is_component_top_level_symbol(sym)
             }
+            BindingSemantics::LegacyApiExport => false,
         }
     }
 
@@ -744,10 +779,14 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             }
             let is_bind_this_root = self.bind_this_legacy_state_root_syms.contains(&sym);
             if !is_bind_this_root {
-                if !self.data.scoping.is_mutated_any(sym) {
+                if !has_non_store_mutation_legacy(self.data, sym) {
                     continue;
                 }
-                if !has_reactive_consumer_reference_legacy(self.data, sym) {
+                if !has_reactive_consumer_reference_legacy(
+                    self.data,
+                    sym,
+                    &self.reactive_body_refs,
+                ) {
                     continue;
                 }
             }
@@ -1350,7 +1389,7 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             let Some(value) = prop.value.as_ref() else {
                 continue;
             };
-            let Expression::CallExpression(call) = value else {
+            let Expression::CallExpression(call) = value.get_inner_expression() else {
                 continue;
             };
             let Some(rune_kind) = detect_rune_from_call(call) else {
@@ -1381,18 +1420,22 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             let Statement::ExpressionStatement(es) = stmt else {
                 continue;
             };
-            let Expression::AssignmentExpression(assign) = &es.expression else {
+            let Expression::AssignmentExpression(assign) = es.expression.get_inner_expression()
+            else {
                 continue;
             };
             let AssignmentTarget::StaticMemberExpression(member) = &assign.left
             else {
                 continue;
             };
-            if !matches!(&member.object, Expression::ThisExpression(_)) {
+            if !matches!(
+                member.object.get_inner_expression(),
+                Expression::ThisExpression(_)
+            ) {
                 continue;
             }
             let name = member.property.name.as_str();
-            let Expression::CallExpression(call) = &assign.right else {
+            let Expression::CallExpression(call) = assign.right.get_inner_expression() else {
                 continue;
             };
             let Some(rune_kind) = detect_rune_from_call(call) else {
@@ -1478,6 +1521,7 @@ fn state_initializer_is_proxyable(call: &CallExpression<'_>) -> bool {
 }
 
 fn state_expression_is_proxyable(expr: &Expression<'_>) -> bool {
+    let expr = expr.get_inner_expression();
     if expr.is_literal() {
         return false;
     }
@@ -1617,7 +1661,7 @@ fn state_binding_semantic(
 }
 
 fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {
-    let Expression::CallExpression(call) = expr else {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return false;
     };
     detect_rune_from_call(call) == Some(RuneKind::Bindable)
@@ -1632,7 +1676,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         if !is_simple_expression(default_expr) {
             return PropDefaultEmit::Lazy;
         }
-        if let Expression::Identifier(id) = default_expr
+        if let Expression::Identifier(id) = default_expr.get_inner_expression()
             && let Some(ref_id) = id.reference_id.get()
             && self.is_reference_reactive_for_prop_default(ref_id)
         {
@@ -1667,7 +1711,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             BindingSemantics::OptimizedRune(opt) => opt.proxy_init,
             BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved => false,
+            | BindingSemantics::Unresolved
+            | BindingSemantics::LegacyApiExport => false,
         }
     }
 }
@@ -1677,7 +1722,7 @@ fn prop_default_needs_proxy(expr: &Expression<'_>, bindable: bool) -> bool {
 }
 
 fn bindable_default_arg<'a>(expr: &'a Expression<'a>) -> Option<&'a Expression<'a>> {
-    let Expression::CallExpression(call) = expr else {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return None;
     };
     if detect_rune_from_call(call) != Some(RuneKind::Bindable) {
@@ -1688,7 +1733,7 @@ fn bindable_default_arg<'a>(expr: &'a Expression<'a>) -> Option<&'a Expression<'
 
 fn is_simple_expression(expr: &Expression<'_>) -> bool {
     matches!(
-        expr,
+        expr.get_inner_expression(),
         Expression::Identifier(_)
             | Expression::NullLiteral(_)
             | Expression::BooleanLiteral(_)
@@ -1711,7 +1756,7 @@ fn class_field_derived_emit(
             .arguments
             .first()
             .and_then(|arg| arg.as_expression())
-            .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
+            .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::AwaitExpression(_)))
     {
         DerivedEmit::Async
     } else {
@@ -1727,10 +1772,11 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
         rune_kind: RuneKind,
     ) -> DerivedEmit {
         let source = call.arguments.first().and_then(|arg| arg.as_expression());
+        let inner = source.map(|e| e.get_inner_expression());
         let source_is_await =
-            matches!(rune_kind, RuneKind::Derived) && matches!(source, Some(Expression::AwaitExpression(_)));
+            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::AwaitExpression(_)));
         let source_is_identifier =
-            matches!(rune_kind, RuneKind::Derived) && matches!(source, Some(Expression::Identifier(_)));
+            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::Identifier(_)));
 
         let destructured = !matches!(pattern, BindingPattern::BindingIdentifier(_));
         match (destructured, source_is_await, source_is_identifier) {
@@ -1749,7 +1795,7 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
     }
 
     fn source_resolves_to_whole_props(&self, source: Option<&Expression<'_>>) -> bool {
-        let Some(Expression::Identifier(id)) = source else {
+        let Some(Expression::Identifier(id)) = source.map(|e| e.get_inner_expression()) else {
             return false;
         };
         let Some(ref_id) = id.reference_id.get() else {

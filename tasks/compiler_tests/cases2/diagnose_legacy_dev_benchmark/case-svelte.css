@@ -9,11 +9,11 @@
         color: #3f2a18;
     }
 
-    /* :global {*/
+    
         .benchmark-reset {
             box-sizing: border-box;
         }
-    /*}*/
+    
 
     @keyframes svelte-13nvtxg-pulse {
         0% { opacity: 0.4; transform: scale(0.98); }

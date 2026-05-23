@@ -1,3 +1,5 @@
+use svelte_emit_builders::runes::rune_get;
+use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{KeyAsyncKind, KeyBlockSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -53,7 +55,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let key_thunk = self
                 .ctx
                 .b
-                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident("$$key")]));
+                .thunk(rune_get(&self.ctx.b, "$$key"));
             let key_call = self.ctx.b.call_expr(
                 "$.key",
                 [
@@ -79,7 +81,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let key_expr = self.take_node_expr(id)?;
         let key_expr =
-            self.maybe_wrap_legacy_coarse_expr(key_expr, self.ctx.expression_data(id), false);
+            coarse_wrap(self.ctx, key_expr, self.ctx.expression_data(id));
         let key_thunk = self.ctx.b.thunk(key_expr);
 
         let key_call = self.ctx.b.call_expr(

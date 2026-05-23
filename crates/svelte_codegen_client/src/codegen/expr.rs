@@ -1,5 +1,7 @@
+use svelte_emit_builders::legacy_wrap;
+use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
+use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Expression;
-use std::iter::{empty, once};
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{Evaluation, KnownValue};
 use svelte_ast::{ExprRef, Node, NodeId};
@@ -54,77 +56,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(self.maybe_wrap_legacy_slots_read(expr))
     }
 
-    pub(super) fn maybe_wrap_legacy_coarse_expr(
-        &self,
-        expr: Expression<'a>,
-        data: Option<&svelte_analyze::ExpressionData>,
-        in_block_callback: bool,
-    ) -> Expression<'a> {
-        let Some(data) = data else { return expr };
-        if matches!(data.legacy_wrap, svelte_analyze::LegacyWrap::None) {
-            return expr;
-        }
-        self.apply_legacy_wrap(expr, data.legacy_wrap, &data.references, in_block_callback)
-    }
-
-    pub(in crate::codegen) fn apply_legacy_wrap(
-        &self,
-        expr: Expression<'a>,
-        wrap: svelte_analyze::LegacyWrap,
-        refs: &[SymbolId],
-        in_block_callback: bool,
-    ) -> Expression<'a> {
-        use svelte_analyze::LegacyWrap;
-        use svelte_ast_builder::Arg;
-        if matches!(wrap, LegacyWrap::None) {
-            return expr;
-        }
-        let mut seq_parts: Vec<Expression<'a>> = Vec::new();
-        for &sym in refs {
-            let Some(getter) = build_reactive_dep_expr_legacy(self.ctx, sym) else {
-                continue;
-            };
-            let getter = if uses_deep_read_state(self.ctx, sym) {
-                self.ctx
-                    .b
-                    .call_expr("$.deep_read_state", [Arg::Expr(getter)])
-            } else {
-                getter
-            };
-            seq_parts.push(getter);
-        }
-        if matches!(
-            wrap,
-            LegacyWrap::SanitizedProps | LegacyWrap::CoarseAndSanitized
-        ) {
-            seq_parts.push(
-                self.ctx
-                    .b
-                    .call_expr("$.deep_read_state", [Arg::Ident("$$sanitized_props")]),
-            );
-        }
-        if seq_parts.is_empty() {
-            if in_block_callback {
-                return self
-                    .ctx
-                    .b
-                    .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]);
-            }
-            return expr;
-        }
-        let mut iter = seq_parts.into_iter();
-        let Some(first) = iter.next() else {
-            return expr;
+    pub(super) fn take_template_expr(
+        &mut self,
+        owner_node_id: NodeId,
+        expr_ref: &ExprRef,
+    ) -> Result<Expression<'a>> {
+        let expr = match self.ctx.state.parsed.take_expr(expr_ref.id()) {
+            Some(expr) => expr,
+            None => return CodegenError::missing_expression(owner_node_id),
         };
-        let mut sequence = first;
-        for next in iter.chain(once(
-            self.ctx
-                .b
-                .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))]),
-        )) {
-            sequence = self.ctx.b.seq_expr([sequence, next]);
-        }
-        sequence
+        let data = self.ctx.expression_data(owner_node_id);
+        let expr = coarse_wrap(self.ctx, expr, data);
+        Ok(self.maybe_wrap_legacy_slots_read(expr))
     }
 
     pub(in crate::codegen) fn maybe_wrap_legacy_slots_read(
@@ -148,101 +91,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
-fn build_reactive_dep_expr_legacy<'a>(
+pub(in crate::codegen) fn coarse_wrap<'a>(
+    ctx: &Ctx<'a>,
+    expr: Expression<'a>,
+    data: Option<&svelte_analyze::ExpressionData>,
+) -> Expression<'a> {
+    legacy_wrap::maybe(&ctx.b, expr, data, |sym| legacy_dep_expr(ctx, sym))
+}
+
+pub(in crate::codegen) fn legacy_dep_expr<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{
-        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics as Ck,
-        EachIndexStrategy, EachItemStrategy, PropBindingKind, PropBindingSemantics,
-        SnippetParamStrategy,
-    };
     use svelte_ast_builder::Arg;
-    match ctx.query.view.binding_semantics(sym) {
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::NonSource,
-            ..
-        }) => {
-            let prop_name = ctx.query.view.binding_origin_key(sym)?;
-            Some(
-                ctx.b
-                    .static_member_expr(ctx.b.rid_expr("$$props"), prop_name),
-            )
-        }
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. },
-            ..
-        }) => Some(ctx.b.call_expr(
-            ctx.query.symbol_name(sym),
-            empty::<Arg<'a, '_>>(),
-        )),
-
-        BindingSemantics::LegacyBindableProp(_) => Some(ctx.b.call_expr(
-            ctx.query.symbol_name(sym),
-            empty::<Arg<'a, '_>>(),
-        )),
-
-        BindingSemantics::Store(store) => {
-            let dollar_name = ctx.query.symbol_name(store.store_symbol);
-            Some(
-                ctx.b
-                    .call_expr(dollar_name, empty::<Arg<'a, '_>>()),
-            )
-        }
-        BindingSemantics::LegacyState(state) => {
-            let helper = if state.var_declared {
-                "$.safe_get"
-            } else {
-                "$.get"
-            };
-            Some(
-                ctx.b
-                    .call_expr(helper, [Arg::Ident(ctx.query.symbol_name(sym))]),
-            )
-        }
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Rest,
-            ..
-        }) => Some(ctx.b.rid_expr(ctx.query.symbol_name(sym))),
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { destructured, .. }) => {
-            let helper = if destructured { "$.safe_get" } else { "$.get" };
-            Some(ctx.b.call_expr(
-                helper,
-                [Arg::Expr(ctx.b.rid_expr(ctx.query.symbol_name(sym)))],
-            ))
-        }
-        BindingSemantics::Contextual(kind) => {
-            let name = ctx.query.symbol_name(sym);
-            match kind {
-                Ck::EachItem(EachItemStrategy::Accessor)
-                | Ck::SnippetParam(SnippetParamStrategy::Accessor) => {
-                    Some(ctx.b.call_expr(name, empty::<Arg<'a, '_>>()))
-                }
-                Ck::EachItem(EachItemStrategy::Direct)
-                | Ck::EachIndex(EachIndexStrategy::Direct) => Some(ctx.b.rid_expr(name)),
-                Ck::EachItem(EachItemStrategy::Signal)
-                | Ck::EachIndex(EachIndexStrategy::Signal)
-                | Ck::SnippetParam(SnippetParamStrategy::Signal)
-                | Ck::AwaitValue
-                | Ck::AwaitError
-                | Ck::LetDirective => {
-                    Some(ctx.b.call_expr("$.get", [Arg::Expr(ctx.b.rid_expr(name))]))
-                }
-            }
-        }
-        BindingSemantics::NonReactive | BindingSemantics::MaybeReactive
-            if ctx.query.scoping().is_import(sym) =>
-        {
-            Some(ctx.b.rid_expr(ctx.query.symbol_name(sym)))
-        }
-        _ => None,
-    }
+    let getter = build_reactive_dep_expr_legacy(ctx, sym)?;
+    Some(if uses_deep_read_state(ctx, sym) {
+        ctx.b.call_expr("$.deep_read_state", [Arg::Expr(getter)])
+    } else {
+        getter
+    })
 }
 
-fn uses_deep_read_state(
-    ctx: &Ctx<'_>,
-    sym: SymbolId,
-) -> bool {
+fn uses_deep_read_state(ctx: &Ctx<'_>, sym: SymbolId) -> bool {
     use svelte_analyze::{
         BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, PropBindingKind,
         PropBindingSemantics,
@@ -256,15 +126,51 @@ fn uses_deep_read_state(
         }) | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::Contextual(
                 ContextualBindingSemantics::LetDirective
+                    | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
                     | ContextualBindingSemantics::AwaitValue
                     | ContextualBindingSemantics::AwaitError
             )
-            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive: true, .. })
+            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
     ) || ctx.query.scoping().is_import(sym)
 }
 
+pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
+    ctx: &Ctx<'a>,
+    sym: SymbolId,
+) -> Option<Expression<'a>> {
+    use svelte_analyze::{BindingSemantics, ConstBindingSemantics};
+    if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+        destructured: true,
+        owner_node,
+        ..
+    }) = ctx.query.view.binding_semantics(sym)
+    {
+        let tmp = ctx.transform_data.const_tag_tmp_names.get(&owner_node)?;
+        let tmp_ref: &str = ctx.b.alloc_str(tmp);
+        let field = ctx.query.symbol_name(sym);
+        return Some(ctx.b.static_member_expr(
+            rune_get(&ctx.b, tmp_ref),
+            field,
+        ));
+    }
+    if matches!(
+        ctx.query.view.binding_semantics(sym),
+        BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedRune(_)
+    ) {
+        return None;
+    }
+    read_binding(
+        &ctx.b,
+        ctx.query.analysis,
+        sym,
+        LegacyStateSafety::FromVarDeclared,
+    )
+}
+
 fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {
-    match expr {
+    match expr.get_inner_expression() {
         Expression::Identifier(ident) => ident.name.as_str() == "$$slots",
         Expression::StaticMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
         Expression::ComputedMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),

@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use std::iter;
 
 use oxc_allocator::CloneIn;
@@ -437,6 +438,7 @@ fn rewrite_array_reads<'a, 'ctx>(
     expr: &mut Expression<'a>,
     array_insert_names: &FxHashSet<String>,
 ) {
+    let expr = expr.get_inner_expression_mut();
     match expr {
         Expression::StaticMemberExpression(member) => {
             rewrite_array_reads(cg, &mut member.object, array_insert_names);
@@ -488,7 +490,7 @@ fn rewrite_array_reads<'a, 'ctx>(
         return;
     }
     let name_alloc = cg.ctx.b.alloc_str(ident.name.as_str());
-    *expr = cg.ctx.b.call_expr("$.get", [Arg::Ident(name_alloc)]);
+    *expr = rune_get(&cg.ctx.b, name_alloc);
 }
 
 fn clone_chain_element_expr<'a, 'ctx>(
@@ -509,9 +511,7 @@ fn clone_chain_element_expr<'a, 'ctx>(
         ChainElement::PrivateFieldExpression(member) => {
             Expression::PrivateFieldExpression(member.clone_in(cg.ctx.b.ast.allocator))
         }
-        ChainElement::TSNonNullExpression(expr) => {
-            Expression::TSNonNullExpression(expr.clone_in(cg.ctx.b.ast.allocator))
-        }
+        ChainElement::TSNonNullExpression(_) => unreachable!("TS stripped at parse"),
     }
 }
 

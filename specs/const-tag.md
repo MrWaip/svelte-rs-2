@@ -1,9 +1,9 @@
 # Const Tag
 
 ## Current state
-- **Working**: 12/12 use cases
-- **Tests**: 24/24 green
-- Last updated: 2026-05-11
+- **Working**: 15/15 use cases
+- **Tests**: 27/27 green
+- Last updated: 2026-05-18
 
 ## Source
 
@@ -40,6 +40,9 @@
 - [x] Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`)
 - [x] Invalid placement should report `const_tag_invalid_placement`
 - [x] Invalid declaration shapes should report `const_tag_invalid_expression`
+- [x] Legacy-mode `template_effect` dependency expressions for destructured `{@const}` bindings must rewrite the identifier through `computed_const` (`$.deep_read_state($.get(computed_const).button)`), not emit `$.safe_get(button)` (test: `diagnose_const_tag_legacy_dependency_destructure`)
+- [x] Legacy-mode `{@const}` whose body is a top-level spread expression over other reactive `{@const}` derives must wrap as `$.derived_safe_equal(() => ($.deep_read_state($.get(<dep>)), …, $.untrack(() => [...$.get(<dep>), …])))`. Today our codegen emits the bare spread `() => [...$.get(xs), ...$.get(ys)]` and loses the explicit dependency reads + untrack barrier, so dependency tracking diverges from reference. Layer: transform — the `derived_safe_equal` body builder for `{@const}` must lift each spread argument that resolves to a reactive `$.get(…)` read into the comma-prefix `deep_read_state` chain and rebuild the array spread inside the trailing `$.untrack(() => …)` callback. Test: `diagnose_const_tag_legacy_dep_read_spread_of_derived`.
+- [x] Legacy-mode destructured `{@const}` bindings consumed inside a child component invocation (shorthand prop and default-slot text) must rewrite to reactive reads through `computed_const`. Reference emits `get status() { return $.get(computed_const).status; }` for the component prop and wraps the text update in `$.template_effect(() => $.set_text(text, $.get(computed_const).title))`. Layer: analyze 3.A.2 `ReactivitySemantics` — `ConstBindingSemantics::ConstTag.reactive` must be forced `true` for destructured const-tags in legacy/soft-legacy mode, because transform unconditionally rewrites their reads through `$.get(computed_const).<key>`. Test: `diagnose_const_tag_legacy_destructure_into_component`.
 
 ## Out of scope
 
@@ -112,3 +115,6 @@
 - [x] `async_const_tag` (covered by `experimental-async`)
 - [x] `async_const_derived_chain` (covered by `experimental-async`)
 - [x] `async_boundary_const` (covered by `experimental-async`)
+- [x] `diagnose_const_tag_legacy_dependency_destructure`
+- [x] `diagnose_const_tag_legacy_dep_read_spread_of_derived`
+- [x] `diagnose_const_tag_legacy_destructure_into_component`

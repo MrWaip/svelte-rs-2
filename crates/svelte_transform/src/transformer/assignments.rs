@@ -30,9 +30,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         target: &'b MemberExpression<'a>,
     ) -> Option<&'b IdentifierReference<'a>> {
-        let mut root = target.object();
+        let mut root = target.object().get_inner_expression();
         while let Some(member) = root.as_member_expression() {
-            root = member.object();
+            root = member.object().get_inner_expression();
         }
 
         let Expression::Identifier(root_id) = root else {
@@ -45,7 +45,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         target: &MemberExpression<'a>,
     ) -> Option<Vec<Expression<'a>>> {
-        let mut root = target.object();
+        let mut root = target.object().get_inner_expression();
         let mut segments_rev: Vec<Expression<'a>> = vec![match target {
             MemberExpression::StaticMemberExpression(member) => {
                 self.b.str_expr(member.property.name.as_str())
@@ -59,11 +59,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
             match root {
                 Expression::StaticMemberExpression(member) => {
                     segments_rev.push(self.b.str_expr(member.property.name.as_str()));
-                    root = &member.object;
+                    root = member.object.get_inner_expression();
                 }
                 Expression::ComputedMemberExpression(member) => {
                     segments_rev.push(self.prop_mutation_path_segment_expr(&member.expression)?);
-                    root = &member.object;
+                    root = member.object.get_inner_expression();
                 }
                 _ => break,
             }
@@ -73,9 +73,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     fn prop_mutation_path_segment_expr(&self, expr: &Expression<'a>) -> Option<Expression<'a>> {
-        match expr {
+        match expr.get_inner_expression() {
             Expression::StringLiteral(lit) => Some(self.b.str_expr(lit.value.as_str())),
-            Expression::Identifier(_) => Some(self.b.clone_expr(expr)),
+            Expression::Identifier(_) => Some(self.b.clone_expr(expr.get_inner_expression())),
             _ => None,
         }
     }
@@ -185,7 +185,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         root_name: String,
         bindable: bool,
         source_root_name: Option<String>,
-        segments: Vec<Expression<'a>>,
+        segments: Option<Vec<Expression<'a>>>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         let Expression::AssignmentExpression(assign) = node else {
@@ -211,13 +211,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if let Some(source_root_name) = bindable_prop_source_root_name {
                 self.wrap_bindable_prop_source_mutation(node, &source_root_name);
             }
-            self.wrap_prop_mutation_validation(
-                node,
-                prop_alias,
-                root_name,
-                segments,
-                left_span_start,
-            );
+            if let Some(segments) = segments {
+                self.wrap_prop_mutation_validation(
+                    node,
+                    prop_alias,
+                    root_name,
+                    segments,
+                    left_span_start,
+                );
+            }
             return;
         }
 
@@ -235,13 +237,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if let Some(source_root_name) = bindable_prop_source_root_name {
                 self.wrap_bindable_prop_source_mutation(node, &source_root_name);
             }
-            self.wrap_prop_mutation_validation(
-                node,
-                prop_alias,
-                root_name,
-                segments,
-                left_span_start,
-            );
+            if let Some(segments) = segments {
+                self.wrap_prop_mutation_validation(
+                    node,
+                    prop_alias,
+                    root_name,
+                    segments,
+                    left_span_start,
+                );
+            }
             return;
         }
 
@@ -315,7 +319,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if let Some(source_root_name) = bindable_prop_source_root_name {
             self.wrap_bindable_prop_source_mutation(node, &source_root_name);
         }
-        self.wrap_prop_mutation_validation(node, prop_alias, root_name, segments, left_span_start);
+        if let Some(segments) = segments {
+            self.wrap_prop_mutation_validation(
+                node,
+                prop_alias,
+                root_name,
+                segments,
+                left_span_start,
+            );
+        }
     }
 
     fn finish_semantic_prop_member_update(
@@ -374,34 +386,26 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
-                        analysis.binding_origin_key(symbol),
-                        self.prop_mutation_segments_from_member(member),
-                    ) {
+                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
                         let root_name = analysis.scoping.symbol_name(symbol).to_string();
                         semantic_prop_alias = Some(prop_alias.to_string());
                         semantic_root_name = Some(root_name.clone());
                         semantic_bindable = bindable;
                         semantic_source_root_name = Some(root_name);
-                        semantic_segments = Some(segments);
+                        semantic_segments = self.prop_mutation_segments_from_member(member);
                     }
                 }
                 ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
-                        analysis.binding_origin_key(symbol),
-                        self.prop_mutation_segments_from_member(member),
-                    ) {
+                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
                         semantic_prop_alias = Some(prop_alias.to_string());
                         semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
-                        semantic_segments = Some(segments);
+                        semantic_segments = self.prop_mutation_segments_from_member(member);
                     }
                 }
                 _ => {}
             }
         }
-        let (Some(prop_alias), Some(root_name), Some(segments)) =
-            (semantic_prop_alias, semantic_root_name, semantic_segments)
-        else {
+        let (Some(prop_alias), Some(root_name)) = (semantic_prop_alias, semantic_root_name) else {
             return false;
         };
         self.finish_semantic_prop_member_assignment(
@@ -411,7 +415,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             root_name,
             semantic_bindable,
             semantic_source_root_name,
-            segments,
+            semantic_segments,
             ctx,
         );
         true

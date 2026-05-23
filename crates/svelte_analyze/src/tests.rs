@@ -4,7 +4,7 @@ use crate::types::script::RuneKind;
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
 use crate::{
     AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy, OptimizedRuneSemantics,
-    RenderCalleeKind, SnippetParamStrategy, PROPS_IS_BINDABLE, PROPS_IS_UPDATED,
+    RenderCallKind, SnippetParamStrategy, PROPS_IS_BINDABLE, PROPS_IS_UPDATED,
 };
 use oxc_ast::ast::{BindingPattern, IdentifierReference, Program, Statement};
 use oxc_ast_visit::walk::walk_assignment_expression;
@@ -2094,10 +2094,11 @@ fn module_exported_render_tag_callee_stays_direct_with_snippets() {
     match data.block_semantics(render_id) {
         BlockSemantics::Render(sem) => {
             assert_eq!(
-                sem.callee_shape,
-                RenderCalleeKind::Static,
-                "snippet render call should stay static when the callee is a normal snippet binding"
+                sem.call_kind,
+                RenderCallKind::Plain,
+                "snippet render call should stay Plain when the callee is a normal snippet binding"
             );
+            assert!(sem.callee_sym.is_some());
         }
         other => panic!("expected BlockSemantics::Render, got {other:?}"),
     }
@@ -3419,9 +3420,15 @@ fn reactivity_semantics_collects_contextual_binding_owners() {
 {/await}"#,
     );
 
-    assert_eq!(
-        symbol_declaration_semantics(&data, "text"),
-        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective)
+    assert!(
+        matches!(
+            symbol_declaration_semantics(&data, "text"),
+            BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            )
+        ),
+        "expected `text` to be Contextual::LetDirectiveCarrierMember, got {:?}",
+        symbol_declaration_semantics(&data, "text")
     );
     assert_eq!(
         symbol_declaration_semantics(&data, "item"),
@@ -3699,6 +3706,96 @@ fn runtime_plan_synthetic_store_subscriptions_do_not_force_push() {
 }
 
 #[test]
+fn needs_context_set_by_member_access_on_legacy_props() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>$: cls = $$props.class;</script><div>{cls}</div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        data.output.needs_context,
+        "$$props.member must drive needs_context = true via NeedsContextVisitor"
+    );
+}
+
+#[test]
+fn needs_context_set_by_member_access_on_legacy_rest_props() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>$: cls = $$restProps.class;</script><div>{cls}</div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        data.output.needs_context,
+        "$$restProps.member must drive needs_context = true via NeedsContextVisitor"
+    );
+}
+
+#[test]
+fn needs_context_set_by_template_member_access_on_legacy_props() {
+    let (_c, data) = analyze_source_with_options(
+        "<div class={$$props.foo}></div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        data.output.needs_context,
+        "template-side $$props.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    );
+}
+
+#[test]
+fn needs_context_set_by_template_member_access_on_legacy_rest_props() {
+    let (_c, data) = analyze_source_with_options(
+        "<div class={$$restProps.foo}></div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        data.output.needs_context,
+        "template-side $$restProps.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    );
+}
+
+#[test]
+fn needs_props_param_set_by_template_only_legacy_rest_props() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>function wrap(p) { return p; }</script><div {...wrap($$restProps)}></div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        data.output.runtime_plan.needs_props_param,
+        "template-only $$restProps must force $$props parameter on the component function"
+    );
+}
+
+#[test]
+fn needs_context_stays_false_for_bare_legacy_props_identifier_read() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>$: props = $$props;</script><div {...props}></div>",
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        !data.output.needs_context,
+        "bare $$props identifier read (no member access) must keep needs_context = false"
+    );
+}
+
+#[test]
 fn legacy_export_let_becomes_props_when_runes_disabled() {
     let (_c, data) = analyze_source_with_options(
         "<script>export let count = 1;</script><p>{count}</p>",
@@ -3813,6 +3910,34 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
         &data,
         "bar",
         PropDefaultEmit::Lazy,
+        PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_composite_default_referencing_prop_classifies_lazy() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let kind = 'a'; export let label = kind === 'a' ? 'first' : 'second';</script><p>{label}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "label",
+        PropDefaultEmit::Lazy,
+        PROPS_IS_BINDABLE,
+    );
+}
+
+#[test]
+fn legacy_export_let_composite_default_pure_literals_stays_eager() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let label = 1 === 2 ? 'first' : 'second';</script><p>{label}</p>",
+        legacy_options(),
+    );
+    assert_legacy_bindable_prop(
+        &data,
+        "label",
+        PropDefaultEmit::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -6741,7 +6866,8 @@ mod block_semantics_html_tag_tests {
 mod expression_semantics_tests {
     use super::*;
     use crate::expression_semantics::{
-        Evaluation, ExprKind, ExpressionSemantics, KnownValue, LegacyWrap, ValueClass, build,
+        Evaluation, ExprKind, ExpressionSemantics, KnownValue, LegacyWrap, SyntheticPropsCarrier,
+        ValueClass, build,
     };
 
     #[test]
@@ -7262,7 +7388,7 @@ async function baz() { return 2; }
             &data,
             &parsed,
             "$$props",
-            LegacyWrap::SanitizedProps,
+            LegacyWrap::Synthetic(SyntheticPropsCarrier::SanitizedProps),
         );
     }
 
@@ -7275,7 +7401,7 @@ async function baz() { return 2; }
             &data,
             &parsed,
             "$$props.foo",
-            LegacyWrap::CoarseAndSanitized,
+            LegacyWrap::CoarseAndSynthetic(SyntheticPropsCarrier::SanitizedProps),
         );
     }
 
@@ -7381,11 +7507,6 @@ async function baz() { return 2; }
             false,
         );
 
-        assert_eq!(
-            store.get(each_block.id),
-            &ExpressionSemantics::NonSpecial,
-            "EachBlock NodeId out of scope"
-        );
         match store.get(item_tag_id) {
             ExpressionSemantics::Expression(_) => {}
             ExpressionSemantics::NonSpecial => {
@@ -7411,7 +7532,7 @@ async function baz() { return 2; }
     fn t6_memoization_sync_for_call() {
         let source = "<script>function fn() { return 1; }</script><p>{fn()}</p>";
         let (component, data, parsed) = analyze_source_with_parsed(source);
-        assert_memoization(&component, &data, &parsed, "fn()", ExprKind::Call);
+        assert_memoization(&component, &data, &parsed, "fn()", ExprKind::Call { dynamic: true });
     }
 
     #[test]
@@ -7840,6 +7961,109 @@ mod attribute_semantics_skeleton_tests {
         match data.attributes.get(attr_id) {
             AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
                 assert_eq!(e.memo, ComponentPropMemo::Derived);
+            }
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    fn find_slot_legacy_prop_attr(component: &Component, prop_name: &str) -> Option<NodeId> {
+        let frag = component.store.fragment(component.root);
+        for &id in &frag.nodes {
+            if let svelte_ast::Node::SlotElementLegacy(el) = component.store.get(id) {
+                for attr in &el.attributes {
+                    if let Attribute::ExpressionAttribute(a) = attr
+                        && a.name == prop_name
+                    {
+                        return Some(a.id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn slot_legacy_prop_non_call_computed_getter_memo() {
+        let (component, data) = analyze_source_with_options(
+            r#"<script>export let flag = false;</script>
+<slot title={flag ? 'A' : 'B'} />"#,
+            AnalyzeOptions {
+                runes: svelte_ast::RunesOption::Legacy,
+                ..AnalyzeOptions::default()
+            },
+        );
+        let attr_id = find_slot_legacy_prop_attr(&component, "title").expect("attr");
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                assert_eq!(e.memo, ComponentPropMemo::Getter);
+            }
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn slot_legacy_prop_call_expression_derived_memo() {
+        let (component, data) = analyze_source_with_options(
+            r#"<script>export let flag = false; function calc() { return flag; }</script>
+<slot title={calc()} />"#,
+            AnalyzeOptions {
+                runes: svelte_ast::RunesOption::Legacy,
+                ..AnalyzeOptions::default()
+            },
+        );
+        let attr_id = find_slot_legacy_prop_attr(&component, "title").expect("attr");
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                assert_eq!(e.memo, ComponentPropMemo::Derived);
+            }
+            other => panic!("expected ComponentProp::Expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn component_prop_legacy_each_index_inline_memo() {
+        let source = r#"<svelte:options runes={false} />
+<script>let rows = [];</script>
+{#each rows as row, index}
+<Comp foo={index + 1} />
+{/each}"#;
+        let (component, data) = analyze_source(source);
+
+        fn find_attr_in_fragment(
+            component: &Component,
+            frag_id: svelte_ast::FragmentId,
+            comp_name: &str,
+            prop_name: &str,
+        ) -> Option<NodeId> {
+            let frag = component.store.fragment(frag_id);
+            for &id in &frag.nodes {
+                let node = component.store.get(id);
+                if let svelte_ast::Node::ComponentNode(cn) = node
+                    && component.source_text(cn.name.span) == comp_name
+                {
+                    for attr in &cn.attributes {
+                        if let Attribute::ExpressionAttribute(a) = attr
+                            && a.name == prop_name
+                        {
+                            return Some(a.id);
+                        }
+                    }
+                }
+                if let svelte_ast::Node::EachBlock(eb) = node
+                    && let Some(a) = find_attr_in_fragment(component, eb.body, comp_name, prop_name)
+                {
+                    return Some(a);
+                }
+            }
+            None
+        }
+
+        let attr_id =
+            find_attr_in_fragment(&component, component.root, "Comp", "foo").expect("attr");
+
+        match data.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                assert_eq!(e.memo, ComponentPropMemo::Inline);
             }
             other => panic!("expected ComponentProp::Expression, got {other:?}"),
         }

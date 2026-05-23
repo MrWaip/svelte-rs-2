@@ -91,7 +91,11 @@ fn take_extend_expr<'a>(
     config.extend_span?;
 
     let _ = config;
-    let Some(Expression::ObjectExpression(object)) = ctx.state.parsed.take_pending_expr(span.start)
+    let Some(Expression::ObjectExpression(object)) = ctx
+        .state
+        .parsed
+        .take_pending_expr(span.start)
+        .map(|e| e.into_inner_expression())
     else {
         return None;
     };

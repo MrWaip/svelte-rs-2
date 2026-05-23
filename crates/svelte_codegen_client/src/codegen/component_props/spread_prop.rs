@@ -1,3 +1,4 @@
+use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Statement;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::ComponentSpreadEmit;
@@ -29,7 +30,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
                 memo_decls.push(self.ctx.b.let_init_stmt(&memo_name, derived));
                 let memo_ref = self.ctx.b.alloc_str(&memo_name);
-                let get = self.ctx.b.call_expr("$.get", [Arg::Ident(memo_ref)]);
+                let get = rune_get(&self.ctx.b, memo_ref);
                 self.ctx.b.thunk(get)
             }
             ComponentSpreadEmit::Thunk => self.ctx.b.thunk(expr),

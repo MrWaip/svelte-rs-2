@@ -1,3 +1,4 @@
+use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{
     AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, normalize_regular_attribute_name,
@@ -113,7 +114,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return CodegenError::missing_expression(attr.id);
                     };
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr_value, data.as_ref(), false);
+                    let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
                     if let Some(d) = &data {
                         memo_deps.push_expression_data(self.ctx, d);
                     }
@@ -132,7 +133,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return CodegenError::missing_expression(attr.id);
                     };
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr_value, data.as_ref(), false);
+                    let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
                     if let Some(d) = &data {
                         memo_deps.push_expression_data(self.ctx, d);
                     }
@@ -153,7 +154,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return CodegenError::missing_expression(attr.id);
                     };
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    let wrapped = self.maybe_wrap_legacy_coarse_expr(expr_value, data.as_ref(), false);
+                    let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
                     if let Some(d) = &data {
                         memo_deps.push_expression_data(self.ctx, d);
                     }

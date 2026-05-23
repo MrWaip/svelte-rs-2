@@ -125,6 +125,7 @@ pub(super) fn prepare<'a>(
                 let next_is_expr =
                     fi + 1 < len && matches!(filtered_slice[fi + 1], Node::ExpressionTag(_));
 
+                let prev_text_ends_ws_in = prev_text_ends_ws;
                 let trimmed = if preserve {
                     Cow::Borrowed(raw_value)
                 } else {
@@ -134,7 +135,7 @@ pub(super) fn prepare<'a>(
                         is_last,
                         prev_is_expr,
                         next_is_expr,
-                        prev_text_ends_ws,
+                        prev_text_ends_ws_in,
                     )
                 };
 
@@ -157,7 +158,7 @@ pub(super) fn prepare<'a>(
                             is_last,
                             prev_is_expr,
                             next_is_expr,
-                            prev_text_ends_ws,
+                            prev_text_ends_ws_in,
                         )
                     };
                     ConcatPart::StaticEntities {
@@ -175,7 +176,11 @@ pub(super) fn prepare<'a>(
                         Cow::Owned(s) => ConcatPart::StaticOwned(s),
                     }
                 };
-                buf.push(BufItem::Text(part));
+                if let Some(BufItem::Text(prev_part)) = buf.last_mut() {
+                    *prev_part = merge_static_parts(ctx, prev_part, &part);
+                } else {
+                    buf.push(BufItem::Text(part));
+                }
             }
             Node::ExpressionTag(tag) => {
                 prev_text_ends_ws = false;
@@ -197,6 +202,15 @@ pub(super) fn prepare<'a>(
         }
     }
     flush_buf(&mut buf, &mut children, &mut flags);
+
+    if children.len() == 1
+        && let Child::Node(nid) = children[0]
+        && let Node::Element(el) = store.get(nid)
+        && el.name == "script"
+    {
+        children.push(Child::Comment(String::new()));
+        flags.insert(ChildrenFlags::HAS_COMMENT);
+    }
 
     let strategy = classify(flags, &children, store);
     (children, strategy)
@@ -432,6 +446,28 @@ fn strip_trailing_ws_suffix(s: Cow<str>, ws: usize) -> Cow<str> {
             o.truncate(o.len() - ws);
             Cow::Owned(o)
         }
+    }
+}
+
+fn merge_static_parts(ctx: &FragmentCtx<'_>, a: &ConcatPart, b: &ConcatPart) -> ConcatPart {
+    let a_text = ctx.static_text_of(a).unwrap_or("");
+    let b_text = ctx.static_text_of(b).unwrap_or("");
+    let a_html = ctx.static_html_of(a).unwrap_or("");
+    let b_html = ctx.static_html_of(b).unwrap_or("");
+    let has_entities = matches!(a, ConcatPart::StaticEntities { .. })
+        || matches!(b, ConcatPart::StaticEntities { .. })
+        || a_html != a_text
+        || b_html != b_text;
+    let mut text = String::with_capacity(a_text.len() + b_text.len());
+    text.push_str(a_text);
+    text.push_str(b_text);
+    if has_entities {
+        let mut html = String::with_capacity(a_html.len() + b_html.len());
+        html.push_str(a_html);
+        html.push_str(b_html);
+        ConcatPart::StaticEntities { html, text }
+    } else {
+        ConcatPart::StaticOwned(text)
     }
 }
 

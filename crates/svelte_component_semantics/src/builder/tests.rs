@@ -739,3 +739,4 @@ fn single_program_node_ids_start_at_zero() {
 
     assert!(builder.next_node_id() > 0);
 }
+

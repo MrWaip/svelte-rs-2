@@ -48,7 +48,7 @@ RUN cargo binstall -y \
         dylint-link
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    . ${NVM_DIR}/nvm.sh && npm install -g @anthropic-ai/claude-code skills
+    . ${NVM_DIR}/nvm.sh && npm install -g @anthropic-ai/claude-code skills task-master-ai
 
 RUN chmod -R a+rwX ${CARGO_HOME}/bin ${RUSTUP_HOME} ${NVM_DIR} \
     && chown -R vscode:vscode /usr/local/cargo /usr/local/rustup ${NVM_DIR}

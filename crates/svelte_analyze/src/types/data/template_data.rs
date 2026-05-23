@@ -1,7 +1,17 @@
+use std::borrow::Cow;
+
 use svelte_ast::FragmentId;
 
 use super::*;
 use SymbolId;
+
+pub fn binding_group_name(id: u32) -> Cow<'static, str> {
+    if id == 0 {
+        Cow::Borrowed("binding_group")
+    } else {
+        Cow::Owned(format!("binding_group_{id}"))
+    }
+}
 
 pub struct TemplateSemanticsData {
     pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,

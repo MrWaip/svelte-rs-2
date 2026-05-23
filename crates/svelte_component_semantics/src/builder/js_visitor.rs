@@ -2,12 +2,14 @@ use compact_str::CompactString;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
+use smallvec::SmallVec;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::{ReferenceFlags, ReferenceId};
 use oxc_syntax::symbol::SymbolId;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolFlags;
 
+use crate::pattern::walk_assignment_target_idents;
 use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
 use crate::symbol::SymbolOwner;
@@ -229,27 +231,27 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             if !matches!(assign.operator, AssignmentOperator::Assign) {
                 continue;
             }
-            match &assign.left {
-                AssignmentTarget::AssignmentTargetIdentifier(id) => {
-                    self.declare_implicit_target_ident(id.as_ref());
+            let mut names: SmallVec<[CompactString; 4]> = SmallVec::new();
+            let mut spans: SmallVec<[oxc_span::Span; 4]> = SmallVec::new();
+            let mut node_ids: SmallVec<[OxcNodeId; 4]> = SmallVec::new();
+            if walk_assignment_target_idents(&assign.left, |id| {
+                names.push(CompactString::from(id.name.as_str()));
+                spans.push(id.span);
+                node_ids.push(id.node_id.get());
+            }) {
+                for ((name, span), node_id) in names.iter().zip(spans.iter()).zip(node_ids.iter()) {
+                    self.declare_implicit_target_ident_raw(name.as_str(), *span, *node_id);
                 }
-                AssignmentTarget::ObjectAssignmentTarget(obj) => {
-                    for prop in &obj.properties {
-                        if let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
-                            shorthand,
-                        ) = prop
-                        {
-                            self.declare_implicit_target_ident(&shorthand.binding);
-                        }
-                    }
-                }
-                _ => {}
             }
         }
     }
 
-    fn declare_implicit_target_ident(&mut self, id: &IdentifierReference<'a>) {
-        let name = id.name.as_str();
+    fn declare_implicit_target_ident_raw(
+        &mut self,
+        name: &str,
+        span: oxc_span::Span,
+        node_id: OxcNodeId,
+    ) {
         if name.starts_with('$') {
             return;
         }
@@ -259,12 +261,13 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
         self.semantics.add_binding(
             self.scope,
             name,
-            id.span,
+            span,
             SymbolFlags::empty(),
-            id.node_id.get(),
+            node_id,
             SymbolOwner::Synthetic,
         );
     }
+
 }
 
 impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
@@ -542,22 +545,14 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     }
 
     fn visit_import_declaration(&mut self, decl: &ImportDeclaration<'a>) {
-        let is_type = decl.import_kind.is_type();
         if let Some(specifiers) = &decl.specifiers {
             for spec in specifiers {
-                let (ident, spec_is_type) = match spec {
-                    ImportDeclarationSpecifier::ImportSpecifier(s) => {
-                        (&s.local, s.import_kind.is_type())
-                    }
-                    ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => (&s.local, false),
-                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => (&s.local, false),
+                let ident = match spec {
+                    ImportDeclarationSpecifier::ImportSpecifier(s) => &s.local,
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => &s.local,
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => &s.local,
                 };
-                let flags = if is_type || spec_is_type {
-                    SymbolFlags::TypeImport
-                } else {
-                    SymbolFlags::Import
-                };
-                self.binding_flags = Some((self.scope, flags));
+                self.binding_flags = Some((self.scope, SymbolFlags::Import));
                 self.visit_binding_identifier(ident);
             }
         }
@@ -677,13 +672,9 @@ fn simple_assignment_target_member_root_symbol(
 fn unwrap_assignment_expression<'r, 'a>(
     expr: &'r Expression<'a>,
 ) -> Option<&'r AssignmentExpression<'a>> {
-    let mut current = expr;
-    loop {
-        match current {
-            Expression::AssignmentExpression(assign) => return Some(assign),
-            Expression::ParenthesizedExpression(p) => current = &p.expression,
-            _ => return None,
-        }
+    match expr.get_inner_expression() {
+        Expression::AssignmentExpression(assign) => Some(assign),
+        _ => None,
     }
 }
 
@@ -698,11 +689,11 @@ fn expression_root_symbol(
             .and_then(|ref_id| semantics.get_reference(ref_id).symbol_id()),
         Expression::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
         Expression::ComputedMemberExpression(m) => expression_root_symbol(semantics, &m.object),
-        Expression::TSNonNullExpression(t) => expression_root_symbol(semantics, &t.expression),
-        Expression::TSAsExpression(t) => expression_root_symbol(semantics, &t.expression),
-        Expression::TSSatisfiesExpression(t) => expression_root_symbol(semantics, &t.expression),
-        Expression::TSTypeAssertion(t) => expression_root_symbol(semantics, &t.expression),
-        Expression::TSInstantiationExpression(t) => expression_root_symbol(semantics, &t.expression),
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         Expression::ParenthesizedExpression(p) => expression_root_symbol(semantics, &p.expression),
         _ => None,
     }

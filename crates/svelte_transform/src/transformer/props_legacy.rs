@@ -199,14 +199,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     p
                 }
                 None => {
-                    let helper_owned = self.gen_unique_name("$$array");
+                    let helper_owned = self.ident_gen.generate("$$array");
                     let helper = self.b.alloc_str(&helper_owned);
                     array_helpers.push(ArrayHelper {
                         object_path: leaf.object_path.clone(),
                         name: helper,
                         len: idx + 1,
                     });
-                    self.ident_counter += 1;
                     array_helpers.len() - 1
                 }
             };
@@ -300,7 +299,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let prop_key = alias.unwrap_or(local).to_string();
         let mut runtime_flags = legacy.flags;
-        if matches!(legacy.default_lowering, PropDefaultEmit::Lazy) {
+        if matches!(
+            legacy.default_lowering,
+            PropDefaultEmit::Lazy | PropDefaultEmit::LazyAccessor
+        ) {
             runtime_flags |= PropsFlags::LAZY_INITIAL;
         }
         let flags_bits = runtime_flags.bits();
@@ -324,6 +326,27 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     .unwrap_or_else(|| panic!("lazy default missing for legacy prop {local}"));
                 let lazy = derived::wrap_lazy(self.b, default_expr);
                 args.push(Arg::Expr(lazy));
+            }
+            PropDefaultEmit::LazyAccessor => {
+                args.push(Arg::Num(flags_bits as f64));
+                let default_expr = default_init.unwrap_or_else(|| {
+                    panic!("lazy accessor default missing for legacy prop {local}")
+                });
+                let accessor_name = match &default_expr {
+                    Expression::Identifier(id) => id.name.as_str().to_string(),
+                    Expression::CallExpression(call) if call.arguments.is_empty() => {
+                        match &call.callee {
+                            Expression::Identifier(callee) => callee.name.as_str().to_string(),
+                            _ => panic!(
+                                "lazy accessor default must be a bare-identifier call for legacy prop {local}"
+                            ),
+                        }
+                    }
+                    _ => panic!(
+                        "lazy accessor default must be an identifier or bare-call for legacy prop {local}"
+                    ),
+                };
+                args.push(Arg::Expr(self.b.rid_expr(&accessor_name)));
             }
         }
         self.b.call_expr("$.prop", args)

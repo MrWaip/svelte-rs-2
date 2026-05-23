@@ -103,7 +103,8 @@ fn validate_reactive_declaration_cycle(
             let Statement::ExpressionStatement(es) = &labeled.body else {
                 return None;
             };
-            let Expression::AssignmentExpression(assign) = &es.expression else {
+            let Expression::AssignmentExpression(assign) = es.expression.get_inner_expression()
+            else {
                 return None;
             };
             match &assign.left {

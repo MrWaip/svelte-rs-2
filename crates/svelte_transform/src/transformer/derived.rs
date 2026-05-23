@@ -73,7 +73,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     {
                         let mut dummy = Argument::from(b.cheap_expr());
                         mem::swap(&mut call.arguments[0], &mut dummy);
-                        let arg_expr = dummy.into_expression();
+                        let arg_expr = dummy.into_expression().into_inner_expression();
 
                         let async_mode = async_pending.get(&sym_id).copied();
                         let is_async = matches!(arg_expr, Expression::AwaitExpression(_))

@@ -3,14 +3,16 @@ use oxc_ast::AstKind;
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentOperator, AssignmentTarget, AssignmentTargetMaybeDefault,
     AssignmentTargetProperty, Expression, IdentifierReference, ImportDeclarationSpecifier,
-    LabeledStatement, SimpleAssignmentTarget, Statement, UpdateExpression,
+    LabeledStatement, Program, SimpleAssignmentTarget, Statement, SwitchCase, TSAsExpression,
+    TSInstantiationExpression, TSSatisfiesExpression, TSType, TSTypeAnnotation,
+    TSTypeAssertion, TSTypeParameterInstantiation, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_assignment_expression, walk_update_expression};
 use oxc_syntax::scope::ScopeId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_component_semantics::{OxcNodeId, ReferenceId, SymbolOwner};
+use svelte_component_semantics::{OxcNodeId, ReferenceId, SymbolOwner, walk_assignment_target_idents};
 
 use super::super::data::{BindingSemantics, LegacyStateSemantics, ReferenceFacts};
 use super::super::legacy_reactive::{LegacyReactiveKind, LegacyReactiveStatement};
@@ -62,18 +64,19 @@ pub(super) fn collect_top_level_meta<'a>(
             if !matches!(assign.operator, AssignmentOperator::Assign) {
                 return;
             }
-            match &assign.left {
-                AssignmentTarget::AssignmentTargetIdentifier(id) => {
+            if matches!(&assign.left, AssignmentTarget::AssignmentTargetIdentifier(_)) {
+                if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
                     push_implicit_name(implicit_names, id.name.as_str());
                 }
-                AssignmentTarget::ObjectAssignmentTarget(obj) => {
-                    for prop in &obj.properties {
-                        if let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) = prop {
-                            push_implicit_name(implicit_names, shorthand.binding.name.as_str());
-                        }
+            } else {
+                let mut leaves: SmallVec<[&str; 4]> = SmallVec::new();
+                if walk_assignment_target_idents(&assign.left, |id| {
+                    leaves.push(id.name.as_str());
+                }) {
+                    for name in leaves {
+                        push_implicit_name(implicit_names, name);
                     }
                 }
-                _ => {}
             }
         }
         _ => {}
@@ -88,6 +91,44 @@ fn push_implicit_name(out: &mut Vec<CompactString>, name: &str) {
     if !out.contains(&cs) {
         out.push(cs);
     }
+}
+
+pub(super) fn collect_reactive_body_symbol_refs<'a>(
+    program: &Program<'a>,
+    data: &AnalysisData<'a>,
+) -> FxHashSet<SymbolId> {
+    let mut collector = ReactiveBodyRefCollector {
+        data,
+        symbols: FxHashSet::default(),
+    };
+    for stmt in &program.body {
+        if let Statement::LabeledStatement(labeled) = stmt
+            && labeled.label.name == "$"
+        {
+            collector.visit_statement(&labeled.body);
+        }
+    }
+    collector.symbols
+}
+
+struct ReactiveBodyRefCollector<'d, 'a> {
+    data: &'d AnalysisData<'a>,
+    symbols: FxHashSet<SymbolId>,
+}
+
+impl<'a> Visit<'a> for ReactiveBodyRefCollector<'_, 'a> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        if let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) {
+            self.symbols.insert(sym);
+        }
+    }
+
+    fn visit_ts_type(&mut self, _it: &TSType<'a>) {}
+    fn visit_ts_type_annotation(&mut self, _it: &TSTypeAnnotation<'a>) {}
+    fn visit_ts_type_parameter_instantiation(&mut self, _it: &TSTypeParameterInstantiation<'a>) {}
 }
 
 pub(super) fn build_from_collected<'a>(
@@ -181,18 +222,15 @@ fn collect_destructure_target_syms(
     let Some(assign) = unwrap_assignment_expression(&es.expression) else {
         return (targets, implicits);
     };
-    let AssignmentTarget::ObjectAssignmentTarget(obj) = &assign.left else {
+    let mut leaves: SmallVec<[&IdentifierReference<'_>; 4]> = SmallVec::new();
+    if !walk_assignment_target_idents(&assign.left, |id| {
+        leaves.push(id);
+    }) {
         return (targets, implicits);
-    };
-    for prop in &obj.properties {
-        let AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) =
-            prop
-        else {
-            continue;
-        };
-        let name = shorthand.binding.name.as_str();
-        let Some(sym) = shorthand
-            .binding
+    }
+    for id in leaves {
+        let name = id.name.as_str();
+        let Some(sym) = id
             .reference_id
             .get()
             .and_then(|r| data.scoping.symbol_for_reference(r))
@@ -212,13 +250,9 @@ fn collect_destructure_target_syms(
 fn unwrap_assignment_expression<'r, 'a>(
     expr: &'r Expression<'a>,
 ) -> Option<&'r AssignmentExpression<'a>> {
-    let mut current = expr;
-    loop {
-        match current {
-            Expression::AssignmentExpression(assign) => return Some(assign),
-            Expression::ParenthesizedExpression(p) => current = &p.expression,
-            _ => return None,
-        }
+    match expr.get_inner_expression() {
+        Expression::AssignmentExpression(assign) => Some(assign),
+        _ => None,
     }
 }
 
@@ -316,7 +350,13 @@ fn classify_statement(labeled: &LabeledStatement<'_>) -> Prelim {
                 shape: PrelimKind::ExpressionOnly,
             }
         }
-        Statement::BlockStatement(_) => Prelim {
+        Statement::BlockStatement(_)
+        | Statement::ForStatement(_)
+        | Statement::ForOfStatement(_)
+        | Statement::ForInStatement(_)
+        | Statement::WhileStatement(_)
+        | Statement::DoWhileStatement(_)
+        | Statement::TryStatement(_) => Prelim {
             shape: PrelimKind::Block,
         },
         Statement::IfStatement(_) | Statement::SwitchStatement(_) => Prelim {
@@ -371,11 +411,14 @@ fn build_statement<'a>(
         dependencies: SmallVec::new(),
         seen_assignments: FxHashSet::default(),
         seen_deps: FxHashSet::default(),
+        read_deps: FxHashSet::default(),
         direct_assign_skip: FxHashSet::default(),
         uses_props: false,
         uses_rest_props: false,
     };
     analyzer.visit_statement(&labeled.body);
+    let read_deps = analyzer.read_deps;
+    analyzer.dependencies.retain(|s| read_deps.contains(s));
     LegacyReactiveStatement {
         stmt_node: labeled.node_id(),
         kind,
@@ -393,6 +436,7 @@ struct LegacyBodyAnalyzer<'d, 'a> {
     dependencies: SmallVec<[SymbolId; 8]>,
     seen_assignments: FxHashSet<SymbolId>,
     seen_deps: FxHashSet<SymbolId>,
+    read_deps: FxHashSet<SymbolId>,
     direct_assign_skip: FxHashSet<ReferenceId>,
     uses_props: bool,
     uses_rest_props: bool,
@@ -469,7 +513,7 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
     }
 
     fn record_member_root(&mut self, expr: &Expression<'_>) {
-        match expr {
+        match expr.get_inner_expression() {
             Expression::Identifier(id) => self.record_assignment_ident(id),
             Expression::StaticMemberExpression(m) => self.record_member_root(&m.object),
             Expression::ComputedMemberExpression(m) => self.record_member_root(&m.object),
@@ -479,15 +523,26 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
 
     fn record_assignment_ident(&mut self, ident: &IdentifierReference<'_>) {
         let name = ident.name.as_str();
-        let sym = ident
-            .reference_id
-            .get()
-            .and_then(|r| self.data.scoping.symbol_for_reference(r))
+        let ref_id = ident.reference_id.get();
+        let subscribed_store = ref_id.and_then(|r| match self.data.reactivity.reference_facts(r) {
+            Some(ReferenceFacts::StoreWrite { symbol })
+            | Some(ReferenceFacts::StoreUpdate { symbol }) => Some(*symbol),
+            Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol })
+            | Some(ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. }) => {
+                Some(*store_symbol)
+            }
+            _ => None,
+        });
+        let sym = subscribed_store
+            .or_else(|| ref_id.and_then(|r| self.data.scoping.symbol_for_reference(r)))
             .or_else(|| self.implicit_map.get(name).copied());
-        if let Some(sym) = sym
-            && self.seen_assignments.insert(sym)
-        {
-            self.assignments.push(sym);
+        if let Some(sym) = sym {
+            if self.seen_assignments.insert(sym) {
+                self.assignments.push(sym);
+            }
+            if self.is_reactive_dep(sym) && self.seen_deps.insert(sym) {
+                self.dependencies.push(sym);
+            }
         }
     }
 
@@ -524,6 +579,11 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
             Some(ReferenceFacts::StoreRead { symbol })
             | Some(ReferenceFacts::StoreUpdate { symbol })
             | Some(ReferenceFacts::StoreWrite { symbol }) => Some(*symbol),
+            Some(ReferenceFacts::LegacyStateSubscribedRead { store_symbol, .. })
+            | Some(ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. })
+            | Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol }) => {
+                Some(*store_symbol)
+            }
             _ => None,
         };
         let sym = store_sym
@@ -543,6 +603,36 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
         if self.seen_deps.insert(sym) {
             self.dependencies.push(sym);
         }
+        self.read_deps.insert(sym);
+    }
+
+    fn visit_switch_case(&mut self, case: &SwitchCase<'a>) {
+        self.visit_statements(&case.consequent);
+        if let Some(test) = &case.test {
+            self.visit_expression(test);
+        }
+    }
+
+    fn visit_ts_type(&mut self, _it: &TSType<'a>) {}
+
+    fn visit_ts_type_annotation(&mut self, _it: &TSTypeAnnotation<'a>) {}
+
+    fn visit_ts_type_parameter_instantiation(&mut self, _it: &TSTypeParameterInstantiation<'a>) {}
+
+    fn visit_ts_as_expression(&mut self, it: &TSAsExpression<'a>) {
+        self.visit_expression(&it.expression);
+    }
+
+    fn visit_ts_satisfies_expression(&mut self, it: &TSSatisfiesExpression<'a>) {
+        self.visit_expression(&it.expression);
+    }
+
+    fn visit_ts_type_assertion(&mut self, it: &TSTypeAssertion<'a>) {
+        self.visit_expression(&it.expression);
+    }
+
+    fn visit_ts_instantiation_expression(&mut self, it: &TSInstantiationExpression<'a>) {
+        self.visit_expression(&it.expression);
     }
 }
 
@@ -570,7 +660,7 @@ fn collect_member_root_ref(
     expr: &Expression<'_>,
     skips: &mut FxHashSet<ReferenceId>,
 ) {
-    match expr {
+    match expr.get_inner_expression() {
         Expression::Identifier(id) => {
             if let Some(ref_id) = id.reference_id.get() {
                 skips.insert(ref_id);

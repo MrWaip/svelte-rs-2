@@ -174,7 +174,7 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
-        if let Expression::Identifier(callee) = &call.callee {
+        if let Expression::Identifier(callee) = call.callee.get_inner_expression() {
             let name = callee.name.as_str();
             if is_rune_name(name) && name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];

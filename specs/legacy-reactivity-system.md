@@ -1,9 +1,9 @@
 # Legacy reactivity system
 
 ## Current state
-- Working: 38/40
-- Tests: 20/20
-- Last updated: 2026-05-13
+- Working: 53/53
+- Tests: 35/35
+- Last updated: 2026-05-21
 
 ## Source
 
@@ -67,6 +67,14 @@
 - [x] Destructured `{@const}` initializer rooted on each-item reactive binding coarse-wraps: `{#each rows as row}{@const { x, y } = lookup[row.key]}` → `const { x, y } = ($.get(row), $.untrack(() => lookup[$.get(row).key]))`. Currently emits bare `lookup[$.get(row).key]` with no coarse wrap. Test: `diagnose_legacy_each_const_destructure_coarse_wrap`.
 - [x] `{#if call(item.x)}` derived condition rooted on each-item reactive binding coarse-wraps: `var d = $.derived(() => ($.get(row), $.untrack(() => check($.get(row).key))))`. Currently emits bare call inside derived without coarse wrap. Test: `diagnose_legacy_each_if_condition_coarse_wrap`.
 - [x] `{#if local && $store.length > 0}` legacy `$.if` predicate with store auto-subscription inside short-circuit position coarse-wraps: `if ($items(), $.untrack(() => local && $items().length > 0)) $$render(...)`. Currently emits bare `local && $items().length > 0` without hoisting `$items()` read or untracking. Test: `diagnose_legacy_if_store_short_circuit_coarse_wrap`.
+- [x] Legacy `{#each items as item, index}` `index` binding stays a plain JS param — passing `{index + 1}` (or any pure expression in `index`) as a component prop must emit the value inline (`icon: index + 1`) and must NOT wrap it in `let $0 = $.derived_safe_equal(() => index + 1)` + getter. Reference treats `index` as non-reactive (no `$.get`), so the expression has no reactive root and the safe-equal derived hoist is wrong. Test: `diagnose_legacy_each_index_component_prop_plain`.
+- [x] Legacy `--css-prop={expr}` on a component child of `{#each items as item}` coarse-wraps each-item member access inside the `$.css_props` callback: `--tone={item.muted ? undefined : "accent"}` → `"--tone": ($.get(item), $.untrack(() => $.get(item).muted ? undefined : "accent"))`. Currently emits bare `$.get(item).muted ? ...`. Same coarse-wrap family as the `{@const}` / `{#if}` cases above, extended to css-prop attribute expressions on components. Test: `diagnose_legacy_each_css_props_member_coarse_wrap`.
+- [x] Legacy `{@html item.member}` inside `{#each items as item}` coarse-wraps the `$.html` getter: `{@html row.content}` → `$.html(p, () => ($.get(row), $.untrack(() => $.get(row).content)), true)`. Currently emits bare `() => $.get(row).content` without coarse wrap, mirroring the missing wrap on the `{@const}` / `{#if}` / `--css-prop` family for `{@html}` getter callbacks. Test: `diagnose_legacy_each_html_member_coarse_wrap`.
+- [x] Top-level `let` reassigned at script top level and read only inside an `export const` arrow (never reached from template or other reactive consumer) stays plain JS — not promoted to `$.mutable_source(...)`. Reassignment alone is not a reactive consumer. Sibling of line 66 case but for an exported method body, where the function is exposed via component API rather than called from template. Test: `legacy_let_reassigned_unread_stays_plain`.
+- [x] Top-level `let` written by a `$:` assignment and read inside a top-level function passed by name to a template event handler (`on:click={fn}`) promotes to `$.mutable_source(...)` — `$:` write counts as a reactive consumer for the binding even when the only template-facing read site is an indirect function reference. Initializer presence irrelevant. Inverse of line 66 (no `$:` write) and line 73 (no template-reachable read). Test: `diagnose_legacy_reactive_assignment_promotes_state_via_handler`.
+- [x] Top-level `let` read + written only inside a nested function expression that is itself the RHS of a `$:` assignment (e.g. `$: handler = async () => { ...flag... flag = true }`) promotes to `$.mutable_source(...)`. The reactive consumer is the function body reachable from the template via the `$:`-assigned name, not a direct `$:` expression. Required emissions: declarator → `let flag = $.mutable_source(false)`; reads inside arrow → `$.get(flag)`; assignments inside arrow → `$.set(flag, ...)`; the surrounding `$.legacy_pre_effect` deps include `$.get(flag)`. Currently the analyzer does not recurse into nested function expressions of `$:` RHS, so the binding stays plain JS and the deps list misses it. Test: `diagnose_legacy_reactive_arrow_value_promotes_state`.
+- [x] Plain (non-`$:`) array-pattern destructuring assignment inside a nested function body lowers to the IIFE+`$.to_array` setter wrapper whenever any LHS target is a legacy `mutable_source` binding, even when other targets are plain JS locals. Reference emits `(($$value) => { var $$array = $.to_array($$value, N); $.set(reactive, $$array[i]); plain = $$array[j]; ... })(rhs)`. Test: `diagnose_legacy_array_destructure_mixed_targets`.
+- [x] Legacy `--css-prop="prefix-{item.x}-suffix"` (concat / string-template value) on a component child of `{#each items as item}` coarse-wraps each per-part each-item member access inside the `$.css_props` callback template literal: `--tone="prefix-{row.kind}-suffix"` → `"--tone": \`prefix-${($.get(row), $.untrack(() => $.get(row).kind)) ?? ""}-suffix\``. Sibling of line 71 — extends the same coarse-wrap family to the concat / string-template value shape. Test: `diagnose_legacy_each_css_props_concat_member_coarse_wrap`.
 
 ### Rune-in-legacy fallback
 
@@ -95,13 +103,18 @@ Each sub-case = one independent divergence cluster from diff `tasks/compiler_tes
 - [x] Each-item `{@const}` initializer in legacy mode coarse-wraps reactive contextual member roots: `{#each items as item, idx}{@const X = ...}` whose initializer roots a member/call expression on `item`/`idx`/snippet-param/let-directive/await-value/await-error promotes to `$.derived_safe_equal(() => (<dep-reads>, $.untrack(() => <orig>)))`. Test: `legacy_dev_each_const_deep_read`.
 - [x] Group consecutive attribute setters into one `$.template_effect`. Test: `legacy_dev_attribute_effect_grouping`.
 - [x] Component event-prop `getHandler()` uses `derived_safe_equal` + `untrack`: `onclick={getHandler()}` → `let $0 = $.derived_safe_equal(() => $.untrack(getHandler));`. Test: `legacy_dev_component_event_prop_derived`.
-- [ ] Component prop forwarding emits getters legacy mode: shorthand `{title}` → `{ get title() { return title; } }`. Test: `legacy_dev_component_prop_getter`.
+- [x] Component prop forwarding emits getters legacy mode: shorthand `{title}` → `{ get title() { return title; } }`. Test: `legacy_dev_component_prop_getter`.
 - [ ] Component invocation emits `$$legacy: true` flag. Test: `legacy_dev_component_legacy_flag`.
-- [ ] `export const` / `export function` emit `$.bind_prop` at script tail. Test: `legacy_dev_export_bind_prop`.
+- [x] `export const` / `export function` emit `$.bind_prop` at script tail in non-runes mode. Test: `legacy_export_const_emits_bind_prop`.
 - [x] Destructured `const` legacy-state promotion with member mutation. Test: `legacy_const_destructured_member_bind`.
+- [x] Destructured `const` with mixed promoted/non-promoted bindings keeps non-promoted siblings in the rewritten declarator list across plain/nested object, array (`$$array_N = $.derived(() => $.to_array(...))` wrap), and key-rename patterns. Test: `diagnose_legacy_const_destructure_keeps_siblings`.
 - [x] HardLegacy import-base call-expression coarse wrap via `$.deep_read_state`. Test: `auto_hardlegacy_import_call_coarse_wrap`.
 - [x] `legacy_pre_effect` block placement is after script function declarations. Test: `diagnose_legacy_pre_effect_order_after_functions`.
 - [x] `$.template_effect`/`derived_safe_equal` coarse wrap for prop call + member. Test: `diagnose_legacy_template_effect_prop_call_coarse_wrap`.
+- [x] Component prop initialized by a member-call on a non-reactive `const` binding in legacy mode wraps the call body in `$.untrack`: `let $0 = $.derived_safe_equal(() => $.untrack(() => tracker.click()));`. Test: `diagnose_legacy_component_prop_const_call_safe_equal_untrack`.
+- [x] Component string-interpolation prop with a call expression whose argument is a legacy `export let` prop coarse-wraps inside the `derived_safe_equal` getter: `<Badge text="a {f(x)} b" />` → `let $0 = $.derived_safe_equal(() => ($.deep_read_state(x()), $.untrack(() => f(x()))))`. Test: `diagnose_legacy_component_prop_call_with_prop_arg_coarse_wrap`.
+- [x] `<svelte:head><title>{call($store.member)}</title>` single-expression title in legacy mode coarse-wraps the `$.deferred_template_effect` dep getter: emit `[() => ($store(), $.untrack(() => call($store().member)))]`. Test: `diagnose_legacy_head_title_store_deps_coarse_wrap`.
+- [x] Component prop value `ConditionalExpression` whose consequent/alternate is an `ArrowFunctionExpression` (closure deferring all reactive reads) must emit the prop derived without coarse wrapping: `<Child onclick={isButton ? () => onAction(item) : undefined} />` → `let $0 = $.derived_safe_equal(() => isButton() ? () => onAction()(item()) : undefined)`. Distinguishing rule: member/call roots inside `ArrowFunctionExpression`/`FunctionExpression` bodies are deferred and must not drive the outer `LegacyWrap::CoarseWrap` decision. Test: `diagnose_legacy_component_prop_ternary_arrow_no_coarse_wrap`.
 - [ ] Store-related dev-mode legacy parity sub-cases moved to `specs/store-subscriptions.md` — closure of `diagnose_legacy_dev_benchmark` umbrella requires those sub-cases to close in the store spec.
 
 ## Out of scope
@@ -155,6 +168,7 @@ Each sub-case = one independent divergence cluster from diff `tasks/compiler_tes
 - [x] `legacy_state_bind_member_mutate_wrap`
 - [x] `legacy_const_member_mutation_through_ts_non_null`
 - [x] `legacy_const_destructured_member_bind`
+- [x] `diagnose_legacy_const_destructure_keeps_siblings`
 - [ ] `diagnose_legacy_dev_benchmark` — umbrella, `#[ignore]`d.
 - [x] `legacy_dev_bind_this_promotes_state`
 - [x] `legacy_dev_inspect_fallback`
@@ -164,13 +178,25 @@ Each sub-case = one independent divergence cluster from diff `tasks/compiler_tes
 - [x] `legacy_dev_each_const_deep_read`
 - [x] `legacy_dev_attribute_effect_grouping`
 - [x] `legacy_dev_component_event_prop_derived`
-- [ ] `legacy_dev_component_prop_getter`
+- [x] `diagnose_legacy_component_prop_const_call_safe_equal_untrack`
+- [x] `legacy_dev_component_prop_getter`
 - [ ] `legacy_dev_component_legacy_flag`
-- [ ] `legacy_dev_export_bind_prop`
+- [x] `legacy_export_const_emits_bind_prop`
 - [x] `auto_hardlegacy_import_call_coarse_wrap`
 - [x] `diagnose_legacy_pre_effect_order_after_functions`
 - [x] `diagnose_legacy_template_effect_prop_call_coarse_wrap`
 - [x] `diagnose_legacy_local_var_not_promoted_to_state`
+- [x] `diagnose_legacy_reactive_arrow_value_promotes_state`
 - [x] `diagnose_legacy_each_const_destructure_coarse_wrap`
 - [x] `diagnose_legacy_each_if_condition_coarse_wrap`
 - [x] `diagnose_legacy_if_store_short_circuit_coarse_wrap`
+- [x] `diagnose_legacy_each_index_component_prop_plain`
+- [x] `diagnose_legacy_each_css_props_member_coarse_wrap`
+- [x] `diagnose_legacy_each_html_member_coarse_wrap`
+- [x] `diagnose_legacy_component_prop_call_with_prop_arg_coarse_wrap`
+- [x] `diagnose_legacy_component_prop_ternary_arrow_no_coarse_wrap`
+- [x] `diagnose_legacy_head_title_store_deps_coarse_wrap`
+- [x] `legacy_let_reassigned_unread_stays_plain`
+- [x] `diagnose_legacy_reactive_assignment_promotes_state_via_handler`
+- [x] `diagnose_legacy_array_destructure_mixed_targets`
+- [x] `diagnose_legacy_each_css_props_concat_member_coarse_wrap`

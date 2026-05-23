@@ -146,7 +146,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             } else {
                 let mut dummy = Argument::from(self.b.cheap_expr());
                 mem::swap(&mut call.arguments[0], &mut dummy);
-                dummy.into_expression()
+                dummy.into_expression().into_inner_expression()
             };
             let is_proxy = matches!(kind, StateKind::State) && should_proxy(&value);
             let value = if is_proxy {
@@ -189,7 +189,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         .arguments
                         .first()
                         .and_then(|a| a.as_expression())
-                        .is_some_and(|e| matches!(e, Expression::AwaitExpression(_)));
+                        .is_some_and(|e| {
+                            matches!(e.get_inner_expression(), Expression::AwaitExpression(_))
+                        });
                     if is_async_init {
                         let mode = if self.strip_exports && self.function_info_stack.len() > 1 {
                             AsyncDerivedMode::Save

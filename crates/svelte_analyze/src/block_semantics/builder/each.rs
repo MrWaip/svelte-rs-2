@@ -1,17 +1,21 @@
 use super::super::{
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollectionKind, EachFlags, EachFlavor,
-    EachIndexKind, EachItemKind, EachKeyKind,
+    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachCollection, EachCollectionSource,
+    EachFlags, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind, store_root_is_reactive,
 };
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
-use crate::reactivity_semantics::data::{PropReferenceSemantics, ReferenceSemantics};
+use crate::expression_semantics::{ExprKind, ExpressionData, ExpressionSemantics};
+use crate::reactivity_semantics::data::{
+    BindingSemantics, PropBindingKind, PropBindingSemantics, PropReferenceSemantics,
+    ReferenceSemantics,
+};
 use oxc_ast::ast::{
-    AwaitExpression, BindingPattern, CallExpression, Expression, IdentifierReference,
+    AwaitExpression, BindingPattern, CallExpression, ChainElement, Expression, IdentifierReference,
+    NewExpression,
 };
 use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{walk_await_expression, walk_call_expression};
+use oxc_ast_visit::walk::{walk_await_expression, walk_call_expression, walk_new_expression};
 use oxc_syntax::scope::ScopeId;
-use smallvec::SmallVec;
 use svelte_ast::{Attribute, EachBlock, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, SymbolId};
 
@@ -123,22 +127,24 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         (Some(expr), Some(scope)) => collection_expression_facts(ctx, expr, scope),
         _ => CollectionExprFacts::default(),
     };
+    if let Some(e) = collection_expr
+        && derive_forces_runtime_context(ctx, e, &collection_facts)
+    {
+        ctx.store.mark_legacy_each_forces_runtime_context();
+    }
+
+    let expression_data = match ctx.expressions.get(block.id) {
+        ExpressionSemantics::Expression(d) => Some(d),
+        ExpressionSemantics::NonSpecial => None,
+    };
+
+    let async_kind = derive_async_kind(expression_data);
+
+    let source = derive_collection_source(ctx, collection_expr, expression_data);
+
     let has_external = collection_facts.has_external;
     let uses_store = collection_facts.uses_store;
     let collection_store = collection_facts.collection_store;
-    let collection_kind = match collection_expr {
-        Some(e) => collection_kind_of(ctx, e, &collection_facts),
-        None => EachCollectionKind::Regular,
-    };
-
-    let async_kind = if collection_facts.has_await || !collection_facts.blockers.is_empty() {
-        EachAsyncKind::Async {
-            has_await: collection_facts.has_await,
-            blockers: collection_facts.blockers,
-        }
-    } else {
-        EachAsyncKind::Sync
-    };
 
     let has_key = !matches!(key, EachKeyKind::Unkeyed | EachKeyKind::KeyedByIndex);
     let has_index = matches!(index, EachIndexKind::Declared { .. });
@@ -182,76 +188,169 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             each_flags,
             shadows_outer,
             async_kind,
-            collection_kind,
+            collection: EachCollection { source },
             collection_store,
         }),
     );
 }
 
-fn collection_kind_of<'a>(
+fn derive_async_kind(data: Option<&ExpressionData>) -> EachAsyncKind {
+    match data {
+        Some(d) => {
+            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
+            if has_await || !d.blockers.is_empty() {
+                EachAsyncKind::Async {
+                    has_await,
+                    blockers: d.blockers.clone(),
+                }
+            } else {
+                EachAsyncKind::Sync
+            }
+        }
+        None => EachAsyncKind::Sync,
+    }
+}
+
+fn derive_collection_source<'a>(
+    ctx: &Ctx<'_, 'a>,
+    expr: Option<&Expression<'a>>,
+    data: Option<&ExpressionData>,
+) -> EachCollectionSource {
+    let Some(d) = data else {
+        return EachCollectionSource::Local;
+    };
+    if !matches!(d.kind, ExprKind::SimpleRead { .. }) {
+        return EachCollectionSource::Local;
+    }
+    if d.references.len() != 1 {
+        return EachCollectionSource::Local;
+    }
+    let Some(expr) = expr else {
+        return EachCollectionSource::Local;
+    };
+    if !matches!(expr.get_inner_expression(), Expression::Identifier(_)) {
+        return EachCollectionSource::Local;
+    }
+    let sym = d.references[0];
+    if !matches!(
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. },
+            ..
+        }) | BindingSemantics::LegacyBindableProp(_)
+    ) {
+        return EachCollectionSource::Local;
+    }
+    EachCollectionSource::Prop { sym }
+}
+
+fn derive_forces_runtime_context<'a>(
     ctx: &Ctx<'_, 'a>,
     expr: &Expression<'a>,
     facts: &CollectionExprFacts,
-) -> EachCollectionKind {
-    let mut current = expr;
+) -> bool {
+    if !ctx.reactivity.runes_mode().is_hard_legacy() {
+        return false;
+    }
+    let mut current = expr.get_inner_expression();
     let mut peeled_member = false;
     loop {
         match current {
             Expression::StaticMemberExpression(m) => {
                 peeled_member = true;
-                current = &m.object;
+                current = m.object.get_inner_expression();
             }
             Expression::ComputedMemberExpression(m) => {
                 peeled_member = true;
-                current = &m.object;
+                current = m.object.get_inner_expression();
             }
-            Expression::ParenthesizedExpression(p) => current = &p.expression,
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(_) => break,
+                ChainElement::TSNonNullExpression(_) => unreachable!("TS stripped at parse"),
+                ChainElement::StaticMemberExpression(m) => {
+                    peeled_member = true;
+                    current = m.object.get_inner_expression();
+                }
+                ChainElement::ComputedMemberExpression(m) => {
+                    peeled_member = true;
+                    current = m.object.get_inner_expression();
+                }
+                ChainElement::PrivateFieldExpression(m) => {
+                    peeled_member = true;
+                    current = m.object.get_inner_expression();
+                }
+            },
             Expression::Identifier(id) => {
+                if !peeled_member || facts.has_call {
+                    return false;
+                }
                 let Some(ref_id) = id.reference_id.get() else {
-                    return EachCollectionKind::Regular;
+                    return false;
                 };
-                return match ctx.reactivity.reference_semantics(ref_id) {
-                    ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. }) => {
-                        EachCollectionKind::PropSource
-                    }
-                    ReferenceSemantics::StoreRead { symbol }
-                        if peeled_member && !ctx.reactivity.uses_runes() =>
-                    {
-                        EachCollectionKind::LegacyStoreMemberChain { store_sym: symbol }
-                    }
-                    _ => EachCollectionKind::Regular,
-                };
+                let sem = ctx.reactivity.reference_semantics(ref_id);
+                if matches!(
+                    sem,
+                    ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+                ) {
+                    return true;
+                }
+                if let ReferenceSemantics::StoreRead { symbol } = sem {
+                    return store_root_is_reactive(ctx.reactivity, symbol);
+                }
+                return false;
             }
             _ => break,
         }
     }
-
-    if ctx.reactivity.uses_runes() || !facts.has_call {
-        return EachCollectionKind::Regular;
+    if facts.has_new_expression {
+        return true;
     }
-
-    let mut deep_read_symbols: SmallVec<[SymbolId; 2]> = SmallVec::new();
-    for ref_id in &facts.refs {
-        let sem = ctx.reactivity.reference_semantics(*ref_id);
-        if !matches!(
-            sem,
+    if !facts.has_call {
+        return false;
+    }
+    let callee_sym = bare_call_identifier_callee(ctx, expr);
+    let has_state_dep = facts.refs.iter().any(|&ref_id| {
+        matches!(
+            ctx.reactivity.reference_semantics(ref_id),
             ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
-        ) {
-            continue;
-        }
-        let Some(sym) = ctx.semantics.get_reference(*ref_id).symbol_id() else {
-            continue;
-        };
-        if !deep_read_symbols.contains(&sym) {
-            deep_read_symbols.push(sym);
-        }
+                | ReferenceSemantics::StoreRead { .. }
+                | ReferenceSemantics::StoreWrite { .. }
+                | ReferenceSemantics::StoreUpdate { .. }
+        )
+    });
+    if has_state_dep {
+        return callee_sym
+            .map(|s| {
+                matches!(
+                    ctx.reactivity.binding_semantics(s),
+                    BindingSemantics::MaybeReactive
+                )
+            })
+            .unwrap_or(false);
     }
+    if let Some(sym) = callee_sym
+        && matches!(
+            ctx.reactivity.binding_semantics(sym),
+            BindingSemantics::MaybeReactive
+        )
+    {
+        return true;
+    }
+    false
+}
 
-    if deep_read_symbols.is_empty() {
-        EachCollectionKind::Regular
-    } else {
-        EachCollectionKind::LegacyCallReadsState { deep_read_symbols }
-    }
+fn bare_call_identifier_callee<'a>(
+    ctx: &Ctx<'_, 'a>,
+    expr: &Expression<'a>,
+) -> Option<SymbolId> {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
+        return None;
+    };
+    let Expression::Identifier(ident) = call.callee.get_inner_expression() else {
+        return None;
+    };
+    let ref_id = ident.reference_id.get()?;
+    ctx.semantics.get_reference(ref_id).symbol_id()
 }
 
 fn collection_expression_facts<'a>(
@@ -262,15 +361,15 @@ fn collection_expression_facts<'a>(
     let each_depth = ctx.semantics.function_depth(body_scope) + 1;
     let mut collector = CollectionExprCollector {
         refs: Vec::new(),
-        has_await: false,
         has_call: false,
+        has_new_expression: false,
+        has_await: false,
     };
     collector.visit_expression(expr);
 
     let mut has_external = false;
     let mut uses_store = false;
     let mut collection_store: Option<SymbolId> = None;
-    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
     for ref_id in &collector.refs {
         let sem = ctx.reactivity.reference_semantics(*ref_id);
 
@@ -291,28 +390,21 @@ fn collection_expression_facts<'a>(
                 collection_store = effective_sym;
             }
         }
-        if let Some(sym) = effective_sym {
-            if !has_external {
-                let decl_scope = ctx.semantics.symbol_scope_id(sym);
-                if ctx.semantics.function_depth(decl_scope) < each_depth {
-                    has_external = true;
-                }
-            }
-            if let Some(idx) = ctx.blockers.symbol_blocker(sym)
-                && !blockers.contains(&idx)
-            {
-                blockers.push(idx);
+        if let Some(sym) = effective_sym
+            && !has_external
+        {
+            let decl_scope = ctx.semantics.symbol_scope_id(sym);
+            if ctx.semantics.function_depth(decl_scope) < each_depth {
+                has_external = true;
             }
         }
     }
-    blockers.sort_unstable();
     CollectionExprFacts {
         has_external,
         uses_store,
         collection_store,
-        has_await: collector.has_await,
         has_call: collector.has_call,
-        blockers,
+        has_new_expression: collector.has_new_expression,
         refs: collector.refs,
     }
 }
@@ -339,16 +431,16 @@ struct CollectionExprFacts {
     has_external: bool,
     uses_store: bool,
     collection_store: Option<SymbolId>,
-    has_await: bool,
     has_call: bool,
-    blockers: SmallVec<[u32; 2]>,
+    has_new_expression: bool,
     refs: Vec<ReferenceId>,
 }
 
 struct CollectionExprCollector {
     refs: Vec<ReferenceId>,
-    has_await: bool,
     has_call: bool,
+    has_new_expression: bool,
+    has_await: bool,
 }
 
 impl<'a> Visit<'a> for CollectionExprCollector {
@@ -357,13 +449,17 @@ impl<'a> Visit<'a> for CollectionExprCollector {
             self.refs.push(ref_id);
         }
     }
-    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        self.has_await = true;
-        walk_await_expression(self, expr);
-    }
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         self.has_call = true;
         walk_call_expression(self, expr);
+    }
+    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+        self.has_new_expression = true;
+        walk_new_expression(self, expr);
+    }
+    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
+        self.has_await = true;
+        walk_await_expression(self, expr);
     }
 }
 
@@ -407,11 +503,11 @@ fn expression_node_id(expr: &Expression<'_>) -> OxcNodeId {
         Expression::ComputedMemberExpression(e) => e.node_id(),
         Expression::StaticMemberExpression(e) => e.node_id(),
         Expression::PrivateFieldExpression(e) => e.node_id(),
-        Expression::TSAsExpression(e) => e.node_id(),
-        Expression::TSSatisfiesExpression(e) => e.node_id(),
-        Expression::TSTypeAssertion(e) => e.node_id(),
-        Expression::TSNonNullExpression(e) => e.node_id(),
-        Expression::TSInstantiationExpression(e) => e.node_id(),
+        Expression::TSAsExpression(_)
+        | Expression::TSSatisfiesExpression(_)
+        | Expression::TSTypeAssertion(_)
+        | Expression::TSNonNullExpression(_)
+        | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
     }
 }
 
@@ -420,7 +516,7 @@ fn expression_is_identifier_of(
     target: SymbolId,
     semantics: &ComponentSemantics<'_>,
 ) -> bool {
-    let Expression::Identifier(ident) = expr else {
+    let Expression::Identifier(ident) = expr.get_inner_expression() else {
         return false;
     };
     let Some(ref_id) = ident.reference_id.get() else {

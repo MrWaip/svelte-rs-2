@@ -55,6 +55,7 @@ pub fn validate(
     validate_svelte_options_warnings(component, data, runes, diags);
     validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
+    runes::validate_const_tag_runes(component, parsed, diags);
 }
 
 fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
@@ -168,7 +169,7 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
         if self.function_depth > 0
-            && matches!(expr.callee, Expression::ClassExpression(_))
+            && matches!(expr.callee.get_inner_expression(), Expression::ClassExpression(_))
         {
             self.diags.push(Diagnostic::warning(
                 DiagnosticKind::PerfAvoidInlineClass,

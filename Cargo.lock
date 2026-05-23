@@ -168,6 +168,7 @@ dependencies = [
  "serde_json",
  "svelte_compiler",
  "svelte_sourcemap",
+ "test_support",
 ]
 
 [[package]]
@@ -344,6 +345,7 @@ dependencies = [
  "oxc_parser",
  "oxc_span",
  "serde_json",
+ "test_support",
 ]
 
 [[package]]
@@ -1284,6 +1286,7 @@ dependencies = [
  "svelte_ast",
  "svelte_ast_builder",
  "svelte_component_semantics",
+ "svelte_emit_builders",
  "svelte_parser",
  "svelte_sourcemap",
  "svelte_span",
@@ -1351,6 +1354,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "svelte_emit_builders"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_span",
+ "svelte_analyze",
+ "svelte_ast_builder",
+ "svelte_component_semantics",
+]
+
+[[package]]
 name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
@@ -1403,6 +1418,7 @@ dependencies = [
  "svelte_ast",
  "svelte_ast_builder",
  "svelte_component_semantics",
+ "svelte_emit_builders",
  "svelte_parser",
  "svelte_span",
  "svelte_types",
@@ -1440,6 +1456,10 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "test_support"
+version = "0.1.0"
 
 [[package]]
 name = "textwrap"
