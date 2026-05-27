@@ -784,7 +784,10 @@ fn assert_component_ref_non_source_prop(
             ..
         })
     ));
-    assert_eq!(data.binding_origin_key(sym_id), Some(expected_prop_name));
+    let actual = data
+        .binding_origin_key(sym_id)
+        .map(|(alias, _)| alias.into_owned());
+    assert_eq!(actual.as_deref(), Some(expected_prop_name));
 }
 
 fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
@@ -3255,7 +3258,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
     ));
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "baz", true, false, 0),
-        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { .. })
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
     ));
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "bar", false, true, 0),
@@ -3269,6 +3272,67 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         script_reference_semantics(&data, &parsed, "local", false, true, 0),
         ReferenceSemantics::NonReactive
     );
+}
+
+fn classify_prop_non_source(name: &str) -> ReferenceSemantics {
+    let source_text = format!(
+        r#"<svelte:options runes={{true}} />
+<script>
+    let {{ foo, bar: x, 'baz': y, 'a-b': z, 0: zero }} = $props();
+    {name};
+</script>"#
+    );
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let leaked: &'static str = Box::leak(source_text.into_boxed_str());
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, leaked);
+    assert!(parse_diags.is_empty(), "parse diags: {parse_diags:?}");
+    let options = AnalyzeOptions {
+        warning_filter: Some(Box::new(|_| false)),
+        ..AnalyzeOptions::default()
+    };
+    let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "analyze diags: {diags:?}");
+    script_reference_semantics(&data, &parsed, name, true, false, 0)
+}
+
+#[test]
+fn prop_reference_classifies_static_for_shorthand() {
+    assert!(matches!(
+        classify_prop_non_source("foo"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_static_for_identifier_key() {
+    assert!(matches!(
+        classify_prop_non_source("x"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_static_for_string_valid_ident_key() {
+    assert!(matches!(
+        classify_prop_non_source("y"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_computed_for_string_invalid_ident_key() {
+    assert!(matches!(
+        classify_prop_non_source("z"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceComputed { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_computed_for_numeric_literal_key() {
+    assert!(matches!(
+        classify_prop_non_source("zero"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceComputed { .. })
+    ));
 }
 
 #[test]

@@ -23,15 +23,6 @@
       "mcp__narsil-mcp"
     ]
   },
-  "enabledPlugins": {},
-  "ignorePatterns": [
-    "playground/compiler",
-    "target",
-    "tasks/benchmark/benches/compiler/*",
-    "tasks/compiler_tests/cases2/*/case-svelte.js",
-    "tasks/compiler_tests/cases2/*/case-rust.js",
-    "REVIEW.md"
-  ],
   "enableAllProjectMcpServers": true,
   "hooks": {
     "PreToolUse": [
@@ -51,10 +42,6 @@
           {
             "type": "command",
             "command": "echo 'use mcp.'"
-          },
-          {
-            "type": "command",
-            "command": "echo 'Answer questions directly — no preambles, no echoing my question, no closing summary. Do not edit code unless I explicitly tell you to.'"
           }
         ]
       }
@@ -69,5 +56,16 @@
         ]
       }
     ]
-  }
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  },
+  "ignorePatterns": [
+    "playground/compiler",
+    "target",
+    "z_outdated",
+    "tasks/benchmark/benches/compiler/*",
+    "tasks/compiler_tests/cases2/*/case-svelte.js",
+    "tasks/compiler_tests/cases2/*/case-rust.js"
+  ]
 }

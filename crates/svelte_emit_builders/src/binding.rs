@@ -29,8 +29,8 @@ pub fn read_binding<'a>(
             kind: PropBindingKind::NonSource,
             ..
         }) => {
-            let prop_name = analysis.binding_origin_key(sym)?;
-            Some(props_member(b, prop_name))
+            let (prop_name, _origin_kind) = analysis.binding_origin_key(sym)?;
+            Some(props_member(b, prop_name.as_ref()))
         }
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::Source { .. },

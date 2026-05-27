@@ -403,9 +403,10 @@ fn collect_destructure_bindings<'a>(
                         default_expr = Some(d.clone_in(allocator));
                     }
                 }
-                Access::Index(i) => {
-                    array_index = Some(i);
+                Access::Index { index, .. } => {
+                    array_index = Some(index);
                 }
+                Access::Slice { .. } => {}
             }
         }
         out.push(DestructureBindingDescriptor {

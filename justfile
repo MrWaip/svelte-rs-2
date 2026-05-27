@@ -22,6 +22,10 @@ test-case name:
 test-case-verbose name:
     cargo test -p compiler_tests --test compiler_tests_v3 {{name}} -- --include-ignored --nocapture
 
+# Run a single cluster test case (cluster_cases/)
+test-cluster name:
+    cargo test -p compiler_tests --test compiler_tests_clusters {{name}} -- --include-ignored
+
 # Run all tests across all crates (pass extra cargo flags via `just test-all -- --locked`)
 test-all *args:
     cargo test --workspace {{args}}
@@ -102,3 +106,7 @@ npm-build:
     npm pack ./packages/svelte-rs2-linux-arm64-gnu --silent
     npm pack ./packages/svelte-rs2-darwin-arm64 --silent
     npm pack ./packages/svelte-rs2-darwin-x64 --silent
+
+# Build local tarballs, reinstall the sweep package clean, and run it against a pathname (extra flags: --dry-run --dev --print-diffs)
+sweep-run pathname *flags: npm-build
+    cd packages/svelte-rs2-sweep/ && rm -rf node_modules package-lock.json && npm --registry=https://registry.npmjs.org/ i && svelte-rs2-sweep {{pathname}} {{flags}}

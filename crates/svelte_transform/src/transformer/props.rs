@@ -1,14 +1,42 @@
 use oxc_ast::ast::{
-    Argument, BindingPattern, Expression, PropertyKey, Statement, VariableDeclaration,
-    VariableDeclarationKind,
+    Argument, BindingPattern, Expression, Statement, VariableDeclaration, VariableDeclarationKind,
 };
 use svelte_analyze::{
     AnalysisData, BINDABLE_RUNE_NAME, BindingSemantics, DeclaratorSemantics, PropBindingKind,
     PropBindingSemantics, PropDefaultEmit, PropEmitMode, PropsDeclKind,
 };
 use svelte_analyze::scope::SymbolId;
+use svelte_component_semantics::OriginKind;
 
 use svelte_ast_builder::Arg;
+
+enum ExcludedKey {
+    Str(String),
+    Num(f64),
+}
+
+impl ExcludedKey {
+    fn into_arg<'a, 'short>(self) -> Arg<'a, 'short> {
+        match self {
+            ExcludedKey::Str(s) => Arg::Str(s),
+            ExcludedKey::Num(n) => Arg::Num(n),
+        }
+    }
+}
+
+fn prop_origin_key_arg<'a, 'short>(alias: &str, kind: OriginKind) -> Arg<'a, 'short> {
+    match kind {
+        OriginKind::Numeric => Arg::Num(alias.parse::<f64>().unwrap_or(0.0)),
+        OriginKind::Ident | OriginKind::String => Arg::Str(alias.to_string()),
+    }
+}
+
+fn prop_excluded_key(alias: &str, kind: OriginKind) -> ExcludedKey {
+    match kind {
+        OriginKind::Numeric => ExcludedKey::Num(alias.parse::<f64>().unwrap_or(0.0)),
+        OriginKind::Ident | OriginKind::String => ExcludedKey::Str(alias.to_string()),
+    }
+}
 
 use super::model::ComponentTransformer;
 use super::{
@@ -69,14 +97,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 };
                 let lowering_mode = self.prop_lowering_mode_from_first(analysis, &leaves)?;
 
-                let mut excluded = base_rest_excluded(lowering_mode);
+                let mut excluded: Vec<ExcludedKey> = base_rest_excluded(lowering_mode)
+                    .into_iter()
+                    .map(ExcludedKey::Str)
+                    .collect();
                 if obj.properties.len() != property_count || obj.rest.is_some() != has_rest {
                     return None;
-                }
-
-                for prop in &obj.properties {
-                    let prop_name = static_prop_key_name(&prop.key)?;
-                    excluded.push(prop_name.to_string());
                 }
 
                 let mut declarators = Vec::new();
@@ -89,7 +115,9 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     else {
                         return None;
                     };
-                    let prop_name = static_prop_key_name(&prop.key)?;
+                    let (alias_cow, origin_kind) = analysis.binding_origin_key(leaf_sym)?;
+                    let prop_alias = alias_cow.into_owned();
+                    excluded.push(prop_excluded_key(&prop_alias, origin_kind));
 
                     let (local_name, default_expr): (String, Option<Expression<'a>>) =
                         match &mut prop.value {
@@ -135,8 +163,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 flags |= PROPS_IS_UPDATED;
                             }
 
-                            let mut args: Vec<Arg<'a, '_>> =
-                                vec![Arg::Ident("$$props"), Arg::Str(prop_name.to_string())];
+                            let mut args: Vec<Arg<'a, '_>> = vec![
+                                Arg::Ident("$$props"),
+                                prop_origin_key_arg(&prop_alias, origin_kind),
+                            ];
                             match default_lowering {
                                 PropDefaultEmit::None => {
                                     if bindable && !updated {
@@ -200,7 +230,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         return None;
                     };
                     let arr_expr = self.b.array_from_args(
-                        excluded.iter().cloned().map(Arg::Str).collect::<Vec<_>>(),
+                        excluded
+                            .into_iter()
+                            .map(ExcludedKey::into_arg)
+                            .collect::<Vec<_>>(),
                     );
                     let mut args: Vec<Arg<'a, '_>> =
                         vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
@@ -319,10 +352,3 @@ fn prop_assignment_default_expr<'a>(
     })
 }
 
-fn static_prop_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
-    match key {
-        PropertyKey::StaticIdentifier(id) => Some(id.name.as_str()),
-        PropertyKey::StringLiteral(str) => Some(str.value.as_str()),
-        _ => None,
-    }
-}

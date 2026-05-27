@@ -386,9 +386,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
-                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
+                    if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
                         let root_name = analysis.scoping.symbol_name(symbol).to_string();
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(root_name.clone());
                         semantic_bindable = bindable;
                         semantic_source_root_name = Some(root_name);
@@ -396,8 +396,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                    if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
                         semantic_segments = self.prop_mutation_segments_from_member(member);
                     }
@@ -437,12 +437,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
+                    if let (Some((prop_alias, _origin_kind)), Some(segments)) = (
                         analysis.binding_origin_key(symbol),
                         self.prop_mutation_segments_from_member(member),
                     ) {
                         let root_name = analysis.scoping.symbol_name(symbol).to_string();
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(root_name.clone());
                         semantic_bindable = bindable;
                         semantic_source_root_name = Some(root_name);
@@ -450,11 +450,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
+                    if let (Some((prop_alias, _origin_kind)), Some(segments)) = (
                         analysis.binding_origin_key(symbol),
                         self.prop_mutation_segments_from_member(member),
                     ) {
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
                         semantic_segments = Some(segments);
                     }

@@ -1,5 +1,6 @@
 use oxc_ast::ast::{Expression, IdentifierReference};
-use svelte_component_semantics::{OxcNodeId as SemOxcNodeId, ReferenceId};
+use std::borrow::Cow;
+use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
@@ -108,8 +109,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             self.data
                 .scoping
                 .binding_origin_key(sym)
-                .unwrap_or_else(|| self.data.scoping.symbol_name(sym))
-                .to_string()
+                .map(|(alias, _)| alias.into_owned())
+                .unwrap_or_else(|| self.data.scoping.symbol_name(sym).to_string())
         };
         let exported_symbols: Vec<SymbolId> =
             self.data.script.exports.iter().map(|exp| exp.local).collect();
@@ -224,19 +225,19 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     ) -> Option<SymbolId> {
         self.data.symbol_for_identifier_reference(id)
     }
-    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
+    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<(Cow<'_, str>, OriginKind)> {
         self.data.binding_origin_key(sym)
     }
     pub fn binding_origin_key_for_reference(
         &self,
         ref_id: ReferenceId,
-    ) -> Option<&str> {
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         self.data.binding_origin_key_for_reference(ref_id)
     }
     pub fn binding_origin_key_for_identifier_reference(
         &self,
         id: &IdentifierReference<'a>,
-    ) -> Option<&str> {
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         self.data.binding_origin_key_for_identifier_reference(id)
     }
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {

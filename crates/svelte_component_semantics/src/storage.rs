@@ -3,7 +3,7 @@ use std::{borrow::Cow, mem};
 use crate::symbol::state as sym_state;
 
 use compact_str::CompactString;
-use oxc_ast::{AstKind, ast::IdentifierReference};
+use oxc_ast::{AstKind, ast::IdentifierReference, ast::PropertyKey};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
@@ -17,6 +17,21 @@ use crate::symbol::SymbolOwner;
 use crate::reference::{Reference, ReferenceTable};
 use crate::scope::ScopeTable;
 use crate::symbol::SymbolTable;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OriginKind {
+    Ident,
+    String,
+    Numeric,
+}
+
+fn format_numeric_origin(value: f64) -> String {
+    if value.is_finite() && value.fract() == 0.0 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
+    }
+}
 
 pub struct JsStorage<'a> {
     nodes: Vec<Option<JsNode<'a>>>,
@@ -349,13 +364,11 @@ impl<'a> ComponentSemantics<'a> {
     }
 
     pub fn mark_symbol_member_mutated(&mut self, symbol_id: SymbolId) {
-        self.symbols
-            .set_state(symbol_id, sym_state::MEMBER_MUTATED);
+        self.symbols.set_state(symbol_id, sym_state::MEMBER_MUTATED);
     }
 
     pub fn is_member_mutated(&self, id: SymbolId) -> bool {
-        self.symbols
-            .has_state(id, sym_state::MEMBER_MUTATED)
+        self.symbols.has_state(id, sym_state::MEMBER_MUTATED)
     }
 
     pub fn is_mutated_any(&self, id: SymbolId) -> bool {
@@ -382,7 +395,7 @@ impl<'a> ComponentSemantics<'a> {
         self.js.kind(id)
     }
 
-    pub fn binding_origin_key(&self, sym_id: SymbolId) -> Option<&str> {
+    pub fn binding_origin_key(&self, sym_id: SymbolId) -> Option<(Cow<'_, str>, OriginKind)> {
         let mut node_id = self.symbol_declaration(sym_id);
         loop {
             let parent_id = match self.js_parent_id(node_id) {
@@ -407,15 +420,24 @@ impl<'a> ComponentSemantics<'a> {
                     if prop.computed {
                         return None;
                     }
-                    return match prop.key.static_name()? {
-                        Cow::Borrowed(name) => Some(name),
-                        Cow::Owned(_) => None,
+                    return match &prop.key {
+                        PropertyKey::StaticIdentifier(id) => {
+                            Some((Cow::Borrowed(id.name.as_str()), OriginKind::Ident))
+                        }
+                        PropertyKey::StringLiteral(s) => {
+                            Some((Cow::Borrowed(s.value.as_str()), OriginKind::String))
+                        }
+                        PropertyKey::NumericLiteral(n) => Some((
+                            Cow::Owned(format_numeric_origin(n.value)),
+                            OriginKind::Numeric,
+                        )),
+                        _ => None,
                     };
                 }
                 AstKind::BindingRestElement(_) => return None,
 
                 AstKind::VariableDeclarator(_) => {
-                    return Some(self.symbol_name(sym_id));
+                    return Some((Cow::Borrowed(self.symbol_name(sym_id)), OriginKind::Ident));
                 }
                 other => {
                     debug_assert!(
@@ -433,7 +455,10 @@ impl<'a> ComponentSemantics<'a> {
         }
     }
 
-    pub fn binding_origin_key_for_reference(&self, ref_id: ReferenceId) -> Option<&str> {
+    pub fn binding_origin_key_for_reference(
+        &self,
+        ref_id: ReferenceId,
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         let sym_id = self.symbol_for_reference(ref_id)?;
         self.binding_origin_key(sym_id)
     }
@@ -441,7 +466,7 @@ impl<'a> ComponentSemantics<'a> {
     pub fn binding_origin_key_for_identifier_reference(
         &self,
         id: &IdentifierReference<'a>,
-    ) -> Option<&str> {
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         let sym_id = self.symbol_for_identifier_reference(id)?;
         self.binding_origin_key(sym_id)
     }

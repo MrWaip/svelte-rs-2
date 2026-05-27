@@ -16,7 +16,16 @@ use svelte_compiler::{
 };
 use svelte_transform_css::compact_css_for_injection;
 
-const USAGE: &str = "usage: quick_check <path-to-.svelte-file> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>]";
+const USAGE: &str = "usage: quick_check <path-to-.svelte-file> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]";
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum PrintMode {
+    #[default]
+    Diff,
+    Ours,
+    Ref,
+    Both,
+}
 
 #[derive(Default)]
 struct CliOptions {
@@ -24,6 +33,7 @@ struct CliOptions {
     generate: Option<GenerateMode>,
     dev: bool,
     filename: Option<String>,
+    print: PrintMode,
 }
 
 fn parse_cli(args: &[String]) -> Result<(String, CliOptions), String> {
@@ -48,6 +58,14 @@ fn parse_cli(args: &[String]) -> Result<(String, CliOptions), String> {
             opts.dev = true;
         } else if let Some(v) = arg.strip_prefix("--filename=") {
             opts.filename = Some(v.to_string());
+        } else if let Some(v) = arg.strip_prefix("--print=") {
+            opts.print = match v {
+                "diff" => PrintMode::Diff,
+                "ours" => PrintMode::Ours,
+                "ref" => PrintMode::Ref,
+                "both" => PrintMode::Both,
+                other => return Err(format!("unknown --print value: {other}")),
+            };
         } else if arg.starts_with("--") {
             return Err(format!("unknown flag: {arg}"));
         } else if path.is_none() {
@@ -151,6 +169,34 @@ fn main() -> ExitCode {
         .map(|s| compact_css_for_injection(s).trim().to_string());
     let js_match = our_js == ref_js;
     let css_match = our_css_norm == ref_css_norm;
+
+    if cli_opts.print != PrintMode::Diff {
+        if matches!(cli_opts.print, PrintMode::Ours | PrintMode::Both) {
+            println!("==== RUST JS ====");
+            println!("{our_js}");
+            if let Some(css) = our_css_norm.as_deref().filter(|s| !s.is_empty()) {
+                println!("==== RUST CSS ====");
+                println!("{css}");
+            }
+        }
+        if matches!(cli_opts.print, PrintMode::Ref | PrintMode::Both) {
+            println!("==== REFERENCE JS ====");
+            println!("{ref_js}");
+            if let Some(css) = ref_css_norm.as_deref().filter(|s| !s.is_empty()) {
+                println!("==== REFERENCE CSS ====");
+                println!("{css}");
+            }
+        }
+        println!(
+            "---- {} ----",
+            if js_match && css_match { "OK" } else { "MISMATCH" }
+        );
+        return if js_match && css_match {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
+    }
 
     if js_match && css_match {
         let css_bytes: usize = our_css_norm.as_deref().map(str::len).unwrap_or(0);

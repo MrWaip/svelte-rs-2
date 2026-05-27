@@ -115,14 +115,26 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_rune_get(name.as_str());
                 true
             }
-            ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { symbol }) => {
-                let prop_name = analysis.binding_origin_key(symbol).unwrap_or_else(|| {
-                    panic!(
-                        "NonSource prop read missing binding origin key for ref {:?}",
-                        ref_id
-                    )
-                });
-                *expr = self.make_props_access(prop_name);
+            ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { symbol }) => {
+                let (prop_name, _origin_kind) =
+                    analysis.binding_origin_key(symbol).unwrap_or_else(|| {
+                        panic!(
+                            "NonSourceStatic prop read missing binding origin key for ref {:?}",
+                            ref_id
+                        )
+                    });
+                *expr = self.make_props_access(prop_name.as_ref());
+                true
+            }
+            ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceComputed { symbol }) => {
+                let (prop_name, _origin_kind) =
+                    analysis.binding_origin_key(symbol).unwrap_or_else(|| {
+                        panic!(
+                            "NonSourceComputed prop read missing binding origin key for ref {:?}",
+                            ref_id
+                        )
+                    });
+                *expr = self.make_props_computed_access(prop_name.as_ref());
                 true
             }
             ReferenceSemantics::ConstAliasRead { owner_node } => {

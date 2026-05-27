@@ -288,24 +288,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         state.template.push_comment(None);
 
-        let tpl_name = self.ctx.state.gen_ident(&format!("{el_name}_content"));
-
-        let el_fragment = match self.ctx.query.component.store.get(el_id) {
-            Node::Element(el) => el.fragment,
+        let (el_fragment, el_tag) = match self.ctx.query.component.store.get(el_id) {
+            Node::Element(el) => (el.fragment, el.name.clone()),
             _ => return CodegenError::unexpected_node(el_id, "Element"),
         };
+
+        let tpl_name = self.ctx.state.gen_ident(&format!("{el_tag}_content"));
+
+        let fragment_name = self.ctx.state.gen_ident("fragment");
+        let anchor_name = self.ctx.state.gen_ident("anchor");
+
         let child_ctx = ctx.child_of_element(
             self.ctx,
-            "",
+            &el_tag,
             el_fragment,
             el_ns,
             FragmentAnchor::CallbackParam {
-                name: "anchor".to_string(),
-                append_inside: true,
+                name: anchor_name.clone(),
+                append_inside: false,
             },
         );
         let mut inner_state = EmitState::new();
         inner_state.suppress_root_finalize = true;
+        inner_state.pending_anchor_idents = Some((fragment_name.clone(), String::new()));
 
         let selectedcontent_child: Option<NodeId> =
             if let Node::Element(parent_el) = self.ctx.query.component.store.get(el_id) {
@@ -346,15 +351,38 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             init: inner_init,
             update: inner_update,
             after_update: inner_after,
-            root_var: _,
+            root_var: inner_root_var,
             shared_memo: inner_shared_memo,
             script_blockers: inner_script_blockers,
             extra_blockers: inner_extra_blockers,
             ..
         } = inner_state;
 
-        let anchor_name = self.ctx.state.gen_ident("anchor");
-        let fragment_name = self.ctx.state.gen_ident("fragment");
+        let content_elements: Vec<NodeId> = self
+            .ctx
+            .query
+            .component
+            .store
+            .fragment(el_fragment)
+            .nodes
+            .iter()
+            .copied()
+            .filter(|nid| matches!(self.ctx.query.component.store.get(*nid), Node::Element(_)))
+            .collect();
+        let single_content_needs_var = content_elements.len() == 1
+            && selectedcontent_child.is_none()
+            && self.ctx.needs_var(content_elements[0]);
+
+        let single_first_child = inner_root_var
+            .filter(|name| *name != fragment_name && single_content_needs_var)
+            .map(|name| {
+                self.ctx.b.var_stmt(
+                    &name,
+                    self.ctx
+                        .b
+                        .call_expr("$.first_child", [Arg::Ident(&fragment_name)]),
+                )
+            });
 
         let mut body: Vec<Statement<'a>> = Vec::new();
         body.push(self.ctx.b.var_stmt(
@@ -366,6 +394,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .var_stmt(&fragment_name, self.ctx.b.call_expr(&tpl_name, [])),
         );
+        if let Some(stmt) = single_first_child {
+            body.push(stmt);
+        }
         if let Some(sc_ident) = selectedcontent_ident.clone() {
             body.push(
                 self.ctx.b.var_stmt(

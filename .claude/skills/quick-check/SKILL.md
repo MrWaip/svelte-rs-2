@@ -1,13 +1,20 @@
 ---
 name: quick-check
-description: Fast parity probe for a single Svelte component or standalone `.svelte.js` / `.svelte.ts` module against the reference `svelte/compiler`. Use when the user pastes an ad-hoc Svelte component, module, or points at a file and wants to see whether our compiler panics or produces matching JS — without registering a persistent test case. No changes to compiler code or persistent tests.
-argument-hint: "<path-or-inline-source> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>]"
+description: Use when you have an ad-hoc Svelte component or `.svelte.js`/`.svelte.ts` module (pasted inline, scratch file, or a single existing file) and need a one-shot parity check against `svelte/compiler` without registering a persistent case.
+argument-hint: "<path-or-inline-source> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]"
 allowed-tools: Bash, Write
 ---
 
 # Quick-check component or module
 
 One-shot compile of a single Svelte component or standalone `.svelte.js` / `.svelte.ts` module against the reference compiler. Components compare both the emitted JS and the scoped CSS (CSS is whitespace-normalized via `compact_css_for_injection`, so indentation diffs do not trip parity). Modules compare JS only (no CSS, no template). Prints `OK` on parity or a per-section diff on mismatch. Does NOT register persistent tests or modify compiler code.
+
+## When NOT to use
+
+- Persisted parity finding (sweep mismatch, registered case) → `/dig`.
+- Directory-level survey across many files → `just sweep-run <dir> --dry-run`.
+- Capturing the behavior as a permanent test → `/add-test` (compiler) or `/add-diagnostic-test` (diagnostics).
+- About to modify compiler crates to fix the divergence → escalate to `/dig` first.
 
 The Rust side dispatches by file extension: `.svelte.js` / `.svelte.ts` → `compile_module`, anything else → `compile`. The reference side does the same.
 
@@ -33,6 +40,7 @@ Flags (all optional, both sides — our compiler and reference — receive them)
 - `--generate=client|server` — runtime target. Default: `client`.
 - `--dev` — dev-build flag.
 - `--filename=<name>` — override filename (affects component-name resolution for components; passed to `compile_module` for modules).
+- `--print=diff|ours|ref|both` — output mode. Default `diff` (interleaved `< ours / ref >` comparison, silent body on match). Use `both` to print the **full** rust and reference outputs side-by-side (labeled `==== RUST JS ====` / `==== REFERENCE JS ====`), printed **even when they match** — this is the way to read a fork in context when the interleaved diff is ambiguous (note: `< left` is OURS, `> right` is REFERENCE). `ours` / `ref` print just one side's full output. Exit code is unchanged (0 match / 1 mismatch).
 
 If the user explicitly named a mode, generate target, or dev flag, pass it through — do not assume defaults match.
 

@@ -428,7 +428,11 @@ pub enum PropReferenceSemantics {
         symbol: SymbolId,
     },
 
-    NonSource {
+    NonSourceStatic {
+        symbol: SymbolId,
+    },
+
+    NonSourceComputed {
         symbol: SymbolId,
     },
 }

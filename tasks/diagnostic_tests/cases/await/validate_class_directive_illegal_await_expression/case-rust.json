@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "experimental_async",
+    "start": 16,
+    "end": 26
+  }
+]

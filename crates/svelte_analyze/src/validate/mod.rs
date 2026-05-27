@@ -20,6 +20,7 @@ use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::block_semantics::data::BlockSemantics;
 use crate::types::script::RuneKind;
 use crate::{AnalysisData, types::data::JsAst};
 
@@ -51,7 +52,7 @@ pub fn validate(
         typescript::validate(module_program, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
-    validate_snippet_exports(component, parsed, diags);
+    validate_snippet_exports(component, data, parsed, diags);
     validate_svelte_options_warnings(component, data, runes, diags);
     validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
@@ -221,22 +222,29 @@ fn export_specifier_is_default(specifier: &ExportSpecifier<'_>) -> bool {
     }
 }
 
-fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
+fn validate_snippet_exports(
+    component: &Component,
+    data: &AnalysisData,
+    parsed: &JsAst,
+    diags: &mut Vec<Diagnostic>,
+) {
     let Some(module_program) = &parsed.module_program else {
         return;
     };
 
-    let snippet_names: Vec<&str> = (0..component.store.len())
+    let snippets: Vec<(&str, bool)> = (0..component.store.len())
         .filter_map(|i| {
-            component
-                .store
-                .get(svelte_ast::NodeId(i))
-                .as_snippet_block()
-                .map(|s| s.name(&component.source))
+            let id = svelte_ast::NodeId(i);
+            let snippet = component.store.get(id).as_snippet_block()?;
+            let hoistable = matches!(
+                data.block_semantics(id),
+                BlockSemantics::Snippet(sem) if sem.hoistable
+            );
+            Some((snippet.name(&component.source), hoistable))
         })
         .collect();
 
-    if snippet_names.is_empty() {
+    if snippets.is_empty() {
         return;
     }
 
@@ -255,7 +263,10 @@ fn validate_snippet_exports(component: &Component, parsed: &JsAst, diags: &mut V
             };
             let name = ident.name.as_str();
 
-            if snippet_names.contains(&name) && !is_module_bound(module_program, name) {
+            let Some(&(_, hoistable)) = snippets.iter().find(|(n, _)| *n == name) else {
+                continue;
+            };
+            if !hoistable && !is_module_bound(module_program, name) {
                 let span = Span::new(specifier.span.start, specifier.span.end);
                 diags.push(Diagnostic::error(
                     DiagnosticKind::SnippetInvalidExport,

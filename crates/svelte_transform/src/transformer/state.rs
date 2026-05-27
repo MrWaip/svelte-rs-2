@@ -11,17 +11,51 @@ use oxc_ast::ast::{
     Expression, MethodDefinition, MethodDefinitionKind, PropertyDefinition, PropertyKey,
     Statement, VariableDeclarationKind, VariableDeclarator,
 };
-use oxc_span::SPAN;
+use oxc_span::{GetSpan, SPAN};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{AnalysisData, BindingSemantics, DerivedKind, DerivedEmit, RuneKind, StateKind, property_key_static_name};
 
 use svelte_ast_builder::{Arg, AssignLeft, Builder};
-use svelte_component_semantics::{SymbolId, walk_bindings};
+use svelte_component_semantics::{Access, Step, SymbolId, walk_bindings};
 
 use crate::rune_refs;
 
 use super::location::sanitize_location;
 use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
+
+fn serialize_binding_prefix(prefix: &[Step<'_>]) -> String {
+    let mut out = String::new();
+    for step in prefix {
+        match step.access {
+            Access::Key { key, computed } => {
+                if computed {
+                    let span = key.span();
+                    out.push('c');
+                    out.push_str(&span.start.to_string());
+                    out.push('_');
+                    out.push_str(&span.end.to_string());
+                } else if let Some(name) = property_key_static_name(key) {
+                    out.push('k');
+                    out.push_str(&name);
+                } else {
+                    let span = key.span();
+                    out.push('k');
+                    out.push_str(&span.start.to_string());
+                }
+            }
+            Access::Index { index, .. } => {
+                out.push('i');
+                out.push_str(&index.to_string());
+            }
+            Access::Slice { from } => {
+                out.push('s');
+                out.push_str(&from.to_string());
+            }
+        }
+        out.push('/');
+    }
+    out
+}
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     fn state_destructure_dev_label(
@@ -339,186 +373,184 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         dev_label: Option<&'static str>,
         declarators: &mut Vec<VariableDeclarator<'a>>,
     ) {
-        match pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                let name = id.name.as_str();
-                let sym_id = id.symbol_id.get();
-                let reassigned = sym_id.is_some_and(|s| {
-                    self.component_scoping.is_mutated(s)
-                        || self.component_scoping.is_reexported_specifier_local(s)
-                });
-                let is_signal_source = self
-                    .analysis
-                    .as_ref()
-                    .is_some_and(|a| a.script.is_state_source(reassigned));
+        let mut temps: Vec<(String, &'a str)> = Vec::new();
+        walk_bindings(pattern, |v| {
+            let access = self.build_decl_access(
+                v.path,
+                v.is_rest,
+                v.excluded,
+                &accessor,
+                dev_label,
+                decl_kind,
+                &mut temps,
+                declarators,
+            );
+            self.push_destructure_leaf(v.symbol, access, rune_kind, decl_kind, declarators);
+        });
+    }
 
-                let is_proxy = matches!(rune_kind, RuneKind::State)
-                    && rune_refs::should_proxy(&accessor);
-
-                let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
-
-                let final_value = if self.dev {
-                    if is_signal_source {
-                        self.b.call_expr(
-                            "$.tag",
-                            [Arg::Expr(final_value), Arg::Str(name.to_string())],
-                        )
-                    } else if is_proxy {
-                        self.b.call_expr(
-                            "$.tag_proxy",
-                            [Arg::Expr(final_value), Arg::Str(name.to_string())],
-                        )
-                    } else {
-                        final_value
-                    }
-                } else {
-                    final_value
-                };
-
-                let declarator = self.b.ast.variable_declarator(
-                    SPAN,
-                    decl_kind,
-                    self.b
-                        .ast
-                        .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
-                    NONE,
-                    Some(final_value),
-                    false,
-                );
-                declarators.push(declarator);
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                let mut key_names: Vec<String> = Vec::new();
-                for prop in &obj.properties {
-                    if let Some(name) = Self::property_key_name(&prop.key) {
-                        key_names.push(name);
-                    }
+    #[allow(clippy::too_many_arguments)]
+    fn build_decl_access<'w>(
+        &mut self,
+        path: &[Step<'w>],
+        is_rest: bool,
+        excluded: &[&PropertyKey<'w>],
+        root: &Expression<'a>,
+        dev_label: Option<&'static str>,
+        decl_kind: VariableDeclarationKind,
+        temps: &mut Vec<(String, &'a str)>,
+        declarators: &mut Vec<VariableDeclarator<'a>>,
+    ) -> Expression<'a> {
+        let mut current = root.clone_in(self.b.ast.allocator);
+        for (i, step) in path.iter().enumerate() {
+            match step.access {
+                Access::Key { key, computed } => {
+                    current = self.build_object_member_access(current, key, computed);
                 }
-
-                for prop in &obj.properties {
-                    let member = self.build_object_member_access(
-                        accessor.clone_in(self.b.ast.allocator),
-                        &prop.key,
-                        prop.computed,
-                    );
-                    self.gen_destructure_declarators(
-                        &prop.value,
-                        member,
-                        rune_kind,
-                        decl_kind,
+                Access::Index { index, len, has_rest } => {
+                    let temp = self.decl_array_temp(
+                        &path[..i],
+                        current,
+                        len,
+                        has_rest,
                         dev_label,
+                        decl_kind,
+                        temps,
                         declarators,
                     );
+                    let get = self.b.call_expr("$.get", [Arg::Ident(temp)]);
+                    current = self.b.computed_member_expr(get, self.b.num_expr(index as f64));
                 }
-
-                if let Some(rest) = &obj.rest {
-                    let keys_array = self
-                        .b
-                        .array_expr(key_names.iter().map(|k| self.b.str_expr(k)));
-                    let exclude_expr = self.b.call_expr(
-                        "$.exclude_from_object",
-                        [Arg::Expr(accessor), Arg::Expr(keys_array)],
-                    );
-                    self.gen_destructure_declarators(
-                        &rest.argument,
-                        exclude_expr,
-                        rune_kind,
-                        decl_kind,
+                Access::Slice { from } => {
+                    let temp = self.decl_array_temp(
+                        &path[..i],
+                        current,
+                        from,
+                        true,
                         dev_label,
+                        decl_kind,
+                        temps,
                         declarators,
                     );
+                    let get = self.b.call_expr("$.get", [Arg::Ident(temp)]);
+                    let slice = self.b.static_member_expr(get, "slice");
+                    current = self.b.call_expr_callee(slice, [Arg::Num(from as f64)]);
                 }
             }
-            BindingPattern::ArrayPattern(arr) => {
-                let array_name = self.ident_gen.generate("$$array");
-                let array_name_str: &str = self.b.alloc_str(&array_name);
-
-                let len_arg = if arr.rest.is_some() {
-                    vec![Arg::Expr(accessor)]
-                } else {
-                    vec![Arg::Expr(accessor), Arg::Num(arr.elements.len() as f64)]
-                };
-
-                let to_array_call = self.b.call_expr("$.to_array", len_arg);
-                let thunk = self
+            if let Some(default) = step.default {
+                let default_expr = default.clone_in(self.b.ast.allocator);
+                current = self
                     .b
-                    .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
-                let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = match dev_label.filter(|_| self.dev) {
-                    Some(label) => self.b.call_expr(
-                        "$.tag",
-                        [Arg::Expr(derived_call), Arg::Str(label.to_string())],
-                    ),
-                    None => derived_call,
-                };
-
-                let array_declarator = self.b.ast.variable_declarator(
-                    SPAN,
-                    decl_kind,
-                    self.b.ast.binding_pattern_binding_identifier(
-                        SPAN,
-                        self.b.ast.atom(array_name_str),
-                    ),
-                    NONE,
-                    Some(derived_call),
-                    false,
-                );
-                declarators.push(array_declarator);
-
-                for (idx, elem) in arr.elements.iter().enumerate() {
-                    let Some(elem) = elem else { continue };
-
-                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
-                    let elem_access = self
-                        .b
-                        .computed_member_expr(get_array, self.b.num_expr(idx as f64));
-                    self.gen_destructure_declarators(
-                        elem,
-                        elem_access,
-                        rune_kind,
-                        decl_kind,
-                        dev_label,
-                        declarators,
-                    );
-                }
-
-                if let Some(rest) = &arr.rest {
-                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
-                    let slice = self.b.static_member_expr(get_array, "slice");
-                    let slice_call = self.b.ast.expression_call(
-                        SPAN,
-                        slice,
-                        NONE,
-                        self.b.ast.vec_from_array([Argument::from(
-                            self.b.num_expr(arr.elements.len() as f64),
-                        )]),
-                        false,
-                    );
-                    self.gen_destructure_declarators(
-                        &rest.argument,
-                        slice_call,
-                        rune_kind,
-                        decl_kind,
-                        dev_label,
-                        declarators,
-                    );
-                }
-            }
-            BindingPattern::AssignmentPattern(assign) => {
-                let default_expr = assign.right.clone_in(self.b.ast.allocator);
-                let fallback = self
-                    .b
-                    .call_expr("$.fallback", [Arg::Expr(accessor), Arg::Expr(default_expr)]);
-                self.gen_destructure_declarators(
-                    &assign.left,
-                    fallback,
-                    rune_kind,
-                    decl_kind,
-                    dev_label,
-                    declarators,
-                );
+                    .call_expr("$.fallback", [Arg::Expr(current), Arg::Expr(default_expr)]);
             }
         }
+        if is_rest {
+            let keys = excluded
+                .iter()
+                .filter_map(|k| Self::property_key_name(k))
+                .collect::<Vec<_>>();
+            let keys_array = self.b.array_expr(keys.iter().map(|k| self.b.str_expr(k)));
+            current = self.b.call_expr(
+                "$.exclude_from_object",
+                [Arg::Expr(current), Arg::Expr(keys_array)],
+            );
+        }
+        current
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn decl_array_temp<'w>(
+        &mut self,
+        prefix: &[Step<'w>],
+        source: Expression<'a>,
+        len: u32,
+        has_rest: bool,
+        dev_label: Option<&'static str>,
+        decl_kind: VariableDeclarationKind,
+        temps: &mut Vec<(String, &'a str)>,
+        declarators: &mut Vec<VariableDeclarator<'a>>,
+    ) -> &'a str {
+        let key = serialize_binding_prefix(prefix);
+        if let Some((_, name)) = temps.iter().find(|(k, _)| *k == key) {
+            return name;
+        }
+        let name_owned = self.ident_gen.generate("$$array");
+        let name: &'a str = self.b.alloc_str(&name_owned);
+        let to_array = if has_rest {
+            self.b.call_expr("$.to_array", [Arg::Expr(source)])
+        } else {
+            self.b
+                .call_expr("$.to_array", [Arg::Expr(source), Arg::Num(len as f64)])
+        };
+        let thunk = self
+            .b
+            .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array)]);
+        let derived = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+        let derived = match dev_label.filter(|_| self.dev) {
+            Some(label) => self
+                .b
+                .call_expr("$.tag", [Arg::Expr(derived), Arg::Str(label.to_string())]),
+            None => derived,
+        };
+        let declarator = self.b.ast.variable_declarator(
+            SPAN,
+            decl_kind,
+            self.b
+                .ast
+                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+            NONE,
+            Some(derived),
+            false,
+        );
+        declarators.push(declarator);
+        temps.push((key, name));
+        name
+    }
+
+    fn push_destructure_leaf(
+        &mut self,
+        symbol: SymbolId,
+        accessor: Expression<'a>,
+        rune_kind: RuneKind,
+        decl_kind: VariableDeclarationKind,
+        declarators: &mut Vec<VariableDeclarator<'a>>,
+    ) {
+        let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
+        let reassigned = self.component_scoping.is_mutated(symbol)
+            || self.component_scoping.is_reexported_specifier_local(symbol);
+        let is_signal_source = self
+            .analysis
+            .as_ref()
+            .is_some_and(|a| a.script.is_state_source(reassigned));
+        let is_proxy =
+            matches!(rune_kind, RuneKind::State) && rune_refs::should_proxy(&accessor);
+        let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
+        let final_value = if self.dev {
+            if is_signal_source {
+                self.b
+                    .call_expr("$.tag", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+            } else if is_proxy {
+                self.b.call_expr(
+                    "$.tag_proxy",
+                    [Arg::Expr(final_value), Arg::Str(name.to_string())],
+                )
+            } else {
+                final_value
+            }
+        } else {
+            final_value
+        };
+        let declarator = self.b.ast.variable_declarator(
+            SPAN,
+            decl_kind,
+            self.b
+                .ast
+                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+            NONE,
+            Some(final_value),
+            false,
+        );
+        declarators.push(declarator);
     }
 
     pub(crate) fn wrap_state_value(
@@ -772,7 +804,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     pub(crate) fn build_object_member_access(
         &self,
         object: Expression<'a>,
-        key: &PropertyKey<'a>,
+        key: &PropertyKey<'_>,
         computed: bool,
     ) -> Expression<'a> {
         if computed {
@@ -796,7 +828,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
     fn property_key_to_expr<'c>(
         b: &'c Builder<'a>,
-        key: &PropertyKey<'a>,
+        key: &PropertyKey<'_>,
     ) -> Option<Expression<'a>> {
         match key {
             PropertyKey::StringLiteral(s) => Some(b.str_expr(s.value.as_str())),

@@ -5,6 +5,35 @@ use super::super::data::{
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
+use svelte_component_semantics::OriginKind;
+
+fn prop_non_source_variant(data: &AnalysisData, sym: SymbolId) -> PropReferenceSemantics {
+    let (alias, kind) = match data.binding_origin_key(sym) {
+        Some(pair) => pair,
+        None => return PropReferenceSemantics::NonSourceStatic { symbol: sym },
+    };
+    let computed = match kind {
+        OriginKind::Numeric => true,
+        OriginKind::Ident => false,
+        OriginKind::String => !is_valid_js_identifier(alias.as_ref()),
+    };
+    if computed {
+        PropReferenceSemantics::NonSourceComputed { symbol: sym }
+    } else {
+        PropReferenceSemantics::NonSourceStatic { symbol: sym }
+    }
+}
+
+fn is_valid_js_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_' || first == '$') {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
 use svelte_ast::{Component, Node};
@@ -182,9 +211,7 @@ fn classify_reference_semantics(
                             symbol: sym,
                         }))
                     } else {
-                        Some(ReferenceFacts::PropRead(
-                            PropReferenceSemantics::NonSource { symbol: sym },
-                        ))
+                        Some(ReferenceFacts::PropRead(prop_non_source_variant(data, sym)))
                     }
                 } else {
                     None
@@ -196,9 +223,7 @@ fn classify_reference_semantics(
                 } else if is_write {
                     Some(ReferenceFacts::IllegalWrite)
                 } else if is_read {
-                    Some(ReferenceFacts::PropRead(
-                        PropReferenceSemantics::NonSource { symbol: sym },
-                    ))
+                    Some(ReferenceFacts::PropRead(prop_non_source_variant(data, sym)))
                 } else {
                     None
                 }

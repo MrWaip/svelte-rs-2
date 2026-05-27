@@ -262,13 +262,13 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         }
     }
 
-    fn exit_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
+    fn exit_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             template_rewrites::rewrite_template_exit(self, node);
             return;
         }
 
-        if self.rewrite_legacy_state_destructure_assignment_exit(node) {
+        if self.rewrite_destructure_assignment_exit(node, ctx) {
             return;
         }
         self.rewrite_prop_update_ownership_exit(node);

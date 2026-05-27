@@ -3,7 +3,7 @@ use oxc_ast::ast::{Argument, Expression, NumberBase};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
-use svelte_emit_builders::props::props_member;
+use svelte_emit_builders::props::{props_computed_access, props_member};
 use svelte_emit_builders::runes::{member_get_via_get, rune_get, rune_safe_get, rune_set};
 use svelte_emit_builders::runtime::{thunk_call, untrack_ident};
 
@@ -63,6 +63,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn make_props_access(&self, prop_name: &str) -> Expression<'a> {
         props_member(self.b, prop_name)
+    }
+
+    pub(crate) fn make_props_computed_access(&self, prop_name: &str) -> Expression<'a> {
+        props_computed_access(self.b, prop_name)
     }
 
     pub(crate) fn make_eager_thunk(&self, arg: Expression<'a>) -> Expression<'a> {

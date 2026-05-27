@@ -15,7 +15,8 @@ use crate::expression_semantics::{
 };
 use crate::reactivity_semantics::data::{
     BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
-    PropBindingKind, PropBindingSemantics, ReactivitySemantics, ReferenceSemantics,
+    EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
+    ReferenceSemantics,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
@@ -167,6 +168,10 @@ fn references_need_wrap(
                     return false;
                 }
                 !matches!(data.evaluation.class(), Some(ValueClass::Function))
+            }
+            BindingSemantics::OptimizedRune(_) => {
+                !(ctx.scoping.is_init_known(sym)
+                    || matches!(data.evaluation, Evaluation::Known(_)))
             }
             _ => true,
         }
@@ -706,10 +711,19 @@ fn derive_handler_emit(
                     BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_),
                 )
             });
-            let is_let_directive = symbol.is_some_and(|sym| {
+            let is_contextual_getter = symbol.is_some_and(|sym| {
                 matches!(
                     ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective),
+                    BindingSemantics::Contextual(
+                        ContextualBindingSemantics::LetDirective
+                            | ContextualBindingSemantics::SnippetParam(_)
+                            | ContextualBindingSemantics::AwaitValue
+                            | ContextualBindingSemantics::AwaitError
+                            | ContextualBindingSemantics::EachItem(
+                                EachItemStrategy::Accessor | EachItemStrategy::Signal,
+                            )
+                            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
+                    ),
                 )
             });
             let is_legacy_state = symbol.is_some_and(|sym| {
@@ -723,7 +737,7 @@ fn derive_handler_emit(
                     && !is_maybe_reactive
                     && !is_reactive_const_tag
                     && !is_prop
-                    && !is_let_directive
+                    && !is_contextual_getter
                     && !is_legacy_state)
         }
         _ => false,

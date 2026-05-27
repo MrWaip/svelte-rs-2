@@ -14,6 +14,10 @@ name = "compiler_tests_v3"
 path = "test_v3.rs"
 
 [[test]]
+name = "compiler_tests_clusters"
+path = "test_clusters.rs"
+
+[[test]]
 name = "compiler_tests_sourcemap"
 path = "test_sourcemap.rs"
 
@@ -21,8 +25,8 @@ path = "test_sourcemap.rs"
 svelte_compiler = { workspace = true }
 svelte_sourcemap = { workspace = true }
 serde_json = "1"
+pretty_assertions = { workspace = true }
+test_support = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
-pretty_assertions = { workspace = true }
-test_support = { workspace = true }
