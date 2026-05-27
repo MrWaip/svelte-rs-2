@@ -9,6 +9,7 @@ mod expression_attr;
 mod on_directive_legacy;
 mod option_value;
 mod regular;
+mod select_value;
 mod spread_attr;
 mod style_directive;
 mod transition_directive;

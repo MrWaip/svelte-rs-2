@@ -13,7 +13,7 @@ pub use attribute_semantics::{
     ConcatPartEmit, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
     EventSemantics, HandlerEmit, HtmlBindKind, MustBePropertySemantics, MustBePropertyValue,
-    WindowBindSemantics,
+    SpecialValueKind, SpecialValueSemantics, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore,
@@ -218,7 +218,7 @@ pub fn analyze_module<'a>(
             scoping.build_template_scope_set();
 
             let mut script_info =
-                utils::script_info::extract_script_info(&program, source, true);
+                utils::script_info::extract_script_info(&program, source, true, &scoping);
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
             data.scoping = scoping;
             data.script.info = Some(script_info);
@@ -261,15 +261,11 @@ fn build_runtime_info(
         .iter_statements_topo()
         .next()
         .is_some();
-    let has_exports = data.script.exports.iter().any(|exp| {
-        let Some(instance_scope) = data.scoping.instance_scope_id() else {
-            return true;
-        };
-        let Some(sym) = data.scoping.find_binding(instance_scope, exp.name.as_str()) else {
-            return true;
-        };
-        !legacy_symbols.contains(&sym)
-    });
+    let has_exports = data
+        .script
+        .exports
+        .iter()
+        .any(|exp| !legacy_symbols.contains(&exp.local));
     let has_bindable = data
         .script
         .props_declaration()

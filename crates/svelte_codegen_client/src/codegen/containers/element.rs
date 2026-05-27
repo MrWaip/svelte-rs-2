@@ -13,7 +13,7 @@ use super::super::{Codegen, CodegenError, Result};
 fn is_load_error_element(name: &str) -> bool {
     matches!(
         name,
-        "img" | "iframe" | "link" | "script" | "source" | "style" | "track" | "body"
+        "body" | "embed" | "iframe" | "img" | "link" | "object" | "script" | "style" | "track"
     )
 }
 
@@ -163,9 +163,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .partition(|a| matches!(a, Attribute::AttachTag(_)));
 
         let prev_pending_element_init = mem::take(&mut state.pending_element_init);
+        let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
         let element_after_update_len_before = state.element_after_update.len();
         if !is_noscript {
-            self.emit_dom_attributes(state, el_id, &el_name_hint, &el_name, &non_attach_attrs)?;
+            self.emit_dom_attributes(
+                state,
+                el_id,
+                &el_name_hint,
+                &el_name,
+                &non_attach_attrs,
+                is_html,
+            )?;
         }
         if !is_ghost
             && is_load_error_element(&el_name_hint)
@@ -182,6 +190,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let my_element_init = mem::take(&mut state.pending_element_init);
         state.pending_element_init = prev_pending_element_init;
+        let my_pre_update = mem::take(&mut state.pending_pre_update);
+        state.pending_pre_update = prev_pending_pre_update;
 
         if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -221,6 +231,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         state.init.extend(my_element_init);
+        state.init.extend(my_pre_update);
         let scoped: Vec<Statement<'a>> = state
             .element_after_update
             .split_off(element_after_update_len_before);

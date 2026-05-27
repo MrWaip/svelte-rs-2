@@ -2,10 +2,10 @@ use super::super::{
     BlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
 };
 use super::walker::Ctx;
+use crate::ReferenceSemantics;
 use crate::expression_semantics::{ExprKind, ExpressionSemantics};
 use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
-use crate::ReferenceSemantics;
 use oxc_ast::ast::{Argument, ChainElement, Expression};
 use smallvec::SmallVec;
 use svelte_ast::RenderTag;
@@ -27,7 +27,9 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
 
     let (call_kind, call_opt) = match expr.get_inner_expression() {
         Expression::ChainExpression(chain) => match &chain.expression {
-            ChainElement::CallExpression(call) => (RenderCallKind::OptionalChain, Some(call.as_ref())),
+            ChainElement::CallExpression(call) => {
+                (RenderCallKind::OptionalChain, Some(call.as_ref()))
+            }
             _ => (RenderCallKind::Plain, None),
         },
         Expression::CallExpression(call) => (RenderCallKind::Plain, Some(call.as_ref())),
@@ -102,7 +104,7 @@ fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind 
     }
     let expr = argument.to_expression();
 
-    if let Some(sym) = passthrough_prop_sym(ctx, expr) {
+    if let Some(sym) = passthrough_prop_binding(ctx, expr) {
         return RenderArgKind::PropPassthrough { sym };
     }
 
@@ -128,7 +130,7 @@ fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind 
     RenderArgKind::InertThunk
 }
 
-fn passthrough_prop_sym(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {
+fn passthrough_prop_binding(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {
     let Expression::Identifier(ident) = arg.get_inner_expression() else {
         return None;
     };
@@ -151,8 +153,7 @@ fn passthrough_prop_sym(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<Symbo
 mod tests {
     use crate::tests::analyze_source;
     use crate::{
-        BlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
-        RenderTagBlockSemantics,
+        BlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
     };
     use svelte_ast::{Component, Node, NodeId, RenderTag};
 

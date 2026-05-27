@@ -41,6 +41,8 @@ pub(crate) fn build<'d, 'a>(
         builder.add_template(&mut walker);
     }
 
+    builder.finalize_unresolved_references();
+
     let mut expr_id_map: FxHashMap<u32, OxcNodeId> =
         FxHashMap::default();
     let mut stmt_id_map: FxHashMap<u32, OxcNodeId> =

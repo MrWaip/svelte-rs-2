@@ -1,6 +1,7 @@
-use crate::codegen::expr::coarse_wrap;
+use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
+use svelte_analyze::ExprKind;
 use svelte_analyze::types::data::binding_group_name;
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -146,16 +147,55 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr_id: NodeId,
         val_expr: Expression<'a>,
     ) {
-        let val_expr = {
-            let data = self.ctx.expression_data(attr_id).cloned();
-            coarse_wrap(self.ctx, val_expr, data.as_ref())
-        };
+        let data = self.ctx.expression_data(attr_id).cloned();
+        let is_defined = data
+            .as_ref()
+            .is_some_and(|d| evaluation_is_defined(&d.evaluation));
+        let has_state = data.as_ref().is_none_or(|d| {
+            matches!(
+                d.kind,
+                ExprKind::SimpleRead { reactive: true }
+                    | ExprKind::Computed { reactive: true }
+                    | ExprKind::Call { .. }
+                    | ExprKind::Async { .. }
+            )
+        });
+        let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
+
+        if !has_state {
+            let dunder_value_assign = self.ctx.b.assign_expr(
+                AssignLeft::StaticMember(
+                    self.ctx
+                        .b
+                        .static_member(self.ctx.b.rid_expr(el_name), "__value"),
+                ),
+                val_expr,
+            );
+            let value_rhs = if is_defined {
+                dunder_value_assign
+            } else {
+                self.ctx
+                    .b
+                    .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
+            };
+            let value_assign = self.ctx.b.assign_stmt(
+                AssignLeft::StaticMember(
+                    self.ctx
+                        .b
+                        .static_member(self.ctx.b.rid_expr(el_name), "value"),
+                ),
+                value_rhs,
+            );
+            state.init.push(value_assign);
+            return;
+        }
+
         let mut prefix = String::with_capacity(el_name.len() + 6);
         prefix.push_str(el_name);
         prefix.push_str("_value");
         let cache_name = self.ctx.state.gen_ident(&prefix);
 
-        state.init.push(self.ctx.b.var_uninit_stmt(&cache_name));
+        state.pending_pre_update.push(self.ctx.b.var_uninit_stmt(&cache_name));
 
         let val_expr2 = self.ctx.b.clone_expr(&val_expr);
 
@@ -180,10 +220,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             val_expr2,
         );
 
-        let coalesced = self
-            .ctx
-            .b
-            .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""));
+        let value_rhs = if is_defined {
+            dunder_value_assign
+        } else {
+            self.ctx
+                .b
+                .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
+        };
 
         let value_assign = self.ctx.b.assign_stmt(
             AssignLeft::StaticMember(
@@ -191,7 +234,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .static_member(self.ctx.b.rid_expr(el_name), "value"),
             ),
-            coalesced,
+            value_rhs,
         );
 
         let if_body = self.ctx.b.block_stmt(vec![value_assign]);

@@ -510,7 +510,7 @@ fn eval_identifier(
     if ctx.function_decls.contains(&sym) {
         return smallvec![EvalAtom::Class(ValueClass::Function)];
     }
-    if ctx.semantics.is_mutated(sym) {
+    if ctx.semantics.is_mutated(sym) || ctx.semantics.is_reexported_specifier_local(sym) {
         return smallvec![EvalAtom::Unknown];
     }
     if is_post_transform_unknown(ctx.reactivity, sym) {

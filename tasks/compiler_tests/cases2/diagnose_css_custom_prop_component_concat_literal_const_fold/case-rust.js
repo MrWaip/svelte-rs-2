@@ -5,7 +5,7 @@ export default function App($$anchor) {
 	var fragment = root();
 	var node = $.first_child(fragment);
 	{
-		$.css_props(node, () => ({ "--cellWidth": `${W ?? ""}px` }));
+		$.css_props(node, () => ({ "--cellWidth": "120px" }));
 		Child(node.lastChild, {});
 		$.reset(node);
 	}

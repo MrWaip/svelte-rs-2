@@ -182,7 +182,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
                 true
             }
-            ReferenceSemantics::ContextualRead(ContextualReadSemantics { kind, .. }) => {
+            ReferenceSemantics::ContextualRead(ContextualReadSemantics {
+                kind,
+                in_key_expression,
+                ..
+            }) => {
+                if in_key_expression {
+                    return true;
+                }
                 match kind {
                     ContextualReadKind::EachItem { accessor: true, .. }
                     | ContextualReadKind::SnippetParam { accessor: true, .. } => {

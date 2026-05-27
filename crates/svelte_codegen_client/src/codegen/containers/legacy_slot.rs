@@ -141,6 +141,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let fallback = self.build_legacy_slot_fallback(ctx, el_id)?;
 
+        let let_stmts = self.emit_let_directive_legacy_stmts(el_id);
+
         let slot_stmt = self.ctx.b.call_stmt(
             "$.slot",
             [
@@ -151,6 +153,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 Arg::Expr(fallback),
             ],
         );
+        for stmt in let_stmts {
+            state.init.push(stmt);
+        }
         if memo_stmts.is_empty() {
             state.init.push(slot_stmt);
         } else {

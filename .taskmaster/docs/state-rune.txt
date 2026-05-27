@@ -63,14 +63,14 @@ Warning: `state_referenced_locally` (чтение state/derived на той же
 
 - Родитель: `reactivity-semantics`.
 - Срез тест-покрытия: `specs/state-rune.md`.
-- Доки оригинала: `reference/docs/02-runes/02-$state.md`.
+- Доки оригинала: `original/docs/02-runes/02-$state.md`.
 - Реализация в оригинале:
-  - `reference/compiler/phases/2-analyze/visitors/VariableDeclarator.js` — присваивание `binding.kind`.
-  - `reference/compiler/phases/2-analyze/visitors/CallExpression.js` — валидация позиции.
-  - `reference/compiler/phases/2-analyze/visitors/Identifier.js` — errors deprecation/removal.
-  - `reference/compiler/phases/3-transform/client/visitors/CallExpression.js` — генерация `$.state` / `$.proxy`.
-  - `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js` — обёртка переменных, destructuring.
-  - `reference/compiler/phases/3-transform/client/visitors/ClassBody.js` — трансформ class-field.
-  - `reference/compiler/phases/3-transform/client/visitors/MemberExpression.js` — чтение private-полей.
-  - `reference/compiler/phases/3-transform/client/visitors/AssignmentExpression.js` — генерация `$.set`.
-  - `reference/compiler/phases/3-transform/server/visitors/CallExpression.js` — server unwrap.
+  - `original/compiler/phases/2-analyze/visitors/VariableDeclarator.js` — присваивание `binding.kind`.
+  - `original/compiler/phases/2-analyze/visitors/CallExpression.js` — валидация позиции.
+  - `original/compiler/phases/2-analyze/visitors/Identifier.js` — errors deprecation/removal.
+  - `original/compiler/phases/3-transform/client/visitors/CallExpression.js` — генерация `$.state` / `$.proxy`.
+  - `original/compiler/phases/3-transform/client/visitors/VariableDeclaration.js` — обёртка переменных, destructuring.
+  - `original/compiler/phases/3-transform/client/visitors/ClassBody.js` — трансформ class-field.
+  - `original/compiler/phases/3-transform/client/visitors/MemberExpression.js` — чтение private-полей.
+  - `original/compiler/phases/3-transform/client/visitors/AssignmentExpression.js` — генерация `$.set`.
+  - `original/compiler/phases/3-transform/server/visitors/CallExpression.js` — server unwrap.

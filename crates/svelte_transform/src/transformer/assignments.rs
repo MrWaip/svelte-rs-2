@@ -673,6 +673,21 @@ impl<'a> ComponentTransformer<'_, 'a> {
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
             let field_name = pfe.field.name.as_str();
+            if self.in_constructor()
+                && assign.operator == AssignmentOperator::Assign
+                && self.is_private_state_field(field_name)
+                && matches!(
+                    &assign.right,
+                    Expression::CallExpression(call)
+                        if svelte_analyze::detect_rune_from_call(call)
+                            .is_some_and(|k| matches!(
+                                k,
+                                RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy
+                            ))
+                )
+            {
+                return false;
+            }
             if self.is_private_state_field(field_name) {
                 let left_expr = self.b.this_private_member(field_name);
                 let right = self.b.move_expr(&mut assign.right);

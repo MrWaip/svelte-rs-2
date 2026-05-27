@@ -27,6 +27,7 @@
   "optionalDependencies": {
     "@mrwaip/svelte-rs2-darwin-arm64": "0.0.0-canary.0",
     "@mrwaip/svelte-rs2-darwin-x64": "0.0.0-canary.0",
-    "@mrwaip/svelte-rs2-linux-x64-gnu": "0.0.0-canary.0"
+    "@mrwaip/svelte-rs2-linux-x64-gnu": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-linux-arm64-gnu": "0.0.0-canary.0"
   }
 }

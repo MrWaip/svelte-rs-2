@@ -43,15 +43,11 @@ const FROZEN_APIS: &[(&str, &str, &[&str])] = &[
         "BlockSemanticsStore",
         &["get", "block_for_each_index_sym", "is_each_index_sym"],
     ),
-    (
-        "svelte_analyze",
-        "AttributeSemanticsStore",
-        &["get"],
-    ),
+    ("svelte_analyze", "AttributeSemanticsStore", &["get"]),
     (
         "svelte_analyze",
         "ExpressionSemanticsStore",
-        &["get", "is_context_required"],
+        &["get", "is_context_required", "get_by_oxc"],
     ),
 ];
 
@@ -84,15 +80,23 @@ fn is_exposed(vis: ty::Visibility<hir::def_id::DefId>) -> bool {
 
 impl<'tcx> LateLintPass<'tcx> for FrozenApiSurface {
     fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx hir::Item<'tcx>) {
-        let hir::ItemKind::Impl(impl_) = &item.kind else { return };
+        let hir::ItemKind::Impl(impl_) = &item.kind else {
+            return;
+        };
         if impl_.of_trait.is_some() {
             return;
         }
-        let Some(def_id) = self_ty_def_id(cx, item.hir_id()) else { return };
-        let Some((type_name, allowed)) = frozen_allow_list(cx, def_id) else { return };
+        let Some(def_id) = self_ty_def_id(cx, item.hir_id()) else {
+            return;
+        };
+        let Some((type_name, allowed)) = frozen_allow_list(cx, def_id) else {
+            return;
+        };
         for assoc_id in impl_.items {
             let impl_item = cx.tcx.hir_impl_item(*assoc_id);
-            let ImplItemKind::Fn(_, _) = impl_item.kind else { continue };
+            let ImplItemKind::Fn(_, _) = impl_item.kind else {
+                continue;
+            };
             let assoc_def_id = impl_item.owner_id.def_id;
             let vis = cx.tcx.visibility(assoc_def_id);
             if !is_exposed(vis) {

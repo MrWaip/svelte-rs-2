@@ -56,7 +56,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.emit_fragment(&mut inner_state, &inner_ctx, el.fragment)?;
             }
             Node::SlotElementLegacy(_) => {
-                inner_state.init.extend(let_stmts);
+                let _ = let_stmts;
                 let _ = self.ctx.state.gen_ident("root");
                 self.emit_legacy_slot_like(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
@@ -139,7 +139,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         let tpl_name = self.ctx.state.gen_ident("root");
         let init_len_before = state.init.len();
+        state.legacy_slot_const_tag_start = None;
+        state.legacy_slot_const_tag_end = None;
+        state.legacy_slot_record_const_tag_end = true;
         let el_name = self.emit_element(state, ctx, slot_el_id, None)?;
+        state.legacy_slot_record_const_tag_end = false;
+        let pre_const = state
+            .legacy_slot_const_tag_start
+            .take()
+            .unwrap_or(init_len_before);
+        let post_const = state
+            .legacy_slot_const_tag_end
+            .take()
+            .unwrap_or(pre_const);
+        if pre_const > init_len_before && post_const > pre_const {
+            let attr_len = pre_const - init_len_before;
+            state.init[init_len_before..post_const].rotate_left(attr_len);
+        }
+        let after_const_tags = init_len_before + (post_const.saturating_sub(pre_const));
         state.root_var = Some(el_name);
         let slot_fragment = match self.ctx.query.component.store.get(slot_el_id) {
             Node::Element(el) => el.fragment,
@@ -150,12 +167,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.finalize_slot_root_template(
             state,
             ctx,
-            init_len_before,
+            after_const_tags,
             tpl_name,
             slot_el_id,
             slot_fragment,
         )?;
-        let insert_pos = init_len_before + 1;
+        let insert_pos = after_const_tags + 1;
         for (i, stmt) in let_stmts.into_iter().enumerate() {
             state.init.insert(insert_pos + i, stmt);
         }

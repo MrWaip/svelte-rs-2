@@ -4,9 +4,51 @@ use super::super::data::{
     StateKind,
 };
 use crate::scope::SymbolId;
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, JsAst};
+use oxc_ast::ast::IdentifierReference;
+use oxc_ast_visit::Visit;
+use svelte_ast::{Component, Node};
+use svelte_component_semantics::ReferenceId;
 
 use super::contextual;
+
+pub(super) fn collect_each_key_contextual_reads<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    for node in component.store.iter_nodes() {
+        let Node::EachBlock(block) = node else {
+            continue;
+        };
+        let Some(key) = block.key.as_ref() else {
+            continue;
+        };
+        let Some(expr) = parsed.expr(key.id()) else {
+            continue;
+        };
+        let mut collector = EachKeyRefCollector {
+            data,
+            each_block_id: block.id,
+        };
+        collector.visit_expression(expr);
+    }
+}
+
+struct EachKeyRefCollector<'d, 'a> {
+    data: &'d mut AnalysisData<'a>,
+    each_block_id: svelte_ast::NodeId,
+}
+
+impl<'a> Visit<'a> for EachKeyRefCollector<'_, 'a> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        if let Some(ref_id) = ident.reference_id.get() {
+            self.data
+                .reactivity
+                .record_contextual_read_in_each_key(ref_id, self.each_block_id);
+        }
+    }
+}
 
 pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
     let symbols: Vec<SymbolId> = data.scoping.symbol_ids().collect();
@@ -40,6 +82,7 @@ pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
                     reference.is_read(),
                     reference.is_write(),
                     is_member_mutation_root,
+                    ref_id,
                 )
                 .map(|semantics| (ref_id, semantics))
             })
@@ -63,6 +106,7 @@ fn classify_reference_semantics(
     is_read: bool,
     is_write: bool,
     is_member_mutation_root: bool,
+    ref_id: ReferenceId,
 ) -> Option<ReferenceFacts> {
     match declaration {
         BindingFacts::OptimizedRune(opt) => {
@@ -76,7 +120,9 @@ fn classify_reference_semantics(
             if state.kind == StateKind::StateEager {
                 return None;
             }
-            let is_signal_source = data.script.is_state_source(data.scoping.is_mutated(sym));
+            let is_signal_source = data.script.is_state_source(
+                data.scoping.is_mutated(sym) || data.scoping.is_reexported_specifier_local(sym),
+            );
             if is_write && is_read {
                 Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,
@@ -211,10 +257,16 @@ fn classify_reference_semantics(
             }
             let owner_node = data.reactivity.contextual_owner(sym)?;
             let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind);
+            let in_key_expression = data
+                .reactivity
+                .contextual_read_in_each_key(ref_id)
+                .map(|each_block_id| each_block_id == owner_node)
+                .unwrap_or(false);
             Some(ReferenceFacts::ContextualRead(ContextualReadSemantics {
                 kind: read_kind,
                 owner_node,
                 symbol: sym,
+                in_key_expression,
             }))
         }
 

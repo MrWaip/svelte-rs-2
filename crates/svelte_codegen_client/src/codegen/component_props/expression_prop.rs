@@ -106,7 +106,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    fn build_concat_expr_from_plan(
+    pub(in crate::codegen) fn build_concat_expr_from_plan(
         &mut self,
         attr_id: NodeId,
         parts: &[ConcatPart],

@@ -111,18 +111,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .unwrap_or_else(|| self.data.scoping.symbol_name(sym))
                 .to_string()
         };
-        let exported_symbols: Vec<SymbolId> = self
-            .data
-            .script
-            .exports
-            .iter()
-            .filter_map(|exp| {
-                let instance_scope = self.data.scoping.instance_scope_id()?;
-                self.data
-                    .scoping
-                    .find_binding(instance_scope, exp.name.as_str())
-            })
-            .collect();
+        let exported_symbols: Vec<SymbolId> =
+            self.data.script.exports.iter().map(|exp| exp.local).collect();
         let is_variant = |sym: SymbolId, want_api: bool| match self
             .data
             .reactivity
@@ -185,6 +175,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
         self.data.output.ignore_data.is_ignored(node_id, code)
+    }
+    pub fn hydration_attribute_changed_ignored(&self, node_id: NodeId) -> bool {
+        self.data
+            .elements
+            .flags
+            .hydration_attribute_changed_ignored(node_id)
     }
     pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
         self.data
@@ -322,6 +318,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn has_style_directives(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_style_directives(id)
+    }
+    pub fn needs_class_base(&self, id: NodeId) -> bool {
+        self.data.elements.flags.needs_class_base(id)
+    }
+    pub fn needs_style_base(&self, id: NodeId) -> bool {
+        self.data.elements.flags.needs_style_base(id)
     }
     pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
         self.data.elements.flags.style_directives(id)

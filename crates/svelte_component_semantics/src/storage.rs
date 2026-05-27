@@ -123,6 +123,8 @@ pub struct ComponentSemantics<'a> {
 
     template_scope_set: FxHashSet<ScopeId>,
 
+    reexported_specifier_locals: FxHashSet<SymbolId>,
+
     module_scope_id: Option<ScopeId>,
 
     instance_scope_id: Option<ScopeId>,
@@ -152,6 +154,7 @@ impl<'a> ComponentSemantics<'a> {
             store_candidate_refs: Vec::new(),
             fragment_scopes: Vec::new(),
             template_scope_set: FxHashSet::default(),
+            reexported_specifier_locals: FxHashSet::default(),
             module_scope_id: None,
             instance_scope_id: None,
             ast_lifetime: PhantomData,
@@ -272,6 +275,14 @@ impl<'a> ComponentSemantics<'a> {
         let id = self.references.create_reference(reference);
         self.template_reference_ids.insert(id);
         id
+    }
+
+    pub fn add_reexported_specifier_local(&mut self, sym: SymbolId) {
+        self.reexported_specifier_locals.insert(sym);
+    }
+
+    pub fn is_reexported_specifier_local(&self, sym: SymbolId) -> bool {
+        self.reexported_specifier_locals.contains(&sym)
     }
 
     pub fn get_reference(&self, id: ReferenceId) -> &Reference {
@@ -531,6 +542,28 @@ impl<'a> ComponentSemantics<'a> {
             .entry(name)
             .or_default()
             .push(reference_id);
+    }
+
+    pub fn finalize_unresolved_references(&mut self) {
+        if self.root_unresolved_references.is_empty() {
+            return;
+        }
+        let pending = mem::take(&mut self.root_unresolved_references);
+        for (name, ref_ids) in pending {
+            let mut leftover: Vec<ReferenceId> = Vec::new();
+            for ref_id in ref_ids {
+                let scope = self.references.get(ref_id).scope_id();
+                if let Some(sym) = self.scopes.find_binding(scope, name.as_str()) {
+                    self.references.get_mut(ref_id).set_symbol_id(sym);
+                    self.add_resolved_reference(sym, ref_id);
+                } else {
+                    leftover.push(ref_id);
+                }
+            }
+            if !leftover.is_empty() {
+                self.root_unresolved_references.insert(name, leftover);
+            }
+        }
     }
 
     pub fn root_unresolved_references(&self) -> &FxHashMap<CompactString, Vec<ReferenceId>> {

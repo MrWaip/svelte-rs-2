@@ -56,20 +56,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(self.maybe_wrap_legacy_slots_read(expr))
     }
 
-    pub(super) fn take_template_expr(
-        &mut self,
-        owner_node_id: NodeId,
-        expr_ref: &ExprRef,
-    ) -> Result<Expression<'a>> {
-        let expr = match self.ctx.state.parsed.take_expr(expr_ref.id()) {
-            Some(expr) => expr,
-            None => return CodegenError::missing_expression(owner_node_id),
-        };
-        let data = self.ctx.expression_data(owner_node_id);
-        let expr = coarse_wrap(self.ctx, expr, data);
-        Ok(self.maybe_wrap_legacy_slots_read(expr))
-    }
-
     pub(in crate::codegen) fn maybe_wrap_legacy_slots_read(
         &self,
         expr: Expression<'a>,

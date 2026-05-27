@@ -94,6 +94,7 @@ pub(crate) fn build_v2<'a>(
 
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
+    references::collect_each_key_contextual_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(component, parsed, data);
 
@@ -994,10 +995,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let optimize = require_mutation
             && match pattern {
                 BindingPattern::BindingIdentifier(ident) => {
-                    let reassigned = ident
-                        .symbol_id
-                        .get()
-                        .is_some_and(|sym| self.data.scoping.is_mutated_any(sym));
+                    let reassigned = ident.symbol_id.get().is_some_and(|sym| {
+                        self.data.scoping.is_mutated_any(sym)
+                            || self.data.scoping.is_reexported_specifier_local(sym)
+                    });
                     !self.data.script.is_state_source(reassigned)
                 }
                 _ => false,
@@ -1193,7 +1194,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     }
                     PropBindingKind::Source {
                         bindable: false,
-                        updated: self.data.scoping.is_mutated(sym),
+                        updated: self.data.scoping.is_mutated(sym)
+                            || self.data.scoping.is_reexported_specifier_local(sym),
                         default_lowering: PropDefaultEmit::None,
                         default_needs_proxy: false,
                     }
@@ -1247,7 +1249,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 lowering_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Source {
                     bindable,
-                    updated: self.data.scoping.is_mutated(sym),
+                    updated: self.data.scoping.is_mutated(sym)
+                        || self.data.scoping.is_reexported_specifier_local(sym),
                     default_lowering,
                     default_needs_proxy,
                 },
@@ -1424,17 +1427,20 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             else {
                 continue;
             };
-            let AssignmentTarget::StaticMemberExpression(member) = &assign.left
-            else {
-                continue;
+            let (name, this_object) = match &assign.left {
+                AssignmentTarget::StaticMemberExpression(member) => (
+                    member.property.name.as_str(),
+                    member.object.get_inner_expression(),
+                ),
+                AssignmentTarget::PrivateFieldExpression(member) => (
+                    member.field.name.as_str(),
+                    member.object.get_inner_expression(),
+                ),
+                _ => continue,
             };
-            if !matches!(
-                member.object.get_inner_expression(),
-                Expression::ThisExpression(_)
-            ) {
+            if !matches!(this_object, Expression::ThisExpression(_)) {
                 continue;
             }
-            let name = member.property.name.as_str();
             let Expression::CallExpression(call) = assign.right.get_inner_expression() else {
                 continue;
             };
@@ -1575,10 +1581,9 @@ fn collect_state_binding_semantics_inner(
 ) {
     match pattern {
         BindingPattern::BindingIdentifier(ident) => {
-            let reassigned = ident
-                .symbol_id
-                .get()
-                .is_some_and(|sym| scoping.is_mutated(sym));
+            let reassigned = ident.symbol_id.get().is_some_and(|sym| {
+                scoping.is_mutated(sym) || scoping.is_reexported_specifier_local(sym)
+            });
             semantics.push(state_binding_semantic(
                 rune_kind,
                 script.is_state_source(reassigned),

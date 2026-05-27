@@ -2,7 +2,7 @@ use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
-use svelte_ast::{Attribute, NodeId};
+use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::AssignLeft;
 
 use super::super::data_structures::EmitState;
@@ -22,6 +22,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_tag: &str,
         owner_var: &str,
         attributes: &[Attribute],
+        is_html: bool,
     ) -> Result<()> {
         self.emit_dom_attributes_with_kind(
             state,
@@ -30,6 +31,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             owner_var,
             attributes,
             AttributeOwnerKind::Regular,
+            is_html,
         )?;
         Ok(())
     }
@@ -42,23 +44,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_var: &str,
         attributes: &[Attribute],
         kind: AttributeOwnerKind,
+        is_html: bool,
     ) -> Result<Option<Expression<'a>>> {
         if matches!(kind, AttributeOwnerKind::SvelteElement) {
             let has_spread = self.ctx.has_spread(owner_id);
             let has_class_directives = self.ctx.has_class_directives(owner_id);
             let has_style_directives = self.ctx.has_style_directives(owner_id);
-            let has_class_attr = attributes.iter().any(|a| match a {
-                Attribute::StringAttribute(s) => s.name == "class",
-                Attribute::ExpressionAttribute(e) => e.name == "class",
-                Attribute::ConcatenationAttribute(c) => c.name == "class",
-                _ => false,
-            });
-            let has_style_attr = attributes.iter().any(|a| match a {
-                Attribute::StringAttribute(s) => s.name == "style",
-                Attribute::ExpressionAttribute(e) => e.name == "style",
-                Attribute::ConcatenationAttribute(c) => c.name == "style",
-                _ => false,
-            });
             let triggers_effect = |a: &Attribute| -> bool {
                 match a {
                     Attribute::SpreadAttribute(_) => true,
@@ -100,8 +91,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let pending = mem::take(&mut state.pending_element_init);
             state.init.extend(pending);
 
-            let include_class_base = fold_class_directives && !has_spread && !has_class_attr;
-            let include_style_base = has_style_directives && !has_spread && !has_style_attr;
             let ns_thunk = if has_effect_payload {
                 self.emit_attr_spread_full(
                     state,
@@ -109,11 +98,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     owner_tag,
                     owner_var,
                     attributes,
-                    SpreadOptions::for_svelte_element(
-                        fold_class_directives,
-                        include_class_base,
-                        include_style_base,
-                    ),
+                    SpreadOptions::for_svelte_element(fold_class_directives),
                 )?
             } else {
                 None
@@ -143,8 +128,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let css_hash = self.ctx.css_hash().to_string();
 
         let mut emitted_class = false;
+        let mut emitted_style_directives = false;
         let mut wrote_class_attr = false;
-        let mut pending_style_attr_id: Option<NodeId> = None;
+        let mut deferred_bind_group_value: Option<&ExpressionAttribute> = None;
 
         let saved_after_update = mem::take(&mut state.after_update);
         let mut event_stmts: Vec<Statement<'a>> = Vec::new();
@@ -214,18 +200,42 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     if a.name == "class" && (has_class_directives || has_class_attribute) {
                         if !emitted_class {
                             self.emit_class_attribute_and_directives(
-                                state, owner_id, owner_var,
+                                state, owner_id, owner_var, is_html,
                             )?;
                             emitted_class = true;
                         }
                         continue;
                     }
                     if a.name == "style" && has_style_directives {
-                        pending_style_attr_id = Some(a.id);
+                        self.emit_style_directives_aggregate(
+                            state,
+                            owner_id,
+                            owner_var,
+                            Some(a.id),
+                        )?;
+                        emitted_style_directives = true;
                         continue;
                     }
                     self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
                 }
+                AttributeSemantics::SpecialValueAttr(s) => match attr {
+                    Attribute::ExpressionAttribute(a) => {
+                        if matches!(s.kind, svelte_analyze::SpecialValueKind::InputBindGroup) {
+                            deferred_bind_group_value = Some(a);
+                            continue;
+                        }
+                        self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
+                    }
+                    Attribute::ConcatenationAttribute(a) => {
+                        self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
+                    }
+                    _ => {
+                        return CodegenError::semantic_mismatch(
+                            attr_id,
+                            "SpecialValueAttr requires ExpressionAttribute or ConcatenationAttribute",
+                        );
+                    }
+                },
                 AttributeSemantics::MustBeProperty(s) => {
                     let b = &self.ctx.b;
                     let value_expr = match &s.value {
@@ -243,7 +253,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             if has_class_directives || has_class_attribute {
                                 if !emitted_class {
                                     self.emit_class_attribute_and_directives(
-                                        state, owner_id, owner_var,
+                                        state, owner_id, owner_var, is_html,
                                     )?;
                                     emitted_class = true;
                                 }
@@ -273,6 +283,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             }
                             continue;
                         }
+                        if a.name == "style" && has_style_directives {
+                            self.emit_style_directives_aggregate(
+                                state,
+                                owner_id,
+                                owner_var,
+                                None,
+                            )?;
+                            emitted_style_directives = true;
+                            continue;
+                        }
                         let val = a.value(&self.ctx.query.component.source);
                         state.template.set_attribute(&a.name, Some(val.to_string()));
                     }
@@ -283,14 +303,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         if a.name == "class" && (has_class_directives || has_class_attribute) {
                             if !emitted_class {
                                 self.emit_class_attribute_and_directives(
-                                    state, owner_id, owner_var,
+                                    state, owner_id, owner_var, is_html,
                                 )?;
                                 emitted_class = true;
                             }
                             continue;
                         }
                         if a.name == "style" && has_style_directives {
-                            pending_style_attr_id = Some(a.id);
+                            self.emit_style_directives_aggregate(
+                                state,
+                                owner_id,
+                                owner_var,
+                                Some(a.id),
+                            )?;
+                            emitted_style_directives = true;
+                            continue;
+                        }
+                        if a.name == "value"
+                            && owner_tag == "input"
+                            && self.ctx.has_bind_group(owner_id)
+                        {
+                            deferred_bind_group_value = Some(a);
                             continue;
                         }
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
@@ -331,14 +364,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if !emitted_class && (has_class_directives || has_class_attribute) {
-            self.emit_class_attribute_and_directives(state, owner_id, owner_var)?;
+            self.emit_class_attribute_and_directives(state, owner_id, owner_var, is_html)?;
+        }
+
+        if let Some(a) = deferred_bind_group_value {
+            self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
         }
 
         if is_scoped && !wrote_class_attr && !has_class_directives && !has_class_attribute {
             state.template.set_attribute("class", Some(css_hash));
         }
 
-        self.emit_style_directives_aggregate(state, owner_id, owner_var, pending_style_attr_id)?;
+        if !emitted_style_directives {
+            self.emit_style_directives_aggregate(state, owner_id, owner_var, None)?;
+        }
 
         let scoped = mem::replace(&mut state.after_update, saved_after_update);
         state.after_update.extend(event_stmts);

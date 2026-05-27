@@ -22,9 +22,9 @@ test-case name:
 test-case-verbose name:
     cargo test -p compiler_tests --test compiler_tests_v3 {{name}} -- --include-ignored --nocapture
 
-# Run all tests across all crates
-test-all:
-    cargo test --workspace
+# Run all tests across all crates (pass extra cargo flags via `just test-all -- --locked`)
+test-all *args:
+    cargo test --workspace {{args}}
 
 # Remove Cargo build artifacts, including incremental caches, not used for 2 days
 sweep-2d:
@@ -84,8 +84,8 @@ quick-check path *flags:
 
 # Build WASM and serve the playground
 playground:
-    wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler
-    cd docs && python3 -m http.server 8080
+    wasm-pack build --target web ./crates/wasm_compiler -d ../../playground/compiler
+    cd playground && python3 -m http.server 8080
 
 # Build the debug addon, wire it into the local package, and run the JS smoke test
 npm-smoke:
@@ -99,5 +99,6 @@ npm-build:
     npm run --prefix packages/svelte-rs2 prepare-platform-package
     npm pack ./packages/svelte-rs2 --silent
     npm pack ./packages/svelte-rs2-linux-x64-gnu --silent
+    npm pack ./packages/svelte-rs2-linux-arm64-gnu --silent
     npm pack ./packages/svelte-rs2-darwin-arm64 --silent
     npm pack ./packages/svelte-rs2-darwin-x64 --silent

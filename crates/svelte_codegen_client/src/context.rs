@@ -271,11 +271,20 @@ impl<'a> Ctx<'a> {
     pub fn has_style_directives(&self, id: NodeId) -> bool {
         self.query.view.has_style_directives(id)
     }
+    pub fn needs_class_base(&self, id: NodeId) -> bool {
+        self.query.view.needs_class_base(id)
+    }
+    pub fn needs_style_base(&self, id: NodeId) -> bool {
+        self.query.view.needs_style_base(id)
+    }
     pub fn style_directives(&self, id: NodeId) -> &[svelte_ast::StyleDirective] {
         self.query.view.style_directives(id)
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.query.view.needs_input_defaults(id)
+    }
+    pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
+        self.query.view.hydration_attribute_changed_ignored(id)
     }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)

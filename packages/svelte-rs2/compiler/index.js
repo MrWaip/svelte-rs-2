@@ -11,7 +11,8 @@ const UNSUPPORTED_WARN_OPTIONS = new Set(['modernAst']);
 const PLATFORM_PACKAGE_BY_TARGET = {
   'darwin-arm64': '@mrwaip/svelte-rs2-darwin-arm64',
   'darwin-x64': '@mrwaip/svelte-rs2-darwin-x64',
-  'linux-x64': '@mrwaip/svelte-rs2-linux-x64-gnu'
+  'linux-x64': '@mrwaip/svelte-rs2-linux-x64-gnu',
+  'linux-arm64': '@mrwaip/svelte-rs2-linux-arm64-gnu'
 };
 
 function localNativeAddonPath() {
@@ -37,7 +38,7 @@ function loadFromPlatformPackage() {
   if (!pkg) {
     throw new Error(
       `Unsupported platform for @mrwaip/svelte-rs2/compiler: ${target}. ` +
-        'Supported targets: darwin-arm64, darwin-x64, linux-x64.'
+        'Supported targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64.'
     );
   }
 

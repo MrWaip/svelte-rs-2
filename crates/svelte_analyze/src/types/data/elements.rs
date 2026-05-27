@@ -128,6 +128,11 @@ pub struct ElementFlags {
     pub(crate) is_selectedcontent: NodeBitSet,
 
     pub(crate) svelte_fragment_slots: NodeBitSet,
+
+    pub(crate) hydration_attribute_changed_ignored: NodeBitSet,
+
+    pub(crate) needs_class_base: NodeBitSet,
+    pub(crate) needs_style_base: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -154,6 +159,9 @@ impl ElementFlags {
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
             svelte_fragment_slots: NodeBitSet::new(node_count),
+            hydration_attribute_changed_ignored: NodeBitSet::new(node_count),
+            needs_class_base: NodeBitSet::new(node_count),
+            needs_style_base: NodeBitSet::new(node_count),
         }
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
@@ -233,5 +241,14 @@ impl ElementFlags {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.svelte_fragment_slots.contains(&id)
+    }
+    pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
+        self.hydration_attribute_changed_ignored.contains(&id)
+    }
+    pub fn needs_class_base(&self, id: NodeId) -> bool {
+        self.needs_class_base.contains(&id)
+    }
+    pub fn needs_style_base(&self, id: NodeId) -> bool {
+        self.needs_style_base.contains(&id)
     }
 }

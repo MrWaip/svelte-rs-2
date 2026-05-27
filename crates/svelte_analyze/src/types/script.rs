@@ -39,7 +39,8 @@ impl PropsDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ExportInfo {
-    pub name: CompactString,
+    pub local: svelte_component_semantics::SymbolId,
+    pub reference_id: Option<svelte_component_semantics::ReferenceId>,
     pub alias: Option<CompactString>,
 }
 

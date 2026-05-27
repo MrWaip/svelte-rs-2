@@ -16,6 +16,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         owner_id: NodeId,
         owner_var: &str,
+        is_html: bool,
     ) -> Result<()> {
         let has_class_attr = self.ctx.has_class_attribute(owner_id);
         let has_class_dirs = self.ctx.has_class_directives(owner_id);
@@ -78,7 +79,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             directives_obj,
             has_state,
             &mut memo_deps,
-            true,
+            is_html,
         );
 
         Ok(())
@@ -165,7 +166,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 }
             };
-        self.build_html_concat_expr(attr, &semantics)
+        let mut memo_deps = TemplateMemoState::default();
+        let expr = self.build_html_concat_expr(attr, &semantics, &mut memo_deps)?;
+        Ok((expr, memo_deps))
     }
 
     pub(in super::super) fn emit_svelte_element_class_directives(
