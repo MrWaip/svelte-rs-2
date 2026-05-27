@@ -10,7 +10,7 @@ Rust-компилятор Svelte v5. `.svelte` → client-side JS + scoped CSS.
 - **`ROADMAP.md`** — статус портирования по фичам, ссылки на спеки.
 - **`debt.md`** — известный технический долг.
 - **`specs/`** — спеки портирования по фичам.
-- **`reference/compiler/`** — JS-референс. Используется для понимания **что** портировать, не **как**.
+- **`original/compiler/`** — JS-референс. Используется для понимания **что** портировать, не **как**.
 
 ADR не ведём — архитектурные решения фиксируются в `ARCHITECTURE.md` и `debt.md`.
 
@@ -22,7 +22,7 @@ ADR не ведём — архитектурные решения фиксиру
 
 ### Pipeline и оригинал
 
-**Оригинал** *(en: Original, original compiler)* — JS-компилятор Svelte 5 в `reference/compiler/`, источник истины для соответствия выходного JS.
+**Оригинал** *(en: Original, original compiler)* — JS-компилятор Svelte 5 в `original/compiler/`, источник истины для соответствия выходного JS.
 _Avoid_: эталон, reference compiler, JS compiler.
 
 **Парсер** *(en: parser, parse, parsing)* — стадия компиляции, превращающая `.svelte` в AST (template + JS + CSS).
@@ -179,7 +179,7 @@ _Avoid_: одиночное «модуль» / «module» без квалифи�
 
 ## Flagged ambiguities
 
-- **`reference/compiler/`** — путь оставлен; в проектной речи компилятор Svelte 5 — **Оригинал**, не «reference».
+- **`original/compiler/`** — путь оставлен; в проектной речи компилятор Svelte 5 — **Оригинал**, не «reference».
 - **`original`** — имя **Оригинал** (JS-компилятор) приоритетнее общего смысла «исходный X до изменений». Для второго смысла предпочесть `source` / `pre-rewrite` / `prior` / `earlier draft`. Исключение — frozen-строки диагностик, скопированные дословно с Оригинала ради парити.
 - **`scope`** — лексический **скоуп** (JS-семантика) vs CSS-scoping (хеширование классов в `svelte_transform_css`); без квалификатора подразумевается лексический.
 - **`template`** — Svelte-**шаблон** (markup `.svelte`) vs JS template literal («шаблонная строка», `TemplateLiteral`); для JS-варианта всегда полное словосочетание.

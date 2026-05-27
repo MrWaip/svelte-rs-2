@@ -21,7 +21,8 @@
     "source=svelte-rs-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=svelte-rs-cargo-git,target=/usr/local/cargo/git,type=volume",
     "source=svelte-rs-target,target=/workspaces/svelte-rs-2/target,type=volume",
-    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs-2/node_modules,type=volume"
+    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs-2/node_modules,type=volume",
+    "source=${localEnv:HOME}/personal-code/svelte/packages/svelte/tests,target=/workspaces/samples,type=bind,consistency=cached"
   ],
   "remoteEnv": {
     "GH_TOKEN": "${localEnv:GH_TOKEN}"

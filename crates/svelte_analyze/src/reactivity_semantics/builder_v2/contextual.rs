@@ -137,13 +137,20 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             declarator.id,
             BindingPattern::BindingIdentifier(_),
         );
+        let initial_is_function = !is_destructured
+            && matches!(
+                declarator.init.as_ref().map(|e| e.get_inner_expression()),
+                Some(
+                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_),
+                ),
+            );
         let mut syms: Vec<SymbolId> = Vec::new();
         svelte_component_semantics::walk_bindings(&declarator.id, |v| syms.push(v.symbol));
 
         for sym in syms.iter().copied() {
             ctx.data
                 .reactivity
-                .record_const_binding(sym, is_destructured, tag.id);
+                .record_const_binding(sym, is_destructured, initial_is_function, tag.id);
         }
     }
 

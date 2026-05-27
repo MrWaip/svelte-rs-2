@@ -871,11 +871,13 @@ fn apply_combinator(
                     && every_is_global(selectors, from, to, rule_ctx))
         }
         CombinatorKind::NextSibling | CombinatorKind::SubsequentSibling => {
+            let mut seen_snippets = FxHashSet::default();
             let siblings = get_possible_element_siblings(
                 pruner,
                 node_id,
                 direction,
                 combinator.kind == CombinatorKind::NextSibling,
+                &mut seen_snippets,
             );
             let mut matched = false;
 
@@ -1425,31 +1427,36 @@ fn get_possible_element_siblings(
     node_id: NodeId,
     direction: Direction,
     adjacent_only: bool,
+    seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
-    if let Some(cached) = pruner.index.cached_siblings(
-        node_id,
-        matches!(direction, Direction::Forward),
-        adjacent_only,
-    ) {
+    let cacheable = seen_snippets.is_empty();
+    if cacheable
+        && let Some(cached) = pruner.index.cached_siblings(
+            node_id,
+            matches!(direction, Direction::Forward),
+            adjacent_only,
+        )
+    {
         return sibling_candidates_to_map(cached);
     }
 
     let mut result = FxHashMap::default();
-    let mut seen_snippets = FxHashSet::default();
     collect_possible_siblings(
         pruner,
         node_id,
         direction,
         adjacent_only,
-        &mut seen_snippets,
+        seen_snippets,
         &mut result,
     );
-    pruner.index.store_siblings(
-        node_id,
-        matches!(direction, Direction::Forward),
-        adjacent_only,
-        map_to_sibling_candidates(&result),
-    );
+    if cacheable {
+        pruner.index.store_siblings(
+            node_id,
+            matches!(direction, Direction::Forward),
+            adjacent_only,
+            map_to_sibling_candidates(&result),
+        );
+    }
     result
 }
 
@@ -1586,6 +1593,7 @@ fn collect_possible_siblings(
                             *site_id,
                             direction,
                             adjacent_only,
+                            seen_snippets,
                         );
                         add_all_candidates(&siblings, out);
                         if adjacent_only && site_ids.len() == 1 && has_definite_elements(&siblings)

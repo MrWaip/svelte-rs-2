@@ -35,7 +35,10 @@ pub fn gen_custom_element<'a>(
     );
 
     let accessors = ctx.b.array_from_args(ctx.query.exports().iter().map(|e| {
-        let name = e.alias.as_deref().unwrap_or(e.name.as_str());
+        let name = e
+            .alias
+            .as_deref()
+            .unwrap_or_else(|| ctx.query.symbol_name(e.local));
         Arg::StrRef(name)
     }));
 

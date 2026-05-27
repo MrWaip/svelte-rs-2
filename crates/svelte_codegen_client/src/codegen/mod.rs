@@ -55,6 +55,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.pending_element_init.is_empty(),
             "pending_element_init not flushed before pack_body"
         );
+        debug_assert!(
+            state.pending_pre_update.is_empty(),
+            "pending_pre_update not flushed before pack_body"
+        );
         let EmitState {
             template: _,
             init,

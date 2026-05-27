@@ -1,6 +1,7 @@
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{
-    AttributeSemantics, EventEmit, EventSemantics, ExprKind, normalize_regular_attribute_name,
+    AttributeSemantics, EventEmit, EventSemantics, ExprKind, SpecialValueKind,
+    normalize_regular_attribute_name,
 };
 use svelte_ast::{ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
@@ -41,28 +42,43 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        if attr.name == "value" && owner_tag == "input" && self.ctx.has_bind_group(owner_id) {
-            let backup = self
-                .ctx
-                .state
-                .parsed
-                .expr(attr.expression.id())
-                .map(|e| self.ctx.b.clone_expr(e));
-            let val = self.take_attr_expr(attr.id, &attr.expression)?;
-            if let Some(backup) = backup {
-                self.ctx
-                    .state
-                    .parsed
-                    .replace_expr(attr.expression.id(), backup);
+        if let AttributeSemantics::SpecialValueAttr(s) =
+            self.ctx.query.analysis.attributes.get(attr.id)
+        {
+            match s.kind {
+                SpecialValueKind::InputBindGroup => {
+                    let backup = self
+                        .ctx
+                        .state
+                        .parsed
+                        .expr(attr.expression.id())
+                        .map(|e| self.ctx.b.clone_expr(e));
+                    let val = self.take_attr_expr(attr.id, &attr.expression)?;
+                    if let Some(backup) = backup {
+                        self.ctx
+                            .state
+                            .parsed
+                            .replace_expr(attr.expression.id(), backup);
+                    }
+                    self.emit_bind_group_value(state, owner_var, attr.id, val);
+                    return Ok(());
+                }
+                SpecialValueKind::Option => {
+                    let val = self.take_attr_expr(attr.id, &attr.expression)?;
+                    self.emit_option_expr_value(state, owner_var, attr.id, val);
+                    return Ok(());
+                }
+                SpecialValueKind::Select => {
+                    let val = self.take_attr_expr(attr.id, &attr.expression)?;
+                    self.emit_select_expr_value(state, owner_var, attr.id, val);
+                    return Ok(());
+                }
+                SpecialValueKind::InputBindChecked => {
+                    let val = self.take_attr_expr(attr.id, &attr.expression)?;
+                    self.emit_input_bind_checked_value(state, owner_var, attr.id, val);
+                    return Ok(());
+                }
             }
-            self.emit_bind_group_value(state, owner_var, attr.id, val);
-            return Ok(());
-        }
-
-        if attr.name == "value" && owner_tag == "option" {
-            let val = self.take_attr_expr(attr.id, &attr.expression)?;
-            self.emit_option_expr_value(state, owner_var, val);
-            return Ok(());
         }
 
         let attr_id = attr.id;
@@ -96,14 +112,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
                 None => return CodegenError::missing_expression_deps(attr_id),
             };
-            self.push_regular_attr_update(&mut state.update, owner_var, attr_update, placeholder);
+            self.push_regular_attr_update(
+                &mut state.update,
+                owner_var,
+                attr_update,
+                placeholder,
+                owner_id,
+            );
         } else {
             let target = if is_dyn {
                 &mut state.update
             } else {
                 &mut state.init
             };
-            self.push_regular_attr_update(target, owner_var, attr_update, expr);
+            self.push_regular_attr_update(target, owner_var, attr_update, expr, owner_id);
         }
 
         Ok(())

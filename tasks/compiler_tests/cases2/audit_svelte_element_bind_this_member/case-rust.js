@@ -5,7 +5,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.element(node, () => tag, false, ($$element, $$anchor) => {
-		$.bind_this($$element, ($$value) => obj.el = $$value, () => obj.el);
+		$.bind_this($$element, ($$value) => obj.el = $$value, () => obj?.el);
 		var text = $.text("x");
 		$.append($$anchor, text);
 	});

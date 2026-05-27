@@ -1,14 +1,13 @@
 use crate::codegen::expr::coarse_wrap;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Expression;
 use svelte_analyze::{
-    AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, normalize_regular_attribute_name,
-    TemplateEffect,
+    AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind,
+    TemplateEffect, normalize_regular_attribute_name,
 };
 use svelte_ast::{ConcatPart, ConcatenationAttribute, NodeId};
 use svelte_ast_builder::TemplatePart;
 
 use super::super::data_structures::{EmitState, TemplateMemoState};
-use super::super::effect::emit_effect_call_extern;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -24,8 +23,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        let semantics = match self.ctx.query.analysis.attributes.get(attr.id) {
-            AttributeSemantics::HtmlConcat(s) => s.clone(),
+        let (semantics, special_kind) = match self.ctx.query.analysis.attributes.get(attr.id) {
+            AttributeSemantics::HtmlConcat(s) => (s.clone(), None),
+            AttributeSemantics::SpecialValueAttr(s) => {
+                let Some(concat) = s.concat.as_ref() else {
+                    return CodegenError::semantic_mismatch(
+                        attr.id,
+                        "SpecialValueAttr on ConcatenationAttribute requires concat semantics",
+                    );
+                };
+                (concat.clone(), Some(s.kind))
+            }
             _ => {
                 return CodegenError::semantic_mismatch(
                     attr.id,
@@ -34,49 +42,34 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         };
 
-        let (val, mut memo_deps) = self.build_html_concat_expr(attr, &semantics)?;
+        let val = self.build_html_concat_expr(attr, &semantics, &mut state.shared_memo)?;
 
-        if attr.name == "value" && owner_tag == "option" {
-            self.emit_option_concat_value(state, owner_var, val);
-            return Ok(());
+        if let Some(kind) = special_kind {
+            match kind {
+                SpecialValueKind::Option => {
+                    self.emit_option_concat_value(state, owner_var, val);
+                    return Ok(());
+                }
+                SpecialValueKind::Select => {
+                    self.emit_select_concat_value(state, owner_var, attr.id, val);
+                    return Ok(());
+                }
+                SpecialValueKind::InputBindGroup | SpecialValueKind::InputBindChecked => {
+                    self.emit_input_special_concat_value(state, owner_var, val);
+                    return Ok(());
+                }
+            }
         }
 
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
         let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);
 
-        match semantics.effect {
-            TemplateEffect::None => {
-                self.push_regular_attr_update(&mut state.init, owner_var, attr_update, val);
-            }
-            TemplateEffect::Sync | TemplateEffect::Async => {
-                if memo_deps.has_deps() {
-                    let param_names = memo_deps.param_names();
-                    let params = if param_names.is_empty() {
-                        self.ctx.b.no_params()
-                    } else {
-                        self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
-                    };
-                    let mut update_stmts: Vec<Statement<'a>> = Vec::new();
-                    self.push_regular_attr_update(
-                        &mut update_stmts,
-                        owner_var,
-                        attr_update,
-                        val,
-                    );
-                    let callback = self.ctx.b.arrow_expr(params, update_stmts);
-                    emit_effect_call_extern(
-                        self.ctx,
-                        "$.template_effect",
-                        callback,
-                        &mut memo_deps,
-                        &mut state.after_update,
-                    );
-                } else {
-                    self.push_regular_attr_update(&mut state.update, owner_var, attr_update, val);
-                }
-            }
-        }
+        let target = match semantics.effect {
+            TemplateEffect::None => &mut state.init,
+            TemplateEffect::Sync | TemplateEffect::Async => &mut state.update,
+        };
+        self.push_regular_attr_update(target, owner_var, attr_update, val, owner_id);
 
         Ok(())
     }
@@ -85,7 +78,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         attr: &ConcatenationAttribute,
         semantics: &HtmlConcatSemantics,
-    ) -> Result<(Expression<'a>, TemplateMemoState<'a>)> {
+        memo_deps: &mut TemplateMemoState<'a>,
+    ) -> Result<Expression<'a>> {
         if attr.parts.len() != semantics.parts.len() {
             return CodegenError::semantic_mismatch(
                 attr.id,
@@ -94,7 +88,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(semantics.parts.len());
-        let mut memo_deps = TemplateMemoState::default();
 
         for (part, plan) in attr.parts.iter().zip(semantics.parts.iter()) {
             match plan {
@@ -168,10 +161,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if tpl_parts.len() == 1
             && let TemplatePart::Str(s) = &tpl_parts[0]
         {
-            return Ok((self.ctx.b.str_expr(s), memo_deps));
+            return Ok(self.ctx.b.str_expr(s));
         }
 
-        Ok((self.ctx.b.template_parts_expr(tpl_parts), memo_deps))
+        Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
 }
 

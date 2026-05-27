@@ -7,9 +7,12 @@ mod types;
 
 use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
-use svelte_analyze::{ComponentCssProp, ComponentCssPropValue, ComponentPropMemo};
+use svelte_analyze::{
+    AttributeSemantics, ComponentCssProp, ComponentCssPropValue, ComponentPropMemo,
+    ComponentPropSemantics,
+};
 use svelte_ast::{FragmentRole, NodeId};
-use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
+use svelte_ast_builder::{Arg, ObjProp};
 
 use crate::codegen::concatenation::ConcatenationAnchor;
 use crate::codegen::fragment::prepare::prepare;
@@ -131,6 +134,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         {
             use svelte_analyze::{BlockSemantics, ConstTagAsyncKind};
+            let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
+            if recording_slot_const_tags {
+                state.legacy_slot_const_tag_start = Some(state.init.len());
+            }
             let has_async = self.ctx.state.experimental_async
                 && bucket.const_tags.iter().any(|&id| {
                     matches!(
@@ -148,6 +155,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             for &id in &bucket.debug_tags {
                 self.emit_hoisted_debug_tag(state, ctx, id)?;
+            }
+            if recording_slot_const_tags {
+                state.legacy_slot_record_const_tag_end = false;
+                state.legacy_slot_const_tag_end = Some(state.init.len());
             }
         }
 
@@ -751,24 +762,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     else {
                         return CodegenError::missing_expression(prop.attr_id);
                     };
-                    let mut tpl_parts: Vec<TemplatePart<'a>> =
-                        Vec::with_capacity(concat.parts.len());
-                    for part in &concat.parts {
-                        match part {
-                            svelte_ast::ConcatPart::Static(s) => {
-                                if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
-                                    prev.push_str(s);
-                                } else {
-                                    tpl_parts.push(TemplatePart::Str(s.clone()));
-                                }
-                            }
-                            svelte_ast::ConcatPart::Dynamic { id, expr } => {
-                                let part_expr = self.take_template_expr(*id, expr)?;
-                                tpl_parts.push(TemplatePart::Expr(part_expr, false));
-                            }
-                        }
-                    }
-                    self.ctx.b.template_parts_expr(tpl_parts)
+                    let AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(
+                        concat_sem,
+                    )) = self.ctx.query.analysis.attributes.get(prop.attr_id)
+                    else {
+                        return CodegenError::semantic_mismatch(
+                            prop.attr_id,
+                            "ComponentCssProp::Concatenation requires ComponentProp::Concat semantics",
+                        );
+                    };
+                    let plan = concat_sem.plan.clone();
+                    self.build_concat_expr_from_plan(
+                        prop.attr_id,
+                        &concat.parts,
+                        &plan,
+                        &mut css_memo_decls,
+                        &mut memo_counter,
+                    )?
                 }
             };
             prop_items.push(ObjProp::KeyValue(key, expr));

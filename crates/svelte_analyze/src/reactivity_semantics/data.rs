@@ -177,6 +177,7 @@ pub enum ConstBindingSemantics {
     ConstTag {
         destructured: bool,
         reactive: bool,
+        initial_is_function: bool,
         owner_node: NodeId,
     },
 }
@@ -395,6 +396,7 @@ pub struct ContextualReadSemantics {
     pub kind: ContextualReadKind,
     pub owner_node: NodeId,
     pub symbol: SymbolId,
+    pub in_key_expression: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -558,6 +560,8 @@ pub struct ReactivitySemantics {
 
     contextual_owner: FxHashMap<SymbolId, NodeId>,
 
+    contextual_reads_in_each_key: FxHashMap<ReferenceId, NodeId>,
+
     each_rest_symbols: FxHashSet<SymbolId>,
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
@@ -595,6 +599,7 @@ impl ReactivitySemantics {
             reference_facts: IndexVec::new(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
+            contextual_reads_in_each_key: FxHashMap::default(),
             each_item_indirect_sources: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
             base_to_store: FxHashMap::default(),
@@ -908,6 +913,7 @@ impl ReactivitySemantics {
         &mut self,
         sym: SymbolId,
         destructured: bool,
+        initial_is_function: bool,
         owner_node: NodeId,
     ) {
         self.write_binding(
@@ -915,6 +921,7 @@ impl ReactivitySemantics {
             BindingFacts::Const(ConstBindingSemantics::ConstTag {
                 destructured,
                 reactive: true,
+                initial_is_function,
                 owner_node,
             }),
         );
@@ -970,6 +977,18 @@ impl ReactivitySemantics {
 
     pub(crate) fn contextual_owner(&self, sym: SymbolId) -> Option<NodeId> {
         self.contextual_owner.get(&sym).copied()
+    }
+
+    pub(crate) fn record_contextual_read_in_each_key(
+        &mut self,
+        ref_id: ReferenceId,
+        each_block: NodeId,
+    ) {
+        self.contextual_reads_in_each_key.insert(ref_id, each_block);
+    }
+
+    pub(crate) fn contextual_read_in_each_key(&self, ref_id: ReferenceId) -> Option<NodeId> {
+        self.contextual_reads_in_each_key.get(&ref_id).copied()
     }
 
     pub(crate) fn add_each_item_indirect_source(

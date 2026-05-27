@@ -148,12 +148,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 &el_name,
                 &attributes,
                 AttributeOwnerKind::SvelteElement,
+                false,
             )?
         };
 
         inner_state
             .init
             .extend(mem::take(&mut inner_state.pending_element_init));
+        inner_state
+            .init
+            .extend(mem::take(&mut inner_state.pending_pre_update));
 
         if !inner_state.update.is_empty() {
             let attr_updates = mem::take(&mut inner_state.update);

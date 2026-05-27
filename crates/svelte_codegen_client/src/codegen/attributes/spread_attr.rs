@@ -1,11 +1,11 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
-use svelte_analyze::ExprKind;
+use svelte_analyze::{AttributeSemantics, ExprKind, SpecialValueKind};
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::{EmitState, TemplateMemoState};
-use super::super::{Codegen, Result};
+use super::super::{Codegen, CodegenError, Result};
 
 fn expr_is_ident_named(expr: &Expression<'_>, name: &str) -> bool {
     matches!(expr.get_inner_expression(), Expression::Identifier(id) if id.name.as_str() == name)
@@ -52,7 +52,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     props.push(ObjProp::KeyValue(name_alloc, self.ctx.b.str_expr(&val)));
                 }
                 Attribute::ExpressionAttribute(a) => {
+                    let preserves_for_bind_group = matches!(
+                        self.ctx.query.analysis.attributes.get(attr_id),
+                        AttributeSemantics::SpecialValueAttr(s)
+                            if matches!(s.kind, SpecialValueKind::InputBindGroup)
+                    );
+                    let backup = if preserves_for_bind_group {
+                        self.ctx
+                            .state
+                            .parsed
+                            .expr(a.expression.id())
+                            .map(|e| self.ctx.b.clone_expr(e))
+                    } else {
+                        None
+                    };
                     let expr = self.take_attr_expr(attr_id, &a.expression)?;
+                    if let Some(backup) = backup {
+                        self.ctx
+                            .state
+                            .parsed
+                            .replace_expr(a.expression.id(), backup);
+                    }
                     let expr = {
                         let data = self.ctx.expression_data(attr_id).cloned();
                         coarse_wrap(self.ctx, expr, data.as_ref())
@@ -78,7 +98,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ns_thunk = Some(self.ctx.b.thunk(clone));
                     }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
-                    if self.ctx.is_expression_shorthand(attr_id)
+                    let needs_hoist = self.ctx.expression_data(attr_id).is_some_and(|d| {
+                        matches!(d.kind, ExprKind::Call { dynamic: true })
+                    });
+                    if needs_hoist {
+                        if let Some(data) = self.ctx.expression_data(attr_id) {
+                            memo.push_expression_data(self.ctx, data);
+                        }
+                        let idx = memo.sync_values_push(expr);
+                        let param = memo.sync_param_expr(self.ctx, idx);
+                        props.push(ObjProp::KeyValue(name_alloc, param));
+                    } else if self.ctx.is_expression_shorthand(attr_id)
                         && expr_is_ident_named(&expr, &a.name)
                     {
                         props.push(ObjProp::Shorthand(name_alloc));
@@ -87,7 +117,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
-                    let val = self.build_concat_expr_collapse_single(attr_id, &a.parts)?;
+                    let semantics = match self.ctx.query.analysis.attributes.get(attr_id) {
+                        AttributeSemantics::HtmlConcat(s) => s.clone(),
+                        _ => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "ConcatenationAttribute requires HtmlConcat semantics",
+                            );
+                        }
+                    };
+                    let val = self.build_html_concat_expr(a, &semantics, &mut memo)?;
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(name_alloc, val));
                 }
@@ -125,11 +164,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None
         };
 
-        if class_directives_obj.is_some() && options.include_class_base {
+        if class_directives_obj.is_some() && self.ctx.needs_class_base(owner_id) {
             let class_key = self.ctx.b.alloc_str("class");
             props.push(ObjProp::KeyValue(class_key, self.ctx.b.str_expr("")));
         }
-        if self.ctx.has_style_directives(owner_id) && options.include_style_base {
+        if self.ctx.has_style_directives(owner_id) && self.ctx.needs_style_base(owner_id) {
             let style_key = self.ctx.b.alloc_str("style");
             props.push(ObjProp::KeyValue(style_key, self.ctx.b.str_expr("")));
         }
@@ -172,7 +211,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let hash = self.ctx.css_hash().to_string();
             let css_scoped = self.ctx.is_css_scoped(owner_id) && !hash.is_empty();
             let has_deps = memo.has_deps();
-            let args: Vec<Arg<'a, '_>> = if css_scoped || options.is_input {
+            let hydration_ignored = self.ctx.hydration_attribute_changed_ignored(owner_id);
+            let mut args: Vec<Arg<'a, '_>> = if css_scoped || options.is_input {
                 let sync_arg = if memo.has_sync_values() {
                     memo.sync_values_expr(self.ctx)
                 } else {
@@ -218,6 +258,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } else {
                 vec![Arg::Ident(owner_var), Arg::Expr(arrow)]
             };
+            if hydration_ignored {
+                while args.len() < 7 {
+                    args.push(Arg::Expr(self.ctx.b.void_zero_expr()));
+                }
+                args.push(Arg::Bool(true));
+            }
             state
                 .init
                 .push(self.ctx.b.call_stmt("$.attribute_effect", args));
@@ -252,8 +298,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
 pub(in super::super) struct SpreadOptions {
     pub include_class_directives: bool,
-    pub include_class_base: bool,
-    pub include_style_base: bool,
     pub is_input: bool,
     pub skip_directives: bool,
 }
@@ -262,22 +306,14 @@ impl SpreadOptions {
     pub fn for_regular_element() -> Self {
         Self {
             include_class_directives: true,
-            include_class_base: false,
-            include_style_base: false,
             is_input: false,
             skip_directives: false,
         }
     }
 
-    pub fn for_svelte_element(
-        include_class_directives: bool,
-        include_class_base: bool,
-        include_style_base: bool,
-    ) -> Self {
+    pub fn for_svelte_element(include_class_directives: bool) -> Self {
         Self {
             include_class_directives,
-            include_class_base,
-            include_style_base,
             is_input: false,
             skip_directives: true,
         }

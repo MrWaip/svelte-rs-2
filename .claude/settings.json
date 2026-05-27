@@ -25,7 +25,7 @@
   },
   "enabledPlugins": {},
   "ignorePatterns": [
-    "docs/compiler",
+    "playground/compiler",
     "target",
     "tasks/benchmark/benches/compiler/*",
     "tasks/compiler_tests/cases2/*/case-svelte.js",

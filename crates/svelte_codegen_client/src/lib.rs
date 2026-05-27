@@ -15,7 +15,11 @@ use std::iter::empty;
 use std::path::PathBuf;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
-use svelte_analyze::AnalysisData;
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind,
+    StateDeclarationSemantics, StateKind,
+};
+use svelte_component_semantics::SymbolFlags;
 use svelte_ast::{Attribute, Node};
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
@@ -23,6 +27,76 @@ use svelte_transform::TransformData;
 
 use context::Ctx;
 use svelte_analyze::types::data::binding_group_name;
+
+fn export_reactive_read<'a>(
+    b: &Builder<'a>,
+    sem: &ReferenceSemantics,
+    name: &'a str,
+) -> Option<Expression<'a>> {
+    match sem {
+        ReferenceSemantics::SignalRead { safe: true, .. }
+        | ReferenceSemantics::LegacyStateRead { safe: true }
+        | ReferenceSemantics::LegacyStateSubscribedRead { safe: true, .. } => {
+            Some(b.call_expr("$.safe_get", [Arg::Ident(name)]))
+        }
+        ReferenceSemantics::SignalRead { safe: false, .. }
+        | ReferenceSemantics::LegacyStateRead { safe: false }
+        | ReferenceSemantics::LegacyStateSubscribedRead { safe: false, .. } => {
+            Some(b.call_expr("$.get", [Arg::Ident(name)]))
+        }
+        ReferenceSemantics::PropRead(_) | ReferenceSemantics::StoreRead { .. } => {
+            Some(b.call_expr(name, empty::<Arg<'_, '_>>()))
+        }
+        ReferenceSemantics::LegacyReactiveImportRead => {
+            let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(name));
+            Some(b.call_expr(wrapper, empty::<Arg<'_, '_>>()))
+        }
+        ReferenceSemantics::NonReactive
+        | ReferenceSemantics::Proxy
+        | ReferenceSemantics::Unresolved
+        | ReferenceSemantics::SignalWrite { .. }
+        | ReferenceSemantics::SignalUpdate { .. }
+        | ReferenceSemantics::DerivedWrite
+        | ReferenceSemantics::StoreWrite { .. }
+        | ReferenceSemantics::StoreUpdate { .. }
+        | ReferenceSemantics::PropMutation { .. }
+        | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+        | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+        | ReferenceSemantics::ConstAliasRead { .. }
+        | ReferenceSemantics::ContextualRead(_)
+        | ReferenceSemantics::CarrierMemberRead(_)
+        | ReferenceSemantics::RestPropMemberRewrite
+        | ReferenceSemantics::LegacyPropsIdentifierRead
+        | ReferenceSemantics::LegacyRestPropsIdentifierRead
+        | ReferenceSemantics::LegacyStateWrite
+        | ReferenceSemantics::LegacyStateUpdate { .. }
+        | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+        | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+        | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+        | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+        | ReferenceSemantics::ImportSubscribedRead { .. }
+        | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+        | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+        | ReferenceSemantics::IllegalWrite => None,
+    }
+}
+
+fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics {
+    match binding {
+        BindingSemantics::State(StateDeclarationSemantics {
+            kind: kind @ (StateKind::State | StateKind::StateRaw),
+            ..
+        }) => ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::State(kind),
+            safe: false,
+        },
+        BindingSemantics::Derived(d) => ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::Derived(d.kind),
+            safe: false,
+        },
+        _ => ReferenceSemantics::NonReactive,
+    }
+}
 
 pub fn generate<'a>(
     compile_ctx: svelte_types::CompileContext<'a, 'a>,
@@ -253,13 +327,66 @@ pub fn generate<'a>(
 
         if has_explicit_exports {
             for e in ctx.query.exports() {
-                let name: &str = ctx.b.alloc_str(&e.name);
+                let local_sym = e.local;
+                let name: &str = ctx.b.alloc_str(ctx.query.symbol_name(local_sym));
                 let key: &str = e
                     .alias
                     .as_deref()
                     .map(|a| ctx.b.alloc_str(a))
                     .unwrap_or(name);
-                if ctx.state.dev {
+
+                let read_semantics = e
+                    .reference_id
+                    .map(|ref_id| ctx.query.reference_semantics(ref_id))
+                    .unwrap_or_else(|| {
+                        declaration_export_semantics(ctx.query.binding_semantics(local_sym))
+                    });
+                let reactive_read = export_reactive_read(&ctx.b, &read_semantics, name);
+
+                let setter_body: Option<Vec<Statement<'_>>> = match ctx
+                    .query
+                    .binding_semantics(local_sym)
+                {
+                    BindingSemantics::Prop(_) => Some(vec![
+                        ctx.b
+                            .expr_stmt(ctx.b.call_expr(name, [Arg::Ident("$$value")])),
+                    ]),
+                    BindingSemantics::State(StateDeclarationSemantics {
+                        kind: kind @ (StateKind::State | StateKind::StateRaw),
+                        ..
+                    }) => {
+                        let value = if matches!(kind, StateKind::State) {
+                            Arg::Expr(ctx.b.call_expr("$.proxy", [Arg::Ident("$$value")]))
+                        } else {
+                            Arg::Ident("$$value")
+                        };
+                        Some(vec![
+                            ctx.b
+                                .expr_stmt(ctx.b.call_expr("$.set", [Arg::Ident(name), value])),
+                        ])
+                    }
+                    BindingSemantics::NonReactive => {
+                        let flags = ctx.query.scoping().symbol_flags(local_sym);
+                        let is_let_or_var = flags.contains(SymbolFlags::FunctionScopedVariable)
+                            || (flags.contains(SymbolFlags::BlockScopedVariable)
+                                && !flags.contains(SymbolFlags::ConstVariable));
+                        is_let_or_var.then(|| {
+                            vec![ctx.b.assign_stmt(
+                                AssignLeft::Ident(name.to_string()),
+                                ctx.b.rid_expr("$$value"),
+                            )]
+                        })
+                    }
+                    _ => None,
+                };
+
+                if let Some(stmts) = setter_body {
+                    let getter_body = reactive_read.unwrap_or_else(|| ctx.b.rid_expr(name));
+                    export_props.push(ObjProp::Getter(key, getter_body));
+                    export_props.push(ObjProp::Setter(key, "$$value", None, stmts));
+                } else if let Some(read) = reactive_read {
+                    export_props.push(ObjProp::Getter(key, read));
+                } else if ctx.state.dev {
                     export_props.push(ObjProp::Getter(key, ctx.b.rid_expr(name)));
                 } else if e.alias.is_some() {
                     export_props.push(ObjProp::KeyValue(key, ctx.b.rid_expr(name)));
@@ -310,7 +437,7 @@ pub fn generate<'a>(
 
         if !ctx.query.runes() {
             for e in ctx.query.exports() {
-                let name: &str = ctx.b.alloc_str(&e.name);
+                let name: &str = ctx.b.alloc_str(ctx.query.symbol_name(e.local));
                 let key: &str = e
                     .alias
                     .as_deref()

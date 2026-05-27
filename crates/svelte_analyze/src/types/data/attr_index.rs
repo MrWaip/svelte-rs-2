@@ -55,12 +55,26 @@ impl AttrIndex {
 }
 
 fn attr_index_name(attr: &Attribute, _source: &str) -> Option<CompactString> {
-    attr.name().map(|n| {
-        if n.bytes().any(|b| b.is_ascii_uppercase()) {
-            CompactString::from(n.to_ascii_lowercase())
-        } else {
-            CompactString::from(n)
-        }
+    let n = match attr {
+        Attribute::StringAttribute(a) => a.name.as_str(),
+        Attribute::ExpressionAttribute(a) => a.name.as_str(),
+        Attribute::BooleanAttribute(a) => a.name.as_str(),
+        Attribute::ConcatenationAttribute(a) => a.name.as_str(),
+        Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::BindDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => return None,
+    };
+    Some(if n.bytes().any(|b| b.is_ascii_uppercase()) {
+        CompactString::from(n.to_ascii_lowercase())
+    } else {
+        CompactString::from(n)
     })
 }
 

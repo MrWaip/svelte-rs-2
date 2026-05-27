@@ -509,6 +509,7 @@ pub(crate) fn process_program<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
+    normalize_empty_import_specifiers(program);
     if delta == 0 && !strip_ts {
         return;
     }
@@ -519,6 +520,20 @@ pub(crate) fn process_program<'a>(
     }
     if strip_ts {
         relocate_orphaned_comments(program);
+    }
+}
+
+fn normalize_empty_import_specifiers(program: &mut Program<'_>) {
+    for stmt in &mut program.body {
+        let Statement::ImportDeclaration(import) = stmt else {
+            continue;
+        };
+        if import.import_kind.is_type() {
+            continue;
+        }
+        if matches!(&import.specifiers, Some(specs) if specs.is_empty()) {
+            import.specifiers = None;
+        }
     }
 }
 

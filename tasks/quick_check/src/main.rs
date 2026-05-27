@@ -11,7 +11,9 @@ use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use pretty_assertions::StrComparison;
-use svelte_compiler::{CompileOptions, GenerateMode, RunesOption, compile};
+use svelte_compiler::{
+    CompileOptions, GenerateMode, ModuleCompileOptions, RunesOption, compile, compile_module,
+};
 use svelte_transform_css::compact_css_for_injection;
 
 const USAGE: &str = "usage: quick_check <path-to-.svelte-file> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>]";
@@ -115,7 +117,8 @@ fn main() -> ExitCode {
 
     let workspace_root = resolve_workspace_root();
 
-    let (our_js, our_css) = match run_our_compiler(&source, &cli_opts) {
+    let is_module = is_module_path(&input_path);
+    let (our_js, our_css) = match run_our_compiler(&source, &cli_opts, is_module) {
         OurOutcome::Js { js, css } => (format_js(&js), css),
         OurOutcome::NoJs(diagnostics) => {
             eprintln!("quick_check: rust compiler returned no JS");
@@ -186,7 +189,15 @@ struct ReferenceOutput {
     css: Option<String>,
 }
 
-fn run_our_compiler(source: &str, cli: &CliOptions) -> OurOutcome {
+fn is_module_path(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.ends_with(".svelte.js") || s.ends_with(".svelte.ts")
+}
+
+fn run_our_compiler(source: &str, cli: &CliOptions, is_module: bool) -> OurOutcome {
+    if is_module {
+        return run_our_module_compiler(source, cli);
+    }
     let mut opts = CompileOptions {
         name: Some("App".into()),
         ..Default::default()
@@ -223,6 +234,41 @@ fn run_our_compiler(source: &str, cli: &CliOptions) -> OurOutcome {
             let msg = panic_payload_message(&payload);
             OurOutcome::Panic(msg)
         }
+    }
+}
+
+fn run_our_module_compiler(source: &str, cli: &CliOptions) -> OurOutcome {
+    let filename = cli
+        .filename
+        .clone()
+        .unwrap_or_else(|| "case.svelte.js".to_string());
+    let mut opts = ModuleCompileOptions {
+        filename,
+        ..Default::default()
+    };
+    if let Some(generate) = cli.generate {
+        opts.generate = generate;
+    }
+    if cli.dev {
+        opts.dev = true;
+    }
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| compile_module(source, &opts)));
+    match result {
+        Ok(res) => match res.js {
+            Some(js) => OurOutcome::Js {
+                js: js.code,
+                css: None,
+            },
+            None => {
+                let diagnostics = res
+                    .diagnostics
+                    .into_iter()
+                    .map(|d| format!("{d:?}"))
+                    .collect();
+                OurOutcome::NoJs(diagnostics)
+            }
+        },
+        Err(payload) => OurOutcome::Panic(panic_payload_message(&payload)),
     }
 }
 

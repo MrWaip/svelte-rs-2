@@ -34,7 +34,8 @@ impl<'a> Builder<'a> {
         let body = if is_rune {
             self.call_expr("$.get", [Arg::Ident(var_name)])
         } else {
-            self.rid_expr(var_name)
+            let parsed = self.parse_expression(var_name);
+            self.make_optional_chain(parsed)
         };
         self.arrow_expr(self.no_params(), [self.expr_stmt(body)])
     }

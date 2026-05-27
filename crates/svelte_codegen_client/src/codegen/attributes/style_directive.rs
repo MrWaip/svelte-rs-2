@@ -6,7 +6,7 @@ use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use crate::context::Ctx;
 
-use super::super::data_structures::{EmitState, MemoValueRef};
+use super::super::data_structures::{EmitState, MemoValueRef, TemplateMemoState};
 use super::super::{Codegen, CodegenError, Result};
 use super::regular::literal_value;
 
@@ -86,7 +86,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .and_then(literal_value)
                             .is_some(),
                     }),
-                    StyleDirectiveValue::Expression => false,
+                    StyleDirectiveValue::Expression => self
+                        .ctx
+                        .expression_data(sd.id)
+                        .is_some_and(|d| matches!(d.kind, ExprKind::KnownLiteral)),
                 });
         let props = self.build_style_props(owner_id)?;
 
@@ -219,7 +222,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             );
                         }
                     };
-                let (expr, mut memo_deps) = self.build_html_concat_expr(a, &semantics)?;
+                let mut memo_deps = TemplateMemoState::default();
+                let expr = self.build_html_concat_expr(a, &semantics, &mut memo_deps)?;
                 let has_state = !memo_deps.sync_values.is_empty()
                     || !memo_deps.async_values.is_empty();
                 state.shared_memo.sync_values.append(&mut memo_deps.sync_values);
@@ -256,7 +260,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .and_then(literal_value)
                     .is_some(),
             }),
-            StyleDirectiveValue::Expression => false,
+            StyleDirectiveValue::Expression => self
+                .ctx
+                .expression_data(sd.id)
+                .is_some_and(|d| matches!(d.kind, ExprKind::KnownLiteral)),
         })
     }
 

@@ -1,0 +1,96 @@
+name: Checks
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**/*.md'
+      - 'playground/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'playground/**'
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  RUST_CHANNEL: '1.94.1'
+  NODE_VERSION: '22.13.0'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: ${{ env.RUST_CHANNEL }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Run tests
+        run: just test-all --locked
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: ${{ env.RUST_CHANNEL }}
+          components: clippy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Install lint binaries
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-dylint,dylint-link
+
+      - name: Run lint
+        run: just lint
+
+  npm-package-smoke:
+    name: npm package smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: ${{ env.RUST_CHANNEL }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Run npm smoke
+        run: just npm-smoke

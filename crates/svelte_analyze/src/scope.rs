@@ -74,6 +74,10 @@ impl<'a> ComponentScoping<'a> {
             .contains(SymbolFlags::Import)
     }
 
+    pub fn is_reexported_specifier_local(&self, sym_id: SymbolId) -> bool {
+        self.semantics.is_reexported_specifier_local(sym_id)
+    }
+
     pub(crate) fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
         self.semantics
             .set_symbol_state(sym_id, symbol_class::EACH_INDEX_NON_DYNAMIC);
@@ -97,7 +101,8 @@ impl<'a> ComponentScoping<'a> {
     }
 
     pub fn is_init_known(&self, sym_id: SymbolId) -> bool {
-        self.init_known_syms.contains(&sym_id)
+        !self.semantics.is_reexported_specifier_local(sym_id)
+            && self.init_known_syms.contains(&sym_id)
     }
 
     pub fn add_unique_synthetic_binding(

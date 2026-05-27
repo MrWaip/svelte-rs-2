@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::NamespaceKind;
+use svelte_analyze::{Evaluation, KnownValue, NamespaceKind};
 use svelte_ast::{Attribute, Element, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -117,6 +117,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         update: RegularAttrUpdate,
         val: Expression<'a>,
+        owner_id: NodeId,
     ) {
         let b = &self.ctx.b;
         match update {
@@ -129,6 +130,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     args.push(Arg::Str(name));
                 }
                 args.push(Arg::Expr(val));
+                if matches!(setter_fn, "$.set_attribute" | "$.set_xlink_attribute")
+                    && self.ctx.hydration_attribute_changed_ignored(owner_id)
+                {
+                    args.push(Arg::Bool(true));
+                }
                 target.push(b.call_stmt(setter_fn, args));
             }
             RegularAttrUpdate::Assignment { property } => {
@@ -197,6 +203,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
 
                     let data = self.ctx.expression_data(*part_id).cloned();
+                    if let Some(d) = data.as_ref()
+                        && let Some(s) = known_evaluation_as_chunk_string(&d.evaluation)
+                    {
+                        push_template_str(&mut tpl_parts, s);
+                        continue;
+                    }
                     let defined = data
                         .as_ref()
                         .map(|d| evaluation_is_defined(&d.evaluation))
@@ -227,6 +239,31 @@ fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
         prev.push_str(&value);
     } else {
         tpl_parts.push(TemplatePart::Str(value));
+    }
+}
+
+fn known_evaluation_as_chunk_string(eval: &Evaluation) -> Option<String> {
+    let Evaluation::Known(v) = eval else {
+        return None;
+    };
+    Some(match v {
+        KnownValue::Null | KnownValue::Undefined => String::new(),
+        KnownValue::Str(s) => s.to_string(),
+        KnownValue::Bool(b) => b.to_string(),
+        KnownValue::Num(n) => format_js_number(*n),
+        KnownValue::BigInt => return None,
+    })
+}
+
+fn format_js_number(n: f64) -> String {
+    if n.is_nan() {
+        "NaN".to_string()
+    } else if n.is_infinite() {
+        if n > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() }
+    } else if n == n.trunc() && n.abs() < 1e21 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
     }
 }
 

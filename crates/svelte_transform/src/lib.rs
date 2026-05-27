@@ -154,6 +154,9 @@ fn walk_node<'a>(
         }
         Node::EachBlock(block) => {
             record_expr(ctx, parsed, &block.expression, Some(block.id));
+            if let Some(key) = block.key.as_ref() {
+                ctx.expr_handles.push((key.id(), Some(block.id)));
+            }
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {

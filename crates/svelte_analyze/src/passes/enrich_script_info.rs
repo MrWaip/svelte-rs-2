@@ -24,7 +24,7 @@ pub(crate) fn run<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut Anal
         && parsed.module_script_content_span.is_some()
     {
         let mut module_info =
-            script_info::extract_script_info(module_program, &component.source, true);
+            script_info::extract_script_info(module_program, &component.source, true, &data.scoping);
         script_info::enrich_from_component_scoping(&data.scoping, &mut module_info);
         data.output.needs_context |= needs_context_for_program(
             module_program,

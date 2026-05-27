@@ -388,6 +388,24 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         self.leave_scope(parent);
     }
 
+    fn visit_export_named_declaration(&mut self, decl: &ExportNamedDeclaration<'a>) {
+        walk::walk_export_named_declaration(self, decl);
+        if decl.source.is_some() || !matches!(self.owner, SymbolOwner::InstanceScript) {
+            return;
+        }
+        for spec in &decl.specifiers {
+            let ModuleExportName::IdentifierReference(local) = &spec.local else {
+                continue;
+            };
+            let Some(ref_id) = local.reference_id.get() else {
+                continue;
+            };
+            if let Some(sym) = self.semantics.get_reference(ref_id).symbol_id() {
+                self.semantics.add_reexported_specifier_local(sym);
+            }
+        }
+    }
+
     fn visit_ts_type_alias_declaration(&mut self, decl: &TSTypeAliasDeclaration<'a>) {
         self.binding_flags = Some((self.scope, SymbolFlags::TypeAlias));
         self.visit_binding_identifier(&decl.id);
