@@ -6,7 +6,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	$.await(node, () => p, null, ($$anchor, $$source) => {
 		var $$value = $.derived(() => {
-			var [a, b] = $.get($$source);
+			var [a = 10, b = 20] = $.get($$source);
 			return {
 				a,
 				b

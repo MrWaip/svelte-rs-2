@@ -152,7 +152,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             }
             DeclaratorSemantics::None
             | DeclaratorSemantics::LetCarrier { .. }
-            | DeclaratorSemantics::EachItem { .. } => None,
+            | DeclaratorSemantics::EachItem { .. }
+            | DeclaratorSemantics::AwaitValue => None,
             DeclaratorSemantics::PropsIdentifier { .. } | DeclaratorSemantics::PropsObject { .. } => None,
             DeclaratorSemantics::LegacyStateDestructure { .. } => None,
         }

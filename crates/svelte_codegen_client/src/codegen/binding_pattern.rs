@@ -23,6 +23,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             DeclaratorSemantics::EachItem { item_reactive } => {
                 self.emit_each_item(pattern, item_reactive)
             }
+            DeclaratorSemantics::AwaitValue => self.emit_await_value(pattern),
             DeclaratorSemantics::LetCarrier { .. } => {
                 unimplemented!("let: carrier unfold not yet routed through emit_binding_pattern")
             }
@@ -106,6 +107,39 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         carrier_stmts.extend(binding_stmts);
         carrier_stmts
+    }
+
+    fn emit_await_value(&mut self, pattern: &'a BindingPattern<'a>) -> Vec<Statement<'a>> {
+        let helper = self.ctx.query.view.derived_helper();
+
+        let mut names: Vec<String> = Vec::new();
+        walk_bindings(pattern, |v| {
+            names.push(self.ctx.query.symbol_name(v.symbol).to_string());
+        });
+
+        let source = rune_get(&self.ctx.b, "$$source");
+        let destruct_stmt = self
+            .ctx
+            .b
+            .var_destruct_stmt(pattern.clone_in(self.ctx.b.ast.allocator), source);
+        let return_stmt = self.ctx.b.return_stmt(self.ctx.b.shorthand_object_expr(&names));
+        let derived_fn = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
+        let derived_call = self.ctx.b.call_expr(helper, [Arg::Expr(derived_fn)]);
+
+        let mut decls = vec![self.ctx.b.var_stmt("$$value", derived_call)];
+        for name in &names {
+            let member = self
+                .ctx
+                .b
+                .static_member_expr(rune_get(&self.ctx.b, "$$value"), name);
+            let getter_fn = self
+                .ctx
+                .b
+                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(member)]);
+            let per_field = self.ctx.b.call_expr(helper, [Arg::Expr(getter_fn)]);
+            decls.push(self.ctx.b.var_stmt(name, per_field));
+        }
+        decls
     }
 
     fn item_read_expr(&self, item_reactive: bool) -> Expression<'a> {

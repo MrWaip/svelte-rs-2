@@ -256,6 +256,8 @@ pub enum DeclaratorSemantics {
         item_reactive: bool,
     },
 
+    AwaitValue,
+
     ClassFieldState(ClassFieldStateSemantics),
 
     ClassFieldDerived(ClassFieldDerivedSemantics),

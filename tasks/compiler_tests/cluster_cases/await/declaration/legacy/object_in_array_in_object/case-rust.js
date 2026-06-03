@@ -7,7 +7,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	$.await(node, () => p, null, ($$anchor, $$source) => {
 		var $$value = $.derived_safe_equal(() => {
-			var { inner } = $.get($$source);
+			var { outer: [{ inner }] } = $.get($$source);
 			return { inner };
 		});
 		var inner = $.derived_safe_equal(() => $.get($$value).inner);

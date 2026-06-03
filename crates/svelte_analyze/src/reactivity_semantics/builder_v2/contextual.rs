@@ -9,8 +9,8 @@ use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, S
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
-    ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
-    LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
+    ContextualBindingSemantics, ContextualReadKind, DeclaratorSemantics, EachIndexStrategy,
+    EachItemStrategy, LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -242,9 +242,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
+            let declarator_node = await_destructure_node(stmt);
             for sym in scoped_stmt_symbols(ctx.data, then_scope, stmt) {
                 ctx.data.reactivity.record_contextual_owner(sym, block.id);
                 self.staging.push(sym, PendingKind::AwaitValue);
+            }
+            if let Some(node) = declarator_node {
+                ctx.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::AwaitValue);
             }
         }
 
@@ -257,9 +263,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
+            let declarator_node = await_destructure_node(stmt);
             for sym in scoped_stmt_symbols(ctx.data, catch_scope, stmt) {
                 ctx.data.reactivity.record_contextual_owner(sym, block.id);
                 self.staging.push(sym, PendingKind::AwaitError);
+            }
+            if let Some(node) = declarator_node {
+                ctx.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::AwaitValue);
             }
         }
     }
@@ -762,6 +774,15 @@ fn mark_key_is_item_each_binding(
 fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a VariableDeclarator<'a>> {
     match stmt {
         Statement::VariableDeclaration(decl) => decl.declarations.first(),
+        _ => None,
+    }
+}
+
+fn await_destructure_node(stmt: &Statement<'_>) -> Option<OxcNodeId> {
+    let decl = declarator_from_stmt_local(stmt)?;
+    match &decl.id {
+        BindingPattern::ObjectPattern(p) => Some(p.node_id()),
+        BindingPattern::ArrayPattern(p) => Some(p.node_id()),
         _ => None,
     }
 }
