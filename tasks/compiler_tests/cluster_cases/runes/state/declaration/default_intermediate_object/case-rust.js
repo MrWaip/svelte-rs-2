@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let tmp = {}, a = $.proxy($.fallback(tmp.p, {}).a);
+	let tmp = {}, a = $.proxy($.fallback(tmp.p, () => ({}), true).a);
 	var button = root();
 	var text = $.child(button, true);
 	$.reset(button);

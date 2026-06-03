@@ -58,7 +58,7 @@ fn serialize_binding_prefix(prefix: &[Step<'_>]) -> String {
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
-    fn state_destructure_dev_label(
+    pub(crate) fn state_destructure_dev_label(
         pattern: &BindingPattern<'a>,
         rune_kind: RuneKind,
     ) -> Option<&'static str> {
@@ -155,7 +155,8 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::EachItem { .. }
             | DeclaratorSemantics::AwaitValue => None,
             DeclaratorSemantics::PropsIdentifier { .. } | DeclaratorSemantics::PropsObject { .. } => None,
-            DeclaratorSemantics::LegacyStateDestructure { .. } => None,
+            DeclaratorSemantics::LegacyStateDestructure { .. }
+            | DeclaratorSemantics::RuneStateDestructure { .. } => None,
         }
     }
 
@@ -291,39 +292,33 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
     ) {
-        self.rewrite_destructured_rune_decls(
-            stmts,
-            |declarator, rune_kind| {
-                !matches!(
-                    declarator.id,
-                    BindingPattern::BindingIdentifier(_)
-                ) && matches!(rune_kind, Some(RuneKind::State | RuneKind::StateRaw))
-                    && declarator.init.is_some()
-            },
-            |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
-                let init = declarator
-                    .init
-                    .take()
-                    .expect("predicate matched only declarators with an initializer");
-                let value = if let Expression::CallExpression(mut call) = init {
-                    if call.arguments.is_empty() {
-                        this.b
-                            .ast
-                            .expression_object(SPAN, this.b.ast.vec())
-                    } else {
-                        let mut dummy = Argument::from(this.b.cheap_expr());
-                        mem::swap(&mut call.arguments[0], &mut dummy);
-                        dummy.into_expression()
-                    }
-                } else {
-                    unreachable!()
-                };
+        let mut i = 0;
+        while i < stmts.len() {
+            let is_state_destructure = match &stmts[i] {
+                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => {
+                    self.binding_pattern_supported(&decl.declarations[0])
+                }
+                _ => false,
+            };
+            if !is_state_destructure {
+                i += 1;
+                continue;
+            }
 
-                this.gen_state_destructuring(&declarator.id, value, rune_kind, decl_kind)
-            },
-        );
+            let Statement::VariableDeclaration(mut decl) = stmts.remove(i) else {
+                unreachable!();
+            };
+            let decl_kind = decl.kind;
+            let declarator = decl.declarations.remove(0);
+            let replacement = self.rewrite_binding_pattern(decl_kind, declarator);
+            stmts.insert(i, replacement);
+            self.ident_counter += 1;
+            i += 1;
+        }
     }
 
+    #[deprecated = "superseded by binding-pattern-routing"]
+    #[allow(dead_code)]
     fn gen_state_destructuring(
         &mut self,
         pattern: &BindingPattern<'a>,

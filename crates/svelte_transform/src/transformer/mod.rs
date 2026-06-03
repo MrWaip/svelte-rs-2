@@ -1,5 +1,6 @@
 mod assignments;
 mod async_check;
+mod binding_pattern;
 mod builders;
 mod derived;
 mod entry;

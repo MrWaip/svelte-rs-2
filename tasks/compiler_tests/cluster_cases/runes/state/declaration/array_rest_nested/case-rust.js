@@ -5,7 +5,7 @@ export default function App($$anchor) {
 		1,
 		2,
 		3
-	], $$array = $.derived(() => $.to_array(tmp)), a = $.proxy($.get($$array)[0]), $$array_1 = $.derived(() => $.to_array($.get($$array).slice(1), 2)), b = $.proxy($.get($$array_1)[0]), c = $.proxy($.get($$array_1)[1]);
+	], $$array = $.derived(() => $.to_array(tmp)), $$array_1 = $.derived(() => $.to_array($.get($$array).slice(1), 2)), a = $.proxy($.get($$array)[0]), b = $.proxy($.get($$array_1)[0]), c = $.proxy($.get($$array_1)[1]);
 	var button = root();
 	var text = $.child(button);
 	$.reset(button);

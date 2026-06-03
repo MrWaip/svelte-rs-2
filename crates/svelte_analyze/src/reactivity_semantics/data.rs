@@ -248,6 +248,10 @@ pub enum DeclaratorSemantics {
         leaves: SmallVec<[SymbolId; 4]>,
     },
 
+    RuneStateDestructure {
+        kind: StateKind,
+    },
+
     LetCarrier {
         carrier_symbol: SymbolId,
     },

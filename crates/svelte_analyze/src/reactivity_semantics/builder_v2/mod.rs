@@ -620,8 +620,18 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let init_proxyable =
             matches!(rune_kind, RuneKind::State) && state_initializer_is_proxyable(call);
 
+        let is_destructure = !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
+
         match rune_kind {
             RuneKind::State => {
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneStateDestructure {
+                            kind: StateKind::State,
+                        },
+                    );
+                }
                 let root_proxied = if matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
                 {
                     init_proxyable
@@ -647,6 +657,14 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::StateRaw => {
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneStateDestructure {
+                            kind: StateKind::StateRaw,
+                        },
+                    );
+                }
                 self.record_state_root_declaration(
                     &declarator.id,
                     root_node,

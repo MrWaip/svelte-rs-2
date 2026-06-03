@@ -1,3 +1,6 @@
 *.svelte linguist-detectable=false
 *.js linguist-detectable=false
 *.ts linguist-detectable=false
+
+case-svelte.* linguist-generated=true
+case-rust.*   linguist-generated=true
