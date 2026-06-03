@@ -24,6 +24,8 @@ Design PRDs (via `/design`) live in `docs/designs/`. Read only if scope overlaps
 
 When user ask something to do specific, don't fallback. If user ask use mcp for searching references use mcp and do not fallback to grep.
 
+Write Russian messages in plain Russian. Drop slang anglicisms ("зафейлилось", "смёржить") and half-transliterated calques ("эмит-форма", "обёртка-функция", "диспетч"). Keep an established technical term in its original English form (`emit shape`, `wrapper function`, `dispatch`) rather than translating it literally, but keep terms already naturalised in Russian ("диспетчер", "коммит", "трансформ") as they are.
+
 # Ubiquitous language
 
 `docs/context.md`
