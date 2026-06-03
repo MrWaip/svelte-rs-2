@@ -8,6 +8,8 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 17, () => items, $.index, ($$anchor, $$item) => {
+		let a = () => $.get($$item).p.a;
+		let b = () => $.get($$item).q.b;
 		var button = root_1();
 		var text = $.child(button);
 		$.reset(button);

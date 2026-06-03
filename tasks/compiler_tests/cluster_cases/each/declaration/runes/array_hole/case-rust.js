@@ -9,9 +9,9 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 17, () => items, $.index, ($$anchor, $$item) => {
-		var $$array = $.derived(() => $.to_array($.get($$item), 2));
+		var $$array = $.derived(() => $.to_array($.get($$item), 3));
 		let a = () => $.get($$array)[0];
-		let c = () => $.get($$array)[1];
+		let c = () => $.get($$array)[2];
 		var button = root_1();
 		var text = $.child(button);
 		$.reset(button);

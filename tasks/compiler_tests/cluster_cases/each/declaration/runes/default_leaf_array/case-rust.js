@@ -6,8 +6,8 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	$.each(node, 17, () => items, $.index, ($$anchor, $$item) => {
 		var $$array = $.derived(() => $.to_array($.get($$item), 2));
-		let a = () => $.get($$array)[0];
-		let b = () => $.get($$array)[1];
+		let a = $.derived_safe_equal(() => $.fallback($.get($$array)[0], 10));
+		let b = $.derived_safe_equal(() => $.fallback($.get($$array)[1], 20));
 		var button = root_1();
 		var text = $.child(button);
 		$.reset(button);

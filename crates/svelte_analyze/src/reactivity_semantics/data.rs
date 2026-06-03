@@ -252,6 +252,10 @@ pub enum DeclaratorSemantics {
         carrier_symbol: SymbolId,
     },
 
+    EachItem {
+        item_reactive: bool,
+    },
+
     ClassFieldState(ClassFieldStateSemantics),
 
     ClassFieldDerived(ClassFieldDerivedSemantics),

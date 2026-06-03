@@ -1,28 +1,18 @@
 use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{ArrayPattern, BindingPattern, Expression, ObjectPattern, Statement};
+use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
+    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::OxcNodeId;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
-
-fn array_element_name(pattern: &BindingPattern<'_>) -> Option<String> {
-    match pattern {
-        BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().to_string()),
-        BindingPattern::AssignmentPattern(assign) => match &assign.left {
-            BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().to_string()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
 
 const EACH_IS_CONTROLLED: u32 = 4;
 const SYNTHETIC_ITEM_NAME: &str = "$$item";
@@ -36,7 +26,6 @@ struct EachEmit {
     key_uses_index: bool,
     key_is_index: bool,
     has_fallback: bool,
-    item_reactive: bool,
     collection_source: EachCollectionSource,
     needs_async: bool,
     has_await: bool,
@@ -90,9 +79,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None
         };
 
+        let item_pattern_node = match &sem.item {
+            EachItemKind::Pattern(node) => Some(*node),
+            _ => None,
+        };
+
         let collection_fn = self.build_each_collection_fn(id, &plan)?;
         let key_fn = self.build_each_key_fn(id, &plan, context_pattern.as_ref())?;
-        let frag_fn = self.build_each_fragment_fn(ctx, id, &plan, context_pattern)?;
+        let frag_fn =
+            self.build_each_fragment_fn(ctx, id, &plan, context_pattern, item_pattern_node)?;
 
         if plan.needs_async {
             let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
@@ -233,7 +228,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_uses_index,
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
-            item_reactive: sem.each_flags.contains(EachFlags::ITEM_REACTIVE),
             collection_source: sem.collection.source.clone(),
             needs_async,
             has_await,
@@ -241,6 +235,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         })
     }
 
+    #[deprecated = "superseded by binding-pattern-routing"]
     fn take_each_context_pattern(
         &mut self,
         block_id: NodeId,
@@ -341,6 +336,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
         plan: &EachEmit,
         context_pattern: Option<BindingPattern<'a>>,
+        item_pattern_node: Option<OxcNodeId>,
     ) -> Result<Expression<'a>> {
         let body = match self.ctx.query.component.store.get(block_id) {
             svelte_ast::Node::EachBlock(block) => block.body,
@@ -364,8 +360,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 pattern,
                 BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
             )
+            && let Some(decl_node) = item_pattern_node
         {
-            let mut decls = self.build_each_destructure_decls(pattern, plan.item_reactive)?;
+            let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
+            let mut decls = self.emit_binding_pattern(decl_node, pattern_ref);
             decls.append(&mut frag_body);
             frag_body = decls;
         }
@@ -387,168 +385,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ),
         };
         Ok(arrow)
-    }
-
-    fn build_each_destructure_decls(
-        &mut self,
-        pattern: BindingPattern<'a>,
-        item_reactive: bool,
-    ) -> Result<Vec<Statement<'a>>> {
-        match pattern {
-            BindingPattern::ArrayPattern(arr) => {
-                Ok(self.build_each_array_destructure(arr.unbox(), item_reactive))
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                Ok(self.build_each_object_destructure(obj.unbox(), item_reactive))
-            }
-            _ => Ok(Vec::new()),
-        }
-    }
-
-    fn item_read_expr(&self, item_reactive: bool) -> Expression<'a> {
-        if item_reactive {
-            rune_get(&self.ctx.b, "$$item")
-        } else {
-            self.ctx.b.rid_expr("$$item")
-        }
-    }
-
-    fn build_each_array_destructure(
-        &mut self,
-        arr: ArrayPattern<'a>,
-        item_reactive: bool,
-    ) -> Vec<Statement<'a>> {
-        let has_rest = arr.rest.is_some();
-        let rest = arr.rest;
-        let elements: Vec<_> = arr.elements.into_iter().flatten().collect();
-        let count = elements.len();
-        let array_name = self.ctx.state.gen_ident("$$array");
-
-        let item_expr = self.item_read_expr(item_reactive);
-        let to_array = if has_rest {
-            self.ctx.b.call_expr("$.to_array", [Arg::Expr(item_expr)])
-        } else {
-            self.ctx
-                .b
-                .call_expr("$.to_array", [Arg::Expr(item_expr), Arg::Num(count as f64)])
-        };
-        let derived = self
-            .ctx
-            .b
-            .call_expr("$.derived", [Arg::Expr(self.ctx.b.thunk(to_array))]);
-
-        let mut decls = vec![self.ctx.b.var_stmt(&array_name, derived)];
-        for (i, elem) in elements.into_iter().enumerate() {
-            let Some(name) = array_element_name(&elem) else {
-                continue;
-            };
-            let get_array = rune_get(&self.ctx.b, &array_name);
-            let access = self
-                .ctx
-                .b
-                .computed_member_expr(get_array, self.ctx.b.num_expr(i as f64));
-            decls.push(self.ctx.b.let_init_stmt(&name, self.ctx.b.thunk(access)));
-        }
-        if let Some(rest) = rest
-            && let Some(rest_name) = rest
-                .argument
-                .get_binding_identifier()
-                .map(|id| id.name.as_str().to_string())
-        {
-            let get_array = rune_get(&self.ctx.b, &array_name);
-            let slice_callee = self.ctx.b.static_member_expr(get_array, "slice");
-            let slice_call = self
-                .ctx
-                .b
-                .call_expr_callee(slice_callee, [Arg::Num(count as f64)]);
-            decls.push(
-                self.ctx
-                    .b
-                    .let_init_stmt(&rest_name, self.ctx.b.thunk(slice_call)),
-            );
-        }
-        decls
-    }
-
-    fn build_each_object_destructure(
-        &mut self,
-        obj: ObjectPattern<'a>,
-        item_reactive: bool,
-    ) -> Vec<Statement<'a>> {
-        use oxc_ast::ast::PropertyKey;
-
-        let mut decls = Vec::new();
-        let mut excluded_keys: Vec<Expression<'a>> = Vec::new();
-        for prop in &obj.properties {
-            if !prop.computed {
-                match &prop.key {
-                    PropertyKey::StaticIdentifier(id) => {
-                        excluded_keys.push(self.ctx.b.str_expr(id.name.as_str()));
-                    }
-                    PropertyKey::StringLiteral(s) => {
-                        excluded_keys.push(self.ctx.b.str_expr(s.value.as_str()));
-                    }
-                    PropertyKey::NumericLiteral(n) => {
-                        excluded_keys.push(self.ctx.b.num_expr(n.value));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        for prop in obj.properties {
-            let key_name = match &prop.key {
-                PropertyKey::StaticIdentifier(id) => Some(id.name.as_str().to_string()),
-                _ => None,
-            };
-            match prop.value {
-                BindingPattern::BindingIdentifier(id) => {
-                    let name = id.name.as_str().to_string();
-                    let prop_key = key_name.as_deref().unwrap_or(&name);
-                    let item_expr = self.item_read_expr(item_reactive);
-                    let member = self.ctx.b.static_member_expr(item_expr, prop_key);
-                    decls.push(self.ctx.b.let_init_stmt(&name, self.ctx.b.thunk(member)));
-                }
-                BindingPattern::AssignmentPattern(assign) => {
-                    let assign = assign.unbox();
-                    let BindingPattern::BindingIdentifier(id) = assign.left else {
-                        continue;
-                    };
-                    let name = id.name.as_str().to_string();
-                    let prop_key = key_name.as_deref().unwrap_or(&name);
-                    let item_expr = self.item_read_expr(item_reactive);
-                    let member = self.ctx.b.static_member_expr(item_expr, prop_key);
-                    let fallback = self
-                        .ctx
-                        .b
-                        .call_expr("$.fallback", [Arg::Expr(member), Arg::Expr(assign.right)]);
-                    let derived = self.ctx.b.call_expr(
-                        "$.derived_safe_equal",
-                        [Arg::Expr(self.ctx.b.thunk(fallback))],
-                    );
-                    decls.push(self.ctx.b.let_init_stmt(&name, derived));
-                }
-                _ => continue,
-            }
-        }
-        if let Some(rest) = obj.rest
-            && let Some(rest_name) = rest
-                .argument
-                .get_binding_identifier()
-                .map(|id| id.name.as_str().to_string())
-        {
-            let item_expr = self.item_read_expr(item_reactive);
-            let excluded = self.ctx.b.array_expr(excluded_keys);
-            let exclude_call = self.ctx.b.call_expr(
-                "$.exclude_from_object",
-                [Arg::Expr(item_expr), Arg::Expr(excluded)],
-            );
-            decls.push(
-                self.ctx
-                    .b
-                    .let_init_stmt(&rest_name, self.ctx.b.thunk(exclude_call)),
-            );
-        }
-        decls
     }
 
     fn build_each_fallback_fn(

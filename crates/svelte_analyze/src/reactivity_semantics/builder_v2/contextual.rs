@@ -796,6 +796,7 @@ impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
 
     fn visit_binding_rest_element(&mut self, it: &BindingRestElement<'a>) {
         let Some(ident) = it.argument.get_binding_identifier() else {
+            self.visit_binding_pattern(&it.argument);
             return;
         };
         let Some(sym_id) = ident.symbol_id.get() else {

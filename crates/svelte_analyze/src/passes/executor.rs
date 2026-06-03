@@ -1,6 +1,7 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
+use crate::reactivity_semantics::data::DeclaratorSemantics;
 use crate::reactivity_semantics::{ReactivityInputs, build_v2};
 use crate::{attribute_semantics, block_semantics, expression_semantics};
 use crate::types::markers::ScopingBuilt;
@@ -230,6 +231,14 @@ pub(crate) fn execute_pass<'a>(
                 data.script.dev,
                 component.node_count(),
             );
+            for (node, item_reactive) in
+                data.block_semantics_store.each_item_pattern_declarators()
+            {
+                data.reactivity.record_declarator_semantics(
+                    node,
+                    DeclaratorSemantics::EachItem { item_reactive },
+                );
+            }
         }
         super::PassKey::BuildFragmentTopology => {
             fragment_topology::build(component, data);

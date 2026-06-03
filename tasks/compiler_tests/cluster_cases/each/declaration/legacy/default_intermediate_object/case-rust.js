@@ -6,6 +6,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, () => items, $.index, ($$anchor, $$item) => {
+		let a = $.derived_safe_equal(() => $.fallback($.get($$item).p, () => ({}), true).a);
 		var button = root_1();
 		var text = $.child(button, true);
 		$.reset(button);

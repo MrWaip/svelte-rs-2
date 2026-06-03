@@ -15,6 +15,7 @@ use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics};
 use crate::scope::SymbolId;
 use rustc_hash::FxHashMap;
 use svelte_ast::NodeId;
+use svelte_component_semantics::OxcNodeId;
 
 #[derive(Debug, Default, Clone)]
 pub struct BlockSemanticsStore {
@@ -66,6 +67,21 @@ impl BlockSemanticsStore {
 
     pub(crate) fn any_legacy_each_forces_runtime_context(&self) -> bool {
         self.legacy_each_forces_runtime_context
+    }
+
+    pub(crate) fn each_item_pattern_declarators(&self) -> Vec<(OxcNodeId, bool)> {
+        self.entries
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockSemantics::Each(sem) => match &sem.item {
+                    EachItemKind::Pattern(node) => {
+                        Some((*node, sem.each_flags.contains(EachFlags::ITEM_REACTIVE)))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
     }
 
     pub(crate) fn set_snippet_hoistable(&mut self, id: NodeId, value: bool) {
