@@ -133,6 +133,22 @@ impl<'a> Builder<'a> {
         self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
     }
 
+    pub fn seed_arrow_scope(&self, expr: &Expression<'a>, scope: Option<ScopeId>) {
+        if let Some(scope_id) = scope
+            && let Expression::ArrowFunctionExpression(arrow) = expr
+        {
+            arrow.scope_id.set(Some(scope_id));
+        }
+    }
+
+    pub fn seed_block_scope(&self, stmt: &Statement<'a>, scope: Option<ScopeId>) {
+        if let Some(scope_id) = scope
+            && let Statement::BlockStatement(block) = stmt
+        {
+            block.scope_id.set(Some(scope_id));
+        }
+    }
+
     pub fn thunk_in_scope(&self, expr: Expression<'a>, scope_id: ScopeId) -> Expression<'a> {
         let arrow_expr = self.arrow_expr(self.no_params(), [self.expr_stmt(expr)]);
         if let Expression::ArrowFunctionExpression(arrow) = &arrow_expr {

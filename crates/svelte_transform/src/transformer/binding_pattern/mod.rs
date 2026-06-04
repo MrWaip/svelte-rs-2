@@ -1,4 +1,6 @@
 mod derived;
+mod legacy_state;
+mod single_identifier;
 mod state;
 
 use std::collections::HashMap;
@@ -7,10 +9,11 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    Expression, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
-    VariableDeclarator,
+    Declaration, ExportNamedDeclaration, Expression, PropertyKey, Statement, VariableDeclaration,
+    VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_span::{SPAN, Span};
+use oxc_traverse::TraverseCtx;
 
 use svelte_analyze::{DeclaratorSemantics, DerivedEmit};
 use svelte_ast_builder::Arg;
@@ -20,23 +23,62 @@ use svelte_emit_builders::binding_pattern as bp;
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_binding_declarations(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
+    pub(crate) fn rewrite_binding_declarations(
+        &mut self,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.gen_arrow_scope = Some(ctx.current_scope_id());
         let mut i = 0;
         while i < stmts.len() {
-            if !matches!(&stmts[i], Statement::VariableDeclaration(_)) {
-                i += 1;
-                continue;
-            }
-            let Statement::VariableDeclaration(decl) = stmts.remove(i) else {
-                unreachable!()
+            let produced = match &stmts[i] {
+                Statement::VariableDeclaration(_) => {
+                    let Statement::VariableDeclaration(decl) = stmts.remove(i) else {
+                        unreachable!()
+                    };
+                    self.rewrite_declaration(decl.unbox())
+                }
+                Statement::ExportNamedDeclaration(export)
+                    if matches!(
+                        &export.declaration,
+                        Some(Declaration::VariableDeclaration(_))
+                    ) =>
+                {
+                    let Statement::ExportNamedDeclaration(export) = stmts.remove(i) else {
+                        unreachable!()
+                    };
+                    self.rewrite_exported_declaration(export.unbox())
+                }
+                _ => {
+                    i += 1;
+                    continue;
+                }
             };
-            let produced = self.rewrite_declaration(decl.unbox());
             let n = produced.len();
             for (k, stmt) in produced.into_iter().enumerate() {
                 stmts.insert(i + k, stmt);
             }
             i += n;
         }
+        self.gen_arrow_scope = None;
+    }
+
+    fn rewrite_exported_declaration(
+        &mut self,
+        mut export: ExportNamedDeclaration<'a>,
+    ) -> Vec<Statement<'a>> {
+        let Some(Declaration::VariableDeclaration(vd)) = export.declaration.take() else {
+            unreachable!()
+        };
+        let mut produced = self.rewrite_declaration(vd.unbox());
+        if produced.len() == 1 && matches!(produced[0], Statement::VariableDeclaration(_)) {
+            let Some(Statement::VariableDeclaration(new_vd)) = produced.pop() else {
+                unreachable!()
+            };
+            export.declaration = Some(Declaration::VariableDeclaration(new_vd));
+            return vec![Statement::ExportNamedDeclaration(self.b.alloc(export))];
+        }
+        produced
     }
 
     fn rewrite_declaration(&mut self, decl: VariableDeclaration<'a>) -> Vec<Statement<'a>> {
@@ -46,7 +88,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut pending: OxcVec<'a, VariableDeclarator<'a>> = self.b.ast.vec();
         let mut out: Vec<Statement<'a>> = Vec::new();
 
-        for declarator in decl.declarations {
+        for mut declarator in decl.declarations {
             let semantics = self
                 .analysis
                 .map(|a| a.declarator_semantics(declarator.node_id()))
@@ -68,12 +110,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     out.push(self.rewrite_async_derived(decl_kind, span.start, declarator));
                 }
 
+                DeclaratorSemantics::LegacyState => {
+                    self.rewrite_legacy_state(decl_kind, declarator, &mut pending)
+                }
+
                 DeclaratorSemantics::None
                 | DeclaratorSemantics::PropsIdentifier { .. }
                 | DeclaratorSemantics::PropsObject { .. }
-                | DeclaratorSemantics::LegacyState { .. }
                 | DeclaratorSemantics::ClassFieldState(_)
-                | DeclaratorSemantics::ClassFieldDerived(_) => pending.push(declarator),
+                | DeclaratorSemantics::ClassFieldDerived(_) => {
+                    self.rewrite_variable_rune_init(&mut declarator);
+                    pending.push(declarator);
+                }
 
                 DeclaratorSemantics::EachItem { .. }
                 | DeclaratorSemantics::AwaitValue
@@ -151,7 +199,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
             }
             if let Some(default) = step.default {
-                expr = bp::fallback(self.b, expr, default);
+                expr = bp::fallback(self.b, expr, default, self.gen_arrow_scope);
             }
         }
         if is_rest {
@@ -176,7 +224,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         let name_owned = self.ident_gen.generate("$$array");
         let name: &'a str = self.b.alloc_str(&name_owned);
-        let derived = bp::to_array_derived(self.b, source, count);
+        let derived = bp::to_array_derived(self.b, source, count, self.gen_arrow_scope);
         let derived = match dev_label.filter(|_| self.dev) {
             Some(label) => self
                 .b

@@ -54,7 +54,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let derived_arg = if matches!(derived_kind, DerivedKind::DerivedBy) {
                 arg
             } else {
-                self.b.thunk(arg)
+                let thunk = self.b.thunk(arg);
+                self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
+                thunk
             };
             call.arguments.push(Argument::from(derived_arg));
             let derived_call = Expression::CallExpression(call);
@@ -114,7 +116,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         .assign_stmt(AssignLeft::Ident(name.to_string()), value),
                 );
             }
-            self.b.block_stmt(block)
+            let block_stmt = self.b.block_stmt(block);
+            self.b.seed_block_scope(&block_stmt, self.gen_arrow_scope);
+            block_stmt
         } else {
             let mut decls: OxcVec<'a, VariableDeclarator<'a>> = self.b.ast.vec();
             decls.push(self.b.ast.variable_declarator(
@@ -148,7 +152,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Vec<(SymbolId, Expression<'a>)> {
         let mut leaves = Vec::new();
         walk_bindings(pattern, |v| {
-            let root = root_template.clone_in(self.b.ast.allocator);
+            let root = root_template.clone_in_with_semantic_ids(self.b.ast.allocator);
             let access = self.unfold_carrier_access(
                 root,
                 v.path,
@@ -178,13 +182,22 @@ impl<'a> ComponentTransformer<'_, 'a> {
         mem::swap(&mut call.arguments[0], &mut dummy);
         let awaited = dummy.into_expression();
 
+        let track_inner_await = self.dev
+            && !self
+                .ignore_query
+                .is_ignored_at_span(span_start, "await_reactivity_loss");
         let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
             let source_expr = await_expr.unbox().argument;
             let await_inner = self.b.await_expr(source_expr);
-            self.b.async_thunk(await_inner)
+            if track_inner_await {
+                self.b.async_arrow_expr_body(await_inner)
+            } else {
+                self.b.async_thunk(await_inner)
+            }
         } else {
             self.b.async_arrow_expr_body(awaited)
         };
+        self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
 
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(thunk)];
         if self.dev {

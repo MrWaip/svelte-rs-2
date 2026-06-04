@@ -2,7 +2,7 @@ import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let [a = 10, b = 20] = [1];
+	let tmp = [1], $$array = $.derived(() => $.to_array(tmp, 2)), a = $.mutable_source($.fallback($.get($$array)[0], 10)), b = $.mutable_source($.fallback($.get($$array)[1], 20));
 	function bump() {
 		$.set(a, $.get(a));
 		$.set(b, $.get(b));

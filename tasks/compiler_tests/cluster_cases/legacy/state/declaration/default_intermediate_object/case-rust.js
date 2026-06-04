@@ -2,7 +2,7 @@ import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let { p: { a } = {} } = {};
+	let tmp = {}, a = $.mutable_source($.fallback(tmp.p, () => ({}), true).a);
 	function bump() {
 		$.set(a, $.get(a));
 	}

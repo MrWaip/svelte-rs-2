@@ -5,7 +5,7 @@ export default function App($$anchor) {
 	let tmp = {
 		p: [1, 2],
 		q: [3, 4]
-	}, $$array = $.derived(() => $.to_array(tmp.p, 2)), a = $.mutable_source($.get($$array)[0]), b = $.mutable_source($.get($$array)[1]), $$array_1 = $.derived(() => $.to_array(tmp.q, 2)), c = $.mutable_source($.get($$array_1)[0]), d = $.mutable_source($.get($$array_1)[1]);
+	}, $$array = $.derived(() => $.to_array(tmp.p, 2)), $$array_1 = $.derived(() => $.to_array(tmp.q, 2)), a = $.mutable_source($.get($$array)[0]), b = $.mutable_source($.get($$array)[1]), c = $.mutable_source($.get($$array_1)[0]), d = $.mutable_source($.get($$array_1)[1]);
 	function bump() {
 		$.set(a, $.get(a));
 		$.set(b, $.get(b));

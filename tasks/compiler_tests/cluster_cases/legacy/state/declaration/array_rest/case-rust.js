@@ -2,11 +2,11 @@ import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let [a, ...rest] = [
+	let tmp = [
 		1,
 		2,
 		3
-	];
+	], $$array = $.derived(() => $.to_array(tmp)), a = $.mutable_source($.get($$array)[0]), rest = $.get($$array).slice(1);
 	function bump() {
 		$.set(a, $.get(a));
 	}

@@ -8,8 +8,6 @@ use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn process_statement_block(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
-        self.rewrite_binding_declarations(stmts);
-
         self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
@@ -17,8 +15,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.strip_eager_state_declarations(stmts);
 
         self.replace_props_declaration(stmts);
-
-        self.expand_legacy_state_destructuring(stmts);
     }
 
     pub(crate) fn split_top_level_multi_declarators(

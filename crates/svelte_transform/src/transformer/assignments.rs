@@ -728,6 +728,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if self.is_in_ignored_stmt("await_reactivity_loss") {
                 return;
             }
+            if is_internal_async_await(&await_expr.argument) {
+                return;
+            }
             let arg = self.b.move_expr(&mut await_expr.argument);
             let track_call = self
                 .b
@@ -738,4 +741,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .call_expr_callee(awaited, iter::empty::<Arg<'a, '_>>());
         }
     }
+}
+
+fn is_internal_async_await(arg: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = arg else {
+        return false;
+    };
+    let Expression::Identifier(id) = &call.callee else {
+        return false;
+    };
+    matches!(id.name.as_str(), "$.async_derived" | "$.save")
 }

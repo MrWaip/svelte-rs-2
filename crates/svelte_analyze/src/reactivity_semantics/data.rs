@@ -236,9 +236,7 @@ pub enum DeclaratorSemantics {
         kind: PropsDeclKind,
     },
 
-    LegacyState {
-        leaves: SmallVec<[SymbolId; 4]>,
-    },
+    LegacyState,
 
     RuneState {
         kind: StateKind,

@@ -2,11 +2,11 @@ import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
-	let { a, ...rest } = {
+	let tmp = {
 		a: 1,
 		b: 2,
 		c: 3
-	};
+	}, a = $.mutable_source(tmp.a), rest = $.exclude_from_object(tmp, ["a"]);
 	function bump() {
 		$.set(a, $.get(a));
 	}

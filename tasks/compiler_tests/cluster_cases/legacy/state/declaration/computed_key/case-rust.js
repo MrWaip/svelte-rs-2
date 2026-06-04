@@ -3,7 +3,7 @@ import * as $ from "svelte/internal/client";
 var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	const k = "z";
-	let { [k]: v } = { z: 1 };
+	let tmp = { z: 1 }, v = $.mutable_source(tmp[k]);
 	function bump() {
 		$.set(v, $.get(v));
 	}

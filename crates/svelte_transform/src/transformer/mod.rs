@@ -154,6 +154,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if ctx.current_scope_id() == ctx.scoping().root_scope_id() {
             self.split_top_level_multi_declarators(stmts);
         }
+        self.rewrite_binding_declarations(stmts, ctx);
     }
 
     fn exit_statements(
@@ -228,7 +229,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
         self.capture_variable_arrow_name(node);
-        self.rewrite_variable_rune_init(node);
     }
 
     fn enter_for_of_statement(

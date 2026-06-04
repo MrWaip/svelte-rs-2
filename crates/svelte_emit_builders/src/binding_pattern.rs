@@ -1,6 +1,7 @@
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, PropertyKey};
 use oxc_span::GetSpan;
+use oxc_syntax::scope::ScopeId;
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, Step};
 
@@ -35,12 +36,15 @@ pub fn to_array_derived<'a>(
     b: &Builder<'a>,
     source: Expression<'a>,
     count: Option<u32>,
+    scope: Option<ScopeId>,
 ) -> Expression<'a> {
     let to_array = match count {
         Some(count) => b.call_expr("$.to_array", [Arg::Expr(source), Arg::Num(count as f64)]),
         None => b.call_expr("$.to_array", [Arg::Expr(source)]),
     };
-    b.call_expr("$.derived", [Arg::Expr(b.thunk(to_array))])
+    let thunk = b.thunk(to_array);
+    b.seed_arrow_scope(&thunk, scope);
+    b.call_expr("$.derived", [Arg::Expr(thunk)])
 }
 
 pub fn exclude_from_object<'a>(
@@ -71,12 +75,14 @@ pub fn fallback<'a>(
     b: &Builder<'a>,
     expr: Expression<'a>,
     default: &Expression<'_>,
+    scope: Option<ScopeId>,
 ) -> Expression<'a> {
     let default = default.clone_in(b.ast.allocator);
     if is_simple_expression(&default) {
         b.call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(default)])
     } else {
         let thunk = b.thunk(default);
+        b.seed_arrow_scope(&thunk, scope);
         b.call_expr(
             "$.fallback",
             [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],

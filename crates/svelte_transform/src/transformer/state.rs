@@ -58,7 +58,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::EachItem { .. }
             | DeclaratorSemantics::AwaitValue => None,
             DeclaratorSemantics::PropsIdentifier { .. } | DeclaratorSemantics::PropsObject { .. } => None,
-            DeclaratorSemantics::LegacyState { .. }
+            DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. } => None,
         }
@@ -96,6 +96,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 let thunk = self
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
+                self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
                 self.b.call_expr("$.derived", [Arg::Expr(thunk)])
             }
             _ => value,

@@ -3,169 +3,15 @@ use std::{iter, mem};
 use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, BindingPattern, Expression, PropertyKey,
-    Statement,
+    Argument, AssignmentOperator, AssignmentTarget, Expression, Statement,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::DeclaratorSemantics;
 use svelte_ast_builder::Arg;
-use svelte_component_semantics::{SymbolId, WriteAccess, WriteStep, WriteTarget};
+use svelte_component_semantics::{WriteAccess, WriteStep, WriteTarget};
 
 use super::async_check::is_expression_async;
 use super::model::ComponentTransformer;
-
-impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn expand_legacy_state_destructuring(
-        &mut self,
-        stmts: &mut OxcVec<'a, Statement<'a>>,
-    ) {
-        if self.runes {
-            return;
-        }
-        let Some(analysis) = self.analysis else {
-            return;
-        };
-        let mut i = 0;
-        while i < stmts.len() {
-            let Statement::VariableDeclaration(decl) = &stmts[i] else {
-                i += 1;
-                continue;
-            };
-            if decl.declarations.len() != 1 {
-                i += 1;
-                continue;
-            }
-            let declarator = &decl.declarations[0];
-            let DeclaratorSemantics::LegacyState { leaves } =
-                analysis.declarator_semantics(declarator.node_id())
-            else {
-                i += 1;
-                continue;
-            };
-            let Some(_) = declarator.init.as_ref() else {
-                i += 1;
-                continue;
-            };
-
-            if !is_supported_pattern(&declarator.id) {
-                i += 1;
-                continue;
-            }
-            let kind = decl.kind;
-
-            let stmt = stmts.remove(i);
-            let Statement::VariableDeclaration(decl_box) = stmt else {
-                unreachable!();
-            };
-            let mut decl = decl_box.unbox();
-            let mut declarator = decl.declarations.remove(0);
-            let init = declarator
-                .init
-                .take()
-                .expect("predicate matched only declarators with an init");
-
-            let tmp_name_owned = self.gen_unique_name("tmp");
-            let tmp_name: &'a str = self.b.alloc_str(&tmp_name_owned);
-            let mut declarators_out: Vec<(&'a str, Expression<'a>)> = Vec::new();
-            declarators_out.push((tmp_name, init));
-
-            let root_access = self.b.rid_expr(tmp_name);
-            self.emit_legacy_destructure_decls(
-                &declarator.id,
-                root_access,
-                &leaves,
-                &mut declarators_out,
-            );
-
-            let replacement = self.b.var_decl_multi_stmt(declarators_out, kind);
-            stmts.insert(i, replacement);
-            self.ident_counter += 1;
-            i += 1;
-        }
-    }
-
-    fn emit_legacy_destructure_decls(
-        &mut self,
-        pat: &BindingPattern<'a>,
-        access: Expression<'a>,
-        leaves: &[SymbolId],
-        out: &mut Vec<(&'a str, Expression<'a>)>,
-    ) {
-        match pat {
-            BindingPattern::BindingIdentifier(id) => {
-                let Some(sym) = id.symbol_id.get() else {
-                    return;
-                };
-                let name_alloc = self.b.alloc_str(id.name.as_str());
-                let init = if leaves.contains(&sym) {
-                    self.b.call_expr("$.mutable_source", [Arg::Expr(access)])
-                } else {
-                    access
-                };
-                out.push((name_alloc, init));
-            }
-            BindingPattern::AssignmentPattern(_) => {}
-            BindingPattern::ObjectPattern(obj) => {
-                let allocator = self.b.ast.allocator;
-                for prop in obj.properties.iter() {
-                    let Some(key_name) = property_key_static_name(&prop.key) else {
-                        return;
-                    };
-                    let key_alloc = self.b.alloc_str(key_name);
-                    let parent = access.clone_in(allocator);
-                    let child_access = self.b.static_member_expr(parent, key_alloc);
-                    self.emit_legacy_destructure_decls(&prop.value, child_access, leaves, out);
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                let var_name_owned = self.ident_gen.generate("$$array");
-                let var_name: &'a str = self.b.alloc_str(&var_name_owned);
-                let len = arr.elements.len() as f64;
-                let to_array =
-                    self.b
-                        .call_expr("$.to_array", [Arg::Expr(access), Arg::Num(len)]);
-                let thunk = self.b.thunk(to_array);
-                let derived = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                out.push((var_name, derived));
-                for (idx, elem) in arr.elements.iter().enumerate() {
-                    let Some(elem) = elem else { continue };
-                    let get_call = self.b.call_expr("$.get", [Arg::Ident(var_name)]);
-                    let elem_access = self
-                        .b
-                        .computed_member_expr(get_call, self.b.num_expr(idx as f64));
-                    self.emit_legacy_destructure_decls(elem, elem_access, leaves, out);
-                }
-            }
-        }
-    }
-}
-
-fn is_supported_pattern<'a>(pat: &BindingPattern<'a>) -> bool {
-    match pat {
-        BindingPattern::BindingIdentifier(id) => id.symbol_id.get().is_some(),
-        BindingPattern::AssignmentPattern(_) => false,
-        BindingPattern::ObjectPattern(obj) => {
-            if obj.rest.is_some() {
-                return false;
-            }
-            obj.properties.iter().all(|p| {
-                !p.computed
-                    && property_key_static_name(&p.key).is_some()
-                    && is_supported_pattern(&p.value)
-            })
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            if arr.rest.is_some() {
-                return false;
-            }
-            arr.elements.iter().all(|e| match e {
-                Some(elem) => is_supported_pattern(elem),
-                None => true,
-            })
-        }
-    }
-}
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_destructure_assignment_exit(
@@ -513,14 +359,6 @@ fn copy_root_ref_expr<'x, 'y>(cloned: &mut Expression<'x>, orig: &Expression<'y>
             Expression::ComputedMemberExpression(o),
         ) => copy_root_ref_expr(&mut c.object, &o.object),
         _ => {}
-    }
-}
-
-fn property_key_static_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
-    match key {
-        PropertyKey::StaticIdentifier(id) => Some(id.name.as_str()),
-        PropertyKey::StringLiteral(lit) => Some(lit.value.as_str()),
-        _ => None,
     }
 }
 

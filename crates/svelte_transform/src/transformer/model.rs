@@ -1,5 +1,6 @@
 use oxc_ast::ast::Expression;
 use oxc_semantic::SymbolId;
+use oxc_syntax::scope::ScopeId;
 
 use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -107,6 +108,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) template_owner_node: Option<SvelteNodeId>,
 
     pub(crate) in_bind_setter_traverse: bool,
+
+    pub(crate) gen_arrow_scope: Option<ScopeId>,
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {

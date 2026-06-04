@@ -31,7 +31,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | DeclaratorSemantics::PropsObject { .. }
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. }
-            | DeclaratorSemantics::LegacyState { .. }
+            | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::ClassFieldState(_)
             | DeclaratorSemantics::ClassFieldDerived(_) => {
                 unreachable!("script-stage declarator kind reached the codegen unfold door")
@@ -84,7 +84,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 if let Some(default) = step.default {
-                    expr = bp::fallback(&self.ctx.b, expr, default);
+                    expr = bp::fallback(&self.ctx.b, expr, default, None);
                 }
             }
 
@@ -161,7 +161,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return name.clone();
         }
         let name = self.ctx.state.gen_ident("$$array");
-        let derived = bp::to_array_derived(&self.ctx.b, array_expr, count);
+        let derived = bp::to_array_derived(&self.ctx.b, array_expr, count, None);
         carrier_stmts.push(self.ctx.b.var_stmt(&name, derived));
         carriers.insert(prefix.to_string(), name.clone());
         name

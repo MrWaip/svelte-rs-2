@@ -837,12 +837,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             promoted_leaves.push(sym);
         }
         if is_destructured && !promoted_leaves.is_empty() {
-            self.data.reactivity.record_declarator_semantics(
-                declarator.node_id(),
-                DeclaratorSemantics::LegacyState {
-                    leaves: promoted_leaves,
-                },
-            );
+            self.data
+                .reactivity
+                .record_declarator_semantics(declarator.node_id(), DeclaratorSemantics::LegacyState);
         }
     }
 
@@ -906,10 +903,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 promoted.push(sym);
             }
             if !promoted.is_empty() {
-                self.data.reactivity.record_declarator_semantics(
-                    decl_node_id,
-                    DeclaratorSemantics::LegacyState { leaves: promoted },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(decl_node_id, DeclaratorSemantics::LegacyState);
             }
         }
     }
