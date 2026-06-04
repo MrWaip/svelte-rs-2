@@ -7,14 +7,9 @@ use super::inspect::{is_inspect_call, is_inspect_trace_call};
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn process_statement_block(
-        &mut self,
-        stmts: &mut OxcVec<'a, Statement<'a>>,
-        is_root: bool,
-    ) {
-        if is_root {
-            self.split_top_level_multi_declarators(stmts);
-        }
+    pub(crate) fn process_statement_block(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
+        self.rewrite_binding_declarations(stmts);
+
         self.process_legacy_export_props(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
@@ -22,13 +17,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.strip_eager_state_declarations(stmts);
 
         self.replace_props_declaration(stmts);
-        self.process_derived_destructuring(stmts);
-        self.expand_state_destructuring(stmts);
 
         self.expand_legacy_state_destructuring(stmts);
     }
 
-    fn split_top_level_multi_declarators(
+    pub(crate) fn split_top_level_multi_declarators(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
     ) {

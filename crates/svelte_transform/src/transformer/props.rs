@@ -65,7 +65,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     return None;
                 };
                 let arr_expr = self.b.array_from_args(
-                    base_rest_excluded(prop.lowering_mode)
+                    base_rest_excluded(prop.emit_mode)
                         .into_iter()
                         .map(Arg::Str)
                         .collect::<Vec<_>>(),
@@ -264,7 +264,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         leaves: &[SymbolId],
     ) -> Option<PropEmitMode> {
         let sym = *leaves.first()?;
-        let BindingSemantics::Prop(PropBindingSemantics { lowering_mode, .. }) =
+        let BindingSemantics::Prop(PropBindingSemantics { emit_mode: lowering_mode, .. }) =
             analysis.binding_semantics(sym)
         else {
             return None;

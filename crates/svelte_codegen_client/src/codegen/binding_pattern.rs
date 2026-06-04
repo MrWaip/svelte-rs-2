@@ -29,8 +29,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             DeclaratorSemantics::None
             | DeclaratorSemantics::PropsIdentifier { .. }
             | DeclaratorSemantics::PropsObject { .. }
-            | DeclaratorSemantics::RuneStateDestructure { .. }
-            | DeclaratorSemantics::LegacyStateDestructure { .. }
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::LegacyState { .. }
             | DeclaratorSemantics::ClassFieldState(_)
             | DeclaratorSemantics::ClassFieldDerived(_) => {
                 unreachable!("script-stage declarator kind reached the codegen unfold door")

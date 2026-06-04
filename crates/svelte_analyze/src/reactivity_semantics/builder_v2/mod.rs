@@ -627,7 +627,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 if is_destructure {
                     self.data.reactivity.record_declarator_semantics(
                         root_node,
-                        DeclaratorSemantics::RuneStateDestructure {
+                        DeclaratorSemantics::RuneState {
                             kind: StateKind::State,
                         },
                     );
@@ -660,7 +660,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 if is_destructure {
                     self.data.reactivity.record_declarator_semantics(
                         root_node,
-                        DeclaratorSemantics::RuneStateDestructure {
+                        DeclaratorSemantics::RuneState {
                             kind: StateKind::StateRaw,
                         },
                     );
@@ -703,12 +703,21 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::Derived => {
-                let lowering = self.derived_lowering(&declarator.id, call, rune_kind);
+                let emit = class_field_derived_emit(call, rune_kind);
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneDerived {
+                            kind: DerivedKind::Derived,
+                            emit,
+                        },
+                    );
+                }
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
-                        lowering,
+                        emit,
 
                         reactive: true,
                     },
@@ -716,12 +725,21 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
             }
             RuneKind::DerivedBy => {
-                let lowering = self.derived_lowering(&declarator.id, call, rune_kind);
+                let emit = class_field_derived_emit(call, rune_kind);
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneDerived {
+                            kind: DerivedKind::DerivedBy,
+                            emit,
+                        },
+                    );
+                }
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
-                        lowering,
+                        emit,
                         reactive: true,
                     },
                 );
@@ -821,7 +839,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         if is_destructured && !promoted_leaves.is_empty() {
             self.data.reactivity.record_declarator_semantics(
                 declarator.node_id(),
-                DeclaratorSemantics::LegacyStateDestructure {
+                DeclaratorSemantics::LegacyState {
                     leaves: promoted_leaves,
                 },
             );
@@ -890,7 +908,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             if !promoted.is_empty() {
                 self.data.reactivity.record_declarator_semantics(
                     decl_node_id,
-                    DeclaratorSemantics::LegacyStateDestructure { leaves: promoted },
+                    DeclaratorSemantics::LegacyState { leaves: promoted },
                 );
             }
         }
@@ -1153,7 +1171,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.data.reactivity.record_prop_binding(
                     sym,
                     PropBindingSemantics {
-                        lowering_mode: self.prop_lowering_mode,
+                        emit_mode: self.prop_lowering_mode,
                         kind: PropBindingKind::Rest,
                     },
                 );
@@ -1223,7 +1241,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.data.reactivity.record_prop_binding(
                     sym,
                     PropBindingSemantics {
-                        lowering_mode: self.prop_lowering_mode,
+                        emit_mode: self.prop_lowering_mode,
                         kind,
                     },
                 );
@@ -1264,7 +1282,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.data.reactivity.record_prop_binding(
             sym,
             PropBindingSemantics {
-                lowering_mode: self.prop_lowering_mode,
+                emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Source {
                     bindable,
                     updated: self.data.scoping.is_mutated(sym)
@@ -1285,7 +1303,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.data.reactivity.record_prop_binding(
             sym,
             PropBindingSemantics {
-                lowering_mode: self.prop_lowering_mode,
+                emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Rest,
             },
         );
@@ -1500,13 +1518,13 @@ fn class_field_rune_semantics(
         RuneKind::Derived => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::Derived,
-                lowering: class_field_derived_emit(call, RuneKind::Derived),
+                emit: class_field_derived_emit(call, RuneKind::Derived),
             },
         )),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::DerivedBy,
-                lowering: class_field_derived_emit(call, RuneKind::DerivedBy),
+                emit: class_field_derived_emit(call, RuneKind::DerivedBy),
             },
         )),
         _ => None,
@@ -1784,56 +1802,6 @@ fn class_field_derived_emit(
         DerivedEmit::Async
     } else {
         DerivedEmit::Sync
-    }
-}
-
-impl<'a> ScriptSemanticCollector<'_, 'a> {
-    fn derived_lowering(
-        &self,
-        pattern: &BindingPattern<'_>,
-        call: &CallExpression<'_>,
-        rune_kind: RuneKind,
-    ) -> DerivedEmit {
-        let source = call.arguments.first().and_then(|arg| arg.as_expression());
-        let inner = source.map(|e| e.get_inner_expression());
-        let source_is_await =
-            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::AwaitExpression(_)));
-        let source_is_identifier =
-            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::Identifier(_)));
-
-        let destructured = !matches!(pattern, BindingPattern::BindingIdentifier(_));
-        match (destructured, source_is_await, source_is_identifier) {
-            (false, true, _) => DerivedEmit::Async,
-            (false, false, _) => DerivedEmit::Sync,
-            (true, true, _) => DerivedEmit::DestructuredBoxedAsync,
-            (true, false, true) => {
-                if self.source_resolves_to_whole_props(source) {
-                    DerivedEmit::DestructuredInlinePropsSource
-                } else {
-                    DerivedEmit::DestructuredInlineSource
-                }
-            }
-            (true, false, false) => DerivedEmit::DestructuredBoxedSync,
-        }
-    }
-
-    fn source_resolves_to_whole_props(&self, source: Option<&Expression<'_>>) -> bool {
-        let Some(Expression::Identifier(id)) = source.map(|e| e.get_inner_expression()) else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
-        };
-        let Some(sym) = self.data.scoping.get_reference(ref_id).symbol_id() else {
-            return false;
-        };
-        matches!(
-            self.data.reactivity.binding_facts(sym),
-            Some(BindingFacts::Prop(PropBindingSemantics {
-                kind: PropBindingKind::Rest,
-                ..
-            }))
-        )
     }
 }
 

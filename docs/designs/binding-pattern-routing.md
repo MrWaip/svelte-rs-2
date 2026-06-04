@@ -75,22 +75,42 @@ The payload form changes, not the set of points:
 Consumer machinery (not analysis API):
 
 - **Two entry points (doors), one per stage** — the sole unfold entry in its crate:
-  - transit (`svelte_transform`): public `rewrite_binding_pattern(declarator)`;
+  - transit (`svelte_transform`): public `rewrite_binding_declarations(stmts)` — walks a statement list
+    and, per `VariableDeclaration`, calls `rewrite_declaration(decl) -> Vec<Statement>` which iterates
+    **all** declarators and dispatches each by `declarator_semantics`;
   - codegen (`svelte_codegen_client`): public `emit_binding_pattern(declarator)`.
   Each is an exhaustive `match` over `declarator_semantics`, dispatching to a **private** kind handler;
   the kind handler is not visible from outside and is never called directly. The shared full-depth
   traversal is the existing `walk_bindings`; there is no shared unfold procedure across both stages
   (the outputs are incompatible — see invariant 5). Each kind handler calls `walk_bindings` itself and
   assembles its own output.
+
+  **Approach revision (transit door, recorded after slice 4).** The transit door is no longer a
+  per-`VariableDeclaration` in-place mutation (`rewrite_binding_pattern(declarator)`); it is a
+  **statement-returning** door at the statement-list level. Forced by **async `$derived`-destructure**:
+  at the top level its leaves depend on a shared `$$d` temp, so the Original (and our parity target)
+  emits **one block** inside `$.run([async () => { … }])`; our codegen `$.run` builder splits independent
+  top-level declarators into separate async arrows, which breaks the temp dependency. A block statement
+  cannot be produced by mutating a `VariableDeclaration`'s declarator list in place, so the door returns
+  `Vec<Statement>` instead. Consequences: (a) async-derived is a **branch inside the same door** (a
+  block at top level, a declarator list inside a function) — there is no satellite async statement pass;
+  (b) the door iterates **all** declarators of a declaration (sync kinds accumulate into one grouped
+  declaration via a `flush`, async-derived flushes the pending group then emits its own block), so the
+  earlier single-declarator `[0]` assumption and its reliance on `split_top_level_multi_declarators` are
+  gone. The shared leaf unfold (`unfold_carrier_access` + `walk_bindings`) is identical for sync and
+  async; only the framing differs (declarator vs assignment-in-block). The codegen door
+  (`emit_binding_pattern`) is unaffected.
 - Dumb shared access-form builders (e.g. the `$.to_array` carrier expression) live in the existing
   `svelte_emit_builders` and are pulled in by the "second consumer → extract" rule. No new crate.
 
 ## Architectural invariants
 
 1. **One centralized unfold per stage.** In its crate — exactly one public door
-   (`rewrite_binding_pattern` in transit, `emit_binding_pattern` in codegen); the kind handlers are
+   (`rewrite_binding_declarations` in transit, `emit_binding_pattern` in codegen); the kind handlers are
    private and reachable only through it. The full-depth traversal in both is the shared `walk_bindings`.
-   No parallel one-level parsing in the script/template traversals.
+   No parallel one-level parsing in the script/template traversals. The transit door iterates all
+   declarators of a declaration and returns `Vec<Statement>` (see "Approach revision" above): async
+   `$derived`-destructure is a branch inside it, not a separate statement pass.
 2. **Dispatch by kind — single via `declarator_semantics`, exhaustive in both stages.** Analysis records
    the domain kind on every declaration declarator — the real JS script declarator and the synthetic
    template-context declarator (each-item, await value/error, snippet param, `{@const}`, `let:`). Both
@@ -110,7 +130,8 @@ Consumer machinery (not analysis API):
 5. **Sharing boundary — the traversal plus the dumb builders.** What is shared is the traversal
    `walk_bindings` (in `ComponentSemantics`) and the dumb form builders in `svelte_emit_builders`. There
    is no shared unfold procedure across both stages, nor a "dispatch trait": the outputs of transit
-   (declarator mutation) and codegen (block runtime) are incompatible. Each stage is its own door with
+   (a `Vec<Statement>` of rewritten declarations / blocks) and codegen (block runtime) are incompatible.
+   Each stage is its own door with
    its own `match`; only the traversal and the form builders are shared.
 6. **Refinement of `destructure-patterns`.** Its invariant "analysis does not change" holds on the
    assignment axis but is revoked on the declaration axis: the emit-form and the tree mirror are stripped
@@ -133,10 +154,12 @@ The recursion runs full-depth — nested patterns are no longer lost. Leaf forms
 Two doors, both dispatch by `declarator_semantics`; foreign kinds → named arms in `unreachable!`, no
 catch-all `_`:
 
-- **Transit** (`rewrite_binding_pattern`) serves script declarations. `match` over
-  `declarator_semantics` of the real declarator → private kind handler (`rewrite_props`,
-  `rewrite_legacy_state`, the `$state`/`$derived`-destructure handler), which sets the access root and
-  traverses the pattern. Output — JS declarator mutation in place. Template kinds → `unreachable!`.
+- **Transit** (`rewrite_binding_declarations` → `rewrite_declaration`) serves script declarations.
+  Iterates all declarators; `match` over `declarator_semantics` of each → private kind handler
+  (`rewrite_state`, the sync `rewrite_derived`, `rewrite_async_derived`, `rewrite_props`,
+  `rewrite_legacy_state`), which sets the access root and traverses the pattern. Output — `Vec<Statement>`:
+  sync kinds accumulate into a grouped declaration, async-derived emits its own block (top level) or
+  declarator-list declaration (inside a function). Template kinds → `unreachable!`.
 - **Codegen** (`emit_binding_pattern`) serves template contexts. `match` over `declarator_semantics` of
   the synthetic context declarator → private kind handler (each / await / snippet / `{@const}` /
   `let:`), which sets the element access root (synthetic `$$item`, the await value/error, the snippet
@@ -148,7 +171,7 @@ Recorded so they are not re-litigated in later sessions.
 
 - **One shared entry for both stages.** Rejected: the outputs are incompatible — transit mutates the JS
   declarator in place, codegen emits block runtime. A single entry point would break the stage boundary.
-  In its place — two doors (`rewrite_binding_pattern` / `emit_binding_pattern`), with only the
+  In its place — two doors (`rewrite_binding_declarations` / `emit_binding_pattern`), with only the
   `walk_bindings` traversal shared.
 - **Pull template contexts into transit for the sake of a single entry.** Rejected: it moves block
   runtime emit into transit, breaking "transit mutates JS / codegen emits runtime" for cosmetics.
@@ -171,10 +194,12 @@ Recorded so they are not re-litigated in later sessions.
 
 ## Conventions and verified implementation facts
 
-- **Names.** The doors are `rewrite_binding_pattern` (transit) and `emit_binding_pattern` (codegen), both
-  public, the sole entry in their crate. The kind handlers are private: transit — `rewrite_<kind>`
-  (`rewrite_props`, `rewrite_legacy_state`, …), codegen — `emit_<kind>`. Not `handle_*`. Foreign kinds —
-  a named `unreachable!`, no `_` arm (otherwise a new kind would not break the `match`).
+- **Names.** The doors are `rewrite_binding_declarations` (transit; per-declaration helper
+  `rewrite_declaration -> Vec<Statement>`) and `emit_binding_pattern` (codegen), both public, the sole
+  entry in their crate. The kind handlers are private: transit — `rewrite_<kind>` (`rewrite_state`,
+  `rewrite_derived`, `rewrite_async_derived`, `rewrite_props`, `rewrite_legacy_state`, …), codegen —
+  `emit_<kind>`. Not `handle_*`. Foreign kinds — a named `unreachable!`, no `_` arm (otherwise a new
+  kind would not break the `match`).
 
 - **Migration marking.** Old entries are marked `#[deprecated = "superseded by binding-pattern-routing"]`
   without `#[allow]` wrappers: the deprecation gate does not fail the build — `[workspace.lints.rust]

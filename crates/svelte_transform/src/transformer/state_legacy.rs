@@ -37,7 +37,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 continue;
             }
             let declarator = &decl.declarations[0];
-            let DeclaratorSemantics::LegacyStateDestructure { leaves } =
+            let DeclaratorSemantics::LegacyState { leaves } =
                 analysis.declarator_semantics(declarator.node_id())
             else {
                 i += 1;

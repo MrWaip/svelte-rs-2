@@ -207,7 +207,7 @@ fn classify_reference_semantics(
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,
-                            lowering_mode: prop.lowering_mode,
+                            lowering_mode: prop.emit_mode,
                             symbol: sym,
                         }))
                     } else {
@@ -270,12 +270,12 @@ fn classify_reference_semantics(
             if is_member_mutation_root {
                 if data.reactivity.each_item_indirect_sources(sym).is_some() {
                     return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
-                        item_sym: sym,
+                        item_symbol: sym,
                     });
                 }
                 if let Some(collection_store) = data.reactivity.each_item_collection_store(sym) {
                     return Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
-                        item_sym: sym,
+                        item_symbol: sym,
                         collection_store,
                     });
                 }
@@ -370,7 +370,7 @@ fn classify_reference_semantics(
             Some(ReferenceFacts::CarrierMemberRead(
                 super::super::data::CarrierMemberReadSemantics {
                     carrier_symbol: *carrier,
-                    leaf_symbol: sym,
+                    member_symbol: sym,
                 },
             ))
         }

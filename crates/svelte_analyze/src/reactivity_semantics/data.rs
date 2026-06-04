@@ -87,7 +87,7 @@ pub struct OptimizedRuneSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedEmit,
+    pub emit: DerivedEmit,
     pub reactive: bool,
 }
 
@@ -103,19 +103,11 @@ pub enum DerivedEmit {
     Sync,
 
     Async,
-
-    DestructuredInlineSource,
-
-    DestructuredInlinePropsSource,
-
-    DestructuredBoxedSync,
-
-    DestructuredBoxedAsync,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PropBindingSemantics {
-    pub lowering_mode: PropEmitMode,
+    pub emit_mode: PropEmitMode,
     pub kind: PropBindingKind,
 }
 
@@ -244,12 +236,17 @@ pub enum DeclaratorSemantics {
         kind: PropsDeclKind,
     },
 
-    LegacyStateDestructure {
+    LegacyState {
         leaves: SmallVec<[SymbolId; 4]>,
     },
 
-    RuneStateDestructure {
+    RuneState {
         kind: StateKind,
+    },
+
+    RuneDerived {
+        kind: DerivedKind,
+        emit: DerivedEmit,
     },
 
     LetCarrier {
@@ -276,7 +273,7 @@ pub struct ClassFieldStateSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedEmit,
+    pub emit: DerivedEmit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -427,7 +424,7 @@ pub enum ContextualReadKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CarrierMemberReadSemantics {
     pub carrier_symbol: SymbolId,
-    pub leaf_symbol: SymbolId,
+    pub member_symbol: SymbolId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -547,11 +544,11 @@ pub(crate) enum ReferenceFacts {
     },
 
     LegacyEachItemMemberMutationRoot {
-        item_sym: SymbolId,
+        item_symbol: SymbolId,
     },
 
     EachItemMemberMutationStoreInvalidate {
-        item_sym: SymbolId,
+        item_symbol: SymbolId,
         collection_store: SymbolId,
     },
 
@@ -822,13 +819,13 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
-            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_sym }) => {
+            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_symbol }) => {
                 ReferenceSemantics::LegacyEachItemMemberMutationRoot {
-                    item_sym: *item_sym,
+                    item_sym: *item_symbol,
                 }
             }
             Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
-                item_sym,
+                item_symbol: item_sym,
                 collection_store,
             }) => ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
                 item_sym: *item_sym,
@@ -1098,11 +1095,11 @@ impl ReactivitySemantics {
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),
             BindingFacts::Contextual(kind) => BindingSemantics::Contextual(*kind),
             BindingFacts::RuntimeRune { kind } => BindingSemantics::RuntimeRune { kind: *kind },
-            BindingFacts::CarrierAlias { carrier } => {
-                BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveCarrierMember {
+            BindingFacts::CarrierAlias { carrier } => BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirectiveCarrierMember {
                     carrier_symbol: *carrier,
-                })
-            }
+                },
+            ),
         }
     }
 }

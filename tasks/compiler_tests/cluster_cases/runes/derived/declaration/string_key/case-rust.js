@@ -5,7 +5,7 @@ export default function App($$anchor) {
 		"a-b": 1,
 		"c d": 2
 	});
-	let ab = $.derived(() => src.a-b), cd = $.derived(() => src.c d);
+	let ab = $.derived(() => src["a-b"]), cd = $.derived(() => src["c d"]);
 	var button = root();
 	var text = $.child(button);
 	$.reset(button);

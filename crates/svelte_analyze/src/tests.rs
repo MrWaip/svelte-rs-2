@@ -2937,14 +2937,14 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         symbol_declaration_semantics(&data, "total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
     assert_eq!(
         symbol_declaration_semantics(&data, "foo"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: false,
@@ -2956,7 +2956,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
     assert_eq!(
         symbol_declaration_semantics(&data, "bar"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
@@ -2968,14 +2968,14 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
     assert_eq!(
         symbol_declaration_semantics(&data, "baz"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
         })
     );
     assert_eq!(
         symbol_declaration_semantics(&data, "rest"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Rest,
         })
     );
@@ -3013,7 +3013,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
     assert_eq!(
         symbol_declaration_semantics(&data, "count"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: true,
@@ -3042,7 +3042,7 @@ fn reactivity_semantics_prop_used_only_via_store_is_non_source() {
     assert_eq!(
         symbol_declaration_semantics(&data, "limitAmount"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
         })
     );
@@ -3064,7 +3064,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
     assert_eq!(
         symbol_declaration_semantics(&data, "value"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
@@ -3094,7 +3094,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "sync_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
@@ -3102,7 +3102,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Async,
+            emit: DerivedEmit::Async,
             ..
         })
     ));
@@ -3110,7 +3110,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "mapped"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
@@ -6533,7 +6533,7 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
             semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
@@ -6560,7 +6560,7 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
             semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
