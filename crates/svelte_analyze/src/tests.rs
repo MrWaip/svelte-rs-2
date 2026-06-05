@@ -666,6 +666,18 @@ fn analyze_source_with_options(
     (component, data)
 }
 
+pub(crate) fn analyze_source_experimental_async(
+    source: &str,
+) -> (Component, AnalysisData<'static>) {
+    analyze_source_with_options(
+        source,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    )
+}
+
 fn analyze_source_with_css(source: &str) -> (Component, AnalysisData<'static>) {
     let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
     assert!(
