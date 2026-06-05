@@ -1,4 +1,5 @@
 mod derived;
+mod legacy_props;
 mod legacy_state;
 mod props;
 mod single_identifier;
@@ -71,7 +72,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(Declaration::VariableDeclaration(vd)) = export.declaration.take() else {
             unreachable!()
         };
-        let mut produced = self.rewrite_declaration(vd.unbox());
+        let vd = vd.unbox();
+        let is_legacy_props = vd.declarations.iter().any(|d| {
+            matches!(
+                self.analysis.map(|a| a.declarator_semantics(d.node_id())),
+                Some(DeclaratorSemantics::LegacyProps)
+            )
+        });
+        let mut produced = self.rewrite_declaration(vd);
+        if is_legacy_props {
+            return produced;
+        }
         if produced.len() == 1 && matches!(produced[0], Statement::VariableDeclaration(_)) {
             let Some(Statement::VariableDeclaration(new_vd)) = produced.pop() else {
                 unreachable!()
@@ -117,6 +128,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
                 DeclaratorSemantics::RuneProps => {
                     self.rewrite_props(decl_kind, declarator, &mut pending)
+                }
+
+                DeclaratorSemantics::LegacyProps => {
+                    self.rewrite_legacy_props(decl_kind, declarator, &mut pending)
                 }
 
                 DeclaratorSemantics::None

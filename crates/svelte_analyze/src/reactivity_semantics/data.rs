@@ -125,7 +125,7 @@ pub enum PropBindingKind {
     Source {
         bindable: bool,
         updated: bool,
-        default_lowering: PropDefaultEmit,
+        default_lowering: PropDefaultKind,
 
         default_needs_proxy: bool,
     },
@@ -137,7 +137,7 @@ pub enum PropBindingKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LegacyBindablePropSemantics {
-    pub default_lowering: PropDefaultEmit,
+    pub default_kind: PropDefaultKind,
     pub flags: crate::PropsFlags,
 }
 
@@ -148,7 +148,7 @@ pub struct LegacyStateSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropDefaultEmit {
+pub enum PropDefaultKind {
     None,
 
     Eager,
@@ -220,6 +220,8 @@ pub enum DeclaratorSemantics {
     None,
 
     RuneProps,
+
+    LegacyProps,
 
     LegacyState,
 

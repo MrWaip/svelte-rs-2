@@ -12,7 +12,8 @@ use crate::types::data::AnalysisData;
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
-    BindingFacts, LegacyBindablePropSemantics, PropDefaultEmit, ReferenceFacts, ReferenceSemantics,
+    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
+    ReferenceSemantics,
 };
 use crate::PropsFlags;
 
@@ -96,16 +97,16 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
 
         walk_bindings(&declarator.id, |visit| {
             let default_lowering = if pattern_has_outer {
-                PropDefaultEmit::Lazy
+                PropDefaultKind::Lazy
             } else {
-                init_default.unwrap_or(PropDefaultEmit::None)
+                init_default.unwrap_or(PropDefaultKind::None)
             };
             let updated_any = data.scoping.is_mutated_any(visit.symbol);
             let reassigned = data.scoping.is_mutated(visit.symbol);
             let updated = if immutable { reassigned } else { updated_any };
             let flags = compute_flags(updated, accessors, immutable);
             let semantics = LegacyBindablePropSemantics {
-                default_lowering,
+                default_kind: default_lowering,
                 flags,
             };
             data.reactivity
@@ -113,6 +114,9 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
             data.reactivity
                 .record_legacy_bindable_prop_symbol(visit.symbol);
         });
+
+        data.reactivity
+            .record_declarator_semantics(declarator.node_id(), DeclaratorSemantics::LegacyProps);
     }
 }
 
@@ -140,7 +144,7 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         }
         let default_lowering = match init {
             Some(init_expr) => classify_expression_default(data, init_expr),
-            None => PropDefaultEmit::None,
+            None => PropDefaultKind::None,
         };
 
         let updated = if data.script.immutable {
@@ -152,7 +156,7 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         data.reactivity.record_legacy_bindable_prop_binding(
             symbol,
             LegacyBindablePropSemantics {
-                default_lowering,
+                default_kind: default_lowering,
                 flags,
             },
         );
@@ -256,7 +260,7 @@ fn is_destructured_pattern(pat: &BindingPattern<'_>) -> bool {
 fn classify_expression_default<'a>(
     data: &AnalysisData<'a>,
     init: &Expression<'a>,
-) -> PropDefaultEmit {
+) -> PropDefaultKind {
     if is_simple_expression(init) {
         if let Expression::Identifier(id) = init
             && let Some(sym) = data.scoping.symbol_for_identifier_reference(id)
@@ -265,14 +269,14 @@ fn classify_expression_default<'a>(
                 crate::BindingSemantics::LegacyBindableProp(_)
             )
         {
-            return PropDefaultEmit::LazyAccessor;
+            return PropDefaultKind::LazyAccessor;
         }
         if references_legacy_bindable_prop(data, init) {
-            return PropDefaultEmit::Lazy;
+            return PropDefaultKind::Lazy;
         }
-        PropDefaultEmit::Eager
+        PropDefaultKind::Eager
     } else {
-        PropDefaultEmit::Lazy
+        PropDefaultKind::Lazy
     }
 }
 

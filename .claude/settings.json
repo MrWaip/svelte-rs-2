@@ -23,6 +23,7 @@
       "mcp__narsil-mcp"
     ]
   },
+  "autoMemoryEnabled": false,
   "enableAllProjectMcpServers": true,
   "hooks": {
     "PreToolUse": [

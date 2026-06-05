@@ -8,7 +8,7 @@ use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn process_statement_block(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
-        self.process_legacy_export_props(stmts);
+        self.rewrite_split_export_props_legacy(stmts);
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);

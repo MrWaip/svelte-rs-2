@@ -57,7 +57,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::LetCarrier { .. }
             | DeclaratorSemantics::EachItem { .. }
             | DeclaratorSemantics::AwaitValue => None,
-            DeclaratorSemantics::RuneProps => None,
+            DeclaratorSemantics::RuneProps | DeclaratorSemantics::LegacyProps => None,
             DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. } => None,
@@ -100,19 +100,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 self.b.call_expr("$.derived", [Arg::Expr(thunk)])
             }
             _ => value,
-        }
-    }
-
-    pub(crate) fn gen_unique_name(&mut self, prefix: &str) -> String {
-        let n = self.ident_counter;
-        if n == 0 {
-            prefix.to_string()
-        } else {
-            let mut s = String::with_capacity(prefix.len() + 4);
-            s.push_str(prefix);
-            s.push('_');
-            s.push_str(&n.to_string());
-            s
         }
     }
 

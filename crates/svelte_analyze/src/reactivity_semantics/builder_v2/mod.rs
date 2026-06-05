@@ -17,7 +17,7 @@ use util::{
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedEmit, OptimizedRuneSemantics,
-    PropBindingKind, PropBindingSemantics, PropDefaultEmit, PropEmitMode,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReferenceFacts,
     RuntimeRuneKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
 };
@@ -1212,7 +1212,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         bindable: false,
                         updated: self.data.scoping.is_mutated(sym)
                             || self.data.scoping.is_reexported_specifier_local(sym),
-                        default_lowering: PropDefaultEmit::None,
+                        default_lowering: PropDefaultKind::None,
                         default_needs_proxy: false,
                     }
                 } else {
@@ -1246,7 +1246,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         &mut self,
         pattern: &BindingPattern<'_>,
         bindable: bool,
-        default_lowering: PropDefaultEmit,
+        default_lowering: PropDefaultKind,
         default_needs_proxy: bool,
     ) -> Option<SymbolId> {
         let BindingPattern::BindingIdentifier(ident) = pattern else {
@@ -1255,7 +1255,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let sym = ident.symbol_id.get()?;
         if bindable
             && matches!(self.prop_lowering_mode, PropEmitMode::Standard)
-            && matches!(default_lowering, PropDefaultEmit::None)
+            && matches!(default_lowering, PropDefaultKind::None)
         {
             self.standard_prop_source_symbols.push(sym);
         }
@@ -1681,21 +1681,21 @@ fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
-    fn prop_default_emit(&self, expr: &Expression<'_>) -> PropDefaultEmit {
+    fn prop_default_emit(&self, expr: &Expression<'_>) -> PropDefaultKind {
         let default_expr = bindable_default_arg(expr).unwrap_or(expr);
         if bindable_default_arg(expr).is_none() && prop_default_is_bindable(expr) {
-            return PropDefaultEmit::None;
+            return PropDefaultKind::None;
         }
         if !is_simple_expression(default_expr) {
-            return PropDefaultEmit::Lazy;
+            return PropDefaultKind::Lazy;
         }
         if let Expression::Identifier(id) = default_expr.get_inner_expression()
             && let Some(ref_id) = id.reference_id.get()
             && self.is_reference_reactive_for_prop_default(ref_id)
         {
-            return PropDefaultEmit::Lazy;
+            return PropDefaultKind::Lazy;
         }
-        PropDefaultEmit::Eager
+        PropDefaultKind::Eager
     }
 
     fn is_reference_reactive_for_prop_default(&self, ref_id: ReferenceId) -> bool {

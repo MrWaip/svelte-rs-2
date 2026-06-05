@@ -9,7 +9,7 @@ use oxc_ast::ast::{
 use oxc_span::SPAN;
 
 use svelte_analyze::{
-    BINDABLE_RUNE_NAME, BindingSemantics, PropBindingKind, PropDefaultEmit, PropEmitMode,
+    BINDABLE_RUNE_NAME, BindingSemantics, PropBindingKind, PropDefaultKind, PropEmitMode,
 };
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{OriginKind, SymbolId, walk_bindings};
@@ -225,7 +225,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         prop_origin_key_arg(&alias, origin_kind),
                     ];
                     match default_lowering {
-                        PropDefaultEmit::None => {
+                        PropDefaultKind::None => {
                             if bindable && !updated {
                                 return;
                             }
@@ -233,12 +233,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                                 args.push(Arg::Num(flags as f64));
                             }
                         }
-                        PropDefaultEmit::Eager
-                        | PropDefaultEmit::Lazy
-                        | PropDefaultEmit::LazyAccessor => {
+                        PropDefaultKind::Eager
+                        | PropDefaultKind::Lazy
+                        | PropDefaultKind::LazyAccessor => {
                             if matches!(
                                 default_lowering,
-                                PropDefaultEmit::Lazy | PropDefaultEmit::LazyAccessor
+                                PropDefaultKind::Lazy | PropDefaultKind::LazyAccessor
                             ) {
                                 flags |= PROPS_IS_LAZY_INITIAL;
                             }
@@ -262,7 +262,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                                 default_expr
                             };
                             let default_expr =
-                                if matches!(default_lowering, PropDefaultEmit::Eager) {
+                                if matches!(default_lowering, PropDefaultKind::Eager) {
                                     default_expr
                                 } else {
                                     let lazy =

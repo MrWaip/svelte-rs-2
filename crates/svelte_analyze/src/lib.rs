@@ -50,7 +50,7 @@ pub use types::data::{
     FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
-    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultEmit,
+    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
     PropEmitMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
     RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis,

@@ -95,7 +95,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) component_line_index: &'b svelte_span::LineIndex,
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,
-    pub(crate) ident_counter: u32,
     pub(crate) ident_gen: &'b mut IdentGen,
     pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,

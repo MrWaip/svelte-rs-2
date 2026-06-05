@@ -1,6 +1,6 @@
 use super::super::data::{
     BindingFacts, ConstBindingSemantics, ContextualReadSemantics, DerivedKind, PropBindingKind,
-    PropDefaultEmit, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
+    PropDefaultKind, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
     StateKind,
 };
 use crate::scope::SymbolId;
@@ -203,7 +203,7 @@ fn classify_reference_semantics(
                 } else if is_read {
                     let reads_as_source = !bindable
                         || *updated
-                        || !matches!(default_lowering, PropDefaultEmit::None);
+                        || !matches!(default_lowering, PropDefaultKind::None);
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,

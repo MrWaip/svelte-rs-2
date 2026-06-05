@@ -28,6 +28,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. }
             | DeclaratorSemantics::LegacyState

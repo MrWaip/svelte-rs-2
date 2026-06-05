@@ -271,16 +271,16 @@ impl<'a> Scanner<'a> {
         let mut colon_pos: usize = 0;
 
         while let Some(ch) = self.peek() {
+            if ch.is_whitespace() || matches!(ch, '=' | '/' | '>' | '"' | '\'' | '|') {
+                break;
+            }
+
             if ch == ':' {
                 is_directive = true;
                 colon_pos = self.current;
             }
 
-            if ch.is_alphanumeric() || ch == '-' || ch == ':' || ch == '_' {
-                self.advance();
-            } else {
-                break;
-            }
+            self.advance();
         }
 
         if is_directive {

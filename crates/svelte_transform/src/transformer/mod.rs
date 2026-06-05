@@ -12,7 +12,7 @@ mod location;
 pub(crate) mod model;
 mod props;
 
-mod props_legacy;
+mod split_export_props_legacy;
 mod rewrites;
 mod runes;
 mod state;

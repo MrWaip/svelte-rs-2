@@ -1,4 +1,4 @@
-use crate::reactivity_semantics::data::PropDefaultEmit;
+use crate::reactivity_semantics::data::PropDefaultKind;
 use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind};
 use crate::types::script::RuneKind;
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
@@ -2960,7 +2960,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: false,
-                default_lowering: PropDefaultEmit::Eager,
+                default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
         })
@@ -2972,7 +2972,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
-                default_lowering: PropDefaultEmit::Eager,
+                default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
         })
@@ -3029,7 +3029,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: true,
-                default_lowering: PropDefaultEmit::None,
+                default_lowering: PropDefaultKind::None,
                 default_needs_proxy: false,
             },
         })
@@ -3080,7 +3080,7 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
-                default_lowering: PropDefaultEmit::Lazy,
+                default_lowering: PropDefaultKind::Lazy,
                 default_needs_proxy: true,
             },
         })
@@ -3902,7 +3902,7 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
 fn assert_legacy_bindable_prop(
     data: &AnalysisData<'_>,
     name: &str,
-    expected_default: PropDefaultEmit,
+    expected_default: PropDefaultKind,
     expected_flags: u32,
 ) {
     use crate::types::data::BindingSemantics;
@@ -3914,7 +3914,7 @@ fn assert_legacy_bindable_prop(
     match decl {
         BindingSemantics::LegacyBindableProp(legacy) => {
             assert_eq!(
-                legacy.default_lowering, expected_default,
+                legacy.default_kind, expected_default,
                 "default_lowering mismatch for '{name}'"
             );
             let actual_bits = legacy.flags.bits();
@@ -3943,7 +3943,7 @@ fn legacy_export_let_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::None,
+        PropDefaultKind::None,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3957,7 +3957,7 @@ fn legacy_export_let_with_default_classifies_eager() {
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3971,7 +3971,7 @@ fn legacy_export_let_undefined_default_classifies_eager() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3985,7 +3985,7 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3999,7 +3999,7 @@ fn legacy_export_let_composite_default_referencing_prop_classifies_lazy() {
     assert_legacy_bindable_prop(
         &data,
         "label",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4013,7 +4013,7 @@ fn legacy_export_let_composite_default_pure_literals_stays_eager() {
     assert_legacy_bindable_prop(
         &data,
         "label",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4027,7 +4027,7 @@ fn legacy_export_let_reassigned_marks_updated() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::None,
+        PropDefaultKind::None,
         PROPS_IS_BINDABLE | PROPS_IS_UPDATED,
     );
 }
@@ -4041,7 +4041,7 @@ fn legacy_export_var_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "count",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4055,7 +4055,7 @@ fn legacy_export_specifier_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4069,7 +4069,7 @@ fn legacy_export_specifier_alias_classification_unchanged() {
     assert_legacy_bindable_prop(
         &data,
         "className",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4083,13 +4083,13 @@ fn legacy_export_destructure_classifies_each_leaf() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
