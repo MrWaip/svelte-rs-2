@@ -1,5 +1,6 @@
 mod derived;
 mod legacy_state;
+mod props;
 mod single_identifier;
 mod state;
 
@@ -114,9 +115,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     self.rewrite_legacy_state(decl_kind, declarator, &mut pending)
                 }
 
+                DeclaratorSemantics::RuneProps => {
+                    self.rewrite_props(decl_kind, declarator, &mut pending)
+                }
+
                 DeclaratorSemantics::None
-                | DeclaratorSemantics::PropsIdentifier { .. }
-                | DeclaratorSemantics::PropsObject { .. }
                 | DeclaratorSemantics::ClassFieldState(_)
                 | DeclaratorSemantics::ClassFieldDerived(_) => {
                     self.rewrite_variable_rune_init(&mut declarator);

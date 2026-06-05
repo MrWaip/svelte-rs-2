@@ -214,27 +214,12 @@ pub enum SnippetParamStrategy {
     Signal,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropsDeclKind {
-    Const,
-    Let,
-    Var,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
 
-    PropsIdentifier {
-        sym: SymbolId,
-        kind: PropsDeclKind,
-    },
-
-    PropsObject {
-        leaves: SmallVec<[SymbolId; 4]>,
-        has_rest: bool,
-        kind: PropsDeclKind,
-    },
+    RuneProps,
 
     LegacyState,
 

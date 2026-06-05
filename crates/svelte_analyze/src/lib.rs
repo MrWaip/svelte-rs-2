@@ -51,7 +51,7 @@ pub use types::data::{
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
     PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultEmit,
-    PropEmitMode, PropReferenceSemantics, PropsDeclKind, ProxyStateInits, ReactivitySemantics,
+    PropEmitMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
     RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis,
     SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,

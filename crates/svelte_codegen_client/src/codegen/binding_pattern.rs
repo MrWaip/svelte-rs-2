@@ -27,8 +27,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 unimplemented!("let: carrier unfold not yet routed through emit_binding_pattern")
             }
             DeclaratorSemantics::None
-            | DeclaratorSemantics::PropsIdentifier { .. }
-            | DeclaratorSemantics::PropsObject { .. }
+            | DeclaratorSemantics::RuneProps
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. }
             | DeclaratorSemantics::LegacyState

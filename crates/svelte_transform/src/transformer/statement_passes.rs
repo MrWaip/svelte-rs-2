@@ -1,6 +1,6 @@
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{BindingPattern, Statement};
-use oxc_span::{GetSpan, GetSpanMut, SPAN};
+use oxc_span::SPAN;
 use svelte_analyze::{BindingSemantics, StateKind};
 
 use super::inspect::{is_inspect_call, is_inspect_trace_call};
@@ -13,8 +13,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);
         self.strip_eager_state_declarations(stmts);
-
-        self.replace_props_declaration(stmts);
     }
 
     pub(crate) fn split_top_level_multi_declarators(
@@ -142,37 +140,4 @@ impl<'a> ComponentTransformer<'_, 'a> {
         });
     }
 
-    fn replace_props_declaration(
-        &mut self,
-        stmts: &mut OxcVec<'a, Statement<'a>>,
-    ) {
-        for j in 0..stmts.len() {
-            let is_candidate = matches!(
-                &stmts[j],
-                Statement::VariableDeclaration(decl)
-                    if Self::is_props_declaration(decl)
-            );
-            if !is_candidate {
-                continue;
-            };
-
-            let stmt_span = stmts[j].span();
-            let replacement = {
-                let Statement::VariableDeclaration(decl) = &mut stmts[j] else {
-                    unreachable!()
-                };
-                self.try_gen_props_declaration_semantic(decl)
-            };
-            if let Some(mut replacement) = replacement {
-                if let Some(first) = replacement.first_mut() {
-                    *first.span_mut() = stmt_span;
-                }
-                stmts.remove(j);
-                for (k, stmt) in replacement.into_iter().enumerate() {
-                    stmts.insert(j + k, stmt);
-                }
-                return;
-            }
-        }
-    }
 }

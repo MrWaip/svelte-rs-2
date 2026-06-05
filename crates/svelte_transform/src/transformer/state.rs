@@ -57,7 +57,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::LetCarrier { .. }
             | DeclaratorSemantics::EachItem { .. }
             | DeclaratorSemantics::AwaitValue => None,
-            DeclaratorSemantics::PropsIdentifier { .. } | DeclaratorSemantics::PropsObject { .. } => None,
+            DeclaratorSemantics::RuneProps => None,
             DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. } => None,

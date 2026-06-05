@@ -17,7 +17,7 @@ use util::{
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedEmit, OptimizedRuneSemantics,
-    PropBindingKind, PropBindingSemantics, PropDefaultEmit, PropEmitMode, PropsDeclKind,
+    PropBindingKind, PropBindingSemantics, PropDefaultEmit, PropEmitMode,
     ReferenceFacts,
     RuntimeRuneKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
 };
@@ -746,8 +746,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);
             }
             RuneKind::Props => {
-                let kind = props_decl_kind_from_var_kind(self.current_decl_kind);
-                self.record_props_pattern(&declarator.id, root_node, kind);
+                self.record_props_pattern(&declarator.id, root_node);
             }
             RuneKind::PropsId => {
                 self.record_runtime_rune_pattern(&declarator.id, RuntimeRuneKind::PropsId);
@@ -1153,12 +1152,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
-    fn record_props_pattern(
-        &mut self,
-        pattern: &BindingPattern<'a>,
-        root_node: OxcNodeId,
-        kind: PropsDeclKind,
-    ) {
+    fn record_props_pattern(&mut self, pattern: &BindingPattern<'a>, root_node: OxcNodeId) {
         match pattern {
             BindingPattern::BindingIdentifier(ident) => {
                 let Some(sym) = ident.symbol_id.get() else {
@@ -1171,44 +1165,34 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: PropBindingKind::Rest,
                     },
                 );
-                self.data.reactivity.record_declarator_semantics(
-                    root_node,
-                    DeclaratorSemantics::PropsIdentifier { sym, kind },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(root_node, DeclaratorSemantics::RuneProps);
 
                 self.rest_prop_excluded.insert(sym, FxHashSet::default());
             }
             BindingPattern::ObjectPattern(obj) => {
-                let mut leaves: SmallVec<[SymbolId; 4]> = SmallVec::new();
                 let mut sibling_keys: FxHashSet<Ident<'a>> = FxHashSet::default();
                 for prop in &obj.properties {
                     if let Some(key) = property_key_atom(&prop.key) {
                         sibling_keys.insert(key);
                     }
-                    let Some(sym) = self.record_object_prop_pattern(&prop.value) else {
+                    if self.record_object_prop_pattern(&prop.value).is_none() {
                         return;
-                    };
-                    leaves.push(sym);
+                    }
                 }
 
-                let has_rest = obj.rest.is_some();
                 if let Some(rest) = &obj.rest {
                     match self.record_rest_prop_pattern(&rest.argument) {
                         Some(rest_sym) => {
                             self.rest_prop_excluded.insert(rest_sym, sibling_keys);
-                            leaves.push(rest_sym);
                         }
                         None => return,
                     }
                 }
-                self.data.reactivity.record_declarator_semantics(
-                    root_node,
-                    DeclaratorSemantics::PropsObject {
-                        leaves,
-                        has_rest,
-                        kind,
-                    },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(root_node, DeclaratorSemantics::RuneProps);
             }
             _ => {}
         }
@@ -1325,14 +1309,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.data
             .reactivity
             .record_reference_semantics(ref_id, ReferenceFacts::RestPropMemberRewrite);
-    }
-}
-
-fn props_decl_kind_from_var_kind(kind: Option<VariableDeclarationKind>) -> PropsDeclKind {
-    match kind {
-        Some(VariableDeclarationKind::Const) => PropsDeclKind::Const,
-        Some(VariableDeclarationKind::Var) => PropsDeclKind::Var,
-        _ => PropsDeclKind::Let,
     }
 }
 
