@@ -10,7 +10,6 @@ ENV CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:/usr/local/nvm/versions/node/v${NODE_VERSION}/bin:$PATH \
     DEBIAN_FRONTEND=noninteractive
 
-# 1. apt — almost never changes
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
@@ -19,26 +18,27 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         clang lld jq ripgrep fd-find python3 python3-pip \
     && git lfs install --system --skip-repo
 
-# 2. nvm + node — LTS bumps only
-RUN mkdir -p ${NVM_DIR} \
-    && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
+RUN mkdir -p ${CARGO_HOME} ${RUSTUP_HOME} ${NVM_DIR} \
+    && chown vscode:vscode ${CARGO_HOME} ${RUSTUP_HOME} ${NVM_DIR}
+USER vscode
+
+RUN curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash \
     && . ${NVM_DIR}/nvm.sh && nvm install ${NODE_VERSION} && nvm alias default ${NODE_VERSION}
 
-# 3. rustup toolchain — pinned to project
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-        sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} \
+        sh -s -- -y --no-modify-path --profile minimal --default-toolchain ${RUST_VERSION} \
                   --component rustfmt --component clippy --component rust-src --component rust-analyzer \
                   --target wasm32-unknown-unknown
 
-RUN curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,target=/tmp/cargo-target,sharing=locked \
+ARG NARSIL_CACHE_BUST=0
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,uid=1000,gid=1000 \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,uid=1000,gid=1000 \
+    --mount=type=cache,target=/tmp/cargo-target,sharing=locked,uid=1000,gid=1000 \
     CARGO_TARGET_DIR=/tmp/cargo-target \
     cargo install --git https://github.com/postrv/narsil-mcp narsil-mcp
 
-RUN cargo binstall -y \
+RUN curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
+    && cargo binstall -y \
         just \
         cargo-sweep \
         cargo-nextest \
@@ -47,15 +47,11 @@ RUN cargo binstall -y \
         cargo-dylint \
         dylint-link
 
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+ARG TOOLS_CACHE_BUST=0
+RUN --mount=type=cache,target=/home/vscode/.npm,sharing=locked,uid=1000,gid=1000 \
     . ${NVM_DIR}/nvm.sh && npm install -g @anthropic-ai/claude-code skills task-master-ai
 
-RUN chmod -R a+rwX ${CARGO_HOME}/bin ${RUSTUP_HOME} ${NVM_DIR} \
-    && chown -R vscode:vscode /usr/local/cargo /usr/local/rustup ${NVM_DIR}
-
-RUN echo 'alias claude="claude --dangerously-skip-permissions"' >> /home/vscode/.bashrc
-RUN mkdir -p ~/.local/share/bash-completion/completions \
+RUN echo 'alias claude="claude --dangerously-skip-permissions"' >> /home/vscode/.bashrc \
+    && mkdir -p ~/.local/share/bash-completion/completions \
     && just --completions bash > ~/.local/share/bash-completion/completions/just \
-    && echo 'source <(just --completions bash)' >> /home/vscode/.bashrc 
-
-USER vscode
+    && echo 'source <(just --completions bash)' >> /home/vscode/.bashrc
