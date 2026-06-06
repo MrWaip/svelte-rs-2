@@ -141,8 +141,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     pending.push(declarator);
                 }
 
-                DeclaratorSemantics::EachItem { .. }
+                DeclaratorSemantics::EachItem
                 | DeclaratorSemantics::AwaitValue
+                | DeclaratorSemantics::ConstTag { .. }
                 | DeclaratorSemantics::LetCarrier { .. } => {
                     unreachable!("template-stage declarator kind in a script declaration")
                 }

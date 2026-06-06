@@ -234,13 +234,15 @@ pub enum DeclaratorSemantics {
         emit: DerivedEmit,
     },
 
+    ConstTag {
+        emit: DerivedEmit,
+    },
+
     LetCarrier {
         carrier_symbol: SymbolId,
     },
 
-    EachItem {
-        item_reactive: bool,
-    },
+    EachItem,
 
     AwaitValue,
 

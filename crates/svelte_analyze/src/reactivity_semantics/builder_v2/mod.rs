@@ -24,6 +24,7 @@ use super::data::{
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
+use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
@@ -148,6 +149,13 @@ fn compute_const_tag_reactivity<'a>(
         if syms.is_empty() {
             continue;
         }
+
+        let emit = match declarator.init.as_ref() {
+            Some(init) if expression_has_await(init) => DerivedEmit::Async,
+            _ => DerivedEmit::Sync,
+        };
+        data.reactivity
+            .record_declarator_semantics(decl.node_id(), DeclaratorSemantics::ConstTag { emit });
 
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
@@ -703,7 +711,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::Derived => {
-                let emit = class_field_derived_emit(call, rune_kind);
+                let emit = derived_emit(call);
                 if is_destructure {
                     self.data.reactivity.record_declarator_semantics(
                         root_node,
@@ -725,7 +733,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
             }
             RuneKind::DerivedBy => {
-                let emit = class_field_derived_emit(call, rune_kind);
+                let emit = derived_emit(call);
                 if is_destructure {
                     self.data.reactivity.record_declarator_semantics(
                         root_node,
@@ -1490,13 +1498,13 @@ fn class_field_rune_semantics(
         RuneKind::Derived => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::Derived,
-                emit: class_field_derived_emit(call, RuneKind::Derived),
+                emit: derived_emit(call),
             },
         )),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::DerivedBy,
-                emit: class_field_derived_emit(call, RuneKind::DerivedBy),
+                emit: derived_emit(call),
             },
         )),
         _ => None,
@@ -1760,17 +1768,13 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
     )
 }
 
-fn class_field_derived_emit(
-    call: &CallExpression<'_>,
-    rune_kind: RuneKind,
-) -> DerivedEmit {
-    if matches!(rune_kind, RuneKind::Derived)
-        && call
-            .arguments
-            .first()
-            .and_then(|arg| arg.as_expression())
-            .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::AwaitExpression(_)))
-    {
+fn derived_emit(call: &CallExpression<'_>) -> DerivedEmit {
+    let has_await = call
+        .arguments
+        .first()
+        .and_then(|arg| arg.as_expression())
+        .is_some_and(expression_has_await);
+    if has_await {
         DerivedEmit::Async
     } else {
         DerivedEmit::Sync

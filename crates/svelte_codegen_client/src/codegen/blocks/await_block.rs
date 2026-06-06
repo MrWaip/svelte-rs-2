@@ -1,4 +1,5 @@
 use svelte_emit_builders::runes::rune_get;
+use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::scope::SymbolId;
@@ -214,7 +215,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             AwaitBinding::Pattern { pattern_id, .. } => {
                 let pattern = self.take_await_pattern(binding_stmt)?;
                 let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-                let mut decls = self.emit_binding_pattern(*pattern_id, pattern_ref);
+                let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
+                    *pattern_id,
+                    pattern_ref,
+                    BindingPatternSource::AwaitValue,
+                )?
+                else {
+                    return CodegenError::unexpected_child(
+                        "await value statements",
+                        "const tag derived",
+                    );
+                };
                 decls.extend(frag_body);
                 Ok(self
                     .ctx

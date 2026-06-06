@@ -2,30 +2,72 @@ use std::collections::HashMap;
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
-use svelte_analyze::DeclaratorSemantics;
-use svelte_ast_builder::Arg;
+use oxc_semantic::SymbolId;
+use svelte_analyze::{BlockSemantics, DeclaratorSemantics, DerivedEmit, EachFlags};
+use svelte_ast::NodeId;
+use svelte_ast_builder::{Arg, ObjProp};
 use svelte_component_semantics::{Access, OxcNodeId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
 use svelte_emit_builders::runes::rune_get;
 
-use super::Codegen;
+use super::expr::coarse_wrap;
+use super::{Codegen, CodegenError, Result};
 
 const SYNTHETIC_ITEM_NAME: &str = "$$item";
+
+pub(in crate::codegen) enum BindingPatternSource<'a> {
+    EachItem { block_id: NodeId },
+    AwaitValue,
+    ConstTag { id: NodeId, init: Expression<'a> },
+}
+
+pub(in crate::codegen) enum BindingPatternOutput<'a> {
+    Statements(Vec<Statement<'a>>),
+    ConstTagDerived(ConstTagDerived<'a>),
+}
+
+pub(in crate::codegen) struct ConstTagDerived<'a> {
+    pub target: &'a str,
+    pub derived: Expression<'a>,
+    pub simple: bool,
+    pub symbols: Vec<SymbolId>,
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_binding_pattern(
         &mut self,
         decl_node: OxcNodeId,
         pattern: &'a BindingPattern<'a>,
-    ) -> Vec<Statement<'a>> {
+        source: BindingPatternSource<'a>,
+    ) -> Result<BindingPatternOutput<'a>> {
+        use BindingPatternOutput as Out;
         match self.ctx.query.declarator_semantics(decl_node) {
-            DeclaratorSemantics::EachItem { item_reactive } => {
-                self.emit_each_item(pattern, item_reactive)
+            DeclaratorSemantics::EachItem => {
+                let BindingPatternSource::EachItem { block_id } = source else {
+                    return CodegenError::unexpected_child(
+                        "each-item source",
+                        "other binding source",
+                    );
+                };
+                let item_reactive = self.each_item_reactive(block_id)?;
+                Ok(Out::Statements(self.emit_each_item(pattern, item_reactive)))
             }
-            DeclaratorSemantics::AwaitValue => self.emit_await_value(pattern),
-            DeclaratorSemantics::LetCarrier { .. } => {
-                unimplemented!("let: carrier unfold not yet routed through emit_binding_pattern")
+            DeclaratorSemantics::AwaitValue => Ok(Out::Statements(self.emit_await_value(pattern))),
+            DeclaratorSemantics::ConstTag { emit } => {
+                let BindingPatternSource::ConstTag { id, init } = source else {
+                    return CodegenError::unexpected_child(
+                        "const tag source",
+                        "other binding source",
+                    );
+                };
+                Ok(Out::ConstTagDerived(
+                    self.emit_const_tag(id, pattern, init, emit)?,
+                ))
             }
+            DeclaratorSemantics::LetCarrier { .. } => CodegenError::unexpected_child(
+                "template-stage declarator kind",
+                "let: carrier (not yet routed)",
+            ),
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuneProps
             | DeclaratorSemantics::LegacyProps
@@ -33,9 +75,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | DeclaratorSemantics::RuneDerived { .. }
             | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::ClassFieldState(_)
-            | DeclaratorSemantics::ClassFieldDerived(_) => {
-                unreachable!("script-stage declarator kind reached the codegen unfold door")
-            }
+            | DeclaratorSemantics::ClassFieldDerived(_) => CodegenError::unexpected_child(
+                "template-stage declarator kind",
+                "script-stage declarator kind",
+            ),
         }
     }
 
@@ -139,6 +182,104 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             decls.push(self.ctx.b.var_stmt(name, per_field));
         }
         decls
+    }
+
+    fn emit_const_tag(
+        &mut self,
+        id: NodeId,
+        pattern: &'a BindingPattern<'a>,
+        init: Expression<'a>,
+        emit: DerivedEmit,
+    ) -> Result<ConstTagDerived<'a>> {
+        let init = coarse_wrap(self.ctx, init, self.ctx.expression_data(id));
+
+        let mut symbols: Vec<SymbolId> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        walk_bindings(pattern, |v| {
+            symbols.push(v.symbol);
+            names.push(self.ctx.query.view.symbol_name(v.symbol).to_string());
+        });
+
+        if matches!(pattern, BindingPattern::BindingIdentifier(_)) {
+            let Some(name) = names.first().cloned() else {
+                return CodegenError::unexpected_child("const tag binding", "empty bindings");
+            };
+            let target: &str = self.ctx.b.alloc_str(&name);
+            let value_thunk = match emit {
+                DerivedEmit::Async => self.ctx.b.async_thunk(init),
+                DerivedEmit::Sync => self.ctx.b.thunk(init),
+            };
+            let derived = self.build_derived(value_thunk, emit);
+            let derived = if self.ctx.state.dev {
+                self.ctx
+                    .b
+                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(target)])
+            } else {
+                derived
+            };
+            Ok(ConstTagDerived {
+                target,
+                derived,
+                simple: true,
+                symbols,
+            })
+        } else {
+            let Some(tmp_name) = self.ctx.transform_data.const_tag_tmp_names.get(&id).cloned()
+            else {
+                return CodegenError::unexpected_node(id, "destructured const tag missing tmp_name");
+            };
+            let target: &str = self.ctx.b.alloc_str(&tmp_name);
+            let destruct_stmt = self
+                .ctx
+                .b
+                .const_destruct_stmt(pattern.clone_in(self.ctx.b.ast.allocator), init);
+            let props: Vec<ObjProp<'a>> = names
+                .iter()
+                .map(|n| ObjProp::Shorthand(self.ctx.b.alloc_str(n)))
+                .collect();
+            let ret = self.ctx.b.return_stmt(self.ctx.b.object_expr(props));
+            let value_thunk = match emit {
+                DerivedEmit::Async => self.ctx.b.async_thunk_block(vec![destruct_stmt, ret]),
+                DerivedEmit::Sync => self
+                    .ctx
+                    .b
+                    .arrow_block_expr(self.ctx.b.no_params(), [destruct_stmt, ret]),
+            };
+            let derived = self.build_derived(value_thunk, emit);
+            let derived = if self.ctx.state.dev {
+                self.ctx
+                    .b
+                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
+            } else {
+                derived
+            };
+            Ok(ConstTagDerived {
+                target,
+                derived,
+                simple: false,
+                symbols,
+            })
+        }
+    }
+
+    fn build_derived(&mut self, value_thunk: Expression<'a>, emit: DerivedEmit) -> Expression<'a> {
+        match emit {
+            DerivedEmit::Async => self
+                .ctx
+                .b
+                .call_expr("$.async_derived", [Arg::Expr(value_thunk)]),
+            DerivedEmit::Sync => {
+                let helper = self.ctx.query.view.derived_helper();
+                self.ctx.b.call_expr(helper, [Arg::Expr(value_thunk)])
+            }
+        }
+    }
+
+    fn each_item_reactive(&self, block_id: NodeId) -> Result<bool> {
+        match self.ctx.query.analysis.block_semantics(block_id) {
+            BlockSemantics::Each(s) => Ok(s.each_flags.contains(EachFlags::ITEM_REACTIVE)),
+            _ => CodegenError::unexpected_block_semantics(block_id, "Each expected"),
+        }
     }
 
     fn item_read_expr(&self, item_reactive: bool) -> Expression<'a> {

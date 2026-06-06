@@ -1,4 +1,5 @@
 use svelte_emit_builders::runes::rune_get;
+use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
@@ -363,7 +364,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             && let Some(decl_node) = item_pattern_node
         {
             let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-            let mut decls = self.emit_binding_pattern(decl_node, pattern_ref);
+            let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
+                decl_node,
+                pattern_ref,
+                BindingPatternSource::EachItem { block_id },
+            )?
+            else {
+                return CodegenError::unexpected_child("each-item statements", "const tag derived");
+            };
             decls.append(&mut frag_body);
             frag_body = decls;
         }

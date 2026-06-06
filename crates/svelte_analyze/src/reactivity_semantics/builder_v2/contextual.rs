@@ -205,12 +205,20 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
-        let is_destructured = block
+        let context_declarator = block
             .context
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
-            .and_then(declarator_from_stmt_local)
+            .and_then(declarator_from_stmt_local);
+        let is_destructured = context_declarator
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
+        let item_pattern_node = context_declarator.and_then(|d| destructure_pattern_node(&d.id));
+
+        if let Some(node) = item_pattern_node {
+            ctx.data
+                .reactivity
+                .record_declarator_semantics(node, DeclaratorSemantics::EachItem);
+        }
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
 
@@ -778,13 +786,17 @@ fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a Variabl
     }
 }
 
-fn await_destructure_node(stmt: &Statement<'_>) -> Option<OxcNodeId> {
-    let decl = declarator_from_stmt_local(stmt)?;
-    match &decl.id {
+fn destructure_pattern_node(pattern: &BindingPattern<'_>) -> Option<OxcNodeId> {
+    match pattern {
         BindingPattern::ObjectPattern(p) => Some(p.node_id()),
         BindingPattern::ArrayPattern(p) => Some(p.node_id()),
         _ => None,
     }
+}
+
+fn await_destructure_node(stmt: &Statement<'_>) -> Option<OxcNodeId> {
+    let decl = declarator_from_stmt_local(stmt)?;
+    destructure_pattern_node(&decl.id)
 }
 
 struct EachContextMarker<'d, 's, 'a> {

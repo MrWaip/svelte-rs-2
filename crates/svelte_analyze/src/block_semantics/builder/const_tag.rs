@@ -45,8 +45,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::analyze_source;
-    use crate::{AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
+    use crate::tests::{analyze_source, analyze_source_experimental_async};
+    use crate::{
+        AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, DeclaratorSemantics,
+        DerivedEmit,
+    };
     use oxc_ast::{AstKind, ast::BindingPattern};
     use svelte_ast::{Component, ConstTag, Node};
     use svelte_component_semantics::walk_bindings;
@@ -98,6 +101,18 @@ mod tests {
         check: F,
     ) {
         let (component, data) = analyze_source(source);
+        let tag = first_const_tag(&component);
+        match data.block_semantics(tag.id) {
+            BlockSemantics::ConstTag(s) => check(s, &data),
+            other => panic!("expected ConstTag, got {other:?}"),
+        }
+    }
+
+    fn with_const_tag_async<F: FnOnce(&ConstTagBlockSemantics, &AnalysisData<'_>)>(
+        source: &str,
+        check: F,
+    ) {
+        let (component, data) = analyze_source_experimental_async(source);
         let tag = first_const_tag(&component);
         match data.block_semantics(tag.id) {
             BlockSemantics::ConstTag(s) => check(s, &data),
@@ -183,6 +198,48 @@ mod tests {
 {/if}"#,
             |sem, data| {
                 assert_eq!(pattern_facts(sem, data), (1, false));
+            },
+        );
+    }
+
+    #[test]
+    fn const_tag_declarator_semantics_sync() {
+        with_const_tag(r#"{#if true}{@const x = 1}<p>{x}</p>{/if}"#, |sem, data| {
+            assert_eq!(
+                data.declarator_semantics(sem.decl_node_id),
+                DeclaratorSemantics::ConstTag {
+                    emit: DerivedEmit::Sync
+                }
+            );
+        });
+    }
+
+    #[test]
+    fn const_tag_declarator_semantics_async() {
+        with_const_tag_async(
+            r#"{#if true}{@const x = await foo()}<p>{x}</p>{/if}"#,
+            |sem, data| {
+                assert_eq!(
+                    data.declarator_semantics(sem.decl_node_id),
+                    DeclaratorSemantics::ConstTag {
+                        emit: DerivedEmit::Async
+                    }
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn const_tag_declarator_semantics_async_inside_fn_is_sync() {
+        with_const_tag_async(
+            r#"{#if true}{@const x = (async () => await foo())}<p>{x}</p>{/if}"#,
+            |sem, data| {
+                assert_eq!(
+                    data.declarator_semantics(sem.decl_node_id),
+                    DeclaratorSemantics::ConstTag {
+                        emit: DerivedEmit::Sync
+                    }
+                );
             },
         );
     }
