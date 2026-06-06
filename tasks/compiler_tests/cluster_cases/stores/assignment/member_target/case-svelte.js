@@ -7,10 +7,12 @@ export default function App($$anchor, $$props) {
 	const $s = () => $.store_get(s, "$s", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
 	const a = $.mutable_source();
-	const s = writable({});
+	const s = writable([1, 2]);
 	$.legacy_pre_effect(() => ($.get(a), $s()), () => {
 		(($$value) => {
-			$.set(a, $.fallback($$value.p, () => ({}), true).a);
+			var $$array = $.to_array($$value, 2);
+			globalThis.foo = $$array[0];
+			$.set(a, $$array[1]);
 		})($s());
 	});
 	$.legacy_pre_effect_reset();

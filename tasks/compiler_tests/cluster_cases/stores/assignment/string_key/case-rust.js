@@ -14,8 +14,8 @@ export default function App($$anchor, $$props) {
 	});
 	$.legacy_pre_effect(() => ($.get(ab), $.get(cd), $s()), () => {
 		(($$value) => {
-			$.set(ab, $$value.a-b);
-			$.set(cd, $$value.c d);
+			$.set(ab, $$value["a-b"]);
+			$.set(cd, $$value["c d"]);
 		})($s());
 	});
 	$.legacy_pre_effect_reset();

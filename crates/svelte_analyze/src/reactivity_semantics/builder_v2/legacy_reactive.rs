@@ -70,12 +70,11 @@ pub(super) fn collect_top_level_meta<'a>(
                 }
             } else {
                 let mut leaves: SmallVec<[&str; 4]> = SmallVec::new();
-                if walk_assignment_target_idents(&assign.left, |id| {
+                walk_assignment_target_idents(&assign.left, |id| {
                     leaves.push(id.name.as_str());
-                }) {
-                    for name in leaves {
-                        push_implicit_name(implicit_names, name);
-                    }
+                });
+                for name in leaves {
+                    push_implicit_name(implicit_names, name);
                 }
             }
         }
@@ -223,11 +222,9 @@ fn collect_destructure_target_syms(
         return (targets, implicits);
     };
     let mut leaves: SmallVec<[&IdentifierReference<'_>; 4]> = SmallVec::new();
-    if !walk_assignment_target_idents(&assign.left, |id| {
+    walk_assignment_target_idents(&assign.left, |id| {
         leaves.push(id);
-    }) {
-        return (targets, implicits);
-    }
+    });
     for id in leaves {
         let name = id.name.as_str();
         let Some(sym) = id

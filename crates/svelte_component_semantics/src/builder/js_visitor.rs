@@ -234,14 +234,13 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             let mut names: SmallVec<[CompactString; 4]> = SmallVec::new();
             let mut spans: SmallVec<[oxc_span::Span; 4]> = SmallVec::new();
             let mut node_ids: SmallVec<[OxcNodeId; 4]> = SmallVec::new();
-            if walk_assignment_target_idents(&assign.left, |id| {
+            walk_assignment_target_idents(&assign.left, |id| {
                 names.push(CompactString::from(id.name.as_str()));
                 spans.push(id.span);
                 node_ids.push(id.node_id.get());
-            }) {
-                for ((name, span), node_id) in names.iter().zip(spans.iter()).zip(node_ids.iter()) {
-                    self.declare_implicit_target_ident_raw(name.as_str(), *span, *node_id);
-                }
+            });
+            for ((name, span), node_id) in names.iter().zip(spans.iter()).zip(node_ids.iter()) {
+                self.declare_implicit_target_ident_raw(name.as_str(), *span, *node_id);
             }
         }
     }
