@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{BlockSemantics, DeclaratorSemantics, DerivedEmit, EachFlags};
+use svelte_analyze::{
+    BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics, DerivedEmit,
+    EachFlags,
+};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, ObjProp};
 use svelte_component_semantics::{Access, OxcNodeId, walk_bindings};
@@ -19,6 +22,7 @@ pub(in crate::codegen) enum BindingPatternSource<'a> {
     EachItem { block_id: NodeId },
     AwaitValue,
     ConstTag { id: NodeId, init: Expression<'a> },
+    LetCarrier { slot_prop_name: &'a str },
 }
 
 pub(in crate::codegen) enum BindingPatternOutput<'a> {
@@ -64,10 +68,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.emit_const_tag(id, pattern, init, emit)?,
                 ))
             }
-            DeclaratorSemantics::LetCarrier { .. } => CodegenError::unexpected_child(
-                "template-stage declarator kind",
-                "let: carrier (not yet routed)",
-            ),
+            DeclaratorSemantics::LetCarrier { carrier_symbol } => {
+                let BindingPatternSource::LetCarrier { slot_prop_name } = source else {
+                    return CodegenError::unexpected_child(
+                        "let carrier source",
+                        "other binding source",
+                    );
+                };
+                let stmts = match carrier_symbol {
+                    Some(sym) => self.emit_let_carrier(pattern, sym, slot_prop_name),
+                    None => self.emit_let_simple(pattern, slot_prop_name),
+                };
+                Ok(Out::Statements(stmts))
+            }
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuneProps
             | DeclaratorSemantics::LegacyProps
@@ -306,6 +319,63 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         carrier_stmts.push(self.ctx.b.var_stmt(&name, derived));
         carriers.insert(prefix.to_string(), name.clone());
         name
+    }
+
+    fn emit_let_simple(
+        &mut self,
+        pattern: &'a BindingPattern<'a>,
+        slot_prop_name: &'a str,
+    ) -> Vec<Statement<'a>> {
+        let mut names: Vec<String> = Vec::new();
+        walk_bindings(pattern, |v| {
+            names.push(self.ctx.query.symbol_name(v.symbol).to_string());
+        });
+        let Some(name) = names.into_iter().next() else {
+            return Vec::new();
+        };
+        let slot_props = self.ctx.b.rid_expr("$$slotProps");
+        let prop = self.ctx.b.static_member_expr(slot_props, slot_prop_name);
+        let helper = self.ctx.query.view.derived_helper();
+        let derived = self.ctx.b.call_expr(helper, [Arg::Expr(self.ctx.b.thunk(prop))]);
+        vec![self.ctx.b.const_stmt(&name, derived)]
+    }
+
+    fn emit_let_carrier(
+        &mut self,
+        pattern: &'a BindingPattern<'a>,
+        carrier_symbol: SymbolId,
+        slot_prop_name: &'a str,
+    ) -> Vec<Statement<'a>> {
+        use oxc_allocator::CloneIn;
+
+        let carrier_name = self.ctx.query.symbol_name(carrier_symbol).to_string();
+
+        let mut names: Vec<String> = Vec::new();
+        walk_bindings(pattern, |v| {
+            if matches!(
+                self.ctx.query.view.binding_semantics(v.symbol),
+                BindingSemantics::Contextual(
+                    ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                )
+            ) {
+                names.push(self.ctx.query.symbol_name(v.symbol).to_string());
+            }
+        });
+
+        let slot_props = self.ctx.b.rid_expr("$$slotProps");
+        let source = self.ctx.b.static_member_expr(slot_props, slot_prop_name);
+        let destruct_stmt = self
+            .ctx
+            .b
+            .let_destruct_stmt(pattern.clone_in(self.ctx.b.ast.allocator), source);
+        let return_stmt = self.ctx.b.return_stmt(self.ctx.b.shorthand_object_expr(&names));
+        let derived_body = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
+        let derived = self
+            .ctx
+            .b
+            .call_expr("$.derived", [Arg::Expr(derived_body)]);
+
+        vec![self.ctx.b.const_stmt(&carrier_name, derived)]
     }
 }
 

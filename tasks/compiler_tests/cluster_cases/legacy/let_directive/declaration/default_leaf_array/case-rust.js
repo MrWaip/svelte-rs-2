@@ -7,14 +7,11 @@ export default function App($$anchor) {
 		$$slots: { default: ($$anchor, $$slotProps) => {
 			const item = $.derived(() => {
 				let [a = 10, b = 20] = $$slotProps.item;
-				return {
-					a,
-					b
-				};
+				return {};
 			});
 			$.next();
 			var text = $.text();
-			$.template_effect(() => $.set_text(text, `${$.get(item).a ?? ""}${$.get(item).b ?? ""}`));
+			text.nodeValue = `${a ?? ""}${b ?? ""}`;
 			$.append($$anchor, text);
 		} }
 	});

@@ -82,6 +82,7 @@ pub fn read_binding<'a>(
                 let carrier_name = analysis.scoping.symbol_name(carrier_symbol);
                 Some(member_get_via_get(b, carrier_name, name))
             }
+            ContextualBindingSemantics::LetDirectiveDirect => Some(b.rid_expr(name)),
         },
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive
             if analysis.scoping.is_import(sym) =>

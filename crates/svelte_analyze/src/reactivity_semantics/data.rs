@@ -188,6 +188,8 @@ pub enum ContextualBindingSemantics {
 
     LetDirectiveCarrierMember { carrier_symbol: SymbolId },
 
+    LetDirectiveDirect,
+
     SnippetParam(SnippetParamStrategy),
 }
 
@@ -239,7 +241,7 @@ pub enum DeclaratorSemantics {
     },
 
     LetCarrier {
-        carrier_symbol: SymbolId,
+        carrier_symbol: Option<SymbolId>,
     },
 
     EachItem,
@@ -404,6 +406,8 @@ pub enum ContextualReadKind {
     AwaitError,
 
     LetDirective,
+
+    LetDirectiveDirect,
 
     SnippetParam { accessor: bool, signal: bool },
 }
@@ -947,6 +951,13 @@ impl ReactivitySemantics {
         self.write_binding(sym, BindingFacts::CarrierAlias { carrier });
     }
 
+    pub(crate) fn record_let_direct_sym(&mut self, sym: SymbolId) {
+        self.write_binding(
+            sym,
+            BindingFacts::Contextual(ContextualBindingSemantics::LetDirectiveDirect),
+        );
+    }
+
     fn write_binding(&mut self, sym: SymbolId, facts: BindingFacts) {
         let idx = sym.index();
         if idx >= self.bindings.len() {
@@ -1045,7 +1056,18 @@ impl ReactivitySemantics {
     ) {
         self.write_declarator(
             stmt_node_id,
-            DeclaratorSemantics::LetCarrier { carrier_symbol },
+            DeclaratorSemantics::LetCarrier {
+                carrier_symbol: Some(carrier_symbol),
+            },
+        );
+    }
+
+    pub(crate) fn record_let_simple_binding(&mut self, stmt_node_id: OxcNodeId) {
+        self.write_declarator(
+            stmt_node_id,
+            DeclaratorSemantics::LetCarrier {
+                carrier_symbol: None,
+            },
         );
     }
 

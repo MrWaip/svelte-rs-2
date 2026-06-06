@@ -175,8 +175,14 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             };
             let is_destructured =
                 !matches!(pattern, BindingPattern::BindingIdentifier(_));
-            let mut syms: Vec<SymbolId> = Vec::new();
-            svelte_component_semantics::walk_bindings(pattern, |v| syms.push(v.symbol));
+            let mut syms: Vec<(SymbolId, bool)> = Vec::new();
+            svelte_component_semantics::walk_bindings(pattern, |v| {
+                let leaked = v.path.iter().any(|s| {
+                    s.default.is_some()
+                        || matches!(s.access, svelte_component_semantics::Access::Slice { .. })
+                });
+                syms.push((v.symbol, leaked));
+            });
             (syms, is_destructured, stmt_node_id)
         };
 
@@ -188,15 +194,20 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 dir.name.as_str(),
             ))
         } else {
+            ctx.data.reactivity.record_let_simple_binding(stmt_node_id);
             None
         };
 
-        for sym in syms {
+        for (sym, leaked) in syms {
             ctx.data.reactivity.record_contextual_owner(sym, dir.id);
             if let Some(carrier) = carrier_sym {
-                ctx.data
-                    .reactivity
-                    .record_carrier_alias_binding(sym, carrier);
+                if leaked {
+                    ctx.data.reactivity.record_let_direct_sym(sym);
+                } else {
+                    ctx.data
+                        .reactivity
+                        .record_carrier_alias_binding(sym, carrier);
+                }
             } else {
                 self.staging.push(sym, PendingKind::LetDirective);
             }
@@ -308,10 +319,11 @@ fn ensure_slot_let_carrier(
     preferred_name: &str,
 ) -> SymbolId {
     use super::super::data::DeclaratorSemantics;
-    if let DeclaratorSemantics::LetCarrier { carrier_symbol } =
-        data.reactivity.declarator_semantics(stmt_node_id)
+    if let DeclaratorSemantics::LetCarrier {
+        carrier_symbol: Some(s),
+    } = data.reactivity.declarator_semantics(stmt_node_id)
     {
-        return carrier_symbol;
+        return s;
     }
     let sym = data
         .scoping
@@ -603,6 +615,7 @@ pub(super) fn classify_contextual_read_kind(
         | ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => {
             ContextualReadKind::LetDirective
         }
+        ContextualBindingSemantics::LetDirectiveDirect => ContextualReadKind::LetDirectiveDirect,
         ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
             ContextualReadKind::SnippetParam {
                 accessor: true,

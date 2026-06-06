@@ -271,6 +271,28 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
+    pub fn let_destruct_stmt(
+        &self,
+        pattern: ast::BindingPattern<'a>,
+        init: Expression<'a>,
+    ) -> Statement<'a> {
+        let decl = self.ast.variable_declarator(
+            SPAN,
+            VariableDeclarationKind::Let,
+            pattern,
+            NONE,
+            Some(init),
+            false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Let,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     pub fn var_destruct_stmt(
         &self,
         pattern: ast::BindingPattern<'a>,

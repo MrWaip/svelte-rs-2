@@ -229,7 +229,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     | ContextualReadKind::SnippetParam {
                         accessor: false,
                         signal: false,
-                    } => {}
+                    }
+                    | ContextualReadKind::LetDirectiveDirect => {}
                 }
                 true
             }
