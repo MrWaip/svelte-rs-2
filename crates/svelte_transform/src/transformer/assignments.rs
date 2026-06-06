@@ -386,9 +386,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
-                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
+                    if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
                         let root_name = analysis.scoping.symbol_name(symbol).to_string();
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(root_name.clone());
                         semantic_bindable = bindable;
                         semantic_source_root_name = Some(root_name);
@@ -396,8 +396,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let Some(prop_alias) = analysis.binding_origin_key(symbol) {
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                    if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
                         semantic_segments = self.prop_mutation_segments_from_member(member);
                     }
@@ -437,12 +437,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
+                    if let (Some((prop_alias, _origin_kind)), Some(segments)) = (
                         analysis.binding_origin_key(symbol),
                         self.prop_mutation_segments_from_member(member),
                     ) {
                         let root_name = analysis.scoping.symbol_name(symbol).to_string();
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(root_name.clone());
                         semantic_bindable = bindable;
                         semantic_source_root_name = Some(root_name);
@@ -450,11 +450,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 ReferenceSemantics::PropNonSourceMemberMutationRoot { symbol } => {
-                    if let (Some(prop_alias), Some(segments)) = (
+                    if let (Some((prop_alias, _origin_kind)), Some(segments)) = (
                         analysis.binding_origin_key(symbol),
                         self.prop_mutation_segments_from_member(member),
                     ) {
-                        semantic_prop_alias = Some(prop_alias.to_string());
+                        semantic_prop_alias = Some(prop_alias.into_owned());
                         semantic_root_name = Some(analysis.scoping.symbol_name(symbol).to_string());
                         semantic_segments = Some(segments);
                     }
@@ -728,6 +728,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if self.is_in_ignored_stmt("await_reactivity_loss") {
                 return;
             }
+            if is_internal_async_await(&await_expr.argument) {
+                return;
+            }
             let arg = self.b.move_expr(&mut await_expr.argument);
             let track_call = self
                 .b
@@ -738,4 +741,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .call_expr_callee(awaited, iter::empty::<Arg<'a, '_>>());
         }
     }
+}
+
+fn is_internal_async_await(arg: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = arg else {
+        return false;
+    };
+    let Expression::Identifier(id) = &call.callee else {
+        return false;
+    };
+    matches!(id.name.as_str(), "$.async_derived" | "$.save")
 }

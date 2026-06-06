@@ -121,7 +121,7 @@ fn classify_condition(is_root: bool, has_await: bool, memoize: bool) -> IfCondit
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::analyze_source;
+    use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfConditionKind};
     use svelte_ast::{Component, IfBlock, Node, NodeId};
 
@@ -190,6 +190,16 @@ mod tests {
 
     fn assert_if<F: FnOnce(&IfBlockSemantics)>(source: &str, check: F) {
         let (component, data) = analyze_source(source);
+        let block = first_if_block(&component);
+        let sem: &BlockSemantics = data.block_semantics(block.id);
+        match sem {
+            BlockSemantics::If(s) => check(s),
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    fn assert_if_async<F: FnOnce(&IfBlockSemantics)>(source: &str, check: F) {
+        let (component, data) = analyze_source_experimental_async(source);
         let block = first_if_block(&component);
         let sem: &BlockSemantics = data.block_semantics(block.id);
         match sem {
@@ -275,7 +285,7 @@ mod tests {
 
     #[test]
     fn if_root_await_uses_async_param() {
-        assert_if(
+        assert_if_async(
             r#"<script>let p = Promise.resolve(true);</script>{#if await p}<p></p>{/if}"#,
             |sem| {
                 assert_eq!(sem.branches[0].condition, IfConditionKind::AsyncParam);
@@ -299,7 +309,7 @@ mod tests {
 let { x } = $props();
 let q = Promise.resolve(true);
 </script>{#if x}<span></span>{:else if await q}<span></span>{/if}"#;
-        let (component, data) = analyze_source(source);
+        let (component, data) = analyze_source_experimental_async(source);
         let ids = all_if_blocks(&component);
         assert_eq!(ids.len(), 2);
         let root = ids[0];

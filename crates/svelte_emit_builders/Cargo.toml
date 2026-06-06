@@ -13,6 +13,7 @@ doctest = false
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_span = { workspace = true }
+oxc_syntax = { workspace = true }
 svelte_analyze = { workspace = true }
 svelte_ast_builder = { workspace = true }
 svelte_component_semantics = { workspace = true }

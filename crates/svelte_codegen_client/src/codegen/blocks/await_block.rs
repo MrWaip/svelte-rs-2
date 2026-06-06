@@ -1,16 +1,14 @@
-use svelte_emit_builders::runes::rune_get;
+use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
-use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::scope::SymbolId;
-use svelte_analyze::{
-    AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-};
+use oxc_ast::ast::Expression;
+use svelte_analyze::{AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitWrapper};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::OxcNodeId;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
-use super::super::{Codegen, Result};
+use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_await_block(
@@ -133,14 +131,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let has_then = matches!(then_branch, AwaitBranch::Present { .. });
         let has_catch = matches!(catch_branch, AwaitBranch::Present { .. });
         if has_then {
-            let then_fragment = match self.ctx.query.component.store.get(block_id) {
+            let (then_fragment, value_stmt) = match self.ctx.query.component.store.get(block_id) {
                 svelte_ast::Node::AwaitBlock(block) => match block.then {
-                    Some(t) => t,
+                    Some(t) => (t, block.value.as_ref().map(|s| s.id())),
                     None => return Ok(self.ctx.b.null_expr()),
                 },
                 _ => return Ok(self.ctx.b.null_expr()),
             };
-            self.build_await_branch_callback(parent_ctx, then_fragment, binding_of(then_branch))
+            self.build_await_branch_callback(
+                parent_ctx,
+                then_fragment,
+                binding_of(then_branch),
+                value_stmt,
+            )
         } else if has_catch {
             Ok(self.ctx.b.void_zero_expr())
         } else {
@@ -155,14 +158,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         catch_branch: &AwaitBranch,
     ) -> Result<Expression<'a>> {
         if matches!(catch_branch, AwaitBranch::Present { .. }) {
-            let catch_fragment = match self.ctx.query.component.store.get(block_id) {
+            let (catch_fragment, error_stmt) = match self.ctx.query.component.store.get(block_id) {
                 svelte_ast::Node::AwaitBlock(block) => match block.catch {
-                    Some(c) => c,
+                    Some(c) => (c, block.error.as_ref().map(|s| s.id())),
                     None => return Ok(self.ctx.b.null_expr()),
                 },
                 _ => return Ok(self.ctx.b.null_expr()),
             };
-            self.build_await_branch_callback(parent_ctx, catch_fragment, binding_of(catch_branch))
+            self.build_await_branch_callback(
+                parent_ctx,
+                catch_fragment,
+                binding_of(catch_branch),
+                error_stmt,
+            )
         } else {
             Ok(self.ctx.b.null_expr())
         }
@@ -173,6 +181,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         parent_ctx: &FragmentCtx<'a>,
         fragment: svelte_ast::FragmentId,
         binding: &AwaitBinding,
+        binding_stmt: Option<OxcNodeId>,
     ) -> Result<Expression<'a>> {
         let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
@@ -199,54 +208,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .arrow_block_expr(self.ctx.b.params(["$$anchor", &name]), frag_body))
             }
-            AwaitBinding::Pattern { kind, leaves, .. } => {
-                self.build_await_destructured_callback(*kind, leaves, frag_body)
+            AwaitBinding::Pattern { pattern_id, .. } => {
+                let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
+                    *pattern_id,
+                    BindingPatternSource::AwaitValue { binding_stmt },
+                )?
+                else {
+                    return CodegenError::unexpected_child(
+                        "await value statements",
+                        "const tag derived",
+                    );
+                };
+                decls.extend(frag_body);
+                Ok(self
+                    .ctx
+                    .b
+                    .arrow_block_expr(self.ctx.b.params(["$$anchor", "$$source"]), decls))
             }
         }
     }
 
-    fn build_await_destructured_callback(
-        &mut self,
-        kind: AwaitDestructureKind,
-        leaves: &[SymbolId],
-        frag_body: Vec<Statement<'a>>,
-    ) -> Result<Expression<'a>> {
-        let names: Vec<String> = leaves
-            .iter()
-            .map(|&sym| self.ctx.query.view.symbol_name(sym).to_string())
-            .collect();
-
-        let mut decls: Vec<Statement<'a>> = Vec::new();
-
-        let get_source = rune_get(&self.ctx.b, "$$source");
-        let destruct_stmt = match kind {
-            AwaitDestructureKind::Array => self.ctx.b.var_array_destruct_stmt(&names, get_source),
-            AwaitDestructureKind::Object => self.ctx.b.var_object_destruct_stmt(&names, get_source),
-        };
-        let return_obj = self.ctx.b.shorthand_object_expr(&names);
-        let return_stmt = self.ctx.b.return_stmt(return_obj);
-        let helper = self.ctx.query.view.derived_helper();
-        let derived_fn = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
-        let derived_call = self.ctx.b.call_expr(helper, [Arg::Expr(derived_fn)]);
-        decls.push(self.ctx.b.var_stmt("$$value", derived_call));
-
-        for name in &names {
-            let get_value = rune_get(&self.ctx.b, "$$value");
-            let member = self.ctx.b.static_member_expr(get_value, name);
-            let getter_fn = self
-                .ctx
-                .b
-                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(member)]);
-            let per_field_derived = self.ctx.b.call_expr(helper, [Arg::Expr(getter_fn)]);
-            decls.push(self.ctx.b.var_stmt(name, per_field_derived));
-        }
-
-        decls.extend(frag_body);
-        Ok(self
-            .ctx
-            .b
-            .arrow_block_expr(self.ctx.b.params(["$$anchor", "$$source"]), decls))
-    }
 }
 
 fn binding_of(branch: &AwaitBranch) -> &AwaitBinding {

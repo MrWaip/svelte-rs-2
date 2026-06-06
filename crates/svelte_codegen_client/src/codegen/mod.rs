@@ -1,6 +1,7 @@
 mod anchor;
 mod async_emit;
 mod attributes;
+mod binding_pattern;
 mod blocks;
 mod component_props;
 mod concatenation;

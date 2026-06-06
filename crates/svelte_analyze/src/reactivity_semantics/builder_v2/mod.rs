@@ -17,13 +17,14 @@ use util::{
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedKind, DerivedEmit, OptimizedRuneSemantics,
-    PropBindingKind, PropBindingSemantics, PropDefaultEmit, PropEmitMode, PropsDeclKind,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReferenceFacts,
-    RuntimeRuneKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
+    RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
+use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
@@ -148,6 +149,13 @@ fn compute_const_tag_reactivity<'a>(
         if syms.is_empty() {
             continue;
         }
+
+        let emit = match declarator.init.as_ref() {
+            Some(init) if expression_has_await(init) => DerivedEmit::Async,
+            _ => DerivedEmit::Sync,
+        };
+        data.reactivity
+            .record_declarator_semantics(decl.node_id(), DeclaratorSemantics::ConstTag { emit });
 
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
@@ -620,8 +628,18 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let init_proxyable =
             matches!(rune_kind, RuneKind::State) && state_initializer_is_proxyable(call);
 
+        let is_destructure = !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
+
         match rune_kind {
             RuneKind::State => {
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneState {
+                            kind: StateKind::State,
+                        },
+                    );
+                }
                 let root_proxied = if matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
                 {
                     init_proxyable
@@ -635,18 +653,20 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::State,
                         proxied: root_proxied,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::State,
-                            init_proxyable,
-                        ),
+                        is_signal_source: false,
                     },
                     true,
                 );
             }
             RuneKind::StateRaw => {
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneState {
+                            kind: StateKind::StateRaw,
+                        },
+                    );
+                }
                 self.record_state_root_declaration(
                     &declarator.id,
                     root_node,
@@ -654,13 +674,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::StateRaw,
                         proxied: false,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::StateRaw,
-                            false,
-                        ),
+                        is_signal_source: false,
                     },
                     true,
                 );
@@ -673,24 +687,27 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::StateEager,
                         proxied: false,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::StateEager,
-                            false,
-                        ),
+                        is_signal_source: false,
                     },
                     false,
                 );
             }
             RuneKind::Derived => {
-                let lowering = self.derived_lowering(&declarator.id, call, rune_kind);
+                let emit = derived_emit(call);
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneDerived {
+                            kind: DerivedKind::Derived,
+                            emit,
+                        },
+                    );
+                }
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
-                        lowering,
+                        emit,
 
                         reactive: true,
                     },
@@ -698,20 +715,28 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
             }
             RuneKind::DerivedBy => {
-                let lowering = self.derived_lowering(&declarator.id, call, rune_kind);
+                let emit = derived_emit(call);
+                if is_destructure {
+                    self.data.reactivity.record_declarator_semantics(
+                        root_node,
+                        DeclaratorSemantics::RuneDerived {
+                            kind: DerivedKind::DerivedBy,
+                            emit,
+                        },
+                    );
+                }
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
-                        lowering,
+                        emit,
                         reactive: true,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);
             }
             RuneKind::Props => {
-                let kind = props_decl_kind_from_var_kind(self.current_decl_kind);
-                self.record_props_pattern(&declarator.id, root_node, kind);
+                self.record_props_pattern(&declarator.id, root_node);
             }
             RuneKind::PropsId => {
                 self.record_runtime_rune_pattern(&declarator.id, RuntimeRuneKind::PropsId);
@@ -801,12 +826,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             promoted_leaves.push(sym);
         }
         if is_destructured && !promoted_leaves.is_empty() {
-            self.data.reactivity.record_declarator_semantics(
-                declarator.node_id(),
-                DeclaratorSemantics::LegacyStateDestructure {
-                    leaves: promoted_leaves,
-                },
-            );
+            self.data
+                .reactivity
+                .record_declarator_semantics(declarator.node_id(), DeclaratorSemantics::LegacyState);
         }
     }
 
@@ -870,10 +892,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 promoted.push(sym);
             }
             if !promoted.is_empty() {
-                self.data.reactivity.record_declarator_semantics(
-                    decl_node_id,
-                    DeclaratorSemantics::LegacyStateDestructure { leaves: promoted },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(decl_node_id, DeclaratorSemantics::LegacyState);
             }
         }
     }
@@ -1061,9 +1082,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 let Some(sym) = ident.symbol_id.get() else {
                     return;
                 };
-                self.data
-                    .reactivity
-                    .record_state_binding(sym, semantics.clone());
+                let binding = StateDeclarationSemantics {
+                    is_signal_source: binding_is_signal_source(
+                        &self.data.scoping,
+                        &self.data.script,
+                        sym,
+                        semantics.kind,
+                    ),
+                    ..*semantics
+                };
+                self.data.reactivity.record_state_binding(sym, binding);
             }
             BindingPattern::ObjectPattern(obj) => {
                 for prop in &obj.properties {
@@ -1121,12 +1149,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
-    fn record_props_pattern(
-        &mut self,
-        pattern: &BindingPattern<'a>,
-        root_node: OxcNodeId,
-        kind: PropsDeclKind,
-    ) {
+    fn record_props_pattern(&mut self, pattern: &BindingPattern<'a>, root_node: OxcNodeId) {
         match pattern {
             BindingPattern::BindingIdentifier(ident) => {
                 let Some(sym) = ident.symbol_id.get() else {
@@ -1135,48 +1158,38 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.data.reactivity.record_prop_binding(
                     sym,
                     PropBindingSemantics {
-                        lowering_mode: self.prop_lowering_mode,
+                        emit_mode: self.prop_lowering_mode,
                         kind: PropBindingKind::Rest,
                     },
                 );
-                self.data.reactivity.record_declarator_semantics(
-                    root_node,
-                    DeclaratorSemantics::PropsIdentifier { sym, kind },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(root_node, DeclaratorSemantics::RuneProps);
 
                 self.rest_prop_excluded.insert(sym, FxHashSet::default());
             }
             BindingPattern::ObjectPattern(obj) => {
-                let mut leaves: SmallVec<[SymbolId; 4]> = SmallVec::new();
                 let mut sibling_keys: FxHashSet<Ident<'a>> = FxHashSet::default();
                 for prop in &obj.properties {
                     if let Some(key) = property_key_atom(&prop.key) {
                         sibling_keys.insert(key);
                     }
-                    let Some(sym) = self.record_object_prop_pattern(&prop.value) else {
+                    if self.record_object_prop_pattern(&prop.value).is_none() {
                         return;
-                    };
-                    leaves.push(sym);
+                    }
                 }
 
-                let has_rest = obj.rest.is_some();
                 if let Some(rest) = &obj.rest {
                     match self.record_rest_prop_pattern(&rest.argument) {
                         Some(rest_sym) => {
                             self.rest_prop_excluded.insert(rest_sym, sibling_keys);
-                            leaves.push(rest_sym);
                         }
                         None => return,
                     }
                 }
-                self.data.reactivity.record_declarator_semantics(
-                    root_node,
-                    DeclaratorSemantics::PropsObject {
-                        leaves,
-                        has_rest,
-                        kind,
-                    },
-                );
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(root_node, DeclaratorSemantics::RuneProps);
             }
             _ => {}
         }
@@ -1196,7 +1209,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         bindable: false,
                         updated: self.data.scoping.is_mutated(sym)
                             || self.data.scoping.is_reexported_specifier_local(sym),
-                        default_lowering: PropDefaultEmit::None,
+                        default_lowering: PropDefaultKind::None,
                         default_needs_proxy: false,
                     }
                 } else {
@@ -1205,7 +1218,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 self.data.reactivity.record_prop_binding(
                     sym,
                     PropBindingSemantics {
-                        lowering_mode: self.prop_lowering_mode,
+                        emit_mode: self.prop_lowering_mode,
                         kind,
                     },
                 );
@@ -1230,7 +1243,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         &mut self,
         pattern: &BindingPattern<'_>,
         bindable: bool,
-        default_lowering: PropDefaultEmit,
+        default_lowering: PropDefaultKind,
         default_needs_proxy: bool,
     ) -> Option<SymbolId> {
         let BindingPattern::BindingIdentifier(ident) = pattern else {
@@ -1239,14 +1252,14 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let sym = ident.symbol_id.get()?;
         if bindable
             && matches!(self.prop_lowering_mode, PropEmitMode::Standard)
-            && matches!(default_lowering, PropDefaultEmit::None)
+            && matches!(default_lowering, PropDefaultKind::None)
         {
             self.standard_prop_source_symbols.push(sym);
         }
         self.data.reactivity.record_prop_binding(
             sym,
             PropBindingSemantics {
-                lowering_mode: self.prop_lowering_mode,
+                emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Source {
                     bindable,
                     updated: self.data.scoping.is_mutated(sym)
@@ -1267,7 +1280,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.data.reactivity.record_prop_binding(
             sym,
             PropBindingSemantics {
-                lowering_mode: self.prop_lowering_mode,
+                emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Rest,
             },
         );
@@ -1293,14 +1306,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.data
             .reactivity
             .record_reference_semantics(ref_id, ReferenceFacts::RestPropMemberRewrite);
-    }
-}
-
-fn props_decl_kind_from_var_kind(kind: Option<VariableDeclarationKind>) -> PropsDeclKind {
-    match kind {
-        Some(VariableDeclarationKind::Const) => PropsDeclKind::Const,
-        Some(VariableDeclarationKind::Var) => PropsDeclKind::Var,
-        _ => PropsDeclKind::Let,
     }
 }
 
@@ -1482,13 +1487,13 @@ fn class_field_rune_semantics(
         RuneKind::Derived => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::Derived,
-                lowering: class_field_derived_emit(call, RuneKind::Derived),
+                emit: derived_emit(call),
             },
         )),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::DerivedBy,
-                lowering: class_field_derived_emit(call, RuneKind::DerivedBy),
+                emit: derived_emit(call),
             },
         )),
         _ => None,
@@ -1552,117 +1557,17 @@ fn state_expression_is_proxyable(expr: &Expression<'_>) -> bool {
     true
 }
 
-fn collect_state_binding_semantics(
+fn binding_is_signal_source(
     scoping: &ComponentScoping<'_>,
     script: &crate::ScriptAnalysis,
-    pattern: &BindingPattern<'_>,
-    rune_kind: StateKind,
-    init_proxyable: bool,
-) -> SmallVec<[StateBindingSemantics; 4]> {
-    let mut semantics = SmallVec::new();
-    collect_state_binding_semantics_inner(
-        scoping,
-        script,
-        pattern,
-        rune_kind,
-        init_proxyable,
-        &mut semantics,
-    );
-    semantics
-}
-
-fn collect_state_binding_semantics_inner(
-    scoping: &ComponentScoping<'_>,
-    script: &crate::ScriptAnalysis,
-    pattern: &BindingPattern<'_>,
-    rune_kind: StateKind,
-    init_proxyable: bool,
-    semantics: &mut SmallVec<[StateBindingSemantics; 4]>,
-) {
-    match pattern {
-        BindingPattern::BindingIdentifier(ident) => {
-            let reassigned = ident.symbol_id.get().is_some_and(|sym| {
-                scoping.is_mutated(sym) || scoping.is_reexported_specifier_local(sym)
-            });
-            semantics.push(state_binding_semantic(
-                rune_kind,
-                script.is_state_source(reassigned),
-                init_proxyable,
-            ));
-        }
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &prop.value,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-            if let Some(rest) = &obj.rest {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &rest.argument,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for elem in arr.elements.iter().flatten() {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    elem,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-            if let Some(rest) = &arr.rest {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &rest.argument,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-        }
-        BindingPattern::AssignmentPattern(assign) => {
-            collect_state_binding_semantics_inner(
-                scoping,
-                script,
-                &assign.left,
-                rune_kind,
-                init_proxyable,
-                semantics,
-            );
-        }
+    sym: SymbolId,
+    kind: StateKind,
+) -> bool {
+    if matches!(kind, StateKind::StateEager) {
+        return false;
     }
-}
-
-fn state_binding_semantic(
-    rune_kind: StateKind,
-    is_state_source: bool,
-    init_proxyable: bool,
-) -> StateBindingSemantics {
-    match (rune_kind, is_state_source) {
-        (StateKind::State, true) => StateBindingSemantics::StateSignal {
-            proxied: init_proxyable,
-        },
-        (StateKind::State, false) => StateBindingSemantics::NonReactive {
-            proxied: init_proxyable,
-        },
-        (StateKind::StateRaw, true) => StateBindingSemantics::StateRawSignal,
-        (StateKind::StateRaw, false) => StateBindingSemantics::NonReactive { proxied: false },
-        (StateKind::StateEager, _) => StateBindingSemantics::NonReactive { proxied: false },
-    }
+    let reassigned = scoping.is_mutated(sym) || scoping.is_reexported_specifier_local(sym);
+    script.is_state_source(reassigned)
 }
 
 fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {
@@ -1673,21 +1578,21 @@ fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
-    fn prop_default_emit(&self, expr: &Expression<'_>) -> PropDefaultEmit {
+    fn prop_default_emit(&self, expr: &Expression<'_>) -> PropDefaultKind {
         let default_expr = bindable_default_arg(expr).unwrap_or(expr);
         if bindable_default_arg(expr).is_none() && prop_default_is_bindable(expr) {
-            return PropDefaultEmit::None;
+            return PropDefaultKind::None;
         }
         if !is_simple_expression(default_expr) {
-            return PropDefaultEmit::Lazy;
+            return PropDefaultKind::Lazy;
         }
         if let Expression::Identifier(id) = default_expr.get_inner_expression()
             && let Some(ref_id) = id.reference_id.get()
             && self.is_reference_reactive_for_prop_default(ref_id)
         {
-            return PropDefaultEmit::Lazy;
+            return PropDefaultKind::Lazy;
         }
-        PropDefaultEmit::Eager
+        PropDefaultKind::Eager
     }
 
     fn is_reference_reactive_for_prop_default(&self, ref_id: ReferenceId) -> bool {
@@ -1752,70 +1657,16 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
     )
 }
 
-fn class_field_derived_emit(
-    call: &CallExpression<'_>,
-    rune_kind: RuneKind,
-) -> DerivedEmit {
-    if matches!(rune_kind, RuneKind::Derived)
-        && call
-            .arguments
-            .first()
-            .and_then(|arg| arg.as_expression())
-            .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::AwaitExpression(_)))
-    {
+fn derived_emit(call: &CallExpression<'_>) -> DerivedEmit {
+    let has_await = call
+        .arguments
+        .first()
+        .and_then(|arg| arg.as_expression())
+        .is_some_and(expression_has_await);
+    if has_await {
         DerivedEmit::Async
     } else {
         DerivedEmit::Sync
-    }
-}
-
-impl<'a> ScriptSemanticCollector<'_, 'a> {
-    fn derived_lowering(
-        &self,
-        pattern: &BindingPattern<'_>,
-        call: &CallExpression<'_>,
-        rune_kind: RuneKind,
-    ) -> DerivedEmit {
-        let source = call.arguments.first().and_then(|arg| arg.as_expression());
-        let inner = source.map(|e| e.get_inner_expression());
-        let source_is_await =
-            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::AwaitExpression(_)));
-        let source_is_identifier =
-            matches!(rune_kind, RuneKind::Derived) && matches!(inner, Some(Expression::Identifier(_)));
-
-        let destructured = !matches!(pattern, BindingPattern::BindingIdentifier(_));
-        match (destructured, source_is_await, source_is_identifier) {
-            (false, true, _) => DerivedEmit::Async,
-            (false, false, _) => DerivedEmit::Sync,
-            (true, true, _) => DerivedEmit::DestructuredBoxedAsync,
-            (true, false, true) => {
-                if self.source_resolves_to_whole_props(source) {
-                    DerivedEmit::DestructuredInlinePropsSource
-                } else {
-                    DerivedEmit::DestructuredInlineSource
-                }
-            }
-            (true, false, false) => DerivedEmit::DestructuredBoxedSync,
-        }
-    }
-
-    fn source_resolves_to_whole_props(&self, source: Option<&Expression<'_>>) -> bool {
-        let Some(Expression::Identifier(id)) = source.map(|e| e.get_inner_expression()) else {
-            return false;
-        };
-        let Some(ref_id) = id.reference_id.get() else {
-            return false;
-        };
-        let Some(sym) = self.data.scoping.get_reference(ref_id).symbol_id() else {
-            return false;
-        };
-        matches!(
-            self.data.reactivity.binding_facts(sym),
-            Some(BindingFacts::Prop(PropBindingSemantics {
-                kind: PropBindingKind::Rest,
-                ..
-            }))
-        )
     }
 }
 

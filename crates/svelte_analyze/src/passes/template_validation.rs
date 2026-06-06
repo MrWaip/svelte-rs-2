@@ -5,8 +5,9 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    ConstTag, DebugTag, EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective, ComponentNode,
+    ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag,
+    HtmlTag, SpreadAttribute,
     IfBlock, KeyBlock, LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY,
     SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
     SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
@@ -810,6 +811,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, tag.id, &tag.expression);
         self.note_render_tag(ctx);
         check_opening_sigil(tag.span, b'@', ctx);
     }
@@ -1439,6 +1441,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         dir: &OnDirectiveLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        if let Some(expression) = &dir.expression {
+            check_template_await(ctx, dir.id, expression);
+        }
         let parent_kind = ctx.data.parent(dir.id).map(|p| p.kind);
         let is_component = parent_kind == Some(ParentKind::ComponentNode);
         let is_regular_or_svelte_element = matches!(
@@ -1558,7 +1563,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, tag.id, &tag.expression);
         check_opening_sigil(tag.span, b'@', ctx);
+    }
+
+    fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, dir.id, &dir.expression);
+    }
+
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, attr.id, &attr.expression);
     }
 
     fn visit_attach_tag(&mut self, tag: &AttachTag, ctx: &mut VisitContext<'_, '_>) {
@@ -1572,11 +1586,13 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, block.id, &block.expression);
         check_empty_fragment(block.fragment, ctx);
         check_opening_sigil(block.span, b'#', ctx);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, block.id, &block.test);
         check_empty_fragment(block.consequent, ctx);
         if let Some(alt) = block.alternate {
             check_empty_fragment(alt, ctx);
@@ -1586,6 +1602,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, block.id, &block.expression);
         check_opening_sigil(block.span, b'#', ctx);
         if !ctx.runes {
             return;
@@ -1611,6 +1628,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
+        check_template_await(ctx, block.id, &block.expression);
         if let Some(key_ref) = block.key.as_ref()
             && block.context.is_none()
         {
@@ -3299,6 +3317,16 @@ fn emit_directive_await_diagnostic(ctx: &mut VisitContext<'_, '_>, expression: &
         DiagnosticKind::ExperimentalAsync
     };
     ctx.warnings_mut().push(Diagnostic::error(kind, span));
+}
+
+fn check_template_await(ctx: &mut VisitContext<'_, '_>, id: NodeId, expression: &ExprRef) {
+    if ctx
+        .data
+        .expression_data(id)
+        .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+    {
+        emit_template_await_experimental(ctx, expression);
+    }
 }
 
 fn emit_template_await_experimental(ctx: &mut VisitContext<'_, '_>, expression: &ExprRef) {

@@ -1,16 +1,16 @@
 use crate::reactivity_semantics::data::{ReactivitySemantics, ReferenceSemantics};
 use crate::types::script::RuneKind;
+use crate::utils::expression_await::expression_has_await;
 use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, AwaitExpression, CallExpression,
-    ChainElement, Expression, Function, IdentifierReference, MemberExpression,
-    SimpleAssignmentTarget, SpreadElement, UpdateExpression,
+    ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, CallExpression, ChainElement,
+    Expression, Function, IdentifierReference, MemberExpression, SimpleAssignmentTarget,
+    SpreadElement, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_await_expression, walk_call_expression, walk_function,
-    walk_member_expression, walk_simple_assignment_target, walk_spread_element,
-    walk_update_expression,
+    walk_arrow_function_expression, walk_call_expression, walk_function, walk_member_expression,
+    walk_simple_assignment_target, walk_spread_element, walk_update_expression,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -57,7 +57,6 @@ pub(super) fn collect<'a>(
         references: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
-        has_await: false,
         has_call: false,
         has_impure_call: false,
         has_member: false,
@@ -76,7 +75,7 @@ pub(super) fn collect<'a>(
         references: visitor.references,
         member_or_call_roots: visitor.member_or_call_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
-        has_await: visitor.has_await,
+        has_await: expression_has_await(expr),
         has_call: visitor.has_call,
         has_impure_call: visitor.has_impure_call,
         has_member: visitor.has_member,
@@ -178,7 +177,6 @@ struct Collector<'c, 'a> {
     references: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
-    has_await: bool,
     has_call: bool,
     has_impure_call: bool,
     has_member: bool,
@@ -349,13 +347,6 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_update_expression(&mut self, upd: &UpdateExpression<'a>) {
         self.in_write_position = true;
         walk_update_expression(self, upd);
-    }
-
-    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        if self.fn_depth == 0 {
-            self.has_await = true;
-        }
-        walk_await_expression(self, expr);
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {

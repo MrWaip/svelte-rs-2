@@ -1,4 +1,5 @@
 use super::*;
+use oxc_syntax::identifier::is_identifier_name;
 
 impl<'a> Builder<'a> {
     pub fn object_expr(&self, props: impl IntoIterator<Item = ObjProp<'a>>) -> Expression<'a> {
@@ -11,17 +12,21 @@ impl<'a> Builder<'a> {
         )
     }
 
+    fn obj_key_node(&self, key: &str) -> ast::PropertyKey<'a> {
+        if is_identifier_name(key) {
+            let key_atom = self.ast.atom(key);
+            ast::PropertyKey::StaticIdentifier(
+                self.alloc(self.ast.identifier_name(SPAN, key_atom)),
+            )
+        } else {
+            ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
+        }
+    }
+
     pub(super) fn obj_prop_to_ast(&self, prop: ObjProp<'a>) -> ast::ObjectPropertyKind<'a> {
         match prop {
             ObjProp::KeyValue(key, value) => {
-                let key_node = if key.contains('-') {
-                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
-                } else {
-                    let key_atom = self.ast.atom(key);
-                    ast::PropertyKey::StaticIdentifier(
-                        self.alloc(self.ast.identifier_name(SPAN, key_atom)),
-                    )
-                };
+                let key_node = self.obj_key_node(key);
                 let obj_prop = self.ast.object_property(
                     SPAN,
                     ast::PropertyKind::Init,
@@ -34,14 +39,7 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::Method(key, value) => {
-                let key_node = if key.contains('-') {
-                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
-                } else {
-                    let key_atom = self.ast.atom(key);
-                    ast::PropertyKey::StaticIdentifier(
-                        self.alloc(self.ast.identifier_name(SPAN, key_atom)),
-                    )
-                };
+                let key_node = self.obj_key_node(key);
                 let obj_prop = self.ast.object_property(
                     SPAN,
                     ast::PropertyKind::Init,
@@ -75,14 +73,7 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::SpreadProperty(self.alloc(spread))
             }
             ObjProp::Getter(name, expr) => {
-                let key_node = if name.contains('-') {
-                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
-                } else {
-                    let name_atom = self.ast.atom(name);
-                    ast::PropertyKey::StaticIdentifier(
-                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                    )
-                };
+                let key_node = self.obj_key_node(name);
                 let body = self.ast.alloc_function_body(
                     SPAN,
                     self.ast.vec(),
@@ -114,14 +105,7 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::GetterBody(name, stmts) => {
-                let key_node = if name.contains('-') {
-                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
-                } else {
-                    let name_atom = self.ast.atom(name);
-                    ast::PropertyKey::StaticIdentifier(
-                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                    )
-                };
+                let key_node = self.obj_key_node(name);
                 let mut body_stmts = self.ast.vec_with_capacity(stmts.len());
                 for s in stmts {
                     body_stmts.push(s);
@@ -168,14 +152,7 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::Setter(name, param_name, default_expr, body) => {
-                let key_node = if name.contains('-') {
-                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
-                } else {
-                    let name_atom = self.ast.atom(name);
-                    ast::PropertyKey::StaticIdentifier(
-                        self.alloc(self.ast.identifier_name(SPAN, name_atom)),
-                    )
-                };
+                let key_node = self.obj_key_node(name);
                 let param_atom = self.ast.atom(param_name);
                 let pattern = self
                     .ast

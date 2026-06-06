@@ -9,8 +9,8 @@ use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, S
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
-    ContextualBindingSemantics, ContextualReadKind, EachIndexStrategy, EachItemStrategy,
-    LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
+    ContextualBindingSemantics, ContextualReadKind, DeclaratorSemantics, EachIndexStrategy,
+    EachItemStrategy, LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -175,8 +175,14 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             };
             let is_destructured =
                 !matches!(pattern, BindingPattern::BindingIdentifier(_));
-            let mut syms: Vec<SymbolId> = Vec::new();
-            svelte_component_semantics::walk_bindings(pattern, |v| syms.push(v.symbol));
+            let mut syms: Vec<(SymbolId, bool)> = Vec::new();
+            svelte_component_semantics::walk_bindings(pattern, |v| {
+                let leaked = v.path.iter().any(|s| {
+                    s.default.is_some()
+                        || matches!(s.access, svelte_component_semantics::Access::Slice { .. })
+                });
+                syms.push((v.symbol, leaked));
+            });
             (syms, is_destructured, stmt_node_id)
         };
 
@@ -188,15 +194,20 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 dir.name.as_str(),
             ))
         } else {
+            ctx.data.reactivity.record_let_simple_binding(stmt_node_id);
             None
         };
 
-        for sym in syms {
+        for (sym, leaked) in syms {
             ctx.data.reactivity.record_contextual_owner(sym, dir.id);
             if let Some(carrier) = carrier_sym {
-                ctx.data
-                    .reactivity
-                    .record_carrier_alias_binding(sym, carrier);
+                if leaked {
+                    ctx.data.reactivity.record_let_direct_sym(sym);
+                } else {
+                    ctx.data
+                        .reactivity
+                        .record_carrier_alias_binding(sym, carrier);
+                }
             } else {
                 self.staging.push(sym, PendingKind::LetDirective);
             }
@@ -205,12 +216,20 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_, '_>) {
         let body_scope = ctx.child_scope_by_id(block.body, ctx.scope);
-        let is_destructured = block
+        let context_declarator = block
             .context
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
-            .and_then(declarator_from_stmt_local)
+            .and_then(declarator_from_stmt_local);
+        let is_destructured = context_declarator
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
+        let item_pattern_node = context_declarator.and_then(|d| destructure_pattern_node(&d.id));
+
+        if let Some(node) = item_pattern_node {
+            ctx.data
+                .reactivity
+                .record_declarator_semantics(node, DeclaratorSemantics::EachItem);
+        }
 
         run_each_context_marker(block, ctx, self.staging, is_destructured);
 
@@ -242,9 +261,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
+            let declarator_node = await_destructure_node(stmt);
             for sym in scoped_stmt_symbols(ctx.data, then_scope, stmt) {
                 ctx.data.reactivity.record_contextual_owner(sym, block.id);
                 self.staging.push(sym, PendingKind::AwaitValue);
+            }
+            if let Some(node) = declarator_node {
+                ctx.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::AwaitValue);
             }
         }
 
@@ -257,9 +282,15 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             .as_ref()
             .and_then(|r| ctx.parsed().and_then(|p| p.stmt(r.id())))
         {
+            let declarator_node = await_destructure_node(stmt);
             for sym in scoped_stmt_symbols(ctx.data, catch_scope, stmt) {
                 ctx.data.reactivity.record_contextual_owner(sym, block.id);
                 self.staging.push(sym, PendingKind::AwaitError);
+            }
+            if let Some(node) = declarator_node {
+                ctx.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::AwaitValue);
             }
         }
     }
@@ -288,10 +319,11 @@ fn ensure_slot_let_carrier(
     preferred_name: &str,
 ) -> SymbolId {
     use super::super::data::DeclaratorSemantics;
-    if let DeclaratorSemantics::LetCarrier { carrier_symbol } =
-        data.reactivity.declarator_semantics(stmt_node_id)
+    if let DeclaratorSemantics::LetCarrier {
+        carrier_symbol: Some(s),
+    } = data.reactivity.declarator_semantics(stmt_node_id)
     {
-        return carrier_symbol;
+        return s;
     }
     let sym = data
         .scoping
@@ -583,6 +615,7 @@ pub(super) fn classify_contextual_read_kind(
         | ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => {
             ContextualReadKind::LetDirective
         }
+        ContextualBindingSemantics::LetDirectiveDirect => ContextualReadKind::LetDirectiveDirect,
         ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
             ContextualReadKind::SnippetParam {
                 accessor: true,
@@ -766,6 +799,19 @@ fn declarator_from_stmt_local<'a>(stmt: &'a Statement<'a>) -> Option<&'a Variabl
     }
 }
 
+fn destructure_pattern_node(pattern: &BindingPattern<'_>) -> Option<OxcNodeId> {
+    match pattern {
+        BindingPattern::ObjectPattern(p) => Some(p.node_id()),
+        BindingPattern::ArrayPattern(p) => Some(p.node_id()),
+        _ => None,
+    }
+}
+
+fn await_destructure_node(stmt: &Statement<'_>) -> Option<OxcNodeId> {
+    let decl = declarator_from_stmt_local(stmt)?;
+    destructure_pattern_node(&decl.id)
+}
+
 struct EachContextMarker<'d, 's, 'a> {
     data: &'d mut AnalysisData<'a>,
     staging: &'s mut ContextualStaging,
@@ -796,6 +842,7 @@ impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
 
     fn visit_binding_rest_element(&mut self, it: &BindingRestElement<'a>) {
         let Some(ident) = it.argument.get_binding_identifier() else {
+            self.visit_binding_pattern(&it.argument);
             return;
         };
         let Some(sym_id) = ident.symbol_id.get() else {
@@ -883,6 +930,17 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        for param in &arrow.params.items {
+            let pattern = match &param.pattern {
+                BindingPattern::AssignmentPattern(assign) => &assign.left,
+                other => other,
+            };
+            if let Some(node) = destructure_pattern_node(pattern) {
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::SnippetParam);
+            }
+        }
         self.visit_formal_parameters(&arrow.params);
     }
 }

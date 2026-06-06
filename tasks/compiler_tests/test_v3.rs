@@ -2412,6 +2412,11 @@ fn module_derived_arrow_wrap_with_state_deps() {
 }
 
 #[rstest]
+fn module_state_destructure() {
+    assert_compiler_module("module_state_destructure");
+}
+
+#[rstest]
 fn module_compilation() {
     assert_compiler_module("module_compilation");
 }

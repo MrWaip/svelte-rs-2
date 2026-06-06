@@ -137,7 +137,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ),
             dunder_value_assign,
         );
-        state.init.push(value_assign);
+        state.pending_element_init.push(value_assign);
     }
 
     pub(in super::super) fn emit_bind_group_value(

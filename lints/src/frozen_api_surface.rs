@@ -7,7 +7,7 @@ use rustc_session::{declare_lint, declare_lint_pass};
 declare_lint! {
     pub FROZEN_API_SURFACE,
     Warn,
-    "new public method on frozen type; coordinate via ARCHITECTURE.md and update allow-list"
+    "new public method on frozen type; coordinate via the cluster root PRD in docs/ and update allow-list"
 }
 
 declare_lint_pass!(FrozenApiSurface => [FROZEN_API_SURFACE]);
@@ -112,7 +112,7 @@ impl<'tcx> LateLintPass<'tcx> for FrozenApiSurface {
                 Some(impl_item.span),
                 DiagDecorator(move |diag: &mut Diag<'_, ()>| {
                     diag.primary_message(format!(
-                        "method `{name}` is not in the allow-list of `{owner}`; if intentional, add it to FROZEN_APIS in lints/src/frozen_api_surface.rs and document in ARCHITECTURE.md"
+                        "method `{name}` is not in the allow-list of `{owner}`; if intentional, add it to FROZEN_APIS in lints/src/frozen_api_surface.rs and document in the cluster root PRD under docs/"
                     ));
                 }),
             );

@@ -3,172 +3,21 @@ use std::{iter, mem};
 use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    Argument, AssignmentTarget, AssignmentTargetMaybeDefault, AssignmentTargetProperty,
-    BindingPattern, Expression, IdentifierReference, PropertyKey, Statement,
+    Argument, AssignmentOperator, AssignmentTarget, Expression, Statement,
 };
-use oxc_span::SPAN;
-use svelte_analyze::{AnalysisData, DeclaratorSemantics, ReferenceSemantics};
-use svelte_ast_builder::{Arg, AssignLeft};
-use svelte_component_semantics::SymbolId;
+use oxc_span::{GetSpan, SPAN};
+use oxc_traverse::{Ancestor, TraverseCtx};
+use svelte_ast_builder::Arg;
+use svelte_component_semantics::{WriteAccess, WriteStep, WriteTarget};
 
+use super::async_check::is_expression_async;
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn expand_legacy_state_destructuring(
-        &mut self,
-        stmts: &mut OxcVec<'a, Statement<'a>>,
-    ) {
-        if self.runes {
-            return;
-        }
-        let Some(analysis) = self.analysis else {
-            return;
-        };
-        let mut i = 0;
-        while i < stmts.len() {
-            let Statement::VariableDeclaration(decl) = &stmts[i] else {
-                i += 1;
-                continue;
-            };
-            if decl.declarations.len() != 1 {
-                i += 1;
-                continue;
-            }
-            let declarator = &decl.declarations[0];
-            let DeclaratorSemantics::LegacyStateDestructure { leaves } =
-                analysis.declarator_semantics(declarator.node_id())
-            else {
-                i += 1;
-                continue;
-            };
-            let Some(_) = declarator.init.as_ref() else {
-                i += 1;
-                continue;
-            };
-
-            if !is_supported_pattern(&declarator.id) {
-                i += 1;
-                continue;
-            }
-            let kind = decl.kind;
-
-            let stmt = stmts.remove(i);
-            let Statement::VariableDeclaration(decl_box) = stmt else {
-                unreachable!();
-            };
-            let mut decl = decl_box.unbox();
-            let mut declarator = decl.declarations.remove(0);
-            let init = declarator
-                .init
-                .take()
-                .expect("predicate matched only declarators with an init");
-
-            let tmp_name_owned = self.gen_unique_name("tmp");
-            let tmp_name: &'a str = self.b.alloc_str(&tmp_name_owned);
-            let mut declarators_out: Vec<(&'a str, Expression<'a>)> = Vec::new();
-            declarators_out.push((tmp_name, init));
-
-            let root_access = self.b.rid_expr(tmp_name);
-            self.emit_legacy_destructure_decls(
-                &declarator.id,
-                root_access,
-                &leaves,
-                &mut declarators_out,
-            );
-
-            let replacement = self.b.var_decl_multi_stmt(declarators_out, kind);
-            stmts.insert(i, replacement);
-            self.ident_counter += 1;
-            i += 1;
-        }
-    }
-
-    fn emit_legacy_destructure_decls(
-        &mut self,
-        pat: &BindingPattern<'a>,
-        access: Expression<'a>,
-        leaves: &[SymbolId],
-        out: &mut Vec<(&'a str, Expression<'a>)>,
-    ) {
-        match pat {
-            BindingPattern::BindingIdentifier(id) => {
-                let Some(sym) = id.symbol_id.get() else {
-                    return;
-                };
-                let name_alloc = self.b.alloc_str(id.name.as_str());
-                let init = if leaves.contains(&sym) {
-                    self.b.call_expr("$.mutable_source", [Arg::Expr(access)])
-                } else {
-                    access
-                };
-                out.push((name_alloc, init));
-            }
-            BindingPattern::AssignmentPattern(_) => {}
-            BindingPattern::ObjectPattern(obj) => {
-                let allocator = self.b.ast.allocator;
-                for prop in obj.properties.iter() {
-                    let Some(key_name) = property_key_static_name(&prop.key) else {
-                        return;
-                    };
-                    let key_alloc = self.b.alloc_str(key_name);
-                    let parent = access.clone_in(allocator);
-                    let child_access = self.b.static_member_expr(parent, key_alloc);
-                    self.emit_legacy_destructure_decls(&prop.value, child_access, leaves, out);
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                let var_name_owned = self.ident_gen.generate("$$array");
-                let var_name: &'a str = self.b.alloc_str(&var_name_owned);
-                let len = arr.elements.len() as f64;
-                let to_array =
-                    self.b
-                        .call_expr("$.to_array", [Arg::Expr(access), Arg::Num(len)]);
-                let thunk = self.b.thunk(to_array);
-                let derived = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                out.push((var_name, derived));
-                for (idx, elem) in arr.elements.iter().enumerate() {
-                    let Some(elem) = elem else { continue };
-                    let get_call = self.b.call_expr("$.get", [Arg::Ident(var_name)]);
-                    let elem_access = self
-                        .b
-                        .computed_member_expr(get_call, self.b.num_expr(idx as f64));
-                    self.emit_legacy_destructure_decls(elem, elem_access, leaves, out);
-                }
-            }
-        }
-    }
-}
-
-fn is_supported_pattern<'a>(pat: &BindingPattern<'a>) -> bool {
-    match pat {
-        BindingPattern::BindingIdentifier(id) => id.symbol_id.get().is_some(),
-        BindingPattern::AssignmentPattern(_) => false,
-        BindingPattern::ObjectPattern(obj) => {
-            if obj.rest.is_some() {
-                return false;
-            }
-            obj.properties.iter().all(|p| {
-                !p.computed
-                    && property_key_static_name(&p.key).is_some()
-                    && is_supported_pattern(&p.value)
-            })
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            if arr.rest.is_some() {
-                return false;
-            }
-            arr.elements.iter().all(|e| match e {
-                Some(elem) => is_supported_pattern(elem),
-                None => true,
-            })
-        }
-    }
-}
-
-impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_legacy_state_destructure_assignment_exit(
+    pub(crate) fn rewrite_destructure_assignment_exit(
         &mut self,
         node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Expression::AssignmentExpression(assign_box) = node else {
             return false;
@@ -180,22 +29,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
-        if self.runes {
-            self.reserve_assignment_target_array_names(&assign_box.left);
-            return false;
-        }
-        let Some(analysis) = self.analysis else {
-            self.reserve_assignment_target_array_names(&assign_box.left);
-            return false;
-        };
-        if !any_ident_is_legacy_state(analysis, &assign_box.left) {
-            self.reserve_assignment_target_array_names(&assign_box.left);
+        if assign_box.operator != AssignmentOperator::Assign {
             return false;
         }
 
-        let has_array = target_has_array_pattern(&assign_box.left);
-        let should_cache = !matches!(&assign_box.right, Expression::Identifier(_));
-        let use_iife = has_array || should_cache;
+        let is_standalone = ctx
+            .ancestors()
+            .find(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)))
+            .is_some_and(ancestor_is_statement);
 
         let placeholder = self.b.cheap_expr();
         let owned = mem::replace(node, placeholder);
@@ -203,263 +44,321 @@ impl<'a> ComponentTransformer<'_, 'a> {
             unreachable!();
         };
         let assign = assign_box.unbox();
+
+        let should_cache = !matches!(&assign.right, Expression::Identifier(_));
+        let param_name: String = match &assign.right {
+            Expression::Identifier(id) if !should_cache => id.name.to_string(),
+            _ => "$$value".to_string(),
+        };
+
+        let mut decls: Vec<Statement<'a>> = Vec::new();
+        let mut setters: Vec<Expression<'a>> = Vec::new();
+        let mut temps: Vec<(String, &'a str)> = Vec::new();
+        let mut changed = false;
+
+        svelte_component_semantics::walk_assignment_targets(&assign.left, |v| {
+            let access =
+                self.build_destructure_access(v.path, v.excluded, &param_name, &mut decls, &mut temps);
+            match v.target {
+                WriteTarget::Identifier(id) => {
+                    let idref = self.b.rid(id.name.as_str());
+                    idref.reference_id.set(id.reference_id.get());
+                    let target =
+                        AssignmentTarget::AssignmentTargetIdentifier(self.b.ast.alloc(idref));
+                    let mut setter = self.b.assign_expr_raw(target, access);
+                    if self.dispatch_identifier_assignment(&mut setter, false) {
+                        changed = true;
+                    }
+                    setters.push(setter);
+                }
+                WriteTarget::Member(m) => {
+                    let mut cloned = m.clone_in(self.b.ast.allocator);
+                    copy_member_root_ref(&mut cloned, m);
+                    let mut setter = self.b.assign_expr_raw(cloned, access);
+                    if self.dispatch_member_assignment(&mut setter, is_standalone, ctx) {
+                        changed = true;
+                    }
+                    setters.push(setter);
+                }
+            }
+        });
+
+        if !changed {
+            *node = Expression::AssignmentExpression(self.b.ast.alloc(assign));
+            return true;
+        }
+
         let rhs = assign.right;
+        let use_iife = !decls.is_empty() || should_cache;
+        let is_async =
+            is_expression_async(&rhs) || setters.iter().any(|s| is_expression_async(s));
 
         if use_iife {
-            let value_param = match &rhs {
-                Expression::Identifier(id) if !should_cache => self.b.alloc_str(id.name.as_str()),
-                _ => self.b.alloc_str("$$value"),
-            };
-            let mut decls: Vec<Statement<'a>> = Vec::new();
-            let mut setters: Vec<Statement<'a>> = Vec::new();
-            let root_access = self.b.rid_expr(value_param);
-            self.emit_destructure_assignment(
-                &assign.left,
-                root_access,
-                &mut decls,
-                &mut setters,
-                analysis,
-            );
-            let mut body: Vec<Statement<'a>> = Vec::with_capacity(decls.len() + setters.len());
+            let param: &'a str = self.b.alloc_str(&param_name);
+            let mut body: Vec<Statement<'a>> = Vec::with_capacity(decls.len() + setters.len() + 1);
             body.extend(decls);
-            body.extend(setters);
-            let arrow = self.b.arrow_block_expr(self.b.params([value_param]), body);
-            let iife = self.b.ast.expression_call(
+            body.extend(setters.into_iter().map(|e| self.b.expr_stmt(e)));
+            if !is_standalone {
+                body.push(self.b.return_stmt(self.b.rid_expr(param)));
+            }
+            let body_fn =
+                self.b
+                    .ast
+                    .function_body(SPAN, self.b.ast.vec(), self.b.ast.vec_from_iter(body));
+            let arrow = Expression::ArrowFunctionExpression(self.b.ast.alloc(
+                self.b.ast.arrow_function_expression(
+                    SPAN,
+                    false,
+                    is_async,
+                    NONE,
+                    self.b.params([param]),
+                    NONE,
+                    body_fn,
+                ),
+            ));
+            let call = self.b.ast.expression_call(
                 SPAN,
                 arrow,
                 NONE,
                 self.b.ast.vec_from_iter(iter::once(Argument::from(rhs))),
                 false,
             );
-            *node = iife;
+            *node = if is_async { self.b.await_expr(call) } else { call };
         } else {
-            let mut decls: Vec<Statement<'a>> = Vec::new();
-            let mut setters: Vec<Statement<'a>> = Vec::new();
-            self.emit_destructure_assignment(
-                &assign.left,
-                rhs,
-                &mut decls,
-                &mut setters,
-                analysis,
-            );
             debug_assert!(decls.is_empty());
-            let allocator = self.b.ast.allocator;
             let mut seq: OxcVec<'a, Expression<'a>> =
-                OxcVec::with_capacity_in(setters.len(), allocator);
-            for stmt in setters {
-                if let Statement::ExpressionStatement(es) = stmt {
-                    let es = es.unbox();
-                    seq.push(es.expression);
-                }
+                OxcVec::with_capacity_in(setters.len() + 1, self.b.ast.allocator);
+            for setter in setters {
+                seq.push(setter);
+            }
+            if !is_standalone {
+                seq.push(rhs);
             }
             *node = self.b.ast.expression_sequence(SPAN, seq);
         }
         true
     }
 
-    fn emit_destructure_assignment(
+    fn build_destructure_access<'w>(
         &mut self,
-        target: &AssignmentTarget<'a>,
-        access_expr: Expression<'a>,
+        path: &[WriteStep<'w>],
+        excluded: &[&'w str],
+        param_name: &str,
         decls: &mut Vec<Statement<'a>>,
-        setters: &mut Vec<Statement<'a>>,
-        analysis: &AnalysisData<'a>,
-    ) {
-        match target {
-            AssignmentTarget::AssignmentTargetIdentifier(id) => {
-                self.emit_ident_setter(id, access_expr, setters, analysis);
-            }
-            AssignmentTarget::ObjectAssignmentTarget(obj) => {
-                let allocator = self.b.ast.allocator;
-                for prop in obj.properties.iter() {
-                    let parent_access = access_expr.clone_in(allocator);
-                    match prop {
-                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
-                            let name_alloc = self.b.alloc_str(sh.binding.name.as_str());
-                            let child_access = self.b.static_member_expr(parent_access, name_alloc);
-                            self.emit_ident_setter(&sh.binding, child_access, setters, analysis);
-                        }
-                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
-                            let Some(key_name) = property_key_static_name(&kv.name) else {
-                                return;
-                            };
-                            let key_alloc = self.b.alloc_str(key_name);
-                            let child_access = self.b.static_member_expr(parent_access, key_alloc);
-                            let Some(child_target) = kv.binding.as_assignment_target() else {
-                                return;
-                            };
-                            self.emit_destructure_assignment(
-                                child_target,
-                                child_access,
-                                decls,
-                                setters,
-                                analysis,
-                            );
-                        }
-                    }
+        temps: &mut Vec<(String, &'a str)>,
+    ) -> Expression<'a> {
+        let mut current = self.b.rid_expr(param_name);
+        for (i, step) in path.iter().enumerate() {
+            match step.access {
+                WriteAccess::Index {
+                    index,
+                    len,
+                    has_rest,
+                } => {
+                    let temp = self.array_temp(&path[..i], current, has_rest, len, decls, temps);
+                    current = self
+                        .b
+                        .computed_member_expr(self.b.rid_expr(temp), self.b.num_expr(index as f64));
+                }
+                WriteAccess::Slice { from } => {
+                    let temp = self.array_temp(&path[..i], current, true, 0, decls, temps);
+                    current = self.b.call_expr_callee(
+                        self.b.static_member_expr(self.b.rid_expr(temp), "slice"),
+                        [Arg::Num(from as f64)],
+                    );
+                }
+                WriteAccess::Key { name } => {
+                    let name: &'a str = self.b.alloc_str(name);
+                    current = self.b.static_member_expr(current, name);
+                }
+                WriteAccess::Computed { key } => {
+                    let key = key.clone_in(self.b.ast.allocator);
+                    current = self.b.computed_member_expr(current, key);
                 }
             }
-            AssignmentTarget::ArrayAssignmentTarget(arr) => {
-                let var_name_owned = self.ident_gen.generate("$$array");
-                let var_name: &'a str = self.b.alloc_str(&var_name_owned);
-                let n = arr.elements.len() as f64;
-                let to_array_call =
-                    self.b
-                        .call_expr("$.to_array", [Arg::Expr(access_expr), Arg::Num(n)]);
-                decls.push(self.b.var_stmt(var_name, to_array_call));
-                for (idx, elem) in arr.elements.iter().enumerate() {
-                    let Some(elem) = elem else {
-                        return;
-                    };
-                    let AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(_) = elem else {
-                        let Some(child) = elem.as_assignment_target() else {
-                            return;
-                        };
-                        let child_access = self
-                            .b
-                            .computed_member_expr(self.b.rid_expr(var_name), self.b.num_expr(idx as f64));
-                        self.emit_destructure_assignment(
-                            child,
-                            child_access,
-                            decls,
-                            setters,
-                            analysis,
-                        );
-                        continue;
-                    };
-                    return;
-                }
+            if let Some(default) = step.default {
+                current = self.build_destructure_fallback(current, default);
             }
-            _ => {}
         }
-    }
-
-    fn emit_ident_setter(
-        &mut self,
-        id: &IdentifierReference<'a>,
-        access_expr: Expression<'a>,
-        setters: &mut Vec<Statement<'a>>,
-        analysis: &AnalysisData<'a>,
-    ) {
-        let leaf_alloc: &'a str = self.b.alloc_str(id.name.as_str());
-        let semantics = id
-            .reference_id
-            .get()
-            .map(|ref_id| analysis.reference_semantics(ref_id));
-        let is_legacy_state = matches!(
-            semantics,
-            Some(
-                ReferenceSemantics::LegacyStateWrite
-                    | ReferenceSemantics::LegacyStateUpdate { .. }
-                    | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
-                    | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
-            )
-        );
-        if !is_legacy_state {
-            let assign = self
+        if !excluded.is_empty() {
+            let keys = self.b.array_from_args(excluded.iter().map(|k| Arg::StrRef(k)));
+            current = self
                 .b
-                .assign_expr(AssignLeft::Ident(leaf_alloc.into()), access_expr);
-            setters.push(self.b.expr_stmt(assign));
-            return;
+                .call_expr("$.exclude_from_object", [Arg::Expr(current), Arg::Expr(keys)]);
         }
-        let mut set_call = self
-            .b
-            .call_expr("$.set", [Arg::Ident(leaf_alloc), Arg::Expr(access_expr)]);
-        let store_symbol = match semantics {
-            Some(ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol })
-            | Some(ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }) => {
-                Some(store_symbol)
-            }
-            _ => None,
+        current
+    }
+
+    fn array_temp<'w>(
+        &mut self,
+        prefix: &[WriteStep<'w>],
+        source: Expression<'a>,
+        has_rest: bool,
+        len: u32,
+        decls: &mut Vec<Statement<'a>>,
+        temps: &mut Vec<(String, &'a str)>,
+    ) -> &'a str {
+        let key = serialize_prefix(prefix);
+        if let Some((_, name)) = temps.iter().find(|(k, _)| *k == key) {
+            return name;
+        }
+        let owned = self.ident_gen.generate("$$array");
+        let name: &'a str = self.b.alloc_str(&owned);
+        let to_array = if has_rest {
+            self.b.call_expr("$.to_array", [Arg::Expr(source)])
+        } else {
+            self.b
+                .call_expr("$.to_array", [Arg::Expr(source), Arg::Num(len as f64)])
         };
-        if let Some(store_sym) = store_symbol {
-            let dollar_name = analysis.scoping.symbol_name(store_sym).to_string();
-            set_call = self.make_store_unsub(set_call, &dollar_name);
+        decls.push(self.b.var_stmt(name, to_array));
+        temps.push((key, name));
+        name
+    }
+
+    fn build_destructure_fallback<'w>(
+        &mut self,
+        expr: Expression<'a>,
+        fallback: &Expression<'w>,
+    ) -> Expression<'a> {
+        if is_simple_expression(fallback) {
+            let fallback = fallback.clone_in(self.b.ast.allocator);
+            return self
+                .b
+                .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(fallback)]);
         }
-        setters.push(self.b.expr_stmt(set_call));
+        if let Expression::AwaitExpression(aw) = fallback {
+            if is_simple_expression(&aw.argument) {
+                let arg = aw.argument.clone_in(self.b.ast.allocator);
+                let call = self
+                    .b
+                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(arg)]);
+                return self.b.await_expr(call);
+            }
+            let thunk = self.b.thunk(aw.argument.clone_in(self.b.ast.allocator));
+            let call =
+                self.b
+                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            return self.b.await_expr(call);
+        }
+        if is_expression_async(fallback) {
+            let thunk = self
+                .b
+                .async_arrow_expr_body(fallback.clone_in(self.b.ast.allocator));
+            let call =
+                self.b
+                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            return self.b.await_expr(call);
+        }
+        let thunk = self.b.thunk(fallback.clone_in(self.b.ast.allocator));
+        self.b
+            .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)])
     }
 }
 
-impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn reserve_assignment_target_array_names(&mut self, target: &AssignmentTarget<'a>) {
-        match target {
-            AssignmentTarget::ArrayAssignmentTarget(arr) => {
-                let _ = self.ident_gen.generate("$$array");
-                for elem in arr.elements.iter().flatten() {
-                    let inner = match elem {
-                        AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => {
-                            Some(&d.binding)
-                        }
-                        other => other.as_assignment_target(),
-                    };
-                    if let Some(inner) = inner {
-                        self.reserve_assignment_target_array_names(inner);
-                    }
-                }
+fn ancestor_is_statement(a: Ancestor<'_, '_>) -> bool {
+    a.is_expression_statement()
+        || a.is_for_statement()
+        || a.is_for_in_statement()
+        || a.is_for_of_statement()
+        || a.is_if_statement()
+        || a.is_while_statement()
+        || a.is_do_while_statement()
+        || a.is_return_statement()
+        || a.is_throw_statement()
+        || a.is_switch_statement()
+        || a.is_with_statement()
+        || a.is_labeled_statement()
+        || a.is_block_statement()
+        || a.is_try_statement()
+}
+
+fn serialize_prefix(prefix: &[WriteStep<'_>]) -> String {
+    let mut out = String::new();
+    for step in prefix {
+        match step.access {
+            WriteAccess::Index { index, .. } => {
+                out.push('i');
+                out.push_str(&index.to_string());
             }
-            AssignmentTarget::ObjectAssignmentTarget(obj) => {
-                for prop in &obj.properties {
-                    if let AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) = prop
-                        && let Some(child) = kv.binding.as_assignment_target()
-                    {
-                        self.reserve_assignment_target_array_names(child);
-                    }
-                }
+            WriteAccess::Slice { from } => {
+                out.push('s');
+                out.push_str(&from.to_string());
             }
-            _ => {}
+            WriteAccess::Key { name } => {
+                out.push('k');
+                out.push_str(name);
+            }
+            WriteAccess::Computed { key } => {
+                let span = key.span();
+                out.push('c');
+                out.push_str(&span.start.to_string());
+                out.push('_');
+                out.push_str(&span.end.to_string());
+            }
         }
+        out.push('/');
+    }
+    out
+}
+
+fn is_simple_expression(node: &Expression<'_>) -> bool {
+    match node {
+        Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::Identifier(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ConditionalExpression(cond) => {
+            is_simple_expression(&cond.test)
+                && is_simple_expression(&cond.consequent)
+                && is_simple_expression(&cond.alternate)
+        }
+        Expression::BinaryExpression(bin) => {
+            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
+        }
+        Expression::LogicalExpression(log) => {
+            is_simple_expression(&log.left) && is_simple_expression(&log.right)
+        }
+        _ => false,
     }
 }
 
-fn target_has_array_pattern<'a>(target: &AssignmentTarget<'a>) -> bool {
-    let mut has = false;
-    let _ = svelte_component_semantics::walk_assignment_target_idents(target, |_| {});
-    fn scan<'a>(t: &AssignmentTarget<'a>, has: &mut bool) {
-        match t {
-            AssignmentTarget::ArrayAssignmentTarget(_) => *has = true,
-            AssignmentTarget::ObjectAssignmentTarget(obj) => {
-                for prop in &obj.properties {
-                    if let AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) = prop
-                        && let Some(child) = kv.binding.as_assignment_target()
-                    {
-                        scan(child, has);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    scan(target, &mut has);
-    has
+fn copy_member_root_ref<'x, 'y>(
+    cloned: &mut AssignmentTarget<'x>,
+    orig: &AssignmentTarget<'y>,
+) {
+    let (cloned_obj, orig_obj) = match (cloned, orig) {
+        (
+            AssignmentTarget::StaticMemberExpression(c),
+            AssignmentTarget::StaticMemberExpression(o),
+        ) => (&mut c.object, &o.object),
+        (
+            AssignmentTarget::ComputedMemberExpression(c),
+            AssignmentTarget::ComputedMemberExpression(o),
+        ) => (&mut c.object, &o.object),
+        _ => return,
+    };
+    copy_root_ref_expr(cloned_obj, orig_obj);
 }
 
-fn any_ident_is_legacy_state<'a>(
-    analysis: &AnalysisData<'a>,
-    target: &AssignmentTarget<'a>,
-) -> bool {
-    let mut any = false;
-    let walked = svelte_component_semantics::walk_assignment_target_idents(target, |id| {
-        let Some(ref_id) = id.reference_id.get() else {
-            return;
-        };
-        if matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyStateWrite
-                | ReferenceSemantics::LegacyStateUpdate { .. }
-                | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
-                | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
-        ) {
-            any = true;
+fn copy_root_ref_expr<'x, 'y>(cloned: &mut Expression<'x>, orig: &Expression<'y>) {
+    match (cloned, orig) {
+        (Expression::Identifier(c), Expression::Identifier(o)) => {
+            c.reference_id.set(o.reference_id.get());
         }
-    });
-    walked && any
-}
-
-fn property_key_static_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
-    match key {
-        PropertyKey::StaticIdentifier(id) => Some(id.name.as_str()),
-        PropertyKey::StringLiteral(lit) => Some(lit.value.as_str()),
-        _ => None,
+        (
+            Expression::StaticMemberExpression(c),
+            Expression::StaticMemberExpression(o),
+        ) => copy_root_ref_expr(&mut c.object, &o.object),
+        (
+            Expression::ComputedMemberExpression(c),
+            Expression::ComputedMemberExpression(o),
+        ) => copy_root_ref_expr(&mut c.object, &o.object),
+        _ => {}
     }
 }
 

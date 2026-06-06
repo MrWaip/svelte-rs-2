@@ -23,15 +23,7 @@
       "mcp__narsil-mcp"
     ]
   },
-  "enabledPlugins": {},
-  "ignorePatterns": [
-    "playground/compiler",
-    "target",
-    "tasks/benchmark/benches/compiler/*",
-    "tasks/compiler_tests/cases2/*/case-svelte.js",
-    "tasks/compiler_tests/cases2/*/case-rust.js",
-    "REVIEW.md"
-  ],
+  "autoMemoryEnabled": false,
   "enableAllProjectMcpServers": true,
   "hooks": {
     "PreToolUse": [
@@ -50,11 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'use mcp.'"
-          },
-          {
-            "type": "command",
-            "command": "echo 'Answer questions directly — no preambles, no echoing my question, no closing summary. Do not edit code unless I explicitly tell you to.'"
+            "command": "echo 'Always prefer narsil-mcp for code search'"
           }
         ]
       }
@@ -64,10 +52,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Use narsil-mcp tools for code search (find_symbols, semantic_search, find_references). Do not fallback to grep/find when mcp tool fits.'"
+            "command": "echo 'Always prefer narsil-mcp tools for code search (find_symbols, semantic_search, find_references, find_symbol_usages). Use narsil-mcp reindex tool first, when results outdated'"
           }
         ]
       }
     ]
-  }
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  },
+  "ignorePatterns": [
+    "playground/compiler",
+    "target",
+    "z_outdated",
+    "tasks/benchmark/benches/compiler/*",
+    "tasks/compiler_tests/cases2/*/case-svelte.js",
+    "tasks/compiler_tests/cases2/*/case-rust.js"
+  ]
 }

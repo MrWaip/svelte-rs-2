@@ -32,7 +32,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::analyze_source;
+    use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
     use svelte_ast::{Component, KeyBlock, Node};
 
@@ -88,6 +88,16 @@ mod tests {
         }
     }
 
+    fn assert_key_async<F: FnOnce(&KeyBlockSemantics)>(source: &str, check: F) {
+        let (component, data) = analyze_source_experimental_async(source);
+        let block = first_key_block(&component);
+        let sem: &BlockSemantics = data.block_semantics(block.id);
+        match sem {
+            BlockSemantics::Key(s) => check(s),
+            other => panic!("expected Key, got {other:?}"),
+        }
+    }
+
     #[test]
     fn key_sync_identifier() {
         assert_key(
@@ -120,7 +130,7 @@ mod tests {
 
     #[test]
     fn key_async_awaited_expression() {
-        assert_key(
+        assert_key_async(
             r#"<script>let p = Promise.resolve(1);</script>{#key await p}<span></span>{/key}"#,
             |sem| match &sem.async_kind {
                 KeyAsyncKind::Async {

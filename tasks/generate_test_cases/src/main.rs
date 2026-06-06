@@ -21,11 +21,20 @@ fn main() {
         .expect("Failed to read glob pattern for .svelte.js");
     let compiler_module_ts_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.ts")
         .expect("Failed to read glob pattern for .svelte.ts");
+    let cluster_svelte_files = glob("./tasks/compiler_tests/cluster_cases/**/*.svelte")
+        .expect("Failed to read glob pattern for cluster .svelte");
+    let cluster_module_files = glob("./tasks/compiler_tests/cluster_cases/**/*.svelte.js")
+        .expect("Failed to read glob pattern for cluster .svelte.js");
+    let cluster_module_ts_files = glob("./tasks/compiler_tests/cluster_cases/**/*.svelte.ts")
+        .expect("Failed to read glob pattern for cluster .svelte.ts");
     let diagnostic_svelte_files = glob("./tasks/diagnostic_tests/cases/**/*.svelte")
         .expect("Failed to read glob pattern for diagnostic .svelte");
     let files: Vec<String> = compiler_svelte_files
         .chain(compiler_module_files)
         .chain(compiler_module_ts_files)
+        .chain(cluster_svelte_files)
+        .chain(cluster_module_files)
+        .chain(cluster_module_ts_files)
         .chain(diagnostic_svelte_files)
         .map(|entry| entry.expect("test invariant").display().to_string())
         .collect();
