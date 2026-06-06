@@ -13,10 +13,6 @@ use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_split_export_props_legacy(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
-        if self.runes {
-            return;
-        }
-
         let mut i = 0;
         let mut renamed: rustc_hash::FxHashMap<String, Option<String>> =
             rustc_hash::FxHashMap::default();
