@@ -32,7 +32,7 @@ pub fn build_store_base_read<'a>(
         }
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::NonSource,
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
         }) => {
             let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
             let property = ast.identifier_name(SPAN, ast.atom(base_name));

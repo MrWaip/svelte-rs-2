@@ -54,7 +54,6 @@ pub(crate) fn run_template<'a, 'b>(
         component_line_index: line_index,
         filename: "",
         next_arrow_name: None,
-        ident_counter: 0,
         ident_gen,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
@@ -63,6 +62,7 @@ pub(crate) fn run_template<'a, 'b>(
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         in_bind_setter_traverse: false,
+        gen_arrow_scope: None,
     };
 
     let ast = AstBuilder::new(alloc);

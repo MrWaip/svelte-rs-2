@@ -109,7 +109,15 @@ pub enum Access<'a> {
         computed: bool,
     },
 
-    Index(u32),
+    Index {
+        index: u32,
+        len: u32,
+        has_rest: bool,
+    },
+
+    Slice {
+        from: u32,
+    },
 }
 
 fn walk_inner<'a, F>(pat: &'a BindingPattern<'a>, path: &mut SmallVec<[Step<'a>; 4]>, visit: &mut F)
@@ -164,30 +172,193 @@ where
             }
         }
         BindingPattern::ArrayPattern(arr) => {
+            let len = arr.elements.len() as u32;
+            let has_rest = arr.rest.is_some();
             for (i, el) in arr.elements.iter().enumerate() {
                 let Some(el) = el else { continue };
                 path.push(Step {
-                    access: Access::Index(i as u32),
+                    access: Access::Index {
+                        index: i as u32,
+                        len,
+                        has_rest,
+                    },
                     default: None,
                 });
                 walk_inner(el, path, visit);
                 path.pop();
             }
             if let Some(rest) = &arr.rest {
-                if let BindingPattern::BindingIdentifier(ident) = &rest.argument {
-                    let Some(symbol) = ident.symbol_id.get() else {
-                        return;
-                    };
-                    visit(BindingVisit {
-                        symbol,
-                        path,
-                        is_rest: true,
-                        excluded: &[],
-                    });
-                } else {
-                    walk_inner(&rest.argument, path, visit);
+                path.push(Step {
+                    access: Access::Slice { from: len },
+                    default: None,
+                });
+                walk_inner(&rest.argument, path, visit);
+                path.pop();
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum WriteTarget<'a> {
+    Identifier(&'a IdentifierReference<'a>),
+
+    Member(&'a AssignmentTarget<'a>),
+}
+
+#[derive(Clone, Copy)]
+pub enum WriteAccess<'a> {
+    Index { index: u32, len: u32, has_rest: bool },
+
+    Slice { from: u32 },
+
+    Key { name: &'a str },
+
+    Computed { key: &'a Expression<'a> },
+}
+
+#[derive(Clone, Copy)]
+pub struct WriteStep<'a> {
+    pub access: WriteAccess<'a>,
+
+    pub default: Option<&'a Expression<'a>>,
+}
+
+pub struct AssignmentTargetVisit<'a, 'p> {
+    pub target: WriteTarget<'a>,
+
+    pub path: &'p [WriteStep<'a>],
+
+    pub excluded: &'p [&'a str],
+}
+
+pub fn walk_assignment_targets<'a, F>(target: &'a AssignmentTarget<'a>, mut visit: F)
+where
+    F: FnMut(AssignmentTargetVisit<'a, '_>),
+{
+    let mut path: SmallVec<[WriteStep<'a>; 4]> = SmallVec::new();
+    walk_target_inner(target, &mut path, &[], &mut visit);
+}
+
+fn write_maybe_default<'a>(
+    el: &'a AssignmentTargetMaybeDefault<'a>,
+) -> (&'a AssignmentTarget<'a>, Option<&'a Expression<'a>>) {
+    match el {
+        AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_def) => {
+            (&with_def.binding, Some(&with_def.init))
+        }
+        other => (
+            other
+                .as_assignment_target()
+                .expect("non-default maybe-default is an assignment target"),
+            None,
+        ),
+    }
+}
+
+fn write_static_key<'a>(key: &'a PropertyKey<'a>, computed: bool) -> Option<&'a str> {
+    if computed {
+        return None;
+    }
+    match key {
+        PropertyKey::StaticIdentifier(id) => Some(id.name.as_str()),
+        PropertyKey::StringLiteral(s) => Some(s.value.as_str()),
+        _ => None,
+    }
+}
+
+fn walk_target_inner<'a, F>(
+    target: &'a AssignmentTarget<'a>,
+    path: &mut SmallVec<[WriteStep<'a>; 4]>,
+    excluded: &[&'a str],
+    visit: &mut F,
+) where
+    F: FnMut(AssignmentTargetVisit<'a, '_>),
+{
+    match target {
+        AssignmentTarget::AssignmentTargetIdentifier(id) => visit(AssignmentTargetVisit {
+            target: WriteTarget::Identifier(id),
+            path,
+            excluded,
+        }),
+        AssignmentTarget::StaticMemberExpression(_)
+        | AssignmentTarget::ComputedMemberExpression(_)
+        | AssignmentTarget::PrivateFieldExpression(_) => visit(AssignmentTargetVisit {
+            target: WriteTarget::Member(target),
+            path,
+            excluded,
+        }),
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            let len = arr.elements.len() as u32;
+            let has_rest = arr.rest.is_some();
+            for (i, el) in arr.elements.iter().enumerate() {
+                let Some(el) = el else { continue };
+                let (inner, default) = write_maybe_default(el);
+                path.push(WriteStep {
+                    access: WriteAccess::Index {
+                        index: i as u32,
+                        len,
+                        has_rest,
+                    },
+                    default,
+                });
+                walk_target_inner(inner, path, &[], visit);
+                path.pop();
+            }
+            if let Some(rest) = &arr.rest {
+                path.push(WriteStep {
+                    access: WriteAccess::Slice { from: len },
+                    default: None,
+                });
+                walk_target_inner(&rest.target, path, &[], visit);
+                path.pop();
+            }
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            let mut keys: SmallVec<[&'a str; 4]> = SmallVec::new();
+            for prop in &obj.properties {
+                match prop {
+                    AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
+                        let name = sh.binding.name.as_str();
+                        keys.push(name);
+                        path.push(WriteStep {
+                            access: WriteAccess::Key { name },
+                            default: sh.init.as_ref(),
+                        });
+                        visit(AssignmentTargetVisit {
+                            target: WriteTarget::Identifier(&sh.binding),
+                            path,
+                            excluded: &[],
+                        });
+                        path.pop();
+                    }
+                    AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
+                        let access = match write_static_key(&kv.name, kv.computed) {
+                            Some(name) => {
+                                keys.push(name);
+                                WriteAccess::Key { name }
+                            }
+                            None => match kv.name.as_expression() {
+                                Some(key) => WriteAccess::Computed { key },
+                                None => continue,
+                            },
+                        };
+                        let (inner, default) = write_maybe_default(&kv.binding);
+                        path.push(WriteStep { access, default });
+                        walk_target_inner(inner, path, &[], visit);
+                        path.pop();
+                    }
                 }
             }
+            if let Some(rest) = &obj.rest {
+                walk_target_inner(&rest.target, path, &keys, visit);
+            }
+        }
+        AssignmentTarget::TSAsExpression(_)
+        | AssignmentTarget::TSSatisfiesExpression(_)
+        | AssignmentTarget::TSNonNullExpression(_)
+        | AssignmentTarget::TSTypeAssertion(_) => {
+            unreachable!("TypeScript is stripped before assignment-target traversal")
         }
     }
 }
@@ -231,7 +402,8 @@ mod tests {
                             _ => ".?".into(),
                         },
                         Access::Key { computed: true, .. } => "[expr]".into(),
-                        Access::Index(i) => format!("[{}]", i),
+                        Access::Index { index, .. } => format!("[{}]", index),
+                        Access::Slice { from } => format!("[slice {}]", from),
                     };
                     if s.default.is_some() {
                         label.push_str("={d}");
@@ -394,12 +566,199 @@ mod tests {
     fn array_rest() {
         assert_eq!(
             summarize("let [a, ...rest] = 0;"),
-            vec!["[0] leaf(0)", " rest(1) excl=[]"]
+            vec!["[0] leaf(0)", "[slice 1] leaf(1)"]
         );
     }
 
     #[test]
     fn computed_key() {
         assert_eq!(summarize("let { [k]: value } = 0;"), vec!["[expr] leaf(0)"]);
+    }
+
+    fn summarize_assign(source: &str) -> Vec<String> {
+        let alloc = Allocator::default();
+        let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
+        assert!(ret.errors.is_empty(), "parse errors: {:?}", ret.errors);
+        let stmt = ret.program.body.first().expect("one statement");
+        let Statement::ExpressionStatement(es) = stmt else {
+            panic!("expected expression statement");
+        };
+        let mut expr = &es.expression;
+        while let Expression::ParenthesizedExpression(p) = expr {
+            expr = &p.expression;
+        }
+        let Expression::AssignmentExpression(assign) = expr else {
+            panic!("expected assignment expression");
+        };
+
+        let mut out: Vec<String> = Vec::new();
+        walk_assignment_targets(&assign.left, |v| {
+            let path = v
+                .path
+                .iter()
+                .map(|s| {
+                    let mut label = match s.access {
+                        WriteAccess::Index { index, .. } => format!("[{}]", index),
+                        WriteAccess::Slice { from } => format!("[slice {}]", from),
+                        WriteAccess::Key { name } => format!(".{}", name),
+                        WriteAccess::Computed { .. } => "[expr]".to_string(),
+                    };
+                    if s.default.is_some() {
+                        label.push_str("={d}");
+                    }
+                    label
+                })
+                .collect::<String>();
+            let tgt = match v.target {
+                WriteTarget::Identifier(id) if !v.excluded.is_empty() => {
+                    format!("rest({}) excl=[{}]", id.name, v.excluded.join(","))
+                }
+                WriteTarget::Identifier(id) => format!("id({})", id.name),
+                WriteTarget::Member(_) => "member".to_string(),
+            };
+            out.push(format!("{path} {tgt}"));
+        });
+        out
+    }
+
+    #[test]
+    fn assign_flat_object() {
+        assert_eq!(
+            summarize_assign("({ a, b } = o);"),
+            vec![".a id(a)", ".b id(b)"]
+        );
+    }
+
+    #[test]
+    fn assign_aliased_property() {
+        assert_eq!(summarize_assign("({ a: b } = o);"), vec![".a id(b)"]);
+    }
+
+    #[test]
+    fn assign_leaf_default() {
+        assert_eq!(summarize_assign("({ a = 5 } = o);"), vec![".a={d} id(a)"]);
+    }
+
+    #[test]
+    fn assign_nested_object() {
+        assert_eq!(summarize_assign("({ a: { b } } = o);"), vec![".a.b id(b)"]);
+    }
+
+    #[test]
+    fn assign_flat_array() {
+        assert_eq!(
+            summarize_assign("[a, b] = arr;"),
+            vec!["[0] id(a)", "[1] id(b)"]
+        );
+    }
+
+    #[test]
+    fn assign_array_hole() {
+        assert_eq!(
+            summarize_assign("[a, , c] = arr;"),
+            vec!["[0] id(a)", "[2] id(c)"]
+        );
+    }
+
+    #[test]
+    fn assign_mixed_object_array() {
+        assert_eq!(
+            summarize_assign("({ users: [{ name }, second] } = o);"),
+            vec![".users[0].name id(name)", ".users[1] id(second)"]
+        );
+    }
+
+    #[test]
+    fn assign_object_rest() {
+        assert_eq!(
+            summarize_assign("({ a, b, ...rest } = o);"),
+            vec![".a id(a)", ".b id(b)", " rest(rest) excl=[a,b]"]
+        );
+    }
+
+    #[test]
+    fn assign_array_rest() {
+        assert_eq!(
+            summarize_assign("[a, ...rest] = arr;"),
+            vec!["[0] id(a)", "[slice 1] id(rest)"]
+        );
+    }
+
+    #[test]
+    fn assign_nested_array_rest() {
+        assert_eq!(
+            summarize_assign("[x, ...{ z = 26 }] = arr;"),
+            vec!["[0] id(x)", "[slice 1].z={d} id(z)"]
+        );
+    }
+
+    #[test]
+    fn assign_computed_key() {
+        assert_eq!(summarize_assign("({ [k]: v } = o);"), vec!["[expr] id(v)"]);
+    }
+
+    #[test]
+    fn assign_member_target() {
+        assert_eq!(
+            summarize_assign("[obj.x, a] = arr;"),
+            vec!["[0] member", "[1] id(a)"]
+        );
+    }
+
+    #[test]
+    fn assign_intermediate_default() {
+        assert_eq!(
+            summarize_assign("[{ a } = {}] = arr;"),
+            vec!["[0]={d}.a id(a)"]
+        );
+    }
+
+    #[test]
+    fn assign_property_default() {
+        assert_eq!(summarize_assign("({ a: b = 5 } = o);"), vec![".a={d} id(b)"]);
+    }
+
+    fn array_index_steps(source: &str) -> Vec<(u32, u32, bool)> {
+        let alloc = Allocator::default();
+        let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
+        assert!(ret.errors.is_empty(), "parse errors: {:?}", ret.errors);
+        let Statement::ExpressionStatement(es) = ret.program.body.first().expect("one statement")
+        else {
+            panic!("expected expression statement");
+        };
+        let mut expr = &es.expression;
+        while let Expression::ParenthesizedExpression(p) = expr {
+            expr = &p.expression;
+        }
+        let Expression::AssignmentExpression(assign) = expr else {
+            panic!("expected assignment expression");
+        };
+        let mut out = Vec::new();
+        walk_assignment_targets(&assign.left, |v| {
+            for step in v.path {
+                if let WriteAccess::Index {
+                    index,
+                    len,
+                    has_rest,
+                } = step.access
+                {
+                    out.push((index, len, has_rest));
+                }
+            }
+        });
+        out
+    }
+
+    #[test]
+    fn assign_array_arity_fixed() {
+        assert_eq!(
+            array_index_steps("[a, b] = arr;"),
+            vec![(0, 2, false), (1, 2, false)]
+        );
+    }
+
+    #[test]
+    fn assign_array_arity_with_rest() {
+        assert_eq!(array_index_steps("[a, ...b] = arr;"), vec![(0, 1, true)]);
     }
 }

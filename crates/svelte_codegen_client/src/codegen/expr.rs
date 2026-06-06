@@ -124,7 +124,7 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{BindingSemantics, ConstBindingSemantics};
+    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics};
     if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
         destructured: true,
         owner_node,
@@ -141,7 +141,8 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     }
     if matches!(
         ctx.query.view.binding_semantics(sym),
-        BindingSemantics::State(_)
+        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
+            | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
             | BindingSemantics::OptimizedRune(_)
     ) {

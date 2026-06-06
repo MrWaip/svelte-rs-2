@@ -1,13 +1,12 @@
 use oxc_ast::ast::Expression;
 use oxc_semantic::SymbolId;
+use oxc_syntax::scope::ScopeId;
 
 use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId as SvelteNodeId;
 
-use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentScoping, DerivedKind, IdentGen, RuneKind, StateKind,
-};
+use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen, RuneKind};
 
 use svelte_ast_builder::Builder;
 
@@ -96,7 +95,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) component_line_index: &'b svelte_span::LineIndex,
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,
-    pub(crate) ident_counter: u32,
     pub(crate) ident_gen: &'b mut IdentGen,
     pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,
@@ -109,6 +107,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) template_owner_node: Option<SvelteNodeId>,
 
     pub(crate) in_bind_setter_traverse: bool,
+
+    pub(crate) gen_arrow_scope: Option<ScopeId>,
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
@@ -116,27 +116,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         self.enclosing_stmt_start
             .last()
             .is_some_and(|&start| self.ignore_query.is_ignored_at_span(start, code))
-    }
-
-    pub(crate) fn rune_for_symbol(&self, sym_id: SymbolId) -> Option<RuneKind> {
-        match self.binding_semantics_for_symbol(sym_id)? {
-            BindingSemantics::State(state) => Some(match state.kind {
-                StateKind::State => RuneKind::State,
-                StateKind::StateRaw => RuneKind::StateRaw,
-                StateKind::StateEager => RuneKind::StateEager,
-            }),
-            BindingSemantics::Derived(derived) => Some(match derived.kind {
-                DerivedKind::Derived => RuneKind::Derived,
-                DerivedKind::DerivedBy => RuneKind::DerivedBy,
-            }),
-            BindingSemantics::OptimizedRune(_) | BindingSemantics::Prop(_) => None,
-            BindingSemantics::RuntimeRune { .. } => None,
-            BindingSemantics::LegacyState(_) | BindingSemantics::LegacyBindableProp(_) => None,
-            BindingSemantics::Store(_) => None,
-            BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => None,
-            BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => None,
-            BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => None,
-        }
     }
 
     pub(crate) fn binding_semantics_for_symbol(

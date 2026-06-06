@@ -1,10 +1,39 @@
 use super::super::data::{
     BindingFacts, ConstBindingSemantics, ContextualReadSemantics, DerivedKind, PropBindingKind,
-    PropDefaultEmit, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
+    PropDefaultKind, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
     StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
+use svelte_component_semantics::OriginKind;
+
+fn prop_non_source_variant(data: &AnalysisData, sym: SymbolId) -> PropReferenceSemantics {
+    let (alias, kind) = match data.binding_origin_key(sym) {
+        Some(pair) => pair,
+        None => return PropReferenceSemantics::NonSourceStatic { symbol: sym },
+    };
+    let computed = match kind {
+        OriginKind::Numeric => true,
+        OriginKind::Ident => false,
+        OriginKind::String => !is_valid_js_identifier(alias.as_ref()),
+    };
+    if computed {
+        PropReferenceSemantics::NonSourceComputed { symbol: sym }
+    } else {
+        PropReferenceSemantics::NonSourceStatic { symbol: sym }
+    }
+}
+
+fn is_valid_js_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_' || first == '$') {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
 use svelte_ast::{Component, Node};
@@ -174,17 +203,15 @@ fn classify_reference_semantics(
                 } else if is_read {
                     let reads_as_source = !bindable
                         || *updated
-                        || !matches!(default_lowering, PropDefaultEmit::None);
+                        || !matches!(default_lowering, PropDefaultKind::None);
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,
-                            lowering_mode: prop.lowering_mode,
+                            lowering_mode: prop.emit_mode,
                             symbol: sym,
                         }))
                     } else {
-                        Some(ReferenceFacts::PropRead(
-                            PropReferenceSemantics::NonSource { symbol: sym },
-                        ))
+                        Some(ReferenceFacts::PropRead(prop_non_source_variant(data, sym)))
                     }
                 } else {
                     None
@@ -196,9 +223,7 @@ fn classify_reference_semantics(
                 } else if is_write {
                     Some(ReferenceFacts::IllegalWrite)
                 } else if is_read {
-                    Some(ReferenceFacts::PropRead(
-                        PropReferenceSemantics::NonSource { symbol: sym },
-                    ))
+                    Some(ReferenceFacts::PropRead(prop_non_source_variant(data, sym)))
                 } else {
                     None
                 }
@@ -245,12 +270,12 @@ fn classify_reference_semantics(
             if is_member_mutation_root {
                 if data.reactivity.each_item_indirect_sources(sym).is_some() {
                     return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
-                        item_sym: sym,
+                        item_symbol: sym,
                     });
                 }
                 if let Some(collection_store) = data.reactivity.each_item_collection_store(sym) {
                     return Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
-                        item_sym: sym,
+                        item_symbol: sym,
                         collection_store,
                     });
                 }
@@ -345,7 +370,7 @@ fn classify_reference_semantics(
             Some(ReferenceFacts::CarrierMemberRead(
                 super::super::data::CarrierMemberReadSemantics {
                     carrier_symbol: *carrier,
-                    leaf_symbol: sym,
+                    member_symbol: sym,
                 },
             ))
         }

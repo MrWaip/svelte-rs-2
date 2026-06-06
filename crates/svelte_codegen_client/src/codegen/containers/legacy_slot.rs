@@ -141,7 +141,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let fallback = self.build_legacy_slot_fallback(ctx, el_id)?;
 
-        let let_stmts = self.emit_let_directive_legacy_stmts(el_id);
+        let let_stmts = self.emit_let_directive_legacy_stmts(el_id)?;
 
         let slot_stmt = self.ctx.b.call_stmt(
             "$.slot",

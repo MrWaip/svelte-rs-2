@@ -8,9 +8,18 @@ use svelte_compiler::{CompileOptions, ModuleCompileOptions, Namespace, RunesOpti
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const V3_BASE: &str = "cases2";
 const SOURCEMAP_BASE: &str = "sourcemap_cases";
+const CLUSTER_BASE: &str = "cluster_cases";
 
 pub fn v3_case_dir(case: &str) -> PathBuf {
     case_dir(V3_BASE, case)
+}
+
+pub fn cluster_case_dir(case: &str) -> PathBuf {
+    case_dir(CLUSTER_BASE, case)
+}
+
+pub fn load_cluster_case(case: &str) -> (String, CompileOptions) {
+    load_case(CLUSTER_BASE, case)
 }
 
 pub fn sourcemap_case_dir(case: &str) -> PathBuf {

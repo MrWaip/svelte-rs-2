@@ -4,7 +4,8 @@ use super::super::Evaluation;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
-    BindingSemantics, BlockerData, ConstBindingSemantics, PropBindingKind, PropBindingSemantics,
+    BindingSemantics, BlockerData, ConstBindingSemantics, ContextualBindingSemantics,
+    PropBindingKind, PropBindingSemantics,
 };
 use smallvec::SmallVec;
 
@@ -85,6 +86,7 @@ fn is_symbol_dynamic(
         return false;
     }
     match reactivity.binding_semantics(sym_id) {
+        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect) => false,
         BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Prop(_)

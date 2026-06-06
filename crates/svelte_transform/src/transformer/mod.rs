@@ -1,5 +1,6 @@
 mod assignments;
 mod async_check;
+mod binding_pattern;
 mod builders;
 mod derived;
 mod entry;
@@ -11,7 +12,7 @@ mod location;
 pub(crate) mod model;
 mod props;
 
-mod props_legacy;
+mod split_export_props_legacy;
 mod rewrites;
 mod runes;
 mod state;
@@ -142,7 +143,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         self.rewrite_trace_function_body(body);
     }
 
-    fn exit_statements(
+    fn enter_statements(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
         ctx: &mut TraverseCtx<'a, ()>,
@@ -150,8 +151,21 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if self.mode == model::TransformMode::Template {
             return;
         }
-        let is_root = ctx.current_scope_id() == ctx.scoping().root_scope_id();
-        self.process_statement_block(stmts, is_root);
+        if ctx.current_scope_id() == ctx.scoping().root_scope_id() {
+            self.split_top_level_multi_declarators(stmts);
+        }
+        self.rewrite_binding_declarations(stmts, ctx);
+    }
+
+    fn exit_statements(
+        &mut self,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.mode == model::TransformMode::Template {
+            return;
+        }
+        self.process_statement_block(stmts);
     }
 
     fn enter_call_expression(
@@ -215,7 +229,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
         self.capture_variable_arrow_name(node);
-        self.rewrite_variable_rune_init(node);
     }
 
     fn enter_for_of_statement(
@@ -262,13 +275,13 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         }
     }
 
-    fn exit_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
+    fn exit_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             template_rewrites::rewrite_template_exit(self, node);
             return;
         }
 
-        if self.rewrite_legacy_state_destructure_assignment_exit(node) {
+        if self.rewrite_destructure_assignment_exit(node, ctx) {
             return;
         }
         self.rewrite_prop_update_ownership_exit(node);

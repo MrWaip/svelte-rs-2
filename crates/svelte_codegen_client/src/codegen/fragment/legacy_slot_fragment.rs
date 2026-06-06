@@ -45,22 +45,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let _ = self.ctx.state.gen_ident("root");
         }
 
-        let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id);
-
         match node {
             Node::Element(_) => {
+                let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
                 self.emit_single_slot_element(&mut inner_state, &inner_ctx, slot_el_id, let_stmts)?;
             }
             Node::SvelteFragmentLegacy(el) => {
+                let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
                 inner_state.init.extend(let_stmts);
                 self.emit_fragment(&mut inner_state, &inner_ctx, el.fragment)?;
             }
             Node::SlotElementLegacy(_) => {
-                let _ = let_stmts;
                 let _ = self.ctx.state.gen_ident("root");
                 self.emit_legacy_slot_like(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
             n if n.as_component_like().is_some() => {
+                let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
                 inner_state.init.extend(let_stmts);
                 if matches!(n, Node::ComponentNode(_))
                     && !self.ctx.is_dynamic_component(slot_el_id)

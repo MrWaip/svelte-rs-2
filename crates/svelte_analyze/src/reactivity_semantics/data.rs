@@ -36,21 +36,12 @@ pub enum BindingSemantics {
     Unresolved,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateDeclarationSemantics {
     pub kind: StateKind,
     pub proxied: bool,
     pub var_declared: bool,
-    pub binding_semantics: SmallVec<[StateBindingSemantics; 4]>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StateBindingSemantics {
-    StateSignal { proxied: bool },
-
-    StateRawSignal,
-
-    NonReactive { proxied: bool },
+    pub is_signal_source: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,7 +78,7 @@ pub struct OptimizedRuneSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedEmit,
+    pub emit: DerivedEmit,
     pub reactive: bool,
 }
 
@@ -103,19 +94,11 @@ pub enum DerivedEmit {
     Sync,
 
     Async,
-
-    DestructuredInlineSource,
-
-    DestructuredInlinePropsSource,
-
-    DestructuredBoxedSync,
-
-    DestructuredBoxedAsync,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PropBindingSemantics {
-    pub lowering_mode: PropEmitMode,
+    pub emit_mode: PropEmitMode,
     pub kind: PropBindingKind,
 }
 
@@ -133,7 +116,7 @@ pub enum PropBindingKind {
     Source {
         bindable: bool,
         updated: bool,
-        default_lowering: PropDefaultEmit,
+        default_lowering: PropDefaultKind,
 
         default_needs_proxy: bool,
     },
@@ -145,7 +128,7 @@ pub enum PropBindingKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LegacyBindablePropSemantics {
-    pub default_lowering: PropDefaultEmit,
+    pub default_kind: PropDefaultKind,
     pub flags: crate::PropsFlags,
 }
 
@@ -156,7 +139,7 @@ pub struct LegacyStateSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropDefaultEmit {
+pub enum PropDefaultKind {
     None,
 
     Eager,
@@ -196,6 +179,8 @@ pub enum ContextualBindingSemantics {
 
     LetDirectiveCarrierMember { carrier_symbol: SymbolId },
 
+    LetDirectiveDirect,
+
     SnippetParam(SnippetParamStrategy),
 }
 
@@ -222,35 +207,39 @@ pub enum SnippetParamStrategy {
     Signal,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PropsDeclKind {
-    Const,
-    Let,
-    Var,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
 
-    PropsIdentifier {
-        sym: SymbolId,
-        kind: PropsDeclKind,
+    RuneProps,
+
+    LegacyProps,
+
+    LegacyState,
+
+    RuneState {
+        kind: StateKind,
     },
 
-    PropsObject {
-        leaves: SmallVec<[SymbolId; 4]>,
-        has_rest: bool,
-        kind: PropsDeclKind,
+    RuneDerived {
+        kind: DerivedKind,
+        emit: DerivedEmit,
     },
 
-    LegacyStateDestructure {
-        leaves: SmallVec<[SymbolId; 4]>,
+    ConstTag {
+        emit: DerivedEmit,
     },
 
     LetCarrier {
-        carrier_symbol: SymbolId,
+        carrier_symbol: Option<SymbolId>,
     },
+
+    EachItem,
+
+    AwaitValue,
+
+    SnippetParam,
 
     ClassFieldState(ClassFieldStateSemantics),
 
@@ -266,7 +255,7 @@ pub struct ClassFieldStateSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
-    pub lowering: DerivedEmit,
+    pub emit: DerivedEmit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -411,13 +400,15 @@ pub enum ContextualReadKind {
 
     LetDirective,
 
+    LetDirectiveDirect,
+
     SnippetParam { accessor: bool, signal: bool },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CarrierMemberReadSemantics {
     pub carrier_symbol: SymbolId,
-    pub leaf_symbol: SymbolId,
+    pub member_symbol: SymbolId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -428,7 +419,11 @@ pub enum PropReferenceSemantics {
         symbol: SymbolId,
     },
 
-    NonSource {
+    NonSourceStatic {
+        symbol: SymbolId,
+    },
+
+    NonSourceComputed {
         symbol: SymbolId,
     },
 }
@@ -533,11 +528,11 @@ pub(crate) enum ReferenceFacts {
     },
 
     LegacyEachItemMemberMutationRoot {
-        item_sym: SymbolId,
+        item_symbol: SymbolId,
     },
 
     EachItemMemberMutationStoreInvalidate {
-        item_sym: SymbolId,
+        item_symbol: SymbolId,
         collection_store: SymbolId,
     },
 
@@ -808,13 +803,13 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
-            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_sym }) => {
+            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_symbol }) => {
                 ReferenceSemantics::LegacyEachItemMemberMutationRoot {
-                    item_sym: *item_sym,
+                    item_sym: *item_symbol,
                 }
             }
             Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
-                item_sym,
+                item_symbol: item_sym,
                 collection_store,
             }) => ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
                 item_sym: *item_sym,
@@ -949,6 +944,13 @@ impl ReactivitySemantics {
         self.write_binding(sym, BindingFacts::CarrierAlias { carrier });
     }
 
+    pub(crate) fn record_let_direct_sym(&mut self, sym: SymbolId) {
+        self.write_binding(
+            sym,
+            BindingFacts::Contextual(ContextualBindingSemantics::LetDirectiveDirect),
+        );
+    }
+
     fn write_binding(&mut self, sym: SymbolId, facts: BindingFacts) {
         let idx = sym.index();
         if idx >= self.bindings.len() {
@@ -1047,7 +1049,18 @@ impl ReactivitySemantics {
     ) {
         self.write_declarator(
             stmt_node_id,
-            DeclaratorSemantics::LetCarrier { carrier_symbol },
+            DeclaratorSemantics::LetCarrier {
+                carrier_symbol: Some(carrier_symbol),
+            },
+        );
+    }
+
+    pub(crate) fn record_let_simple_binding(&mut self, stmt_node_id: OxcNodeId) {
+        self.write_declarator(
+            stmt_node_id,
+            DeclaratorSemantics::LetCarrier {
+                carrier_symbol: None,
+            },
         );
     }
 
@@ -1071,7 +1084,7 @@ impl ReactivitySemantics {
 impl ReactivitySemantics {
     fn binding_semantics_from_facts(facts: &BindingFacts) -> BindingSemantics {
         match facts {
-            BindingFacts::State(state) => BindingSemantics::State(state.clone()),
+            BindingFacts::State(state) => BindingSemantics::State(*state),
             BindingFacts::Derived(derived) => BindingSemantics::Derived(*derived),
             BindingFacts::OptimizedRune(opt) => BindingSemantics::OptimizedRune(*opt),
             BindingFacts::Prop(prop) => BindingSemantics::Prop(prop.clone()),
@@ -1084,11 +1097,11 @@ impl ReactivitySemantics {
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),
             BindingFacts::Contextual(kind) => BindingSemantics::Contextual(*kind),
             BindingFacts::RuntimeRune { kind } => BindingSemantics::RuntimeRune { kind: *kind },
-            BindingFacts::CarrierAlias { carrier } => {
-                BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveCarrierMember {
+            BindingFacts::CarrierAlias { carrier } => BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirectiveCarrierMember {
                     carrier_symbol: *carrier,
-                })
-            }
+                },
+            ),
         }
     }
 }

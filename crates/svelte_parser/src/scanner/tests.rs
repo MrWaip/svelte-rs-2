@@ -1128,8 +1128,49 @@ fn recovery_attribute_concatenation_eof() {
 #[test]
 fn recovery_start_tag_then_more_content() {
     let mut scanner = Scanner::new("<div<p>hello</p>");
-    let (tokens, diagnostics) = scanner.scan_tokens();
+    let (tokens, _diagnostics) = scanner.scan_tokens();
     assert!(tokens.len() > 1);
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
-    assert!(!diagnostics.is_empty());
+
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+    assert_eq!(start_tag.attributes.len(), 1);
+    let Attribute::HTMLAttribute(attr) = &start_tag.attributes[0] else {
+        panic!("expected HTMLAttribute");
+    };
+    assert_eq!(attr.name_span.source_text("<div<p>hello</p>"), "<p");
+}
+
+#[test]
+fn attribute_name_with_percent_and_digits() {
+    let source = "<Child 0={0} ysc%%gibberish={1} />";
+    let mut scanner = Scanner::new(source);
+    let (tokens, diagnostics) = scanner.scan_tokens();
+    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "Child",
+        vec![("0", "0"), ("ysc%%gibberish", "1")],
+        true,
+    );
+}
+
+#[test]
+fn attribute_name_stops_at_pipe_modifier() {
+    let source = "<div on:click|once={h} />";
+    let mut scanner = Scanner::new(source);
+    let (tokens, diagnostics) = scanner.scan_tokens();
+    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+
+    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
+        panic!("expected StartTag");
+    };
+    assert_eq!(start_tag.attributes.len(), 1);
+    let Attribute::OnDirectiveLegacy(od) = &start_tag.attributes[0] else {
+        panic!("expected OnDirectiveLegacy");
+    };
+    assert_eq!(od.name_span.source_text(source), "click");
 }

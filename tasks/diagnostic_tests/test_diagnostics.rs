@@ -1980,3 +1980,52 @@ mod typescript {
     diagnostic_case!(enum_declaration, "typescript/enum_declaration");
     diagnostic_case!(namespace_with_value, "typescript/namespace_with_value");
 }
+
+mod await_ {
+    use super::*;
+
+    diagnostic_case!(
+        validate_if_block_test_illegal_await_expression,
+        "await/validate_if_block_test_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_each_block_collection_illegal_await_expression,
+        "await/validate_each_block_collection_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_await_block_expression_illegal_await_expression,
+        "await/validate_await_block_expression_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_html_tag_illegal_await_expression,
+        "await/validate_html_tag_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_key_block_illegal_await_expression,
+        "await/validate_key_block_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_render_tag_illegal_await_expression,
+        "await/validate_render_tag_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_on_directive_illegal_await_expression,
+        "await/validate_on_directive_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_class_directive_illegal_await_expression,
+        "await/validate_class_directive_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_spread_attribute_illegal_await_expression,
+        "await/validate_spread_attribute_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_svelte_element_this_illegal_await_expression,
+        "await/validate_svelte_element_this_illegal_await_expression"
+    );
+    diagnostic_case!(
+        validate_svelte_component_this_illegal_await_expression,
+        "await/validate_svelte_component_this_illegal_await_expression"
+    );
+}

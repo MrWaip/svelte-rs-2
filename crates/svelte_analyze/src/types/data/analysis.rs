@@ -12,7 +12,8 @@ use crate::passes::fragment_topology::fragment_items;
 use oxc_ast::ast::IdentifierReference;
 use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, RunesMode, StringAttribute};
-use svelte_component_semantics::{OxcNodeId, ReferenceId};
+use std::borrow::Cow;
+use svelte_component_semantics::{OriginKind, OxcNodeId, ReferenceId};
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
@@ -255,7 +256,7 @@ impl<'a> AnalysisData<'a> {
             )
         })
     }
-    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<&str> {
+    pub fn binding_origin_key(&self, sym: SymbolId) -> Option<(Cow<'_, str>, OriginKind)> {
         self.scoping.binding_origin_key(sym)
     }
     pub fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
@@ -276,13 +277,13 @@ impl<'a> AnalysisData<'a> {
     pub fn binding_origin_key_for_reference(
         &self,
         ref_id: ReferenceId,
-    ) -> Option<&str> {
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         self.scoping.binding_origin_key_for_reference(ref_id)
     }
     pub fn binding_origin_key_for_identifier_reference(
         &self,
         id: &IdentifierReference<'a>,
-    ) -> Option<&str> {
+    ) -> Option<(Cow<'_, str>, OriginKind)> {
         self.scoping.binding_origin_key_for_identifier_reference(id)
     }
     pub fn iter_store_bindings(

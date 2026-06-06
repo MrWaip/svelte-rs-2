@@ -54,7 +54,6 @@ pub fn transform_script<'a, 'b>(
         component_line_index,
         filename,
         next_arrow_name: None,
-        ident_counter: 0,
         ident_gen,
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
@@ -63,6 +62,7 @@ pub fn transform_script<'a, 'b>(
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         in_bind_setter_traverse: false,
+        gen_arrow_scope: None,
     };
 
     let empty_scoping = Scoping::default();

@@ -1,4 +1,5 @@
 pub mod binding;
+pub mod binding_pattern;
 pub mod legacy_wrap;
 pub mod props;
 pub mod runes;

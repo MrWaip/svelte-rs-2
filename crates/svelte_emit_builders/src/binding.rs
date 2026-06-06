@@ -29,8 +29,8 @@ pub fn read_binding<'a>(
             kind: PropBindingKind::NonSource,
             ..
         }) => {
-            let prop_name = analysis.binding_origin_key(sym)?;
-            Some(props_member(b, prop_name))
+            let (prop_name, _origin_kind) = analysis.binding_origin_key(sym)?;
+            Some(props_member(b, prop_name.as_ref()))
         }
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::Source { .. },
@@ -82,6 +82,7 @@ pub fn read_binding<'a>(
                 let carrier_name = analysis.scoping.symbol_name(carrier_symbol);
                 Some(member_get_via_get(b, carrier_name, name))
             }
+            ContextualBindingSemantics::LetDirectiveDirect => Some(b.rid_expr(name)),
         },
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive
             if analysis.scoping.is_import(sym) =>

@@ -740,3 +740,57 @@ fn single_program_node_ids_start_at_zero() {
     assert!(builder.next_node_id() > 0);
 }
 
+mod binding_origin_key_tests {
+    use super::*;
+    use crate::OriginKind;
+    use std::borrow::Cow;
+
+    fn resolve(source: &'static str, binding_name: &str) -> Option<(String, OriginKind)> {
+        let sem = build_instance(source);
+        let sym = sem.find_binding(sem.root_scope_id(), binding_name)?;
+        sem.binding_origin_key(sym).map(|(alias, kind)| {
+            let owned = match alias {
+                Cow::Borrowed(b) => b.to_string(),
+                Cow::Owned(o) => o,
+            };
+            (owned, kind)
+        })
+    }
+
+    #[test]
+    fn binding_origin_key_returns_ident_for_shorthand() {
+        let got = resolve("let { foo } = $$_();", "foo");
+        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+                   Some(("foo", OriginKind::Ident)));
+    }
+
+    #[test]
+    fn binding_origin_key_returns_ident_for_identifier_key() {
+        let got = resolve("let { foo: zero } = $$_();", "zero");
+        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+                   Some(("foo", OriginKind::Ident)));
+    }
+
+    #[test]
+    fn binding_origin_key_returns_string_for_string_literal_valid_ident() {
+        let got = resolve("let { 'foo': zero } = $$_();", "zero");
+        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+                   Some(("foo", OriginKind::String)));
+    }
+
+    #[test]
+    fn binding_origin_key_returns_string_for_invalid_ident_string_literal() {
+        let got = resolve("let { 'ysc%%gibberish': one } = $$_();", "one");
+        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+                   Some(("ysc%%gibberish", OriginKind::String)));
+    }
+
+    #[test]
+    fn binding_origin_key_returns_numeric_for_numeric_literal_key() {
+        let got = resolve("let { 0: zero } = $$_();", "zero");
+        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+                   Some(("0", OriginKind::Numeric)));
+    }
+}
+
+

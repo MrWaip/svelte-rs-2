@@ -1,4 +1,4 @@
-use crate::reactivity_semantics::data::PropDefaultEmit;
+use crate::reactivity_semantics::data::PropDefaultKind;
 use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind};
 use crate::types::script::RuneKind;
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
@@ -666,6 +666,18 @@ fn analyze_source_with_options(
     (component, data)
 }
 
+pub(crate) fn analyze_source_experimental_async(
+    source: &str,
+) -> (Component, AnalysisData<'static>) {
+    analyze_source_with_options(
+        source,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    )
+}
+
 fn analyze_source_with_css(source: &str) -> (Component, AnalysisData<'static>) {
     let (component, data, css_pass_diags) = analyze_source_with_css_diags(source);
     assert!(
@@ -784,7 +796,10 @@ fn assert_component_ref_non_source_prop(
             ..
         })
     ));
-    assert_eq!(data.binding_origin_key(sym_id), Some(expected_prop_name));
+    let actual = data
+        .binding_origin_key(sym_id)
+        .map(|(alias, _)| alias.into_owned());
+    assert_eq!(actual.as_deref(), Some(expected_prop_name));
 }
 
 fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
@@ -2934,18 +2949,18 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         symbol_declaration_semantics(&data, "total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
     assert_eq!(
         symbol_declaration_semantics(&data, "foo"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: false,
-                default_lowering: PropDefaultEmit::Eager,
+                default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
         })
@@ -2953,11 +2968,11 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
     assert_eq!(
         symbol_declaration_semantics(&data, "bar"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
-                default_lowering: PropDefaultEmit::Eager,
+                default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
         })
@@ -2965,14 +2980,14 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
     assert_eq!(
         symbol_declaration_semantics(&data, "baz"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
         })
     );
     assert_eq!(
         symbol_declaration_semantics(&data, "rest"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Rest,
         })
     );
@@ -3010,11 +3025,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
     assert_eq!(
         symbol_declaration_semantics(&data, "count"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: false,
                 updated: true,
-                default_lowering: PropDefaultEmit::None,
+                default_lowering: PropDefaultKind::None,
                 default_needs_proxy: false,
             },
         })
@@ -3039,7 +3054,7 @@ fn reactivity_semantics_prop_used_only_via_store_is_non_source() {
     assert_eq!(
         symbol_declaration_semantics(&data, "limitAmount"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
         })
     );
@@ -3061,11 +3076,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
     assert_eq!(
         symbol_declaration_semantics(&data, "value"),
         BindingSemantics::Prop(PropBindingSemantics {
-            lowering_mode: PropEmitMode::Standard,
+            emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
                 bindable: true,
                 updated: false,
-                default_lowering: PropDefaultEmit::Lazy,
+                default_lowering: PropDefaultKind::Lazy,
                 default_needs_proxy: true,
             },
         })
@@ -3091,7 +3106,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "sync_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
@@ -3099,7 +3114,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            lowering: DerivedEmit::Async,
+            emit: DerivedEmit::Async,
             ..
         })
     ));
@@ -3107,7 +3122,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "mapped"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
-            lowering: DerivedEmit::Sync,
+            emit: DerivedEmit::Sync,
             ..
         })
     ));
@@ -3136,42 +3151,30 @@ fn reactivity_semantics_v2_marks_destructured_state_bindings_as_proxied() {
     assert_eq!(object_decl.kind, StateKind::State);
     assert!(object_decl.proxied);
     assert!(!object_decl.var_declared);
-    assert_eq!(
-        object_decl.binding_semantics.as_slice(),
-        &[
-            StateBindingSemantics::StateSignal { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-        ],
-        "object-destructure binding_semantics mismatch"
+    assert!(
+        object_decl.is_signal_source,
+        "mutated object leaf 'left' is a signal source"
     );
 
     for name in ["right", "rest"] {
-        assert_eq!(
-            state_decl(name).binding_semantics,
-            object_decl.binding_semantics,
-            "expected '{name}' to share the object-destructure declaration root"
+        assert!(
+            !state_decl(name).is_signal_source,
+            "non-mutated object leaf '{name}' is plain"
         );
     }
 
     let array_decl = state_decl("tail");
     assert_eq!(array_decl.kind, StateKind::State);
     assert!(array_decl.proxied);
-    assert_eq!(
-        array_decl.binding_semantics.as_slice(),
-        &[
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::StateSignal { proxied: true },
-        ],
-        "array-destructure binding_semantics mismatch"
+    assert!(
+        array_decl.is_signal_source,
+        "mutated array leaf 'tail' is a signal source"
     );
 
     for name in ["first", "second"] {
-        assert_eq!(
-            state_decl(name).binding_semantics,
-            array_decl.binding_semantics,
-            "expected '{name}' to share the array-destructure declaration root"
+        assert!(
+            !state_decl(name).is_signal_source,
+            "non-mutated array leaf '{name}' is plain"
         );
     }
 }
@@ -3255,7 +3258,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
     ));
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "baz", true, false, 0),
-        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSource { .. })
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
     ));
     assert!(matches!(
         script_reference_semantics(&data, &parsed, "bar", false, true, 0),
@@ -3269,6 +3272,67 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         script_reference_semantics(&data, &parsed, "local", false, true, 0),
         ReferenceSemantics::NonReactive
     );
+}
+
+fn classify_prop_non_source(name: &str) -> ReferenceSemantics {
+    let source_text = format!(
+        r#"<svelte:options runes={{true}} />
+<script>
+    let {{ foo, bar: x, 'baz': y, 'a-b': z, 0: zero }} = $props();
+    {name};
+</script>"#
+    );
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let leaked: &'static str = Box::leak(source_text.into_boxed_str());
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, leaked);
+    assert!(parse_diags.is_empty(), "parse diags: {parse_diags:?}");
+    let options = AnalyzeOptions {
+        warning_filter: Some(Box::new(|_| false)),
+        ..AnalyzeOptions::default()
+    };
+    let (data, parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "analyze diags: {diags:?}");
+    script_reference_semantics(&data, &parsed, name, true, false, 0)
+}
+
+#[test]
+fn prop_reference_classifies_static_for_shorthand() {
+    assert!(matches!(
+        classify_prop_non_source("foo"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_static_for_identifier_key() {
+    assert!(matches!(
+        classify_prop_non_source("x"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_static_for_string_valid_ident_key() {
+    assert!(matches!(
+        classify_prop_non_source("y"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_computed_for_string_invalid_ident_key() {
+    assert!(matches!(
+        classify_prop_non_source("z"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceComputed { .. })
+    ));
+}
+
+#[test]
+fn prop_reference_classifies_computed_for_numeric_literal_key() {
+    assert!(matches!(
+        classify_prop_non_source("zero"),
+        ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceComputed { .. })
+    ));
 }
 
 #[test]
@@ -3826,7 +3890,7 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
 fn assert_legacy_bindable_prop(
     data: &AnalysisData<'_>,
     name: &str,
-    expected_default: PropDefaultEmit,
+    expected_default: PropDefaultKind,
     expected_flags: u32,
 ) {
     use crate::types::data::BindingSemantics;
@@ -3838,7 +3902,7 @@ fn assert_legacy_bindable_prop(
     match decl {
         BindingSemantics::LegacyBindableProp(legacy) => {
             assert_eq!(
-                legacy.default_lowering, expected_default,
+                legacy.default_kind, expected_default,
                 "default_lowering mismatch for '{name}'"
             );
             let actual_bits = legacy.flags.bits();
@@ -3867,7 +3931,7 @@ fn legacy_export_let_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::None,
+        PropDefaultKind::None,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3881,7 +3945,7 @@ fn legacy_export_let_with_default_classifies_eager() {
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3895,7 +3959,7 @@ fn legacy_export_let_undefined_default_classifies_eager() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3909,7 +3973,7 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3923,7 +3987,7 @@ fn legacy_export_let_composite_default_referencing_prop_classifies_lazy() {
     assert_legacy_bindable_prop(
         &data,
         "label",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3937,7 +4001,7 @@ fn legacy_export_let_composite_default_pure_literals_stays_eager() {
     assert_legacy_bindable_prop(
         &data,
         "label",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3951,7 +4015,7 @@ fn legacy_export_let_reassigned_marks_updated() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::None,
+        PropDefaultKind::None,
         PROPS_IS_BINDABLE | PROPS_IS_UPDATED,
     );
 }
@@ -3965,7 +4029,7 @@ fn legacy_export_var_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "count",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3979,7 +4043,7 @@ fn legacy_export_specifier_classifies_as_legacy_bindable_prop() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -3993,7 +4057,7 @@ fn legacy_export_specifier_alias_classification_unchanged() {
     assert_legacy_bindable_prop(
         &data,
         "className",
-        PropDefaultEmit::Eager,
+        PropDefaultKind::Eager,
         PROPS_IS_BINDABLE,
     );
 }
@@ -4007,13 +4071,13 @@ fn legacy_export_destructure_classifies_each_leaf() {
     assert_legacy_bindable_prop(
         &data,
         "foo",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
     assert_legacy_bindable_prop(
         &data,
         "bar",
-        PropDefaultEmit::Lazy,
+        PropDefaultKind::Lazy,
         PROPS_IS_BINDABLE,
     );
 }
@@ -6469,7 +6533,7 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
             semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
@@ -6496,7 +6560,7 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, lowering }) =
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
             semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
