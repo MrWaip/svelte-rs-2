@@ -109,8 +109,8 @@ export default function App($$anchor, $$props) {
 	const $props = () => ($.validate_store(props, "props"), $.store_get(props, "$props", $$stores));
 	const $state = () => ($.validate_store($.get(state), "state"), $.store_get($.get(state), "$state", $$stores));
 	const $derived = () => ($.validate_store(derived, "derived"), $.store_get(derived, "$derived", $$stores));
-	const $metrics = () => ($.validate_store($.get(metrics), "metrics"), $.store_get($.get(metrics), "$metrics", $$stores));
-	const $labelStore = () => ($.validate_store($.get(labelStore), "labelStore"), $.store_get($.get(labelStore), "$labelStore", $$stores));
+	const $metrics = () => ($.validate_store(metrics, "metrics"), $.store_get(metrics, "$metrics", $$stores));
+	const $labelStore = () => ($.validate_store(labelStore, "labelStore"), $.store_get(labelStore, "$labelStore", $$stores));
 	const $effect = () => ($.validate_store(effect, "effect"), $.store_get(effect, "$effect", $$stores));
 	const $inspect = () => ($.validate_store(inspect, "inspect"), $.store_get(inspect, "$inspect", $$stores));
 	const [$$stores, $$cleanup] = $.setup_stores();
@@ -157,12 +157,12 @@ export default function App($$anchor, $$props) {
 	let inputEl = $.mutable_source();
 	let componentRef = $.mutable_source();
 	let dynamicEl = $.mutable_source();
-	let metrics = $.mutable_source(writable([
+	let metrics = writable([
 		1,
 		2,
 		3
-	]));
-	let labelStore = $.mutable_source(writable("ready"));
+	]);
+	let labelStore = writable("ready");
 	/** @type {Function | undefined} */
 	let show;
 	$.set(counter, 10);
@@ -180,14 +180,14 @@ export default function App($$anchor, $$props) {
 		console.log(...$.log_if_contains_state("log", "Pre effect:", $.get(counter)));
 	});
 	let tracking = $effect().tracking();
-	$.inspect(() => [], (...$$args) => console.log(...$$args), true)($.get(counter), doubled);
+	$inspect()($.get(counter), doubled);
 	const APP_VERSION = "1.0.0";
 	function formatTitle(prefix) {
 		return prefix + ": " + title;
 	}
 	function addMetric() {
-		$.store_set($.get(metrics), [...$metrics(), $.get(counter)]);
-		$.store_set($.get(labelStore), title);
+		$.store_set(metrics, [...$metrics(), $.get(counter)]);
+		$.store_set(labelStore, title);
 	}
 	function action(node, arg) {
 		return { destroy() {} };
@@ -224,11 +224,11 @@ export default function App($$anchor, $$props) {
 	$.event("scroll", $.window, handleClick);
 	$.event("visibilitychange", $.document, handleClick);
 	$.event("mouseenter", $.document.body, handleClick);
-	$.action($.document.body, ($$node, $$action_arg) => action?.($$node, $$action_arg), $state);
+	$.action($.document.body, ($$node, $$action_arg) => action?.($$node, $$action_arg), () => $.get(state));
 	$.template_effect(() => {
 		console.log({
 			counter: $.untrack(() => $.snapshot($.get(counter))),
-			state: $.untrack(() => $.snapshot($state()))
+			state: $.untrack(() => $.snapshot($.get(state)))
 		});
 		debugger;
 	});
@@ -248,14 +248,14 @@ export default function App($$anchor, $$props) {
 	var node_4 = $.sibling($.child(div_2));
 	{
 		var consequent = ($$anchor) => {
-			const localLen = $.tag($.derived_safe_equal(() => $state().length), "localLen");
+			const localLen = $.tag($.derived_safe_equal(() => ($state(), $.untrack(() => $.get(state).length))), "localLen");
 			$.get(localLen);
 			var span_2 = root_6();
 			var text_9 = $.child(span_2);
 			$.reset(span_2);
 			$.template_effect(() => {
 				$.set_attribute(span_2, "title", `${title ?? ""}: ${doubled}`);
-				$.set_attribute(span_2, "state", $state());
+				$.set_attribute(span_2, "state", $.get(state));
 				$.set_attribute(span_2, "counter", $.get(counter));
 				$.set_attribute(span_2, "count", count);
 				$.set_text(text_9, `Duis aute irure dolor: ${$.get(localLen) ?? ""}. Chunk 0.`);
@@ -272,7 +272,7 @@ export default function App($$anchor, $$props) {
 			{
 				var consequent_1 = ($$anchor) => {
 					var h1 = root_8();
-					$.template_effect(() => $.set_attribute(h1, "state", $state()));
+					$.template_effect(() => $.set_attribute(h1, "state", $.get(state)));
 					$.append($$anchor, h1);
 				};
 				var consequent_2 = ($$anchor) => {
@@ -291,13 +291,13 @@ export default function App($$anchor, $$props) {
 			}
 			$.template_effect(() => {
 				$.set_attribute(input, "title", title);
-				$.set_attribute(input, "state", $state());
+				$.set_attribute(input, "state", $.get(state));
 				$.set_value(input, count);
 			});
 			$.append($$anchor, fragment_1);
 		};
 		$.add_svelte_meta(() => $.if(node_4, ($$render) => {
-			if ($state()) $$render(consequent);
+			if ($.get(state)) $$render(consequent);
 			else $$render(alternate_1, -1);
 		}), "if", App, 214, 8);
 	}
@@ -314,7 +314,7 @@ export default function App($$anchor, $$props) {
 	}), "key", App, 236, 4);
 	var node_7 = $.sibling(node_6, 2);
 	$.add_svelte_meta(() => $.each(node_7, 11, () => items, (item) => item.id, ($$anchor, item, idx) => {
-		const itemLabel = $.tag($.derived_safe_equal(() => `${$.get(idx)}:${$.get(item).name}`), "itemLabel");
+		const itemLabel = $.tag($.derived_safe_equal(() => ($.get(idx), $.get(item), $.untrack(() => `${$.get(idx)}:${$.get(item).name}`))), "itemLabel");
 		$.get(itemLabel);
 		var p_4 = root_12();
 		$.attribute_effect(p_4, () => ({
@@ -376,14 +376,14 @@ export default function App($$anchor, $$props) {
 	$.bind_this(div_4, ($$value) => $.set(inputEl, $$value), () => $.get(inputEl));
 	var video = $.sibling(div_4, 2);
 	var div_5 = $.sibling(video, 2);
-	$.action(div_5, ($$node, $$action_arg) => action?.($$node, $$action_arg), $state);
+	$.action(div_5, ($$node, $$action_arg) => action?.($$node, $$action_arg), () => $.get(state));
 	var div_6 = $.sibling(div_5, 2);
 	var div_7 = $.sibling(div_6, 2);
 	var node_11 = $.sibling(div_7, 2);
 	{
-		$.validate_dynamic_element_tag(() => $state() ? "div" : "span");
-		$.validate_void_dynamic_element(() => $state() ? "div" : "span");
-		$.element(node_11, () => $state() ? "div" : "span", false, ($$element, $$anchor) => {
+		$.validate_dynamic_element_tag(() => $.get(state) ? "div" : "span");
+		$.validate_void_dynamic_element(() => $.get(state) ? "div" : "span");
+		$.element(node_11, () => $.get(state) ? "div" : "span", false, ($$element, $$anchor) => {
 			$.set_class($$element, 0, "dynamic-0 svelte-13nvtxg");
 			var text_16 = $.text();
 			$.template_effect(() => $.set_text(text_16, `Dynamic element chunk 0: ${title ?? ""}`));
@@ -392,7 +392,7 @@ export default function App($$anchor, $$props) {
 	}
 	var node_12 = $.sibling(node_11, 2);
 	{
-		let $0 = $.derived_safe_equal(getHandler);
+		let $0 = $.derived_safe_equal(() => $.untrack(getHandler));
 		$.add_svelte_meta(() => $.bind_this(ChildComponent(node_12, {
 			get title() {
 				return title;
@@ -462,20 +462,20 @@ export default function App($$anchor, $$props) {
 	}
 	$.reset(div_1);
 	$.template_effect(() => {
-		$.set_text(text_6, `Chunk 0: Lorem ${$state() ?? ""} + ${$state() ?? ""} = Ipsum; `);
+		$.set_text(text_6, `Chunk 0: Lorem ${$.get(state) ?? ""} + ${$.get(state) ?? ""} = Ipsum; `);
 		$.set_text(text_7, `Props: title=${title ?? ""}, count=${count ?? ""}, doubled=${doubled}, computed=${computed ?? ""}`);
 		$.set_text(text_8, `Module: ${moduleSummary} | Store: ${storeSummary} | Label: ${$labelStore() ?? ""}`);
 		classes_1 = $.set_class(div_2, 1, $.clsx({
 			active: $.get(checked),
 			big: $.get(counter) > 10
 		}), "svelte-13nvtxg", classes_1, {
-			state: $state(),
+			state: $.get(state),
 			staticly: true,
 			invinsible,
 			reactive: $.get(counter)
 		});
 		styles = $.set_style(div_2, "", styles, {
-			color: $state(),
+			color: $.get(state),
 			"font-size": "14px",
 			opacity: $.get(counter) / 100,
 			"--custom": "value-0"
@@ -489,12 +489,12 @@ export default function App($$anchor, $$props) {
 		$.apply(() => $.get(event_handler), this, $$args, App, [208, 17], true, true);
 	});
 	$.bind_value(input_1, function get() {
-		return state;
+		return $.get(state);
 	}, function set($$value) {
 		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
 	$.bind_value(textarea, function get() {
-		return state;
+		return $.get(state);
 	}, function set($$value) {
 		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
@@ -517,7 +517,7 @@ export default function App($$anchor, $$props) {
 		$.set(counter, $$value);
 	});
 	$.bind_content_editable("innerHTML", div_4, function get() {
-		return state;
+		return $.get(state);
 	}, function set($$value) {
 		$.store_unsub($.set(state, $$value), "$state", $$stores);
 	});
@@ -536,6 +536,8 @@ export default function App($$anchor, $$props) {
 	$.transition(2, div_7, () => fade);
 	$.delegated("click", button, addMetric);
 	$.append($$anchor, div_1);
+	$.bind_prop($$props, "APP_VERSION", APP_VERSION);
+	$.bind_prop($$props, "formatTitle", formatTitle);
 	var $$pop = $.pop($$exports);
 	$$cleanup();
 	return $$pop;

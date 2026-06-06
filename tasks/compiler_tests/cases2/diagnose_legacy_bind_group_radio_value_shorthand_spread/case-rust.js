@@ -19,7 +19,7 @@ export default function App($$anchor, $$props) {
 		...$$restProps
 	}), void 0, void 0, void 0, void 0, true);
 	$.bind_group(binding_group, [], input, () => {
-("");
+		value();
 		return group();
 	}, group);
 	$.append($$anchor, input);

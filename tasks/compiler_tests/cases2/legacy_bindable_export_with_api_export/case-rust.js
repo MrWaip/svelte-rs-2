@@ -7,12 +7,18 @@ export default function App($$anchor, $$props) {
 	function getFoo() {
 		return foo();
 	}
-	var $$exports = { getFoo };
+	var $$exports = {
+		get foo() {
+			return foo();
+		},
+		getFoo
+	};
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);
 	$.template_effect(() => $.set_text(text, foo()));
 	$.append($$anchor, p);
+	$.bind_prop($$props, "foo", foo);
 	$.bind_prop($$props, "getFoo", getFoo);
 	return $.pop($$exports);
 }

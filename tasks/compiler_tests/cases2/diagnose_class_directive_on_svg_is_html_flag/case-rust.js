@@ -4,6 +4,6 @@ export default function App($$anchor, $$props) {
 	let active = $.prop($$props, "active", 3, false);
 	var svg = root();
 	let classes;
-	$.template_effect(() => classes = $.set_class(svg, 1, "icon", null, classes, { active: active() }));
+	$.template_effect(() => classes = $.set_class(svg, 0, "icon", null, classes, { active: active() }));
 	$.append($$anchor, svg);
 }

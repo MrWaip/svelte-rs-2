@@ -12,10 +12,10 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	$.element(node, getTag, false, ($$element, $$anchor) => {
 		$.action($$element, ($$node, $$action_arg) => useFn()?.($$node, $$action_arg), () => useArgs() || []);
-		$.effect(() => $.event("click", $$element, function(...$$args) {
-			onclick()?.apply(this, $$args);
-		}));
 		$.attribute_effect($$element, () => ({ href: href() }));
+		$.event("click", $$element, function(...$$args) {
+			onclick()?.apply(this, $$args);
+		});
 		var text = $.text("x");
 		$.append($$anchor, text);
 	});

@@ -8,12 +8,12 @@ export default function App($$anchor, $$props) {
 	function action() {}
 	var input = root();
 	$.remove_input_defaults(input);
-	var input_value;
 	$.effect(() => $.bind_group(binding_group, [], input, () => {
 		value();
 		return model();
 	}, model));
 	$.action(input, ($$node) => action?.($$node));
+	var input_value;
 	$.template_effect(() => {
 		if (input_value !== (input_value = value())) {
 			input.value = (input.__value = value()) ?? "";

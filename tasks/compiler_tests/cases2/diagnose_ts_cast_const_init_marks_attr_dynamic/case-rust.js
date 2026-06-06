@@ -4,6 +4,6 @@ export default function App($$anchor) {
 	const value = "x";
 	var input = root();
 	$.remove_input_defaults(input);
-	$.template_effect(() => $.set_value(input, value));
+	$.set_value(input, value);
 	$.append($$anchor, input);
 }

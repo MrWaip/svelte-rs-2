@@ -18,7 +18,7 @@ export default function App($$anchor, $$props) {
 			return $.get(value);
 		},
 		set value($$value) {
-			$.set(value, $$value);
+			$.store_unsub($.set(value, $$value), "$value", $$stores);
 		},
 		$$legacy: true
 	});

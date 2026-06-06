@@ -13,12 +13,7 @@ export default function App($$anchor, $$props) {
 	], $.index, ($$anchor, _, index) => {
 		var input = root_1();
 		$.remove_input_defaults(input);
-		var input_value;
-		$.template_effect(() => {
-			if (input_value !== (input_value = index)) {
-				input.value = input.__value = index;
-			}
-		});
+		input.value = input.__value = index;
 		$.bind_group(binding_group, [], input, () => {
 			index;
 			return active();

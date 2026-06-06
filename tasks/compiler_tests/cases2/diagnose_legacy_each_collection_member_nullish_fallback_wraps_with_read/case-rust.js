@@ -8,7 +8,7 @@ export default function App($$anchor) {
 	var fragment = root();
 	var button = $.first_child(fragment);
 	var node = $.sibling(button, 2);
-	$.each(node, 1, () => $.get(modeData).data ?? [], (curtain) => curtain, ($$anchor, curtain) => {
+	$.each(node, 1, () => ($.get(modeData), $.untrack(() => $.get(modeData).data ?? [])), (curtain) => curtain, ($$anchor, curtain) => {
 		var div = root_1();
 		var text = $.child(div, true);
 		$.reset(div);

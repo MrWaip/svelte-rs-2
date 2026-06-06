@@ -9,7 +9,7 @@ export default function App($$anchor) {
 	var button = root();
 	var text = $.child(button, true);
 	$.reset(button);
-	$.template_effect(() => $.set_text(text, $.get(obj).x + 1));
+	$.template_effect(() => $.set_text(text, ($.get(obj), $.untrack(() => $.get(obj).x + 1))));
 	$.delegated("click", button, bump);
 	$.append($$anchor, button);
 }
