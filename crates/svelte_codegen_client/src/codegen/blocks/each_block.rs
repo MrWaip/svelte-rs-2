@@ -236,7 +236,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         })
     }
 
-    #[deprecated = "superseded by binding-pattern-routing"]
     fn take_each_context_pattern(
         &mut self,
         block_id: NodeId,
@@ -366,8 +365,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
             let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
                 decl_node,
-                pattern_ref,
-                BindingPatternSource::EachItem { block_id },
+                BindingPatternSource::EachItem {
+                    block_id,
+                    pattern: pattern_ref,
+                },
             )?
             else {
                 return CodegenError::unexpected_child("each-item statements", "const tag derived");

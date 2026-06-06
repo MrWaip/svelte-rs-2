@@ -175,7 +175,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )
     }
 
-    #[deprecated = "superseded by binding-pattern-routing"]
     fn take_snippet_param_patterns(
         &mut self,
         stmt: &mut Statement<'a>,

@@ -1,6 +1,6 @@
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
+use oxc_ast::ast::Expression;
 use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
-use svelte_ast::{Node, NodeId};
+use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
@@ -30,16 +30,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: ConstTagBlockSemantics,
     ) -> Result<()> {
-        let (pattern, init_expr) = self.take_const_tag_decl(id)?;
-        let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-        let out = self.emit_binding_pattern(
-            sem.decl_node_id,
-            pattern_ref,
-            BindingPatternSource::ConstTag {
-                id,
-                init: init_expr,
-            },
-        )?;
+        let out = self.emit_binding_pattern(sem.decl_node_id, BindingPatternSource::ConstTag { id })?;
         let BindingPatternOutput::ConstTagDerived(d) = out else {
             return CodegenError::unexpected_child("const tag derived", "statements");
         };
@@ -73,16 +64,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ConstTagAsyncKind::Sync => (false, Vec::new()),
             };
 
-            let (pattern, init_expr) = self.take_const_tag_decl(id)?;
-            let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-            let out = self.emit_binding_pattern(
-                sem.decl_node_id,
-                pattern_ref,
-                BindingPatternSource::ConstTag {
-                    id,
-                    init: init_expr,
-                },
-            )?;
+            let out =
+                self.emit_binding_pattern(sem.decl_node_id, BindingPatternSource::ConstTag { id })?;
             let BindingPatternOutput::ConstTagDerived(d) = out else {
                 return CodegenError::unexpected_child("const tag derived", "statements");
             };
@@ -127,29 +110,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    #[deprecated = "superseded by binding-pattern-routing"]
-    fn take_const_tag_decl(
-        &mut self,
-        id: NodeId,
-    ) -> Result<(BindingPattern<'a>, Expression<'a>)> {
-        let Node::ConstTag(tag) = self.ctx.query.component.store.get(id) else {
-            return CodegenError::missing_expression(id);
-        };
-        let Some(stmt) = self.ctx.state.parsed.take_stmt(tag.decl.id()) else {
-            return CodegenError::missing_expression(id);
-        };
-        let Statement::VariableDeclaration(mut decl) = stmt else {
-            return CodegenError::unexpected_node(id, "const tag stmt must be VariableDeclaration");
-        };
-        if decl.declarations.is_empty() {
-            return CodegenError::unexpected_node(id, "const tag stmt has no declarators");
-        }
-        let mut declarator = decl.declarations.remove(0);
-        let Some(init) = declarator.init.take() else {
-            return CodegenError::unexpected_node(id, "const tag declarator must have init");
-        };
-        Ok((declarator.id, init))
-    }
 }
 
 fn build_blocker_thunks<'a>(

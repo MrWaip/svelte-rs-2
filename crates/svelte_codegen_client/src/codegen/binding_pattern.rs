@@ -11,7 +11,7 @@ use svelte_analyze::{
     BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics, DerivedEmit,
     EachFlags, SnippetParam,
 };
-use svelte_ast::NodeId;
+use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 use svelte_component_semantics::{Access, OxcNodeId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
@@ -23,11 +23,24 @@ use super::{Codegen, CodegenError, Result};
 const SYNTHETIC_ITEM_NAME: &str = "$$item";
 
 pub(in crate::codegen) enum BindingPatternSource<'a> {
-    EachItem { block_id: NodeId },
-    AwaitValue,
-    ConstTag { id: NodeId, init: Expression<'a> },
-    LetCarrier { slot_prop_name: &'a str },
-    SnippetParam { arg_name: &'a str },
+    EachItem {
+        block_id: NodeId,
+        pattern: &'a BindingPattern<'a>,
+    },
+    AwaitValue {
+        binding_stmt: Option<OxcNodeId>,
+    },
+    ConstTag {
+        id: NodeId,
+    },
+    LetCarrier {
+        slot_prop_name: &'a str,
+        pattern: &'a BindingPattern<'a>,
+    },
+    SnippetParam {
+        arg_name: &'a str,
+        pattern: &'a BindingPattern<'a>,
+    },
 }
 
 pub(in crate::codegen) enum BindingPatternOutput<'a> {
@@ -46,13 +59,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_binding_pattern(
         &mut self,
         decl_node: OxcNodeId,
-        pattern: &'a BindingPattern<'a>,
         source: BindingPatternSource<'a>,
     ) -> Result<BindingPatternOutput<'a>> {
         use BindingPatternOutput as Out;
         match self.ctx.query.declarator_semantics(decl_node) {
             DeclaratorSemantics::EachItem => {
-                let BindingPatternSource::EachItem { block_id } = source else {
+                let BindingPatternSource::EachItem { block_id, pattern } = source else {
                     return CodegenError::unexpected_child(
                         "each-item source",
                         "other binding source",
@@ -61,20 +73,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let item_reactive = self.each_item_reactive(block_id)?;
                 Ok(Out::Statements(self.emit_each_item(pattern, item_reactive)))
             }
-            DeclaratorSemantics::AwaitValue => Ok(Out::Statements(self.emit_await_value(pattern))),
+            DeclaratorSemantics::AwaitValue => {
+                let BindingPatternSource::AwaitValue { binding_stmt } = source else {
+                    return CodegenError::unexpected_child(
+                        "await value source",
+                        "other binding source",
+                    );
+                };
+                let pattern = self.take_await_pattern(binding_stmt)?;
+                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
+                Ok(Out::Statements(self.emit_await_value(pattern_ref)))
+            }
             DeclaratorSemantics::ConstTag { emit } => {
-                let BindingPatternSource::ConstTag { id, init } = source else {
+                let BindingPatternSource::ConstTag { id } = source else {
                     return CodegenError::unexpected_child(
                         "const tag source",
                         "other binding source",
                     );
                 };
+                let (pattern, init) = self.take_const_tag_decl(id)?;
+                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
                 Ok(Out::ConstTagDerived(
-                    self.emit_const_tag(id, pattern, init, emit)?,
+                    self.emit_const_tag(id, pattern_ref, init, emit)?,
                 ))
             }
             DeclaratorSemantics::LetCarrier { carrier_symbol } => {
-                let BindingPatternSource::LetCarrier { slot_prop_name } = source else {
+                let BindingPatternSource::LetCarrier {
+                    slot_prop_name,
+                    pattern,
+                } = source
+                else {
                     return CodegenError::unexpected_child(
                         "let carrier source",
                         "other binding source",
@@ -87,7 +115,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 Ok(Out::Statements(stmts))
             }
             DeclaratorSemantics::SnippetParam => {
-                let BindingPatternSource::SnippetParam { arg_name } = source else {
+                let BindingPatternSource::SnippetParam { arg_name, pattern } = source else {
                     return CodegenError::unexpected_child(
                         "snippet param source",
                         "other binding source",
@@ -109,6 +137,44 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "script-stage declarator kind",
             ),
         }
+    }
+
+    fn take_await_pattern(
+        &mut self,
+        binding_stmt: Option<OxcNodeId>,
+    ) -> Result<BindingPattern<'a>> {
+        let Some(stmt_id) = binding_stmt else {
+            return CodegenError::unexpected_child("await destructure statement", "none");
+        };
+        let Some(Statement::VariableDeclaration(mut var_decl)) =
+            self.ctx.state.parsed.take_stmt(stmt_id)
+        else {
+            return CodegenError::unexpected_child("await destructure VariableDeclaration", "other");
+        };
+        Ok(var_decl.declarations.remove(0).id)
+    }
+
+    fn take_const_tag_decl(
+        &mut self,
+        id: NodeId,
+    ) -> Result<(BindingPattern<'a>, Expression<'a>)> {
+        let Node::ConstTag(tag) = self.ctx.query.component.store.get(id) else {
+            return CodegenError::missing_expression(id);
+        };
+        let Some(stmt) = self.ctx.state.parsed.take_stmt(tag.decl.id()) else {
+            return CodegenError::missing_expression(id);
+        };
+        let Statement::VariableDeclaration(mut decl) = stmt else {
+            return CodegenError::unexpected_node(id, "const tag stmt must be VariableDeclaration");
+        };
+        if decl.declarations.is_empty() {
+            return CodegenError::unexpected_node(id, "const tag stmt has no declarators");
+        }
+        let mut declarator = decl.declarations.remove(0);
+        let Some(init) = declarator.init.take() else {
+            return CodegenError::unexpected_node(id, "const tag declarator must have init");
+        };
+        Ok((declarator.id, init))
     }
 
     fn emit_each_item(
@@ -416,9 +482,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let arg_name_ref: &'a str = self.ctx.b.alloc_str(&arg_name);
                 let out = self.emit_binding_pattern(
                     *pattern_id,
-                    pattern_ref,
                     BindingPatternSource::SnippetParam {
                         arg_name: arg_name_ref,
+                        pattern: pattern_ref,
                     },
                 )?;
                 let BindingPatternOutput::Statements(stmts) = out else {

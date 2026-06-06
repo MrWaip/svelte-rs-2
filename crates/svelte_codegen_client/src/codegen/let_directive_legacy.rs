@@ -87,8 +87,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.ast.allocator.alloc(declarator.id);
         let out = self.emit_binding_pattern(
             decl_oxc_node_id,
-            pattern_ref,
-            BindingPatternSource::LetCarrier { slot_prop_name },
+            BindingPatternSource::LetCarrier {
+                slot_prop_name,
+                pattern: pattern_ref,
+            },
         )?;
         let BindingPatternOutput::Statements(stmts) = out else {
             return CodegenError::unexpected_child(

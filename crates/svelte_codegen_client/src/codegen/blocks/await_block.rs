@@ -1,11 +1,7 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
-use svelte_analyze::scope::SymbolId;
-use svelte_analyze::{
-    AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-};
+use oxc_ast::ast::Expression;
+use svelte_analyze::{AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitWrapper};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
@@ -213,12 +209,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .arrow_block_expr(self.ctx.b.params(["$$anchor", &name]), frag_body))
             }
             AwaitBinding::Pattern { pattern_id, .. } => {
-                let pattern = self.take_await_pattern(binding_stmt)?;
-                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
                 let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
                     *pattern_id,
-                    pattern_ref,
-                    BindingPatternSource::AwaitValue,
+                    BindingPatternSource::AwaitValue { binding_stmt },
                 )?
                 else {
                     return CodegenError::unexpected_child(
@@ -235,68 +228,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    fn take_await_pattern(
-        &mut self,
-        binding_stmt: Option<OxcNodeId>,
-    ) -> Result<BindingPattern<'a>> {
-        let Some(stmt_id) = binding_stmt else {
-            return CodegenError::unexpected_child("await destructure statement", "none");
-        };
-        let Some(Statement::VariableDeclaration(mut var_decl)) =
-            self.ctx.state.parsed.take_stmt(stmt_id)
-        else {
-            return CodegenError::unexpected_child(
-                "await destructure VariableDeclaration",
-                "other",
-            );
-        };
-        Ok(var_decl.declarations.remove(0).id)
-    }
-
-    #[deprecated = "superseded by binding-pattern-routing"]
-    #[allow(dead_code)]
-    fn build_await_destructured_callback(
-        &mut self,
-        kind: AwaitDestructureKind,
-        leaves: &[SymbolId],
-        frag_body: Vec<Statement<'a>>,
-    ) -> Result<Expression<'a>> {
-        let names: Vec<String> = leaves
-            .iter()
-            .map(|&sym| self.ctx.query.view.symbol_name(sym).to_string())
-            .collect();
-
-        let mut decls: Vec<Statement<'a>> = Vec::new();
-
-        let get_source = rune_get(&self.ctx.b, "$$source");
-        let destruct_stmt = match kind {
-            AwaitDestructureKind::Array => self.ctx.b.var_array_destruct_stmt(&names, get_source),
-            AwaitDestructureKind::Object => self.ctx.b.var_object_destruct_stmt(&names, get_source),
-        };
-        let return_obj = self.ctx.b.shorthand_object_expr(&names);
-        let return_stmt = self.ctx.b.return_stmt(return_obj);
-        let helper = self.ctx.query.view.derived_helper();
-        let derived_fn = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
-        let derived_call = self.ctx.b.call_expr(helper, [Arg::Expr(derived_fn)]);
-        decls.push(self.ctx.b.var_stmt("$$value", derived_call));
-
-        for name in &names {
-            let get_value = rune_get(&self.ctx.b, "$$value");
-            let member = self.ctx.b.static_member_expr(get_value, name);
-            let getter_fn = self
-                .ctx
-                .b
-                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(member)]);
-            let per_field_derived = self.ctx.b.call_expr(helper, [Arg::Expr(getter_fn)]);
-            decls.push(self.ctx.b.var_stmt(name, per_field_derived));
-        }
-
-        decls.extend(frag_body);
-        Ok(self
-            .ctx
-            .b
-            .arrow_block_expr(self.ctx.b.params(["$$anchor", "$$source"]), decls))
-    }
 }
 
 fn binding_of(branch: &AwaitBranch) -> &AwaitBinding {
