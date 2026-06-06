@@ -1,11 +1,15 @@
 use std::collections::HashMap;
+use std::iter;
 
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
+use oxc_ast::ast::{
+    BindingPattern, ChainElement, Expression, FormalParameter, PropertyKey, Statement,
+};
 use oxc_semantic::SymbolId;
+use rustc_hash::FxHashSet;
 use svelte_analyze::{
     BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics, DerivedEmit,
-    EachFlags,
+    EachFlags, SnippetParam,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, ObjProp};
@@ -23,6 +27,7 @@ pub(in crate::codegen) enum BindingPatternSource<'a> {
     AwaitValue,
     ConstTag { id: NodeId, init: Expression<'a> },
     LetCarrier { slot_prop_name: &'a str },
+    SnippetParam { arg_name: &'a str },
 }
 
 pub(in crate::codegen) enum BindingPatternOutput<'a> {
@@ -80,6 +85,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     None => self.emit_let_simple(pattern, slot_prop_name),
                 };
                 Ok(Out::Statements(stmts))
+            }
+            DeclaratorSemantics::SnippetParam => {
+                let BindingPatternSource::SnippetParam { arg_name } = source else {
+                    return CodegenError::unexpected_child(
+                        "snippet param source",
+                        "other binding source",
+                    );
+                };
+                Ok(Out::Statements(
+                    self.emit_snippet_param_bindings(pattern, arg_name),
+                ))
             }
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuneProps
@@ -377,8 +393,303 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         vec![self.ctx.b.const_stmt(&carrier_name, derived)]
     }
+
+    pub(in crate::codegen) fn emit_snippet_param(
+        &mut self,
+        param: &SnippetParam,
+        idx: usize,
+        pattern: Option<BindingPattern<'a>>,
+    ) -> Result<(FormalParameter<'a>, Vec<Statement<'a>>)> {
+        match param {
+            SnippetParam::Identifier { sym } => {
+                let name = self.ctx.query.view.symbol_name(*sym).to_string();
+                Ok((self.formal_param_ident(&name, true), Vec::new()))
+            }
+            SnippetParam::Pattern { pattern_id } => {
+                let arg_name = format!("$$arg{idx}");
+                let formal = self.formal_param_ident(&arg_name, false);
+                let Some(pattern) = pattern else {
+                    return Ok((formal, Vec::new()));
+                };
+                let pattern_ref: &'a BindingPattern<'a> =
+                    self.ctx.b.ast.allocator.alloc(pattern);
+                let arg_name_ref: &'a str = self.ctx.b.alloc_str(&arg_name);
+                let out = self.emit_binding_pattern(
+                    *pattern_id,
+                    pattern_ref,
+                    BindingPatternSource::SnippetParam {
+                        arg_name: arg_name_ref,
+                    },
+                )?;
+                let BindingPatternOutput::Statements(stmts) = out else {
+                    return CodegenError::unexpected_child(
+                        "snippet param statements",
+                        "other binding output",
+                    );
+                };
+                Ok((formal, stmts))
+            }
+        }
+    }
+
+    fn emit_snippet_param_bindings(
+        &mut self,
+        pattern: &'a BindingPattern<'a>,
+        arg_name: &str,
+    ) -> Vec<Statement<'a>> {
+        let mut carriers: HashMap<String, String> = HashMap::new();
+        let mut carrier_stmts: Vec<Statement<'a>> = Vec::new();
+        let mut carrier_names: FxHashSet<String> = FxHashSet::default();
+        let mut binding_inits: Vec<(String, Expression<'a>, bool)> = Vec::new();
+
+        walk_bindings(pattern, |v| {
+            let needs_derived = v.path.iter().any(|s| s.default.is_some());
+            let mut expr = self
+                .ctx
+                .b
+                .maybe_call_expr(self.ctx.b.rid_expr(arg_name), iter::empty::<Arg<'_, '_>>());
+
+            for (i, step) in v.path.iter().enumerate() {
+                match step.access {
+                    Access::Key { key, computed } => {
+                        expr = chain_member_access(self, expr, key, computed);
+                    }
+                    Access::Index { index, len, has_rest } => {
+                        let prefix = bp::serialize_prefix(&v.path[..i]);
+                        let name = self.ensure_carrier(
+                            &mut carriers,
+                            &mut carrier_stmts,
+                            &prefix,
+                            expr,
+                            carrier_count(len, has_rest),
+                        );
+                        carrier_names.insert(name.clone());
+                        expr = self.ctx.b.computed_member_expr(
+                            self.ctx.b.rid_expr(&name),
+                            self.ctx.b.num_expr(index as f64),
+                        );
+                    }
+                    Access::Slice { from } => {
+                        let prefix = bp::serialize_prefix(&v.path[..i]);
+                        let name =
+                            self.ensure_carrier(&mut carriers, &mut carrier_stmts, &prefix, expr, None);
+                        carrier_names.insert(name.clone());
+                        let slice_callee =
+                            self.ctx.b.static_member_expr(self.ctx.b.rid_expr(&name), "slice");
+                        expr = self
+                            .ctx
+                            .b
+                            .call_expr_callee(slice_callee, [Arg::Num(from as f64)]);
+                    }
+                }
+                if let Some(default) = step.default {
+                    expr = bp::fallback(&self.ctx.b, expr, default, None);
+                }
+            }
+
+            if v.is_rest {
+                expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
+            }
+
+            let name = self.ctx.query.symbol_name(v.symbol).to_string();
+            binding_inits.push((name, expr, needs_derived));
+        });
+
+        let dev = self.ctx.state.dev;
+        for (name, mut expr, needs_derived) in binding_inits {
+            rewrite_array_reads(self, &mut expr, &carrier_names);
+            let thunk = self.ctx.b.thunk(expr);
+            let init = if needs_derived {
+                self.ctx
+                    .b
+                    .call_expr("$.derived_safe_equal", [Arg::Expr(thunk)])
+            } else {
+                thunk
+            };
+            carrier_stmts.push(self.ctx.b.let_init_stmt(&name, init));
+            if dev {
+                let name_alloc = self.ctx.b.alloc_str(&name);
+                let eager = if needs_derived {
+                    self.ctx.b.call_stmt("$.get", [Arg::Ident(name_alloc)])
+                } else {
+                    self.ctx
+                        .b
+                        .call_stmt(&name, iter::empty::<Arg<'_, '_>>())
+                };
+                carrier_stmts.push(eager);
+            }
+        }
+
+        carrier_stmts
+    }
 }
 
 fn carrier_count(len: u32, has_rest: bool) -> Option<u32> {
     if has_rest { None } else { Some(len) }
+}
+
+fn chain_member_access<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    object: Expression<'a>,
+    key: &PropertyKey<'_>,
+    computed: bool,
+) -> Expression<'a> {
+    if !computed
+        && let PropertyKey::StaticIdentifier(id) = key
+    {
+        return build_chain_static_member(cg, &object, id.name.as_str());
+    }
+    let key_expr = clone_property_key_expr(cg, key);
+    build_chain_computed_member(cg, &object, key_expr)
+}
+
+fn build_chain_static_member<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    object: &Expression<'a>,
+    prop: &str,
+) -> Expression<'a> {
+    use oxc_span::SPAN;
+    if let Expression::ChainExpression(chain) = object {
+        let property = cg.ctx.b.ast.identifier_name(SPAN, cg.ctx.b.ast.atom(prop));
+        let member = cg.ctx.b.ast.alloc_static_member_expression(
+            SPAN,
+            clone_chain_element_expr(cg, &chain.expression),
+            property,
+            false,
+        );
+        return Expression::ChainExpression(
+            cg.ctx.b.alloc(
+                cg.ctx
+                    .b
+                    .ast
+                    .chain_expression(SPAN, ChainElement::StaticMemberExpression(member)),
+            ),
+        );
+    }
+    cg.ctx
+        .b
+        .static_member_expr(cg.ctx.b.clone_expr(object), prop)
+}
+
+fn build_chain_computed_member<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    object: &Expression<'a>,
+    property: Expression<'a>,
+) -> Expression<'a> {
+    use oxc_span::SPAN;
+    if let Expression::ChainExpression(chain) = object {
+        let member = cg.ctx.b.ast.alloc_computed_member_expression(
+            SPAN,
+            clone_chain_element_expr(cg, &chain.expression),
+            property,
+            false,
+        );
+        return Expression::ChainExpression(
+            cg.ctx.b.alloc(
+                cg.ctx
+                    .b
+                    .ast
+                    .chain_expression(SPAN, ChainElement::ComputedMemberExpression(member)),
+            ),
+        );
+    }
+    cg.ctx
+        .b
+        .computed_member_expr(cg.ctx.b.clone_expr(object), property)
+}
+
+fn clone_chain_element_expr<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    element: &ChainElement<'a>,
+) -> Expression<'a> {
+    match element {
+        ChainElement::CallExpression(call) => {
+            Expression::CallExpression(call.clone_in(cg.ctx.b.ast.allocator))
+        }
+        ChainElement::StaticMemberExpression(member) => {
+            Expression::StaticMemberExpression(member.clone_in(cg.ctx.b.ast.allocator))
+        }
+        ChainElement::ComputedMemberExpression(member) => {
+            Expression::ComputedMemberExpression(member.clone_in(cg.ctx.b.ast.allocator))
+        }
+        ChainElement::PrivateFieldExpression(member) => {
+            Expression::PrivateFieldExpression(member.clone_in(cg.ctx.b.ast.allocator))
+        }
+        ChainElement::TSNonNullExpression(_) => unreachable!("TS stripped at parse"),
+    }
+}
+
+fn clone_property_key_expr<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    key: &PropertyKey<'_>,
+) -> Expression<'a> {
+    match key {
+        PropertyKey::StaticIdentifier(id) => cg.ctx.b.str_expr(id.name.as_str()),
+        PropertyKey::StringLiteral(s) => cg.ctx.b.str_expr(s.value.as_str()),
+        PropertyKey::NumericLiteral(n) => cg.ctx.b.num_expr(n.value),
+        other => match other.as_expression() {
+            Some(e) => e.clone_in(cg.ctx.b.ast.allocator),
+            None => cg.ctx.b.str_expr(""),
+        },
+    }
+}
+
+fn rewrite_array_reads<'a, 'ctx>(
+    cg: &Codegen<'a, 'ctx>,
+    expr: &mut Expression<'a>,
+    carrier_names: &FxHashSet<String>,
+) {
+    let expr = expr.get_inner_expression_mut();
+    match expr {
+        Expression::StaticMemberExpression(member) => {
+            rewrite_array_reads(cg, &mut member.object, carrier_names);
+        }
+        Expression::ComputedMemberExpression(member) => {
+            rewrite_array_reads(cg, &mut member.object, carrier_names);
+            rewrite_array_reads(cg, &mut member.expression, carrier_names);
+        }
+        Expression::ChainExpression(chain) => match &mut chain.expression {
+            ChainElement::StaticMemberExpression(member) => {
+                rewrite_array_reads(cg, &mut member.object, carrier_names);
+            }
+            ChainElement::ComputedMemberExpression(member) => {
+                rewrite_array_reads(cg, &mut member.object, carrier_names);
+                rewrite_array_reads(cg, &mut member.expression, carrier_names);
+            }
+            ChainElement::CallExpression(call) => {
+                rewrite_array_reads(cg, &mut call.callee, carrier_names);
+                for arg in call.arguments.iter_mut() {
+                    if let Some(arg_expr) = arg.as_expression_mut() {
+                        rewrite_array_reads(cg, arg_expr, carrier_names);
+                    }
+                }
+            }
+            _ => {}
+        },
+        Expression::CallExpression(call) => {
+            rewrite_array_reads(cg, &mut call.callee, carrier_names);
+            for arg in call.arguments.iter_mut() {
+                if let Some(arg_expr) = arg.as_expression_mut() {
+                    rewrite_array_reads(cg, arg_expr, carrier_names);
+                }
+            }
+        }
+        Expression::ArrayExpression(arr) => {
+            for element in arr.elements.iter_mut() {
+                if let Some(el_expr) = element.as_expression_mut() {
+                    rewrite_array_reads(cg, el_expr, carrier_names);
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let Expression::Identifier(ident) = expr else {
+        return;
+    };
+    if !carrier_names.contains(ident.name.as_str()) {
+        return;
+    }
+    let name_alloc = cg.ctx.b.alloc_str(ident.name.as_str());
+    *expr = rune_get(&cg.ctx.b, name_alloc);
 }

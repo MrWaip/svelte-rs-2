@@ -143,6 +143,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
                 DeclaratorSemantics::EachItem
                 | DeclaratorSemantics::AwaitValue
+                | DeclaratorSemantics::SnippetParam
                 | DeclaratorSemantics::ConstTag { .. }
                 | DeclaratorSemantics::LetCarrier { .. } => {
                     unreachable!("template-stage declarator kind in a script declaration")

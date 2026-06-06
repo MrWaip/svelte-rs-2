@@ -930,6 +930,17 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        for param in &arrow.params.items {
+            let pattern = match &param.pattern {
+                BindingPattern::AssignmentPattern(assign) => &assign.left,
+                other => other,
+            };
+            if let Some(node) = destructure_pattern_node(pattern) {
+                self.data
+                    .reactivity
+                    .record_declarator_semantics(node, DeclaratorSemantics::SnippetParam);
+            }
+        }
         self.visit_formal_parameters(&arrow.params);
     }
 }

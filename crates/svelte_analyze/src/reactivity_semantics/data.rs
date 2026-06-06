@@ -248,6 +248,8 @@ pub enum DeclaratorSemantics {
 
     AwaitValue,
 
+    SnippetParam,
+
     ClassFieldState(ClassFieldStateSemantics),
 
     ClassFieldDerived(ClassFieldDerivedSemantics),
