@@ -6,4 +6,10 @@ allowed-tools: Read, Bash
 
 # required
 
-`docs/context.md` is the single entry point — dogmas, cross-cutting conventions, the live index of every other doc, and the glossary; `docs/map.md` has the crate layers and entry points. Read both at the start of any compiler work, then follow the index to the one root PRD (and any `docs/designs/*.md`) that matches your layer. Always follow the cross-links you hit instead of guessing, and trust the filesystem over memory if the index looks stale.
+Start by listing every doc:
+
+```
+tree -P '*.md' --prune docs
+```
+
+Then read `docs/context.md` and `docs/map.md`, and any doc from the tree that relates to the task. Read more as you go if the task changes.
