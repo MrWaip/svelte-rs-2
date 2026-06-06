@@ -3151,42 +3151,30 @@ fn reactivity_semantics_v2_marks_destructured_state_bindings_as_proxied() {
     assert_eq!(object_decl.kind, StateKind::State);
     assert!(object_decl.proxied);
     assert!(!object_decl.var_declared);
-    assert_eq!(
-        object_decl.binding_semantics.as_slice(),
-        &[
-            StateBindingSemantics::StateSignal { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-        ],
-        "object-destructure binding_semantics mismatch"
+    assert!(
+        object_decl.is_signal_source,
+        "mutated object leaf 'left' is a signal source"
     );
 
     for name in ["right", "rest"] {
-        assert_eq!(
-            state_decl(name).binding_semantics,
-            object_decl.binding_semantics,
-            "expected '{name}' to share the object-destructure declaration root"
+        assert!(
+            !state_decl(name).is_signal_source,
+            "non-mutated object leaf '{name}' is plain"
         );
     }
 
     let array_decl = state_decl("tail");
     assert_eq!(array_decl.kind, StateKind::State);
     assert!(array_decl.proxied);
-    assert_eq!(
-        array_decl.binding_semantics.as_slice(),
-        &[
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::NonReactive { proxied: true },
-            StateBindingSemantics::StateSignal { proxied: true },
-        ],
-        "array-destructure binding_semantics mismatch"
+    assert!(
+        array_decl.is_signal_source,
+        "mutated array leaf 'tail' is a signal source"
     );
 
     for name in ["first", "second"] {
-        assert_eq!(
-            state_decl(name).binding_semantics,
-            array_decl.binding_semantics,
-            "expected '{name}' to share the array-destructure declaration root"
+        assert!(
+            !state_decl(name).is_signal_source,
+            "non-mutated array leaf '{name}' is plain"
         );
     }
 }

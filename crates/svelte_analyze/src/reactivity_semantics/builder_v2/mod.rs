@@ -19,7 +19,7 @@ use super::data::{
     DerivedDeclarationSemantics, DerivedKind, DerivedEmit, OptimizedRuneSemantics,
     PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReferenceFacts,
-    RuntimeRuneKind, StateBindingSemantics, StateDeclarationSemantics, StateKind,
+    RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
@@ -653,13 +653,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::State,
                         proxied: root_proxied,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::State,
-                            init_proxyable,
-                        ),
+                        is_signal_source: false,
                     },
                     true,
                 );
@@ -680,13 +674,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::StateRaw,
                         proxied: false,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::StateRaw,
-                            false,
-                        ),
+                        is_signal_source: false,
                     },
                     true,
                 );
@@ -699,13 +687,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: StateKind::StateEager,
                         proxied: false,
                         var_declared,
-                        binding_semantics: collect_state_binding_semantics(
-                            &self.data.scoping,
-                            &self.data.script,
-                            &declarator.id,
-                            StateKind::StateEager,
-                            false,
-                        ),
+                        is_signal_source: false,
                     },
                     false,
                 );
@@ -1100,9 +1082,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 let Some(sym) = ident.symbol_id.get() else {
                     return;
                 };
-                self.data
-                    .reactivity
-                    .record_state_binding(sym, semantics.clone());
+                let binding = StateDeclarationSemantics {
+                    is_signal_source: binding_is_signal_source(
+                        &self.data.scoping,
+                        &self.data.script,
+                        sym,
+                        semantics.kind,
+                    ),
+                    ..*semantics
+                };
+                self.data.reactivity.record_state_binding(sym, binding);
             }
             BindingPattern::ObjectPattern(obj) => {
                 for prop in &obj.properties {
@@ -1568,117 +1557,17 @@ fn state_expression_is_proxyable(expr: &Expression<'_>) -> bool {
     true
 }
 
-fn collect_state_binding_semantics(
+fn binding_is_signal_source(
     scoping: &ComponentScoping<'_>,
     script: &crate::ScriptAnalysis,
-    pattern: &BindingPattern<'_>,
-    rune_kind: StateKind,
-    init_proxyable: bool,
-) -> SmallVec<[StateBindingSemantics; 4]> {
-    let mut semantics = SmallVec::new();
-    collect_state_binding_semantics_inner(
-        scoping,
-        script,
-        pattern,
-        rune_kind,
-        init_proxyable,
-        &mut semantics,
-    );
-    semantics
-}
-
-fn collect_state_binding_semantics_inner(
-    scoping: &ComponentScoping<'_>,
-    script: &crate::ScriptAnalysis,
-    pattern: &BindingPattern<'_>,
-    rune_kind: StateKind,
-    init_proxyable: bool,
-    semantics: &mut SmallVec<[StateBindingSemantics; 4]>,
-) {
-    match pattern {
-        BindingPattern::BindingIdentifier(ident) => {
-            let reassigned = ident.symbol_id.get().is_some_and(|sym| {
-                scoping.is_mutated(sym) || scoping.is_reexported_specifier_local(sym)
-            });
-            semantics.push(state_binding_semantic(
-                rune_kind,
-                script.is_state_source(reassigned),
-                init_proxyable,
-            ));
-        }
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &prop.value,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-            if let Some(rest) = &obj.rest {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &rest.argument,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for elem in arr.elements.iter().flatten() {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    elem,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-            if let Some(rest) = &arr.rest {
-                collect_state_binding_semantics_inner(
-                    scoping,
-                    script,
-                    &rest.argument,
-                    rune_kind,
-                    init_proxyable,
-                    semantics,
-                );
-            }
-        }
-        BindingPattern::AssignmentPattern(assign) => {
-            collect_state_binding_semantics_inner(
-                scoping,
-                script,
-                &assign.left,
-                rune_kind,
-                init_proxyable,
-                semantics,
-            );
-        }
+    sym: SymbolId,
+    kind: StateKind,
+) -> bool {
+    if matches!(kind, StateKind::StateEager) {
+        return false;
     }
-}
-
-fn state_binding_semantic(
-    rune_kind: StateKind,
-    is_state_source: bool,
-    init_proxyable: bool,
-) -> StateBindingSemantics {
-    match (rune_kind, is_state_source) {
-        (StateKind::State, true) => StateBindingSemantics::StateSignal {
-            proxied: init_proxyable,
-        },
-        (StateKind::State, false) => StateBindingSemantics::NonReactive {
-            proxied: init_proxyable,
-        },
-        (StateKind::StateRaw, true) => StateBindingSemantics::StateRawSignal,
-        (StateKind::StateRaw, false) => StateBindingSemantics::NonReactive { proxied: false },
-        (StateKind::StateEager, _) => StateBindingSemantics::NonReactive { proxied: false },
-    }
+    let reassigned = scoping.is_mutated(sym) || scoping.is_reexported_specifier_local(sym);
+    script.is_state_source(reassigned)
 }
 
 fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {

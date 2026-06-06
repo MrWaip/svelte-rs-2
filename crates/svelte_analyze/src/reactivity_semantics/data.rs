@@ -36,21 +36,12 @@ pub enum BindingSemantics {
     Unresolved,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateDeclarationSemantics {
     pub kind: StateKind,
     pub proxied: bool,
     pub var_declared: bool,
-    pub binding_semantics: SmallVec<[StateBindingSemantics; 4]>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StateBindingSemantics {
-    StateSignal { proxied: bool },
-
-    StateRawSignal,
-
-    NonReactive { proxied: bool },
+    pub is_signal_source: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1093,7 +1084,7 @@ impl ReactivitySemantics {
 impl ReactivitySemantics {
     fn binding_semantics_from_facts(facts: &BindingFacts) -> BindingSemantics {
         match facts {
-            BindingFacts::State(state) => BindingSemantics::State(state.clone()),
+            BindingFacts::State(state) => BindingSemantics::State(*state),
             BindingFacts::Derived(derived) => BindingSemantics::Derived(*derived),
             BindingFacts::OptimizedRune(opt) => BindingSemantics::OptimizedRune(*opt),
             BindingFacts::Prop(prop) => BindingSemantics::Prop(prop.clone()),

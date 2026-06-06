@@ -4,11 +4,11 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    Argument, BindingPattern, Expression, VariableDeclarationKind, VariableDeclarator,
+    Argument, Expression, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_span::SPAN;
 
-use svelte_analyze::{BindingSemantics, RuneKind, StateBindingSemantics, StateKind};
+use svelte_analyze::{BindingSemantics, RuneKind, StateKind};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
@@ -37,7 +37,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let value = self.take_state_init_value(init);
 
         let dev_label = Self::state_destructure_dev_label(&declarator.id, rune_kind);
-        let leaf_semantics = self.state_leaf_semantics(&declarator.id);
 
         let tmp_name = self.ident_gen.generate("tmp");
         let tmp_name_str: &str = self.b.alloc_str(&tmp_name);
@@ -45,7 +44,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut carriers: HashMap<String, &'a str> = HashMap::new();
         let mut carrier_declarators: Vec<VariableDeclarator<'a>> = Vec::new();
         let mut leaf_declarators: Vec<VariableDeclarator<'a>> = Vec::new();
-        let mut leaf_index = 0usize;
 
         walk_bindings(&declarator.id, |v| {
             let root = self.b.rid_expr(tmp_name_str);
@@ -60,16 +58,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 decl_kind,
             );
 
-            let binding_semantic = leaf_semantics
-                .get(leaf_index)
-                .copied()
-                .expect("per-leaf state binding semantics present for every destructure leaf");
-            leaf_index += 1;
+            let is_signal_source = self.binding_is_signal_source(v.symbol);
             leaf_declarators.push(self.build_state_leaf(
                 v.symbol,
                 expr,
                 rune_kind,
-                binding_semantic,
+                is_signal_source,
                 decl_kind,
             ));
         });
@@ -101,17 +95,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    fn state_leaf_semantics(&self, pattern: &BindingPattern<'a>) -> Vec<StateBindingSemantics> {
-        let mut first = None;
-        walk_bindings(pattern, |v| {
-            if first.is_none() {
-                first = Some(v.symbol);
-            }
-        });
-        match first.and_then(|sym| self.analysis.map(|a| a.binding_semantics(sym))) {
-            Some(BindingSemantics::State(state)) => state.binding_semantics.to_vec(),
-            _ => Vec::new(),
-        }
+    fn binding_is_signal_source(&self, symbol: SymbolId) -> bool {
+        matches!(
+            self.analysis.map(|a| a.binding_semantics(symbol)),
+            Some(BindingSemantics::State(state)) if state.is_signal_source
+        )
     }
 
     fn build_state_leaf(
@@ -119,14 +107,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         symbol: SymbolId,
         accessor: Expression<'a>,
         rune_kind: RuneKind,
-        binding_semantic: StateBindingSemantics,
+        is_signal_source: bool,
         decl_kind: VariableDeclarationKind,
     ) -> VariableDeclarator<'a> {
         let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
-        let is_signal_source = matches!(
-            binding_semantic,
-            StateBindingSemantics::StateSignal { .. } | StateBindingSemantics::StateRawSignal
-        );
         let is_proxy = matches!(rune_kind, RuneKind::State) && should_proxy(&accessor);
         let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
         let final_value = if self.dev {

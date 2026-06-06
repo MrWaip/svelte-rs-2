@@ -4,9 +4,7 @@ use oxc_ast::ast::{Argument, BindingPattern, Expression, UnaryOperator, Variable
 use oxc_semantic::SymbolId;
 use oxc_span::SPAN;
 
-use svelte_analyze::{
-    BindingSemantics, DerivedKind, RuntimeRuneKind, StateBindingSemantics, StateKind,
-};
+use svelte_analyze::{BindingSemantics, DerivedKind, RuntimeRuneKind, StateKind};
 use svelte_ast_builder::Arg;
 
 use super::super::model::{AsyncDerivedMode, ComponentTransformer};
@@ -45,27 +43,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
             }
             Some(BindingSemantics::State(state)) => {
-                let binding_semantic = state.binding_semantics.first().copied();
-                self.rewrite_state_binding_init(node, binding_name, state.kind, binding_semantic);
+                self.rewrite_state_binding_init(
+                    node,
+                    binding_name,
+                    state.kind,
+                    state.is_signal_source,
+                );
             }
             Some(BindingSemantics::Derived(derived)) => {
                 self.rewrite_derived_binding_init(node, binding_name, derived.kind, sym_id);
             }
             Some(BindingSemantics::OptimizedRune(opt)) => {
-                let binding_semantic = match opt.kind {
-                    StateKind::State => StateBindingSemantics::NonReactive {
-                        proxied: opt.proxy_init,
-                    },
-                    StateKind::StateRaw | StateKind::StateEager => {
-                        StateBindingSemantics::NonReactive { proxied: false }
-                    }
-                };
-                self.rewrite_state_binding_init(
-                    node,
-                    binding_name,
-                    opt.kind,
-                    Some(binding_semantic),
-                );
+                self.rewrite_state_binding_init(node, binding_name, opt.kind, false);
             }
             Some(BindingSemantics::RuntimeRune {
                 kind: RuntimeRuneKind::EffectPending,
@@ -81,7 +70,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut VariableDeclarator<'a>,
         binding_name: &'a str,
         kind: StateKind,
-        binding_semantic: Option<StateBindingSemantics>,
+        is_signal_source: bool,
     ) {
         let Some(init) = node.init.as_mut() else {
             return;
@@ -96,11 +85,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::CallExpression(mut call) = init_expr else {
             return;
         };
-        let is_state_source = matches!(
-            binding_semantic,
-            Some(StateBindingSemantics::StateSignal { .. } | StateBindingSemantics::StateRawSignal)
-        );
-        if is_state_source {
+        if is_signal_source {
             call.callee = self.b.rid_expr("$.state");
 
             if call.arguments.is_empty() {

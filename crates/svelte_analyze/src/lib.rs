@@ -54,7 +54,7 @@ pub use types::data::{
     PropEmitMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
     RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis,
-    SignalReferenceKind, SnippetData, SnippetParamStrategy, StateBindingSemantics,
+    SignalReferenceKind, SnippetData, SnippetParamStrategy,
     StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
     TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
