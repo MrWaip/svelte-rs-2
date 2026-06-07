@@ -1330,7 +1330,9 @@ fn derive_component_bind_target(
         BindingSemantics::State(_) | BindingSemantics::OptimizedRune(_) => {
             ComponentBindTarget::Rune
         }
-        BindingSemantics::Derived(_) => ComponentBindTarget::RuneDerived,
+        BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => {
+            ComponentBindTarget::RuneDerived
+        }
         BindingSemantics::LegacyState(_) => {
             if ctx.reactivity.store_shadow_of_internal(sym).is_some() {
                 ComponentBindTarget::LegacyStateSubscribed

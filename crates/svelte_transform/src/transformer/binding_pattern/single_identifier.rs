@@ -50,7 +50,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     state.is_signal_source,
                 );
             }
-            Some(BindingSemantics::Derived(derived)) => {
+            Some(BindingSemantics::Derived(derived))
+            | Some(BindingSemantics::OptimizedDerived(derived)) => {
                 self.rewrite_derived_binding_init(node, binding_name, derived.kind, sym_id);
             }
             Some(BindingSemantics::OptimizedRune(opt)) => {

@@ -8,6 +8,7 @@ use crate::expression_semantics::{ExpressionSemanticsStore, ExpressionSemantics,
 use crate::utils::node_id_utils::expression_node_id;
 use oxc_ast::ast::Expression;
 use crate::passes::dynamism::DynamismData;
+use crate::value_evaluation::ValueEvaluation;
 use crate::passes::fragment_topology::fragment_items;
 use oxc_ast::ast::IdentifierReference;
 use oxc_semantic::ScopeId;
@@ -188,6 +189,7 @@ pub struct AnalysisData<'a> {
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
     pub dynamism: DynamismData,
+    pub(crate) value_evaluation: ValueEvaluation,
 }
 
 impl<'a> AnalysisData<'a> {
@@ -205,6 +207,7 @@ impl<'a> AnalysisData<'a> {
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
             dynamism: DynamismData::new(node_count),
+            value_evaluation: ValueEvaluation::default(),
         }
     }
 }

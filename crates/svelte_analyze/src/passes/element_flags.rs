@@ -516,6 +516,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                                         }
                                         BindingSemantics::State(_)
                                         | BindingSemantics::Derived(_)
+                                        | BindingSemantics::OptimizedDerived(_)
                                         | BindingSemantics::OptimizedRune(_) => {
                                             ComponentBindMode::Rune
                                         }

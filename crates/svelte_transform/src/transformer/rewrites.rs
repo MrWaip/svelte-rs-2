@@ -30,6 +30,7 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::LegacyBindableProp(_)

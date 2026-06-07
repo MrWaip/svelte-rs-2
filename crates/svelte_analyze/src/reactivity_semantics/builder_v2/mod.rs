@@ -15,14 +15,15 @@ use util::{
 };
 
 use super::data::{
-    BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedEmit, OptimizedRuneSemantics,
-    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    ReferenceFacts,
+    BindingFacts, BindingSemantics, ClassFieldDerivedSemantics, ClassFieldStateSemantics,
+    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedKind, DerivedEmit,
+    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    ReactivitySemantics, ReferenceFacts,
     RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
+use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use crate::types::script::RuneKind;
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
@@ -47,7 +48,7 @@ use oxc_span::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::Component;
-use svelte_component_semantics::{sym_state, OxcNodeId, ReferenceId};
+use svelte_component_semantics::{sym_state, ComponentSemantics, OxcNodeId, ReferenceId};
 
 const JS_UNDEFINED_NAME: &str = "undefined";
 
@@ -103,6 +104,29 @@ pub(crate) fn build_v2<'a>(
     legacy::finalize_legacy_aggregates(data);
     legacy_reactive::classify_mutated_import_references(data);
     import_subscribed::classify_import_subscribed_reads(data);
+}
+
+pub(crate) fn build_optimized_derived(
+    reactivity: &mut ReactivitySemantics,
+    value_evaluation: &ValueEvaluation,
+    semantics: &ComponentSemantics<'_>,
+) {
+    let mut optimizable = Vec::new();
+
+    for symbol in semantics.symbol_ids() {
+        if !matches!(
+            reactivity.binding_semantics(symbol),
+            BindingSemantics::Derived(_)
+        ) {
+            continue;
+        }
+        if !matches!(value_evaluation.evaluation(symbol), Evaluation::Known(_)) {
+            continue;
+        }
+        optimizable.push(symbol);
+    }
+
+    reactivity.optimize_derived_rune(&optimizable);
 }
 
 fn record_maybe_reactive_imports(data: &mut AnalysisData<'_>) {
@@ -201,6 +225,7 @@ fn compute_const_tag_reactivity<'a>(
                     | BindingSemantics::Contextual(_)
                     | BindingSemantics::RuntimeRune { .. } => true,
                     BindingSemantics::Derived(d) => d.reactive,
+                    BindingSemantics::OptimizedDerived(_) => false,
                     BindingSemantics::Const(ConstBindingSemantics::ConstTag {
                         reactive, ..
                     }) => reactive,
@@ -603,6 +628,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             | BindingSemantics::Contextual(_)
             | BindingSemantics::RuntimeRune { .. } => true,
             BindingSemantics::Derived(d) => d.reactive,
+            BindingSemantics::OptimizedDerived(_) => false,
             BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
 
             BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
@@ -1619,6 +1645,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             | BindingSemantics::Contextual(_)
             | BindingSemantics::RuntimeRune { .. } => true,
             BindingSemantics::Derived(d) => d.reactive,
+            BindingSemantics::OptimizedDerived(_) => false,
             BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
             BindingSemantics::OptimizedRune(opt) => opt.proxy_init,
             BindingSemantics::MaybeReactive

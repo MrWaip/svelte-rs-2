@@ -1,7 +1,7 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::reactivity_semantics::{ReactivityInputs, build_v2};
+use crate::reactivity_semantics::{ReactivityInputs, build_optimized_derived, build_v2};
 use crate::{attribute_semantics, block_semantics, expression_semantics};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::{ce_config, script_info};
@@ -183,7 +183,7 @@ pub(crate) fn execute_pass<'a>(
             );
         }
         super::PassKey::BuildValueEvaluation => {
-            let value_known = value_evaluation::build(
+            data.value_evaluation = value_evaluation::build(
                 parsed,
                 &data.scoping,
                 data.scoping.semantics(),
@@ -191,7 +191,13 @@ pub(crate) fn execute_pass<'a>(
                 &data.reactivity,
                 data.script.dev,
             );
-            data.reactivity.optimize_derived(&value_known);
+        }
+        super::PassKey::BuildOptimizedDerived => {
+            build_optimized_derived(
+                &mut data.reactivity,
+                &data.value_evaluation,
+                data.scoping.semantics(),
+            );
         }
         super::PassKey::BuildExpressionSemantics => {
             let expressions_v2 = expression_semantics::build(

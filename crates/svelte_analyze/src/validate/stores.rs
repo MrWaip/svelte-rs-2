@@ -223,6 +223,7 @@ fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: SymbolId) -> bool {
         data.reactivity.binding_semantics(sym_id),
         BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
             | BindingSemantics::OptimizedRune(_)
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::Prop(_)

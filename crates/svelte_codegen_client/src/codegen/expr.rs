@@ -144,6 +144,7 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
             | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
             | BindingSemantics::OptimizedRune(_)
     ) {
         return None;

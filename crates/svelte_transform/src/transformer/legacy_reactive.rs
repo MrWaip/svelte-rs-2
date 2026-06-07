@@ -207,6 +207,7 @@ fn build_dep_read<'a>(
         BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::RuntimeRune { .. } => {

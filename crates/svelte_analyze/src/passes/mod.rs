@@ -36,6 +36,7 @@ pub(crate) enum PassKey {
     PostResolve,
     BuildReactivitySemantics,
     BuildValueEvaluation,
+    BuildOptimizedDerived,
     BuildFragmentTopology,
     ReactivityWalk,
     TemplateClassificationWalk,
@@ -62,6 +63,7 @@ pub(crate) enum DataToken {
     PostResolve,
     ReactivitySemantics,
     ValueEvaluation,
+    OptimizedDerived,
     ExpressionSemantics,
     AttributeSemantics,
     BlockSemantics,
@@ -164,11 +166,17 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ValueEvaluation],
     },
     PassDescriptor {
+        key: PassKey::BuildOptimizedDerived,
+        requires: &[DataToken::ValueEvaluation],
+        produces: &[DataToken::OptimizedDerived],
+    },
+    PassDescriptor {
         key: PassKey::BuildExpressionSemantics,
         requires: &[
             DataToken::ReactivitySemantics,
             DataToken::PostResolve,
             DataToken::ValueEvaluation,
+            DataToken::OptimizedDerived,
         ],
         produces: &[DataToken::ExpressionSemantics],
     },
@@ -219,6 +227,7 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::ClassifyNeedsContext,
     PassKey::PostResolve,
     PassKey::BuildValueEvaluation,
+    PassKey::BuildOptimizedDerived,
     PassKey::BuildExpressionSemantics,
     PassKey::BuildAttributeSemantics,
 ];

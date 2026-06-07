@@ -90,10 +90,12 @@ fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics
             kind: SignalReferenceKind::State(kind),
             safe: false,
         },
-        BindingSemantics::Derived(d) => ReferenceSemantics::SignalRead {
-            kind: SignalReferenceKind::Derived(d.kind),
-            safe: false,
-        },
+        BindingSemantics::Derived(d) | BindingSemantics::OptimizedDerived(d) => {
+            ReferenceSemantics::SignalRead {
+                kind: SignalReferenceKind::Derived(d.kind),
+                safe: false,
+            }
+        }
         _ => ReferenceSemantics::NonReactive,
     }
 }

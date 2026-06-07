@@ -314,7 +314,9 @@ fn export_kind_for_symbol(
     sym_id: SymbolId,
 ) -> Option<DiagnosticKind> {
     match data.binding_semantics(sym_id) {
-        BindingSemantics::Derived(_) => Some(DiagnosticKind::DerivedInvalidExport),
+        BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => {
+            Some(DiagnosticKind::DerivedInvalidExport)
+        }
         BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::State | StateKind::StateRaw,
             ..
@@ -376,7 +378,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         };
         let declaration_semantics = self.data.binding_semantics(sym_id);
         let should_warn = match declaration_semantics {
-            BindingSemantics::Derived(_) => true,
+            BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => true,
             BindingSemantics::State(state) if state.kind == StateKind::StateRaw => true,
             BindingSemantics::State(state) if state.kind == StateKind::State => {
                 self.data.scoping.is_mutated(sym_id) || !state.proxied

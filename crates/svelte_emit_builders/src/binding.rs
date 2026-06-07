@@ -54,6 +54,7 @@ pub fn read_binding<'a>(
         }
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_) => Some(rune_get(b, name)),
         BindingSemantics::Const(ConstBindingSemantics::ConstTag {
             destructured: false,

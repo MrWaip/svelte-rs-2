@@ -168,7 +168,7 @@ fn classify_reference_semantics(
                 None
             }
         }
-        BindingFacts::Derived(derived) => {
+        BindingFacts::Derived(derived) | BindingFacts::OptimizedDerived(derived) => {
             if is_write && !is_read {
                 Some(ReferenceFacts::DerivedWrite)
             } else if is_write {

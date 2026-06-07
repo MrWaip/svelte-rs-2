@@ -1087,8 +1087,16 @@ fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
             ..
+        })
+        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            ..
         }) => RuneKind::Derived,
         BindingSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::DerivedBy,
+            ..
+        })
+        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
             ..
         }) => RuneKind::DerivedBy,
@@ -3104,7 +3112,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
 
     assert!(matches!(
         symbol_declaration_semantics(&data, "sync_total"),
-        BindingSemantics::Derived(DerivedDeclarationSemantics {
+        BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
             emit: DerivedEmit::Sync,
             ..
@@ -3120,11 +3128,88 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
     ));
     assert!(matches!(
         symbol_declaration_semantics(&data, "mapped"),
-        BindingSemantics::Derived(DerivedDeclarationSemantics {
+        BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
             emit: DerivedEmit::Sync,
             ..
         })
+    ));
+}
+
+#[test]
+fn reactivity_semantics_foldable_derived_relabeled_optimized() {
+    use crate::types::data::BindingSemantics;
+    let (_component, data) = analyze_source(
+        r#"<script>
+    const x = $derived(5);
+</script>
+<h1>{x}</h1>"#,
+    );
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "x"),
+        BindingSemantics::OptimizedDerived(_)
+    ));
+}
+
+#[test]
+fn reactivity_semantics_derived_over_mutated_state_stays_derived() {
+    use crate::types::data::BindingSemantics;
+    let (_component, data) = analyze_source(
+        r#"<script>
+    let s = $state(0);
+    function inc() { s++; }
+    const x = $derived(s + 1);
+</script>
+<h1>{x}</h1>"#,
+    );
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "x"),
+        BindingSemantics::Derived(_)
+    ));
+}
+
+#[test]
+fn reactivity_semantics_derived_chain_over_opaque_stays_derived() {
+    use crate::types::data::BindingSemantics;
+    let (_component, data) = analyze_source(
+        r#"<script>
+    function load() { return 1; }
+    const a = $derived(load());
+    const x = $derived(a + 1);
+</script>
+<h1>{x}</h1>"#,
+    );
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "a"),
+        BindingSemantics::Derived(_)
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "x"),
+        BindingSemantics::Derived(_)
+    ));
+}
+
+#[test]
+fn reactivity_semantics_derived_forward_reference_is_optimized() {
+    use crate::types::data::BindingSemantics;
+    let (_component, data) = analyze_source(
+        r#"<script>
+    const a = $derived(b);
+    const b = $derived(5);
+</script>
+<h1>{a}</h1>"#,
+    );
+
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "a"),
+        BindingSemantics::OptimizedDerived(_)
+    ));
+    assert!(matches!(
+        symbol_declaration_semantics(&data, "b"),
+        BindingSemantics::OptimizedDerived(_)
     ));
 }
 
@@ -5867,13 +5952,13 @@ fn derived_by_expression_body_tracks_inert_deps() {
         .scoping
         .find_binding_in_any_scope("doubled")
         .expect("doubled binding");
-    match data.binding_semantics(doubled_sym) {
-        BindingSemantics::Derived(d) => assert!(
-            !d.reactive,
-            "expr-body arrow with non-mutated $state dep must be marked inert"
+    assert!(
+        matches!(
+            data.binding_semantics(doubled_sym),
+            BindingSemantics::OptimizedDerived(_)
         ),
-        other => panic!("expected Derived decl for doubled, got {other:?}"),
-    }
+        "expr-body arrow with non-mutated $state dep folds to a known value"
+    );
 }
 
 #[test]
@@ -5890,14 +5975,13 @@ fn derived_reactivity_flag_false_when_deps_are_inert() {
         .scoping
         .find_binding_in_any_scope("doubled")
         .expect("doubled binding");
-    let decl = data.binding_semantics(doubled_sym);
-    match decl {
-        BindingSemantics::Derived(d) => assert!(
-            !d.reactive,
-            "expected doubled.reactive=false when deps are inert"
+    assert!(
+        matches!(
+            data.binding_semantics(doubled_sym),
+            BindingSemantics::OptimizedDerived(_)
         ),
-        other => panic!("expected Derived decl for doubled, got {other:?}"),
-    }
+        "expected doubled to fold to OptimizedDerived when deps are inert"
+    );
 }
 
 #[test]

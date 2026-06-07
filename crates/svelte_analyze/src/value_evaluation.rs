@@ -98,6 +98,20 @@ impl Evaluation {
     }
 }
 
+#[derive(Default)]
+pub struct ValueEvaluation {
+    by_symbol: FxHashMap<SymbolId, Evaluation>,
+}
+
+impl ValueEvaluation {
+    pub fn evaluation(&self, symbol: SymbolId) -> Evaluation {
+        match self.by_symbol.get(&symbol) {
+            Some(evaluation) => evaluation.clone(),
+            None => Evaluation::unknown(),
+        }
+    }
+}
+
 fn known_value_to_concat_str(v: &KnownValue) -> String {
     match v {
         KnownValue::Null | KnownValue::Undefined => String::new(),
@@ -169,6 +183,10 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             None => Evaluation::unknown(),
         }
     }
+
+    pub fn evaluated_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.bindings_init.keys().copied()
+    }
 }
 
 fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
@@ -180,6 +198,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
         | BindingSemantics::MaybeReactive => true,
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::LegacyState(_) => context == ReadContext::Runtime,
         BindingSemantics::NonReactive
         | BindingSemantics::OptimizedRune(_)
@@ -254,7 +273,7 @@ pub(crate) fn build<'a>(
     snippets: &SnippetData,
     reactivity: &ReactivitySemantics,
     dev: bool,
-) -> Vec<SymbolId> {
+) -> ValueEvaluation {
     let evaluator = ValueEvaluator::new(
         parsed,
         scoping,
@@ -264,13 +283,14 @@ pub(crate) fn build<'a>(
         ReadContext::Declaration,
         dev,
     );
-    semantics
-        .symbol_ids()
-        .filter(|&sym| {
-            matches!(reactivity.binding_semantics(sym), BindingSemantics::Derived(_))
-                && matches!(evaluator.evaluate_binding(sym), Evaluation::Known(_))
-        })
-        .collect()
+
+    let mut by_symbol = FxHashMap::default();
+    for symbol in evaluator.evaluated_symbols() {
+        let evaluation = evaluator.evaluate_binding(symbol);
+        by_symbol.insert(symbol, evaluation);
+    }
+
+    ValueEvaluation { by_symbol }
 }
 
 #[derive(Clone, Debug)]

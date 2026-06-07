@@ -19,7 +19,8 @@ pub fn build_store_base_read<'a>(
     match analysis.binding_semantics(base_sym) {
         BindingSemantics::LegacyState(_)
         | BindingSemantics::State(_)
-        | BindingSemantics::Derived(_) => {
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_) => {
             let ident = ast.expression_identifier(SPAN, ast.atom(base_name));
             let callee = dollar_member(b, "get");
             ast.expression_call(
