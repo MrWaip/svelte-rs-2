@@ -5,7 +5,7 @@ use crate::reactivity_semantics::{ReactivityInputs, build_v2};
 use crate::{attribute_semantics, block_semantics, expression_semantics};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::{ce_config, script_info};
-use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, walker};
+use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
 
 use super::{bundles, finalize_component_name, fragment_topology, js_analyze, post_resolve};
 
@@ -181,6 +181,17 @@ pub(crate) fn execute_pass<'a>(
                     accessors: options.accessors,
                 },
             );
+        }
+        super::PassKey::BuildValueEvaluation => {
+            let value_known = value_evaluation::build(
+                parsed,
+                &data.scoping,
+                data.scoping.semantics(),
+                &data.template.snippets,
+                &data.reactivity,
+                data.script.dev,
+            );
+            data.reactivity.optimize_derived(&value_known);
         }
         super::PassKey::BuildExpressionSemantics => {
             let expressions_v2 = expression_semantics::build(

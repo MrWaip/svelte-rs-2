@@ -3,15 +3,14 @@ use super::super::ContextSignal;
 use super::super::data::{
     Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier,
 };
-use super::super::evaluator::{self, EvalCtx};
-use rustc_hash::{FxHashMap, FxHashSet};
+use crate::value_evaluation::{ReadContext, ValueEvaluator};
 use super::collector::{ExprFacts, collect};
 use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
-use oxc_ast::ast::{Argument, BindingPattern, ChainElement, Declaration, Expression, Function, Statement, VariableDeclaration};
+use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, Component, ConcatPart, Element, FragmentId, Node, NodeId, StyleDirectiveValue,
@@ -19,6 +18,7 @@ use svelte_ast::{
 };
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn populate<'a>(
     component: &Component,
     parsed: &JsAst<'a>,
@@ -32,79 +32,27 @@ pub(super) fn populate<'a>(
     store: &mut ExpressionSemanticsStore,
     dev: bool,
 ) {
-    let (bindings_init, function_decls) = collect_bindings_init(parsed);
+    let evaluator = ValueEvaluator::new(
+        parsed,
+        scoping,
+        semantics,
+        reactivity,
+        snippets,
+        ReadContext::Runtime,
+        dev,
+    );
     let ctx = Ctx {
         parsed,
         semantics,
         reactivity,
         scoping,
-        snippets,
         has_class_state_fields,
         blockers,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
-        bindings_init,
-        function_decls,
-        dev,
+        evaluator,
     };
     let mut sink = Sink { store };
     visit_fragment(component, component.root, &ctx, &mut sink);
-}
-
-fn collect_bindings_init<'c, 'a>(
-    parsed: &'c JsAst<'a>,
-) -> (
-    FxHashMap<SymbolId, &'c Expression<'a>>,
-    FxHashSet<SymbolId>,
-) {
-    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
-    let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
-
-    fn ingest_var_decl<'c, 'a>(
-        vd: &'c VariableDeclaration<'a>,
-        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
-    ) {
-        for decl in &vd.declarations {
-            let Some(init) = decl.init.as_ref() else {
-                continue;
-            };
-            let BindingPattern::BindingIdentifier(id) = &decl.id else {
-                continue;
-            };
-            if let Some(sym) = id.symbol_id.get() {
-                map.insert(sym, init);
-            }
-        }
-    }
-
-    fn ingest_fn_decl<'c, 'a>(
-        fd: &'c Function<'a>,
-        fn_decls: &mut FxHashSet<SymbolId>,
-    ) {
-        if let Some(id) = &fd.id
-            && let Some(sym) = id.symbol_id.get()
-        {
-            fn_decls.insert(sym);
-        }
-    }
-
-    let programs = [parsed.program.as_ref(), parsed.module_program.as_ref()];
-    for prog in programs.into_iter().flatten() {
-        for stmt in &prog.body {
-            match stmt {
-                Statement::VariableDeclaration(vd) => ingest_var_decl(vd, &mut map),
-                Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
-                Statement::ExportNamedDeclaration(en) => match &en.declaration {
-                    Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
-                    Some(Declaration::FunctionDeclaration(fd)) => {
-                        ingest_fn_decl(fd, &mut fn_decls)
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-        }
-    }
-    (map, fn_decls)
 }
 
 pub(super) struct Ctx<'c, 'a> {
@@ -112,17 +60,28 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) scoping: &'c ComponentScoping<'a>,
-    pub(super) snippets: &'c SnippetData,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
     pub(super) uses_legacy_coarse_wrap: bool,
-    pub(super) bindings_init: FxHashMap<SymbolId, &'c Expression<'a>>,
-    pub(super) function_decls: FxHashSet<SymbolId>,
-    pub(super) dev: bool,
+    pub(super) evaluator: ValueEvaluator<'c, 'a>,
 }
 
 struct Sink<'s> {
     store: &'s mut ExpressionSemanticsStore,
+}
+
+impl Sink<'_> {
+    fn set(&mut self, id: NodeId, value: ExpressionSemantics) {
+        self.store.set(id, value);
+    }
+
+    fn set_by_oxc(&mut self, id: OxcNodeId, value: ExpressionSemantics) {
+        self.store.set_by_oxc(id, value);
+    }
+
+    fn note_context(&mut self, signal: ContextSignal) {
+        self.store.note_context(signal);
+    }
 }
 
 fn visit_fragment(
@@ -338,14 +297,14 @@ fn store_single(
     sink: &mut Sink<'_>,
 ) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
-        sink.store.set(site_id, ExpressionSemantics::Expression(empty_data()));
+        sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
     let (data, facts) = compute(expr, ctx);
-    update_aggregates(sink.store, &facts, ctx);
+    update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
 }
 
 fn store_render_tag(
@@ -355,24 +314,24 @@ fn store_render_tag(
     sink: &mut Sink<'_>,
 ) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
-        sink.store.set(site_id, ExpressionSemantics::Expression(empty_data()));
+        sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
     let (data, facts) = compute(expr, ctx);
     for &sym in facts.member_or_call_roots.iter() {
         if ctx.scoping.is_rest_prop(sym) {
-            sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
+            sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
     if facts.has_legacy_props_member_root {
-        sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
+        sink.note_context(ContextSignal::REST_PROP_MEMBER);
     }
     if facts.has_store_member_mutation {
-        sink.store.note_context(ContextSignal::STORE_MUTATION);
+        sink.note_context(ContextSignal::STORE_MUTATION);
     }
     let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
 }
 
 fn store_render_args(
@@ -398,8 +357,8 @@ fn store_render_args(
         }
         let arg_expr = arg.to_expression();
         let (data, facts) = compute(arg_expr, ctx);
-        update_aggregates(sink.store, &facts, ctx);
-        sink.store.set_by_oxc(
+        update_aggregates(sink, &facts, ctx);
+        sink.set_by_oxc(
             argument_node_id(arg),
             ExpressionSemantics::Expression(data),
         );
@@ -422,10 +381,10 @@ fn store_const_tag(
         return;
     };
     let (data, facts) = compute(expr, ctx);
-    update_aggregates(sink.store, &facts, ctx);
+    update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
 }
 
 fn store_aggregate(
@@ -442,7 +401,7 @@ fn store_aggregate(
             continue;
         };
         let (part, facts) = compute(expr, ctx);
-        update_aggregates(sink.store, &facts, ctx);
+        update_aggregates(sink, &facts, ctx);
         acc.kind = max_kind(&acc.kind, &part.kind);
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
@@ -460,7 +419,7 @@ fn store_aggregate(
         return;
     }
     acc.blockers.sort_unstable();
-    sink.store.set(site_id, ExpressionSemantics::Expression(acc));
+    sink.set(site_id, ExpressionSemantics::Expression(acc));
 }
 
 fn empty_data() -> ExpressionData {
@@ -479,16 +438,7 @@ fn compute<'a>(
 ) -> (ExpressionData, ExprFacts) {
     let facts = collect(expr, ctx.semantics, ctx.reactivity);
 
-    let eval_ctx = EvalCtx {
-        scoping: ctx.scoping,
-        semantics: ctx.semantics,
-        reactivity: ctx.reactivity,
-        snippets: ctx.snippets,
-        bindings_init: &ctx.bindings_init,
-        function_decls: &ctx.function_decls,
-        dev: ctx.dev,
-    };
-    let evaluation = evaluator::evaluate(expr, &eval_ctx);
+    let evaluation = ctx.evaluator.evaluate(expr);
 
     let is_dynamic = derive::is_dynamic_template(
         &facts,
@@ -531,29 +481,29 @@ fn compute<'a>(
 }
 
 fn update_aggregates(
-    store: &mut ExpressionSemanticsStore,
+    sink: &mut Sink<'_>,
     facts: &ExprFacts,
     ctx: &Ctx<'_, '_>,
 ) {
     for &sym in facts.member_or_call_roots.iter() {
         if !is_safe_member_root(ctx.reactivity, sym) {
-            store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+            sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
         }
         if ctx.scoping.is_rest_prop(sym) {
-            store.note_context(ContextSignal::REST_PROP_MEMBER);
+            sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
     if facts.has_legacy_props_member_root {
-        store.note_context(ContextSignal::REST_PROP_MEMBER);
+        sink.note_context(ContextSignal::REST_PROP_MEMBER);
     }
     if facts.has_runtime_root {
-        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+        sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
     if facts.has_unsafe_member_root {
-        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+        sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
     if facts.has_store_member_mutation {
-        store.note_context(ContextSignal::STORE_MUTATION);
+        sink.note_context(ContextSignal::STORE_MUTATION);
     }
 }
 

@@ -1,12 +1,11 @@
-use super::data::{Evaluation, KnownValue, ValueClass};
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::ComponentScoping;
-use crate::types::data::{BindingSemantics, SnippetData};
+use crate::types::data::{BindingSemantics, JsAst, SnippetData};
 use compact_str::CompactString;
 use oxc_ast::ast::{
-    Argument, BinaryExpression, CallExpression, ConditionalExpression, Expression,
-    IdentifierReference, LogicalExpression, NewExpression, Statement, StaticMemberExpression,
-    TemplateLiteral, UnaryExpression,
+    Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
+    Expression, Function, IdentifierReference, LogicalExpression, NewExpression, Statement,
+    StaticMemberExpression, TemplateLiteral, UnaryExpression, VariableDeclaration,
 };
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
@@ -17,19 +16,261 @@ use std::f64::consts;
 use smallvec::{SmallVec, smallvec};
 use svelte_component_semantics::{ComponentSemantics, SymbolId};
 
-pub struct EvalCtx<'c, 'a> {
-    pub scoping: &'c ComponentScoping<'a>,
-    pub semantics: &'c ComponentSemantics<'a>,
-    pub reactivity: &'c ReactivitySemantics,
-    pub snippets: &'c SnippetData,
-    pub bindings_init: &'c FxHashMap<SymbolId, &'c Expression<'a>>,
-    pub function_decls: &'c FxHashSet<SymbolId>,
-    pub dev: bool,
+#[derive(Clone, Debug, PartialEq)]
+pub enum Evaluation {
+    Known(KnownValue),
+    Defined { class: Option<ValueClass> },
+    MaybeNullish { has_unknown: bool },
 }
 
-pub fn evaluate(expr: &Expression<'_>, ctx: &EvalCtx<'_, '_>) -> Evaluation {
-    let mut guard: FxHashSet<OxcNodeId> = FxHashSet::default();
-    set_to_evaluation(eval_set(expr, ctx, &mut guard))
+#[derive(Clone, Debug, PartialEq)]
+pub enum KnownValue {
+    Null,
+    Undefined,
+    Bool(bool),
+    Num(f64),
+    Str(CompactString),
+    BigInt,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueClass {
+    String,
+    Number,
+    Boolean,
+    BigInt,
+    Function,
+    Object,
+}
+
+impl Default for Evaluation {
+    fn default() -> Self {
+        Evaluation::unknown()
+    }
+}
+
+impl Evaluation {
+    pub fn unknown() -> Self {
+        Evaluation::MaybeNullish { has_unknown: true }
+    }
+
+    pub fn known_value(&self) -> Option<&KnownValue> {
+        match self {
+            Self::Known(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn class(&self) -> Option<ValueClass> {
+        match self {
+            Self::Known(v) => Some(known_value_class(v)),
+            Self::Defined { class } => *class,
+            Self::MaybeNullish { .. } => None,
+        }
+    }
+
+    pub fn known_str(&self) -> Option<String> {
+        let v = self.known_value()?;
+        Some(known_value_to_concat_str(v))
+    }
+}
+
+#[cfg(test)]
+impl Evaluation {
+    pub(crate) fn is_defined(&self) -> bool {
+        match self {
+            Self::Known(KnownValue::Null | KnownValue::Undefined) => false,
+            Self::Known(_) | Self::Defined { .. } => true,
+            Self::MaybeNullish { .. } => false,
+        }
+    }
+
+    pub(crate) fn is_known(&self) -> bool {
+        matches!(self, Self::Known(_))
+    }
+
+    pub(crate) fn is_function(&self) -> bool {
+        matches!(self.class(), Some(ValueClass::Function))
+    }
+
+    pub(crate) fn has_unknown(&self) -> bool {
+        matches!(self, Self::MaybeNullish { has_unknown: true })
+    }
+}
+
+fn known_value_to_concat_str(v: &KnownValue) -> String {
+    match v {
+        KnownValue::Null | KnownValue::Undefined => String::new(),
+        KnownValue::Bool(b) => b.to_string(),
+        KnownValue::Str(s) => s.to_string(),
+        KnownValue::Num(n) => format_js_number(*n),
+        KnownValue::BigInt => String::new(),
+    }
+}
+
+fn known_value_class(v: &KnownValue) -> ValueClass {
+    match v {
+        KnownValue::Null | KnownValue::Undefined => ValueClass::Object,
+        KnownValue::Bool(_) => ValueClass::Boolean,
+        KnownValue::Num(_) => ValueClass::Number,
+        KnownValue::Str(_) => ValueClass::String,
+        KnownValue::BigInt => ValueClass::BigInt,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ReadContext {
+    Declaration,
+    Runtime,
+}
+
+pub struct ValueEvaluator<'c, 'a> {
+    scoping: &'c ComponentScoping<'a>,
+    semantics: &'c ComponentSemantics<'a>,
+    reactivity: &'c ReactivitySemantics,
+    snippets: &'c SnippetData,
+    bindings_init: FxHashMap<SymbolId, &'c Expression<'a>>,
+    function_decls: FxHashSet<SymbolId>,
+    read_context: ReadContext,
+    dev: bool,
+}
+
+impl<'c, 'a> ValueEvaluator<'c, 'a> {
+    pub fn new(
+        parsed: &'c JsAst<'a>,
+        scoping: &'c ComponentScoping<'a>,
+        semantics: &'c ComponentSemantics<'a>,
+        reactivity: &'c ReactivitySemantics,
+        snippets: &'c SnippetData,
+        read_context: ReadContext,
+        dev: bool,
+    ) -> Self {
+        let (bindings_init, function_decls) = collect_bindings_init(parsed);
+        Self {
+            scoping,
+            semantics,
+            reactivity,
+            snippets,
+            bindings_init,
+            function_decls,
+            read_context,
+            dev,
+        }
+    }
+
+    pub fn evaluate(&self, expr: &Expression<'_>) -> Evaluation {
+        let mut guard: FxHashSet<OxcNodeId> = FxHashSet::default();
+        set_to_evaluation(eval_set(expr, self, &mut guard))
+    }
+
+    pub fn evaluate_binding(&self, sym: SymbolId) -> Evaluation {
+        match self.bindings_init.get(&sym) {
+            Some(&init) => self.evaluate(init),
+            None => Evaluation::unknown(),
+        }
+    }
+}
+
+fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
+    match semantics {
+        BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive => true,
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::LegacyState(_) => context == ReadContext::Runtime,
+        BindingSemantics::NonReactive
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn collect_bindings_init<'c, 'a>(
+    parsed: &'c JsAst<'a>,
+) -> (
+    FxHashMap<SymbolId, &'c Expression<'a>>,
+    FxHashSet<SymbolId>,
+) {
+    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
+    let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
+
+    fn ingest_var_decl<'c, 'a>(
+        vd: &'c VariableDeclaration<'a>,
+        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
+    ) {
+        for decl in &vd.declarations {
+            let Some(init) = decl.init.as_ref() else {
+                continue;
+            };
+            let BindingPattern::BindingIdentifier(id) = &decl.id else {
+                continue;
+            };
+            if let Some(sym) = id.symbol_id.get() {
+                map.insert(sym, init);
+            }
+        }
+    }
+
+    fn ingest_fn_decl<'c, 'a>(
+        fd: &'c Function<'a>,
+        fn_decls: &mut FxHashSet<SymbolId>,
+    ) {
+        if let Some(id) = &fd.id
+            && let Some(sym) = id.symbol_id.get()
+        {
+            fn_decls.insert(sym);
+        }
+    }
+
+    let programs = [parsed.program.as_ref(), parsed.module_program.as_ref()];
+    for prog in programs.into_iter().flatten() {
+        for stmt in &prog.body {
+            match stmt {
+                Statement::VariableDeclaration(vd) => ingest_var_decl(vd, &mut map),
+                Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
+                Statement::ExportNamedDeclaration(en) => match &en.declaration {
+                    Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
+                    Some(Declaration::FunctionDeclaration(fd)) => {
+                        ingest_fn_decl(fd, &mut fn_decls)
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+    (map, fn_decls)
+}
+
+pub(crate) fn build<'a>(
+    parsed: &JsAst<'a>,
+    scoping: &ComponentScoping<'a>,
+    semantics: &ComponentSemantics<'a>,
+    snippets: &SnippetData,
+    reactivity: &ReactivitySemantics,
+    dev: bool,
+) -> Vec<SymbolId> {
+    let evaluator = ValueEvaluator::new(
+        parsed,
+        scoping,
+        semantics,
+        reactivity,
+        snippets,
+        ReadContext::Declaration,
+        dev,
+    );
+    semantics
+        .symbol_ids()
+        .filter(|&sym| {
+            matches!(reactivity.binding_semantics(sym), BindingSemantics::Derived(_))
+                && matches!(evaluator.evaluate_binding(sym), Evaluation::Known(_))
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -43,7 +284,7 @@ type EvalSet = SmallVec<[EvalAtom; 1]>;
 
 fn eval_set(
     expr: &Expression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     match expr {
@@ -89,7 +330,7 @@ use crate::utils::node_id_utils::expression_node_id;
 
 fn eval_call(
     c: &CallExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     if let Some(rune) = detect_rune_from_call(c) {
@@ -235,7 +476,7 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
 fn eval_rune_call(
     rune: RuneKind,
     c: &CallExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use RuneKind::*;
@@ -263,7 +504,7 @@ fn eval_rune_call(
     }
 }
 
-fn call_global_keypath(callee: &Expression<'_>, ctx: &EvalCtx<'_, '_>) -> Option<String> {
+fn call_global_keypath(callee: &Expression<'_>, ctx: &ValueEvaluator<'_, '_>) -> Option<String> {
     match callee.get_inner_expression() {
         Expression::Identifier(id) => {
             if ctx.semantics.symbol_for_identifier_reference(id).is_some() {
@@ -296,7 +537,7 @@ fn global_call_return_class(keypath: &str) -> Option<ValueClass> {
 
 fn eval_new(
     n: &NewExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
 ) -> EvalSet {
     if let Expression::Identifier(callee) = n.callee.get_inner_expression() {
         let is_global = ctx
@@ -312,7 +553,7 @@ fn eval_new(
 
 fn eval_static_member(
     m: &StaticMemberExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     _guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     if let Expression::Identifier(obj) = m.object.get_inner_expression() {
@@ -354,7 +595,7 @@ fn global_keypath(obj: &str, prop: &str) -> Option<KnownValue> {
 
 fn eval_template_literal(
     t: &TemplateLiteral<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     let mut result = String::new();
@@ -406,7 +647,7 @@ fn format_js_number(n: f64) -> String {
 
 fn eval_unary(
     u: &UnaryExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use UnaryOperator::*;
@@ -461,7 +702,7 @@ fn known_to_number(v: &KnownValue) -> Option<f64> {
 
 fn eval_conditional(
     ce: &ConditionalExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     let test = eval_set(&ce.test, ctx, guard);
@@ -492,7 +733,7 @@ fn eval_conditional(
 
 fn eval_identifier(
     ident: &IdentifierReference<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     let Some(sym) = ctx.semantics.symbol_for_identifier_reference(ident) else {
@@ -513,7 +754,7 @@ fn eval_identifier(
     if ctx.semantics.is_mutated(sym) || ctx.semantics.is_reexported_specifier_local(sym) {
         return smallvec![EvalAtom::Unknown];
     }
-    if is_post_transform_unknown(ctx.reactivity, sym) {
+    if reads_opaque(&ctx.reactivity.binding_semantics(sym), ctx.read_context) {
         return smallvec![EvalAtom::Unknown];
     }
     let Some(&init_expr) = ctx.bindings_init.get(&sym) else {
@@ -531,12 +772,14 @@ fn eval_identifier(
     }
     let result = eval_set(init_expr, ctx, guard);
     guard.remove(&init_node_id);
-    if matches!(
-        ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. },
-    ) && result
-        .iter()
-        .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
+    if ctx.read_context == ReadContext::Runtime
+        && matches!(
+            ctx.reactivity.binding_semantics(sym),
+            BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. }
+        )
+        && result
+            .iter()
+            .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
     {
         return smallvec![EvalAtom::Unknown];
     }
@@ -545,7 +788,7 @@ fn eval_identifier(
 
 fn eval_binary(
     bin: &BinaryExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use BinaryOperator::*;
@@ -699,7 +942,7 @@ fn loose_equal(a: &KnownValue, b: &KnownValue) -> bool {
 
 fn eval_logical(
     le: &LogicalExpression<'_>,
-    ctx: &EvalCtx<'_, '_>,
+    ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use LogicalOperator::*;
@@ -761,19 +1004,6 @@ fn atoms_equal(a: &EvalAtom, b: &EvalAtom) -> bool {
         (EvalAtom::Unknown, EvalAtom::Unknown) => true,
         _ => false,
     }
-}
-
-fn is_post_transform_unknown(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool {
-    matches!(
-        reactivity.binding_semantics(sym),
-        BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Store(_)
-            | BindingSemantics::Contextual(_)
-    )
 }
 
 fn is_falsy(v: &KnownValue) -> bool {

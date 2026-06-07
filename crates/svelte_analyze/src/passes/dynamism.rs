@@ -4,7 +4,7 @@ use svelte_ast::{Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SlotEle
 use crate::expression_semantics::{ExprKind, ExpressionData};
 use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{ConstBindingSemantics,
+use crate::types::data::{
     AnalysisData, BindingSemantics, ParentKind, PropBindingKind, PropBindingSemantics,
     ReactivitySemantics,
 };
@@ -202,39 +202,6 @@ impl TemplateVisitor for DynamismVisitor {
     }
 }
 
-pub(crate) fn is_symbol_dynamic(
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-    sym_id: SymbolId,
-) -> bool {
-    if scoping.is_each_index_non_dynamic(sym_id) {
-        return false;
-    }
-    let decl = reactivity.binding_semantics(sym_id);
-    match decl {
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::State(_)
-        | BindingSemantics::Prop(_)
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Store(_)
-        | BindingSemantics::Contextual(_)
-        | BindingSemantics::RuntimeRune { .. } => true,
-        BindingSemantics::Derived(d) => d.reactive,
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
-        BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive => {
-            if !scoping.is_component_top_level_symbol(sym_id) {
-                return true;
-            }
-            !scoping.is_init_known(sym_id)
-        }
-        BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
-            !scoping.is_component_top_level_symbol(sym_id)
-        }
-        BindingSemantics::LegacyApiExport => false,
-    }
-}
 
 fn is_dynamic_element_attr(
     data: &ExpressionData,
@@ -258,7 +225,7 @@ fn is_dynamic_element_attr(
                 kind: PropBindingKind::NonSource,
                 ..
             })
-        ) || is_symbol_dynamic(scoping, reactivity, sym_id)
+        ) || reactivity.needs_effect(scoping, sym_id)
     })
 }
 

@@ -2,10 +2,10 @@ import * as $ from "svelte/internal/client";
 var root = $.from_html(`<h1> </h1>`);
 export default function App($$anchor) {
 	function load() {
-		return { foo: 1 };
+		return 1;
 	}
-	const c = load();
-	const x = $.derived(() => c.foo);
+	const a = $.derived(load);
+	const x = $.derived(() => $.get(a) + 1);
 	var h1 = root();
 	var text = $.child(h1, true);
 	$.reset(h1);

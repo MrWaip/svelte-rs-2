@@ -4,8 +4,7 @@ use super::super::Evaluation;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
-    BindingSemantics, BlockerData, ConstBindingSemantics, ContextualBindingSemantics,
-    PropBindingKind, PropBindingSemantics,
+    BindingSemantics, BlockerData, PropBindingKind, PropBindingSemantics,
 };
 use smallvec::SmallVec;
 
@@ -46,7 +45,7 @@ pub(super) fn is_dynamic_template(
                 if matches!(semantics, BindingSemantics::MaybeReactive) {
                     return true;
                 }
-                is_symbol_dynamic(scoping, reactivity, sym)
+                reactivity.needs_effect(scoping, sym)
                     || scoping.is_component_top_level_symbol(sym)
             });
     }
@@ -61,7 +60,7 @@ pub(super) fn is_dynamic_template(
         return true;
     }
     facts.references.iter().any(|&sym| {
-        if is_symbol_dynamic(scoping, reactivity, sym) {
+        if reactivity.needs_effect(scoping, sym) {
             return true;
         }
         if is_unified_prop_source(reactivity, sym) {
@@ -77,39 +76,6 @@ pub(super) fn is_dynamic_template(
     })
 }
 
-fn is_symbol_dynamic(
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-    sym_id: SymbolId,
-) -> bool {
-    if scoping.is_each_index_non_dynamic(sym_id) {
-        return false;
-    }
-    match reactivity.binding_semantics(sym_id) {
-        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect) => false,
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::State(_)
-        | BindingSemantics::Prop(_)
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Store(_)
-        | BindingSemantics::Contextual(_)
-        | BindingSemantics::RuntimeRune { .. } => true,
-        BindingSemantics::Derived(d) => d.reactive,
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
-        BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive => {
-            if !scoping.is_component_top_level_symbol(sym_id) {
-                return true;
-            }
-            !scoping.is_init_known(sym_id)
-        }
-        BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
-            !scoping.is_component_top_level_symbol(sym_id)
-        }
-        BindingSemantics::LegacyApiExport => false,
-    }
-}
 
 fn is_unified_prop_source(reactivity: &ReactivitySemantics, sym_id: SymbolId) -> bool {
     matches!(

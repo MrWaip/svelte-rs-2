@@ -1,6 +1,5 @@
 pub mod builder;
 pub mod data;
-pub mod evaluator;
 
 pub use builder::build;
 pub use data::{

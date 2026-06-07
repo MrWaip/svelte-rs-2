@@ -9,6 +9,7 @@ use crate::types::data::{BlockerData, JsAst, SnippetData};
 use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
+#[allow(clippy::too_many_arguments)]
 pub fn build<'a>(
     component: &Component,
     parsed: &JsAst<'a>,

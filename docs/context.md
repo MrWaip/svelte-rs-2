@@ -196,6 +196,24 @@ _Avoid_: реактивный импорт, неизвестная реакти�
 **Мемоизация** *(en: memoization, memoize; кластер `Memoization` в `ExpressionSemantics`; `Memoizer`/`TemplateMemoState` в кодгене)* — автоматическая подмена «дорогого» template-выражения (вызов функции, `await`, опционально чтение **сигнала**) единой реактивной ячейкой, которая вычисляется один раз за обновление рантайма и читается во всех точках шаблона, где это выражение встречалось. Sync-форма — `$.derived` (`$.derived_safe_equal` в SoftLegacy/HardLegacy), читается через `$.get($N)`; async-форма (выражение содержит `await`) — слот в массиве `async_values` `$.template_effect`/`$.deferred_template_effect`.
 _Avoid_: кеширование, cache, expression hoisting.
 
+**Реактивный источник** *(en: reactive source; вариант `BindingSemantics`)* — биндинг, чтение которого идёт через реактивную ячейку рантайма (сигнал/стор/legacy-state/prop/contextual). Это **примитив языка**: ответ берётся из вида объявления, не зависит ни от значения, ни от позиции в шаблоне. Реактивность биндинга **есть сам вариант** `BindingSemantics` — отдельного предиката (`is_reactive`, `emits_signal_read`) не существует, потребитель читает `binding_semantics(sym)` и смотрит вариант. Принцип: называешь факт `reactive` → он живёт в `ReactivitySemantics`.
+_Avoid_: reactive value (про выражение), `is_reactive`-предикат, reactive binding как синоним изменчивости.
+
+**OptimizedDerived** *(en: optimized derived; вариант `BindingSemantics`)* — `$derived`, значение которого статически известно (deps не реактивны и свёртываются), демотированный в голое значение — как **OptimizedRune** для немутируемого `$state`. Реактивным источником **не является**, чтение статично. Разводит единственную двусмысленность варианта `Derived` (живой сигнал `$derived(s+1)` vs константа `$derived(5)`) на уровне типа, без флагов `reactive`/`value_known`.
+_Avoid_: folded derived, const derived, static derived.
+
+**Изменчивость** *(en: volatile; поле `ExpressionData.volatile`)* — свойство **выражения шаблона**: его значение не доказуемо постоянно на время жизни инстанса, поэтому кодген обязан реагировать на изменения (обернуть в `template_effect`). Консервативно: не «значение точно меняется», а «анализ не может гарантировать постоянство» (`load()` непрозрачен → изменчиво). Это **надстройка-вердикт**, собираемая фасадом `ExpressionSemantics` из двух примитивов: `volatile = compose(реактивный-источник ссылок, известность значения)`. Дополнение — статическое выражение (пишется один раз).
+_Avoid_: dynamic, needs_effect, reactive (для выражения), needs-update.
+
+**Известность значения** *(en: value evaluation; `Evaluation`, слой `value_evaluation`)* — рекурсивная константная свёртка выражения в `Evaluation` (`Known` / `Defined` / `MaybeNullish`), исполняемая **после** классификации реактивности (reactivity-first) и **потребляющая** её по биндингу: на идентификаторе резолвит `ReferenceId → SymbolId` и читает `binding_semantics(sym)` (prop/store/import/contextual → непрозрачно) + `is_mutated(sym)`, разворачивает руну синтаксически и рекурсивно сворачивает init с cycle-guard от циклов derived (форк `original/compiler/phases/scope.js`). Не переизобретает реактивность и не зависит от метки `OptimizedDerived` (она — relabel вниз по потоку, потребляющий ту же `Evaluation`).
+_Avoid_: const folding (узко), constant propagation, known_value как отдельная сущность пайплайна, reactivity-free свёртка.
+
+**Тяжёлое выражение** *(en: heavy; поле `ExpressionData.heavy`)* — выражение содержит **динамический вызов** (`foo()`); причина выноса в единую ячейку — посчитать **один раз** за обновление и расшарить (побочки, стоимость повторного вызова). Ортогонально **асинхронности**.
+_Avoid_: expensive, complex, dynamic call как форма.
+
+**Асинхронное выражение** *(en: asynchronous; поле `ExpressionData.asynchronous`)* — выражение содержит `await`; причина выноса — оно **приостанавливается**, нужна async-машинерия (`async_values`-слот, deferred). Ортогонально **тяжести** (`{await x}` асинхронно без вызова; `{foo()}` тяжело без await). Выбор формы выноса (sync-ячейка vs async-слот) — derived-правило эмиссии `asynchronous ? слот : heavy ? ячейка : инлайн`, в анализе не хранится.
+_Avoid_: `await`-флаг (`has_await`), `async` (зарезервировано в Rust), promise-bearing.
+
 ### Режимы и legacy
 
 **Mode** *(en: mode)* — режим компиляции компонента: `runes` / `legacy` / `auto`.

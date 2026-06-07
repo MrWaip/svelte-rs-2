@@ -1,4 +1,4 @@
-use crate::scope::SymbolId;
+use crate::scope::{ComponentScoping, SymbolId};
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
@@ -80,6 +80,7 @@ pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
     pub reactive: bool,
+    pub value_known: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -634,6 +635,36 @@ impl ReactivitySemantics {
         BindingSemantics::NonReactive
     }
 
+    pub(crate) fn needs_effect(&self, scoping: &ComponentScoping<'_>, sym: SymbolId) -> bool {
+        if scoping.is_each_index_non_dynamic(sym) {
+            return false;
+        }
+        match self.binding_semantics(sym) {
+            BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect) => false,
+            BindingSemantics::MaybeReactive
+            | BindingSemantics::State(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::RuntimeRune { .. } => true,
+            BindingSemantics::Derived(d) => !d.value_known,
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
+            BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
+            BindingSemantics::NonReactive => {
+                if !scoping.is_component_top_level_symbol(sym) {
+                    return true;
+                }
+                !scoping.is_init_known(sym)
+            }
+            BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
+                !scoping.is_component_top_level_symbol(sym)
+            }
+            BindingSemantics::LegacyApiExport => false,
+        }
+    }
+
     pub(crate) fn record_maybe_reactive_symbol(&mut self, sym: SymbolId) {
         self.maybe_reactive_symbols.insert(sym);
     }
@@ -925,6 +956,18 @@ impl ReactivitySemantics {
     pub(crate) fn set_derived_reactive(&mut self, sym: SymbolId, reactive: bool) {
         if let Some(Some(BindingFacts::Derived(d))) = self.bindings.get_mut(sym) {
             d.reactive = reactive;
+        }
+    }
+
+    pub(crate) fn set_derived_value_known(&mut self, sym: SymbolId, value_known: bool) {
+        if let Some(Some(BindingFacts::Derived(d))) = self.bindings.get_mut(sym) {
+            d.value_known = value_known;
+        }
+    }
+
+    pub(crate) fn optimize_derived(&mut self, value_known: &[SymbolId]) {
+        for &sym in value_known {
+            self.set_derived_value_known(sym, true);
         }
     }
 

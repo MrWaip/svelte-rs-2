@@ -7094,6 +7094,27 @@ async function baz() { return 2; }
         }
     }
 
+    fn evaluate_binding_init(source: &'static str, name: &str) -> Evaluation {
+        use crate::value_evaluation::{ReadContext, ValueEvaluator};
+        let (_component, data, parsed) = analyze_source_with_parsed(source);
+        let sym = data
+            .scoping
+            .semantics()
+            .symbol_ids()
+            .find(|&s| data.scoping.symbol_name(s) == name)
+            .unwrap_or_else(|| panic!("binding '{name}' not found"));
+        let evaluator = ValueEvaluator::new(
+            &parsed,
+            &data.scoping,
+            data.scoping.semantics(),
+            &data.reactivity,
+            &data.template.snippets,
+            ReadContext::Declaration,
+            data.script.dev,
+        );
+        evaluator.evaluate_binding(sym)
+    }
+
     #[test]
     fn evaluation_unknown_identifier_not_defined_not_known() {
         let source = "<script>let { cond } = $props();</script><p>{cond && 'b'}</p>";
@@ -7311,6 +7332,48 @@ async function baz() { return 2; }
         let source = "<p>{Math.min(3, 7, 1)}</p>";
         let ev = evaluate_first_expr(source, "Math.min(3, 7, 1)");
         assert_eq!(ev, Evaluation::Known(KnownValue::Num(1.0)));
+    }
+
+    #[test]
+    fn evaluate_script_derived_init_unwraps_rune_to_known() {
+        let source = "<script>const x = $derived(5);</script><p>{x}</p>";
+        let ev = evaluate_binding_init(source, "x");
+        assert_eq!(ev, Evaluation::Known(KnownValue::Num(5.0)));
+    }
+
+    #[test]
+    fn evaluate_script_forward_reference_derived_chain_folds() {
+        let source = "<script>const a = $derived(b); const b = $derived(5);</script><p>{a}</p>";
+        let ev = evaluate_binding_init(source, "a");
+        assert_eq!(ev, Evaluation::Known(KnownValue::Num(5.0)));
+    }
+
+    #[test]
+    fn evaluate_script_nonreactive_const_chain_folds() {
+        let source = "<script>const a = 5; const x = a + 1;</script><p>{x}</p>";
+        let ev = evaluate_binding_init(source, "x");
+        assert_eq!(ev, Evaluation::Known(KnownValue::Num(6.0)));
+    }
+
+    #[test]
+    fn evaluate_script_import_reference_is_opaque_by_binding_semantics() {
+        let source =
+            "<script>import { foo } from \"./m.js\"; const x = foo;</script><p>{x}</p>";
+        let ev = evaluate_binding_init(source, "x");
+        assert!(
+            !ev.is_defined(),
+            "maybe-reactive import is opaque by binding_semantics, not folded through its initializer, got {ev:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_script_derived_cycle_is_guarded_to_not_known() {
+        let source = "<script>const a = $derived(b); const b = $derived(a);</script><p>{a}</p>";
+        let ev = evaluate_binding_init(source, "a");
+        assert!(
+            !ev.is_known(),
+            "derived cycle must terminate via cycle-guard at a non-known value, got {ev:?}"
+        );
     }
 
     fn analyze_with_async(

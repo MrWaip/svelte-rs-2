@@ -710,6 +710,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         emit,
 
                         reactive: true,
+                        value_known: false,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
@@ -731,6 +732,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         kind: DerivedKind::DerivedBy,
                         emit,
                         reactive: true,
+                        value_known: false,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);

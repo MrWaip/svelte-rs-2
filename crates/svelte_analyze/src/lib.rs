@@ -4,6 +4,7 @@ pub(crate) mod css;
 pub mod expression_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
+pub mod value_evaluation;
 
 pub use attribute_semantics::{
     AttributeSemantics, AttributeSemanticsStore, BoundaryPropEmit, BoundaryPropSemantics,
