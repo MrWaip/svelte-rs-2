@@ -6,6 +6,8 @@ use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
     BindingSemantics, BlockerData, PropBindingKind, PropBindingSemantics,
 };
+use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
+use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
 
 pub(super) fn needs_context(
@@ -105,6 +107,139 @@ pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVe
     }
     out.sort_unstable();
     out
+}
+
+pub(super) fn volatile(
+    facts: &ExprFacts,
+    has_blockers: bool,
+    is_dynamic: bool,
+    evaluation: &Evaluation,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if facts.has_await || has_blockers {
+        return true;
+    }
+    if facts.has_call {
+        let dynamic = !facts.references.is_empty() || facts.has_impure_call;
+        return dynamic || facts.has_state_rune;
+    }
+    if matches!(evaluation, Evaluation::Known(_)) && !references_optimized_rune(facts, reactivity) {
+        return false;
+    }
+    is_dynamic
+}
+
+pub(super) fn volatile_element_attr(
+    kind: &ExprKind,
+    references: &[SymbolId],
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if matches!(
+        kind,
+        ExprKind::Async { has_await: true } | ExprKind::Call { dynamic: true }
+    ) {
+        return true;
+    }
+    if matches!(
+        kind,
+        ExprKind::SimpleRead { reactive: true } | ExprKind::Computed { reactive: true }
+    ) && references.is_empty()
+    {
+        return true;
+    }
+    references.iter().any(|&sym| {
+        matches!(
+            reactivity.binding_semantics(sym),
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::NonSource,
+                ..
+            })
+        ) || reactivity.needs_effect(scoping, sym)
+    })
+}
+
+pub(super) fn volatile_component_attr(
+    expr: &Expression<'_>,
+    kind: &ExprKind,
+    references: &[SymbolId],
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if matches!(kind, ExprKind::Async { has_await: true }) {
+        return true;
+    }
+    if matches!(
+        expr.get_inner_expression(),
+        Expression::ArrowFunctionExpression(_)
+    ) {
+        return false;
+    }
+    component_attr_symbols(references, expr, scoping).any(|sym| {
+        !scoping.is_component_top_level_symbol(sym) || !is_unified_plain_symbol(reactivity, sym)
+    })
+}
+
+pub(super) fn volatile_component_name(
+    expr: &Expression<'_>,
+    uses_runes: bool,
+    scoping: &ComponentScoping,
+    reactivity: &ReactivitySemantics,
+) -> bool {
+    if !uses_runes {
+        return false;
+    }
+    if matches!(
+        expr.get_inner_expression(),
+        Expression::StaticMemberExpression(_)
+    ) {
+        return true;
+    }
+    let Some(ref_id) = expression_root_reference_id(expr) else {
+        return false;
+    };
+    let Some(sym_id) = scoping.symbol_for_reference(ref_id) else {
+        return false;
+    };
+    is_reactive_component_binding(reactivity, sym_id)
+}
+
+fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool {
+    match reactivity.binding_semantics(sym) {
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved => false,
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::LegacyApiExport => true,
+    }
+}
+
+fn component_attr_symbols<'a>(
+    references: &'a [SymbolId],
+    expr: &'a Expression<'_>,
+    scoping: &'a ComponentScoping,
+) -> impl Iterator<Item = SymbolId> + 'a {
+    let fallback = if references.is_empty() {
+        match expr.get_inner_expression() {
+            Expression::Identifier(ident) => {
+                scoping.find_binding(scoping.root_scope_id(), ident.name.as_str())
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    references.iter().copied().chain(fallback)
 }
 
 pub(super) fn kind(

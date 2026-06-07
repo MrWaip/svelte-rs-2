@@ -7903,6 +7903,181 @@ async function baz() { return 2; }
             }
         }
     }
+
+    #[track_caller]
+    fn assert_expr_tag_volatile(
+        data: &AnalysisData,
+        component: &Component,
+        expr_text: &str,
+        expected: bool,
+    ) {
+        let id = find_expr_tag(component.root, component, expr_text)
+            .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+        let expr_data = data
+            .expression_data(id)
+            .unwrap_or_else(|| panic!("no ExpressionData for '{expr_text}'"));
+        assert_eq!(
+            expr_data.volatile, expected,
+            "volatile for '{expr_text}': expected {expected}, got {}",
+            expr_data.volatile
+        );
+    }
+
+    #[test]
+    fn volatile_prop_read_in_text() {
+        let (component, data) = analyze_source("<script>let { x } = $props();</script>{x}");
+        assert_expr_tag_volatile(&data, &component, "x", true);
+    }
+
+    #[test]
+    fn volatile_derived_opaque_dep_is_volatile() {
+        let (component, data) = analyze_source(
+            "<script>import { load } from './data.js'; let x = $derived(load.foo);</script>{x}",
+        );
+        assert_expr_tag_volatile(&data, &component, "x", true);
+    }
+
+    #[test]
+    fn volatile_optimized_derived_literal_is_static() {
+        let (component, data) = analyze_source("<script>let x = $derived(5);</script>{x}");
+        assert_expr_tag_volatile(&data, &component, "x", false);
+    }
+
+    #[test]
+    fn volatile_derived_state_dep_is_volatile() {
+        let (component, data) = analyze_source(
+            "<script>let s = $state(0); let x = $derived(s + 1); function go(){ s++ }</script>{x}",
+        );
+        assert_expr_tag_volatile(&data, &component, "x", true);
+    }
+
+    #[test]
+    fn volatile_derived_nonreactive_literal_dep_is_static() {
+        let (component, data) = analyze_source(
+            "<script>const base = 10; let x = $derived(base + 1);</script>{x}",
+        );
+        assert_expr_tag_volatile(&data, &component, "x", false);
+    }
+
+    #[track_caller]
+    fn assert_volatile_matches_dynamism(data: &AnalysisData, component: &Component) {
+        let mut mismatches: Vec<(u32, bool, bool)> = Vec::new();
+        for i in 0..component.node_count() {
+            let id = NodeId(i);
+            let Some(expr_data) = data.expression_data(id) else {
+                continue;
+            };
+            let oracle = data.dynamism.is_dynamic_node(id)
+                || data.dynamism.is_dynamic_attr(id)
+                || data.dynamism.is_dynamic_component(id);
+            if expr_data.volatile != oracle {
+                mismatches.push((i, expr_data.volatile, oracle));
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "volatile must equal dynamism oracle; mismatches (node, volatile, oracle): {mismatches:?}"
+        );
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_element_attr_reactive() {
+        let (component, data) =
+            analyze_source("<script>let { x } = $props();</script><div class={x}></div>");
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_element_attr_call() {
+        let (component, data) =
+            analyze_source("<script>function f(){return 1}</script><div class={f()}></div>");
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_component_attr_state() {
+        let (component, data) = analyze_source(
+            "<script>import Comp from './Comp.svelte'; let n = $state(0); function inc(){n++}</script><Comp x={n}/>",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_component_attr_each_item() {
+        let (component, data) = analyze_source(
+            "<script>import Comp from './Comp.svelte'; let { items } = $props();</script>{#each items as item}<Comp x={item}/>{/each}",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_await_block() {
+        let (component, data) = analyze_source(
+            "<script>let p = Promise.resolve(1);</script>{#await p}wait{:then v}{v}{/await}",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_svelte_element_this() {
+        let (component, data) = analyze_source(
+            "<script>let { tag } = $props();</script><svelte:element this={tag}>x</svelte:element>",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[track_caller]
+    fn assert_component_name_volatile(
+        data: &AnalysisData,
+        component: &Component,
+        name: &str,
+        expected: bool,
+    ) {
+        let id = find_component_node_id(component.root, component, name)
+            .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
+        let expr_data = data
+            .expression_data(id)
+            .unwrap_or_else(|| panic!("no ExpressionData at ComponentNode '{name}'"));
+        assert_eq!(
+            expr_data.volatile, expected,
+            "component-name volatile for '{name}': expected {expected}, got {}",
+            expr_data.volatile
+        );
+    }
+
+    #[test]
+    fn volatile_component_name_reactive_prop() {
+        let (component, data) = analyze_source("<script>let { C } = $props();</script><C/>");
+        assert_component_name_volatile(&data, &component, "C", true);
+    }
+
+    #[test]
+    fn volatile_component_name_static_import() {
+        let (component, data) = analyze_source("<script>import C from './C.svelte';</script><C/>");
+        assert_component_name_volatile(&data, &component, "C", false);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_component_name_reactive() {
+        let (component, data) = analyze_source("<script>let { C } = $props();</script><C/>");
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_component_attr_const_local() {
+        let (component, data) = analyze_source(
+            "<script>import Comp from './C.svelte';</script>{#if true}{@const c = 1}<Comp x={c}/>{/if}",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
+
+    #[test]
+    fn volatile_matches_dynamism_class_directive() {
+        let (component, data) = analyze_source(
+            "<script>let { active } = $props();</script><div class:on={active}></div>",
+        );
+        assert_volatile_matches_dynamism(&data, &component);
+    }
 }
 
 #[cfg(test)]

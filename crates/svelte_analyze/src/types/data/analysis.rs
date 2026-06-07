@@ -219,15 +219,18 @@ impl<'a> AnalysisData<'a> {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
     }
+    pub fn node_volatile(&self, id: NodeId) -> bool {
+        self.expression_data(id).is_some_and(|d| d.volatile)
+    }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.dynamism.is_dynamic_node(id)
+        self.node_volatile(id)
     }
     pub fn class_needs_state(&self, element_id: NodeId) -> bool {
         let class_attr_dynamic = self
             .elements
             .flags
             .class_attr_id(element_id)
-            .is_some_and(|attr_id| self.dynamism.is_dynamic_attr(attr_id));
+            .is_some_and(|attr_id| self.node_volatile(attr_id));
         class_attr_dynamic || self.elements.flags.has_dynamic_class_directives(element_id)
     }
     pub fn component_name(&self) -> &str {

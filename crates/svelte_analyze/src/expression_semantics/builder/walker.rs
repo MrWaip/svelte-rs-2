@@ -66,6 +66,16 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) evaluator: ValueEvaluator<'c, 'a>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SiteContext {
+    Text,
+    ElementAttr,
+    ComponentAttr,
+    ComponentName,
+    Structural,
+    Inert,
+}
+
 struct Sink<'s> {
     store: &'s mut ExpressionSemanticsStore,
 }
@@ -96,10 +106,10 @@ fn visit_fragment(
         let node = component.store.get(id);
         match node {
             Node::ExpressionTag(tag) => {
-                store_single(tag.id, tag.expression.id(), ctx, sink);
+                store_single(tag.id, tag.expression.id(), ctx, sink, SiteContext::Text);
             }
             Node::HtmlTag(tag) => {
-                store_single(tag.id, tag.expression.id(), ctx, sink);
+                store_single(tag.id, tag.expression.id(), ctx, sink, SiteContext::Text);
             }
             Node::ConstTag(tag) => {
                 store_const_tag(tag.id, tag.decl.id(), ctx, sink);
@@ -107,24 +117,30 @@ fn visit_fragment(
             Node::Element(el) => visit_element(component, el, ctx, sink),
             Node::SvelteElement(el) => {
                 if let Some(expr_ref) = el.this_expr() {
-                    store_single(el.id, expr_ref.id(), ctx, sink);
+                    store_single(el.id, expr_ref.id(), ctx, sink, SiteContext::Inert);
                 }
                 visit_svelte_element(component, el, ctx, sink);
             }
-            Node::SvelteWindow(el) => visit_attributes(&el.attributes, ctx, sink),
-            Node::SvelteDocument(el) => visit_attributes(&el.attributes, ctx, sink),
-            Node::SvelteBody(el) => visit_attributes(&el.attributes, ctx, sink),
+            Node::SvelteWindow(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
+            Node::SvelteDocument(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
+            Node::SvelteBody(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
             Node::IfBlock(b) => {
-                store_single(b.id, b.test.id(), ctx, sink);
+                store_single(b.id, b.test.id(), ctx, sink, SiteContext::Text);
                 visit_fragment(component, b.consequent, ctx, sink);
                 if let Some(alt) = b.alternate {
                     visit_fragment(component, alt, ctx, sink);
                 }
             }
             Node::EachBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Text);
                 if let (Some(key_id), Some(key)) = (b.key_id, b.key.as_ref()) {
-                    store_single(key_id, key.id(), ctx, sink);
+                    store_single(key_id, key.id(), ctx, sink, SiteContext::Text);
                 }
                 visit_fragment(component, b.body, ctx, sink);
                 if let Some(fb) = b.fallback {
@@ -136,7 +152,8 @@ fn visit_fragment(
                 store_render_args(t.expression.id(), ctx, sink);
             }
             Node::ComponentNode(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                store_component_name(cn.id, cn.name.id(), ctx, sink);
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -144,7 +161,7 @@ fn visit_fragment(
                 }
             }
             Node::SvelteComponentLegacy(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ElementAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -152,7 +169,7 @@ fn visit_fragment(
                 }
             }
             Node::SvelteSelf(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -160,12 +177,12 @@ fn visit_fragment(
                 }
             }
             Node::SlotElementLegacy(el) => {
-                visit_attributes(&el.attributes, ctx, sink);
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
                 visit_fragment(component, el.fragment, ctx, sink);
             }
             Node::SnippetBlock(b) => visit_fragment(component, b.body, ctx, sink),
             Node::AwaitBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Structural);
                 if let Some(f) = b.pending {
                     visit_fragment(component, f, ctx, sink);
                 }
@@ -177,13 +194,13 @@ fn visit_fragment(
                 }
             }
             Node::KeyBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Text);
                 visit_fragment(component, b.fragment, ctx, sink);
             }
             Node::SvelteFragmentLegacy(el) => visit_fragment(component, el.fragment, ctx, sink),
             Node::SvelteHead(el) => visit_fragment(component, el.fragment, ctx, sink),
             Node::SvelteBoundary(el) => {
-                visit_attributes(&el.attributes, ctx, sink);
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, el.fragment, ctx, sink);
             }
             _ => {}
@@ -197,7 +214,7 @@ fn visit_element(
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
-    visit_attributes(&el.attributes, ctx, sink);
+    visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
     visit_fragment(component, el.fragment, ctx, sink);
 }
 
@@ -207,7 +224,7 @@ fn visit_svelte_element(
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
-    visit_attributes(&el.attributes, ctx, sink);
+    visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
     visit_fragment(component, el.fragment, ctx, sink);
 }
 
@@ -215,73 +232,74 @@ fn visit_attributes(
     attrs: &[Attribute],
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     for attr in attrs {
         match attr {
             Attribute::ExpressionAttribute(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::ConcatenationAttribute(a) => {
                 for p in &a.parts {
                     if let ConcatPart::Dynamic { id, expr } = p {
-                        store_single(*id, expr.id(), ctx, sink);
+                        store_single(*id, expr.id(), ctx, sink, context);
                     }
                 }
                 let parts = a.parts.iter().filter_map(|p| match p {
                     ConcatPart::Dynamic { expr, .. } => Some(expr.id()),
                     ConcatPart::Static(_) => None,
                 });
-                store_aggregate(a.id, parts, ctx, sink);
+                store_aggregate(a.id, parts, ctx, sink, context);
             }
             Attribute::SpreadAttribute(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::ClassDirective(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::StyleDirective(a) => match &a.value {
                 StyleDirectiveValue::Concatenation(parts) => {
                     for p in parts {
                         if let ConcatPart::Dynamic { id, expr } = p {
-                            store_single(*id, expr.id(), ctx, sink);
+                            store_single(*id, expr.id(), ctx, sink, context);
                         }
                     }
                     let exprs = parts.iter().filter_map(|p| match p {
                         ConcatPart::Dynamic { expr, .. } => Some(expr.id()),
                         ConcatPart::Static(_) => None,
                     });
-                    store_aggregate(a.id, exprs, ctx, sink);
+                    store_aggregate(a.id, exprs, ctx, sink, context);
                 }
                 StyleDirectiveValue::Expression => {
-                    store_single(a.id, a.expression.id(), ctx, sink);
+                    store_single(a.id, a.expression.id(), ctx, sink, context);
                 }
                 StyleDirectiveValue::String(_) => {}
             },
             Attribute::BindDirective(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::UseDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::TransitionDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::AnimateDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::OnDirectiveLegacy(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::AttachTag(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::StringAttribute(_)
             | Attribute::BooleanAttribute(_)
@@ -295,16 +313,30 @@ fn store_single(
     expr_id: OxcNodeId,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
         sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
-    let (data, facts) = compute(expr, ctx);
+    let (data, facts) = compute(expr, ctx, context);
     update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
     sink.set_by_oxc(expression_node_id(expr), value.clone());
     sink.set(site_id, value);
+}
+
+fn store_component_name(
+    site_id: NodeId,
+    expr_id: OxcNodeId,
+    ctx: &Ctx<'_, '_>,
+    sink: &mut Sink<'_>,
+) {
+    let Some(expr) = ctx.parsed.expr(expr_id) else {
+        return;
+    };
+    let (data, _facts) = compute(expr, ctx, SiteContext::ComponentName);
+    sink.set(site_id, ExpressionSemantics::Expression(data));
 }
 
 fn store_render_tag(
@@ -317,7 +349,7 @@ fn store_render_tag(
         sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
-    let (data, facts) = compute(expr, ctx);
+    let (data, facts) = compute(expr, ctx, SiteContext::Text);
     for &sym in facts.member_or_call_roots.iter() {
         if ctx.scoping.is_rest_prop(sym) {
             sink.note_context(ContextSignal::REST_PROP_MEMBER);
@@ -356,7 +388,7 @@ fn store_render_args(
             continue;
         }
         let arg_expr = arg.to_expression();
-        let (data, facts) = compute(arg_expr, ctx);
+        let (data, facts) = compute(arg_expr, ctx, SiteContext::Text);
         update_aggregates(sink, &facts, ctx);
         sink.set_by_oxc(
             argument_node_id(arg),
@@ -380,7 +412,7 @@ fn store_const_tag(
     let Some(expr) = d.init.as_ref() else {
         return;
     };
-    let (data, facts) = compute(expr, ctx);
+    let (data, facts) = compute(expr, ctx, SiteContext::Text);
     update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
     sink.set_by_oxc(expression_node_id(expr), value.clone());
@@ -392,6 +424,7 @@ fn store_aggregate(
     expr_ids: impl IntoIterator<Item = OxcNodeId>,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     let mut acc = empty_data();
     let mut any = false;
@@ -400,9 +433,10 @@ fn store_aggregate(
         let Some(expr) = ctx.parsed.expr(expr_id) else {
             continue;
         };
-        let (part, facts) = compute(expr, ctx);
+        let (part, facts) = compute(expr, ctx, context);
         update_aggregates(sink, &facts, ctx);
         acc.kind = max_kind(&acc.kind, &part.kind);
+        acc.volatile = acc.volatile || part.volatile;
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
             if !acc.blockers.contains(&b) {
@@ -426,6 +460,7 @@ fn empty_data() -> ExpressionData {
     ExpressionData {
         kind: ExprKind::Computed { reactive: false },
         evaluation: Evaluation::unknown(),
+        volatile: false,
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
         references: SmallVec::new(),
@@ -435,6 +470,7 @@ fn empty_data() -> ExpressionData {
 fn compute<'a>(
     expr: &Expression<'a>,
     ctx: &Ctx<'_, 'a>,
+    context: SiteContext,
 ) -> (ExpressionData, ExprFacts) {
     let facts = collect(expr, ctx.semantics, ctx.reactivity);
 
@@ -447,13 +483,41 @@ fn compute<'a>(
         ctx.has_class_state_fields,
     );
     let blockers = derive::blockers(&facts, ctx.blockers);
+    let has_blockers = !blockers.is_empty();
     let kind = derive::kind(
         &facts,
-        !blockers.is_empty(),
+        has_blockers,
         is_dynamic,
         &evaluation,
         ctx.reactivity,
     );
+    let volatile = match context {
+        SiteContext::Text => derive::volatile(
+            &facts,
+            has_blockers,
+            is_dynamic,
+            &evaluation,
+            ctx.reactivity,
+        ),
+        SiteContext::ElementAttr => {
+            derive::volatile_element_attr(&kind, &facts.references, ctx.scoping, ctx.reactivity)
+        }
+        SiteContext::ComponentAttr => derive::volatile_component_attr(
+            expr,
+            &kind,
+            &facts.references,
+            ctx.scoping,
+            ctx.reactivity,
+        ),
+        SiteContext::ComponentName => derive::volatile_component_name(
+            expr,
+            ctx.reactivity.uses_runes(),
+            ctx.scoping,
+            ctx.reactivity,
+        ),
+        SiteContext::Structural => true,
+        SiteContext::Inert => false,
+    };
     let has_context_member_root = facts.top_member_or_call_roots.iter().any(|&sym| {
         matches!(
             ctx.reactivity.binding_semantics(sym),
@@ -469,6 +533,7 @@ fn compute<'a>(
     let data = ExpressionData {
         kind,
         evaluation,
+        volatile,
         blockers,
         legacy_wrap: derive::legacy_wrap(
             ctx.uses_legacy_coarse_wrap,

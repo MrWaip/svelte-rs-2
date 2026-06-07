@@ -50,7 +50,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.component_name()
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_node(id)
+        self.data.node_volatile(id)
     }
     pub fn expression_semantics(
         &self,
@@ -336,7 +336,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.elements.flags.needs_var(id)
     }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_attr(id)
+        self.data.node_volatile(id)
     }
     pub fn has_state_attr(&self, id: NodeId) -> bool {
         self.data.dynamism.has_state_attr(id)
@@ -393,7 +393,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.template.snippets.component_snippets(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_component(id)
+        self.data.node_volatile(id)
     }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
         self.data.elements.flags.event_handler_mode(id)

@@ -566,7 +566,7 @@ impl<'src> ElementFlagsVisitor<'src> {
                 }
                 _ => continue,
             };
-            let is_dynamic = data.dynamism.is_dynamic_attr(attr.id());
+            let is_dynamic = data.node_volatile(attr.id());
             data.elements
                 .flags
                 .component_props
