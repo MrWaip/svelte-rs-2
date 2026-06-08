@@ -12,21 +12,20 @@ pub enum ExpressionSemantics {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionData {
-    pub kind: ExprKind,
+    pub volatility: Volatility,
     pub evaluation: Evaluation,
-    pub volatile: bool,
     pub blockers: SmallVec<[u32; 2]>,
     pub legacy_wrap: LegacyWrap,
     pub references: SmallVec<[SymbolId; 2]>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ExprKind {
-    KnownLiteral,
-    SimpleRead { reactive: bool },
-    Computed { reactive: bool },
-    Call { dynamic: bool },
-    Async { has_await: bool },
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Volatility {
+    #[default]
+    Static,
+    Reactive,
+    Heavy,
+    Asynchronous,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

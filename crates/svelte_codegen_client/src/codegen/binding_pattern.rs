@@ -93,9 +93,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 let (pattern, init) = self.take_const_tag_decl(id)?;
                 let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-                Ok(Out::ConstTagDerived(
-                    self.emit_const_tag(id, pattern_ref, init, emit)?,
-                ))
+                Ok(Out::ConstTagDerived(self.emit_const_tag(
+                    id,
+                    pattern_ref,
+                    init,
+                    emit,
+                )?))
             }
             DeclaratorSemantics::LetCarrier { carrier_symbol } => {
                 let BindingPatternSource::LetCarrier {
@@ -149,15 +152,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(Statement::VariableDeclaration(mut var_decl)) =
             self.ctx.state.parsed.take_stmt(stmt_id)
         else {
-            return CodegenError::unexpected_child("await destructure VariableDeclaration", "other");
+            return CodegenError::unexpected_child(
+                "await destructure VariableDeclaration",
+                "other",
+            );
         };
         Ok(var_decl.declarations.remove(0).id)
     }
 
-    fn take_const_tag_decl(
-        &mut self,
-        id: NodeId,
-    ) -> Result<(BindingPattern<'a>, Expression<'a>)> {
+    fn take_const_tag_decl(&mut self, id: NodeId) -> Result<(BindingPattern<'a>, Expression<'a>)> {
         let Node::ConstTag(tag) = self.ctx.query.component.store.get(id) else {
             return CodegenError::missing_expression(id);
         };
@@ -195,7 +198,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Access::Key { key, computed } => {
                         expr = bp::member_access(&self.ctx.b, expr, key, computed);
                     }
-                    Access::Index { index, len, has_rest } => {
+                    Access::Index {
+                        index,
+                        len,
+                        has_rest,
+                    } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -211,10 +218,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     Access::Slice { from } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
-                        let name =
-                            self.ensure_carrier(&mut carriers, &mut carrier_stmts, &prefix, expr, None);
-                        let slice_callee =
-                            self.ctx.b.static_member_expr(rune_get(&self.ctx.b, &name), "slice");
+                        let name = self.ensure_carrier(
+                            &mut carriers,
+                            &mut carrier_stmts,
+                            &prefix,
+                            expr,
+                            None,
+                        );
+                        let slice_callee = self
+                            .ctx
+                            .b
+                            .static_member_expr(rune_get(&self.ctx.b, &name), "slice");
                         expr = self
                             .ctx
                             .b
@@ -259,7 +273,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .var_destruct_stmt(pattern.clone_in(self.ctx.b.ast.allocator), source);
-        let return_stmt = self.ctx.b.return_stmt(self.ctx.b.shorthand_object_expr(&names));
+        let return_stmt = self
+            .ctx
+            .b
+            .return_stmt(self.ctx.b.shorthand_object_expr(&names));
         let derived_fn = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
         let derived_call = self.ctx.b.call_expr(helper, [Arg::Expr(derived_fn)]);
 
@@ -319,9 +336,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 symbols,
             })
         } else {
-            let Some(tmp_name) = self.ctx.transform_data.const_tag_tmp_names.get(&id).cloned()
+            let Some(tmp_name) = self
+                .ctx
+                .transform_data
+                .const_tag_tmp_names
+                .get(&id)
+                .cloned()
             else {
-                return CodegenError::unexpected_node(id, "destructured const tag missing tmp_name");
+                return CodegenError::unexpected_node(
+                    id,
+                    "destructured const tag missing tmp_name",
+                );
             };
             let target: &str = self.ctx.b.alloc_str(&tmp_name);
             let destruct_stmt = self
@@ -418,7 +443,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let slot_props = self.ctx.b.rid_expr("$$slotProps");
         let prop = self.ctx.b.static_member_expr(slot_props, slot_prop_name);
         let helper = self.ctx.query.view.derived_helper();
-        let derived = self.ctx.b.call_expr(helper, [Arg::Expr(self.ctx.b.thunk(prop))]);
+        let derived = self
+            .ctx
+            .b
+            .call_expr(helper, [Arg::Expr(self.ctx.b.thunk(prop))]);
         vec![self.ctx.b.const_stmt(&name, derived)]
     }
 
@@ -450,12 +478,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .let_destruct_stmt(pattern.clone_in(self.ctx.b.ast.allocator), source);
-        let return_stmt = self.ctx.b.return_stmt(self.ctx.b.shorthand_object_expr(&names));
-        let derived_body = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
-        let derived = self
+        let return_stmt = self
             .ctx
             .b
-            .call_expr("$.derived", [Arg::Expr(derived_body)]);
+            .return_stmt(self.ctx.b.shorthand_object_expr(&names));
+        let derived_body = self.ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
+        let derived = self.ctx.b.call_expr("$.derived", [Arg::Expr(derived_body)]);
 
         vec![self.ctx.b.const_stmt(&carrier_name, derived)]
     }
@@ -477,8 +505,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let Some(pattern) = pattern else {
                     return Ok((formal, Vec::new()));
                 };
-                let pattern_ref: &'a BindingPattern<'a> =
-                    self.ctx.b.ast.allocator.alloc(pattern);
+                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
                 let arg_name_ref: &'a str = self.ctx.b.alloc_str(&arg_name);
                 let out = self.emit_binding_pattern(
                     *pattern_id,
@@ -520,7 +547,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Access::Key { key, computed } => {
                         expr = chain_member_access(self, expr, key, computed);
                     }
-                    Access::Index { index, len, has_rest } => {
+                    Access::Index {
+                        index,
+                        len,
+                        has_rest,
+                    } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -537,11 +568,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     Access::Slice { from } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
-                        let name =
-                            self.ensure_carrier(&mut carriers, &mut carrier_stmts, &prefix, expr, None);
+                        let name = self.ensure_carrier(
+                            &mut carriers,
+                            &mut carrier_stmts,
+                            &prefix,
+                            expr,
+                            None,
+                        );
                         carrier_names.insert(name.clone());
-                        let slice_callee =
-                            self.ctx.b.static_member_expr(self.ctx.b.rid_expr(&name), "slice");
+                        let slice_callee = self
+                            .ctx
+                            .b
+                            .static_member_expr(self.ctx.b.rid_expr(&name), "slice");
                         expr = self
                             .ctx
                             .b
@@ -578,9 +616,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let eager = if needs_derived {
                     self.ctx.b.call_stmt("$.get", [Arg::Ident(name_alloc)])
                 } else {
-                    self.ctx
-                        .b
-                        .call_stmt(&name, iter::empty::<Arg<'_, '_>>())
+                    self.ctx.b.call_stmt(&name, iter::empty::<Arg<'_, '_>>())
                 };
                 carrier_stmts.push(eager);
             }
@@ -600,9 +636,7 @@ fn chain_member_access<'a, 'ctx>(
     key: &PropertyKey<'_>,
     computed: bool,
 ) -> Expression<'a> {
-    if !computed
-        && let PropertyKey::StaticIdentifier(id) = key
-    {
+    if !computed && let PropertyKey::StaticIdentifier(id) = key {
         return build_chain_static_member(cg, &object, id.name.as_str());
     }
     let key_expr = clone_property_key_expr(cg, key);

@@ -1,6 +1,8 @@
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::ComponentScoping;
 use crate::types::data::{BindingSemantics, JsAst, SnippetData};
+use crate::types::script::RuneKind;
+use crate::utils::script_info::detect_rune_from_call;
 use compact_str::CompactString;
 use oxc_ast::ast::{
     Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
@@ -10,10 +12,8 @@ use oxc_ast::ast::{
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
-use crate::types::script::RuneKind;
-use crate::utils::script_info::detect_rune_from_call;
-use std::f64::consts;
 use smallvec::{SmallVec, smallvec};
+use std::f64::consts;
 use svelte_component_semantics::{ComponentSemantics, SymbolId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -211,10 +211,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
 
 fn collect_bindings_init<'c, 'a>(
     parsed: &'c JsAst<'a>,
-) -> (
-    FxHashMap<SymbolId, &'c Expression<'a>>,
-    FxHashSet<SymbolId>,
-) {
+) -> (FxHashMap<SymbolId, &'c Expression<'a>>, FxHashSet<SymbolId>) {
     let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
     let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
 
@@ -235,10 +232,7 @@ fn collect_bindings_init<'c, 'a>(
         }
     }
 
-    fn ingest_fn_decl<'c, 'a>(
-        fd: &'c Function<'a>,
-        fn_decls: &mut FxHashSet<SymbolId>,
-    ) {
+    fn ingest_fn_decl<'c, 'a>(fd: &'c Function<'a>, fn_decls: &mut FxHashSet<SymbolId>) {
         if let Some(id) = &fd.id
             && let Some(sym) = id.symbol_id.get()
         {
@@ -254,9 +248,7 @@ fn collect_bindings_init<'c, 'a>(
                 Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
                 Statement::ExportNamedDeclaration(en) => match &en.declaration {
                     Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
-                    Some(Declaration::FunctionDeclaration(fd)) => {
-                        ingest_fn_decl(fd, &mut fn_decls)
-                    }
+                    Some(Declaration::FunctionDeclaration(fd)) => ingest_fn_decl(fd, &mut fn_decls),
                     _ => {}
                 },
                 _ => {}
@@ -359,7 +351,10 @@ fn eval_call(
     let Some(keypath) = call_global_keypath(&c.callee, ctx) else {
         return smallvec![EvalAtom::Unknown];
     };
-    if c.arguments.iter().any(|a| matches!(a, Argument::SpreadElement(_))) {
+    if c.arguments
+        .iter()
+        .any(|a| matches!(a, Argument::SpreadElement(_)))
+    {
         if let Some(class) = global_call_return_class(&keypath) {
             return smallvec![EvalAtom::Class(class)];
         }
@@ -381,9 +376,7 @@ fn eval_call(
             }
         }
     }
-    if all_known
-        && let Some(folded) = fold_global_call(&keypath, &known_args)
-    {
+    if all_known && let Some(folded) = fold_global_call(&keypath, &known_args) {
         return smallvec![EvalAtom::Known(folded)];
     }
     if let Some(class) = global_call_return_class(&keypath) {
@@ -397,7 +390,9 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
     match keypath {
         "Math.min" => {
             let xs = nums()?;
-            Some(KnownValue::Num(xs.into_iter().fold(f64::INFINITY, f64::min)))
+            Some(KnownValue::Num(
+                xs.into_iter().fold(f64::INFINITY, f64::min),
+            ))
         }
         "Math.max" => {
             let xs = nums()?;
@@ -431,7 +426,9 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
         "Math.pow" => Some(KnownValue::Num(
             known_to_number(args.first()?)?.powf(known_to_number(args.get(1)?)?),
         )),
-        "Math.fround" => Some(KnownValue::Num(known_to_number(args.first()?)? as f32 as f64)),
+        "Math.fround" => Some(KnownValue::Num(
+            known_to_number(args.first()?)? as f32 as f64
+        )),
         "Math.imul" => {
             let a = known_to_number(args.first()?)? as i32;
             let b = known_to_number(args.get(1)?)? as i32;
@@ -452,7 +449,9 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
             let x = known_to_number(args.first()?)?;
             Some(KnownValue::Bool(x.is_finite() && x.fract() == 0.0))
         }
-        "Number.isFinite" => Some(KnownValue::Bool(known_to_number(args.first()?)?.is_finite())),
+        "Number.isFinite" => Some(KnownValue::Bool(
+            known_to_number(args.first()?)?.is_finite(),
+        )),
         "Number.isNaN" => Some(KnownValue::Bool(known_to_number(args.first()?)?.is_nan())),
         "Number.isSafeInteger" => {
             let x = known_to_number(args.first()?)?;
@@ -465,7 +464,11 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
             _ => None,
         },
         "Number.parseInt" => match args.first()? {
-            KnownValue::Str(s) => s.trim().parse::<i64>().ok().map(|n| KnownValue::Num(n as f64)),
+            KnownValue::Str(s) => s
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .map(|n| KnownValue::Num(n as f64)),
             _ => None,
         },
         "String" => Some(KnownValue::Str(CompactString::from(known_to_string(
@@ -555,10 +558,7 @@ fn global_call_return_class(keypath: &str) -> Option<ValueClass> {
     }
 }
 
-fn eval_new(
-    n: &NewExpression<'_>,
-    ctx: &ValueEvaluator<'_, '_>,
-) -> EvalSet {
+fn eval_new(n: &NewExpression<'_>, ctx: &ValueEvaluator<'_, '_>) -> EvalSet {
     if let Expression::Identifier(callee) = n.callee.get_inner_expression() {
         let is_global = ctx
             .semantics
@@ -579,13 +579,8 @@ fn eval_static_member(
     if let Expression::Identifier(obj) = m.object.get_inner_expression() {
         let prop = m.property.name.as_str();
         let obj_name = obj.name.as_str();
-        let is_global = ctx
-            .semantics
-            .symbol_for_identifier_reference(obj)
-            .is_none();
-        if is_global
-            && let Some(known) = global_keypath(obj_name, prop)
-        {
+        let is_global = ctx.semantics.symbol_for_identifier_reference(obj).is_none();
+        if is_global && let Some(known) = global_keypath(obj_name, prop) {
             return smallvec![EvalAtom::Known(known)];
         }
     }
@@ -635,7 +630,9 @@ fn eval_template_literal(
         result.push_str(&s);
         result.push_str(quasi.value.cooked.as_deref().unwrap_or(""));
     }
-    smallvec![EvalAtom::Known(KnownValue::Str(CompactString::from(result)))]
+    smallvec![EvalAtom::Known(KnownValue::Str(CompactString::from(
+        result
+    )))]
 }
 
 fn known_to_string(v: &KnownValue) -> Option<String> {
@@ -687,10 +684,7 @@ fn eval_unary(
     }
 }
 
-fn fold_unary_numeric(
-    op: UnaryOperator,
-    v: &KnownValue,
-) -> Option<KnownValue> {
+fn fold_unary_numeric(op: UnaryOperator, v: &KnownValue) -> Option<KnownValue> {
     use UnaryOperator::*;
     let n = known_to_number(v)?;
     let result = match op {
@@ -709,13 +703,11 @@ fn known_to_number(v: &KnownValue) -> Option<f64> {
         KnownValue::Bool(false) => Some(0.0),
         KnownValue::Null => Some(0.0),
         KnownValue::Undefined => Some(f64::NAN),
-        KnownValue::Str(s) => s.trim().parse::<f64>().ok().or({
-            if s.trim().is_empty() {
-                Some(0.0)
-            } else {
-                None
-            }
-        }),
+        KnownValue::Str(s) => s
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .or({ if s.trim().is_empty() { Some(0.0) } else { None } }),
         KnownValue::BigInt => None,
     }
 }
@@ -781,8 +773,7 @@ fn eval_identifier(
         return smallvec![EvalAtom::Unknown];
     };
     if let Expression::CallExpression(call) = init_expr.get_inner_expression()
-        && detect_rune_from_call(call)
-            == Some(RuneKind::PropsId)
+        && detect_rune_from_call(call) == Some(RuneKind::PropsId)
     {
         return smallvec![EvalAtom::Class(ValueClass::String)];
     }
@@ -829,27 +820,14 @@ fn eval_binary(
     }
 
     match bin.operator {
-        Equality
-        | StrictEquality
-        | Inequality
-        | StrictInequality
-        | LessThan
-        | LessEqualThan
-        | GreaterThan
-        | GreaterEqualThan
-        | Instanceof
-        | In => smallvec![EvalAtom::Class(ValueClass::Boolean)],
-        Subtraction
-        | Multiplication
-        | Division
-        | Remainder
-        | Exponential
-        | BitwiseOR
-        | BitwiseAnd
-        | BitwiseXOR
-        | ShiftLeft
-        | ShiftRight
-        | ShiftRightZeroFill => smallvec![EvalAtom::Class(ValueClass::Number)],
+        Equality | StrictEquality | Inequality | StrictInequality | LessThan | LessEqualThan
+        | GreaterThan | GreaterEqualThan | Instanceof | In => {
+            smallvec![EvalAtom::Class(ValueClass::Boolean)]
+        }
+        Subtraction | Multiplication | Division | Remainder | Exponential | BitwiseOR
+        | BitwiseAnd | BitwiseXOR | ShiftLeft | ShiftRight | ShiftRightZeroFill => {
+            smallvec![EvalAtom::Class(ValueClass::Number)]
+        }
         Addition => {
             let left_str = matches!(single_known(&left), Some(KnownValue::Str(_)))
                 || matches!(left.as_slice(), [EvalAtom::Class(ValueClass::String)]);
@@ -867,11 +845,7 @@ fn eval_binary(
     }
 }
 
-fn fold_binary(
-    op: BinaryOperator,
-    a: &KnownValue,
-    b: &KnownValue,
-) -> Option<KnownValue> {
+fn fold_binary(op: BinaryOperator, a: &KnownValue, b: &KnownValue) -> Option<KnownValue> {
     use BinaryOperator::*;
     match op {
         Addition => match (a, b) {
@@ -1084,11 +1058,7 @@ fn set_to_evaluation(set: EvalSet) -> Evaluation {
     Evaluation::Defined { class }
 }
 
-fn merge_class(
-    single: &mut Option<ValueClass>,
-    multi: &mut bool,
-    cls: ValueClass,
-) {
+fn merge_class(single: &mut Option<ValueClass>, multi: &mut bool, cls: ValueClass) {
     if *multi {
         return;
     }

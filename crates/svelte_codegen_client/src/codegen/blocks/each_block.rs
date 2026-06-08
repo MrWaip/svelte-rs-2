@@ -1,4 +1,3 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
@@ -10,6 +9,7 @@ use svelte_analyze::{
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -28,9 +28,7 @@ struct EachEmit {
     key_is_index: bool,
     has_fallback: bool,
     collection_source: EachCollectionSource,
-    needs_async: bool,
-    has_await: bool,
-    blockers: Vec<u32>,
+    async_kind: EachAsyncKind,
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -73,11 +71,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let plan = self.build_each_plan(id, &sem, is_controlled)?;
         let context_pattern = self.take_each_context_pattern(id)?;
 
-        let async_thunk = if plan.needs_async {
-            let collection_expr = self.take_node_expr(id)?;
-            Some(self.ctx.b.async_thunk(collection_expr))
-        } else {
-            None
+        let async_thunk = match &plan.async_kind {
+            EachAsyncKind::Awaited { .. } => {
+                let collection_expr = self.take_node_expr(id)?;
+                Some(self.ctx.b.async_thunk(collection_expr))
+            }
+            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => None,
         };
 
         let item_pattern_node = match &sem.item {
@@ -89,34 +88,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let key_fn = self.build_each_key_fn(id, &plan, context_pattern.as_ref())?;
         let frag_fn =
             self.build_each_fragment_fn(ctx, id, &plan, context_pattern, item_pattern_node)?;
-
-        if plan.needs_async {
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-            let mut args: Vec<Arg<'a, '_>> = vec![
-                Arg::Ident(&anchor_node),
-                Arg::Num(plan.flags as f64),
-                Arg::Expr(collection_fn),
-                Arg::Expr(key_fn),
-                Arg::Expr(frag_fn),
-            ];
-            if plan.has_fallback {
-                let fallback_fn = self.build_each_fallback_fn(ctx, id)?;
-                args.push(Arg::Expr(fallback_fn));
-            }
-            let each_call = self.ctx.b.call_expr("$.each", args);
-            let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
-            let wrapped = self.emit_async_call_stmt(
-                plan.has_await,
-                &plan.blockers,
-                anchor_expr,
-                &anchor_node,
-                "$$collection",
-                async_thunk,
-                vec![each_stmt],
-            )?;
-            state.init.push(wrapped);
-            return Ok(());
-        }
 
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident(&anchor_node),
@@ -130,10 +101,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             args.push(Arg::Expr(fallback_fn));
         }
         let each_call = self.ctx.b.call_expr("$.each", args);
-        state
-            .init
-            .push(self.add_svelte_meta(each_call, span_start, "each"));
-        Ok(())
+
+        match &plan.async_kind {
+            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+                let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
+                let wrapped = self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    &anchor_node,
+                    "$$collection",
+                    async_thunk,
+                    vec![each_stmt],
+                )?;
+                state.init.push(wrapped);
+                Ok(())
+            }
+            EachAsyncKind::Sync => {
+                state
+                    .init
+                    .push(self.add_svelte_meta(each_call, span_start, "each"));
+                Ok(())
+            }
+        }
     }
 
     fn build_each_plan(
@@ -212,14 +203,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             EachItemKind::Pattern(_) | EachItemKind::NoBinding => SYNTHETIC_ITEM_NAME.to_string(),
         };
 
-        let (needs_async, has_await, blockers) = match &sem.async_kind {
-            EachAsyncKind::Sync => (false, false, Vec::new()),
-            EachAsyncKind::Async {
-                has_await,
-                blockers,
-            } => (true, *has_await, blockers.to_vec()),
-        };
-
         Ok(EachEmit {
             flags,
             item_param_name,
@@ -230,9 +213,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             collection_source: sem.collection.source.clone(),
-            needs_async,
-            has_await,
-            blockers,
+            async_kind: sem.async_kind.clone(),
         })
     }
 
@@ -264,19 +245,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
         plan: &EachEmit,
     ) -> Result<Expression<'a>> {
-        if plan.needs_async {
-            return Ok(self
-                .ctx
-                .b
-                .thunk(rune_get(&self.ctx.b, "$$collection")));
+        match &plan.async_kind {
+            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => {
+                Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection")))
+            }
+            EachAsyncKind::Sync => {
+                if let EachCollectionSource::Prop { sym } = &plan.collection_source {
+                    let name = self.ctx.query.symbol_name(*sym).to_string();
+                    return Ok(self.ctx.b.rid_expr(&name));
+                }
+                let expr = self.take_node_expr(block_id)?;
+                let wrapped = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
+                Ok(self.ctx.b.thunk(wrapped))
+            }
         }
-        if let EachCollectionSource::Prop { sym } = &plan.collection_source {
-            let name = self.ctx.query.symbol_name(*sym).to_string();
-            return Ok(self.ctx.b.rid_expr(&name));
-        }
-        let expr = self.take_node_expr(block_id)?;
-        let wrapped = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
-        Ok(self.ctx.b.thunk(wrapped))
     }
 
     fn build_each_key_fn(

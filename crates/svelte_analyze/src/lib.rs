@@ -11,14 +11,14 @@ pub use attribute_semantics::{
     ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
     ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
-    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, HandlerEmit, HtmlBindKind, MustBePropertySemantics, MustBePropertyValue,
-    SpecialValueKind, SpecialValueSemantics, WindowBindSemantics,
+    ConcatPartEmit, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
+    EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
+    TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore,
-    KnownValue, LegacyWrap, SyntheticPropsCarrier, ValueClass,
+    Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
+    LegacyWrap, SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
 pub use passes::css_analyze::analyze_css_pass;
@@ -42,22 +42,19 @@ pub use types::data::{
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
     ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
-    ComponentPropKind, ConstBindingSemantics,
-    ContentEditableKind, ContextualBindingSemantics, ContextualReadKind,
-    ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedKind, DerivedEmit,
-    DocumentBindKind, EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts,
-    ElementFactsEntry, ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier,
-    FragmentFacts, FragmentFactsEntry,
+    ComponentPropKind, ConstBindingSemantics, ContentEditableKind, ContextualBindingSemantics,
+    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DocumentBindKind, EachIndexStrategy,
+    EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
+    ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
-    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
-    PropEmitMode, PropReferenceSemantics, ProxyStateInits, ReactivitySemantics,
-    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis,
-    SignalReferenceKind, SnippetData, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
-    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    PropReferenceSemantics, ProxyStateInits, ReactivitySemantics, ReferenceSemantics,
+    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
+    RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind, SnippetData,
+    SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -82,8 +79,8 @@ pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
-    is_capture_event, is_delegatable_event, is_let_or_var, is_passive_event,
-    is_regular_dom_property, is_simple_expression, is_simple_identifier,
+    expression_calls_or_awaits, is_capture_event, is_delegatable_event, is_let_or_var,
+    is_passive_event, is_regular_dom_property, is_simple_expression, is_simple_identifier,
     normalize_regular_attribute_name, property_key_static_name, strip_capture_event,
 };
 
@@ -284,8 +281,7 @@ fn build_runtime_info(
         || (!data.uses_runes() && data.script.accessors)
         || (!data.uses_runes() && data.script.immutable)
         || dev
-        || (!data.uses_runes()
-            && (has_legacy_member_mutated || has_legacy_reactive_statements));
+        || (!data.uses_runes() && (has_legacy_member_mutated || has_legacy_reactive_statements));
     let has_legacy_accessor_props = !data.uses_runes()
         && data.script.accessors
         && data

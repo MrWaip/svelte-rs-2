@@ -16,18 +16,17 @@ use util::{
 
 use super::data::{
     BindingFacts, BindingSemantics, ClassFieldDerivedSemantics, ClassFieldStateSemantics,
-    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedKind, DerivedEmit,
+    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind,
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    ReactivitySemantics, ReferenceFacts,
-    RuntimeRuneKind, StateDeclarationSemantics, StateKind,
+    ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
-use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use crate::types::script::RuneKind;
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::utils::script_info::detect_rune_from_call;
+use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, ClassElement,
     ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
@@ -48,7 +47,7 @@ use oxc_span::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::Component;
-use svelte_component_semantics::{sym_state, ComponentSemantics, OxcNodeId, ReferenceId};
+use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, sym_state};
 
 const JS_UNDEFINED_NAME: &str = "undefined";
 
@@ -313,10 +312,7 @@ fn init_expression_is_impure(expr: &Expression<'_>) -> bool {
             self.has = true;
             walk_new_expression(self, expr);
         }
-        fn visit_tagged_template_expression(
-            &mut self,
-            expr: &TaggedTemplateExpression<'a>,
-        ) {
+        fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
             self.has = true;
             walk_tagged_template_expression(self, expr);
         }
@@ -325,7 +321,6 @@ fn init_expression_is_impure(expr: &Expression<'_>) -> bool {
     p.visit_expression(expr);
     p.has
 }
-
 
 fn build_script_semantics_v2<'a>(
     component: &Component,
@@ -467,11 +462,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
-    fn mark_bind_member_mutation_roots(
-        &mut self,
-        component: &Component,
-        parsed: &JsAst<'a>,
-    ) {
+    fn mark_bind_member_mutation_roots(&mut self, component: &Component, parsed: &JsAst<'a>) {
         for node in component.store.iter_nodes() {
             let attrs: &[svelte_ast::Attribute] = match node {
                 svelte_ast::Node::Element(n) => &n.attributes,
@@ -494,8 +485,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 };
                 if !matches!(
                     expr,
-                    Expression::StaticMemberExpression(_)
-                        | Expression::ComputedMemberExpression(_)
+                    Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_)
                 ) {
                     continue;
                 }
@@ -836,11 +826,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 if !has_non_store_mutation_legacy(self.data, sym) {
                     continue;
                 }
-                if !has_reactive_consumer_reference_legacy(
-                    self.data,
-                    sym,
-                    &self.reactive_body_refs,
-                ) {
+                if !has_reactive_consumer_reference_legacy(self.data, sym, &self.reactive_body_refs)
+                {
                     continue;
                 }
             }
@@ -854,9 +841,10 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             promoted_leaves.push(sym);
         }
         if is_destructured && !promoted_leaves.is_empty() {
-            self.data
-                .reactivity
-                .record_declarator_semantics(declarator.node_id(), DeclaratorSemantics::LegacyState);
+            self.data.reactivity.record_declarator_semantics(
+                declarator.node_id(),
+                DeclaratorSemantics::LegacyState,
+            );
         }
     }
 
@@ -1367,10 +1355,7 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         self.current_decl_kind = previous;
     }
 
-    fn visit_export_named_declaration(
-        &mut self,
-        export: &ExportNamedDeclaration<'a>,
-    ) {
+    fn visit_export_named_declaration(&mut self, export: &ExportNamedDeclaration<'a>) {
         legacy::classify_export_named_declaration(self.data, export);
         walk_export_named_declaration(self, export);
     }
@@ -1440,9 +1425,7 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
         }
 
         let Some(constructor) = class.body.body.iter().find_map(|el| match el {
-            ClassElement::MethodDefinition(m)
-                if m.kind == MethodDefinitionKind::Constructor =>
-            {
+            ClassElement::MethodDefinition(m) if m.kind == MethodDefinitionKind::Constructor => {
                 Some(m)
             }
             _ => None,

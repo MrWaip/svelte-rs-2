@@ -1,7 +1,7 @@
 use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::ExprKind;
+use svelte_analyze::Volatility;
 use svelte_analyze::types::data::binding_group_name;
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -151,51 +151,66 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let is_defined = data
             .as_ref()
             .is_some_and(|d| evaluation_is_defined(&d.evaluation));
-        let has_state = data.as_ref().is_none_or(|d| {
-            matches!(
-                d.kind,
-                ExprKind::SimpleRead { reactive: true }
-                    | ExprKind::Computed { reactive: true }
-                    | ExprKind::Call { .. }
-                    | ExprKind::Async { .. }
-            )
-        });
         let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
 
-        if !has_state {
-            let dunder_value_assign = self.ctx.b.assign_expr(
-                AssignLeft::StaticMember(
-                    self.ctx
-                        .b
-                        .static_member(self.ctx.b.rid_expr(el_name), "__value"),
-                ),
-                val_expr,
-            );
-            let value_rhs = if is_defined {
-                dunder_value_assign
-            } else {
+        match data.as_ref().map(|d| d.volatility) {
+            Some(Volatility::Static) => {
+                self.emit_bind_group_value_static(state, el_name, val_expr, is_defined);
+            }
+            Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) | None => {
+                self.emit_bind_group_value_stateful(state, el_name, val_expr, is_defined);
+            }
+        }
+    }
+
+    fn emit_bind_group_value_static(
+        &mut self,
+        state: &mut EmitState<'a>,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        is_defined: bool,
+    ) {
+        let dunder_value_assign = self.ctx.b.assign_expr(
+            AssignLeft::StaticMember(
                 self.ctx
                     .b
-                    .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
-            };
-            let value_assign = self.ctx.b.assign_stmt(
-                AssignLeft::StaticMember(
-                    self.ctx
-                        .b
-                        .static_member(self.ctx.b.rid_expr(el_name), "value"),
-                ),
-                value_rhs,
-            );
-            state.init.push(value_assign);
-            return;
-        }
+                    .static_member(self.ctx.b.rid_expr(el_name), "__value"),
+            ),
+            val_expr,
+        );
+        let value_rhs = if is_defined {
+            dunder_value_assign
+        } else {
+            self.ctx
+                .b
+                .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
+        };
+        let value_assign = self.ctx.b.assign_stmt(
+            AssignLeft::StaticMember(
+                self.ctx
+                    .b
+                    .static_member(self.ctx.b.rid_expr(el_name), "value"),
+            ),
+            value_rhs,
+        );
+        state.init.push(value_assign);
+    }
 
+    fn emit_bind_group_value_stateful(
+        &mut self,
+        state: &mut EmitState<'a>,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        is_defined: bool,
+    ) {
         let mut prefix = String::with_capacity(el_name.len() + 6);
         prefix.push_str(el_name);
         prefix.push_str("_value");
         let cache_name = self.ctx.state.gen_ident(&prefix);
 
-        state.pending_pre_update.push(self.ctx.b.var_uninit_stmt(&cache_name));
+        state
+            .pending_pre_update
+            .push(self.ctx.b.var_uninit_stmt(&cache_name));
 
         let val_expr2 = self.ctx.b.clone_expr(&val_expr);
 

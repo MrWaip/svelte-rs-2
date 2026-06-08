@@ -1,9 +1,9 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -22,14 +22,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: IfBlockSemantics,
     ) -> Result<()> {
-        let (needs_async, root_has_await, blockers) = match &sem.async_kind {
-            IfAsyncKind::Sync => (false, false, Vec::new()),
-            IfAsyncKind::Async {
-                root_has_await,
-                blockers,
-            } => (true, *root_has_await, blockers.to_vec()),
-        };
-
         let span_start = self.ctx.query.if_block(id).span.start;
         let is_elseif_root = sem.is_elseif_root;
 
@@ -45,50 +37,56 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .arrow(self.ctx.b.params(["$$render"]), [render_body_stmt]);
 
-        if needs_async {
-            let anchor_node = self.commit_comment_anchor(state, ctx, pre_anchor)?;
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-            let if_anchor = self.ctx.b.rid_expr(&anchor_node);
-            let mut if_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(if_anchor), Arg::Arrow(render_fn)];
-            if is_elseif_root {
-                if_args.push(Arg::Bool(true));
+        match &sem.async_kind {
+            IfAsyncKind::Awaited { blockers } | IfAsyncKind::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let anchor_node = self.commit_comment_anchor(state, ctx, pre_anchor)?;
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+                let if_anchor = self.ctx.b.rid_expr(&anchor_node);
+                let mut if_args: Vec<Arg<'a, '_>> =
+                    vec![Arg::Expr(if_anchor), Arg::Arrow(render_fn)];
+                if is_elseif_root {
+                    if_args.push(Arg::Bool(true));
+                }
+                let if_call = self.ctx.b.call_expr("$.if", if_args);
+                decls.push(self.add_svelte_meta(if_call, span_start, "if"));
+
+                let async_thunk = match &sem.async_kind {
+                    IfAsyncKind::Awaited { .. } => {
+                        let expr = self.take_node_expr(id)?;
+                        Some(self.ctx.b.async_thunk(expr))
+                    }
+                    IfAsyncKind::Deferred { .. } | IfAsyncKind::Sync => None,
+                };
+                let wrapped = self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    &anchor_node,
+                    "$$condition",
+                    async_thunk,
+                    decls,
+                )?;
+                state.init.push(wrapped);
+                Ok(())
             }
-            let if_call = self.ctx.b.call_expr("$.if", if_args);
-            decls.push(self.add_svelte_meta(if_call, span_start, "if"));
+            IfAsyncKind::Sync => {
+                let anchor_node = self.commit_comment_anchor(state, ctx, pre_anchor)?;
+                let mut if_args: Vec<Arg<'a, '_>> =
+                    vec![Arg::Ident(&anchor_node), Arg::Arrow(render_fn)];
+                if is_elseif_root {
+                    if_args.push(Arg::Bool(true));
+                }
+                let if_call = self.ctx.b.call_expr("$.if", if_args);
+                decls.push(self.add_svelte_meta(if_call, span_start, "if"));
 
-            let async_thunk = if root_has_await {
-                let expr = self.take_node_expr(id)?;
-                Some(self.ctx.b.async_thunk(expr))
-            } else {
-                None
-            };
-            let wrapped = self.emit_async_call_stmt(
-                root_has_await,
-                &blockers,
-                anchor_expr,
-                &anchor_node,
-                "$$condition",
-                async_thunk,
-                decls,
-            )?;
-            state.init.push(wrapped);
-            return Ok(());
+                if decls.len() == 1 {
+                    state.init.extend(decls);
+                } else {
+                    state.init.push(self.ctx.b.block_stmt(decls));
+                }
+                Ok(())
+            }
         }
-
-        let anchor_node = self.commit_comment_anchor(state, ctx, pre_anchor)?;
-        let mut if_args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&anchor_node), Arg::Arrow(render_fn)];
-        if is_elseif_root {
-            if_args.push(Arg::Bool(true));
-        }
-        let if_call = self.ctx.b.call_expr("$.if", if_args);
-        decls.push(self.add_svelte_meta(if_call, span_start, "if"));
-
-        if decls.len() == 1 {
-            state.init.extend(decls);
-        } else {
-            state.init.push(self.ctx.b.block_stmt(decls));
-        }
-        Ok(())
     }
 
     fn build_if_branches(
@@ -125,10 +123,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let derived_name = match branch.condition {
                 IfConditionKind::Memo => {
                     let expr = self.take_node_expr(branch.block_id)?;
-                    let inner = coarse_wrap(self.ctx, 
-                        expr,
-                        self.ctx.expression_data(branch.block_id),
-                    );
+                    let inner =
+                        coarse_wrap(self.ctx, expr, self.ctx.expression_data(branch.block_id));
                     let thunk = self
                         .ctx
                         .b
@@ -225,9 +221,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         derived_name: Option<&str>,
     ) -> Result<Expression<'a>> {
         match branch.condition {
-            IfConditionKind::AsyncParam => {
-                Ok(rune_get(&self.ctx.b, "$$condition"))
-            }
+            IfConditionKind::AsyncParam => Ok(rune_get(&self.ctx.b, "$$condition")),
             IfConditionKind::Memo => {
                 let Some(name) = derived_name else {
                     return CodegenError::unexpected_node(
@@ -239,7 +233,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             IfConditionKind::Raw => {
                 let expr = self.take_node_expr(branch.block_id)?;
-                Ok(coarse_wrap(self.ctx, 
+                Ok(coarse_wrap(
+                    self.ctx,
                     expr,
                     self.ctx.expression_data(branch.block_id),
                 ))

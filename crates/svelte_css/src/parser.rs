@@ -105,7 +105,12 @@ impl<'src> Parser<'src> {
     fn read_attribute_value(&mut self) -> Option<(Span, Option<u8>)> {
         if self.scanner.is_at(TokenKind::String) {
             let tok = self.scanner.advance();
-            let quote = self.scanner.source().as_bytes().get(tok.span.start as usize).copied();
+            let quote = self
+                .scanner
+                .source()
+                .as_bytes()
+                .get(tok.span.start as usize)
+                .copied();
 
             return Some((Span::new(tok.span.start + 1, tok.span.end - 1), quote));
         }

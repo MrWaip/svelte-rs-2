@@ -7,11 +7,7 @@ use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_call_expression(&mut self, node: &mut Expression<'a>) {
-        if !self
-            .analysis
-            .as_ref()
-            .is_some_and(|a| a.uses_runes())
-        {
+        if !self.analysis.as_ref().is_some_and(|a| a.uses_runes()) {
             return;
         }
         let Expression::CallExpression(call) = &*node else {

@@ -6,13 +6,11 @@ use svelte_ast::{
     Attribute, Component as SvelteComponent, ConcatPart, ExpressionAttribute, FragmentId,
     FragmentRole, Node, NodeId,
 };
+use svelte_css::visit::{walk_at_rule, walk_complex_selector, walk_style_rule};
 use svelte_css::{
     AtRule, BlockChild, Combinator, CombinatorKind, ComplexSelector, CssNodeId,
     PseudoClassSelector, RelativeSelector, Rule, SelectorList, SimpleSelector, StyleRule,
     StyleSheet, StyleSheetChild, Visit,
-};
-use svelte_css::visit::{
-    walk_at_rule, walk_complex_selector, walk_style_rule,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_parser::JsAst;
@@ -24,13 +22,13 @@ use super::css_prune_index::{
 use super::fragment_topology::fragment_items;
 use crate::expression_semantics::ExpressionData;
 use crate::scope::SymbolId;
-use crate::{AnalysisData, BlockSemantics};
-use std::iter::once;
 use crate::types::data::{
     BindingSemantics, ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis,
     TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
+use crate::{AnalysisData, BlockSemantics};
+use std::iter::once;
 
 const HTML_CASE_INSENSITIVE_ATTRIBUTES: &[&str] = &[
     "accept-charset",
@@ -314,7 +312,13 @@ fn collect_css_prune_edges_in_fragment(
                 }
             }
             Node::IfBlock(block) => {
-                collect_css_prune_edges_in_fragment(block.consequent, component, parsed, data, edges);
+                collect_css_prune_edges_in_fragment(
+                    block.consequent,
+                    component,
+                    parsed,
+                    data,
+                    edges,
+                );
                 if let Some(alt) = block.alternate {
                     collect_css_prune_edges_in_fragment(alt, component, parsed, data, edges);
                 }
@@ -427,9 +431,8 @@ fn component_possible_snippets(
             Attribute::ExpressionAttribute(attr) => {
                 if let Some(expr) = parsed.expr(attr.expression.id()) {
                     let data_opt = data.expression_data(attr.id);
-                    resolved &= collect_component_attr_snippets(
-                        data, expr, data_opt, &mut snippets,
-                    );
+                    resolved &=
+                        collect_component_attr_snippets(data, expr, data_opt, &mut snippets);
                 } else {
                     resolved = false;
                 }
@@ -505,7 +508,10 @@ fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
 }
 
-fn build_rule_selector_rewrite(complex: &ComplexSelector, rule_ctx: &RuleContext<'_>) -> SelectorRewrite {
+fn build_rule_selector_rewrite(
+    complex: &ComplexSelector,
+    rule_ctx: &RuleContext<'_>,
+) -> SelectorRewrite {
     let mut relatives = build_truncated_relatives(complex);
 
     if rule_ctx.parent_rule().is_some()
@@ -1195,9 +1201,7 @@ fn pseudo_is_or_where_matches(
         if complex.children.len() > 1 {
             pruner.used.insert(complex.id);
             matched = true;
-            for ancestor in
-                once(elem_id).chain(get_ancestor_elements(pruner, elem_id, false))
-            {
+            for ancestor in once(elem_id).chain(get_ancestor_elements(pruner, elem_id, false)) {
                 pruner.scoped.insert(ancestor);
             }
         }
@@ -1387,8 +1391,7 @@ fn collect_descendants_from_fragment(
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
-    let lowered =
-        fragment_items(&pruner.component.store, fragment_id);
+    let lowered = fragment_items(&pruner.component.store, fragment_id);
 
     let store = &pruner.component.store;
     for &id in &lowered {
@@ -1472,8 +1475,7 @@ fn collect_possible_siblings(
     let mut current_fragment = pruner.component.store.node_fragment(node_id);
 
     while let Some(fragment_id) = current_fragment {
-        let lowered =
-            fragment_items(&pruner.component.store, fragment_id);
+        let lowered = fragment_items(&pruner.component.store, fragment_id);
         let fragment_meta = pruner.component.store.fragment(fragment_id);
         let owner_opt = fragment_meta.owner;
         let role = fragment_meta.role;
@@ -1710,8 +1712,7 @@ fn loop_child(
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
     let mut result = FxHashMap::default();
-    let lowered =
-        fragment_items(&pruner.component.store, fragment_id);
+    let lowered = fragment_items(&pruner.component.store, fragment_id);
 
     let indices: Box<dyn Iterator<Item = usize>> = match direction {
         Direction::Forward => Box::new(0..lowered.len()),

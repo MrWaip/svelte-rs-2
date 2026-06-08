@@ -212,10 +212,6 @@ impl<'a> Ctx<'a> {
         self.state.gen_ident(prefix)
     }
 
-    pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.query.view.is_dynamic(id)
-    }
-
     pub fn attr_index(&self, id: NodeId) -> Option<&svelte_analyze::AttrIndex> {
         self.query.view.attr_index(id)
     }
@@ -298,9 +294,6 @@ impl<'a> Ctx<'a> {
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.query.view.is_dynamic_attr(id)
-    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.query.view.static_class(id)
     }
@@ -313,8 +306,8 @@ impl<'a> Ctx<'a> {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.query.view.has_use_directive(id)
     }
-    pub fn class_needs_state(&self, id: NodeId) -> bool {
-        self.query.view.class_needs_state(id)
+    pub fn class_state_volatility(&self, id: NodeId) -> svelte_analyze::Volatility {
+        self.query.view.class_state_volatility(id)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.class_attr_id(id)
@@ -327,9 +320,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.query.view.component_snippets(id)
-    }
-    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.query.view.is_dynamic_component(id)
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()

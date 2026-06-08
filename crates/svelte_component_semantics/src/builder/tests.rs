@@ -760,37 +760,45 @@ mod binding_origin_key_tests {
     #[test]
     fn binding_origin_key_returns_ident_for_shorthand() {
         let got = resolve("let { foo } = $$_();", "foo");
-        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
-                   Some(("foo", OriginKind::Ident)));
+        assert_eq!(
+            got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+            Some(("foo", OriginKind::Ident))
+        );
     }
 
     #[test]
     fn binding_origin_key_returns_ident_for_identifier_key() {
         let got = resolve("let { foo: zero } = $$_();", "zero");
-        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
-                   Some(("foo", OriginKind::Ident)));
+        assert_eq!(
+            got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+            Some(("foo", OriginKind::Ident))
+        );
     }
 
     #[test]
     fn binding_origin_key_returns_string_for_string_literal_valid_ident() {
         let got = resolve("let { 'foo': zero } = $$_();", "zero");
-        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
-                   Some(("foo", OriginKind::String)));
+        assert_eq!(
+            got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+            Some(("foo", OriginKind::String))
+        );
     }
 
     #[test]
     fn binding_origin_key_returns_string_for_invalid_ident_string_literal() {
         let got = resolve("let { 'ysc%%gibberish': one } = $$_();", "one");
-        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
-                   Some(("ysc%%gibberish", OriginKind::String)));
+        assert_eq!(
+            got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+            Some(("ysc%%gibberish", OriginKind::String))
+        );
     }
 
     #[test]
     fn binding_origin_key_returns_numeric_for_numeric_literal_key() {
         let got = resolve("let { 0: zero } = $$_();", "zero");
-        assert_eq!(got.as_ref().map(|(a, k)| (a.as_str(), *k)),
-                   Some(("0", OriginKind::Numeric)));
+        assert_eq!(
+            got.as_ref().map(|(a, k)| (a.as_str(), *k)),
+            Some(("0", OriginKind::Numeric))
+        );
     }
 }
-
-

@@ -3,10 +3,7 @@ use std::borrow::Cow;
 use super::*;
 
 fn escape_template_raw(value: &str) -> Cow<'_, str> {
-    let needs_escape = value
-        .as_bytes()
-        .windows(2)
-        .any(|w| w == b"${")
+    let needs_escape = value.as_bytes().windows(2).any(|w| w == b"${")
         || value.bytes().any(|b| b == b'`' || b == b'\\');
     if !needs_escape {
         return Cow::Borrowed(value);

@@ -4,15 +4,17 @@ use oxc_ast::ast::{
     AssignmentExpression, AssignmentOperator, AssignmentTarget, AssignmentTargetMaybeDefault,
     AssignmentTargetProperty, Expression, IdentifierReference, ImportDeclarationSpecifier,
     LabeledStatement, Program, SimpleAssignmentTarget, Statement, SwitchCase, TSAsExpression,
-    TSInstantiationExpression, TSSatisfiesExpression, TSType, TSTypeAnnotation,
-    TSTypeAssertion, TSTypeParameterInstantiation, UpdateExpression,
+    TSInstantiationExpression, TSSatisfiesExpression, TSType, TSTypeAnnotation, TSTypeAssertion,
+    TSTypeParameterInstantiation, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_assignment_expression, walk_update_expression};
 use oxc_syntax::scope::ScopeId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_component_semantics::{OxcNodeId, ReferenceId, SymbolOwner, walk_assignment_target_idents};
+use svelte_component_semantics::{
+    OxcNodeId, ReferenceId, SymbolOwner, walk_assignment_target_idents,
+};
 
 use super::super::data::{BindingSemantics, LegacyStateSemantics, ReferenceFacts};
 use super::super::legacy_reactive::{LegacyReactiveKind, LegacyReactiveStatement};
@@ -64,7 +66,10 @@ pub(super) fn collect_top_level_meta<'a>(
             if !matches!(assign.operator, AssignmentOperator::Assign) {
                 return;
             }
-            if matches!(&assign.left, AssignmentTarget::AssignmentTargetIdentifier(_)) {
+            if matches!(
+                &assign.left,
+                AssignmentTarget::AssignmentTargetIdentifier(_)
+            ) {
                 if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
                     push_implicit_name(implicit_names, id.name.as_str());
                 }
@@ -148,8 +153,7 @@ pub(super) fn build_from_collected<'a>(
 
     let mut statements: Vec<LegacyReactiveStatement> = Vec::with_capacity(labeled_nodes.len());
     for node_id in &labeled_nodes {
-        let Some(AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(*node_id)
-        else {
+        let Some(AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(*node_id) else {
             continue;
         };
         let prelim = classify_statement(labeled);
@@ -262,10 +266,7 @@ fn add_implicit_binding(
     let Some(sym) = data.scoping.find_binding(instance_scope, name) else {
         return;
     };
-    if !matches!(
-        data.scoping.symbol_owner(sym),
-        SymbolOwner::Synthetic
-    ) {
+    if !matches!(data.scoping.symbol_owner(sym), SymbolOwner::Synthetic) {
         return;
     }
     map.entry(CompactString::from(name)).or_insert(sym);
@@ -454,12 +455,12 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
             AssignmentTarget::ObjectAssignmentTarget(obj) => {
                 for prop in &obj.properties {
                     match prop {
-                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
-                            shorthand,
-                        ) => self.record_assignment_ident(&shorthand.binding),
-                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(
-                            kv,
-                        ) => self.record_assignment_maybe_default(&kv.binding),
+                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(shorthand) => {
+                            self.record_assignment_ident(&shorthand.binding)
+                        }
+                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
+                            self.record_assignment_maybe_default(&kv.binding)
+                        }
                     }
                 }
                 if let Some(rest) = &obj.rest {
@@ -478,10 +479,7 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
         }
     }
 
-    fn record_assignment_maybe_default(
-        &mut self,
-        target: &AssignmentTargetMaybeDefault<'_>,
-    ) {
+    fn record_assignment_maybe_default(&mut self, target: &AssignmentTargetMaybeDefault<'_>) {
         match target {
             AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_def) => {
                 self.record_assignment_target(&with_def.binding);
@@ -653,10 +651,7 @@ fn collect_direct_assign_lhs_ref(
     }
 }
 
-fn collect_member_root_ref(
-    expr: &Expression<'_>,
-    skips: &mut FxHashSet<ReferenceId>,
-) {
+fn collect_member_root_ref(expr: &Expression<'_>, skips: &mut FxHashSet<ReferenceId>) {
     match expr.get_inner_expression() {
         Expression::Identifier(id) => {
             if let Some(ref_id) = id.reference_id.get() {

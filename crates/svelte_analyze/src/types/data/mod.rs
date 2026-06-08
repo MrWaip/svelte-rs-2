@@ -32,11 +32,11 @@ pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics, DerivedDeclarationSemantics,
-    DerivedKind, DerivedEmit, EachIndexStrategy, EachItemStrategy,
-    LegacyBindablePropSemantics, OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics,
-    PropDefaultKind, PropEmitMode, PropReferenceSemantics, ReactivitySemantics,
-    ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy, LegacyBindablePropSemantics,
+    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics, RuntimeRuneKind,
+    SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
+    StoreBindingSemantics,
 };
 pub use analysis::{
     AnalysisData, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis, TemplateAnalysis,
@@ -60,10 +60,10 @@ pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichConten
 pub use runtime::LegacyInit;
 pub use runtime::RuntimeInfo;
 pub use template_data::{
-    binding_group_name, BindHostKind, BindPropertyKind, BindSemanticsData, BindSource,
-    BindTargetSemantics, ContentEditableKind, DocumentBindKind, ElementSizeKind,
-    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
-    TitleElementData, WindowBindKind,
+    BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
+    ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind, MediaBindKind,
+    ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData, WindowBindKind,
+    binding_group_name,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

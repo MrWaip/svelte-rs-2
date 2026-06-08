@@ -21,10 +21,7 @@ fn has_await_in_statement(stmt: &Statement<'_>) -> bool {
             }
         }
 
-        fn visit_arrow_function_expression(
-            &mut self,
-            arrow: &ArrowFunctionExpression<'a>,
-        ) {
+        fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
             self.fn_depth += 1;
             walk_arrow_function_expression(self, arrow);
             self.fn_depth -= 1;

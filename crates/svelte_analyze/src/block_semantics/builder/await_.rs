@@ -4,7 +4,7 @@ use super::super::{
 };
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
-use crate::expression_semantics::{ExprKind, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use oxc_ast::ast::BindingPattern;
 use smallvec::SmallVec;
 use svelte_ast::AwaitBlock;
@@ -26,12 +26,9 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
         block.catch,
     );
 
-    let (expression_has_await, blockers) = match ctx.expressions.get(block.id) {
-        ExpressionSemantics::Expression(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            (has_await, d.blockers.clone())
-        }
-        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
+    let (expression_volatility, blockers) = match ctx.expressions.get(block.id) {
+        ExpressionSemantics::Expression(d) => (d.volatility, d.blockers.clone()),
+        ExpressionSemantics::NonSpecial => (Volatility::Static, SmallVec::new()),
     };
     let wrapper = if blockers.is_empty() {
         AwaitWrapper::None
@@ -55,7 +52,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
             pending,
             then,
             catch,
-            expression_has_await,
+            expression_volatility,
             wrapper,
         }),
     );
@@ -114,6 +111,7 @@ fn binding_from_pattern<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::expression_semantics::Volatility;
     use crate::tests::analyze_source;
     use crate::{
         AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
@@ -184,7 +182,10 @@ mod tests {
                 ));
                 assert!(matches!(sem.then, AwaitBranch::Absent));
                 assert!(matches!(sem.catch, AwaitBranch::Absent));
-                assert!(!sem.expression_has_await);
+                assert!(!matches!(
+                    sem.expression_volatility,
+                    Volatility::Asynchronous
+                ));
                 assert!(matches!(sem.wrapper, AwaitWrapper::None));
             },
         );
@@ -258,7 +259,10 @@ mod tests {
             r#"<script>let p = fetch('/x');</script>{#await p}...{/await}"#,
             |sem| {
                 assert!(matches!(sem.wrapper, AwaitWrapper::None));
-                assert!(!sem.expression_has_await);
+                assert!(!matches!(
+                    sem.expression_volatility,
+                    Volatility::Asynchronous
+                ));
             },
         );
     }

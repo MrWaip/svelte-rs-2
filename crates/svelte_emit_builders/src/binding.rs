@@ -50,7 +50,11 @@ pub fn read_binding<'a>(
                 LegacyStateSafety::Static(s) => s,
                 LegacyStateSafety::FromVarDeclared => state.var_declared,
             };
-            Some(if safe { rune_safe_get(b, name) } else { rune_get(b, name) })
+            Some(if safe {
+                rune_safe_get(b, name)
+            } else {
+                rune_get(b, name)
+            })
         }
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
@@ -61,8 +65,7 @@ pub fn read_binding<'a>(
             ..
         }) => Some(rune_get(b, name)),
         BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-            destructured: true,
-            ..
+            destructured: true, ..
         }) => None,
         BindingSemantics::Contextual(ck) => match ck {
             ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor)

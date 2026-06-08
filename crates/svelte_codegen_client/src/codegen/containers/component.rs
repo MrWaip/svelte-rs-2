@@ -1,8 +1,8 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
+use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BindingSemantics, ContextualBindingSemantics};
+use svelte_analyze::{BindingSemantics, ContextualBindingSemantics, Volatility};
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -99,7 +99,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
-        let is_dynamic = self.ctx.is_dynamic_component(el_id) || is_svelte_component_legacy;
 
         let mut props =
             self.build_component_props(el_id, is_svelte_component_legacy, initial_memo_counter)?;
@@ -109,18 +108,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.build_component_events(el_id, events, &mut props.items, &mut init_stmts)?;
         let mut bind_init_stmts = mem::take(&mut props.bind_init_stmts);
 
-        let (anchor_expr_early, dynamic_anchor_name) = if is_dynamic {
-            (None, Some(self.comment_anchor_node_name(state, ctx)?))
-        } else {
-            let anchor = self.direct_anchor_expr(state, ctx)?;
-            for stmt in bind_init_stmts.drain(..) {
-                state.init.push(stmt);
-            }
-            for stmt in init_stmts.drain(..) {
-                state.init.push(stmt);
-            }
-            (Some(anchor), None)
-        };
+        let (anchor_expr_early, dynamic_anchor_name) =
+            match self.ctx.expression_data(el_id).map(|d| d.volatility) {
+                Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
+                    (None, Some(self.comment_anchor_node_name(state, ctx)?))
+                }
+                Some(Volatility::Static) | None => {
+                    let anchor = self.direct_anchor_expr(state, ctx)?;
+                    for stmt in bind_init_stmts.drain(..) {
+                        state.init.push(stmt);
+                    }
+                    for stmt in init_stmts.drain(..) {
+                        state.init.push(stmt);
+                    }
+                    (Some(anchor), None)
+                }
+            };
 
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
@@ -188,26 +191,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let props_expr = self.build_props_expr(props.items);
 
-        if is_dynamic {
-            let anchor_node = dynamic_anchor_name
-                .expect("dynamic component must have a pre-allocated anchor name");
-            return self.emit_dynamic_component(
-                state,
-                el_id,
-                &cn_name,
-                is_svelte_component_legacy,
-                props.bind_this,
-                props.svelte_component_this,
-                props_expr,
-                snippet_children.decls,
-                props.memo_decls,
-                props.ownership_bindings,
-                bind_init_stmts,
-                init_stmts,
-                props.validate_binding_stmts,
-                span_start,
-                anchor_node,
-            );
+        match self.ctx.expression_data(el_id).map(|d| d.volatility) {
+            Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
+                let anchor_node = dynamic_anchor_name
+                    .expect("dynamic component must have a pre-allocated anchor name");
+                return self.emit_dynamic_component(
+                    state,
+                    el_id,
+                    &cn_name,
+                    is_svelte_component_legacy,
+                    props.bind_this,
+                    props.svelte_component_this,
+                    props_expr,
+                    snippet_children.decls,
+                    props.memo_decls,
+                    props.ownership_bindings,
+                    bind_init_stmts,
+                    init_stmts,
+                    props.validate_binding_stmts,
+                    span_start,
+                    anchor_node,
+                );
+            }
+            Some(Volatility::Static) | None => {}
         }
 
         let anchor_expr = anchor_expr_early

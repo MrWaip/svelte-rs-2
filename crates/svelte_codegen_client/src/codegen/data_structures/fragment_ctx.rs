@@ -46,8 +46,8 @@ impl<'a> FragmentCtx<'a> {
     pub fn root(ctx: &Ctx<'a>, fragment_id: svelte_ast::FragmentId) -> Self {
         let fragment = ctx.query.component.store.fragment(fragment_id);
         let namespace = ctx.query.view.fragment_namespace(fragment_id);
-        let svg_fragment = matches!(namespace, Namespace::Svg)
-            || fragment_children_are_svg(ctx, fragment_id);
+        let svg_fragment =
+            matches!(namespace, Namespace::Svg) || fragment_children_are_svg(ctx, fragment_id);
         Self {
             preserve_whitespace: ctx.query.view.preserve_whitespace(),
             preserve_comments: ctx.query.view.preserve_comments(),

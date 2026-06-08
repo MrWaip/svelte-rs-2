@@ -189,7 +189,11 @@ fn main() -> ExitCode {
         }
         println!(
             "---- {} ----",
-            if js_match && css_match { "OK" } else { "MISMATCH" }
+            if js_match && css_match {
+                "OK"
+            } else {
+                "MISMATCH"
+            }
         );
         return if js_match && css_match {
             ExitCode::SUCCESS

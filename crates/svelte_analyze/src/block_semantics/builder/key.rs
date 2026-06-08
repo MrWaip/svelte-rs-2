@@ -1,27 +1,26 @@
 use super::super::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
 use super::walker::Ctx;
-use crate::expression_semantics::{ExprKind, ExpressionSemantics};
-use smallvec::SmallVec;
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use svelte_ast::KeyBlock;
 
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
     ctx.visit_fragment(block.fragment);
 
-    let (has_await, blockers) = match ctx.expressions.get(block.id) {
+    let async_kind = match ctx.expressions.get(block.id) {
         ExpressionSemantics::Expression(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            (has_await, d.blockers.clone())
+            let blockers = d.blockers.clone();
+            match d.volatility {
+                Volatility::Asynchronous => KeyAsyncKind::Awaited { blockers },
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                    if blockers.is_empty() {
+                        KeyAsyncKind::Sync
+                    } else {
+                        KeyAsyncKind::Deferred { blockers }
+                    }
+                }
+            }
         }
-        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
-    };
-
-    let async_kind = if !has_await && blockers.is_empty() {
-        KeyAsyncKind::Sync
-    } else {
-        KeyAsyncKind::Async {
-            has_await,
-            blockers,
-        }
+        ExpressionSemantics::NonSpecial => KeyAsyncKind::Sync,
     };
 
     ctx.store.set(
@@ -32,6 +31,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
 
 #[cfg(test)]
 mod tests {
+    use crate::expression_semantics::Volatility;
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
     use svelte_ast::{Component, KeyBlock, Node};
@@ -133,14 +133,10 @@ mod tests {
         assert_key_async(
             r#"<script>let p = Promise.resolve(1);</script>{#key await p}<span></span>{/key}"#,
             |sem| match &sem.async_kind {
-                KeyAsyncKind::Async {
-                    has_await,
-                    blockers,
-                } => {
-                    assert!(*has_await);
+                KeyAsyncKind::Awaited { blockers } => {
                     assert!(blockers.is_empty());
                 }
-                other => panic!("expected Async, got {other:?}"),
+                other => panic!("expected Awaited, got {other:?}"),
             },
         );
     }

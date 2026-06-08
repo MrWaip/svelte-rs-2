@@ -133,24 +133,22 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         let Some(declarator) = decl.declarations.first() else {
             return;
         };
-        let is_destructured = !matches!(
-            declarator.id,
-            BindingPattern::BindingIdentifier(_),
-        );
+        let is_destructured = !matches!(declarator.id, BindingPattern::BindingIdentifier(_),);
         let initial_is_function = !is_destructured
             && matches!(
                 declarator.init.as_ref().map(|e| e.get_inner_expression()),
-                Some(
-                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_),
-                ),
+                Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_),),
             );
         let mut syms: Vec<SymbolId> = Vec::new();
         svelte_component_semantics::walk_bindings(&declarator.id, |v| syms.push(v.symbol));
 
         for sym in syms.iter().copied() {
-            ctx.data
-                .reactivity
-                .record_const_binding(sym, is_destructured, initial_is_function, tag.id);
+            ctx.data.reactivity.record_const_binding(
+                sym,
+                is_destructured,
+                initial_is_function,
+                tag.id,
+            );
         }
     }
 
@@ -173,8 +171,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
             let Some(pattern) = legacy_slot_pattern(stmt) else {
                 return;
             };
-            let is_destructured =
-                !matches!(pattern, BindingPattern::BindingIdentifier(_));
+            let is_destructured = !matches!(pattern, BindingPattern::BindingIdentifier(_));
             let mut syms: Vec<(SymbolId, bool)> = Vec::new();
             svelte_component_semantics::walk_bindings(pattern, |v| {
                 let leaked = v.path.iter().any(|s| {
@@ -375,12 +372,7 @@ impl TemplateVisitor for EachSourcePromoter {
         };
 
         let mut inner_mutated_bindings = false;
-        collect_each_body_inner_mutation(
-            block,
-            ctx,
-            parsed,
-            &mut inner_mutated_bindings,
-        );
+        collect_each_body_inner_mutation(block, ctx, parsed, &mut inner_mutated_bindings);
 
         if !inner_mutated_bindings
             && !item_syms
@@ -398,13 +390,13 @@ impl TemplateVisitor for EachSourcePromoter {
         collector.visit_expression(expr);
 
         let immutable = ctx.data.script.immutable;
-        let store_candidate_refs: FxHashSet<ReferenceId> =
-            ctx.data
-                .scoping
-                .store_candidate_refs()
-                .iter()
-                .map(|(_, ref_id)| *ref_id)
-                .collect();
+        let store_candidate_refs: FxHashSet<ReferenceId> = ctx
+            .data
+            .scoping
+            .store_candidate_refs()
+            .iter()
+            .map(|(_, ref_id)| *ref_id)
+            .collect();
         let mut promoted_sources: Vec<SymbolId> = Vec::new();
         let mut collection_store: Option<SymbolId> = None;
         for ref_id in collector.refs {
@@ -944,4 +936,3 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
         self.visit_formal_parameters(&arrow.params);
     }
 }
-

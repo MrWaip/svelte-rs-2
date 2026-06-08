@@ -1,9 +1,8 @@
 use super::super::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
 use super::common::declarator_from_stmt;
 use super::walker::Ctx;
-use crate::expression_semantics::{ExprKind, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use oxc_ast::ast::Statement;
-use smallvec::SmallVec;
 use svelte_ast::ConstTag;
 
 pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
@@ -18,20 +17,21 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     let Some(_) = declarator_from_stmt(stmt) else {
         return;
     };
-    let (has_await, blockers) = match ctx.expressions.get(tag.id) {
+    let async_kind = match ctx.expressions.get(tag.id) {
         ExpressionSemantics::Expression(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            (has_await, d.blockers.clone())
+            let blockers = d.blockers.clone();
+            match d.volatility {
+                Volatility::Asynchronous => ConstTagAsyncKind::Awaited { blockers },
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                    if blockers.is_empty() {
+                        ConstTagAsyncKind::Sync
+                    } else {
+                        ConstTagAsyncKind::Deferred { blockers }
+                    }
+                }
+            }
         }
-        ExpressionSemantics::NonSpecial => (false, SmallVec::new()),
-    };
-    let async_kind = if !has_await && blockers.is_empty() {
-        ConstTagAsyncKind::Sync
-    } else {
-        ConstTagAsyncKind::Async {
-            has_await,
-            blockers,
-        }
+        ExpressionSemantics::NonSpecial => ConstTagAsyncKind::Sync,
     };
 
     ctx.store.set(
@@ -47,8 +47,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
 mod tests {
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{
-        AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, DeclaratorSemantics,
-        DerivedEmit,
+        AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics,
+        DeclaratorSemantics, DerivedEmit,
     };
     use oxc_ast::{AstKind, ast::BindingPattern};
     use svelte_ast::{Component, ConstTag, Node};

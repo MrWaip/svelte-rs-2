@@ -3,7 +3,7 @@ use super::super::{
 };
 use super::walker::Ctx;
 use crate::ReferenceSemantics;
-use crate::expression_semantics::{ExprKind, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
 use oxc_ast::ast::{Argument, ChainElement, Expression};
@@ -63,16 +63,20 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
 
 fn derive_async_kind(ctx: &Ctx<'_, '_>, tag: &RenderTag) -> RenderAsyncKind {
     match ctx.expressions.get(tag.id) {
-        ExpressionSemantics::Expression(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            if !has_await && d.blockers.is_empty() {
-                RenderAsyncKind::Sync
-            } else {
-                RenderAsyncKind::Async {
-                    blockers: d.blockers.clone(),
+        ExpressionSemantics::Expression(d) => match d.volatility {
+            Volatility::Asynchronous => RenderAsyncKind::Async {
+                blockers: d.blockers.clone(),
+            },
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                if d.blockers.is_empty() {
+                    RenderAsyncKind::Sync
+                } else {
+                    RenderAsyncKind::Async {
+                        blockers: d.blockers.clone(),
+                    }
                 }
             }
-        }
+        },
         ExpressionSemantics::NonSpecial => RenderAsyncKind::Sync,
     }
 }
@@ -114,20 +118,25 @@ fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind 
         _ => return RenderArgKind::InertThunk,
     };
 
-    if matches!(data.kind, ExprKind::Async { has_await: true }) {
-        let inner_node_id = if let Expression::AwaitExpression(aw) = expr.get_inner_expression() {
-            Some(expression_node_id(&aw.argument))
-        } else {
-            None
-        };
-        return RenderArgKind::AwaitMemo { inner_node_id };
+    match data.volatility {
+        Volatility::Asynchronous => {
+            let inner_node_id = if let Expression::AwaitExpression(aw) = expr.get_inner_expression()
+            {
+                Some(expression_node_id(&aw.argument))
+            } else {
+                None
+            };
+            RenderArgKind::AwaitMemo { inner_node_id }
+        }
+        Volatility::Heavy => {
+            if data.blockers.is_empty() {
+                RenderArgKind::NeedsMemo
+            } else {
+                RenderArgKind::InertThunk
+            }
+        }
+        Volatility::Static | Volatility::Reactive => RenderArgKind::InertThunk,
     }
-
-    if matches!(data.kind, ExprKind::Call { dynamic: true }) {
-        return RenderArgKind::NeedsMemo;
-    }
-
-    RenderArgKind::InertThunk
 }
 
 fn passthrough_prop_binding(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<SymbolId> {

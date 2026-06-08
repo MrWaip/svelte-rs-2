@@ -13,7 +13,9 @@ use super::async_check::is_expression_async;
 use super::model::PendingPropMutationValidation;
 
 use super::model::ComponentTransformer;
-use crate::rune_refs::{replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy};
+use crate::rune_refs::{
+    replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy,
+};
 
 fn assign_op_literal(op: AssignmentOperator) -> Option<&'static str> {
     match op {
@@ -87,8 +89,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) {
         replace_expr_root_in_assign_target(
             target,
-            self.b
-                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
+            self.b.call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
@@ -99,8 +100,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) {
         replace_expr_root_in_simple_target(
             target,
-            self.b
-                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
+            self.b.call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
@@ -224,14 +224,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let op_literal = assign_op_literal(assign.operator);
-        let is_static = matches!(
-            &assign.left,
-            AssignmentTarget::StaticMemberExpression(_)
-        );
-        let is_computed = matches!(
-            &assign.left,
-            AssignmentTarget::ComputedMemberExpression(_)
-        );
+        let is_static = matches!(&assign.left, AssignmentTarget::StaticMemberExpression(_));
+        let is_computed = matches!(&assign.left, AssignmentTarget::ComputedMemberExpression(_));
         let should_rewrite_assign = op_literal.is_some() && (is_static || is_computed);
         if !should_rewrite_assign {
             if let Some(source_root_name) = bindable_prop_source_root_name {
@@ -523,17 +517,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         };
         let op_literal = assign_op_literal(assign.operator);
-        let is_static = matches!(
-            &assign.left,
-            AssignmentTarget::StaticMemberExpression(_)
-        );
-        let is_computed = matches!(
-            &assign.left,
-            AssignmentTarget::ComputedMemberExpression(_)
-        );
-        let should_rewrite_assign = op_literal.is_some()
-            && (is_static || is_computed)
-            && should_proxy(&assign.right);
+        let is_static = matches!(&assign.left, AssignmentTarget::StaticMemberExpression(_));
+        let is_computed = matches!(&assign.left, AssignmentTarget::ComputedMemberExpression(_));
+        let should_rewrite_assign =
+            op_literal.is_some() && (is_static || is_computed) && should_proxy(&assign.right);
         if !should_rewrite_assign {
             return;
         }

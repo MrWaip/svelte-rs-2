@@ -3,14 +3,17 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::attribute_semantics::data::ComponentPropMemo;
-use crate::expression_semantics::ExprKind;
 use crate::types::data::{
-    BindingSemantics, BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
+    BindTargetSemantics, BindingSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
     ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
-    ParentKind, PropBindingKind, PropBindingSemantics, RichContentParentKind,
+    JsAst, ParentKind, PropBindingKind, PropBindingSemantics, RichContentParentKind,
 };
-use crate::utils::{is_delegatable_event, is_passive_event, is_simple_identifier, strip_capture_event};
+use crate::utils::{
+    expression_calls_or_awaits, is_delegatable_event, is_passive_event, is_simple_identifier,
+    strip_capture_event,
+};
 use crate::walker::{TemplateVisitor, VisitContext};
+use svelte_component_semantics::OxcNodeId;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
@@ -112,9 +115,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ctx.data.elements.flags.is_selectedcontent.insert(el.id);
         }
 
-        let has_group = el.attributes.iter().any(|attr| {
-            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
-        });
+        let has_group = el
+            .attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::BindDirective(d) if d.name == "group"));
         if has_group {
             ctx.data
                 .template
@@ -124,9 +128,12 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ctx.data.template.bind_semantics.any_bind_group = true;
         }
 
-        let has_contenteditable =
-            ctx.data
-                .has_true_boolean_attribute(el.id, &el.attributes, "contenteditable", self.source);
+        let has_contenteditable = ctx.data.has_true_boolean_attribute(
+            el.id,
+            &el.attributes,
+            "contenteditable",
+            self.source,
+        );
         let has_content_bind = el.attributes.iter().any(|attr| {
             matches!(attr, Attribute::BindDirective(d) if matches!(
                 d.name.as_str(),
@@ -264,8 +271,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
-                    let (name, capture) = if let Some(base) = strip_capture_event(raw)
-                    {
+                    let (name, capture) = if let Some(base) = strip_capture_event(raw) {
                         (base, true)
                     } else {
                         (raw, false)
@@ -338,11 +344,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
     }
 
-    fn visit_svelte_self(
-        &mut self,
-        cn: &svelte_ast::SvelteSelf,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
+    fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
     }
@@ -355,9 +357,9 @@ impl<'src> ElementFlagsVisitor<'src> {
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let has_group = attributes.iter().any(|attr| {
-            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
-        });
+        let has_group = attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::BindDirective(d) if d.name == "group"));
         if has_group {
             ctx.data
                 .template
@@ -374,6 +376,7 @@ impl<'src> ElementFlagsVisitor<'src> {
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        let parsed = ctx.parsed;
         let data = &mut *ctx.data;
         for attr in attributes {
             let css_prop_name: Option<&str> = match attr {
@@ -385,7 +388,7 @@ impl<'src> ElementFlagsVisitor<'src> {
             if let Some(name) = css_prop_name {
                 let (value, memo) = match attr {
                     Attribute::ExpressionAttribute(a) => {
-                        let memo = derive_css_prop_memo(data, a.id);
+                        let memo = derive_css_prop_memo(data, parsed, a.id, a.expression.id());
                         (
                             Some(ComponentCssPropValue::Expression(a.expression.id())),
                             memo,
@@ -501,16 +504,12 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 .scoping
                                 .find_binding(root, &source_lookup_name)
                                 .map(|sym| {
-                                    let decl = data
-                                        .reactivity
-                                        .binding_semantics(sym);
+                                    let decl = data.reactivity.binding_semantics(sym);
                                     match decl {
-                                        BindingSemantics::Prop(
-                                            PropBindingSemantics {
-                                                kind: PropBindingKind::Source { .. },
-                                                ..
-                                            },
-                                        )
+                                        BindingSemantics::Prop(PropBindingSemantics {
+                                            kind: PropBindingKind::Source { .. },
+                                            ..
+                                        })
                                         | BindingSemantics::LegacyBindableProp(_) => {
                                             ComponentBindMode::PropSource
                                         }
@@ -566,24 +565,30 @@ impl<'src> ElementFlagsVisitor<'src> {
                 }
                 _ => continue,
             };
-            let is_dynamic = data.node_volatile(attr.id());
             data.elements
                 .flags
                 .component_props
                 .get_or_default(cn_id)
-                .push(ComponentPropInfo { kind, is_dynamic });
+                .push(ComponentPropInfo { kind });
         }
     }
 }
 
 fn derive_css_prop_memo(
     data: &crate::types::data::AnalysisData,
+    parsed: Option<&JsAst>,
     attr_id: svelte_ast::NodeId,
+    expr_id: OxcNodeId,
 ) -> ComponentPropMemo {
-    match data.expression_data(attr_id) {
-        Some(d) if matches!(d.kind, ExprKind::Call { .. } | ExprKind::Async { .. }) => {
-            ComponentPropMemo::Derived
-        }
-        _ => ComponentPropMemo::Inline,
+    let calls_or_awaits = parsed
+        .and_then(|p| p.expr(expr_id))
+        .is_some_and(expression_calls_or_awaits);
+    let has_blockers = data
+        .expression_data(attr_id)
+        .is_some_and(|d| !d.blockers.is_empty());
+    if calls_or_awaits || has_blockers {
+        ComponentPropMemo::Derived
+    } else {
+        ComponentPropMemo::Inline
     }
 }

@@ -4,7 +4,7 @@ use super::super::{
 };
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
-use crate::expression_semantics::{ExprKind, ExpressionData, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
 use crate::reactivity_semantics::data::{
     BindingSemantics, PropBindingKind, PropBindingSemantics, PropReferenceSemantics,
     ReferenceSemantics,
@@ -196,17 +196,20 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
 
 fn derive_async_kind(data: Option<&ExpressionData>) -> EachAsyncKind {
     match data {
-        Some(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            if has_await || !d.blockers.is_empty() {
-                EachAsyncKind::Async {
-                    has_await,
-                    blockers: d.blockers.clone(),
+        Some(d) => match d.volatility {
+            Volatility::Asynchronous => EachAsyncKind::Awaited {
+                blockers: d.blockers.clone(),
+            },
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                if d.blockers.is_empty() {
+                    EachAsyncKind::Sync
+                } else {
+                    EachAsyncKind::Deferred {
+                        blockers: d.blockers.clone(),
+                    }
                 }
-            } else {
-                EachAsyncKind::Sync
             }
-        }
+        },
         None => EachAsyncKind::Sync,
     }
 }
@@ -219,9 +222,6 @@ fn derive_collection_source<'a>(
     let Some(d) = data else {
         return EachCollectionSource::Local;
     };
-    if !matches!(d.kind, ExprKind::SimpleRead { .. }) {
-        return EachCollectionSource::Local;
-    }
     if d.references.len() != 1 {
         return EachCollectionSource::Local;
     }
@@ -339,10 +339,7 @@ fn derive_forces_runtime_context<'a>(
     false
 }
 
-fn bare_call_identifier_callee<'a>(
-    ctx: &Ctx<'_, 'a>,
-    expr: &Expression<'a>,
-) -> Option<SymbolId> {
+fn bare_call_identifier_callee<'a>(ctx: &Ctx<'_, 'a>, expr: &Expression<'a>) -> Option<SymbolId> {
     let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return None;
     };

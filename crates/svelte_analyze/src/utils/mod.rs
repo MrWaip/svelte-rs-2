@@ -17,7 +17,7 @@ pub use events::{
     is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
     strip_capture_event,
 };
-pub use expression_await::expression_has_await;
+pub use expression_await::{expression_calls_or_awaits, expression_has_await};
 pub use ident_gen::{IdentGen, IdentGenSnapshot};
 pub use property_key::property_key_static_name;
 pub use simple_expression::is_simple_expression;

@@ -1,5 +1,5 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
+use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::NamespaceKind;
@@ -7,6 +7,7 @@ use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::Arg;
 
 use super::super::attributes::AttributeOwnerKind;
+use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
@@ -29,9 +30,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .cloned()
             .collect();
 
-        let tag_async_plan =
-            super::super::data_structures::AsyncEmission::for_node(self.ctx, el_id);
-        let needs_async_tag = tag_async_plan.needs_async();
+        let tag_async_plan = AsyncEmission::for_node(self.ctx, el_id);
 
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
@@ -63,20 +62,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None
         };
 
-        let tag_async_thunk: Option<Expression<'a>> = if needs_async_tag {
-            use oxc_allocator::CloneIn;
-            let cloned = tag_expr.clone_in(self.ctx.b.ast.allocator);
-            tag_async_plan.async_thunk(self.ctx, cloned)
-        } else {
-            None
+        let tag_async_thunk: Option<Expression<'a>> = match &tag_async_plan {
+            AsyncEmission::Awaited { .. } => {
+                use oxc_allocator::CloneIn;
+                let cloned = tag_expr.clone_in(self.ctx.b.ast.allocator);
+                Some(self.ctx.b.async_thunk(cloned))
+            }
+            AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
         };
 
-        let get_tag = if needs_async_tag {
-            self.ctx
-                .b
-                .thunk(rune_get(&self.ctx.b, "$$tag"))
-        } else {
-            self.ctx.b.thunk(tag_expr)
+        let get_tag = match &tag_async_plan {
+            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => {
+                self.ctx.b.thunk(rune_get(&self.ctx.b, "$$tag"))
+            }
+            AsyncEmission::Sync => self.ctx.b.thunk(tag_expr),
         };
 
         let is_svg_or_mathml = matches!(
@@ -201,10 +200,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_ns = ns_thunk.is_some() || needs_loc;
         let needs_cb = callback.is_some() || needs_ns;
 
-        let element_anchor_ident = if needs_async_tag {
-            "node"
-        } else {
-            anchor_node.as_str()
+        let element_anchor_ident = match &tag_async_plan {
+            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => "node",
+            AsyncEmission::Sync => anchor_node.as_str(),
         };
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident(element_anchor_ident),
@@ -232,27 +230,33 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let element_stmt = self.ctx.b.call_stmt("$.element", args);
-        let final_stmt = if needs_async_tag {
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-            let inner_stmts = if dev_stmts.is_empty() {
-                vec![element_stmt]
-            } else {
-                dev_stmts.push(element_stmt);
-                dev_stmts
-            };
-            tag_async_plan.emit_async_call_stmt(
-                self.ctx,
-                anchor_expr,
-                "node",
-                "$$tag",
-                tag_async_thunk,
-                inner_stmts,
-            )
-        } else if dev_stmts.is_empty() {
-            element_stmt
-        } else {
-            dev_stmts.push(element_stmt);
-            self.ctx.b.block_stmt(dev_stmts)
+        let final_stmt = match &tag_async_plan {
+            AsyncEmission::Awaited { blockers } | AsyncEmission::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+                let inner_stmts = if dev_stmts.is_empty() {
+                    vec![element_stmt]
+                } else {
+                    dev_stmts.push(element_stmt);
+                    dev_stmts
+                };
+                self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    "node",
+                    "$$tag",
+                    tag_async_thunk,
+                    inner_stmts,
+                )?
+            }
+            AsyncEmission::Sync => {
+                if dev_stmts.is_empty() {
+                    element_stmt
+                } else {
+                    dev_stmts.push(element_stmt);
+                    self.ctx.b.block_stmt(dev_stmts)
+                }
+            }
         };
         state.init.push(final_stmt);
         Ok(anchor_node)

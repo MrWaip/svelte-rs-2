@@ -5,23 +5,22 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective, ComponentNode,
-    ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag,
-    HtmlTag, SpreadAttribute,
-    IfBlock, KeyBlock, LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY,
-    SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
-    SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text, TransitionDirection, TransitionDirective,
-    UseDirective, is_svg,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
+    ComponentNode, ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef,
+    ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy, Node,
+    NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
+    SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock, SpreadAttribute,
+    SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead,
+    SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective, is_svg,
 };
 use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::expression_semantics::ExprKind;
+use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindHostKind, BindingSemantics, BindPropertyKind, BindTargetSemantics, ConstBindingSemantics,
+    BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ConstBindingSemantics,
     ElementSizeKind,
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
@@ -819,8 +818,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
         check_opening_sigil(tag.span, b'@', ctx);
         if let Some(parsed) = ctx.parsed()
-            && let Some(Statement::VariableDeclaration(decl)) =
-                parsed.stmt(tag.decl.id())
+            && let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id())
             && decl.declarations.len() > 1
         {
             ctx.warnings_mut().push(Diagnostic::error(
@@ -1076,11 +1074,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
-    fn visit_svelte_self(
-        &mut self,
-        cn: &svelte_ast::SvelteSelf,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
+    fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.maybe_warn_legacy_special_element(SVELTE_SELF, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
@@ -1257,7 +1251,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(attr.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_template_await_experimental(ctx, &attr.expression);
         }
@@ -1303,7 +1300,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         } else {
             ctx.parsed()
                 .and_then(|p| p.expr(dir.expression.id()))
-                .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::Identifier(_)))
+                .is_some_and(|expr| {
+                    matches!(expr.get_inner_expression(), Expression::Identifier(_))
+                })
         };
 
         let shape = bind_expression_kind(dir, ctx);
@@ -1339,7 +1338,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, &dir.expression);
         }
@@ -1377,7 +1379,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(dir.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1430,7 +1435,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1552,7 +1560,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_template_await_experimental(ctx, &tag.expression);
         }
@@ -1579,7 +1590,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_directive_await_diagnostic(ctx, &tag.expression);
         }
@@ -1656,7 +1670,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1942,9 +1959,7 @@ fn validate_bind_parent_specifics(
 
     if matches!(
         bind_property,
-        Some(BindPropertyKind::ElementSize(
-            ElementSizeKind::OffsetWidth
-        ))
+        Some(BindPropertyKind::ElementSize(ElementSizeKind::OffsetWidth))
     ) && is_svg(&parent.name)
     {
         emit_bind_error(
@@ -2137,10 +2152,7 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
     }
 }
 
-fn bind_base_symbol(
-    dir: &BindDirective,
-    ctx: &VisitContext<'_, '_>,
-) -> Option<SymbolId> {
+fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_, '_>) -> Option<SymbolId> {
     if dir.shorthand {
         return ctx.data.shorthand_symbol(dir.id);
     }
@@ -2398,9 +2410,7 @@ fn should_emit_snippet_conflict(
                     only_const_tags = false;
                     continue;
                 };
-                let Some(Statement::VariableDeclaration(decl)) =
-                    parsed.stmt(tag.decl.id())
-                else {
+                let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id()) else {
                     only_const_tags = false;
                     continue;
                 };
@@ -2575,12 +2585,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
                     None => continue,
                 };
                 if name == parent_element {
-                    if let Some(message) =
-                        is_tag_valid_with_parent(
-                            &el.name,
-                            &parent_element,
-                        )
-                    {
+                    if let Some(message) = is_tag_valid_with_parent(&el.name, &parent_element) {
                         emit_invalid_placement(el, message, only_warn, ctx);
                     }
                     past_parent = true;
@@ -2593,9 +2598,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
             };
             ancestors.push(name);
             let refs: Vec<&str> = ancestors.iter().map(String::as_str).collect();
-            if let Some(message) =
-                is_tag_valid_with_ancestor(&el.name, &refs)
-            {
+            if let Some(message) = is_tag_valid_with_ancestor(&el.name, &refs) {
                 emit_invalid_placement(el, message, only_warn, ctx);
             }
         } else if matches!(
@@ -2639,10 +2642,7 @@ fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option
     is_tag_valid_with_parent("#text", element.name.as_str())
 }
 
-fn is_each_block_var_ref(
-    ident: &IdentifierReference<'_>,
-    data: &AnalysisData,
-) -> bool {
+fn is_each_block_var_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
     ident
         .reference_id
         .get()
@@ -2658,10 +2658,7 @@ fn is_each_block_var_ref(
         })
 }
 
-fn is_snippet_param_ref(
-    ident: &IdentifierReference<'_>,
-    data: &AnalysisData,
-) -> bool {
+fn is_snippet_param_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
     ident
         .reference_id
         .get()
@@ -2874,9 +2871,7 @@ fn component_has_implicit_default_children(
     None
 }
 
-fn extract_arrow_params<'s, 'a: 's>(
-    stmt: &'s Statement<'a>,
-) -> Option<&'s FormalParameters<'a>> {
+fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s FormalParameters<'a>> {
     let Statement::VariableDeclaration(decl) = stmt else {
         return None;
     };
@@ -3323,7 +3318,10 @@ fn check_template_await(ctx: &mut VisitContext<'_, '_>, id: NodeId, expression: 
     if ctx
         .data
         .expression_data(id)
-        .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+        .is_some_and(|d| match d.volatility {
+            Volatility::Asynchronous => true,
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+        })
     {
         emit_template_await_experimental(ctx, expression);
     }

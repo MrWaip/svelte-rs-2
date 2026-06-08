@@ -1,7 +1,5 @@
 use oxc_allocator::Vec as OxcVec;
-use oxc_ast::ast::{
-    BindingPattern, Expression, ModuleExportName, Statement, VariableDeclaration,
-};
+use oxc_ast::ast::{BindingPattern, Expression, ModuleExportName, Statement, VariableDeclaration};
 use oxc_span::{GetSpan, GetSpanMut};
 use svelte_analyze::{
     BindingSemantics, LegacyBindablePropSemantics, PropDefaultKind, PropsFlags, is_let_or_var,
@@ -12,7 +10,10 @@ use super::derived;
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_split_export_props_legacy(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
+    pub(crate) fn rewrite_split_export_props_legacy(
+        &mut self,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
+    ) {
         let mut i = 0;
         let mut renamed: rustc_hash::FxHashMap<String, Option<String>> =
             rustc_hash::FxHashMap::default();

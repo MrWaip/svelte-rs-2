@@ -2,7 +2,8 @@
 
 use svelte_ast::{
     AwaitBlock, ComponentNode, EachBlock, Element, ExprRef, FragmentRole, IfBlock, KeyBlock, Node,
-    NodeId, SVELTE_COMPONENT, SVELTE_SELF, SnippetBlock, StmtRef, SvelteComponentLegacy, SvelteSelf,
+    NodeId, SVELTE_COMPONENT, SVELTE_SELF, SnippetBlock, StmtRef, SvelteComponentLegacy,
+    SvelteSelf,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;

@@ -32,7 +32,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(sym));
             let init = declarator.init.take();
-            let call = build_legacy_prop_call(self.b, self.gen_arrow_scope, name, None, legacy, init);
+            let call =
+                build_legacy_prop_call(self.b, self.gen_arrow_scope, name, None, legacy, init);
             out.push(self.build_leaf_declarator(decl_kind, name, call));
             return;
         }
@@ -68,9 +69,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return;
             };
 
-            let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(v.symbol));
-            let call =
-                build_legacy_prop_call(self.b, self.gen_arrow_scope, name, None, legacy, Some(access));
+            let name: &'a str = self
+                .b
+                .alloc_str(self.component_scoping.symbol_name(v.symbol));
+            let call = build_legacy_prop_call(
+                self.b,
+                self.gen_arrow_scope,
+                name,
+                None,
+                legacy,
+                Some(access),
+            );
             leaf_declarators.push(self.build_leaf_declarator(decl_kind, name, call));
         });
 
@@ -139,12 +148,12 @@ fn build_legacy_prop_call<'a>(
         }
         PropDefaultKind::LazyAccessor => {
             args.push(Arg::Num(flags_bits as f64));
-            let default_expr = default_init.unwrap_or_else(|| {
-                panic!("lazy accessor default missing for legacy prop {local}")
-            });
+            let default_expr = default_init
+                .unwrap_or_else(|| panic!("lazy accessor default missing for legacy prop {local}"));
             let accessor_name = match &default_expr {
                 Expression::Identifier(id) => id.name.as_str().to_string(),
-                Expression::CallExpression(call) if call.arguments.is_empty() => match &call.callee {
+                Expression::CallExpression(call) if call.arguments.is_empty() => match &call.callee
+                {
                     Expression::Identifier(callee) => callee.name.as_str().to_string(),
                     _ => panic!(
                         "lazy accessor default must be a bare-identifier call for legacy prop {local}"

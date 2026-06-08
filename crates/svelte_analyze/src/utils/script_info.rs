@@ -1,7 +1,8 @@
 use compact_str::CompactString;
 use oxc_ast::ast::{
     BindingPattern, CallExpression, Declaration, Expression, Function, IdentifierReference,
-    ModuleExportName, Program, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
+    ModuleExportName, Program, PropertyKey, Statement, VariableDeclaration,
+    VariableDeclarationKind,
 };
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
@@ -289,10 +290,7 @@ fn collect_declarations_from_declaration(
     }
 }
 
-fn collect_func_declaration(
-    func: &Function<'_>,
-    declarations: &mut Vec<DeclarationInfo>,
-) {
+fn collect_func_declaration(func: &Function<'_>, declarations: &mut Vec<DeclarationInfo>) {
     if let Some(ident) = &func.id {
         declarations.push(DeclarationInfo {
             name: CompactString::from(ident.name.as_str()),
@@ -327,28 +325,26 @@ fn collect_var_declarations(
                 let name = CompactString::from(ident.name.as_str());
                 let decl_span = Span::new(ident.span.start, ident.span.end);
 
-                let (init_span, is_rune, rune_init_refs, init_literal, init_known) = if let Some(
-                    init,
-                ) =
-                    &declarator.init
-                {
-                    let init_sp = Span::new(init.span().start, init.span().end);
-                    let rune = detect_rune_in_runes_mode(init, runes);
-                    let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
-                        collect_derived_refs(init)
+                let (init_span, is_rune, rune_init_refs, init_literal, init_known) =
+                    if let Some(init) = &declarator.init {
+                        let init_sp = Span::new(init.span().start, init.span().end);
+                        let rune = detect_rune_in_runes_mode(init, runes);
+                        let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy))
+                        {
+                            collect_derived_refs(init)
+                        } else {
+                            vec![]
+                        };
+                        let literal = if rune.is_some() {
+                            extract_call_arg_literal(init)
+                        } else {
+                            extract_literal(init)
+                        };
+                        let known = rune.is_none() && extract_init_known(init);
+                        (Some(init_sp), rune, refs, literal, known)
                     } else {
-                        vec![]
+                        (None, None, vec![], None, false)
                     };
-                    let literal = if rune.is_some() {
-                        extract_call_arg_literal(init)
-                    } else {
-                        extract_literal(init)
-                    };
-                    let known = rune.is_none() && extract_init_known(init);
-                    (Some(init_sp), rune, refs, literal, known)
-                } else {
-                    (None, None, vec![], None, false)
-                };
 
                 if is_rune == Some(RuneKind::Props) {
                     *props_declaration = Some(PropsDeclaration {
@@ -362,10 +358,7 @@ fn collect_var_declarations(
                             is_simple_default: true,
                         }],
                         is_identifier_pattern: true,
-                        declaration_spans: vec![Span::new(
-                            decl.span.start,
-                            decl.span.end,
-                        )],
+                        declaration_spans: vec![Span::new(decl.span.start, decl.span.end)],
                         rest_pattern_span: None,
                     });
                 }
@@ -426,12 +419,10 @@ fn collect_var_declarations(
 
                     let mut rest_pattern_span = None;
                     if let Some(rest) = &obj_pat.rest
-                        && let BindingPattern::BindingIdentifier(ident) =
-                            &rest.argument
+                        && let BindingPattern::BindingIdentifier(ident) = &rest.argument
                     {
                         let rest_name = CompactString::from(ident.name.as_str());
-                        let decl_span =
-                            Span::new(ident.span.start, ident.span.end);
+                        let decl_span = Span::new(ident.span.start, ident.span.end);
                         declarations.push(DeclarationInfo {
                             name: rest_name.clone(),
                             span: decl_span,
@@ -451,17 +442,13 @@ fn collect_var_declarations(
                             is_rest: true,
                             is_simple_default: true,
                         });
-                        rest_pattern_span =
-                            Some(Span::new(rest.span.start, rest.span.end));
+                        rest_pattern_span = Some(Span::new(rest.span.start, rest.span.end));
                     }
 
                     *props_declaration = Some(PropsDeclaration {
                         props,
                         is_identifier_pattern: false,
-                        declaration_spans: vec![Span::new(
-                            decl.span.start,
-                            decl.span.end,
-                        )],
+                        declaration_spans: vec![Span::new(decl.span.start, decl.span.end)],
                         rest_pattern_span,
                     });
                 } else if matches!(
@@ -486,8 +473,7 @@ fn collect_var_declarations(
                             vec![]
                         };
                     for name in names {
-                        let decl_span =
-                            Span::new(declarator.span.start, declarator.span.end);
+                        let decl_span = Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
                             name: CompactString::from(&name),
                             span: decl_span,
@@ -528,8 +514,7 @@ fn collect_var_declarations(
                             vec![]
                         };
                     for name in names {
-                        let decl_span =
-                            Span::new(declarator.span.start, declarator.span.end);
+                        let decl_span = Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
                             name: CompactString::from(&name),
                             span: decl_span,

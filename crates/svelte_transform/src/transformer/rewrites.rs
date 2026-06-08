@@ -46,10 +46,7 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
 }
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn identifier_is_store_read(
-        &self,
-        ident: &IdentifierReference<'a>,
-    ) -> bool {
+    pub(crate) fn identifier_is_store_read(&self, ident: &IdentifierReference<'a>) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -281,9 +278,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy)
             }
-            ReferenceSemantics::DerivedWrite => {
-                self.rewrite_derived_identifier_assignment(node)
-            }
+            ReferenceSemantics::DerivedWrite => self.rewrite_derived_identifier_assignment(node),
             ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
             | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
                 if !self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy) {
@@ -351,8 +346,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::UpdateExpression(upd) = node else {
             return false;
         };
-        let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
-        else {
+        let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
             return false;
         };
         let Some(ref_id) = id.reference_id.get() else {
@@ -626,8 +620,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::AssignmentExpression(assign) = &*node else {
                 return false;
             };
-            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-            else {
+            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -749,9 +742,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::UpdateExpression(upd) = &*node else {
                 return false;
             };
-            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                &upd.argument
-            else {
+            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -769,7 +760,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::StoreUpdate { symbol } => {
                 let base_sym = store_base_symbol(analysis, symbol);
                 let base_name = analysis.scoping.symbol_name(base_sym);
-                *node = make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
+                *node =
+                    make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
                 true
             }
             ReferenceSemantics::SignalUpdate {
@@ -800,8 +792,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::AssignmentExpression(assign) = &*node else {
                 return false;
             };
-            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-            else {
+            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -839,9 +830,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::UpdateExpression(upd) = &*node else {
                 return false;
             };
-            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                &upd.argument
-            else {
+            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {

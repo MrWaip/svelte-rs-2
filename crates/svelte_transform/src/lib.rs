@@ -12,14 +12,14 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
 use oxc_ast::ast::Expression;
+use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{
     AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst, PropReferenceSemantics,
     ReferenceSemantics,
 };
-use svelte_analyze::scope::ScopeId;
 use svelte_ast::{
-    Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node, NodeId as SvelteNodeId,
-    StyleDirectiveValue,
+    Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node,
+    NodeId as SvelteNodeId, StyleDirectiveValue,
 };
 
 pub fn transform_component<'a>(
@@ -177,8 +177,7 @@ fn walk_node<'a>(
         Node::ConstTag(tag) => {
             ctx.stmt_handles.push((tag.decl.id(), Some(tag.id)));
 
-            if let BlockSemantics::ConstTag(sem) =
-                ctx.analysis.block_semantics(tag.id)
+            if let BlockSemantics::ConstTag(sem) = ctx.analysis.block_semantics(tag.id)
                 && is_destructured_const_tag(ctx.analysis, sem.decl_node_id)
             {
                 let tmp = ctx.ident_gen.generate("computed_const");
@@ -292,17 +291,16 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
 
         if let Attribute::BindDirective(bind) = attr {
             let bind_id = bind.expression.id();
-            let is_user_sequence = parsed
-                .expr(bind_id)
-                .is_some_and(|e| matches!(e.get_inner_expression(), Expression::SequenceExpression(_)));
+            let is_user_sequence = parsed.expr(bind_id).is_some_and(|e| {
+                matches!(e.get_inner_expression(), Expression::SequenceExpression(_))
+            });
             if bind.name == "this" {
                 continue;
             }
 
             let is_window_or_document = matches!(
                 ctx.analysis.attributes.get(attr.id()),
-                AttributeSemantics::WindowBind(_)
-                    | AttributeSemantics::DocumentBind(_)
+                AttributeSemantics::WindowBind(_) | AttributeSemantics::DocumentBind(_)
             );
             if is_window_or_document {
                 continue;
@@ -324,15 +322,10 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                             };
                             return matches!(
                                 ctx.analysis.reference_semantics(ref_id),
-                                ReferenceSemantics::PropRead(
-                                    PropReferenceSemantics::Source {
-                                        bindable: true,
-                                        ..
-                                    }
-                                ) | ReferenceSemantics::PropMutation {
+                                ReferenceSemantics::PropRead(PropReferenceSemantics::Source {
                                     bindable: true,
                                     ..
-                                }
+                                }) | ReferenceSemantics::PropMutation { bindable: true, .. }
                             );
                         }
                         _ => return false,
@@ -346,11 +339,9 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 ctx.expr_handles.push((bind_id, owner));
             } else {
                 let kind = match ctx.analysis.attributes.get(attr.id()) {
-                    AttributeSemantics::ComponentBind(_) => {
-                        BindHandleKind::Component {
-                            prop_name: bind.name.clone(),
-                        }
-                    }
+                    AttributeSemantics::ComponentBind(_) => BindHandleKind::Component {
+                        prop_name: bind.name.clone(),
+                    },
                     AttributeSemantics::ElementBind(_) => BindHandleKind::Element,
                     _ => unreachable!(
                         "bind directive must classify as ElementBind/ComponentBind (window/document filtered above)"
@@ -430,10 +421,7 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
     })
 }
 
-fn is_destructured_const_tag(
-    analysis: &AnalysisData<'_>,
-    decl_node_id: SemOxcNodeId,
-) -> bool {
+fn is_destructured_const_tag(analysis: &AnalysisData<'_>, decl_node_id: SemOxcNodeId) -> bool {
     use oxc_ast::{AstKind, ast::BindingPattern};
     let Some(AstKind::VariableDeclaration(decl)) = analysis.scoping.js_kind(decl_node_id) else {
         return false;

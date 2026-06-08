@@ -1,10 +1,10 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{ComponentPropMemo, ConcatPartEmit};
 use svelte_ast::{ConcatPart, NodeId};
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
@@ -166,7 +166,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
-
 }
 
 fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {

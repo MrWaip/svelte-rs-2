@@ -3,9 +3,7 @@ use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
-use oxc_ast::ast::{
-    Argument, Expression, VariableDeclarationKind, VariableDeclarator,
-};
+use oxc_ast::ast::{Argument, Expression, VariableDeclarationKind, VariableDeclarator};
 use oxc_span::SPAN;
 
 use svelte_analyze::{BindingSemantics, RuneKind, StateKind};
@@ -68,16 +66,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ));
         });
 
-        out.push(self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
-            NONE,
-            Some(value),
-            false,
-        ));
+        out.push(
+            self.b.ast.variable_declarator(
+                SPAN,
+                decl_kind,
+                self.b
+                    .ast
+                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                NONE,
+                Some(value),
+                false,
+            ),
+        );
         out.extend(carrier_declarators);
         out.extend(leaf_declarators);
     }
@@ -115,8 +115,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
         let final_value = if self.dev {
             if is_signal_source {
-                self.b
-                    .call_expr("$.tag", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+                self.b.call_expr(
+                    "$.tag",
+                    [Arg::Expr(final_value), Arg::Str(name.to_string())],
+                )
             } else if is_proxy {
                 self.b.call_expr(
                     "$.tag_proxy",

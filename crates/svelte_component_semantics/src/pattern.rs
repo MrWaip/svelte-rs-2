@@ -148,13 +148,23 @@ pub enum WriteTarget<'a> {
 
 #[derive(Clone, Copy)]
 pub enum WriteAccess<'a> {
-    Index { index: u32, len: u32, has_rest: bool },
+    Index {
+        index: u32,
+        len: u32,
+        has_rest: bool,
+    },
 
-    Slice { from: u32 },
+    Slice {
+        from: u32,
+    },
 
-    Key { name: &'a str },
+    Key {
+        name: &'a str,
+    },
 
-    Computed { key: &'a Expression<'a> },
+    Computed {
+        key: &'a Expression<'a>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -661,7 +671,10 @@ mod tests {
 
     #[test]
     fn assign_property_default() {
-        assert_eq!(summarize_assign("({ a: b = 5 } = o);"), vec![".a={d} id(b)"]);
+        assert_eq!(
+            summarize_assign("({ a: b = 5 } = o);"),
+            vec![".a={d} id(b)"]
+        );
     }
 
     fn array_index_steps(source: &str) -> Vec<(u32, u32, bool)> {

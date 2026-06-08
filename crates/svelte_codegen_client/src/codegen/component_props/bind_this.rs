@@ -1,7 +1,7 @@
-use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::{Codegen, CodegenError, Result};
 
@@ -64,18 +64,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
 
         if !svelte_analyze::is_simple_identifier(&var_name) {
-            let each_context_syms: Vec<oxc_semantic::SymbolId> = match self
-                .ctx
-                .query
-                .analysis
-                .attributes
-                .get(bind_id)
-            {
-                svelte_analyze::AttributeSemantics::ComponentBind(b) => {
-                    b.each_context_vars.iter().copied().collect()
-                }
-                _ => Vec::new(),
-            };
+            let each_context_syms: Vec<oxc_semantic::SymbolId> =
+                match self.ctx.query.analysis.attributes.get(bind_id) {
+                    svelte_analyze::AttributeSemantics::ComponentBind(b) => {
+                        b.each_context_vars.iter().copied().collect()
+                    }
+                    _ => Vec::new(),
+                };
             let each_context: Vec<String> = each_context_syms
                 .iter()
                 .map(|&sym| self.ctx.symbol_name(sym).to_string())

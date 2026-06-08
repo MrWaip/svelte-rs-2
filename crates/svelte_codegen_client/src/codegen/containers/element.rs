@@ -134,10 +134,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let is_ghost = el_name.is_empty();
 
-        if !is_ghost
-            && self.ctx.needs_input_defaults(el_id)
-            && !self.ctx.has_spread(el_id)
-        {
+        if !is_ghost && self.ctx.needs_input_defaults(el_id) && !self.ctx.has_spread(el_id) {
             state.init.push(
                 self.ctx
                     .b

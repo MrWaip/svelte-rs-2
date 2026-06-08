@@ -1,7 +1,7 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
+use svelte_analyze::{AttributeSemantics, MustBePropertyValue, Volatility};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::AssignLeft;
 
@@ -60,9 +60,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     _ => false,
                 }
             };
-            let has_effect_payload = has_spread
-                || has_style_directives
-                || attributes.iter().any(triggers_effect);
+            let has_effect_payload =
+                has_spread || has_style_directives || attributes.iter().any(triggers_effect);
             let fold_class_directives = has_effect_payload && has_class_directives;
 
             for attr in attributes {
@@ -136,15 +135,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut event_stmts: Vec<Statement<'a>> = Vec::new();
 
         let mut on_legacy_emitted: smallvec::SmallVec<[NodeId; 4]> = smallvec::SmallVec::new();
-        let class_needs_state =
-            (has_class_directives || has_class_attribute) && self.ctx.class_needs_state(owner_id);
-        if class_needs_state && !self.ctx.has_use_directive(owner_id) {
-            for attr in attributes {
-                if let Attribute::OnDirectiveLegacy(d) = attr {
-                    self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    on_legacy_emitted.push(attr.id());
+        match self.ctx.class_state_volatility(owner_id) {
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
+                if (has_class_directives || has_class_attribute)
+                    && !self.ctx.has_use_directive(owner_id) =>
+            {
+                for attr in attributes {
+                    if let Attribute::OnDirectiveLegacy(d) = attr {
+                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
+                        on_legacy_emitted.push(attr.id());
+                    }
                 }
             }
+            Volatility::Static
+            | Volatility::Reactive
+            | Volatility::Heavy
+            | Volatility::Asynchronous => {}
         }
 
         for attr in attributes {
@@ -284,12 +290,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             continue;
                         }
                         if a.name == "style" && has_style_directives {
-                            self.emit_style_directives_aggregate(
-                                state,
-                                owner_id,
-                                owner_var,
-                                None,
-                            )?;
+                            self.emit_style_directives_aggregate(state, owner_id, owner_var, None)?;
                             emitted_style_directives = true;
                             continue;
                         }

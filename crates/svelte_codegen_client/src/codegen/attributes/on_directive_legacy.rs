@@ -85,10 +85,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         if !is_svelte_element && self.ctx.has_use_directive(owner_id) {
             let effect_body = self.ctx.b.arrow_expr(self.ctx.b.no_params(), [stmt]);
-            let wrapped = self
-                .ctx
-                .b
-                .call_stmt("$.effect", [Arg::Expr(effect_body)]);
+            let wrapped = self.ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
             state.pending_element_init.push(wrapped);
         } else {
             state.after_update.push(stmt);

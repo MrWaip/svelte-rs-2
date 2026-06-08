@@ -15,9 +15,9 @@ use svelte_diagnostics::Diagnostic;
 
 mod html;
 mod html_entities;
+mod js_postprocess;
 pub mod parse_js;
 pub mod scanner;
-mod js_postprocess;
 pub mod types;
 mod walk_js;
 
@@ -25,7 +25,7 @@ mod attr_convert;
 mod handlers;
 mod svelte_elements;
 
-pub use types::{CePropConfig, CeDomMode, JsAst, ParsedCeConfig};
+pub use types::{CeDomMode, CePropConfig, JsAst, ParsedCeConfig};
 
 pub fn parse_module<'a>(
     alloc: &'a Allocator,
@@ -39,11 +39,7 @@ pub fn parse_module<'a>(
 pub fn parse_with_js<'a>(
     alloc: &'a Allocator,
     source: &str,
-) -> (
-    svelte_ast::Component,
-    JsAst<'a>,
-    Vec<Diagnostic>,
-) {
+) -> (svelte_ast::Component, JsAst<'a>, Vec<Diagnostic>) {
     let trimmed = source.trim_end();
     let (component, mut diagnostics) = Parser::new(trimmed).parse();
     let mut result = JsAst::new();

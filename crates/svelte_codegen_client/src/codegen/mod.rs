@@ -1,5 +1,4 @@
 mod anchor;
-mod async_emit;
 mod attributes;
 mod binding_pattern;
 mod blocks;
@@ -45,7 +44,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn hoist(&mut self, stmt: Statement<'a>) {
         self.hoisted.push(stmt);
     }
-
 
     pub(in crate::codegen) fn pack_body(
         &mut self,

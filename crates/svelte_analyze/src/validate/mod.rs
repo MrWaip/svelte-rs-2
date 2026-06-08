@@ -7,7 +7,7 @@ mod stores;
 mod typescript;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, Expression, ExportSpecifier, Function,
+    ArrowFunctionExpression, BindingPattern, Declaration, ExportSpecifier, Expression, Function,
     ImportDeclarationSpecifier, ModuleExportName, NewExpression, Program, Statement,
 };
 use oxc_ast_visit::Visit;
@@ -170,7 +170,10 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
         if self.function_depth > 0
-            && matches!(expr.callee.get_inner_expression(), Expression::ClassExpression(_))
+            && matches!(
+                expr.callee.get_inner_expression(),
+                Expression::ClassExpression(_)
+            )
         {
             self.diags.push(Diagnostic::warning(
                 DiagnosticKind::PerfAvoidInlineClass,
@@ -189,10 +192,7 @@ fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     validate_illegal_default_export(module_program, diags);
 }
 
-fn validate_illegal_default_export(
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_illegal_default_export(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
     for stmt in &program.body {
         match stmt {
             Statement::ExportDefaultDeclaration(export) => {
@@ -257,8 +257,7 @@ fn validate_snippet_exports(
             continue;
         }
         for specifier in &export.specifiers {
-            let ModuleExportName::IdentifierReference(ident) = &specifier.local
-            else {
+            let ModuleExportName::IdentifierReference(ident) = &specifier.local else {
                 continue;
             };
             let name = ident.name.as_str();

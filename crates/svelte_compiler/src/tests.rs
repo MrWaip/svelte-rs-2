@@ -42,10 +42,7 @@ fn auto_mode_no_signals_resolves_to_legacy() {
         runes: RunesOption::Auto,
         ..Default::default()
     };
-    let result = compile(
-        "<script>let count = 0;</script><p>{count}</p>",
-        &options,
-    );
+    let result = compile("<script>let count = 0;</script><p>{count}</p>", &options);
     let js = result
         .js
         .unwrap_or_else(|| panic!("compile produced no JS"))
@@ -927,4 +924,3 @@ fn attribute_invalid_event_handler_string_value() {
         result.diagnostics
     );
 }
-

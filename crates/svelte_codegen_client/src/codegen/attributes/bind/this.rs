@@ -85,10 +85,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.store_set",
                 [Arg::Ident(base_name), Arg::Ident("$$value")],
             );
-            let setter = self
-                .ctx
-                .b
-                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(setter_body)]);
+            let setter = self.ctx.b.arrow_expr(
+                self.ctx.b.params(["$$value"]),
+                [self.ctx.b.expr_stmt(setter_body)],
+            );
             let getter_body = self
                 .ctx
                 .b
@@ -190,9 +190,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .each_context_vars
             .iter()
             .map(|&sym| {
-                let expr = build_reactive_dep_expr_legacy(self.ctx, sym).unwrap_or_else(|| {
-                    self.ctx.b.rid_expr(self.ctx.symbol_name(sym))
-                });
+                let expr = build_reactive_dep_expr_legacy(self.ctx, sym)
+                    .unwrap_or_else(|| self.ctx.b.rid_expr(self.ctx.symbol_name(sym)));
                 Arg::Expr(expr)
             })
             .collect();

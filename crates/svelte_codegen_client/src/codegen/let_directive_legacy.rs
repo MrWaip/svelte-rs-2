@@ -83,8 +83,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let declarator = decl.declarations.remove(0);
         let slot_prop_name: &'a str = self.ctx.b.alloc_str(&dir.name);
-        let pattern_ref: &'a BindingPattern<'a> =
-            self.ctx.b.ast.allocator.alloc(declarator.id);
+        let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(declarator.id);
         let out = self.emit_binding_pattern(
             decl_oxc_node_id,
             BindingPatternSource::LetCarrier {

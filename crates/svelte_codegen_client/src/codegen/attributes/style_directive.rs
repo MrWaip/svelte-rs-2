@@ -1,6 +1,9 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, ExprKind, HtmlConcatSemantics};
+use svelte_analyze::{
+    AttributeSemantics, BindingSemantics, Evaluation, ExpressionData, HtmlConcatSemantics,
+    Volatility,
+};
 use svelte_ast::{Attribute, ConcatPart, NodeId, StyleDirectiveValue};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
@@ -16,6 +19,16 @@ pub(super) struct StyleProps<'a> {
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
+    fn style_expr_is_literal(&self, data: &ExpressionData) -> bool {
+        matches!(data.evaluation, Evaluation::Known(_))
+            && !data.references.iter().any(|&sym| {
+                matches!(
+                    self.ctx.query.view.binding_semantics(sym),
+                    BindingSemantics::OptimizedRune(_)
+                )
+            })
+    }
+
     pub(super) fn build_style_props(&mut self, owner_id: NodeId) -> Result<StyleProps<'a>> {
         let style_dirs = self.ctx.style_directives(owner_id).to_vec();
         let mut normal: Vec<ObjProp<'a>> = Vec::new();
@@ -89,7 +102,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     StyleDirectiveValue::Expression => self
                         .ctx
                         .expression_data(sd.id)
-                        .is_some_and(|d| matches!(d.kind, ExprKind::KnownLiteral)),
+                        .is_some_and(|d| self.style_expr_is_literal(d)),
                 });
         let props = self.build_style_props(owner_id)?;
 
@@ -180,36 +193,41 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         match attr {
             Attribute::ExpressionAttribute(ea) => {
-                let expr = self.take_attr_expr(style_attr_id, &ea.expression)?;
                 let data = self.ctx.expression_data(style_attr_id).cloned();
+                let expr = self.take_attr_expr(style_attr_id, &ea.expression)?;
                 let expr = coarse_wrap(self.ctx, expr, data.as_ref());
-                let needs_memo = data.as_ref().is_some_and(|d| match d.kind {
-                    ExprKind::Async { has_await: true } => true,
-                    ExprKind::Call { dynamic: true } => true,
-                    ExprKind::KnownLiteral
-                    | ExprKind::SimpleRead { .. }
-                    | ExprKind::Computed { .. }
-                    | ExprKind::Call { dynamic: false }
-                    | ExprKind::Async { has_await: false } => false,
-                });
-                let has_state = !data
-                    .as_ref()
-                    .is_some_and(|d| matches!(d.kind, ExprKind::Call { dynamic: false }));
-                if !needs_memo {
-                    if let Some(d) = data.as_ref() {
-                        state.shared_memo.push_expression_data(self.ctx, d);
+                match data.as_ref().map(|d| d.volatility) {
+                    Some(Volatility::Heavy | Volatility::Asynchronous) => {
+                        let Some(d) = data else {
+                            return CodegenError::missing_expression_deps(style_attr_id);
+                        };
+                        let placeholder =
+                            match state.shared_memo.add_memoized_expr(self.ctx, &d, expr) {
+                                Some(MemoValueRef::Sync(i)) => {
+                                    state.shared_memo.sync_param_expr(self.ctx, i)
+                                }
+                                Some(MemoValueRef::Async(i)) => {
+                                    state.shared_memo.async_param_expr(self.ctx, i)
+                                }
+                                None => {
+                                    return CodegenError::missing_expression_deps(style_attr_id);
+                                }
+                            };
+                        Ok((placeholder, true))
                     }
-                    return Ok((expr, has_state));
+                    Some(Volatility::Reactive) => {
+                        if let Some(d) = data.as_ref() {
+                            state.shared_memo.push_expression_data(self.ctx, d);
+                        }
+                        Ok((expr, true))
+                    }
+                    Some(Volatility::Static) | None => {
+                        if let Some(d) = data.as_ref() {
+                            state.shared_memo.push_expression_data(self.ctx, d);
+                        }
+                        Ok((expr, false))
+                    }
                 }
-                let Some(d) = data else {
-                    return CodegenError::missing_expression_deps(style_attr_id);
-                };
-                let placeholder = match state.shared_memo.add_memoized_expr(self.ctx, &d, expr) {
-                    Some(MemoValueRef::Sync(i)) => state.shared_memo.sync_param_expr(self.ctx, i),
-                    Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
-                    None => return CodegenError::missing_expression_deps(style_attr_id),
-                };
-                Ok((placeholder, has_state))
             }
             Attribute::ConcatenationAttribute(a) => {
                 let semantics: HtmlConcatSemantics =
@@ -224,9 +242,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                 let mut memo_deps = TemplateMemoState::default();
                 let expr = self.build_html_concat_expr(a, &semantics, &mut memo_deps)?;
-                let has_state = !memo_deps.sync_values.is_empty()
-                    || !memo_deps.async_values.is_empty();
-                state.shared_memo.sync_values.append(&mut memo_deps.sync_values);
+                let has_state =
+                    !memo_deps.sync_values.is_empty() || !memo_deps.async_values.is_empty();
+                state
+                    .shared_memo
+                    .sync_values
+                    .append(&mut memo_deps.sync_values);
                 state
                     .shared_memo
                     .async_values
@@ -248,23 +269,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn style_directives_all_literal(&self, owner_id: NodeId) -> bool {
-        self.ctx.style_directives(owner_id).iter().all(|sd| match &sd.value {
-            StyleDirectiveValue::String(_) => true,
-            StyleDirectiveValue::Concatenation(parts) => parts.iter().all(|p| match p {
-                ConcatPart::Static(_) => true,
-                ConcatPart::Dynamic { expr, .. } => self
+        self.ctx
+            .style_directives(owner_id)
+            .iter()
+            .all(|sd| match &sd.value {
+                StyleDirectiveValue::String(_) => true,
+                StyleDirectiveValue::Concatenation(parts) => parts.iter().all(|p| match p {
+                    ConcatPart::Static(_) => true,
+                    ConcatPart::Dynamic { expr, .. } => self
+                        .ctx
+                        .state
+                        .parsed
+                        .expr(expr.id())
+                        .and_then(literal_value)
+                        .is_some(),
+                }),
+                StyleDirectiveValue::Expression => self
                     .ctx
-                    .state
-                    .parsed
-                    .expr(expr.id())
-                    .and_then(literal_value)
-                    .is_some(),
-            }),
-            StyleDirectiveValue::Expression => self
-                .ctx
-                .expression_data(sd.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::KnownLiteral)),
-        })
+                    .expression_data(sd.id)
+                    .is_some_and(|d| matches!(d.evaluation, Evaluation::Known(_))),
+            })
     }
 
     fn maybe_hoist_style_directives_obj(
@@ -273,21 +297,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
-        use svelte_analyze::ExprKind;
         let dir_ids: Vec<NodeId> = self
             .ctx
             .style_directives(owner_id)
             .iter()
             .map(|sd| sd.id)
             .collect();
-        let needs_hoist = dir_ids.iter().any(|&id| {
-            self.ctx
-                .expression_data(id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Call { dynamic: true }))
-        });
-        if !needs_hoist {
+        let Some(_) =
+            dir_ids.iter().find(
+                |&&id| match self.ctx.expression_data(id).map(|d| d.volatility) {
+                    Some(Volatility::Heavy) => true,
+                    Some(Volatility::Static | Volatility::Reactive | Volatility::Asynchronous)
+                    | None => false,
+                },
+            )
+        else {
             return dir_obj;
-        }
+        };
         for &id in &dir_ids {
             if let Some(data) = self.ctx.expression_data(id) {
                 state.shared_memo.push_expression_data(self.ctx, data);

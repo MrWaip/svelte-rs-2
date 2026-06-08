@@ -12,10 +12,7 @@ use test_support::strip_reference_only_css_markers;
 
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
-    stripped
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn assert_compiler(case: &str) {
@@ -37,21 +34,13 @@ fn assert_compiler(case: &str) {
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
     if let Some(map) = js_output.map.as_ref() {
-        assert_sourcemap_invariants(
-            case,
-            &input,
-            map,
-            svelte_compiler::SourcemapKind::Default,
-        );
+        assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
 
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
         let expected_css = read_to_string(&expected_css_path).expect("test invariant");
-        let actual_css = result
-            .css
-            .map(|out| out.code)
-            .unwrap_or_default();
+        let actual_css = result.css.map(|out| out.code).unwrap_or_default();
         File::create(dir.join("case-rust.css"))
             .expect("test invariant")
             .write_all(actual_css.as_bytes())
@@ -2386,12 +2375,7 @@ fn assert_compiler_module(case: &str) {
     );
 
     if let Some(map) = js_output.map.as_ref() {
-        assert_sourcemap_invariants(
-            case,
-            &input,
-            map,
-            svelte_compiler::SourcemapKind::Default,
-        );
+        assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
 }
 
@@ -4865,6 +4849,21 @@ fn async_for_await_dev() {
 }
 
 #[rstest]
+fn orthogonality_heavy_call() {
+    assert_compiler("orthogonality_heavy_call");
+}
+
+#[rstest]
+fn orthogonality_async_await() {
+    assert_compiler("orthogonality_async_await");
+}
+
+#[rstest]
+fn orthogonality_heavy_async_await_call() {
+    assert_compiler("orthogonality_heavy_async_await_call");
+}
+
+#[rstest]
 fn inline_await_basic() {
     assert_compiler("inline_await_basic");
 }
@@ -5620,7 +5619,6 @@ fn diagnose_each_css_wrapper_root_order() {
 fn diagnose_component_bind_store_derived_base() {
     assert_compiler("diagnose_component_bind_store_derived_base");
 }
-
 
 #[rstest]
 fn diagnose_nested_delegated_transition_order() {

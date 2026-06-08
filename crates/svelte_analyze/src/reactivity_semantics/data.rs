@@ -210,7 +210,6 @@ pub enum SnippetParamStrategy {
     Signal,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
@@ -1133,9 +1132,7 @@ impl ReactivitySemantics {
         match facts {
             BindingFacts::State(state) => BindingSemantics::State(*state),
             BindingFacts::Derived(derived) => BindingSemantics::Derived(*derived),
-            BindingFacts::OptimizedDerived(derived) => {
-                BindingSemantics::OptimizedDerived(*derived)
-            }
+            BindingFacts::OptimizedDerived(derived) => BindingSemantics::OptimizedDerived(*derived),
             BindingFacts::OptimizedRune(opt) => BindingSemantics::OptimizedRune(*opt),
             BindingFacts::Prop(prop) => BindingSemantics::Prop(prop.clone()),
             BindingFacts::LegacyBindableProp(legacy) => {

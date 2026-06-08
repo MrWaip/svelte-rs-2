@@ -178,8 +178,8 @@ impl<'a> Parser<'a> {
                             }
                             token::AttributeValue::String(span) => {
                                 let raw = span.source_text(self.source);
-                                let value = decode_attribute_value(raw)
-                                    .unwrap_or_else(|| raw.to_string());
+                                let value =
+                                    decode_attribute_value(raw).unwrap_or_else(|| raw.to_string());
                                 (StyleDirectiveValue::String(value), *span)
                             }
                             token::AttributeValue::Concatenation(c) => {

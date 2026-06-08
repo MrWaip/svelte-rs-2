@@ -4,7 +4,9 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics, ReferenceSemantics};
+use crate::reactivity_semantics::data::{
+    BindingSemantics, ReactivitySemantics, ReferenceSemantics,
+};
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub(crate) struct NeedsContextVisitor<'a> {
@@ -28,10 +30,7 @@ impl<'a> NeedsContextVisitor<'a> {
         visitor.needs_context
     }
 
-    fn resolve_ref(
-        &self,
-        ident: &IdentifierReference<'_>,
-    ) -> Option<SymbolId> {
+    fn resolve_ref(&self, ident: &IdentifierReference<'_>) -> Option<SymbolId> {
         let ref_id = ident.reference_id.get()?;
         self.scoping.get_reference(ref_id).symbol_id()
     }

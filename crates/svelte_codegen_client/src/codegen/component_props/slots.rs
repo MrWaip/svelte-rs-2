@@ -14,11 +14,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut wrapper: Option<(NodeId, FragmentId)> = None;
         for &child_id in store.fragment_nodes(fragment) {
             match store.get(child_id) {
-                Node::Text(t)
-                    if t.raw_value(source)
-                        .chars()
-                        .all(|c| c.is_ascii_whitespace()) =>
-                {
+                Node::Text(t) if t.raw_value(source).chars().all(|c| c.is_ascii_whitespace()) => {
                     continue;
                 }
                 Node::SvelteFragmentLegacy(el) => {

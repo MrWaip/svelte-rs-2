@@ -1,13 +1,10 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, AwaitBlock, ComponentNode, ConstTag, NodeId, SlotElementLegacy};
 
-use crate::expression_semantics::{ExprKind, ExpressionData};
+use crate::expression_semantics::Volatility;
 use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
-use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{
-    AnalysisData, BindingSemantics, ParentKind, PropBindingKind, PropBindingSemantics,
-    ReactivitySemantics,
-};
+use crate::scope::SymbolId;
+use crate::types::data::{AnalysisData, BindingSemantics, ParentKind};
 use crate::types::node_table::NodeBitSet;
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -16,7 +13,6 @@ pub struct DynamismData {
     dynamic_nodes: NodeBitSet,
     dynamic_attrs: NodeBitSet,
     dynamic_components: NodeBitSet,
-    has_state_attrs: NodeBitSet,
 }
 
 impl DynamismData {
@@ -25,7 +21,6 @@ impl DynamismData {
             dynamic_nodes: NodeBitSet::new(node_count),
             dynamic_attrs: NodeBitSet::new(node_count),
             dynamic_components: NodeBitSet::new(node_count),
-            has_state_attrs: NodeBitSet::new(node_count),
         }
     }
 
@@ -41,10 +36,6 @@ impl DynamismData {
         self.dynamic_components.contains(&id)
     }
 
-    pub fn has_state_attr(&self, id: NodeId) -> bool {
-        self.has_state_attrs.contains(&id)
-    }
-
     pub(crate) fn mark_dynamic_node(&mut self, id: NodeId) {
         self.dynamic_nodes.insert(id);
     }
@@ -55,10 +46,6 @@ impl DynamismData {
 
     pub(crate) fn mark_dynamic_component(&mut self, id: NodeId) {
         self.dynamic_components.insert(id);
-    }
-
-    pub(crate) fn mark_has_state_attr(&mut self, id: NodeId) {
-        self.has_state_attrs.insert(id);
     }
 }
 
@@ -80,11 +67,8 @@ impl TemplateVisitor for DynamismVisitor {
             return;
         };
         if matches!(
-            data.kind,
-            ExprKind::SimpleRead { reactive: true }
-                | ExprKind::Computed { reactive: true }
-                | ExprKind::Call { dynamic: true }
-                | ExprKind::Async { .. }
+            data.volatility,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
         ) {
             ctx.data.dynamism.mark_dynamic_node(tag.id);
         }
@@ -112,7 +96,12 @@ impl TemplateVisitor for DynamismVisitor {
         let Some(expr) = ctx.parsed.and_then(|p| p.expr(cn.name.id())) else {
             return;
         };
-        if uses_runes && matches!(expr.get_inner_expression(), Expression::StaticMemberExpression(_)) {
+        if uses_runes
+            && matches!(
+                expr.get_inner_expression(),
+                Expression::StaticMemberExpression(_)
+            )
+        {
             ctx.data.dynamism.mark_dynamic_component(cn.id);
             return;
         }
@@ -136,7 +125,7 @@ impl TemplateVisitor for DynamismVisitor {
     fn visit_js_expression(
         &mut self,
         node_id: NodeId,
-        expr: &Expression<'_>,
+        _expr: &Expression<'_>,
         ctx: &mut VisitContext<'_, '_>,
     ) {
         let parent = ctx.data.expr_parent(node_id);
@@ -155,33 +144,14 @@ impl TemplateVisitor for DynamismVisitor {
                 return;
             };
 
-            let scoping = &ctx.data.scoping;
-            let reactivity = &ctx.data.reactivity;
-            let is_dyn_element = is_dynamic_element_attr(data, scoping, reactivity);
-            let has_state_component = has_state_component_attr(expr, data, scoping, reactivity);
-
-            let classified_dynamic = if in_component {
-                has_state_component
-            } else {
-                is_dyn_element
-            };
-
-            if classified_dynamic {
+            if matches!(
+                data.volatility,
+                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
+            ) {
                 ctx.data.dynamism.mark_dynamic_attr(attr_id);
                 if !in_component && let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
                     ctx.data.elements.flags.needs_ref.insert(el_id);
-                    if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
-                        ctx.data
-                            .elements
-                            .flags
-                            .has_dynamic_class_directives
-                            .insert(el_id);
-                    }
                 }
-            }
-
-            if has_state_component {
-                ctx.data.dynamism.mark_has_state_attr(attr_id);
             }
         } else if !(matches!(parent_kind, Some(ParentKind::SvelteElement))
             && parent.is_some_and(|p| p.id == node_id))
@@ -190,90 +160,13 @@ impl TemplateVisitor for DynamismVisitor {
                 return;
             };
             if matches!(
-                data.kind,
-                ExprKind::SimpleRead { reactive: true }
-                    | ExprKind::Computed { reactive: true }
-                    | ExprKind::Call { dynamic: true }
-                    | ExprKind::Async { .. }
+                data.volatility,
+                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
             ) {
                 ctx.data.dynamism.mark_dynamic_node(node_id);
             }
         }
     }
-}
-
-
-fn is_dynamic_element_attr(
-    data: &ExpressionData,
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-) -> bool {
-    if matches!(data.kind, ExprKind::Async { has_await: true } | ExprKind::Call { dynamic: true }) {
-        return true;
-    }
-    if matches!(
-        data.kind,
-        ExprKind::SimpleRead { reactive: true } | ExprKind::Computed { reactive: true }
-    ) && data.references.is_empty()
-    {
-        return true;
-    }
-    attr_symbols_data(data, None, scoping).any(|sym_id| {
-        matches!(
-            reactivity.binding_semantics(sym_id),
-            BindingSemantics::Prop(PropBindingSemantics {
-                kind: PropBindingKind::NonSource,
-                ..
-            })
-        ) || reactivity.needs_effect(scoping, sym_id)
-    })
-}
-
-fn has_state_component_attr(
-    expr: &Expression<'_>,
-    data: &ExpressionData,
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-) -> bool {
-    if matches!(data.kind, ExprKind::Async { has_await: true }) {
-        return true;
-    }
-    if matches!(expr.get_inner_expression(), Expression::ArrowFunctionExpression(_)) {
-        return false;
-    }
-    attr_symbols_data(data, Some(expr), scoping).any(|sym_id| {
-        !scoping.is_component_top_level_symbol(sym_id)
-            || !is_unified_plain_symbol(scoping, reactivity, sym_id)
-    })
-}
-
-fn attr_symbols_data<'a>(
-    data: &'a ExpressionData,
-    expr: Option<&'a Expression<'_>>,
-    scoping: &'a ComponentScoping,
-) -> impl Iterator<Item = SymbolId> + 'a {
-    let fallback = if data.references.is_empty() {
-        match expr.map(|e| e.get_inner_expression()) {
-            Some(Expression::Identifier(ident)) => {
-                scoping.find_binding(scoping.root_scope_id(), ident.name.as_str())
-            }
-            _ => None,
-        }
-    } else {
-        None
-    };
-    data.references.iter().copied().chain(fallback)
-}
-
-fn is_unified_plain_symbol(
-    _scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-    sym_id: SymbolId,
-) -> bool {
-    matches!(
-        reactivity.binding_semantics(sym_id),
-        BindingSemantics::NonReactive | BindingSemantics::Const(_)
-    )
 }
 
 fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool {
@@ -284,4 +177,3 @@ fn is_reactive_component_binding(data: &AnalysisData<'_>, sym: SymbolId) -> bool
             | BindingSemantics::Unresolved,
     )
 }
-

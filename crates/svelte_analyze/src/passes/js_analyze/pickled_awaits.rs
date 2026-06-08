@@ -1,5 +1,5 @@
 use oxc_ast::ast::{
-    Argument, ArrowFunctionExpression, ArrayExpression, AssignmentExpression, AwaitExpression,
+    Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression, AwaitExpression,
     BinaryExpression, CallExpression, ConditionalExpression, Expression, Function,
     LogicalExpression, MemberExpression, NewExpression, ObjectExpression, ObjectPropertyKind,
     SequenceExpression, TaggedTemplateExpression, TemplateLiteral,
@@ -160,10 +160,7 @@ impl<'a> Visit<'a> for PickledAwaitCollector {
         self.visit_child(&expr.right, self.current_is_last());
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.fn_depth += 1;
         walk_arrow_function_expression(self, arrow);
         self.fn_depth -= 1;

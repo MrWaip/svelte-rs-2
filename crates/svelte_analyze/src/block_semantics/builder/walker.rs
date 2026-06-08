@@ -11,9 +11,7 @@ use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentId, Node, NodeId};
-use svelte_component_semantics::{
-    ComponentSemantics, ReferenceId, SymbolId, walk_bindings,
-};
+use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId, walk_bindings};
 
 pub(super) fn populate(
     component: &Component,

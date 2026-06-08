@@ -10,8 +10,8 @@ use super::data::{
     TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
-    ExprKind, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
-    Evaluation,
+    Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
+    Volatility,
 };
 use crate::reactivity_semantics::data::{
     BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
@@ -20,10 +20,11 @@ use crate::reactivity_semantics::data::{
 };
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
-    BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier,
-    IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, WindowBindKind,
+    BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, IgnoreData,
+    ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, WindowBindKind,
 };
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
+use crate::utils::expression_calls_or_awaits;
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
     Expression, Function, ObjectPropertyKind, UpdateExpression,
@@ -32,8 +33,8 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
-    Attribute, BindDirective, Component, Element, ExpressionAttribute, FragmentId,
-    Node, NodeId, OnDirectiveLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
+    Attribute, BindDirective, Component, Element, ExpressionAttribute, FragmentId, Node, NodeId,
+    OnDirectiveLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -94,10 +95,7 @@ pub fn build<'a>(
     (store, groups)
 }
 
-fn finalize_element_group_ids(
-    store: &mut AttributeSemanticsStore,
-    groups: &BindingGroupTable,
-) {
+fn finalize_element_group_ids(store: &mut AttributeSemanticsStore, groups: &BindingGroupTable) {
     for (attr_id, group_id) in &groups.ids {
         if let AttributeSemantics::ElementBind(b) = store.get(*attr_id).clone() {
             let mut updated = b;
@@ -107,15 +105,9 @@ fn finalize_element_group_ids(
     }
 }
 
-fn derive_group_key(
-    ctx: &Ctx<'_, '_>,
-    state: &WalkState,
-    d: &BindDirective,
-) -> BindingGroupKey {
+fn derive_group_key(ctx: &Ctx<'_, '_>, state: &WalkState, d: &BindDirective) -> BindingGroupKey {
     let data = ctx.expression_data(d.id);
-    let references = data
-        .map(|d| d.references.clone())
-        .unwrap_or_default();
+    let references = data.map(|d| d.references.clone()).unwrap_or_default();
     let parent_each_blocks = derive_parent_each_blocks(ctx, state, d);
     BindingGroupKey {
         references,
@@ -135,20 +127,31 @@ struct Ctx<'a, 'p> {
     dev: bool,
 }
 
-fn references_need_wrap(
-    ctx: &Ctx<'_, '_>,
-    data: &ExpressionData,
-) -> bool {
-    use crate::expression_semantics::{Evaluation, ExprKind, ValueClass};
-    if matches!(
-        data.kind,
-        ExprKind::SimpleRead { reactive: true } | ExprKind::Computed { reactive: true }
-    ) && data.references.is_empty()
-    {
-        return true;
+fn expression_is_plain_read(expr: &Expression<'_>) -> bool {
+    matches!(
+        expr.get_inner_expression(),
+        Expression::Identifier(_)
+            | Expression::StaticMemberExpression(_)
+            | Expression::ComputedMemberExpression(_)
+            | Expression::PrivateFieldExpression(_)
+    )
+}
+
+fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
+    use crate::expression_semantics::{Evaluation, ValueClass};
+    match data.volatility {
+        Volatility::Reactive if data.references.is_empty() => return true,
+        Volatility::Static
+        | Volatility::Reactive
+        | Volatility::Heavy
+        | Volatility::Asynchronous => {}
     }
     data.references.iter().any(|&sym| {
-        if ctx.semantics.symbol_flags(sym).contains(SymbolFlags::Import) {
+        if ctx
+            .semantics
+            .symbol_flags(sym)
+            .contains(SymbolFlags::Import)
+        {
             return true;
         }
         match ctx.reactivity.binding_semantics(sym) {
@@ -170,8 +173,7 @@ fn references_need_wrap(
                 !matches!(data.evaluation.class(), Some(ValueClass::Function))
             }
             BindingSemantics::OptimizedRune(_) => {
-                !(ctx.scoping.is_init_known(sym)
-                    || matches!(data.evaluation, Evaluation::Known(_)))
+                !(ctx.scoping.is_init_known(sym) || matches!(data.evaluation, Evaluation::Known(_)))
             }
             _ => true,
         }
@@ -191,10 +193,7 @@ fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> 
 }
 
 impl<'a, 'p> Ctx<'a, 'p> {
-    fn expression_data(
-        &self,
-        id: NodeId,
-    ) -> Option<&ExpressionData> {
+    fn expression_data(&self, id: NodeId) -> Option<&ExpressionData> {
         match self.expressions.get(id) {
             ExpressionSemantics::Expression(d) => Some(d),
             ExpressionSemantics::NonSpecial => None,
@@ -442,7 +441,9 @@ fn classify_element_attrs(
                     }),
                 );
             }
-            Attribute::BooleanAttribute(a) if a.name == "defaultValue" || a.name == "defaultChecked" => {
+            Attribute::BooleanAttribute(a)
+                if a.name == "defaultValue" || a.name == "defaultChecked" =>
+            {
                 store.set(
                     a.id,
                     AttributeSemantics::MustBeProperty(MustBePropertySemantics {
@@ -451,7 +452,9 @@ fn classify_element_attrs(
                     }),
                 );
             }
-            Attribute::StringAttribute(a) if a.name == "defaultValue" || a.name == "defaultChecked" => {
+            Attribute::StringAttribute(a)
+                if a.name == "defaultValue" || a.name == "defaultChecked" =>
+            {
                 let value = a.value(&ctx.component.source).to_string();
                 store.set(
                     a.id,
@@ -606,9 +609,15 @@ fn classify_identifier_kind(
         return HtmlBindKind::Plain;
     };
     match ctx.reactivity.reference_semantics(ref_id) {
-        ReferenceSemantics::StoreRead { symbol: store_symbol }
-        | ReferenceSemantics::StoreWrite { symbol: store_symbol }
-        | ReferenceSemantics::StoreUpdate { symbol: store_symbol } => {
+        ReferenceSemantics::StoreRead {
+            symbol: store_symbol,
+        }
+        | ReferenceSemantics::StoreWrite {
+            symbol: store_symbol,
+        }
+        | ReferenceSemantics::StoreUpdate {
+            symbol: store_symbol,
+        } => {
             let base_symbol = match ctx.reactivity.binding_semantics(store_symbol) {
                 BindingSemantics::Store(store) => store.base_symbol,
                 _ => store_symbol,
@@ -616,9 +625,7 @@ fn classify_identifier_kind(
             HtmlBindKind::StoreSubscribed { base_symbol }
         }
         ReferenceSemantics::PropRead(PropReferenceSemantics::Source { bindable: true, .. })
-        | ReferenceSemantics::PropMutation { bindable: true, .. } => {
-            HtmlBindKind::BindableProp
-        }
+        | ReferenceSemantics::PropMutation { bindable: true, .. } => HtmlBindKind::BindableProp,
         ReferenceSemantics::SignalRead { .. }
         | ReferenceSemantics::SignalWrite { .. }
         | ReferenceSemantics::SignalUpdate { .. } => HtmlBindKind::Rune,
@@ -786,10 +793,7 @@ impl<'a> Visit<'a> for HandlerKindProbe {
         walk::walk_update_expression(self, expr);
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.fn_depth += 1;
         walk::walk_arrow_function_expression(self, arrow);
         self.fn_depth -= 1;
@@ -864,13 +868,12 @@ fn classify_component_attrs(
         match attr {
             Attribute::BindDirective(d) => {
                 let kind = derive_component_bind_kind(ctx, d);
-                let each_context_vars = if d.name == "this"
-                    || matches!(kind, ComponentBindKind::Expression)
-                {
-                    derive_each_context_vars(ctx, d)
-                } else {
-                    SmallVec::new()
-                };
+                let each_context_vars =
+                    if d.name == "this" || matches!(kind, ComponentBindKind::Expression) {
+                        derive_each_context_vars(ctx, d)
+                    } else {
+                        SmallVec::new()
+                    };
                 if d.name == "group" {
                     groups.assign(d.id, derive_group_key(ctx, state, d));
                 }
@@ -884,8 +887,7 @@ fn classify_component_attrs(
             }
             Attribute::ExpressionAttribute(ea) => {
                 let memo = derive_component_prop_memo_for_expression(ctx, ea, carrier);
-                let shorthand =
-                    ea.shorthand && !references_include_reactive_const_tag(ctx, ea.id);
+                let shorthand = ea.shorthand && !references_include_reactive_const_tag(ctx, ea.id);
                 store.set(
                     ea.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(
@@ -990,8 +992,20 @@ fn derive_html_concat_semantics(
                 }
                 let defined = matches!(data.evaluation, Evaluation::Defined { .. });
                 let wrap = data.legacy_wrap;
-                match data.kind {
-                    ExprKind::Async { .. } => {
+                if !data.blockers.is_empty() {
+                    let index = async_index;
+                    async_index += 1;
+                    has_async = true;
+                    parts.push(HtmlConcatPart::AsyncMemoSlot {
+                        index,
+                        part_id: *id,
+                        defined,
+                        wrap,
+                    });
+                    continue;
+                }
+                match data.volatility {
+                    Volatility::Asynchronous => {
                         let index = async_index;
                         async_index += 1;
                         has_async = true;
@@ -1002,7 +1016,7 @@ fn derive_html_concat_semantics(
                             wrap,
                         });
                     }
-                    ExprKind::Call { dynamic: true } => {
+                    Volatility::Heavy => {
                         let index = sync_index;
                         sync_index += 1;
                         has_dynamic = true;
@@ -1013,8 +1027,7 @@ fn derive_html_concat_semantics(
                             wrap,
                         });
                     }
-                    ExprKind::SimpleRead { reactive: true }
-                    | ExprKind::Computed { reactive: true } => {
+                    Volatility::Reactive => {
                         has_dynamic = true;
                         parts.push(HtmlConcatPart::Inline {
                             part_id: *id,
@@ -1022,10 +1035,7 @@ fn derive_html_concat_semantics(
                             wrap,
                         });
                     }
-                    ExprKind::Call { dynamic: false }
-                    | ExprKind::SimpleRead { reactive: false }
-                    | ExprKind::Computed { reactive: false }
-                    | ExprKind::KnownLiteral => {
+                    Volatility::Static => {
                         if references_need_wrap(ctx, data) {
                             has_dynamic = true;
                         }
@@ -1056,67 +1066,79 @@ fn derive_component_concat_semantics(
     ca: &svelte_ast::ConcatenationAttribute,
 ) -> (ComponentPropMemo, SmallVec<[ConcatPartEmit; 4]>) {
     let forces_wrap = ca.parts.iter().any(|part| {
-        let svelte_ast::ConcatPart::Dynamic { id, .. } = part else {
+        let svelte_ast::ConcatPart::Dynamic { id, expr } = part else {
             return false;
         };
         let Some(data) = ctx.expression_data(*id) else {
             return false;
         };
-        matches!(
-            data.kind,
-            ExprKind::Call { dynamic: true } | ExprKind::Async { .. } | ExprKind::Computed { .. }
-        )
+        match data.volatility {
+            Volatility::Heavy | Volatility::Asynchronous => true,
+            Volatility::Static | Volatility::Reactive => {
+                if !data.blockers.is_empty() {
+                    return true;
+                }
+                let Some(e) = ctx.parsed.expr(expr.id()) else {
+                    return false;
+                };
+                !matches!(data.evaluation, Evaluation::Known(_))
+                    && !expression_calls_or_awaits(e)
+                    && !expression_is_plain_read(e)
+            }
+        }
     });
 
-    let mut plan: SmallVec<[ConcatPartEmit; 4]> = SmallVec::with_capacity(ca.parts.len());
-    let mut has_inline_dynamic = false;
-    let mut has_hoist = false;
-    for part in &ca.parts {
-        let emit = match part {
-            svelte_ast::ConcatPart::Static(_) => ConcatPartEmit::Static,
-            svelte_ast::ConcatPart::Dynamic { id, .. } => {
-                let Some(data) = ctx.expression_data(*id) else {
-                    has_inline_dynamic = true;
-                    plan.push(ConcatPartEmit::Inline);
-                    continue;
-                };
-                match data.evaluation {
-                    Evaluation::Known(_) => ConcatPartEmit::Static,
-                    Evaluation::Defined { .. }
-                    | Evaluation::MaybeNullish { .. } => {
-                        match data.kind {
-                            ExprKind::Call { dynamic: true } | ExprKind::Async { .. } => {
-                                has_hoist = true;
+    let plan: SmallVec<[ConcatPartEmit; 4]> = ca
+        .parts
+        .iter()
+        .map(|part| {
+            let svelte_ast::ConcatPart::Dynamic { id, .. } = part else {
+                return ConcatPartEmit::Static;
+            };
+            let Some(data) = ctx.expression_data(*id) else {
+                return ConcatPartEmit::Inline;
+            };
+            match data.evaluation {
+                Evaluation::Known(_) => ConcatPartEmit::Static,
+                Evaluation::Defined { .. } | Evaluation::MaybeNullish { .. } => {
+                    match data.volatility {
+                        Volatility::Heavy | Volatility::Asynchronous => {
+                            ConcatPartEmit::HoistDerived
+                        }
+                        Volatility::Static | Volatility::Reactive => {
+                            if !data.blockers.is_empty() || forces_wrap {
                                 ConcatPartEmit::HoistDerived
-                            }
-                            ExprKind::Call { dynamic: false }
-                            | ExprKind::SimpleRead { .. }
-                            | ExprKind::Computed { .. }
-                            | ExprKind::KnownLiteral => {
-                                if forces_wrap {
-                                    has_hoist = true;
-                                    ConcatPartEmit::HoistDerived
-                                } else {
-                                    has_inline_dynamic = true;
-                                    ConcatPartEmit::Inline
-                                }
+                            } else {
+                                ConcatPartEmit::Inline
                             }
                         }
                     }
                 }
             }
-        };
-        plan.push(emit);
-    }
+        })
+        .collect();
 
-    let memo = if has_hoist {
-        ComponentPropMemo::Derived
-    } else if has_inline_dynamic {
+    let memo = component_prop_memo(&plan);
+    (memo, plan)
+}
+
+fn component_prop_memo(plan: &[ConcatPartEmit]) -> ComponentPropMemo {
+    let has_hoist = plan.iter().any(|emit| match emit {
+        ConcatPartEmit::HoistDerived => true,
+        ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
+    });
+    if has_hoist {
+        return ComponentPropMemo::Derived;
+    }
+    let has_inline_dynamic = plan.iter().any(|emit| match emit {
+        ConcatPartEmit::Inline => true,
+        ConcatPartEmit::HoistDerived | ConcatPartEmit::Static => false,
+    });
+    if has_inline_dynamic {
         ComponentPropMemo::Getter
     } else {
         ComponentPropMemo::Inline
-    };
-    (memo, plan)
+    }
 }
 
 fn derive_component_attach_emit(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> ComponentAttachEmit {
@@ -1134,7 +1156,11 @@ fn derive_component_spread_emit(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> Component
     let Some(data) = ctx.expression_data(attr_id) else {
         return ComponentSpreadEmit::Inline;
     };
-    if matches!(data.kind, ExprKind::Call { dynamic: true } | ExprKind::Async { .. }) {
+    match data.volatility {
+        Volatility::Heavy | Volatility::Asynchronous => return ComponentSpreadEmit::MemoThunk,
+        Volatility::Static | Volatility::Reactive => {}
+    }
+    if !data.blockers.is_empty() {
         return ComponentSpreadEmit::MemoThunk;
     }
     if references_need_wrap(ctx, data) {
@@ -1176,24 +1202,17 @@ fn derive_component_prop_memo_for_expression(
         return ComponentPropMemo::Inline;
     };
     let needs_wrap = references_need_wrap(ctx, data);
-    match data.kind {
-        ExprKind::Call { .. } | ExprKind::Async { .. } => ComponentPropMemo::Derived,
-        ExprKind::SimpleRead { .. } | ExprKind::Computed { .. } | ExprKind::KnownLiteral
-            if needs_wrap && simple_shape =>
-        {
-            ComponentPropMemo::Getter
+    if expression_calls_or_awaits(expr_raw) || !data.blockers.is_empty() {
+        ComponentPropMemo::Derived
+    } else if needs_wrap && simple_shape {
+        ComponentPropMemo::Getter
+    } else if needs_wrap {
+        match carrier {
+            ComponentPropCarrier::Component => ComponentPropMemo::Derived,
+            ComponentPropCarrier::SlotLegacy => ComponentPropMemo::Getter,
         }
-        ExprKind::SimpleRead { .. } | ExprKind::Computed { .. } | ExprKind::KnownLiteral
-            if needs_wrap =>
-        {
-            match carrier {
-                ComponentPropCarrier::Component => ComponentPropMemo::Derived,
-                ComponentPropCarrier::SlotLegacy => ComponentPropMemo::Getter,
-            }
-        }
-        ExprKind::SimpleRead { .. } | ExprKind::Computed { .. } | ExprKind::KnownLiteral => {
-            ComponentPropMemo::Inline
-        }
+    } else {
+        ComponentPropMemo::Inline
     }
 }
 
@@ -1236,7 +1255,11 @@ fn is_stable_literal_value(ctx: &Ctx<'_, '_>, expr: &Expression<'_>) -> bool {
             let Some(sym) = ctx.semantics.get_reference(ref_id).symbol_id() else {
                 return false;
             };
-            if ctx.semantics.symbol_flags(sym).contains(SymbolFlags::Import) {
+            if ctx
+                .semantics
+                .symbol_flags(sym)
+                .contains(SymbolFlags::Import)
+            {
                 return false;
             }
             matches!(
@@ -1257,8 +1280,7 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
         if matches!(
             ctx.reactivity.binding_semantics(sym),
             BindingSemantics::Contextual(
-                ContextualBindingSemantics::EachItem(_)
-                    | ContextualBindingSemantics::EachIndex(_),
+                ContextualBindingSemantics::EachItem(_) | ContextualBindingSemantics::EachIndex(_),
             )
         ) && !result.contains(&sym)
         {
@@ -1288,10 +1310,15 @@ fn derive_component_bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Component
         return ComponentBindKind::This { symbol, target };
     }
 
-    if let ReferenceSemantics::StoreRead { symbol: store_symbol }
-    | ReferenceSemantics::StoreWrite { symbol: store_symbol }
-    | ReferenceSemantics::StoreUpdate { symbol: store_symbol } =
-        bind_root_reference_semantics(ctx, d).unwrap_or(ReferenceSemantics::Unresolved)
+    if let ReferenceSemantics::StoreRead {
+        symbol: store_symbol,
+    }
+    | ReferenceSemantics::StoreWrite {
+        symbol: store_symbol,
+    }
+    | ReferenceSemantics::StoreUpdate {
+        symbol: store_symbol,
+    } = bind_root_reference_semantics(ctx, d).unwrap_or(ReferenceSemantics::Unresolved)
     {
         let base_symbol = match ctx.reactivity.binding_semantics(store_symbol) {
             BindingSemantics::Store(store) => store.base_symbol,
@@ -1313,7 +1340,10 @@ fn derive_component_bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Component
     };
 
     let target = derive_component_bind_target(ctx, d, sym);
-    ComponentBindKind::Identifier { symbol: sym, target }
+    ComponentBindKind::Identifier {
+        symbol: sym,
+        target,
+    }
 }
 
 fn derive_component_bind_target(
@@ -1344,7 +1374,9 @@ fn derive_component_bind_target(
     };
     if matches!(base, ComponentBindTarget::PropSource)
         && ctx.dev
-        && !ctx.ignore_data.is_ignored(d.id, "ownership_invalid_binding")
+        && !ctx
+            .ignore_data
+            .is_ignored(d.id, "ownership_invalid_binding")
     {
         ComponentBindTarget::PropSourceOwned
     } else {
@@ -1452,7 +1484,6 @@ fn classify_body(ctx: &Ctx<'_, '_>, b: &SvelteBody, store: &mut AttributeSemanti
         }
     }
 }
-
 
 fn document_property(name: &str) -> Option<DocumentBindKind> {
     match name {

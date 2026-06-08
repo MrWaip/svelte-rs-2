@@ -53,17 +53,21 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 expr
             };
 
-            let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(v.symbol));
-            leaf_declarators.push(self.b.ast.variable_declarator(
-                SPAN,
-                decl_kind,
-                self.b
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
-                NONE,
-                Some(value),
-                false,
-            ));
+            let name: &'a str = self
+                .b
+                .alloc_str(self.component_scoping.symbol_name(v.symbol));
+            leaf_declarators.push(
+                self.b.ast.variable_declarator(
+                    SPAN,
+                    decl_kind,
+                    self.b
+                        .ast
+                        .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+                    NONE,
+                    Some(value),
+                    false,
+                ),
+            );
         });
 
         out.push(self.build_tmp_declarator(decl_kind, tmp_name_str, init));

@@ -21,33 +21,6 @@ pub(crate) struct VisitContext<'d, 'a> {
 }
 
 impl<'d, 'a> VisitContext<'d, 'a> {
-    pub fn new(
-        scope: ScopeId,
-        data: &'d mut AnalysisData<'a>,
-        store: &'d svelte_ast::AstStore,
-        source: &'d str,
-        runes: bool,
-        component_name: &'d str,
-        filename_basename: &'d str,
-    ) -> Self {
-        Self {
-            scope,
-            data,
-            parsed: None,
-            store,
-            parents: Vec::new(),
-            element_name_id: None,
-            source,
-            runes,
-            component_name,
-            filename_basename,
-            ignore_current: FxHashSet::default(),
-            ignore_stack: Vec::new(),
-            warnings: Vec::new(),
-            current_fragment_id: None,
-        }
-    }
-
     pub fn with_parsed(
         scope: ScopeId,
         data: &'d mut AnalysisData<'a>,

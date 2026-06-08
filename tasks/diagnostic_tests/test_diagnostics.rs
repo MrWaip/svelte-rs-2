@@ -35,7 +35,11 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
             opts.dev = dev;
         }
         if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = if runes { RunesOption::Runes } else { RunesOption::Legacy };
+            opts.runes = if runes {
+                RunesOption::Runes
+            } else {
+                RunesOption::Legacy
+            };
         }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;

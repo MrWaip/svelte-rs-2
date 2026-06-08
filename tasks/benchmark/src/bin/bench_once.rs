@@ -47,8 +47,8 @@ fn main() {
         }
     }
 
-    let path = path
-        .expect("usage: bench_once <path> [seconds] [warmup_s] [min_iters] [--dev] [--module]");
+    let path =
+        path.expect("usage: bench_once <path> [seconds] [warmup_s] [min_iters] [--dev] [--module]");
     let source = fs::read_to_string(&path).expect("read source");
 
     let resolved_mode = mode.unwrap_or_else(|| {

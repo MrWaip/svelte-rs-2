@@ -1,5 +1,5 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
+use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -105,12 +105,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Document(DocumentBindKind),
         }
         let (host_prop, bind_kind) = match self.ctx.query.analysis.attributes.get(bind.id) {
-            AttributeSemantics::WindowBind(WindowBindSemantics {
-                property, kind, ..
-            }) => (HostProp::Window(*property), kind.clone()),
-            AttributeSemantics::DocumentBind(DocumentBindSemantics {
-                property, kind, ..
-            }) => (HostProp::Document(*property), kind.clone()),
+            AttributeSemantics::WindowBind(WindowBindSemantics { property, kind, .. }) => {
+                (HostProp::Window(*property), kind.clone())
+            }
+            AttributeSemantics::DocumentBind(DocumentBindSemantics { property, kind, .. }) => {
+                (HostProp::Document(*property), kind.clone())
+            }
             _ => return Ok(()),
         };
 
@@ -194,9 +194,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_binding_getter(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
         let body = match kind {
-            HtmlBindKind::Rune | HtmlBindKind::LegacyState => {
-                rune_get(&self.ctx.b, var)
-            }
+            HtmlBindKind::Rune | HtmlBindKind::LegacyState => rune_get(&self.ctx.b, var),
             _ => self.ctx.b.rid_expr(var),
         };
         self.ctx
@@ -251,12 +249,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         raw_event_name: &str,
         expr_offset: u32,
     ) -> Result<()> {
-        let (event_name, capture) =
-            if let Some(base) = strip_capture_event(raw_event_name) {
-                (base.to_string(), true)
-            } else {
-                (raw_event_name.to_string(), false)
-            };
+        let (event_name, capture) = if let Some(base) = strip_capture_event(raw_event_name) {
+            (base.to_string(), true)
+        } else {
+            (raw_event_name.to_string(), false)
+        };
 
         let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
             AttributeSemantics::Event(ev) => match &ev.emit {
@@ -271,13 +268,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::missing_expression(attr_id);
         };
         let expr = self.maybe_wrap_legacy_slots_read(expr);
-        let handler = self.build_event_handler_s5(
-            attr_id,
-            expr,
-            handler_emit,
-            &mut state.init,
-            expr_offset,
-        );
+        let handler =
+            self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
         let passive = is_passive_event(&event_name);

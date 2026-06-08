@@ -163,14 +163,18 @@ pub struct EventSemantics {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventEmit {
-    HtmlDelegated { handler: HandlerEmit },
+    HtmlDelegated {
+        handler: HandlerEmit,
+    },
     HtmlDirect {
         capture: bool,
         passive: Option<bool>,
         handler: HandlerEmit,
     },
     HtmlBubble,
-    Component { handler: HandlerEmit },
+    Component {
+        handler: HandlerEmit,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

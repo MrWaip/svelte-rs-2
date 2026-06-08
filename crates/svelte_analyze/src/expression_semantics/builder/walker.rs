@@ -1,15 +1,17 @@
-use super::super::ExpressionSemanticsStore;
 use super::super::ContextSignal;
+use super::super::ExpressionSemanticsStore;
 use super::super::data::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier,
+    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier, Volatility,
 };
-use crate::value_evaluation::{ReadContext, ValueEvaluator};
 use super::collector::{ExprFacts, collect};
 use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData};
+use crate::types::data::{
+    BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData,
+};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
+use crate::value_evaluation::{ReadContext, ValueEvaluator};
 use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use smallvec::SmallVec;
 use svelte_ast::{
@@ -161,6 +163,9 @@ fn visit_fragment(
                 }
             }
             Node::SvelteComponentLegacy(cn) => {
+                if let Some(this_expr) = cn.this_expr() {
+                    store_svelte_component_this(cn.id, this_expr.id(), ctx, sink);
+                }
                 visit_attributes(&cn.attributes, ctx, sink, SiteContext::ElementAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
@@ -208,12 +213,7 @@ fn visit_fragment(
     }
 }
 
-fn visit_element(
-    component: &Component,
-    el: &Element,
-    ctx: &Ctx<'_, '_>,
-    sink: &mut Sink<'_>,
-) {
+fn visit_element(component: &Component, el: &Element, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
     visit_fragment(component, el.fragment, ctx, sink);
 }
@@ -339,12 +339,20 @@ fn store_component_name(
     sink.set(site_id, ExpressionSemantics::Expression(data));
 }
 
-fn store_render_tag(
+fn store_svelte_component_this(
     site_id: NodeId,
-    expr_id: OxcNodeId,
+    this_expr_id: OxcNodeId,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
+    let Some(expr) = ctx.parsed.expr(this_expr_id) else {
+        return;
+    };
+    let (data, _facts) = compute(expr, ctx, SiteContext::Structural);
+    sink.set(site_id, ExpressionSemantics::Expression(data));
+}
+
+fn store_render_tag(site_id: NodeId, expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
         sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
@@ -366,11 +374,7 @@ fn store_render_tag(
     sink.set(site_id, value);
 }
 
-fn store_render_args(
-    expr_id: OxcNodeId,
-    ctx: &Ctx<'_, '_>,
-    sink: &mut Sink<'_>,
-) {
+fn store_render_args(expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
         return;
     };
@@ -390,19 +394,11 @@ fn store_render_args(
         let arg_expr = arg.to_expression();
         let (data, facts) = compute(arg_expr, ctx, SiteContext::Text);
         update_aggregates(sink, &facts, ctx);
-        sink.set_by_oxc(
-            argument_node_id(arg),
-            ExpressionSemantics::Expression(data),
-        );
+        sink.set_by_oxc(argument_node_id(arg), ExpressionSemantics::Expression(data));
     }
 }
 
-fn store_const_tag(
-    site_id: NodeId,
-    stmt_id: OxcNodeId,
-    ctx: &Ctx<'_, '_>,
-    sink: &mut Sink<'_>,
-) {
+fn store_const_tag(site_id: NodeId, stmt_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmt(stmt_id) else {
         return;
     };
@@ -435,8 +431,7 @@ fn store_aggregate(
         };
         let (part, facts) = compute(expr, ctx, context);
         update_aggregates(sink, &facts, ctx);
-        acc.kind = max_kind(&acc.kind, &part.kind);
-        acc.volatile = acc.volatile || part.volatile;
+        acc.volatility = acc.volatility.max(part.volatility);
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
             if !acc.blockers.contains(&b) {
@@ -458,9 +453,8 @@ fn store_aggregate(
 
 fn empty_data() -> ExpressionData {
     ExpressionData {
-        kind: ExprKind::Computed { reactive: false },
+        volatility: Volatility::Static,
         evaluation: Evaluation::unknown(),
-        volatile: false,
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
         references: SmallVec::new(),
@@ -476,7 +470,7 @@ fn compute<'a>(
 
     let evaluation = ctx.evaluator.evaluate(expr);
 
-    let is_dynamic = derive::is_dynamic_template(
+    let is_reactive = derive::is_reactive_template(
         &facts,
         ctx.scoping,
         ctx.reactivity,
@@ -484,31 +478,21 @@ fn compute<'a>(
     );
     let blockers = derive::blockers(&facts, ctx.blockers);
     let has_blockers = !blockers.is_empty();
-    let kind = derive::kind(
-        &facts,
-        has_blockers,
-        is_dynamic,
-        &evaluation,
-        ctx.reactivity,
-    );
-    let volatile = match context {
+    let reactive_gate = match context {
         SiteContext::Text => derive::volatile(
             &facts,
             has_blockers,
-            is_dynamic,
+            is_reactive,
             &evaluation,
             ctx.reactivity,
         ),
-        SiteContext::ElementAttr => {
-            derive::volatile_element_attr(&kind, &facts.references, ctx.scoping, ctx.reactivity)
-        }
-        SiteContext::ComponentAttr => derive::volatile_component_attr(
-            expr,
-            &kind,
+        SiteContext::ElementAttr => derive::volatile_element_attr(
+            is_reactive,
             &facts.references,
             ctx.scoping,
             ctx.reactivity,
         ),
+        SiteContext::ComponentAttr => is_reactive,
         SiteContext::ComponentName => derive::volatile_component_name(
             expr,
             ctx.reactivity.uses_runes(),
@@ -530,10 +514,10 @@ fn compute<'a>(
                 | BindingSemantics::Contextual(_)
         )
     });
+    let volatility = derive::volatility(reactive_gate, &facts);
     let data = ExpressionData {
-        kind,
+        volatility,
         evaluation,
-        volatile,
         blockers,
         legacy_wrap: derive::legacy_wrap(
             ctx.uses_legacy_coarse_wrap,
@@ -545,11 +529,7 @@ fn compute<'a>(
     (data, facts)
 }
 
-fn update_aggregates(
-    sink: &mut Sink<'_>,
-    facts: &ExprFacts,
-    ctx: &Ctx<'_, '_>,
-) {
+fn update_aggregates(sink: &mut Sink<'_>, facts: &ExprFacts, ctx: &Ctx<'_, '_>) {
     for &sym in facts.member_or_call_roots.iter() {
         if !is_safe_member_root(ctx.reactivity, sym) {
             sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
@@ -585,26 +565,6 @@ fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool 
     }
 }
 
-fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
-    fn rank(k: &ExprKind) -> u8 {
-        match k {
-            ExprKind::KnownLiteral => 0,
-            ExprKind::SimpleRead { reactive: false } => 1,
-            ExprKind::Computed { reactive: false } => 2,
-            ExprKind::SimpleRead { reactive: true } => 3,
-            ExprKind::Computed { reactive: true } => 4,
-            ExprKind::Call { dynamic: false } => 5,
-            ExprKind::Call { dynamic: true } => 6,
-            ExprKind::Async { .. } => 7,
-        }
-    }
-    if rank(a) >= rank(b) {
-        a.clone()
-    } else {
-        b.clone()
-    }
-}
-
 fn combine_legacy_wrap(a: LegacyWrap, b: LegacyWrap) -> LegacyWrap {
     let coarse = is_coarse(a) || is_coarse(b);
     let carrier = combine_synthetic_carrier(carrier_of(a), carrier_of(b));
@@ -617,7 +577,10 @@ fn combine_legacy_wrap(a: LegacyWrap, b: LegacyWrap) -> LegacyWrap {
 }
 
 fn is_coarse(w: LegacyWrap) -> bool {
-    matches!(w, LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSynthetic(_))
+    matches!(
+        w,
+        LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSynthetic(_)
+    )
 }
 
 fn carrier_of(w: LegacyWrap) -> Option<SyntheticPropsCarrier> {

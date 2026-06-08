@@ -97,11 +97,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ast = self.b.ast;
         let callee = self.make_dollar_member("store_unsub");
         let inner_arg = Argument::from(inner);
-        let label_arg = Argument::from(ast.expression_string_literal(
-            SPAN,
-            ast.atom(dollar_name),
-            None,
-        ));
+        let label_arg =
+            Argument::from(ast.expression_string_literal(SPAN, ast.atom(dollar_name), None));
         let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
         ast.expression_call(
             SPAN,
@@ -123,11 +120,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let ast = self.b.ast;
         let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
-        let label_arg = Argument::from(ast.expression_string_literal(
-            SPAN,
-            ast.atom(dollar_name),
-            None,
-        ));
+        let label_arg =
+            Argument::from(ast.expression_string_literal(SPAN, ast.atom(dollar_name), None));
         let invalidate = ast.expression_call(
             SPAN,
             self.make_dollar_member("invalidate_store"),
@@ -146,18 +140,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
-        let make_source_read =
-            |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
-                let name = self.component_scoping.symbol_name(sym);
-                if matches!(
-                    analysis.binding_semantics(sym),
-                    svelte_analyze::BindingSemantics::Store(_)
-                ) {
-                    self.make_thunk_call(name)
-                } else {
-                    self.make_rune_get(name)
-                }
-            };
+        let make_source_read = |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
+            let name = self.component_scoping.symbol_name(sym);
+            if matches!(
+                analysis.binding_semantics(sym),
+                svelte_analyze::BindingSemantics::Store(_)
+            ) {
+                self.make_thunk_call(name)
+            } else {
+                self.make_rune_get(name)
+            }
+        };
         let body_expr = match source_syms {
             [single] => make_source_read(*single),
             many => {
@@ -184,13 +177,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         }) {
             let store_name = self.component_scoping.symbol_name(store_sym);
-            let stores_arg =
-                Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
-            let label_arg = Argument::from(ast.expression_string_literal(
-                SPAN,
-                ast.atom(store_name),
-                None,
-            ));
+            let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
+            let label_arg =
+                Argument::from(ast.expression_string_literal(SPAN, ast.atom(store_name), None));
             let invalidate_store = ast.expression_call(
                 SPAN,
                 self.make_dollar_member("invalidate_store"),

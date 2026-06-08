@@ -1,10 +1,10 @@
 use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program};
-use oxc_syntax::symbol::SymbolId;
-use svelte_component_semantics::SymbolOwner;
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_span::{GetSpan, Span as OxcSpan};
+use oxc_syntax::symbol::SymbolId;
 use rustc_hash::FxHashSet;
+use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -16,10 +16,7 @@ pub(super) fn validate(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = StoreValidator {
-        diags,
-        data,
-    };
+    let mut v = StoreValidator { diags, data };
     v.visit_program(program);
 }
 
@@ -67,10 +64,7 @@ pub(super) fn validate_module(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = ModuleStoreValidator {
-        diags,
-        data,
-    };
+    let mut v = ModuleStoreValidator { diags, data };
     v.visit_program(program);
 }
 
@@ -209,13 +203,11 @@ impl<'ast> Visit<'ast> for StoreValidator<'_> {
 }
 
 fn is_synthetic_store_binding(data: &AnalysisData, sym_id: SymbolId) -> bool {
-    matches!(
-        data.scoping.symbol_owner(sym_id),
-        SymbolOwner::Synthetic
-    ) && matches!(
-        data.reactivity.binding_semantics(sym_id),
-        BindingSemantics::Store(_)
-    )
+    matches!(data.scoping.symbol_owner(sym_id), SymbolOwner::Synthetic)
+        && matches!(
+            data.reactivity.binding_semantics(sym_id),
+            BindingSemantics::Store(_)
+        )
 }
 
 fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: SymbolId) -> bool {

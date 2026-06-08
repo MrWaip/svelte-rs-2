@@ -2,7 +2,7 @@ use std::iter;
 
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
-use svelte_parser::{CePropConfig, CeDomMode, ParsedCeConfig};
+use svelte_parser::{CeDomMode, CePropConfig, ParsedCeConfig};
 
 use crate::context::Ctx;
 use svelte_ast_builder::{Arg, ObjProp};

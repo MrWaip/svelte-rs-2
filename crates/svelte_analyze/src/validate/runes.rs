@@ -6,12 +6,9 @@ use oxc_ast::ast::{
     AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
     ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
     IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
-    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey,
-    StaticMemberExpression, Statement, VariableDeclarator,
+    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey, Statement,
+    StaticMemberExpression, VariableDeclarator,
 };
-use oxc_semantic::{ScopeFlags, ScopeId};
-use oxc_span::Span as OxcSpan;
-use oxc_syntax::symbol::SymbolId;
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
@@ -19,14 +16,20 @@ use oxc_ast_visit::walk::{
     walk_member_expression, walk_method_definition, walk_property_definition,
     walk_static_member_expression,
 };
+use oxc_semantic::{ScopeFlags, ScopeId};
 use oxc_span::GetSpan;
+use oxc_span::Span as OxcSpan;
+use oxc_syntax::symbol::SymbolId;
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::utils::script_info::{detect_rune, detect_rune_from_call};
 use crate::validate::span_already_taken;
-use crate::{AnalysisData, BindingSemantics, StateDeclarationSemantics, StateKind, PropBindingKind, PropBindingSemantics, types::script::RuneKind};
+use crate::{
+    AnalysisData, BindingSemantics, PropBindingKind, PropBindingSemantics,
+    StateDeclarationSemantics, StateKind, types::script::RuneKind,
+};
 
 fn is_direct_bindable_call(expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr.get_inner_expression() else {
@@ -293,10 +296,7 @@ pub(super) fn validate_invalid_exports(
     }
 }
 
-fn declaration_export_kind(
-    data: &AnalysisData,
-    decl: &Declaration<'_>,
-) -> Option<DiagnosticKind> {
+fn declaration_export_kind(data: &AnalysisData, decl: &Declaration<'_>) -> Option<DiagnosticKind> {
     let Declaration::VariableDeclaration(var_decl) = decl else {
         return None;
     };
@@ -309,10 +309,7 @@ fn declaration_export_kind(
     })
 }
 
-fn export_kind_for_symbol(
-    data: &AnalysisData,
-    sym_id: SymbolId,
-) -> Option<DiagnosticKind> {
+fn export_kind_for_symbol(data: &AnalysisData, sym_id: SymbolId) -> Option<DiagnosticKind> {
     match data.binding_semantics(sym_id) {
         BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => {
             Some(DiagnosticKind::DerivedInvalidExport)
@@ -450,10 +447,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         }
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
         let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_arrow_function_expression(self, arrow);
@@ -461,11 +455,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         self.call_depth_offset = prev_call_depth;
     }
 
-    fn visit_function(
-        &mut self,
-        func: &Function<'a>,
-        flags: ScopeFlags,
-    ) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
         let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_function(self, func, flags);
@@ -485,10 +475,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 
     fn visit_export_specifier(&mut self, _spec: &ExportSpecifier<'a>) {}
 
-    fn visit_export_default_declaration(
-        &mut self,
-        export: &ExportDefaultDeclaration<'a>,
-    ) {
+    fn visit_export_default_declaration(&mut self, export: &ExportDefaultDeclaration<'a>) {
         if matches!(
             export.declaration,
             ExportDefaultDeclarationKind::Identifier(_)
@@ -793,11 +780,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         }
     }
 
-    fn visit_function(
-        &mut self,
-        func: &Function<'a>,
-        flags: ScopeFlags,
-    ) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         self.function_depth += 1;
         let prev_props = mem::replace(&mut self.in_props_destructure, false);
         let prev_first = mem::replace(
@@ -815,10 +798,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         self.function_depth -= 1;
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.function_depth += 1;
         let prev_props = mem::replace(&mut self.in_props_destructure, false);
 
@@ -900,10 +880,7 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
         {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::PropsIllegalName,
-                Span::new(
-                    member.property.span.start,
-                    member.property.span.end,
-                ),
+                Span::new(member.property.span.start, member.property.span.end),
             ));
         }
         walk_member_expression(self, expr);

@@ -6,9 +6,7 @@ use std::env;
 use std::process;
 
 fn main() {
-    let input = env::args()
-        .nth(1)
-        .expect("Usage: dump_ast <js-expression>");
+    let input = env::args().nth(1).expect("Usage: dump_ast <js-expression>");
 
     let alloc = Allocator::default();
     let source_type = SourceType::mjs();

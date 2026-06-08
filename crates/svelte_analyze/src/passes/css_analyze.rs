@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use svelte_css::{
-    visit as css_visit, AtRule, Block, BlockChild, CombinatorKind, ComplexSelector,
-    RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
+    AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, RelativeSelector, SelectorList,
+    SimpleSelector, StyleRule, StyleSheet, Visit, visit as css_visit,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;

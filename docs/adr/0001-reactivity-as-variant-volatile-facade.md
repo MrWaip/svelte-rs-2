@@ -62,10 +62,14 @@ init по требованию, с re-entrancy-guard от циклов (`current
    `needs_effect` уезжает из реактивности и растворяется в `volatile`. `reactive` — примитив
    реактивности, `volatile` — надстройка фасада.
 
-4. **`ExprKind` растворяется в плоские поля `ExpressionData`:** `evaluation` (известность; вариант
-   `KnownLiteral` удалён как дубль), `volatile`, `heavy` (содержит динамический вызов), `asynchronous`
-   (содержит `await`). `SimpleRead`/`Computed` сливаются. Форма выноса (sync-ячейка vs async-слот) —
-   derived-правило эмиссии, в анализе не хранится.
+4. **`ExprKind` растворяется.** `evaluation` (известность; вариант `KnownLiteral` удалён как дубль)
+   выносится отдельным полем `ExpressionData`. Изначально планировались плоские ортогональные поля
+   `volatile`/`heavy`/`asynchronous`; при реализации они слиты в **единый доменный enum**
+   `ExpressionData.volatility: Volatility { Static, Reactive, Heavy, Asynchronous }` — потребитель
+   матчит один тип, без композиции сырых булей, а `Heavy`/`Asynchronous` всегда изменчивы (отдельный
+   `volatile`-bool — дубль). Асинхронность поглощает тяжесть (`{await foo()}` → `Asynchronous`), поэтому
+   «оба»-вариант не нужен. `SimpleRead`/`Computed` сливаются. Форма выноса (sync-ячейка vs async-слот) —
+   **эмит-форма**, derived-правило **в кодгене** (`MemoForm`), не в анализе.
 
 5. **Порядок пассов — reactivity-first; вычисление значения ПОТРЕБЛЯЕТ реактивность, не re-derive.**
 

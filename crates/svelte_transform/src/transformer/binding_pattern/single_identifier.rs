@@ -90,16 +90,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             call.callee = self.b.rid_expr("$.state");
 
             if call.arguments.is_empty() {
-                let void_zero = self.b.ast.expression_unary(
-                    SPAN,
-                    UnaryOperator::Void,
-                    self.b.num_expr(0.0),
-                );
+                let void_zero =
+                    self.b
+                        .ast
+                        .expression_unary(SPAN, UnaryOperator::Void, self.b.num_expr(0.0));
                 call.arguments.push(void_zero.into());
             } else if matches!(kind, StateKind::State) {
-                let needs_proxy = call.arguments[0]
-                    .as_expression()
-                    .is_some_and(should_proxy);
+                let needs_proxy = call.arguments[0].as_expression().is_some_and(should_proxy);
                 if needs_proxy {
                     let mut dummy = Argument::from(self.b.cheap_expr());
                     mem::swap(&mut call.arguments[0], &mut dummy);
@@ -120,11 +117,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
         } else {
             let value = if call.arguments.is_empty() {
-                self.b.ast.expression_unary(
-                    SPAN,
-                    UnaryOperator::Void,
-                    self.b.num_expr(0.0),
-                )
+                self.b
+                    .ast
+                    .expression_unary(SPAN, UnaryOperator::Void, self.b.num_expr(0.0))
             } else {
                 let mut dummy = Argument::from(self.b.cheap_expr());
                 mem::swap(&mut call.arguments[0], &mut dummy);
@@ -208,9 +203,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::CallExpression(_) = init_expr else {
             return;
         };
-        let pending_call = self
-            .b
-            .call_expr("$.pending", iter::empty::<Arg<'a, '_>>());
+        let pending_call = self.b.call_expr("$.pending", iter::empty::<Arg<'a, '_>>());
         node.init = Some(
             self.b
                 .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),

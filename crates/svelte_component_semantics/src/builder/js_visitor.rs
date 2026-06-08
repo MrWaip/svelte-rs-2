@@ -2,12 +2,12 @@ use compact_str::CompactString;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use smallvec::SmallVec;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::{ReferenceFlags, ReferenceId};
-use oxc_syntax::symbol::SymbolId;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolFlags;
+use oxc_syntax::symbol::SymbolId;
+use smallvec::SmallVec;
 
 use crate::pattern::walk_assignment_target_idents;
 use crate::reference::Reference;
@@ -266,7 +266,6 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             SymbolOwner::Synthetic,
         );
     }
-
 }
 
 impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {

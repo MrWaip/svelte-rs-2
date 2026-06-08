@@ -23,13 +23,7 @@ pub fn build_store_base_read<'a>(
         | BindingSemantics::OptimizedDerived(_) => {
             let ident = ast.expression_identifier(SPAN, ast.atom(base_name));
             let callee = dollar_member(b, "get");
-            ast.expression_call(
-                SPAN,
-                callee,
-                NONE,
-                ast.vec1(Argument::from(ident)),
-                false,
-            )
+            ast.expression_call(SPAN, callee, NONE, ast.vec1(Argument::from(ident)), false)
         }
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::NonSource,
@@ -102,19 +96,14 @@ pub fn make_store_update<'a>(
     let callee = dollar_member(b, fn_name);
     let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
     let thunk_callee = ast.expression_identifier(SPAN, ast.atom(dollar_name));
-    let thunk_call =
-        ast.expression_call(SPAN, thunk_callee, NONE, ast.vec(), false);
+    let thunk_call = ast.expression_call(SPAN, thunk_callee, NONE, ast.vec(), false);
     let thunk_arg = Argument::from(thunk_call);
 
     let args = if is_increment {
         ast.vec_from_array([name_arg, thunk_arg])
     } else {
-        let delta = Argument::from(ast.expression_numeric_literal(
-            SPAN,
-            -1.0,
-            None,
-            NumberBase::Decimal,
-        ));
+        let delta =
+            Argument::from(ast.expression_numeric_literal(SPAN, -1.0, None, NumberBase::Decimal));
         ast.vec_from_array([name_arg, thunk_arg, delta])
     };
 

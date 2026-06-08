@@ -1,4 +1,5 @@
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
+use svelte_analyze::Volatility;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -18,8 +19,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .expression_data(attr_id)
             .is_some_and(|d| evaluation_is_defined(&d.evaluation));
-        let has_state = self.ctx.is_dynamic_attr(attr_id);
-        self.emit_select_special_value(state, el_name, val_expr, has_state, needs_coalesce);
+        self.emit_select_special_value(state, el_name, val_expr, attr_id, needs_coalesce);
     }
 
     pub(super) fn emit_select_concat_value(
@@ -29,8 +29,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr_id: NodeId,
         val_expr: Expression<'a>,
     ) {
-        let has_state = self.ctx.is_dynamic_attr(attr_id);
-        self.emit_select_special_value(state, el_name, val_expr, has_state, false);
+        self.emit_select_special_value(state, el_name, val_expr, attr_id, false);
     }
 
     pub(super) fn emit_input_bind_checked_value(
@@ -61,19 +60,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         el_name: &str,
         val_expr: Expression<'a>,
-        has_state: bool,
+        attr_id: NodeId,
         needs_coalesce: bool,
     ) {
         let val_for_select_option = self.ctx.b.clone_expr(&val_expr);
-        let val_for_assign;
-        let val_for_cache;
-        if has_state {
-            val_for_assign = self.ctx.b.clone_expr(&val_expr);
-            val_for_cache = Some(val_expr);
-        } else {
-            val_for_assign = val_expr;
-            val_for_cache = None;
-        }
+        let val_for_assign = self.ctx.b.clone_expr(&val_expr);
+        let val_for_cache = match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+            Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
+                Some(val_expr)
+            }
+            Some(Volatility::Static) | None => None,
+        };
 
         let sequence_stmt = self.build_select_value_sequence_stmt(
             el_name,
@@ -109,11 +106,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.pending_element_init.push(sequence_stmt);
         }
 
-        state.pending_element_init.push(
-            self.ctx
-                .b
-                .call_stmt("$.init_select", [Arg::Ident(el_name)]),
-        );
+        state
+            .pending_element_init
+            .push(self.ctx.b.call_stmt("$.init_select", [Arg::Ident(el_name)]));
     }
 
     fn build_select_value_sequence_stmt(

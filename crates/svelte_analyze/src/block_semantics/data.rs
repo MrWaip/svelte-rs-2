@@ -1,3 +1,4 @@
+use crate::expression_semantics::Volatility;
 use crate::scope::SymbolId;
 use bitflags::bitflags;
 use smallvec::SmallVec;
@@ -76,11 +77,9 @@ pub enum EachCollectionSource {
 pub enum EachAsyncKind {
     Sync,
 
-    Async {
-        has_await: bool,
+    Awaited { blockers: SmallVec<[u32; 2]> },
 
-        blockers: SmallVec<[u32; 2]>,
-    },
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 bitflags! {
@@ -144,7 +143,7 @@ pub struct AwaitBlockSemantics {
 
     pub catch: AwaitBranch,
 
-    pub expression_has_await: bool,
+    pub expression_volatility: Volatility,
 
     pub wrapper: AwaitWrapper,
 }
@@ -210,11 +209,9 @@ pub struct ConstTagBlockSemantics {
 pub enum ConstTagAsyncKind {
     Sync,
 
-    Async {
-        has_await: bool,
+    Awaited { blockers: SmallVec<[u32; 2]> },
 
-        blockers: SmallVec<[u32; 2]>,
-    },
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -284,11 +281,9 @@ pub enum IfConditionKind {
 pub enum IfAsyncKind {
     Sync,
 
-    Async {
-        root_has_await: bool,
+    Awaited { blockers: SmallVec<[u32; 2]> },
 
-        blockers: SmallVec<[u32; 2]>,
-    },
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -307,9 +302,7 @@ pub struct KeyBlockSemantics {
 pub enum KeyAsyncKind {
     Sync,
 
-    Async {
-        has_await: bool,
+    Awaited { blockers: SmallVec<[u32; 2]> },
 
-        blockers: SmallVec<[u32; 2]>,
-    },
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }

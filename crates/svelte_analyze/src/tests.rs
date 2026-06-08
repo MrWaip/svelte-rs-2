@@ -1,14 +1,17 @@
-use crate::reactivity_semantics::data::PropDefaultKind;
-use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind};
-use crate::types::script::RuneKind;
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
+use crate::reactivity_semantics::data::PropDefaultKind;
+use crate::types::data::{
+    BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
+};
+use crate::types::script::RuneKind;
 use crate::{
-    AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy, OptimizedRuneSemantics,
-    RenderCallKind, SnippetParamStrategy, PROPS_IS_BINDABLE, PROPS_IS_UPDATED,
+    AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy,
+    OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
+    SnippetParamStrategy,
 };
 use oxc_ast::ast::{BindingPattern, IdentifierReference, Program, Statement};
-use oxc_ast_visit::walk::walk_assignment_expression;
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::walk_assignment_expression;
 use oxc_semantic::ReferenceId;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{
@@ -810,9 +813,7 @@ fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
     assert!(
         matches!(
             data.binding_semantics(sym_id),
-            BindingSemantics::Const(
-                ConstBindingSemantics::ConstTag { .. }
-            )
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
         ),
         "expected '{name}' to have a Const declaration semantic",
     );
@@ -949,11 +950,8 @@ fn assert_bind_target_semantics(
         BindHostKind::Document => ParentKind::SvelteDocument,
         BindHostKind::Body => ParentKind::SvelteBody,
     };
-    let semantics =
-        BindTargetSemantics::from_parent_kind_and_name(parent_kind, bind_name)
-            .unwrap_or_else(|| {
-                panic!("no bind target semantics for bind:{bind_name} on <{tag_name}>")
-            });
+    let semantics = BindTargetSemantics::from_parent_kind_and_name(parent_kind, bind_name)
+        .unwrap_or_else(|| panic!("no bind target semantics for bind:{bind_name} on <{tag_name}>"));
     assert_eq!(
         semantics.host(),
         expected_host,
@@ -1045,18 +1043,22 @@ fn assert_nth_element_needs_input_defaults(
     );
 }
 
-fn assert_has_dynamic_class_directives(
+fn assert_class_state_volatile(
     data: &AnalysisData,
     component: &Component,
     tag_name: &str,
     expected: bool,
 ) {
+    use crate::expression_semantics::Volatility;
     let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
+    let volatile = match data.class_state_volatility(el.id) {
+        Volatility::Static => false,
+        Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
+    };
     assert_eq!(
-        data.elements.flags.has_dynamic_class_directives(el.id),
-        expected,
-        "unexpected dynamic class-directive state for <{tag_name}>",
+        volatile, expected,
+        "unexpected class-state volatility for <{tag_name}>",
     );
 }
 
@@ -1936,7 +1938,7 @@ fn dynamic_class_directive_marks_element_state() {
     let (component, data) = analyze_source(
         r#"<script>let foo = $state(true); foo = false;</script><div class:active={foo}></div>"#,
     );
-    assert_has_dynamic_class_directives(&data, &component, "div", true);
+    assert_class_state_volatile(&data, &component, "div", true);
     assert_element_needs_ref(&data, &component, "div", true);
 }
 
@@ -3694,9 +3696,15 @@ let data = await fetch('/api');
     );
     let block =
         find_if_block(c.root, &c, "await check(data)").unwrap_or_else(|| panic!("no IfBlock"));
-    assert!(
-        data.needs_expr_memoization(block.id),
-        "expression with await + ref_symbols should need memoization"
+    let volatility = data
+        .expression_data(block.id)
+        .expect("expression data for if-test")
+        .volatility;
+    use crate::expression_semantics::Volatility;
+    assert_eq!(
+        volatility,
+        Volatility::Asynchronous,
+        "expression with await + ref_symbols should be asynchronous"
     );
 }
 
@@ -4013,12 +4021,7 @@ fn legacy_export_let_classifies_as_legacy_bindable_prop() {
         "<script>export let foo;</script><p>{foo}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "foo",
-        PropDefaultKind::None,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "foo", PropDefaultKind::None, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4027,12 +4030,7 @@ fn legacy_export_let_with_default_classifies_eager() {
         "<script>export let bar = 'default';</script><p>{bar}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "bar",
-        PropDefaultKind::Eager,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "bar", PropDefaultKind::Eager, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4041,12 +4039,7 @@ fn legacy_export_let_undefined_default_classifies_eager() {
         "<script>export let foo = undefined;</script><p>{foo}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "foo",
-        PropDefaultKind::Eager,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "foo", PropDefaultKind::Eager, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4055,12 +4048,7 @@ fn legacy_export_let_with_complex_default_classifies_lazy() {
         "<script>function compute() { return 1; } export let bar = compute();</script><p>{bar}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "bar",
-        PropDefaultKind::Lazy,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "bar", PropDefaultKind::Lazy, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4069,12 +4057,7 @@ fn legacy_export_let_composite_default_referencing_prop_classifies_lazy() {
         "<script>export let kind = 'a'; export let label = kind === 'a' ? 'first' : 'second';</script><p>{label}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "label",
-        PropDefaultKind::Lazy,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "label", PropDefaultKind::Lazy, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4083,12 +4066,7 @@ fn legacy_export_let_composite_default_pure_literals_stays_eager() {
         "<script>export let label = 1 === 2 ? 'first' : 'second';</script><p>{label}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "label",
-        PropDefaultKind::Eager,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "label", PropDefaultKind::Eager, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4111,12 +4089,7 @@ fn legacy_export_var_classifies_as_legacy_bindable_prop() {
         "<script>export var count = 1;</script><p>{count}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "count",
-        PropDefaultKind::Eager,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "count", PropDefaultKind::Eager, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4125,12 +4098,7 @@ fn legacy_export_specifier_classifies_as_legacy_bindable_prop() {
         "<script>let foo = 1; export { foo };</script><p>{foo}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "foo",
-        PropDefaultKind::Eager,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "foo", PropDefaultKind::Eager, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -4153,18 +4121,8 @@ fn legacy_export_destructure_classifies_each_leaf() {
         "<script>export let { x: foo, z: [bar] } = { x: 'a', z: ['b'] };</script><p>{foo}{bar}</p>",
         legacy_options(),
     );
-    assert_legacy_bindable_prop(
-        &data,
-        "foo",
-        PropDefaultKind::Lazy,
-        PROPS_IS_BINDABLE,
-    );
-    assert_legacy_bindable_prop(
-        &data,
-        "bar",
-        PropDefaultKind::Lazy,
-        PROPS_IS_BINDABLE,
-    );
+    assert_legacy_bindable_prop(&data, "foo", PropDefaultKind::Lazy, PROPS_IS_BINDABLE);
+    assert_legacy_bindable_prop(&data, "bar", PropDefaultKind::Lazy, PROPS_IS_BINDABLE);
 }
 
 #[test]
@@ -6011,10 +5969,10 @@ fn derived_reactivity_flag_true_when_dep_is_mutated_state() {
 
 mod block_semantics_each_tests {
     use super::analyze_source;
+    use crate::AnalysisData;
     use crate::block_semantics::{
         BlockSemantics, EachBlockSemantics, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
     };
-    use crate::AnalysisData;
     use svelte_ast::Node;
 
     fn first_each_semantics<'a>(
@@ -6496,8 +6454,8 @@ mod is_state_source_formula {
 mod class_field_rune_semantics {
     use super::*;
     use crate::reactivity_semantics::data::{
-        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedKind,
-        DerivedEmit, StateKind,
+        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedEmit,
+        DerivedKind, StateKind,
     };
     use oxc_ast::ast::{
         AssignmentExpression, AssignmentTarget, Class, ClassElement, Expression,
@@ -6617,8 +6575,10 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
-            semantics
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+            kind,
+            emit: lowering,
+        }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
@@ -6644,8 +6604,10 @@ class A {
         .expect("missing class property A.y");
 
         let semantics = data.declarator_semantics(prop_node_id);
-        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, emit: lowering }) =
-            semantics
+        let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+            kind,
+            emit: lowering,
+        }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
@@ -6691,9 +6653,7 @@ class A {
                         let Expression::AssignmentExpression(assign) = &es.expression else {
                             continue;
                         };
-                        let AssignmentTarget::StaticMemberExpression(member) =
-                            &assign.left
-                        else {
+                        let AssignmentTarget::StaticMemberExpression(member) = &assign.left else {
                             continue;
                         };
                         if !matches!(&member.object, Expression::ThisExpression(_)) {
@@ -6809,10 +6769,7 @@ let a = new A();
             found: Option<OxcNodeId>,
         }
         impl<'a> Visit<'a> for AssignFinder<'_> {
-            fn visit_assignment_expression(
-                &mut self,
-                expr: &AssignmentExpression<'a>,
-            ) {
+            fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
                 if self.found.is_none()
                     && expr
                         .span
@@ -6870,10 +6827,7 @@ let a = new A();
             found: Option<OxcNodeId>,
         }
         impl<'a> Visit<'a> for AssignFinder<'_> {
-            fn visit_assignment_expression(
-                &mut self,
-                expr: &AssignmentExpression<'a>,
-            ) {
+            fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
                 if self.found.is_none() && expr.span.source_text(self.source).starts_with("this.x")
                 {
                     self.found = Some(expr.node_id());
@@ -7014,8 +6968,8 @@ mod block_semantics_html_tag_tests {
 mod expression_semantics_tests {
     use super::*;
     use crate::expression_semantics::{
-        Evaluation, ExprKind, ExpressionSemantics, KnownValue, LegacyWrap, SyntheticPropsCarrier,
-        ValueClass, build,
+        Evaluation, ExpressionSemantics, KnownValue, LegacyWrap, SyntheticPropsCarrier, ValueClass,
+        Volatility, build,
     };
 
     #[test]
@@ -7113,7 +7067,7 @@ async function baz() { return 2; }
         let sem = data.expressions_v2.get(tag_id);
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
-                assert_eq!(expr_data.kind, ExprKind::SimpleRead { reactive: true });
+                assert_eq!(expr_data.volatility, Volatility::Reactive);
             }
             ExpressionSemantics::NonSpecial => {
                 panic!("analyze() must populate expressions_v2 — got NonSpecial")
@@ -7145,7 +7099,11 @@ async function baz() { return 2; }
         let sem = store.get(tag_id);
         match sem {
             ExpressionSemantics::Expression(data) => {
-                assert_eq!(data.kind, ExprKind::KnownLiteral, "kind");
+                assert_eq!(data.volatility, Volatility::Static, "volatility");
+                assert!(
+                    matches!(data.evaluation, Evaluation::Known(_)),
+                    "evaluation must be Known for literal"
+                );
                 assert_eq!(data.legacy_wrap, LegacyWrap::None, "legacy_wrap");
                 assert!(data.references.is_empty(), "references");
             }
@@ -7217,7 +7175,8 @@ async function baz() { return 2; }
 
     #[test]
     fn evaluation_logical_and_with_boolean_left_string_right_is_defined() {
-        let source = "<script>const x = 'foo'; const cond = x === 'foo';</script><p>{cond && 'b'}</p>";
+        let source =
+            "<script>const x = 'foo'; const cond = x === 'foo';</script><p>{cond && 'b'}</p>";
         let ev = evaluate_first_expr(source, "cond && 'b'");
         assert!(ev.is_defined(), "Boolean && String must be defined");
         assert!(!ev.has_unknown());
@@ -7227,7 +7186,10 @@ async function baz() { return 2; }
     fn evaluation_identifier_resolves_to_binary_eq_initializer_as_boolean() {
         let source = "<script>const x = 'foo'; const cond = x === 'foo';</script><p>{cond}</p>";
         let ev = evaluate_first_expr(source, "cond");
-        assert!(ev.is_defined(), "const cond = x === 'foo' must be defined (boolean)");
+        assert!(
+            ev.is_defined(),
+            "const cond = x === 'foo' must be defined (boolean)"
+        );
     }
 
     #[test]
@@ -7271,7 +7233,10 @@ async function baz() { return 2; }
     fn evaluation_update_expression_is_unknown_per_reference() {
         let source = "<script>let x = $state(0);</script><p>{x++}</p>";
         let ev = evaluate_first_expr(source, "x++");
-        assert!(!ev.is_defined(), "UpdateExpression default Unknown matches reference");
+        assert!(
+            !ev.is_defined(),
+            "UpdateExpression default Unknown matches reference"
+        );
     }
 
     #[test]
@@ -7392,7 +7357,10 @@ async function baz() { return 2; }
     fn evaluation_derived_binding_is_post_transform_unknown() {
         let source = "<script>let v = $derived(42);</script><p>{v}</p>";
         let ev = evaluate_first_expr(source, "v");
-        assert!(!ev.is_defined(), "derived at codegen wraps in $.get(...) → Unknown");
+        assert!(
+            !ev.is_defined(),
+            "derived at codegen wraps in $.get(...) → Unknown"
+        );
     }
 
     #[test]
@@ -7441,8 +7409,7 @@ async function baz() { return 2; }
 
     #[test]
     fn evaluate_script_import_reference_is_opaque_by_binding_semantics() {
-        let source =
-            "<script>import { foo } from \"./m.js\"; const x = foo;</script><p>{x}</p>";
+        let source = "<script>import { foo } from \"./m.js\"; const x = foo;</script><p>{x}</p>";
         let ev = evaluate_binding_init(source, "x");
         assert!(
             !ev.is_defined(),
@@ -7621,7 +7588,7 @@ async function baz() { return 2; }
         data: &AnalysisData<'static>,
         parsed: &JsAst<'static>,
         expr_text: &str,
-        expected_kind: ExprKind,
+        expected: Volatility,
     ) {
         let tag_id = find_expr_tag(component.root, component, expr_text)
             .unwrap_or_else(|| panic!("ExpressionTag with source '{expr_text}' not found"));
@@ -7641,8 +7608,8 @@ async function baz() { return 2; }
         match store.get(tag_id) {
             ExpressionSemantics::Expression(expr_data) => {
                 assert_eq!(
-                    expr_data.kind, expected_kind,
-                    "kind for '{expr_text}'"
+                    expr_data.volatility, expected,
+                    "volatility for '{expr_text}'"
                 );
             }
             ExpressionSemantics::NonSpecial => {
@@ -7730,20 +7697,14 @@ async function baz() { return 2; }
     fn t6_memoization_none_for_simple_identifier() {
         let source = "<script>let { x } = $props();</script><p>{x}</p>";
         let (component, data, parsed) = analyze_source_with_parsed(source);
-        assert_memoization(
-            &component,
-            &data,
-            &parsed,
-            "x",
-            ExprKind::SimpleRead { reactive: true },
-        );
+        assert_memoization(&component, &data, &parsed, "x", Volatility::Reactive);
     }
 
     #[test]
     fn t6_memoization_sync_for_call() {
         let source = "<script>function fn() { return 1; }</script><p>{fn()}</p>";
         let (component, data, parsed) = analyze_source_with_parsed(source);
-        assert_memoization(&component, &data, &parsed, "fn()", ExprKind::Call { dynamic: true });
+        assert_memoization(&component, &data, &parsed, "fn()", Volatility::Heavy);
     }
 
     #[test]
@@ -7755,7 +7716,7 @@ async function baz() { return 2; }
             &data,
             &parsed,
             "await p",
-            ExprKind::Async { has_await: true },
+            Volatility::Asynchronous,
         );
     }
 
@@ -7813,12 +7774,11 @@ async function baz() { return 2; }
         let sem = store.get(tag_id);
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
-                match &expr_data.kind {
-                    ExprKind::Async { has_await } => {
-                        assert!(!*has_await, "has_await false");
-                    }
-                    other => panic!("expected Async, got {other:?}"),
-                }
+                assert_eq!(
+                    expr_data.volatility,
+                    Volatility::Reactive,
+                    "blocked plain read is reactive, not asynchronous"
+                );
                 assert_eq!(expr_data.blockers.as_slice(), &[0u32], "blockers");
             }
             ExpressionSemantics::NonSpecial => panic!("expected Expression, got NonSpecial"),
@@ -7849,12 +7809,11 @@ async function baz() { return 2; }
         let sem = store.get(tag_id);
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
-                match &expr_data.kind {
-                    ExprKind::Async { has_await } => {
-                        assert!(*has_await, "has_await");
-                    }
-                    other => panic!("expected Async, got {other:?}"),
-                }
+                assert_eq!(
+                    expr_data.volatility,
+                    Volatility::Asynchronous,
+                    "inline await is asynchronous"
+                );
                 assert!(expr_data.blockers.is_empty(), "blockers should be empty");
             }
             ExpressionSemantics::NonSpecial => panic!("expected Expression, got NonSpecial"),
@@ -7890,11 +7849,7 @@ async function baz() { return 2; }
         let sem = store.get(tag_id);
         match sem {
             ExpressionSemantics::Expression(expr_data) => {
-                assert_eq!(
-                    expr_data.kind,
-                    ExprKind::SimpleRead { reactive: true },
-                    "kind"
-                );
+                assert_eq!(expr_data.volatility, Volatility::Reactive, "volatility");
                 let refs: Vec<_> = expr_data.references.iter().copied().collect();
                 assert_eq!(refs, vec![x_sym], "references");
             }
@@ -7916,11 +7871,68 @@ async function baz() { return 2; }
         let expr_data = data
             .expression_data(id)
             .unwrap_or_else(|| panic!("no ExpressionData for '{expr_text}'"));
-        assert_eq!(
-            expr_data.volatile, expected,
-            "volatile for '{expr_text}': expected {expected}, got {}",
-            expr_data.volatile
+        use crate::expression_semantics::Volatility;
+        let volatile = matches!(
+            expr_data.volatility,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
         );
+        assert_eq!(
+            volatile, expected,
+            "volatile for '{expr_text}': expected {expected}, got {volatile}"
+        );
+    }
+
+    #[track_caller]
+    fn assert_expr_tag_volatility(
+        data: &AnalysisData,
+        component: &Component,
+        expr_text: &str,
+        expected: Volatility,
+    ) {
+        let id = find_expr_tag(component.root, component, expr_text)
+            .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+        let expr_data = data
+            .expression_data(id)
+            .unwrap_or_else(|| panic!("no ExpressionData for '{expr_text}'"));
+        assert_eq!(
+            expr_data.volatility, expected,
+            "volatility for '{expr_text}': expected {expected:?}, got {:?}",
+            expr_data.volatility
+        );
+    }
+
+    #[test]
+    fn volatility_static_for_literal() {
+        let (component, data) = analyze_source("<p>{42}</p>");
+        assert_expr_tag_volatility(&data, &component, "42", Volatility::Static);
+    }
+
+    #[test]
+    fn volatility_reactive_for_prop_read() {
+        let (component, data) = analyze_source("<script>let { x } = $props();</script>{x}");
+        assert_expr_tag_volatility(&data, &component, "x", Volatility::Reactive);
+    }
+
+    #[test]
+    fn volatility_heavy_for_call() {
+        let (component, data) = analyze_source("<script>function f(){ return 1 }</script>{f()}");
+        assert_expr_tag_volatility(&data, &component, "f()", Volatility::Heavy);
+    }
+
+    #[test]
+    fn volatility_asynchronous_for_await() {
+        let (component, data) = analyze_source_experimental_async(
+            "<script>let p = Promise.resolve(1);</script>{await p}",
+        );
+        assert_expr_tag_volatility(&data, &component, "await p", Volatility::Asynchronous);
+    }
+
+    #[test]
+    fn volatility_asynchronous_subsumes_heavy_for_await_call() {
+        let (component, data) = analyze_source_experimental_async(
+            "<script>async function f(){ return 1 }</script>{await f()}",
+        );
+        assert_expr_tag_volatility(&data, &component, "await f()", Volatility::Asynchronous);
     }
 
     #[test]
@@ -7953,14 +7965,14 @@ async function baz() { return 2; }
 
     #[test]
     fn volatile_derived_nonreactive_literal_dep_is_static() {
-        let (component, data) = analyze_source(
-            "<script>const base = 10; let x = $derived(base + 1);</script>{x}",
-        );
+        let (component, data) =
+            analyze_source("<script>const base = 10; let x = $derived(base + 1);</script>{x}");
         assert_expr_tag_volatile(&data, &component, "x", false);
     }
 
     #[track_caller]
     fn assert_volatile_matches_dynamism(data: &AnalysisData, component: &Component) {
+        use crate::expression_semantics::Volatility;
         let mut mismatches: Vec<(u32, bool, bool)> = Vec::new();
         for i in 0..component.node_count() {
             let id = NodeId(i);
@@ -7970,8 +7982,12 @@ async function baz() { return 2; }
             let oracle = data.dynamism.is_dynamic_node(id)
                 || data.dynamism.is_dynamic_attr(id)
                 || data.dynamism.is_dynamic_component(id);
-            if expr_data.volatile != oracle {
-                mismatches.push((i, expr_data.volatile, oracle));
+            let volatile = matches!(
+                expr_data.volatility,
+                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
+            );
+            if volatile != oracle {
+                mismatches.push((i, volatile, oracle));
             }
         }
         assert!(
@@ -8038,10 +8054,14 @@ async function baz() { return 2; }
         let expr_data = data
             .expression_data(id)
             .unwrap_or_else(|| panic!("no ExpressionData at ComponentNode '{name}'"));
+        use crate::expression_semantics::Volatility;
+        let volatile = matches!(
+            expr_data.volatility,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
+        );
         assert_eq!(
-            expr_data.volatile, expected,
-            "component-name volatile for '{name}': expected {expected}, got {}",
-            expr_data.volatile
+            volatile, expected,
+            "component-name volatile for '{name}': expected {expected}, got {volatile}"
         );
     }
 

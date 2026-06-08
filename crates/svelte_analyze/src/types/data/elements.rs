@@ -27,7 +27,6 @@ pub struct ClassDirectiveInfo {
 #[derive(Clone)]
 pub struct ComponentPropInfo {
     pub kind: ComponentPropKind,
-    pub is_dynamic: bool,
 }
 
 #[derive(Clone)]
@@ -112,7 +111,6 @@ pub struct ElementFlags {
     pub(crate) needs_ref: NodeBitSet,
     pub(crate) bound_contenteditable: NodeBitSet,
     pub(crate) has_use_directive: NodeBitSet,
-    pub(crate) has_dynamic_class_directives: NodeBitSet,
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
 
@@ -149,7 +147,6 @@ impl ElementFlags {
             needs_ref: NodeBitSet::new(node_count),
             bound_contenteditable: NodeBitSet::new(node_count),
             has_use_directive: NodeBitSet::new(node_count),
-            has_dynamic_class_directives: NodeBitSet::new(node_count),
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
             component_css_props: NodeTable::new(node_count),
@@ -206,10 +203,6 @@ impl ElementFlags {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.has_use_directive.contains(&id)
     }
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.has_dynamic_class_directives.contains(&id)
-    }
-
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.expression_shorthand.contains(&id)
     }

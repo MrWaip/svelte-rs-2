@@ -121,23 +121,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
             block_stmt
         } else {
             let mut decls: OxcVec<'a, VariableDeclarator<'a>> = self.b.ast.vec();
-            decls.push(self.b.ast.variable_declarator(
-                SPAN,
-                decl_kind,
-                self.b
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
-                NONE,
-                Some(tmp_init),
-                false,
-            ));
+            decls.push(
+                self.b.ast.variable_declarator(
+                    SPAN,
+                    decl_kind,
+                    self.b
+                        .ast
+                        .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                    NONE,
+                    Some(tmp_init),
+                    false,
+                ),
+            );
             for carrier in carrier_declarators {
                 decls.push(carrier);
             }
             for (symbol, access) in leaves {
                 decls.push(self.derived_leaf_declarator(symbol, access, decl_kind));
             }
-            let decl = self.b.ast.variable_declaration(SPAN, decl_kind, decls, false);
+            let decl = self
+                .b
+                .ast
+                .variable_declaration(SPAN, decl_kind, decls, false);
             Statement::VariableDeclaration(self.b.alloc(decl))
         }
     }
@@ -236,16 +241,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let tmp_name = self.ident_gen.generate("$$d");
         let tmp_name_str: &str = self.b.alloc_str(&tmp_name);
-        out.push(self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
-            NONE,
-            Some(init),
-            false,
-        ));
+        out.push(
+            self.b.ast.variable_declarator(
+                SPAN,
+                decl_kind,
+                self.b
+                    .ast
+                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                NONE,
+                Some(init),
+                false,
+            ),
+        );
         self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)])
     }
 

@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{
-    AttributeSemantics, EventEmit, EventSemantics, ExprKind, SpecialValueKind,
+    AttributeSemantics, EventEmit, EventSemantics, SpecialValueKind, Volatility,
     normalize_regular_attribute_name,
 };
 use svelte_ast::{ExpressionAttribute, NodeId};
@@ -82,18 +82,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let attr_id = attr.id;
-        let is_dyn = self.ctx.is_dynamic_attr(attr_id);
-        let needs_memo = is_dyn
-            && self.ctx.expression_data(attr_id).is_some_and(|d| match d.kind {
-                ExprKind::Async { has_await: true } => true,
-                ExprKind::Call { dynamic: true } => true,
-                ExprKind::KnownLiteral
-                | ExprKind::SimpleRead { .. }
-                | ExprKind::Computed { .. }
-                | ExprKind::Call { dynamic: false }
-                | ExprKind::Async { has_await: false } => false,
-            });
-
         let expr = self.take_attr_expr(attr_id, &attr.expression)?;
         let expr = {
             let data = self.ctx.expression_data(attr_id).cloned();
@@ -103,29 +91,42 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
         let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);
 
-        if needs_memo {
-            let Some(data) = self.ctx.expression_data(attr_id).cloned() else {
-                return CodegenError::missing_expression_deps(attr_id);
-            };
-            let placeholder = match state.shared_memo.add_memoized_expr(self.ctx, &data, expr) {
-                Some(MemoValueRef::Sync(i)) => state.shared_memo.sync_param_expr(self.ctx, i),
-                Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
-                None => return CodegenError::missing_expression_deps(attr_id),
-            };
-            self.push_regular_attr_update(
-                &mut state.update,
-                owner_var,
-                attr_update,
-                placeholder,
-                owner_id,
-            );
-        } else {
-            let target = if is_dyn {
-                &mut state.update
-            } else {
-                &mut state.init
-            };
-            self.push_regular_attr_update(target, owner_var, attr_update, expr, owner_id);
+        match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+            Some(Volatility::Heavy | Volatility::Asynchronous) => {
+                let Some(data) = self.ctx.expression_data(attr_id).cloned() else {
+                    return CodegenError::missing_expression_deps(attr_id);
+                };
+                let placeholder = match state.shared_memo.add_memoized_expr(self.ctx, &data, expr) {
+                    Some(MemoValueRef::Sync(i)) => state.shared_memo.sync_param_expr(self.ctx, i),
+                    Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
+                    None => return CodegenError::missing_expression_deps(attr_id),
+                };
+                self.push_regular_attr_update(
+                    &mut state.update,
+                    owner_var,
+                    attr_update,
+                    placeholder,
+                    owner_id,
+                );
+            }
+            Some(Volatility::Reactive) => {
+                self.push_regular_attr_update(
+                    &mut state.update,
+                    owner_var,
+                    attr_update,
+                    expr,
+                    owner_id,
+                );
+            }
+            Some(Volatility::Static) | None => {
+                self.push_regular_attr_update(
+                    &mut state.init,
+                    owner_var,
+                    attr_update,
+                    expr,
+                    owner_id,
+                );
+            }
         }
 
         Ok(())
@@ -176,7 +177,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(self.ctx.b.call_stmt("$.delegated", args));
                 self.ctx.add_delegated_event(event_name);
             }
-            EventEmit::HtmlDirect { capture, passive, .. } => {
+            EventEmit::HtmlDirect {
+                capture, passive, ..
+            } => {
                 let capture = *capture;
                 let passive = passive.unwrap_or(false);
                 let mut args: Vec<Arg<'a, '_>> = vec![

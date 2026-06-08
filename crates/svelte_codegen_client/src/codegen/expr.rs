@@ -1,13 +1,13 @@
-use svelte_emit_builders::legacy_wrap;
-use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
-use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{Evaluation, KnownValue};
 use svelte_ast::{ExprRef, Node, NodeId};
+use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
+use svelte_emit_builders::legacy_wrap;
+use svelte_emit_builders::runes::rune_get;
 
-use crate::context::Ctx;
 use super::{Codegen, CodegenError, Result};
+use crate::context::Ctx;
 
 pub(crate) fn evaluation_is_defined(eval: &Evaluation) -> bool {
     match eval {
@@ -134,10 +134,7 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         let tmp = ctx.transform_data.const_tag_tmp_names.get(&owner_node)?;
         let tmp_ref: &str = ctx.b.alloc_str(tmp);
         let field = ctx.query.symbol_name(sym);
-        return Some(ctx.b.static_member_expr(
-            rune_get(&ctx.b, tmp_ref),
-            field,
-        ));
+        return Some(ctx.b.static_member_expr(rune_get(&ctx.b, tmp_ref), field));
     }
     if matches!(
         ctx.query.view.binding_semantics(sym),

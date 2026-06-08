@@ -35,12 +35,7 @@ impl IgnoreData {
             .and_then(|&idx| self.snapshots.get(idx as usize))
             .is_some_and(|set| set.contains(code))
     }
-    pub fn scan_program_comments(
-        &mut self,
-        program: &Program<'_>,
-        source: &str,
-        runes: bool,
-    ) {
+    pub fn scan_program_comments(&mut self, program: &Program<'_>, source: &str, runes: bool) {
         let src = source;
         let mut by_attached: FxHashMap<u32, FxHashSet<String>> = FxHashMap::default();
 
@@ -61,11 +56,7 @@ impl IgnoreData {
             } else {
                 continue;
             };
-            let result = extract_svelte_ignore(
-                inner_offset,
-                inner,
-                runes,
-            );
+            let result = extract_svelte_ignore(inner_offset, inner, runes);
             if !result.codes.is_empty() {
                 let entry = by_attached.entry(comment.attached_to).or_default();
                 for code in result.codes {

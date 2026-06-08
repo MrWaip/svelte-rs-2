@@ -151,10 +151,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 }
 
 impl ScriptBodyAnalyzer<'_> {
-    fn check_proxy_state_inits(
-        &mut self,
-        declarations: &OxcVec<'_, VariableDeclarator<'_>>,
-    ) {
+    fn check_proxy_state_inits(&mut self, declarations: &OxcVec<'_, VariableDeclarator<'_>>) {
         for declarator in declarations.iter() {
             let BindingPattern::BindingIdentifier(ident) = &declarator.id else {
                 continue;

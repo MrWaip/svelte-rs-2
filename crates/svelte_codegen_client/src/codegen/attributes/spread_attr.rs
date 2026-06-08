@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
-use svelte_analyze::{AttributeSemantics, ExprKind, SpecialValueKind};
+use svelte_analyze::{AttributeSemantics, SpecialValueKind, Volatility};
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -98,22 +98,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ns_thunk = Some(self.ctx.b.thunk(clone));
                     }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
-                    let needs_hoist = self.ctx.expression_data(attr_id).is_some_and(|d| {
-                        matches!(d.kind, ExprKind::Call { dynamic: true })
-                    });
-                    if needs_hoist {
-                        if let Some(data) = self.ctx.expression_data(attr_id) {
-                            memo.push_expression_data(self.ctx, data);
+                    match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                        Some(Volatility::Heavy) => {
+                            if let Some(data) = self.ctx.expression_data(attr_id) {
+                                memo.push_expression_data(self.ctx, data);
+                            }
+                            let idx = memo.sync_values_push(expr);
+                            let param = memo.sync_param_expr(self.ctx, idx);
+                            props.push(ObjProp::KeyValue(name_alloc, param));
                         }
-                        let idx = memo.sync_values_push(expr);
-                        let param = memo.sync_param_expr(self.ctx, idx);
-                        props.push(ObjProp::KeyValue(name_alloc, param));
-                    } else if self.ctx.is_expression_shorthand(attr_id)
-                        && expr_is_ident_named(&expr, &a.name)
-                    {
-                        props.push(ObjProp::Shorthand(name_alloc));
-                    } else {
-                        props.push(ObjProp::KeyValue(name_alloc, expr));
+                        Some(
+                            Volatility::Static | Volatility::Reactive | Volatility::Asynchronous,
+                        )
+                        | None => {
+                            if self.ctx.is_expression_shorthand(attr_id)
+                                && expr_is_ident_named(&expr, &a.name)
+                            {
+                                props.push(ObjProp::Shorthand(name_alloc));
+                            } else {
+                                props.push(ObjProp::KeyValue(name_alloc, expr));
+                            }
+                        }
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
@@ -132,18 +137,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 Attribute::SpreadAttribute(sa) => {
                     let expr = self.take_attr_expr(attr_id, &sa.expression)?;
-                    let needs_hoist = self.ctx.expression_data(attr_id).is_some_and(|d| {
-                        matches!(d.kind, ExprKind::Call { dynamic: true })
-                    });
-                    if needs_hoist {
-                        if let Some(data) = self.ctx.expression_data(attr_id) {
-                            memo.push_expression_data(self.ctx, data);
+                    match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                        Some(Volatility::Heavy) => {
+                            if let Some(data) = self.ctx.expression_data(attr_id) {
+                                memo.push_expression_data(self.ctx, data);
+                            }
+                            let idx = memo.sync_values_push(expr);
+                            let param = memo.sync_param_expr(self.ctx, idx);
+                            props.push(ObjProp::Spread(param));
                         }
-                        let idx = memo.sync_values_push(expr);
-                        let param = memo.sync_param_expr(self.ctx, idx);
-                        props.push(ObjProp::Spread(param));
-                    } else {
-                        props.push(ObjProp::Spread(expr));
+                        Some(
+                            Volatility::Static | Volatility::Reactive | Volatility::Asynchronous,
+                        )
+                        | None => {
+                            props.push(ObjProp::Spread(expr));
+                        }
                     }
                 }
                 Attribute::BindDirective(_)

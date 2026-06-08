@@ -1,8 +1,9 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
+use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -93,8 +94,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                                 .b
                                 .call_expr(derived_fn, [Arg::Expr(self.ctx.b.thunk(wrapped))]);
                             memo_stmts.push(self.ctx.b.let_init_stmt(name_ref, derived));
-                            let get_call =
-                                rune_get(&self.ctx.b, name_ref);
+                            let get_call = rune_get(&self.ctx.b, name_ref);
                             props.push(ObjProp::Getter(key, get_call));
                         }
                         svelte_analyze::ComponentPropMemo::Getter => {
@@ -115,11 +115,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let val = self.build_concat_expr_collapse_single(attr_id, &a.parts)?;
-                    let is_dyn = self.ctx.is_dynamic_attr(attr_id);
-                    if is_dyn {
-                        props.push(ObjProp::Getter(key, val));
-                    } else {
-                        props.push(ObjProp::KeyValue(key, val));
+                    match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                        Some(
+                            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous,
+                        ) => {
+                            props.push(ObjProp::Getter(key, val));
+                        }
+                        Some(Volatility::Static) | None => {
+                            props.push(ObjProp::KeyValue(key, val));
+                        }
                     }
                 }
                 _ => {}

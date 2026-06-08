@@ -132,28 +132,22 @@ pub(crate) fn run_template<'a, 'b>(
         };
 
         let setter_lhs_expr = orig.clone_in_with_semantic_ids(alloc);
-        let store_base_symbol: Option<oxc_semantic::SymbolId> =
-            match analysis.attributes.get(owner) {
-                AttributeSemantics::ElementBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
-                AttributeSemantics::WindowBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
-                AttributeSemantics::DocumentBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
+        let store_base_symbol: Option<oxc_semantic::SymbolId> = match analysis.attributes.get(owner)
+        {
+            AttributeSemantics::ElementBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
                 _ => None,
-            };
+            },
+            AttributeSemantics::WindowBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
+                _ => None,
+            },
+            AttributeSemantics::DocumentBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
+                _ => None,
+            },
+            _ => None,
+        };
 
         transformer.template_owner_node = Some(owner);
 
@@ -203,16 +197,9 @@ pub(crate) fn run_template<'a, 'b>(
                 BindingSemantics::LegacyState(_)
             );
             let getter_expr = if base_via_legacy_state {
-                let thunk_call = b.call_expr_callee(
-                    b.rid_expr(dollar_name),
-                    iter::empty::<Arg<'_, '_>>(),
-                );
-                b.named_function_expr(
-                    "get",
-                    b.no_params(),
-                    vec![b.return_stmt(thunk_call)],
-                    false,
-                )
+                let thunk_call =
+                    b.call_expr_callee(b.rid_expr(dollar_name), iter::empty::<Arg<'_, '_>>());
+                b.named_function_expr("get", b.no_params(), vec![b.return_stmt(thunk_call)], false)
             } else {
                 b.rid_expr(dollar_name)
             };
@@ -267,11 +254,6 @@ fn transform_component_bind_pair<'a>(
     let key: &'a str = b.alloc_str(prop_name);
     b.object_expr([
         svelte_ast_builder::ObjProp::Getter(key, getter_body),
-        svelte_ast_builder::ObjProp::Setter(
-            key,
-            "$$value",
-            None,
-            vec![b.expr_stmt(setter_body)],
-        ),
+        svelte_ast_builder::ObjProp::Setter(key, "$$value", None, vec![b.expr_stmt(setter_body)]),
     ])
 }

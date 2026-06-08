@@ -1,13 +1,11 @@
-use svelte_emit_builders::runes::rune_get;
-use svelte_emit_builders::store::build_store_base_read;
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{
-    Expression, ObjectPropertyKind, PropertyKind, Statement,
-};
+use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKind, Statement};
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{ComponentBindSemantics, ComponentBindTarget};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
+use svelte_emit_builders::runes::rune_get;
+use svelte_emit_builders::store::build_store_base_read;
 
 use super::super::Codegen;
 use super::dispatch::{OwnershipBinding, PropOrSpread};
@@ -144,10 +142,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let key = self.ctx.b.alloc_str(name);
         let getter_call = self.ctx.b.call_expr(bind_get_ref, []);
         items.push(PropOrSpread::Prop(ObjProp::Getter(key, getter_call)));
-        let setter_call = self
-            .ctx
-            .b
-            .call_expr(bind_set_ref, [Arg::Ident("$$value")]);
+        let setter_call = self.ctx.b.call_expr(bind_set_ref, [Arg::Ident("$$value")]);
         items.push(PropOrSpread::Prop(ObjProp::Setter(
             key,
             "$$value",
@@ -229,10 +224,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ComponentBindTarget::RuneDerived => {
                 let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                let set_body = self.ctx.b.call_expr(
-                    "$.set",
-                    [Arg::Ident(source_ref), Arg::Ident("$$value")],
-                );
+                let set_body = self
+                    .ctx
+                    .b
+                    .call_expr("$.set", [Arg::Ident(source_ref), Arg::Ident("$$value")]);
                 items.push(PropOrSpread::Prop(ObjProp::Setter(
                     key,
                     "$$value",
@@ -243,10 +238,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ComponentBindTarget::LegacyState => {
                 let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                let set_body = self.ctx.b.call_expr(
-                    "$.set",
-                    [Arg::Ident(source_ref), Arg::Ident("$$value")],
-                );
+                let set_body = self
+                    .ctx
+                    .b
+                    .call_expr("$.set", [Arg::Ident(source_ref), Arg::Ident("$$value")]);
                 items.push(PropOrSpread::Prop(ObjProp::Setter(
                     key,
                     "$$value",
@@ -257,10 +252,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ComponentBindTarget::LegacyStateSubscribed => {
                 let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                let set_call = self.ctx.b.call_expr(
-                    "$.set",
-                    [Arg::Ident(source_ref), Arg::Ident("$$value")],
-                );
+                let set_call = self
+                    .ctx
+                    .b
+                    .call_expr("$.set", [Arg::Ident(source_ref), Arg::Ident("$$value")]);
                 let store_literal = format!("${source_text}");
                 let set_body = self.ctx.b.call_expr(
                     "$.store_unsub",
@@ -305,11 +300,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             vec![mark_stmt, return_stmt],
         )));
 
-        let base_expr = build_store_base_read(
-            &self.ctx.b,
-            self.ctx.query.analysis,
-            base_symbol,
-        );
+        let base_expr = build_store_base_read(&self.ctx.b, self.ctx.query.analysis, base_symbol);
         let set_body = self
             .ctx
             .b

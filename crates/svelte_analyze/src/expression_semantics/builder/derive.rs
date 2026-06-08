@@ -1,20 +1,18 @@
-use super::collector::{ExprFacts, TopLevelForm};
-use super::super::data::{ExprKind, LegacyWrap, SyntheticPropsCarrier};
 use super::super::Evaluation;
+use super::super::data::{LegacyWrap, SyntheticPropsCarrier, Volatility};
+use super::collector::{ExprFacts, TopLevelForm};
+use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{
-    BindingSemantics, BlockerData, PropBindingKind, PropBindingSemantics,
-};
-use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
+use crate::types::data::{BindingSemantics, BlockerData, PropBindingKind, PropBindingSemantics};
 use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
 
-pub(super) fn needs_context(
-    facts: &ExprFacts,
-    reactivity: &ReactivitySemantics,
-) -> bool {
-    if !matches!(facts.top_level_form, TopLevelForm::Member | TopLevelForm::Call) {
+pub(super) fn needs_context(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
+    if !matches!(
+        facts.top_level_form,
+        TopLevelForm::Member | TopLevelForm::Call
+    ) {
         return false;
     }
     facts.references.iter().any(|&sym| {
@@ -29,7 +27,7 @@ pub(super) fn needs_context(
     })
 }
 
-pub(super) fn is_dynamic_template(
+pub(super) fn is_reactive_template(
     facts: &ExprFacts,
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
@@ -47,15 +45,12 @@ pub(super) fn is_dynamic_template(
                 if matches!(semantics, BindingSemantics::MaybeReactive) {
                     return true;
                 }
-                reactivity.needs_effect(scoping, sym)
-                    || scoping.is_component_top_level_symbol(sym)
+                reactivity.needs_effect(scoping, sym) || scoping.is_component_top_level_symbol(sym)
             });
     }
 
     if matches!(facts.top_level_form, TopLevelForm::Member) {
-        return facts.has_runtime_root
-            || facts.has_store_ref
-            || !facts.references.is_empty();
+        return facts.has_runtime_root || facts.has_store_ref || !facts.references.is_empty();
     }
 
     if facts.has_store_ref {
@@ -78,7 +73,6 @@ pub(super) fn is_dynamic_template(
     })
 }
 
-
 fn is_unified_prop_source(reactivity: &ReactivitySemantics, sym_id: SymbolId) -> bool {
     matches!(
         reactivity.binding_semantics(sym_id),
@@ -94,6 +88,22 @@ fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -
         reactivity.binding_semantics(sym_id),
         BindingSemantics::NonReactive | BindingSemantics::Const(_)
     )
+}
+
+pub(super) fn is_heavy(facts: &ExprFacts) -> bool {
+    facts.has_call && (!facts.references.is_empty() || facts.has_impure_call)
+}
+
+pub(super) fn volatility(reactive_gate: bool, facts: &ExprFacts) -> Volatility {
+    if facts.has_await {
+        Volatility::Asynchronous
+    } else if is_heavy(facts) {
+        Volatility::Heavy
+    } else if reactive_gate {
+        Volatility::Reactive
+    } else {
+        Volatility::Static
+    }
 }
 
 pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVec<[u32; 2]> {
@@ -112,7 +122,7 @@ pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVe
 pub(super) fn volatile(
     facts: &ExprFacts,
     has_blockers: bool,
-    is_dynamic: bool,
+    is_reactive: bool,
     evaluation: &Evaluation,
     reactivity: &ReactivitySemantics,
 ) -> bool {
@@ -126,26 +136,16 @@ pub(super) fn volatile(
     if matches!(evaluation, Evaluation::Known(_)) && !references_optimized_rune(facts, reactivity) {
         return false;
     }
-    is_dynamic
+    is_reactive
 }
 
 pub(super) fn volatile_element_attr(
-    kind: &ExprKind,
+    is_reactive: bool,
     references: &[SymbolId],
     scoping: &ComponentScoping,
     reactivity: &ReactivitySemantics,
 ) -> bool {
-    if matches!(
-        kind,
-        ExprKind::Async { has_await: true } | ExprKind::Call { dynamic: true }
-    ) {
-        return true;
-    }
-    if matches!(
-        kind,
-        ExprKind::SimpleRead { reactive: true } | ExprKind::Computed { reactive: true }
-    ) && references.is_empty()
-    {
+    if is_reactive && references.is_empty() {
         return true;
     }
     references.iter().any(|&sym| {
@@ -156,27 +156,6 @@ pub(super) fn volatile_element_attr(
                 ..
             })
         ) || reactivity.needs_effect(scoping, sym)
-    })
-}
-
-pub(super) fn volatile_component_attr(
-    expr: &Expression<'_>,
-    kind: &ExprKind,
-    references: &[SymbolId],
-    scoping: &ComponentScoping,
-    reactivity: &ReactivitySemantics,
-) -> bool {
-    if matches!(kind, ExprKind::Async { has_await: true }) {
-        return true;
-    }
-    if matches!(
-        expr.get_inner_expression(),
-        Expression::ArrowFunctionExpression(_)
-    ) {
-        return false;
-    }
-    component_attr_symbols(references, expr, scoping).any(|sym| {
-        !scoping.is_component_top_level_symbol(sym) || !is_unified_plain_symbol(reactivity, sym)
     })
 }
 
@@ -224,56 +203,6 @@ fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId
     }
 }
 
-fn component_attr_symbols<'a>(
-    references: &'a [SymbolId],
-    expr: &'a Expression<'_>,
-    scoping: &'a ComponentScoping,
-) -> impl Iterator<Item = SymbolId> + 'a {
-    let fallback = if references.is_empty() {
-        match expr.get_inner_expression() {
-            Expression::Identifier(ident) => {
-                scoping.find_binding(scoping.root_scope_id(), ident.name.as_str())
-            }
-            _ => None,
-        }
-    } else {
-        None
-    };
-    references.iter().copied().chain(fallback)
-}
-
-pub(super) fn kind(
-    facts: &ExprFacts,
-    has_blockers: bool,
-    is_dynamic: bool,
-    evaluation: &Evaluation,
-    reactivity: &ReactivitySemantics,
-) -> ExprKind {
-    if facts.has_await || has_blockers {
-        ExprKind::Async {
-            has_await: facts.has_await,
-        }
-    } else if facts.has_call {
-        let dynamic = !facts.references.is_empty() || facts.has_impure_call;
-        if !dynamic && facts.has_state_rune {
-            ExprKind::Computed { reactive: true }
-        } else {
-            ExprKind::Call { dynamic }
-        }
-    } else if matches!(evaluation, Evaluation::Known(_))
-        && !references_optimized_rune(facts, reactivity)
-    {
-        ExprKind::KnownLiteral
-    } else if matches!(
-        facts.top_level_form,
-        TopLevelForm::Identifier | TopLevelForm::Member,
-    ) {
-        ExprKind::SimpleRead { reactive: is_dynamic }
-    } else {
-        ExprKind::Computed { reactive: is_dynamic }
-    }
-}
-
 fn references_optimized_rune(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
     facts.references.iter().any(|&sym| {
         matches!(
@@ -318,4 +247,3 @@ pub(super) fn synthetic_props_carrier(
         (true, true) => Some(SyntheticPropsCarrier::Both),
     }
 }
-

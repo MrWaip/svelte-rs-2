@@ -1,14 +1,14 @@
 use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
-use oxc_span::SPAN;
 use oxc_ast::ast::{Expression, Program, Statement};
+use oxc_span::SPAN;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::AnalysisData;
 use svelte_analyze::reactivity_semantics::legacy_reactive::{
     LegacyReactiveKind, LegacyReactiveStatement, legacy_reactive_import_wrapper_name,
 };
-use svelte_analyze::types::data::{binding_group_name, BindingSemantics};
+use svelte_analyze::types::data::{BindingSemantics, binding_group_name};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{OxcNodeId, SymbolId};
 

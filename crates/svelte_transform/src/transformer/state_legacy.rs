@@ -2,9 +2,7 @@ use std::{iter, mem};
 
 use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::NONE;
-use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, Expression, Statement,
-};
+use oxc_ast::ast::{Argument, AssignmentOperator, AssignmentTarget, Expression, Statement};
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, TraverseCtx};
 use svelte_ast_builder::Arg;
@@ -57,8 +55,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut changed = false;
 
         svelte_component_semantics::walk_assignment_targets(&assign.left, |v| {
-            let access =
-                self.build_destructure_access(v.path, v.excluded, &param_name, &mut decls, &mut temps);
+            let access = self.build_destructure_access(
+                v.path,
+                v.excluded,
+                &param_name,
+                &mut decls,
+                &mut temps,
+            );
             match v.target {
                 WriteTarget::Identifier(id) => {
                     let idref = self.b.rid(id.name.as_str());
@@ -90,8 +93,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         let rhs = assign.right;
         let use_iife = !decls.is_empty() || should_cache;
-        let is_async =
-            is_expression_async(&rhs) || setters.iter().any(|s| is_expression_async(s));
+        let is_async = is_expression_async(&rhs) || setters.iter().any(|s| is_expression_async(s));
 
         if use_iife {
             let param: &'a str = self.b.alloc_str(&param_name);
@@ -123,7 +125,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.b.ast.vec_from_iter(iter::once(Argument::from(rhs))),
                 false,
             );
-            *node = if is_async { self.b.await_expr(call) } else { call };
+            *node = if is_async {
+                self.b.await_expr(call)
+            } else {
+                call
+            };
         } else {
             debug_assert!(decls.is_empty());
             let mut seq: OxcVec<'a, Expression<'a>> =
@@ -181,10 +187,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
         }
         if !excluded.is_empty() {
-            let keys = self.b.array_from_args(excluded.iter().map(|k| Arg::StrRef(k)));
-            current = self
+            let keys = self
                 .b
-                .call_expr("$.exclude_from_object", [Arg::Expr(current), Arg::Expr(keys)]);
+                .array_from_args(excluded.iter().map(|k| Arg::StrRef(k)));
+            current = self.b.call_expr(
+                "$.exclude_from_object",
+                [Arg::Expr(current), Arg::Expr(keys)],
+            );
         }
         current
     }
@@ -235,23 +244,27 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return self.b.await_expr(call);
             }
             let thunk = self.b.thunk(aw.argument.clone_in(self.b.ast.allocator));
-            let call =
-                self.b
-                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            let call = self.b.call_expr(
+                "$.fallback",
+                [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+            );
             return self.b.await_expr(call);
         }
         if is_expression_async(fallback) {
             let thunk = self
                 .b
                 .async_arrow_expr_body(fallback.clone_in(self.b.ast.allocator));
-            let call =
-                self.b
-                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            let call = self.b.call_expr(
+                "$.fallback",
+                [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+            );
             return self.b.await_expr(call);
         }
         let thunk = self.b.thunk(fallback.clone_in(self.b.ast.allocator));
-        self.b
-            .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)])
+        self.b.call_expr(
+            "$.fallback",
+            [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+        )
     }
 }
 
@@ -327,10 +340,7 @@ fn is_simple_expression(node: &Expression<'_>) -> bool {
     }
 }
 
-fn copy_member_root_ref<'x, 'y>(
-    cloned: &mut AssignmentTarget<'x>,
-    orig: &AssignmentTarget<'y>,
-) {
+fn copy_member_root_ref<'x, 'y>(cloned: &mut AssignmentTarget<'x>, orig: &AssignmentTarget<'y>) {
     let (cloned_obj, orig_obj) = match (cloned, orig) {
         (
             AssignmentTarget::StaticMemberExpression(c),
@@ -350,15 +360,12 @@ fn copy_root_ref_expr<'x, 'y>(cloned: &mut Expression<'x>, orig: &Expression<'y>
         (Expression::Identifier(c), Expression::Identifier(o)) => {
             c.reference_id.set(o.reference_id.get());
         }
-        (
-            Expression::StaticMemberExpression(c),
-            Expression::StaticMemberExpression(o),
-        ) => copy_root_ref_expr(&mut c.object, &o.object),
-        (
-            Expression::ComputedMemberExpression(c),
-            Expression::ComputedMemberExpression(o),
-        ) => copy_root_ref_expr(&mut c.object, &o.object),
+        (Expression::StaticMemberExpression(c), Expression::StaticMemberExpression(o)) => {
+            copy_root_ref_expr(&mut c.object, &o.object)
+        }
+        (Expression::ComputedMemberExpression(c), Expression::ComputedMemberExpression(o)) => {
+            copy_root_ref_expr(&mut c.object, &o.object)
+        }
         _ => {}
     }
 }
-

@@ -21,12 +21,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         for stmt in stmts.drain(..) {
             let stmt = if self.strip_exports {
                 match stmt {
-                    Statement::ExportNamedDeclaration(export) => {
-                        match export.unbox().declaration {
-                            Some(decl) => Statement::from(decl),
-                            None => continue,
-                        }
-                    }
+                    Statement::ExportNamedDeclaration(export) => match export.unbox().declaration {
+                        Some(decl) => Statement::from(decl),
+                        None => continue,
+                    },
                     other => other,
                 }
             } else {
@@ -49,7 +47,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 Statement::VariableDeclaration(decl) => {
-                    if Self::is_props_id_declaration(decl) || self.is_eager_state_declaration(decl) {
+                    if Self::is_props_id_declaration(decl) || self.is_eager_state_declaration(decl)
+                    {
                         continue;
                     }
                 }

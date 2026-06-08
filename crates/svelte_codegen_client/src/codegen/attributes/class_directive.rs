@@ -1,6 +1,7 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
+use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
@@ -55,13 +56,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None
         };
 
-        let has_state = self.ctx.class_needs_state(owner_id);
+        let class_volatility = self.ctx.class_state_volatility(owner_id);
 
-        let directives_obj = match directives_obj {
-            Some(obj) if has_state => {
+        let directives_obj = match (directives_obj, class_volatility) {
+            (Some(obj), Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
                 Some(self.maybe_hoist_class_directives_obj(state, owner_id, obj))
             }
-            other => other,
+            (other, _) => other,
         };
 
         let hash = self.ctx.css_hash().to_string();
@@ -77,7 +78,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             class_value,
             scope_hash.as_deref(),
             directives_obj,
-            has_state,
+            class_volatility,
             &mut memo_deps,
             is_html,
         );
@@ -91,19 +92,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
-        use svelte_analyze::ExprKind;
         let Some(dirs) = self.ctx.query.view.class_directive_info(owner_id) else {
             return dir_obj;
         };
         let dir_ids: Vec<NodeId> = dirs.iter().map(|cd| cd.id).collect();
-        let needs_hoist = dir_ids.iter().any(|&id| {
-            self.ctx.expression_data(id).is_some_and(|d| {
-                matches!(d.kind, ExprKind::Call { dynamic: true })
-            })
-        });
-        if !needs_hoist {
+        let Some(_) =
+            dir_ids.iter().find(
+                |&&id| match self.ctx.expression_data(id).map(|d| d.volatility) {
+                    Some(Volatility::Heavy) => true,
+                    Some(Volatility::Static | Volatility::Reactive | Volatility::Asynchronous)
+                    | None => false,
+                },
+            )
+        else {
             return dir_obj;
-        }
+        };
         for &id in &dir_ids {
             if let Some(data) = self.ctx.expression_data(id) {
                 state.shared_memo.push_expression_data(self.ctx, data);
@@ -156,16 +159,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr: &svelte_ast::ConcatenationAttribute,
     ) -> Result<(Expression<'a>, TemplateMemoState<'a>)> {
         use svelte_analyze::{AttributeSemantics, HtmlConcatSemantics};
-        let semantics: HtmlConcatSemantics =
-            match self.ctx.query.analysis.attributes.get(attr.id) {
-                AttributeSemantics::HtmlConcat(s) => s.clone(),
-                _ => {
-                    return CodegenError::semantic_mismatch(
-                        attr.id,
-                        "class ConcatenationAttribute requires HtmlConcat semantics",
-                    );
-                }
-            };
+        let semantics: HtmlConcatSemantics = match self.ctx.query.analysis.attributes.get(attr.id) {
+            AttributeSemantics::HtmlConcat(s) => s.clone(),
+            _ => {
+                return CodegenError::semantic_mismatch(
+                    attr.id,
+                    "class ConcatenationAttribute requires HtmlConcat semantics",
+                );
+            }
+        };
         let mut memo_deps = TemplateMemoState::default();
         let expr = self.build_html_concat_expr(attr, &semantics, &mut memo_deps)?;
         Ok((expr, memo_deps))
@@ -182,11 +184,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         };
 
-        let has_state = self.ctx.class_needs_state(owner_id);
-        let dir_obj = if has_state {
-            self.maybe_hoist_class_directives_obj(state, owner_id, dir_obj)
-        } else {
-            dir_obj
+        let class_volatility = self.ctx.class_state_volatility(owner_id);
+        let dir_obj = match class_volatility {
+            Volatility::Static => dir_obj,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
+                self.maybe_hoist_class_directives_obj(state, owner_id, dir_obj)
+            }
         };
 
         let static_value = self.ctx.static_class(owner_id).unwrap_or("").to_string();
@@ -213,7 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             class_value,
             None,
             Some(dir_obj),
-            has_state,
+            class_volatility,
             &mut memo_deps,
             false,
         );
@@ -233,17 +236,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 None => return Ok(None),
             };
 
-        let needs_state = self.ctx.class_needs_state(owner_id);
+        let class_volatility = self.ctx.class_state_volatility(owner_id);
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for (id, name, has_expression, expr_id) in &dir_snapshot {
             let (expr, same_name) = if *has_expression {
                 let Some(parsed) = self.ctx.state.parsed.take_expr(*expr_id) else {
                     return CodegenError::missing_expression(*id);
                 };
-                let parsed = if needs_state {
-                    self.maybe_wrap_legacy_slots_read(parsed)
-                } else {
-                    parsed
+                let parsed = match class_volatility {
+                    Volatility::Static => parsed,
+                    Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
+                        self.maybe_wrap_legacy_slots_read(parsed)
+                    }
                 };
                 (parsed, self.ctx.is_expression_shorthand(*id))
             } else {
@@ -265,7 +269,7 @@ fn emit_set_class_call<'a>(
     class_value: Expression<'a>,
     scope_hash: Option<&str>,
     directives_obj: Option<Expression<'a>>,
-    has_state: bool,
+    class_volatility: Volatility,
     memo_deps: &mut TemplateMemoState<'a>,
     is_html: bool,
 ) {
@@ -275,42 +279,49 @@ fn emit_set_class_call<'a>(
     };
 
     if let Some(dir_obj) = directives_obj {
-        if has_state {
-            let classes_name = ctx.gen_ident("classes");
-            let scope = scope_expr(ctx);
-            let set_class_call = ctx.b.call_expr(
-                "$.set_class",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Num(if is_html { 1.0 } else { 0.0 }),
-                    Arg::Expr(class_value),
-                    Arg::Expr(scope),
-                    Arg::Ident(&classes_name),
-                    Arg::Expr(dir_obj),
-                ],
-            );
-            let assign = ctx
-                .b
-                .assign_expr(AssignLeft::Ident(classes_name.clone()), set_class_call);
-            init.push(ctx.b.let_stmt(&classes_name));
-            update.push(ctx.b.expr_stmt(assign));
-        } else {
-            let scope = scope_expr(ctx);
-            let set_class_call = ctx.b.call_expr(
-                "$.set_class",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Num(if is_html { 1.0 } else { 0.0 }),
-                    Arg::Expr(class_value),
-                    Arg::Expr(scope),
-                    Arg::Expr(ctx.b.object_expr(vec![])),
-                    Arg::Expr(dir_obj),
-                ],
-            );
-            init.push(ctx.b.expr_stmt(set_class_call));
+        match class_volatility {
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
+                let classes_name = ctx.gen_ident("classes");
+                let scope = scope_expr(ctx);
+                let set_class_call = ctx.b.call_expr(
+                    "$.set_class",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::Num(if is_html { 1.0 } else { 0.0 }),
+                        Arg::Expr(class_value),
+                        Arg::Expr(scope),
+                        Arg::Ident(&classes_name),
+                        Arg::Expr(dir_obj),
+                    ],
+                );
+                let assign = ctx
+                    .b
+                    .assign_expr(AssignLeft::Ident(classes_name.clone()), set_class_call);
+                init.push(ctx.b.let_stmt(&classes_name));
+                update.push(ctx.b.expr_stmt(assign));
+            }
+            Volatility::Static => {
+                let scope = scope_expr(ctx);
+                let set_class_call = ctx.b.call_expr(
+                    "$.set_class",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::Num(if is_html { 1.0 } else { 0.0 }),
+                        Arg::Expr(class_value),
+                        Arg::Expr(scope),
+                        Arg::Expr(ctx.b.object_expr(vec![])),
+                        Arg::Expr(dir_obj),
+                    ],
+                );
+                init.push(ctx.b.expr_stmt(set_class_call));
+            }
         }
     } else {
-        let mut args = vec![Arg::Ident(el_name), Arg::Num(if is_html { 1.0 } else { 0.0 }), Arg::Expr(class_value)];
+        let mut args = vec![
+            Arg::Ident(el_name),
+            Arg::Num(if is_html { 1.0 } else { 0.0 }),
+            Arg::Expr(class_value),
+        ];
         if let Some(h) = scope_hash {
             args.push(Arg::Expr(ctx.b.str_expr(h)));
         }
@@ -322,18 +333,13 @@ fn emit_set_class_call<'a>(
             } else {
                 ctx.b.params(param_names.iter().map(|s| s.as_str()))
             };
-            let callback = ctx
-                .b
-                .arrow_expr(params, [ctx.b.expr_stmt(set_class_call)]);
-            emit_effect_call_extern(
-                ctx,
-                "$.template_effect",
-                callback,
-                memo_deps,
-                after_update,
-            );
+            let callback = ctx.b.arrow_expr(params, [ctx.b.expr_stmt(set_class_call)]);
+            emit_effect_call_extern(ctx, "$.template_effect", callback, memo_deps, after_update);
         } else {
-            let target = if has_state { &mut *update } else { &mut *init };
+            let target = match class_volatility {
+                Volatility::Static => &mut *init,
+                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => &mut *update,
+            };
             target.push(ctx.b.expr_stmt(set_class_call));
         }
     }

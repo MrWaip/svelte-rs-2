@@ -15,9 +15,7 @@ pub(crate) fn is_inspect_call(expr: &Expression) -> bool {
             {
                 return true;
             }
-            if let Expression::StaticMemberExpression(member) =
-                call.callee.get_inner_expression()
-            {
+            if let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() {
                 if member.property.name.as_str() == "with"
                     && let Expression::CallExpression(inner) = member.object.get_inner_expression()
                     && let Expression::Identifier(id) = inner.callee.get_inner_expression()
@@ -48,10 +46,7 @@ pub(crate) fn is_inspect_trace_call(expr: &Expression) -> bool {
 }
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_trace_function_body(
-        &mut self,
-        body: &mut FunctionBody<'a>,
-    ) {
+    pub(crate) fn rewrite_trace_function_body(&mut self, body: &mut FunctionBody<'a>) {
         if !self.dev {
             return;
         }

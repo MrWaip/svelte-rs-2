@@ -1,8 +1,8 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::block_semantics::{HtmlTagNamespace, HtmlTagSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
@@ -51,65 +51,70 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let plan = AsyncEmission::for_node(self.ctx, id);
 
-        if plan.needs_async() {
-            let expression = self.take_node_expr(id)?;
+        match &plan {
+            AsyncEmission::Awaited { blockers } | AsyncEmission::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let expression = self.take_node_expr(id)?;
+                let async_thunk = match &plan {
+                    AsyncEmission::Awaited { .. } => Some(self.ctx.b.async_thunk(expression)),
+                    AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
+                };
 
-            let html_value = self
-                .ctx
-                .b
-                .thunk(rune_get(&self.ctx.b, "$$html"));
-            let mut html_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("node"), Arg::Expr(html_value)];
+                let html_value = self.ctx.b.thunk(rune_get(&self.ctx.b, "$$html"));
+                let mut html_args: Vec<Arg<'a, '_>> =
+                    vec![Arg::Ident("node"), Arg::Expr(html_value)];
 
-            push_html_trailing_args(
-                self.ctx,
-                &mut html_args,
-                is_controlled,
-                is_svg,
-                is_mathml,
-                hydration_ignored,
-            );
+                push_html_trailing_args(
+                    self.ctx,
+                    &mut html_args,
+                    is_controlled,
+                    is_svg,
+                    is_mathml,
+                    hydration_ignored,
+                );
 
-            let html_stmt = self.ctx.b.call_stmt("$.html", html_args);
+                let html_stmt = self.ctx.b.call_stmt("$.html", html_args);
 
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_name);
-            let async_thunk = plan.async_thunk(self.ctx, expression);
-            let async_stmt = plan.emit_async_call_stmt(
-                self.ctx,
-                anchor_expr,
-                "node",
-                "$$html",
-                async_thunk,
-                vec![html_stmt],
-            );
-            state.init.push(async_stmt);
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_name);
+                let async_stmt = self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    "node",
+                    "$$html",
+                    async_thunk,
+                    vec![html_stmt],
+                )?;
+                state.init.push(async_stmt);
 
-            if is_controlled {
-                state.last_fragment_needs_reset = false;
+                if is_controlled {
+                    state.last_fragment_needs_reset = false;
+                }
+                Ok(())
             }
-            return Ok(());
+            AsyncEmission::Sync => {
+                let expr = self.take_node_expr(id)?;
+                let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(id));
+                let thunk = self.ctx.b.thunk(expr);
+
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&anchor_name), Arg::Expr(thunk)];
+
+                push_html_trailing_args(
+                    self.ctx,
+                    &mut args,
+                    is_controlled,
+                    is_svg,
+                    is_mathml,
+                    hydration_ignored,
+                );
+
+                state.init.push(self.ctx.b.call_stmt("$.html", args));
+
+                if is_controlled {
+                    state.last_fragment_needs_reset = false;
+                }
+
+                Ok(())
+            }
         }
-
-        let expr = self.take_node_expr(id)?;
-        let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(id));
-        let thunk = self.ctx.b.thunk(expr);
-
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&anchor_name), Arg::Expr(thunk)];
-
-        push_html_trailing_args(
-            self.ctx,
-            &mut args,
-            is_controlled,
-            is_svg,
-            is_mathml,
-            hydration_ignored,
-        );
-
-        state.init.push(self.ctx.b.call_stmt("$.html", args));
-
-        if is_controlled {
-            state.last_fragment_needs_reset = false;
-        }
-
-        Ok(())
     }
 }

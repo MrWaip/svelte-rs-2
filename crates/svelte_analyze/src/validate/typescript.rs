@@ -49,7 +49,10 @@ impl<'a> Visit<'a> for TypescriptValidator<'_> {
     }
 
     fn visit_decorator(&mut self, it: &Decorator<'a>) {
-        self.push("decorators (related TSC proposal is not stage 4 yet)", it.span);
+        self.push(
+            "decorators (related TSC proposal is not stage 4 yet)",
+            it.span,
+        );
     }
 
     fn visit_accessor_property(&mut self, it: &AccessorProperty<'a>) {
@@ -75,9 +78,7 @@ fn namespace_has_non_type_node(decl: &TSModuleDeclaration<'_>) -> bool {
         return false;
     };
     match body {
-        TSModuleDeclarationBody::TSModuleDeclaration(nested) => {
-            namespace_has_non_type_node(nested)
-        }
+        TSModuleDeclarationBody::TSModuleDeclaration(nested) => namespace_has_non_type_node(nested),
         TSModuleDeclarationBody::TSModuleBlock(block) => {
             block.body.iter().any(|stmt| !is_type_only_statement(stmt))
         }

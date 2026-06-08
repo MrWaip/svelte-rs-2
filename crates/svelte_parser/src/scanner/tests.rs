@@ -121,7 +121,10 @@ fn attribute_name_with_underscore() {
     let source = "<div foo_bar=\"x\" class:is_expanded={true} on:foo_bar={h} use:foo_bar={a} bind:foo_bar={v} style:foo_bar=\"red\" />";
     let mut scanner = Scanner::new(source);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
 
     let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
         panic!("expected StartTag");
@@ -1147,7 +1150,10 @@ fn attribute_name_with_percent_and_digits() {
     let source = "<Child 0={0} ysc%%gibberish={1} />";
     let mut scanner = Scanner::new(source);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
 
     assert_start_tag(
         source,
@@ -1163,7 +1169,10 @@ fn attribute_name_stops_at_pipe_modifier() {
     let source = "<div on:click|once={h} />";
     let mut scanner = Scanner::new(source);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
 
     let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
         panic!("expected StartTag");

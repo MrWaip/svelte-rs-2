@@ -45,7 +45,10 @@ pub fn find_expr_root_identifier<'b, 'a>(
         if let Expression::Identifier(id) = current {
             return Some(id);
         }
-        current = current.as_member_expression()?.object().get_inner_expression();
+        current = current
+            .as_member_expression()?
+            .object()
+            .get_inner_expression();
     }
 }
 

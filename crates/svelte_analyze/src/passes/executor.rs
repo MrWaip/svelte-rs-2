@@ -2,36 +2,12 @@ use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
 use crate::reactivity_semantics::{ReactivityInputs, build_optimized_derived, build_v2};
-use crate::{attribute_semantics, block_semantics, expression_semantics};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::{ce_config, script_info};
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
+use crate::{attribute_semantics, block_semantics, expression_semantics};
 
 use super::{bundles, finalize_component_name, fragment_topology, js_analyze, post_resolve};
-
-fn run_template_bundle<'d, 'a, const N: usize>(
-    component: &'d Component,
-    data: &'d mut AnalysisData<'a>,
-    source: &'d str,
-    runes: bool,
-    options: &AnalyzeOptions,
-    diags: &mut Vec<Diagnostic>,
-    visitors: &mut [&mut dyn walker::TemplateVisitor; N],
-) {
-    let root = data.scoping.root_scope_id();
-    let component_name = data.output.component_name.clone();
-    let mut ctx = walker::VisitContext::new(
-        root,
-        data,
-        &component.store,
-        source,
-        runes,
-        &component_name,
-        &options.filename_basename,
-    );
-    walker::walk_template(component.root, &mut ctx, visitors);
-    diags.extend(ctx.take_warnings());
-}
 
 fn run_parsed_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -145,8 +121,7 @@ pub(crate) fn execute_pass<'a>(
             data.template.expression_tags_by_fragment = bundle.take_expression_tag_buckets();
         }
         super::PassKey::CollectSymbols => {
-            let mut bundle =
-                bundles::SymbolCollectionBundle::new(ScopingBuilt::new());
+            let mut bundle = bundles::SymbolCollectionBundle::new(ScopingBuilt::new());
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
                 component,
@@ -268,9 +243,10 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);
             let mut visitors = bundle.visitors();
-            run_template_bundle(
+            run_parsed_template_bundle(
                 component,
                 data,
+                parsed,
                 source,
                 runes,
                 options,

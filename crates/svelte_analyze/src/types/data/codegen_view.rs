@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
-use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::{ComponentCssProp, ComponentPropKind, DeclaratorSemantics};
 use crate::types::script::PropsDeclaration;
@@ -49,34 +49,19 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn component_name(&self) -> &str {
         self.data.component_name()
     }
-    pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.data.node_volatile(id)
-    }
-    pub fn expression_semantics(
-        &self,
-        id: NodeId,
-    ) -> &ExpressionSemantics {
+    pub fn expression_semantics(&self, id: NodeId) -> &ExpressionSemantics {
         self.data.expressions_v2.get(id)
     }
-    pub fn expression_data(
-        &self,
-        id: NodeId,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data(&self, id: NodeId) -> Option<&ExpressionData> {
         match self.expression_semantics(id) {
             ExpressionSemantics::Expression(d) => Some(d),
             ExpressionSemantics::NonSpecial => None,
         }
     }
-    pub fn expression_data_by_oxc(
-        &self,
-        id: SemOxcNodeId,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data_by_oxc(&self, id: SemOxcNodeId) -> Option<&ExpressionData> {
         self.data.expression_data_by_oxc(id)
     }
-    pub fn expression_data_for(
-        &self,
-        expr: &Expression<'_>,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data_for(&self, expr: &Expression<'_>) -> Option<&ExpressionData> {
         self.data.expression_data_for(expr)
     }
     pub fn exports(&self) -> &[ExportInfo] {
@@ -112,17 +97,19 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .map(|(alias, _)| alias.into_owned())
                 .unwrap_or_else(|| self.data.scoping.symbol_name(sym).to_string())
         };
-        let exported_symbols: Vec<SymbolId> =
-            self.data.script.exports.iter().map(|exp| exp.local).collect();
-        let is_variant = |sym: SymbolId, want_api: bool| match self
+        let exported_symbols: Vec<SymbolId> = self
             .data
-            .reactivity
-            .binding_semantics(sym)
-        {
-            crate::BindingSemantics::LegacyApiExport => want_api,
-            crate::BindingSemantics::LegacyBindableProp(_) => !want_api,
-            _ => false,
-        };
+            .script
+            .exports
+            .iter()
+            .map(|exp| exp.local)
+            .collect();
+        let is_variant =
+            |sym: SymbolId, want_api: bool| match self.data.reactivity.binding_semantics(sym) {
+                crate::BindingSemantics::LegacyApiExport => want_api,
+                crate::BindingSemantics::LegacyBindableProp(_) => !want_api,
+                _ => false,
+            };
         let mut keys: Vec<String> = exported_symbols
             .iter()
             .copied()
@@ -198,12 +185,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn attr_expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
         self.data.attr_expression_blockers(id)
     }
-    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.data.needs_expr_memoization(id)
-    }
-    pub fn expr_is_async(&self, id: NodeId) -> bool {
-        self.data.expr_is_async(id)
-    }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
     }
@@ -213,10 +194,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.data.bind_target_symbol(id)
     }
-    pub fn symbol_for_reference(
-        &self,
-        ref_id: ReferenceId,
-    ) -> Option<SymbolId> {
+    pub fn symbol_for_reference(&self, ref_id: ReferenceId) -> Option<SymbolId> {
         self.data.symbol_for_reference(ref_id)
     }
     pub fn symbol_for_identifier_reference(
@@ -243,16 +221,10 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
         self.data.binding_semantics(sym)
     }
-    pub fn declarator_semantics(
-        &self,
-        decl_node: SemOxcNodeId,
-    ) -> DeclaratorSemantics {
+    pub fn declarator_semantics(&self, decl_node: SemOxcNodeId) -> DeclaratorSemantics {
         self.data.declarator_semantics(decl_node)
     }
-    pub fn reference_semantics(
-        &self,
-        ref_id: ReferenceId,
-    ) -> ReferenceSemantics {
+    pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
     pub fn fragment_items(
@@ -335,12 +307,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.data.elements.flags.needs_var(id)
     }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.data.node_volatile(id)
-    }
-    pub fn has_state_attr(&self, id: NodeId) -> bool {
-        self.data.dynamism.has_state_attr(id)
-    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.data.elements.flags.static_class(id)
     }
@@ -353,11 +319,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_use_directive(id)
     }
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.data.elements.flags.has_dynamic_class_directives(id)
-    }
-    pub fn class_needs_state(&self, id: NodeId) -> bool {
-        self.data.class_needs_state(id)
+    pub fn class_state_volatility(&self, id: NodeId) -> Volatility {
+        self.data.class_state_volatility(id)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
         self.data.elements.flags.class_attr_id(id)
@@ -391,9 +354,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.data.template.snippets.component_snippets(id)
-    }
-    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.data.node_volatile(id)
     }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
         self.data.elements.flags.event_handler_mode(id)

@@ -1,8 +1,8 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
 use svelte_analyze::{
-    AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind,
-    TemplateEffect, normalize_regular_attribute_name,
+    AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, TemplateEffect,
+    normalize_regular_attribute_name,
 };
 use svelte_ast::{ConcatPart, ConcatenationAttribute, NodeId};
 use svelte_ast_builder::TemplatePart;

@@ -2,7 +2,10 @@ use super::super::data::ReferenceFacts;
 use crate::types::data::AnalysisData;
 
 pub(super) fn classify_import_subscribed_reads(data: &mut AnalysisData<'_>) {
-    let store_pairs: Vec<(svelte_component_semantics::SymbolId, svelte_component_semantics::SymbolId)> = data
+    let store_pairs: Vec<(
+        svelte_component_semantics::SymbolId,
+        svelte_component_semantics::SymbolId,
+    )> = data
         .reactivity
         .iter_store_bindings()
         .filter_map(|(_, store)| {

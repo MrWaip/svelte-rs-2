@@ -66,8 +66,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::missing_expression(block_id);
         };
 
-        let parsed_patterns =
-            self.take_snippet_param_patterns(&mut parsed_stmt, sem.params.len());
+        let parsed_patterns = self.take_snippet_param_patterns(&mut parsed_stmt, sem.params.len());
 
         let (params, binding_decls) =
             self.build_snippet_params_with_patterns(block_id, sem, parsed_patterns)?;

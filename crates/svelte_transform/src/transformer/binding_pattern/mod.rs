@@ -188,7 +188,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 Access::Key { key, computed } => {
                     expr = bp::member_access(self.b, expr, key, computed);
                 }
-                Access::Index { index, len, has_rest } => {
+                Access::Index {
+                    index,
+                    len,
+                    has_rest,
+                } => {
                     let prefix = bp::serialize_prefix(&path[..i]);
                     let name = self.ensure_carrier_declarator(
                         carriers,
@@ -200,7 +204,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         decl_kind,
                     );
                     let get = self.b.call_expr("$.get", [Arg::Ident(name)]);
-                    expr = self.b.computed_member_expr(get, self.b.num_expr(index as f64));
+                    expr = self
+                        .b
+                        .computed_member_expr(get, self.b.num_expr(index as f64));
                 }
                 Access::Slice { from } => {
                     let prefix = bp::serialize_prefix(&path[..i]);

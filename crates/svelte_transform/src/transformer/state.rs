@@ -66,7 +66,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-
     pub(crate) fn wrap_state_value(
         &self,
         value: Expression<'a>,
@@ -105,10 +104,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-    pub(crate) fn scan_class_state_fields(
-        &self,
-        body: &ClassBody<'a>,
-    ) -> ClassStateInfo {
+    pub(crate) fn scan_class_state_fields(&self, body: &ClassBody<'a>) -> ClassStateInfo {
         let mut fields = Vec::new();
 
         let mut existing_private: FxHashSet<String> = FxHashSet::default();
@@ -212,9 +208,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 }
                                 fields.push(ClassStateField {
                                     public_name: Some(name),
-                                    private_name: backing
-                                        .trim_start_matches('#')
-                                        .to_string(),
+                                    private_name: backing.trim_start_matches('#').to_string(),
                                     rune_kind,
                                 });
                             }
@@ -228,9 +222,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 if !ctor_private_names.insert(name.clone()) {
                                     continue;
                                 }
-                                if fields.iter().any(|f| {
-                                    f.public_name.is_none() && f.private_name == name
-                                }) {
+                                if fields
+                                    .iter()
+                                    .any(|f| f.public_name.is_none() && f.private_name == name)
+                                {
                                     continue;
                                 }
                                 fields.push(ClassStateField {
@@ -253,11 +248,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-    pub(crate) fn rewrite_class_body(
-        &self,
-        body: &mut ClassBody<'a>,
-        info: &ClassStateInfo,
-    ) {
+    pub(crate) fn rewrite_class_body(&self, body: &mut ClassBody<'a>, info: &ClassStateInfo) {
         use ClassElement;
 
         let public_fields: HashMap<&str, &ClassStateField> = info
@@ -301,9 +292,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     if !is_rune_prop {
                         let is_ctor_placeholder = prop.value.is_none()
                             && match &prop.key {
-                                PropertyKey::StaticIdentifier(id)
-                                    if !prop.computed =>
-                                {
+                                PropertyKey::StaticIdentifier(id) if !prop.computed => {
                                     info.ctor_placeholder_names.contains(id.name.as_str())
                                 }
                                 _ => false,
@@ -442,8 +431,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 if let Some(arg) = arg {
                     self.b.call_expr("$.derived", [Arg::Expr(arg)])
                 } else {
-                    self.b
-                        .call_expr("$.derived", iter::empty::<Arg<'a, '_>>())
+                    self.b.call_expr("$.derived", iter::empty::<Arg<'a, '_>>())
                 }
             }
             RuneKind::State => {
@@ -455,16 +443,14 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     };
                     self.b.call_expr("$.state", [Arg::Expr(wrapped)])
                 } else {
-                    self.b
-                        .call_expr("$.state", iter::empty::<Arg<'a, '_>>())
+                    self.b.call_expr("$.state", iter::empty::<Arg<'a, '_>>())
                 }
             }
             _ => {
                 if let Some(arg) = arg {
                     self.b.call_expr("$.state", [Arg::Expr(arg)])
                 } else {
-                    self.b
-                        .call_expr("$.state", iter::empty::<Arg<'a, '_>>())
+                    self.b.call_expr("$.state", iter::empty::<Arg<'a, '_>>())
                 }
             }
         };
@@ -653,4 +639,3 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         format!("{}.{}", class_name, field_name)
     }
 }
-

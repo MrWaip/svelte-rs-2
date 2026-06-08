@@ -138,18 +138,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let var_alloc = self.ctx.b.alloc_str(&var_name);
 
         let stmt = match payload.property {
-            ElementBindPropertyKind::Value => self.ctx.b.call_stmt(
-                "$.bind_value",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Value => self
+                .ctx
+                .b
+                .call_stmt("$.bind_value", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Checked => self.ctx.b.call_stmt(
                 "$.bind_checked",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Files => self.ctx.b.call_stmt(
-                "$.bind_files",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Files => self
+                .ctx
+                .b
+                .call_stmt("$.bind_files", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::ElementSize(kind) => self.ctx.b.call_stmt(
                 "$.bind_element_size",
                 [
@@ -194,10 +194,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.bind_volume",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Media(MediaBindKind::Muted) => self.ctx.b.call_stmt(
-                "$.bind_muted",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Muted) => self
+                .ctx
+                .b
+                .call_stmt("$.bind_muted", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Media(MediaBindKind::Buffered) => self.ctx.b.call_stmt(
                 "$.bind_buffered",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
@@ -210,10 +210,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.bind_seeking",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Media(MediaBindKind::Ended) => self.ctx.b.call_stmt(
-                "$.bind_ended",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Ended) => self
+                .ctx
+                .b
+                .call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Media(MediaBindKind::ReadyState) => self.ctx.b.call_stmt(
                 "$.bind_ready_state",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],

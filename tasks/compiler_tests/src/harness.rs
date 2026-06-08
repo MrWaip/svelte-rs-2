@@ -12,10 +12,7 @@ use crate::sourcemap_invariants::assert_sourcemap_invariants;
 
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
-    stripped
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn assert_compiler(case: &str) {
@@ -37,21 +34,13 @@ pub fn assert_compiler(case: &str) {
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
     if let Some(map) = js_output.map.as_ref() {
-        assert_sourcemap_invariants(
-            case,
-            &input,
-            map,
-            svelte_compiler::SourcemapKind::Default,
-        );
+        assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
 
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
         let expected_css = read_to_string(&expected_css_path).expect("test invariant");
-        let actual_css = result
-            .css
-            .map(|out| out.code)
-            .unwrap_or_default();
+        let actual_css = result.css.map(|out| out.code).unwrap_or_default();
         File::create(dir.join("case-rust.css"))
             .expect("test invariant")
             .write_all(actual_css.as_bytes())

@@ -5,8 +5,8 @@ pub use options::{
     CompileOptions, CssMode, ExperimentalOptions, GenerateMode, ModuleCompileOptions, Namespace,
     RunesOption,
 };
-pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
+pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
 
 pub struct CompileResult {
     pub js: Option<JsOutput>,
@@ -164,8 +164,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
-            let needs_map = options.sourcemap_kind.is_enabled()
-                && (!inject_styles || options.dev);
+            let needs_map = options.sourcemap_kind.is_enabled() && (!inject_styles || options.dev);
             if needs_map {
                 let (raw_css, raw_map) = svelte_transform_css::transform_css_with_sourcemap(
                     &analysis.output.css.hash,
@@ -229,14 +228,36 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         if has_errors {
             (None, css, analyze_diags)
         } else {
-
-        let mut ident_gen =
-            svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
-        let name = analysis.component_name().to_string();
-        let _ = ident_gen.generate(&name);
-        let line_index = svelte_span::LineIndex::new(component.source.as_str());
-        let transform_data = {
-            let mut compile_ctx = svelte_types::CompileContext {
+            let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(
+                analysis.scoping.collect_all_symbol_names(),
+            );
+            let name = analysis.component_name().to_string();
+            let _ = ident_gen.generate(&name);
+            let line_index = svelte_span::LineIndex::new(component.source.as_str());
+            let transform_data = {
+                let mut compile_ctx = svelte_types::CompileContext {
+                    alloc: &js_alloc,
+                    component: &component,
+                    analysis: &analysis,
+                    js_arena: &mut parsed,
+                    ident_gen: &mut ident_gen,
+                    line_index: &line_index,
+                };
+                svelte_transform::transform_component(
+                    &mut compile_ctx,
+                    &svelte_types::TransformOptions { dev: options.dev },
+                )
+            };
+            let codegen_options = svelte_types::CodegenOptions {
+                dev: options.dev,
+                experimental_async: options.experimental.async_,
+                filename: filename_relative_to_root_dir(
+                    &options.filename,
+                    options.root_dir.as_deref(),
+                ),
+                sourcemap_kind: options.sourcemap_kind,
+            };
+            let compile_ctx = svelte_types::CompileContext {
                 alloc: &js_alloc,
                 component: &component,
                 analysis: &analysis,
@@ -244,35 +265,13 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 ident_gen: &mut ident_gen,
                 line_index: &line_index,
             };
-            svelte_transform::transform_component(
-                &mut compile_ctx,
-                &svelte_types::TransformOptions { dev: options.dev },
-            )
-        };
-        let codegen_options = svelte_types::CodegenOptions {
-            dev: options.dev,
-            experimental_async: options.experimental.async_,
-            filename: filename_relative_to_root_dir(
-                &options.filename,
-                options.root_dir.as_deref(),
-            ),
-            sourcemap_kind: options.sourcemap_kind,
-        };
-        let compile_ctx = svelte_types::CompileContext {
-            alloc: &js_alloc,
-            component: &component,
-            analysis: &analysis,
-            js_arena: &mut parsed,
-            ident_gen: &mut ident_gen,
-            line_index: &line_index,
-        };
-        let js = svelte_codegen_client::generate(
-            compile_ctx,
-            &codegen_options,
-            transform_data,
-            injected_css_text.as_deref(),
-        );
-        (Some(js), css, analyze_diags)
+            let js = svelte_codegen_client::generate(
+                compile_ctx,
+                &codegen_options,
+                transform_data,
+                injected_css_text.as_deref(),
+            );
+            (Some(js), css, analyze_diags)
         }
     };
 

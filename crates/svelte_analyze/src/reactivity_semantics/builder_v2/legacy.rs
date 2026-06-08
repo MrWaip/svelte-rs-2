@@ -12,8 +12,8 @@ use crate::types::data::AnalysisData;
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
-    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
-    ReferenceSemantics,
+    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind,
+    ReferenceFacts, ReferenceSemantics,
 };
 use crate::PropsFlags;
 
@@ -54,15 +54,13 @@ fn record_api_export_variable_symbols<'a>(
 ) {
     for declarator in &decl.declarations {
         walk_bindings(&declarator.id, |visit| {
-            data.reactivity.record_legacy_api_export_binding(visit.symbol);
+            data.reactivity
+                .record_legacy_api_export_binding(visit.symbol);
         });
     }
 }
 
-fn record_api_export_function_symbol<'a>(
-    data: &mut AnalysisData<'a>,
-    func: &Function<'a>,
-) {
+fn record_api_export_function_symbol<'a>(data: &mut AnalysisData<'a>, func: &Function<'a>) {
     let Some(ident) = func.id.as_ref() else {
         return;
     };
@@ -72,10 +70,7 @@ fn record_api_export_function_symbol<'a>(
     data.reactivity.record_legacy_api_export_binding(symbol);
 }
 
-fn record_api_export_class_symbol<'a>(
-    data: &mut AnalysisData<'a>,
-    cls: &Class<'a>,
-) {
+fn record_api_export_class_symbol<'a>(data: &mut AnalysisData<'a>, cls: &Class<'a>) {
     let Some(ident) = cls.id.as_ref() else {
         return;
     };
@@ -226,7 +221,9 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
         data.scoping
             .get_resolved_reference_ids(sym)
             .iter()
-            .any(|&r| data.reactivity.is_prop_member_mutation_root_ref(r) && is_non_store_ref(data, r))
+            .any(|&r| {
+                data.reactivity.is_prop_member_mutation_root_ref(r) && is_non_store_ref(data, r)
+            })
     };
 
     let has_member_mutated = symbols.iter().any(|&sym| prop_member_mutated(data, sym));
@@ -280,10 +277,7 @@ fn classify_expression_default<'a>(
     }
 }
 
-fn references_legacy_bindable_prop<'a>(
-    data: &AnalysisData<'a>,
-    expr: &Expression<'a>,
-) -> bool {
+fn references_legacy_bindable_prop<'a>(data: &AnalysisData<'a>, expr: &Expression<'a>) -> bool {
     match expr {
         Expression::Identifier(id) => data
             .scoping

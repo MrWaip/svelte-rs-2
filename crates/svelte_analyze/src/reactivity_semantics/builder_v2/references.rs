@@ -201,9 +201,8 @@ fn classify_reference_semantics(
                         symbol: sym,
                     })
                 } else if is_read {
-                    let reads_as_source = !bindable
-                        || *updated
-                        || !matches!(default_lowering, PropDefaultKind::None);
+                    let reads_as_source =
+                        !bindable || *updated || !matches!(default_lowering, PropDefaultKind::None);
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
                             bindable: *bindable,

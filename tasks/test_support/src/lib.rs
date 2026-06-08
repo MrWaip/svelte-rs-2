@@ -59,10 +59,7 @@ mod tests {
     #[test]
     fn strips_multiple_markers() {
         let input = ".a { /* :global {*/ p {} /*}*/ /* (unused) .b {}*/ }";
-        assert_eq!(
-            strip_reference_only_css_markers(input),
-            ".a {  p {}   }"
-        );
+        assert_eq!(strip_reference_only_css_markers(input), ".a {  p {}   }");
     }
 
     #[test]

@@ -120,11 +120,15 @@ impl<'a> Builder<'a> {
                 let chain = chain.unbox();
                 match chain.expression {
                     ChainElement::CallExpression(c) => Expression::CallExpression(c),
-                    ChainElement::StaticMemberExpression(m) => Expression::StaticMemberExpression(m),
+                    ChainElement::StaticMemberExpression(m) => {
+                        Expression::StaticMemberExpression(m)
+                    }
                     ChainElement::ComputedMemberExpression(m) => {
                         Expression::ComputedMemberExpression(m)
                     }
-                    ChainElement::PrivateFieldExpression(m) => Expression::PrivateFieldExpression(m),
+                    ChainElement::PrivateFieldExpression(m) => {
+                        Expression::PrivateFieldExpression(m)
+                    }
                     ChainElement::TSNonNullExpression(t) => Expression::TSNonNullExpression(t),
                 }
             }
