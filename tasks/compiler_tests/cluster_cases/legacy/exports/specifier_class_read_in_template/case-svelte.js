@@ -3,16 +3,12 @@ import * as $ from "svelte/internal/client";
 var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
-	let foo = $.prop($$props, "foo", 8, 1);
-	function getFoo() {
-		return foo();
-	}
-	var $$exports = { getFoo };
+	class Counter {}
+	$.init();
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);
-	$.template_effect(() => $.set_text(text, foo()));
+	$.template_effect(() => $.set_text(text, ($.deep_read_state(Counter()), $.untrack(() => Counter().name))));
 	$.append($$anchor, p);
-	$.bind_prop($$props, "getFoo", getFoo);
-	return $.pop($$exports);
+	$.pop();
 }

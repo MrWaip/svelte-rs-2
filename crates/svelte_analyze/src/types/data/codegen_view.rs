@@ -64,8 +64,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn expression_data_for(&self, expr: &Expression<'_>) -> Option<&ExpressionData> {
         self.data.expression_data_for(expr)
     }
-    pub fn exports(&self) -> &[ExportInfo] {
-        &self.data.script.exports
+    pub fn exports(&self) -> &[ApiExport] {
+        &self.data.output.api_exports
     }
     pub fn props(&self) -> Option<&PropsDeclaration> {
         self.data.script.props_declaration()
@@ -97,24 +97,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .map(|(alias, _)| alias.into_owned())
                 .unwrap_or_else(|| self.data.scoping.symbol_name(sym).to_string())
         };
-        let exported_symbols: Vec<SymbolId> = self
+        let mut keys: Vec<String> = self
             .data
-            .script
-            .exports
+            .output
+            .api_exports
             .iter()
-            .map(|exp| exp.local)
-            .collect();
-        let is_variant =
-            |sym: SymbolId, want_api: bool| match self.data.reactivity.binding_semantics(sym) {
-                crate::BindingSemantics::LegacyApiExport => want_api,
-                crate::BindingSemantics::LegacyBindableProp(_) => !want_api,
-                _ => false,
-            };
-        let mut keys: Vec<String> = exported_symbols
-            .iter()
-            .copied()
-            .filter(|&sym| is_variant(sym, true))
-            .map(key_for)
+            .map(|exp| key_for(exp.local))
             .collect();
         keys.extend(
             self.data

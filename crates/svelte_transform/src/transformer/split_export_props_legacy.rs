@@ -139,7 +139,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let init = declarator.init.as_mut().map(|e| self.b.move_expr(e));
         let alias_str = alias.as_deref();
         let call = self.build_legacy_prop_call(local_alloc, alias_str, legacy, init);
-        Some(vec![self.b.let_multi_stmt(vec![(local_alloc, call)])])
+        Some(vec![
+            self.b
+                .var_decl_multi_stmt(vec![(local_alloc, call)], decl.kind),
+        ])
     }
 
     fn build_legacy_prop_call(

@@ -3981,7 +3981,7 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
     assert_eq!(props.props[0].local_name.as_str(), "count");
     assert_eq!(props.props[0].default_text.as_deref(), Some("1"));
     assert!(
-        data.script.exports.is_empty(),
+        data.output.api_exports.is_empty(),
         "legacy export let should not remain a component export"
     );
 

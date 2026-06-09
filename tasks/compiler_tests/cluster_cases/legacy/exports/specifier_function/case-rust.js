@@ -3,16 +3,15 @@ import * as $ from "svelte/internal/client";
 var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
-	let foo = $.prop($$props, "foo", 8, 1);
-	function getFoo() {
-		return foo();
+	function greet() {
+		return "hi";
 	}
-	var $$exports = { getFoo };
+	var $$exports = { greet };
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);
-	$.template_effect(() => $.set_text(text, foo()));
+	$.template_effect(($0) => $.set_text(text, $0), [() => $.untrack(greet)]);
 	$.append($$anchor, p);
-	$.bind_prop($$props, "getFoo", getFoo);
+	$.bind_prop($$props, "greet", greet);
 	return $.pop($$exports);
 }

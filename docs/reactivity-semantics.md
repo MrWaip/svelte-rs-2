@@ -45,6 +45,7 @@ label: reactivity-semantics
 
 ### Legacy (Svelte 4)
 - **`export let` props** — legacy bindable props.
+- **Классификация экспортов** — единственный владелец развилки «каждый экспортированный let/var/class — bindable prop, всё прочее — API-экспорт компонента»; specifier со строковым exported-именем в legacy пропускается целиком. В runes-режиме та же точка классифицирует тривиально (каждый export — API-экспорт). Внутри кластера остаются только реактивные следствия (bindable-метки, `LegacyApiExport`-вариант `binding_semantics`); классифицированный список API-экспортов и флаг «есть export-стейтмент ⇒ нужен `$$props`» — выводы об компоненте в целом, лежат в `OutputData` (`api_exports`, `legacy_has_export_declaration`), поверхность кластера не расширяют. Кодген и трансформ список/метки только читают, своей классификации не держат.
 - **Let-promotion в state** — top-level `let`, мутируемый в `$:` или handler'е.
 - **`$:`-блоки** — legacy reactive statements/declarations.
 

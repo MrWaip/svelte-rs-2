@@ -38,7 +38,7 @@ pub use block_semantics::{
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
+    AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
     ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
@@ -57,7 +57,7 @@ pub use types::data::{
     TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
-    DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
+    DeclarationInfo, DeclarationKind, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 pub use utils::script_info::{BINDABLE_RUNE_NAME, detect_rune_from_call};
 
@@ -251,11 +251,7 @@ fn build_runtime_info(
         .iter_statements_topo()
         .next()
         .is_some();
-    let has_exports = data
-        .script
-        .exports
-        .iter()
-        .any(|exp| !legacy_symbols.contains(&exp.local));
+    let has_exports = !data.output.api_exports.is_empty();
     let has_bindable = data
         .script
         .props_declaration()
@@ -298,6 +294,7 @@ fn build_runtime_info(
         || has_legacy_bindable_prop
         || has_legacy_props_read
         || data.reactivity.legacy_uses_rest_props()
+        || data.output.legacy_has_export_declaration
         || has_component_bubble_event_legacy;
 
     let legacy_init = if data.uses_runes() {

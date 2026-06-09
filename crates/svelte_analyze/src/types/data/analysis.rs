@@ -25,7 +25,6 @@ use svelte_component_semantics::{OriginKind, OxcNodeId, ReferenceId};
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
     pub props_id: Option<String>,
-    pub exports: Vec<ExportInfo>,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
     pub runes_mode: RunesMode,
@@ -45,7 +44,6 @@ impl ScriptAnalysis {
         Self {
             info: None,
             props_id: None,
-            exports: Vec::new(),
             has_class_state_fields: false,
             has_store_member_mutations: false,
             runes_mode: RunesMode::Runes,
@@ -151,6 +149,13 @@ impl BlockAnalysis {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ApiExport {
+    pub local: svelte_component_semantics::SymbolId,
+    pub reference_id: Option<ReferenceId>,
+    pub alias: Option<compact_str::CompactString>,
+}
+
 pub struct OutputData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
@@ -161,6 +166,8 @@ pub struct OutputData {
     pub runtime_plan: RuntimeInfo,
     pub ignore_data: IgnoreData,
     pub needs_component_bind_ownership: bool,
+    pub api_exports: Vec<ApiExport>,
+    pub legacy_has_export_declaration: bool,
 
     pub css: CssAnalysis,
 }
@@ -177,6 +184,8 @@ impl OutputData {
             runtime_plan: RuntimeInfo::default(),
             ignore_data: IgnoreData::new(),
             needs_component_bind_ownership: false,
+            api_exports: Vec::new(),
+            legacy_has_export_declaration: false,
             css: CssAnalysis::empty(node_count),
         }
     }

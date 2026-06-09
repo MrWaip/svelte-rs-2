@@ -3,7 +3,7 @@ import * as $ from "svelte/internal/client";
 var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
-	let foo = $.prop($$props, "foo", 8, 1);
+	var foo = $.prop($$props, "foo", 8, 1);
 	function getFoo() {
 		return foo();
 	}

@@ -1,5 +1,3 @@
-use std::mem::take;
-
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, Declaration,
@@ -20,7 +18,7 @@ use crate::utils::script_info::{detect_rune, detect_rune_from_call};
 
 pub(crate) fn analyze_script(
     data: &mut AnalysisData,
-    mut script_info: ScriptInfo,
+    script_info: ScriptInfo,
     program: &Program<'_>,
 ) {
     let uses_runes = data.reactivity.uses_runes();
@@ -29,7 +27,6 @@ pub(crate) fn analyze_script(
     data.script.has_store_member_mutations = body.has_store_member_mutations;
     data.script.proxy_state_inits = body.proxy_state_inits;
 
-    data.script.exports = take(&mut script_info.exports);
     data.script.has_class_state_fields = has_class_state_fields;
     data.script.info = Some(script_info);
 }

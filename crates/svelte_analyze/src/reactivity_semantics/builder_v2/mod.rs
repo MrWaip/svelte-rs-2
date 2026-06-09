@@ -1342,7 +1342,9 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     }
 
     fn visit_export_named_declaration(&mut self, export: &ExportNamedDeclaration<'a>) {
-        legacy::classify_export_named_declaration(self.data, export);
+        if self.is_instance_program {
+            legacy::classify_export_named_declaration(self.data, export);
+        }
         walk_export_named_declaration(self, export);
     }
 

@@ -245,6 +245,14 @@ impl<'a> ComponentSemantics<'a> {
         self.symbols.symbol_flags(id)
     }
 
+    pub fn is_reassignable_declaration(&self, id: SymbolId) -> bool {
+        let flags = self.symbols.symbol_flags(id);
+        let is_var = flags.contains(SymbolFlags::FunctionScopedVariable);
+        let is_let = flags.contains(SymbolFlags::BlockScopedVariable)
+            && !flags.contains(SymbolFlags::ConstVariable);
+        is_var || is_let || flags.contains(SymbolFlags::Class)
+    }
+
     pub fn symbol_scope_id(&self, id: SymbolId) -> ScopeId {
         self.symbols.symbol_scope_id(id)
     }

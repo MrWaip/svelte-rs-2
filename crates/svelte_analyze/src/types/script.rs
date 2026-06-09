@@ -38,17 +38,9 @@ impl PropsDeclaration {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExportInfo {
-    pub local: svelte_component_semantics::SymbolId,
-    pub reference_id: Option<svelte_component_semantics::ReferenceId>,
-    pub alias: Option<CompactString>,
-}
-
-#[derive(Debug, Clone)]
 pub struct ScriptInfo {
     pub declarations: Vec<DeclarationInfo>,
     pub props_declaration: Option<PropsDeclaration>,
-    pub exports: Vec<ExportInfo>,
 
     pub store_candidates: Vec<CompactString>,
 }

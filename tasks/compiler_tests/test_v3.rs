@@ -6030,7 +6030,6 @@ fn diagnose_legacy_slot_let_const_tag_ordering() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn legacy_bindable_export_with_api_export() {
     assert_compiler("legacy_bindable_export_with_api_export");
 }

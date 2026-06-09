@@ -764,7 +764,9 @@ fn eval_identifier(
     if ctx.function_decls.contains(&sym) {
         return smallvec![EvalAtom::Class(ValueClass::Function)];
     }
-    if ctx.semantics.is_mutated(sym) || ctx.semantics.is_reexported_specifier_local(sym) {
+    let export_reassigned =
+        ctx.reactivity.uses_runes() && ctx.semantics.is_reexported_specifier_local(sym);
+    if ctx.semantics.is_mutated(sym) || export_reassigned {
         return smallvec![EvalAtom::Unknown];
     }
     if reads_opaque(&ctx.reactivity.binding_semantics(sym), ctx.read_context) {

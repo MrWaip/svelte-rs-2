@@ -4,7 +4,7 @@ pub mod node_table;
 pub mod script;
 
 pub use data::{
-    AnalysisData, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
+    AnalysisData, ApiExport, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
     BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
     ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
     ComponentPropKind, ContentEditableKind, DocumentBindKind, ElementAnalysis, ElementFlags,
@@ -15,5 +15,5 @@ pub use data::{
 };
 pub use node_table::{NodeBitSet, NodeTable};
 pub use script::{
-    DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
+    DeclarationInfo, DeclarationKind, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };

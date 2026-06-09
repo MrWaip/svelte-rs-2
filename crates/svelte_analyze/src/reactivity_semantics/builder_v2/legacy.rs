@@ -1,14 +1,15 @@
+use compact_str::CompactString;
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, Class, Declaration, ExportNamedDeclaration, Expression, Function,
-        VariableDeclaration, VariableDeclarationKind,
+        BindingPattern, Class, Declaration, ExportNamedDeclaration, ExportSpecifier, Expression,
+        Function, ModuleExportName, VariableDeclaration, VariableDeclarationKind,
     },
 };
-use svelte_component_semantics::{SymbolFlags, walk_bindings};
+use svelte_component_semantics::{ReferenceId, walk_bindings};
 
 use crate::scope::SymbolId;
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, ApiExport};
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
@@ -25,8 +26,10 @@ pub(super) fn classify_export_named_declaration<'a>(
     export: &ExportNamedDeclaration<'a>,
 ) {
     if data.script.runes() {
+        classify_runes_export(data, export);
         return;
     }
+    data.output.legacy_has_export_declaration = true;
     if let Some(decl) = &export.declaration {
         match decl {
             Declaration::VariableDeclaration(var_decl) if is_let_or_var(var_decl.kind) => {
@@ -48,14 +51,80 @@ pub(super) fn classify_export_named_declaration<'a>(
     }
 }
 
+fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDeclaration<'a>) {
+    for spec in &export.specifiers {
+        let ModuleExportName::IdentifierReference(local) = &spec.local else {
+            continue;
+        };
+        let Some(ref_id) = local.reference_id.get() else {
+            continue;
+        };
+        let Some(symbol) = data.scoping.semantics().symbol_for_reference(ref_id) else {
+            continue;
+        };
+        let exported = spec.exported.name();
+        let alias = if local.name != exported {
+            Some(CompactString::from(exported.as_str()))
+        } else {
+            None
+        };
+        data.output.api_exports.push(ApiExport {
+            local: symbol,
+            reference_id: Some(ref_id),
+            alias,
+        });
+    }
+    let Some(decl) = &export.declaration else {
+        return;
+    };
+    match decl {
+        Declaration::VariableDeclaration(var_decl)
+            if var_decl.kind == VariableDeclarationKind::Const =>
+        {
+            for declarator in &var_decl.declarations {
+                walk_bindings(&declarator.id, |visit| {
+                    data.output.api_exports.push(ApiExport {
+                        local: visit.symbol,
+                        reference_id: None,
+                        alias: None,
+                    });
+                });
+            }
+        }
+        Declaration::VariableDeclaration(_) => {}
+        Declaration::FunctionDeclaration(func) => {
+            if let Some(ident) = &func.id
+                && let Some(symbol) = ident.symbol_id.get()
+            {
+                data.output.api_exports.push(ApiExport {
+                    local: symbol,
+                    reference_id: None,
+                    alias: None,
+                });
+            }
+        }
+        Declaration::ClassDeclaration(cls) => {
+            if let Some(ident) = &cls.id
+                && let Some(symbol) = ident.symbol_id.get()
+            {
+                data.output.api_exports.push(ApiExport {
+                    local: symbol,
+                    reference_id: None,
+                    alias: None,
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
 fn record_api_export_variable_symbols<'a>(
     data: &mut AnalysisData<'a>,
     decl: &VariableDeclaration<'a>,
 ) {
     for declarator in &decl.declarations {
         walk_bindings(&declarator.id, |visit| {
-            data.reactivity
-                .record_legacy_api_export_binding(visit.symbol);
+            record_api_export(data, visit.symbol, None, None);
         });
     }
 }
@@ -67,7 +136,7 @@ fn record_api_export_function_symbol<'a>(data: &mut AnalysisData<'a>, func: &Fun
     let Some(symbol) = ident.symbol_id.get() else {
         return;
     };
-    data.reactivity.record_legacy_api_export_binding(symbol);
+    record_api_export(data, symbol, None, None);
 }
 
 fn record_api_export_class_symbol<'a>(data: &mut AnalysisData<'a>, cls: &Class<'a>) {
@@ -77,7 +146,21 @@ fn record_api_export_class_symbol<'a>(data: &mut AnalysisData<'a>, cls: &Class<'
     let Some(symbol) = ident.symbol_id.get() else {
         return;
     };
+    record_api_export(data, symbol, None, None);
+}
+
+fn record_api_export(
+    data: &mut AnalysisData<'_>,
+    symbol: SymbolId,
+    reference_id: Option<ReferenceId>,
+    alias: Option<CompactString>,
+) {
     data.reactivity.record_legacy_api_export_binding(symbol);
+    data.output.api_exports.push(ApiExport {
+        local: symbol,
+        reference_id,
+        alias,
+    });
 }
 
 fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &VariableDeclaration<'a>) {
@@ -120,6 +203,9 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         return;
     };
     for spec in &export.specifiers {
+        if matches!(spec.exported, ModuleExportName::StringLiteral(_)) {
+            continue;
+        }
         let local_name = spec.local.name();
         let Some(symbol) = data
             .scoping
@@ -127,17 +213,18 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         else {
             continue;
         };
-        let Some((kind, init)) = lookup_let_or_var_init(data, symbol) else {
-            if declares_api_export(data, symbol) {
-                data.reactivity.record_legacy_api_export_binding(symbol);
-            }
-            continue;
+        let exported = spec.exported.name();
+        let alias = if local_name != exported {
+            Some(CompactString::from(exported.as_str()))
+        } else {
+            None
         };
-        if !is_let_or_var(kind) {
-            data.reactivity.record_legacy_api_export_binding(symbol);
+        if !data.scoping.is_reassignable_declaration(symbol) {
+            record_api_export(data, symbol, specifier_reference_id(spec), alias);
             continue;
         }
-        let default_lowering = match init {
+        let init = lookup_let_or_var_init(data, symbol).and_then(|(_, init)| init);
+        let default_kind = match init {
             Some(init_expr) => classify_expression_default(data, init_expr),
             None => PropDefaultKind::None,
         };
@@ -151,12 +238,19 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         data.reactivity.record_legacy_bindable_prop_binding(
             symbol,
             LegacyBindablePropSemantics {
-                default_kind: default_lowering,
+                default_kind,
                 flags,
             },
         );
         data.reactivity.record_legacy_bindable_prop_symbol(symbol);
     }
+}
+
+fn specifier_reference_id(spec: &ExportSpecifier<'_>) -> Option<ReferenceId> {
+    let ModuleExportName::IdentifierReference(local) = &spec.local else {
+        return None;
+    };
+    local.reference_id.get()
 }
 
 fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags {
@@ -311,12 +405,6 @@ fn references_legacy_bindable_prop<'a>(data: &AnalysisData<'a>, expr: &Expressio
         | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         _ => false,
     }
-}
-
-fn declares_api_export(data: &AnalysisData<'_>, symbol: SymbolId) -> bool {
-    data.scoping
-        .symbol_flags(symbol)
-        .intersects(SymbolFlags::Function | SymbolFlags::Class)
 }
 
 fn lookup_let_or_var_init<'a>(

@@ -21,7 +21,6 @@ use svelte_analyze::{
 };
 use svelte_ast::{Attribute, Node};
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
-use svelte_component_semantics::SymbolFlags;
 use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
 
@@ -357,18 +356,16 @@ pub fn generate<'a>(
                                 ctx.b.call_expr("$.set", [Arg::Ident(name), value]),
                             )])
                         }
-                        BindingSemantics::NonReactive => {
-                            let flags = ctx.query.scoping().symbol_flags(local_sym);
-                            let is_let_or_var = flags.contains(SymbolFlags::FunctionScopedVariable)
-                                || (flags.contains(SymbolFlags::BlockScopedVariable)
-                                    && !flags.contains(SymbolFlags::ConstVariable));
-                            is_let_or_var.then(|| {
+                        BindingSemantics::NonReactive | BindingSemantics::LegacyApiExport => ctx
+                            .query
+                            .scoping()
+                            .is_reassignable_declaration(local_sym)
+                            .then(|| {
                                 vec![ctx.b.assign_stmt(
                                     AssignLeft::Ident(name.to_string()),
                                     ctx.b.rid_expr("$$value"),
                                 )]
-                            })
-                        }
+                            }),
                         _ => None,
                     };
 

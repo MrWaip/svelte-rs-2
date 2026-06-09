@@ -46,6 +46,9 @@ mod legacy_state;
 #[path = "clusters/legacy_props.rs"]
 mod legacy_props;
 
+#[path = "clusters/legacy_exports.rs"]
+mod legacy_exports;
+
 #[path = "clusters/let_directive.rs"]
 mod let_directive;
 

@@ -4,7 +4,7 @@ use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
 use super::node_table::{NodeBitSet, NodeTable};
-use super::script::{ExportInfo, ScriptInfo};
+use super::script::ScriptInfo;
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub use svelte_parser::JsAst;
@@ -39,7 +39,8 @@ pub use crate::reactivity_semantics::data::{
     StoreBindingSemantics,
 };
 pub use analysis::{
-    AnalysisData, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis, TemplateAnalysis,
+    AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis,
+    TemplateAnalysis,
 };
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
