@@ -1,0 +1,32 @@
+[
+  {
+    "severity": "warning",
+    "code": "css_unused_selector",
+    "start": 53,
+    "end": 60
+  },
+  {
+    "severity": "warning",
+    "code": "unknown_code",
+    "start": 19,
+    "end": 39
+  },
+  {
+    "severity": "warning",
+    "code": "unknown_code",
+    "start": 19,
+    "end": 39
+  },
+  {
+    "severity": "warning",
+    "code": "unknown_code",
+    "start": 19,
+    "end": 39
+  },
+  {
+    "severity": "warning",
+    "code": "unknown_code",
+    "start": 19,
+    "end": 39
+  }
+]

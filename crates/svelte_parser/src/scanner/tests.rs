@@ -249,7 +249,10 @@ fn comment() {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
 
-    assert!(tokens[0].token_type == TokenType::Comment);
+    let TokenType::Comment { content_span } = tokens[0].token_type else {
+        panic!("expected comment token");
+    };
+    assert_eq!(content_span.source_text(source), " \nsome comment\n ");
     assert_eq!(
         tokens[0].span.source_text(source),
         "<!-- \nsome comment\n -->"
@@ -1089,7 +1092,7 @@ fn recovery_unclosed_style_tag() {
 fn recovery_unclosed_comment() {
     let mut scanner = Scanner::new("<!-- text");
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(tokens[0].token_type == TokenType::Comment);
+    assert!(matches!(tokens[0].token_type, TokenType::Comment { .. }));
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }

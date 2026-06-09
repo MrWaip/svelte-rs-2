@@ -5,6 +5,7 @@ use svelte_css::{
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;
+use svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore;
 use svelte_span::GetSpan;
 
 use svelte_ast::Component as SvelteComponent;
@@ -48,12 +49,30 @@ pub fn analyze_css_pass(
         used_selectors: rustc_hash::FxHashSet::default(),
     };
 
+    let unused_selector_code = DiagnosticKind::CssUnusedSelector {
+        name: String::new(),
+    }
+    .code();
+    let ignores_unused = css_block
+        .preceding_comment
+        .and_then(|id| component.store.get(id).as_comment())
+        .is_some_and(|comment| {
+            extract_svelte_ignore(
+                comment.content_span.start,
+                comment.data(&component.source),
+                data.script.runes(),
+            )
+            .codes
+            .iter()
+            .any(|code| code == unused_selector_code)
+        });
+
     super::css_prune::prune_and_warn(
         component,
         stylesheet,
         css_text,
         css_block.content_span.start,
-        !has_css_errors,
+        !has_css_errors && !ignores_unused,
         parsed,
         data,
         diagnostics,

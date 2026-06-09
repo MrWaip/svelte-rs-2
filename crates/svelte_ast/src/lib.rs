@@ -476,6 +476,7 @@ pub struct LegacySlot {
 pub struct Comment {
     pub id: NodeId,
     pub span: Span,
+    pub content_span: Span,
 }
 
 impl Comment {
@@ -484,9 +485,7 @@ impl Comment {
     }
 
     pub fn data<'a>(&self, source: &'a str) -> &'a str {
-        let raw = self.value(source);
-        let inner = raw.strip_prefix("<!--").unwrap_or(raw);
-        inner.strip_suffix("-->").unwrap_or(inner)
+        &source[self.content_span.start as usize..self.content_span.end as usize]
     }
 }
 
@@ -1081,6 +1080,7 @@ pub enum ScriptLanguage {
 pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
+    pub preceding_comment: Option<NodeId>,
 }
 
 pub struct SvelteOptions {

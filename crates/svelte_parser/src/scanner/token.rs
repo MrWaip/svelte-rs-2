@@ -4,7 +4,7 @@ use svelte_span::{GetSpan, Span};
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     Text,
-    Comment,
+    Comment { content_span: Span },
     StartTag(StartTag),
     EndTag(EndTag),
     Interpolation(ExpressionTag),

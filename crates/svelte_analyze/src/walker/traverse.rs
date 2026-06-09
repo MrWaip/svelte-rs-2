@@ -479,22 +479,15 @@ fn scan_preceding_ignores(
         let prev_node = ctx.store.get(fragment_nodes[i]);
         match prev_node {
             Node::Comment(comment) => {
-                let span = comment.span;
-                let start = span.start as usize;
-                let end = span.end as usize;
-                if end - start > 7 {
-                    let inner = &ctx.source[start + 4..end - 3];
-                    let inner_offset = span.start + 4;
-                    let result = extract_svelte_ignore::extract_svelte_ignore(
-                        inner_offset,
-                        inner,
-                        ctx.runes,
-                    );
-                    if !result.codes.is_empty() {
-                        codes.extend(result.codes);
-                    }
-                    ctx.warnings_mut().extend(result.warnings);
+                let result = extract_svelte_ignore::extract_svelte_ignore(
+                    comment.content_span.start,
+                    comment.data(ctx.source),
+                    ctx.runes,
+                );
+                if !result.codes.is_empty() {
+                    codes.extend(result.codes);
                 }
+                ctx.warnings_mut().extend(result.warnings);
             }
             Node::Text(_) => continue,
             _ => break,

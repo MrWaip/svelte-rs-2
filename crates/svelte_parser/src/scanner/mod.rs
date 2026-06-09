@@ -1938,27 +1938,26 @@ impl<'a> Scanner<'a> {
             )));
         }
 
+        let content_start = self.current;
+
         while !self.is_at_end() {
             if self.match_char('-') && self.match_char('-') && self.peek() == Some('>') {
-                break;
+                let content_span = self.span(content_start, self.current - 2);
+                self.advance();
+                self.add_token(TokenType::Comment { content_span });
+                return Ok(());
             }
 
             self.advance();
         }
 
-        if self.is_at_end() {
-            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
-                start as u32,
-                self.current as u32,
-            )));
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )));
 
-            self.add_token(TokenType::Comment);
-            return Ok(());
-        }
-
-        self.advance();
-
-        self.add_token(TokenType::Comment);
+        let content_span = self.span(content_start, self.current);
+        self.add_token(TokenType::Comment { content_span });
 
         Ok(())
     }

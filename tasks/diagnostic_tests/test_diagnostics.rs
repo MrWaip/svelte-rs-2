@@ -612,6 +612,31 @@ mod css {
     use super::*;
 
     diagnostic_case!(
+        css_unused_selector_svelte_ignore,
+        "css/css_unused_selector_svelte_ignore"
+    );
+    diagnostic_case!(
+        css_unused_selector_no_ignore,
+        "css/css_unused_selector_no_ignore"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_after_blank_lines,
+        "css/css_unused_selector_ignore_after_blank_lines"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_other_code,
+        "css/css_unused_selector_ignore_other_code"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_broken_by_element,
+        "css/css_unused_selector_ignore_broken_by_element"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_unknown_code,
+        "css/css_unused_selector_ignore_unknown_code",
+        ignore = "template ignore path duplicates unknown_code warnings and uses a different offset; tracked separately"
+    );
+    diagnostic_case!(
         css_global_block_invalid_placement,
         "css/css_global_block_invalid_placement"
     );

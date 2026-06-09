@@ -171,6 +171,22 @@ impl<'a> Parser<'a> {
         self.store.reserve()
     }
 
+    fn preceding_comment_id(&self, siblings: &[NodeId]) -> Option<NodeId> {
+        for &id in siblings.iter().rev() {
+            match self.store.get(id) {
+                Node::Comment(comment) => return Some(comment.id),
+                Node::Text(text) => {
+                    if text.span.source_text(self.source).trim().is_empty() {
+                        continue;
+                    }
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
     pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> FragmentId {
         self.store.push_fragment(role, nodes)
     }
@@ -249,10 +265,11 @@ impl<'a> Parser<'a> {
                     }));
                     push_child(&mut children_stack, id);
                 }
-                TokenType::Comment => {
+                TokenType::Comment { content_span } => {
                     let id = self.push_node(Node::Comment(Comment {
                         id: NodeId(0),
                         span: token.span,
+                        content_span,
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -497,9 +514,13 @@ impl<'a> Parser<'a> {
                         continue;
                     }
 
+                    let preceding_comment = children_stack
+                        .last()
+                        .and_then(|siblings| self.preceding_comment_id(siblings));
                     css_data = Some(CssData {
                         span: token.span,
                         content_span: style_tag.content_span,
+                        preceding_comment,
                     });
                 }
                 TokenType::EOF => break,
@@ -531,6 +552,7 @@ impl<'a> Parser<'a> {
         let css = css_data.map(|cd| RawBlock {
             span: cd.span,
             content_span: cd.content_span,
+            preceding_comment: cd.preceding_comment,
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
@@ -685,6 +707,7 @@ struct ScriptData {
 struct CssData {
     span: Span,
     content_span: Span,
+    preceding_comment: Option<NodeId>,
 }
 
 #[cfg(test)]
