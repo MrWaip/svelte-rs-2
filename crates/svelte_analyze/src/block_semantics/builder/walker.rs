@@ -78,19 +78,25 @@ fn finalize_hoistable(
 
     for idx in 0..semantics.references_len() {
         let ref_id = ReferenceId::from_usize(idx);
-        if !semantics.is_instance_reference(ref_id) {
-            continue;
-        }
 
-        if let Some(sym) = semantics.get_reference(ref_id).symbol_id() {
-            if snippet_name_syms.contains(&sym) {
+        if !reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+        {
+            if !semantics.is_instance_reference(ref_id) {
                 continue;
             }
-            if matches!(
-                reactivity.binding_semantics(sym),
-                BindingSemantics::MaybeReactive
-            ) {
-                continue;
+
+            if let Some(sym) = semantics.get_reference(ref_id).symbol_id() {
+                if snippet_name_syms.contains(&sym) {
+                    continue;
+                }
+                if matches!(
+                    reactivity.binding_semantics(sym),
+                    BindingSemantics::MaybeReactive
+                ) {
+                    continue;
+                }
             }
         }
 

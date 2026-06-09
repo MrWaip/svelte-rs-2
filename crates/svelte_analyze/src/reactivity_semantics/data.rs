@@ -374,6 +374,47 @@ pub enum ReferenceSemantics {
     Unresolved,
 }
 
+impl ReferenceSemantics {
+    pub fn is_store_subscription(&self) -> bool {
+        match self {
+            ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. } => true,
+
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SignalReferenceKind {
     State(StateKind),

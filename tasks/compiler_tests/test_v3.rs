@@ -5490,7 +5490,6 @@ fn diagnose_hoisted_snippet_module_order_with_sibling_template() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_snippet_store_autosub_not_hoistable() {
     assert_compiler("diagnose_snippet_store_autosub_not_hoistable");
 }
