@@ -1,5 +1,6 @@
 use oxc_ast::ast::{
     ArrowFunctionExpression, AwaitExpression, CallExpression, Expression, Function, SpreadElement,
+    Statement,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
@@ -19,9 +20,15 @@ impl<'a> Visit<'a> for AwaitFinder {
     fn visit_function(&mut self, _func: &Function<'a>, _flags: ScopeFlags) {}
 }
 
-pub fn expression_has_await(expr: &Expression<'_>) -> bool {
+pub(crate) fn expression_has_await(expr: &Expression<'_>) -> bool {
     let mut finder = AwaitFinder { found: false };
     finder.visit_expression(expr);
+    finder.found
+}
+
+pub(crate) fn statement_has_await(stmt: &Statement<'_>) -> bool {
+    let mut finder = AwaitFinder { found: false };
+    finder.visit_statement(stmt);
     finder.found
 }
 

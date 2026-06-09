@@ -3,7 +3,7 @@ use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlavor, EachIndexKind,
+    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
@@ -155,7 +155,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let needs_group_index = matches!(sem.flavor, EachFlavor::BindGroup);
         let needs_collection_id = sem.shadows_outer;
-        let needs_store_index = sem.collection_store.is_some()
+        let needs_store_index = sem.each_flags.contains(EachFlags::ITEM_REACTIVE)
             && match &sem.item {
                 EachItemKind::Identifier(sym) => self.ctx.query.scoping().is_member_mutated(*sym),
                 _ => false,

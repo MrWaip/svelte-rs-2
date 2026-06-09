@@ -703,11 +703,12 @@ fn known_to_number(v: &KnownValue) -> Option<f64> {
         KnownValue::Bool(false) => Some(0.0),
         KnownValue::Null => Some(0.0),
         KnownValue::Undefined => Some(f64::NAN),
-        KnownValue::Str(s) => s
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .or({ if s.trim().is_empty() { Some(0.0) } else { None } }),
+        KnownValue::Str(s) => {
+            s.trim()
+                .parse::<f64>()
+                .ok()
+                .or(if s.trim().is_empty() { Some(0.0) } else { None })
+        }
         KnownValue::BigInt => None,
     }
 }

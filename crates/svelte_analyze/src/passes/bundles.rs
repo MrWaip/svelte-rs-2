@@ -2,8 +2,7 @@ use std::mem;
 use svelte_ast::Component;
 
 use crate::passes::{
-    collect_symbols, content_types, dynamism, element_flags, template_side_tables,
-    template_validation,
+    collect_symbols, content_types, element_flags, template_side_tables, template_validation,
 };
 use crate::types::data::AnalysisData;
 use crate::types::markers::ScopingBuilt;
@@ -50,22 +49,6 @@ impl SymbolCollectionBundle {
 
     pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
         [&mut self.collect_symbols]
-    }
-}
-
-pub(crate) struct ReactivityBundle {
-    dynamism: dynamism::DynamismVisitor,
-}
-
-impl ReactivityBundle {
-    pub(crate) fn new() -> Self {
-        Self {
-            dynamism: dynamism::DynamismVisitor::new(),
-        }
-    }
-
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
-        [&mut self.dynamism]
     }
 }
 

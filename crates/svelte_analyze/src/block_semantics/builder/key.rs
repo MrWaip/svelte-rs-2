@@ -31,7 +31,6 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &KeyBlock) {
 
 #[cfg(test)]
 mod tests {
-    use crate::expression_semantics::Volatility;
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{BlockSemantics, KeyAsyncKind, KeyBlockSemantics};
     use svelte_ast::{Component, KeyBlock, Node};

@@ -168,14 +168,6 @@ pub fn analyze_with_options<'a>(
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }
 
-    if !data.output.needs_context
-        && data
-            .block_semantics_store
-            .any_legacy_each_forces_runtime_context()
-    {
-        data.output.needs_context = true;
-    }
-
     for &key in passes::VALIDATION_STAGE {
         passes::execute_pass(key, component, &mut parsed, &mut data, options, &mut diags);
     }

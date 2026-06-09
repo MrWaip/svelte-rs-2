@@ -1,8 +1,10 @@
-use svelte_ast::{Attribute, ComponentNode, Element, is_mathml, is_svg, is_void};
+use oxc_ast::ast::Expression;
+use svelte_ast::{Attribute, ComponentNode, Element, NodeId, is_mathml, is_svg, is_void};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::attribute_semantics::data::ComponentPropMemo;
+use crate::expression_semantics::Volatility;
 use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
     ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
@@ -224,6 +226,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
+        if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
+            ctx.data.elements.flags.needs_ref.insert(el_id);
+        }
         match attr {
             Attribute::StringAttribute(sa) if sa.name == "class" => {
                 ctx.data
@@ -347,6 +352,40 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
+    }
+
+    fn visit_js_expression(
+        &mut self,
+        node_id: NodeId,
+        _expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let parent = ctx.data.expr_parent(node_id);
+        if !parent.map(|p| p.kind).is_some_and(|k| k.is_attr()) {
+            return;
+        }
+        let in_component = ctx.data.expr_ancestors(node_id).nth(1).is_some_and(|gp| {
+            matches!(
+                gp.kind,
+                ParentKind::ComponentNode | ParentKind::SvelteSelf | ParentKind::SvelteBoundary
+            )
+        });
+        if in_component {
+            return;
+        }
+        let Some(data) = ctx.data.expression_data(node_id) else {
+            return;
+        };
+        let is_volatile = match data.volatility {
+            Volatility::Static => false,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
+        };
+        if !is_volatile {
+            return;
+        }
+        if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
+            ctx.data.elements.flags.needs_ref.insert(el_id);
+        }
     }
 }
 

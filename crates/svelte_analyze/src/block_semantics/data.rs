@@ -57,8 +57,6 @@ pub struct EachBlockSemantics {
     pub async_kind: EachAsyncKind,
 
     pub collection: EachCollection,
-
-    pub collection_store: Option<SymbolId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

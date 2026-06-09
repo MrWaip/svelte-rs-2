@@ -5,7 +5,6 @@ pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod css_prune_index;
-pub(crate) mod dynamism;
 pub(crate) mod element_flags;
 pub(crate) mod enrich_script_info;
 mod executor;
@@ -38,7 +37,6 @@ pub(crate) enum PassKey {
     BuildValueEvaluation,
     BuildOptimizedDerived,
     BuildFragmentTopology,
-    ReactivityWalk,
     TemplateClassificationWalk,
     BuildExpressionSemantics,
     BuildAttributeSemantics,
@@ -68,7 +66,6 @@ pub(crate) enum DataToken {
     AttributeSemantics,
     BlockSemantics,
     FragmentTopology,
-    Reactivity,
     TemplateClassification,
     TemplateValidation,
     Validation,
@@ -151,13 +148,8 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::FragmentTopology],
     },
     PassDescriptor {
-        key: PassKey::ReactivityWalk,
-        requires: &[DataToken::FragmentTopology],
-        produces: &[DataToken::Reactivity],
-    },
-    PassDescriptor {
         key: PassKey::TemplateClassificationWalk,
-        requires: &[DataToken::Reactivity],
+        requires: &[DataToken::FragmentTopology, DataToken::ExpressionSemantics],
         produces: &[DataToken::TemplateClassification],
     },
     PassDescriptor {
@@ -234,7 +226,6 @@ pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::BuildFragmentTopology,
-    PassKey::ReactivityWalk,
     PassKey::TemplateClassificationWalk,
     PassKey::BuildBlockSemantics,
 ];

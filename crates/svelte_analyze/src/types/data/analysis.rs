@@ -7,7 +7,6 @@ use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind,
 use crate::expression_semantics::{
     ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, Volatility,
 };
-use crate::passes::dynamism::DynamismData;
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::DeclaratorSemantics;
 use crate::types::data::template_topology::Ancestors;
@@ -195,7 +194,6 @@ pub struct AnalysisData<'a> {
     pub output: OutputData,
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
-    pub dynamism: DynamismData,
     pub(crate) value_evaluation: ValueEvaluation,
 }
 
@@ -213,7 +211,6 @@ impl<'a> AnalysisData<'a> {
             output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
-            dynamism: DynamismData::new(node_count),
             value_evaluation: ValueEvaluation::default(),
         }
     }

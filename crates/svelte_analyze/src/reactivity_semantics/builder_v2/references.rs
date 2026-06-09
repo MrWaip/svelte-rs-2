@@ -175,7 +175,7 @@ fn classify_reference_semantics(
                 Some(ReferenceFacts::IllegalWrite)
             } else if is_read {
                 Some(ReferenceFacts::SignalRead {
-                    kind: SignalReferenceKind::Derived(derived.kind),
+                    kind: SignalReferenceKind::Derived(derived.decl.kind),
                     safe: false,
                 })
             } else {

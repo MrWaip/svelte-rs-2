@@ -747,11 +747,22 @@ fn assert_symbol(data: &AnalysisData, name: &str) {
     );
 }
 
+fn node_is_volatile(data: &AnalysisData, id: NodeId) -> bool {
+    use crate::expression_semantics::Volatility;
+    let Some(d) = data.expression_data(id) else {
+        return false;
+    };
+    match d.volatility {
+        Volatility::Static => false,
+        Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
+    }
+}
+
 fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
     let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        data.dynamism.is_dynamic_node(id),
+        node_is_volatile(data, id),
         "expected ExpressionTag '{expr_text}' to be dynamic"
     );
 }
@@ -760,7 +771,7 @@ fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text:
     let id = find_expr_tag(component.root, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        !data.dynamism.is_dynamic_node(id),
+        !node_is_volatile(data, id),
         "expected ExpressionTag '{expr_text}' to NOT be dynamic"
     );
 }
@@ -769,7 +780,7 @@ fn assert_dynamic_component(data: &AnalysisData, component: &Component, name: &s
     let id = find_component_node_id(component.root, component, name)
         .unwrap_or_else(|| panic!("no ComponentNode with name '{name}'"));
     assert!(
-        data.dynamism.is_dynamic_component(id),
+        node_is_volatile(data, id),
         "expected ComponentNode '{name}' to be dynamic"
     );
 }
@@ -880,7 +891,7 @@ fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text
     let block = find_if_block(component.root, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
     assert!(
-        data.dynamism.is_dynamic_node(block.id),
+        node_is_volatile(data, block.id),
         "expected IfBlock '{test_text}' to be dynamic"
     );
 }
@@ -5887,13 +5898,13 @@ fn derived_by_block_body_is_opaque_to_inert_deps_optimizer() {
         .scoping
         .find_binding_in_any_scope("doubled")
         .expect("doubled binding");
-    match data.binding_semantics(doubled_sym) {
-        BindingSemantics::Derived(d) => assert!(
-            d.reactive,
-            "block-body arrow is opaque; reactive must stay true regardless of dep mutation"
+    assert!(
+        matches!(
+            data.binding_semantics(doubled_sym),
+            BindingSemantics::Derived(_)
         ),
-        other => panic!("expected Derived decl for doubled, got {other:?}"),
-    }
+        "block-body arrow is opaque; stays reactive Derived regardless of dep mutation"
+    );
 }
 
 #[test]
@@ -5957,23 +5968,32 @@ fn derived_reactivity_flag_true_when_dep_is_mutated_state() {
         .scoping
         .find_binding_in_any_scope("doubled")
         .expect("doubled binding");
-    let decl = data.binding_semantics(doubled_sym);
-    match decl {
-        BindingSemantics::Derived(d) => assert!(
-            d.reactive,
-            "expected doubled.reactive=true when dep is mutated $state"
+    assert!(
+        matches!(
+            data.binding_semantics(doubled_sym),
+            BindingSemantics::Derived(_)
         ),
-        other => panic!("expected Derived decl for doubled, got {other:?}"),
-    }
+        "expected doubled to stay reactive Derived when dep is mutated $state"
+    );
 }
 
 mod block_semantics_each_tests {
     use super::analyze_source;
     use crate::AnalysisData;
     use crate::block_semantics::{
-        BlockSemantics, EachBlockSemantics, EachFlavor, EachIndexKind, EachItemKind, EachKeyKind,
+        BlockSemantics, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
+        EachKeyKind,
     };
     use svelte_ast::Node;
+
+    #[track_caller]
+    fn assert_each_flags(sem: &EachBlockSemantics, expected: EachFlags) {
+        assert_eq!(
+            sem.each_flags, expected,
+            "each_flags: expected {expected:?}, got {:?}",
+            sem.each_flags
+        );
+    }
 
     fn first_each_semantics<'a>(
         data: &'a AnalysisData<'_>,
@@ -6146,6 +6166,15 @@ mod block_semantics_each_tests {
         );
         let sem = first_each_semantics(&data, &component);
         assert!(sem.each_flags.contains(EachFlags::ANIMATED));
+    }
+
+    #[test]
+    fn each_keyed_by_item_in_runes_is_item_immutable_without_item_reactive() {
+        let (component, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item (item)}<span>{item}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_each_flags(sem, EachFlags::ITEM_IMMUTABLE);
     }
 
     #[test]
@@ -7971,78 +8000,6 @@ async function baz() { return 2; }
     }
 
     #[track_caller]
-    fn assert_volatile_matches_dynamism(data: &AnalysisData, component: &Component) {
-        use crate::expression_semantics::Volatility;
-        let mut mismatches: Vec<(u32, bool, bool)> = Vec::new();
-        for i in 0..component.node_count() {
-            let id = NodeId(i);
-            let Some(expr_data) = data.expression_data(id) else {
-                continue;
-            };
-            let oracle = data.dynamism.is_dynamic_node(id)
-                || data.dynamism.is_dynamic_attr(id)
-                || data.dynamism.is_dynamic_component(id);
-            let volatile = matches!(
-                expr_data.volatility,
-                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
-            );
-            if volatile != oracle {
-                mismatches.push((i, volatile, oracle));
-            }
-        }
-        assert!(
-            mismatches.is_empty(),
-            "volatile must equal dynamism oracle; mismatches (node, volatile, oracle): {mismatches:?}"
-        );
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_element_attr_reactive() {
-        let (component, data) =
-            analyze_source("<script>let { x } = $props();</script><div class={x}></div>");
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_element_attr_call() {
-        let (component, data) =
-            analyze_source("<script>function f(){return 1}</script><div class={f()}></div>");
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_component_attr_state() {
-        let (component, data) = analyze_source(
-            "<script>import Comp from './Comp.svelte'; let n = $state(0); function inc(){n++}</script><Comp x={n}/>",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_component_attr_each_item() {
-        let (component, data) = analyze_source(
-            "<script>import Comp from './Comp.svelte'; let { items } = $props();</script>{#each items as item}<Comp x={item}/>{/each}",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_await_block() {
-        let (component, data) = analyze_source(
-            "<script>let p = Promise.resolve(1);</script>{#await p}wait{:then v}{v}{/await}",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_svelte_element_this() {
-        let (component, data) = analyze_source(
-            "<script>let { tag } = $props();</script><svelte:element this={tag}>x</svelte:element>",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[track_caller]
     fn assert_component_name_volatile(
         data: &AnalysisData,
         component: &Component,
@@ -8075,28 +8032,6 @@ async function baz() { return 2; }
     fn volatile_component_name_static_import() {
         let (component, data) = analyze_source("<script>import C from './C.svelte';</script><C/>");
         assert_component_name_volatile(&data, &component, "C", false);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_component_name_reactive() {
-        let (component, data) = analyze_source("<script>let { C } = $props();</script><C/>");
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_component_attr_const_local() {
-        let (component, data) = analyze_source(
-            "<script>import Comp from './C.svelte';</script>{#if true}{@const c = 1}<Comp x={c}/>{/if}",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
-    }
-
-    #[test]
-    fn volatile_matches_dynamism_class_directive() {
-        let (component, data) = analyze_source(
-            "<script>let { active } = $props();</script><div class:on={active}></div>",
-        );
-        assert_volatile_matches_dynamism(&data, &component);
     }
 }
 

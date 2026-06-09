@@ -125,7 +125,6 @@ fn classify_condition(is_root: bool, volatility: Volatility, blockers: &[u32]) -
 
 #[cfg(test)]
 mod tests {
-    use crate::expression_semantics::Volatility;
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfConditionKind};
     use svelte_ast::{Component, IfBlock, Node, NodeId};

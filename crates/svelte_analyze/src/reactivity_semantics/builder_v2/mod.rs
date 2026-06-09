@@ -128,6 +128,56 @@ pub(crate) fn build_optimized_derived(
     reactivity.optimize_derived_rune(&optimizable);
 }
 
+#[derive(Clone, Copy)]
+enum ReferenceReactivityMode {
+    General,
+    PropDefault,
+}
+
+fn reference_is_reactive(
+    reactivity: &ReactivitySemantics,
+    scoping: &ComponentScoping<'_>,
+    ref_id: ReferenceId,
+    mode: ReferenceReactivityMode,
+) -> bool {
+    use super::data::{BindingSemantics, ConstBindingSemantics, ReferenceSemantics};
+    if matches!(
+        reactivity.reference_semantics(ref_id),
+        ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+    ) {
+        return true;
+    }
+    let Some(sym) = scoping.symbol_for_reference(ref_id) else {
+        return false;
+    };
+    match reactivity.binding_semantics(sym) {
+        BindingSemantics::State(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. } => true,
+        BindingSemantics::Derived(_) => reactivity.derived_reactive(sym),
+        BindingSemantics::OptimizedDerived(_) => false,
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
+        BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
+        BindingSemantics::MaybeReactive => match mode {
+            ReferenceReactivityMode::General => true,
+            ReferenceReactivityMode::PropDefault => false,
+        },
+        BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved
+        | BindingSemantics::OptimizedRune(_) => match mode {
+            ReferenceReactivityMode::General => !scoping.is_component_top_level_symbol(sym),
+            ReferenceReactivityMode::PropDefault => false,
+        },
+        BindingSemantics::LegacyApiExport => false,
+    }
+}
+
 fn record_maybe_reactive_imports(data: &mut AnalysisData<'_>) {
     let imports: Vec<SymbolId> = data
         .scoping
@@ -150,7 +200,7 @@ fn compute_const_tag_reactivity<'a>(
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
-    use super::data::{BindingSemantics, ConstBindingSemantics};
+    use super::data::ConstBindingSemantics;
     use svelte_component_semantics::walk_bindings;
 
     for node in component.store.iter_nodes() {
@@ -201,41 +251,12 @@ fn compute_const_tag_reactivity<'a>(
             || eager_rune
             || init_is_impure_member_or_call
             || refs.iter().any(|&ref_id| {
-                use super::data::ReferenceSemantics;
-                if matches!(
-                    data.reactivity.reference_semantics(ref_id),
-                    ReferenceSemantics::StoreRead { .. }
-                        | ReferenceSemantics::StoreWrite { .. }
-                        | ReferenceSemantics::StoreUpdate { .. }
-                ) {
-                    return true;
-                }
-                let Some(sym) = data.scoping.symbol_for_reference(ref_id) else {
-                    return false;
-                };
-                let decl = data.reactivity.binding_semantics(sym);
-                match decl {
-                    BindingSemantics::MaybeReactive
-                    | BindingSemantics::State(_)
-                    | BindingSemantics::Prop(_)
-                    | BindingSemantics::LegacyBindableProp(_)
-                    | BindingSemantics::LegacyState(_)
-                    | BindingSemantics::Store(_)
-                    | BindingSemantics::Contextual(_)
-                    | BindingSemantics::RuntimeRune { .. } => true,
-                    BindingSemantics::Derived(d) => d.reactive,
-                    BindingSemantics::OptimizedDerived(_) => false,
-                    BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-                        reactive, ..
-                    }) => reactive,
-                    BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-                    BindingSemantics::NonReactive
-                    | BindingSemantics::Unresolved
-                    | BindingSemantics::OptimizedRune(_) => {
-                        !data.scoping.is_component_top_level_symbol(sym)
-                    }
-                    BindingSemantics::LegacyApiExport => false,
-                }
+                reference_is_reactive(
+                    &data.reactivity,
+                    &data.scoping,
+                    ref_id,
+                    ReferenceReactivityMode::General,
+                )
             });
 
         for sym in syms {
@@ -579,8 +600,15 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     Some(BindingFacts::Derived(d)) => d.reactive,
                     _ => continue,
                 };
-                let new_reactive =
-                    eager.contains(sym) || refs.iter().any(|&r| self.is_reference_reactive(r));
+                let new_reactive = eager.contains(sym)
+                    || refs.iter().any(|&r| {
+                        reference_is_reactive(
+                            &self.data.reactivity,
+                            &self.data.scoping,
+                            r,
+                            ReferenceReactivityMode::General,
+                        )
+                    });
                 if new_reactive != current_reactive {
                     self.data
                         .reactivity
@@ -591,43 +619,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             if !changed {
                 break;
             }
-        }
-    }
-
-    fn is_reference_reactive(&self, ref_id: ReferenceId) -> bool {
-        use super::data::{BindingSemantics, ConstBindingSemantics, ReferenceSemantics};
-        if matches!(
-            self.data.reactivity.reference_semantics(ref_id),
-            ReferenceSemantics::StoreRead { .. }
-                | ReferenceSemantics::StoreWrite { .. }
-                | ReferenceSemantics::StoreUpdate { .. }
-        ) {
-            return true;
-        }
-        let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
-            return false;
-        };
-        let decl = self.data.reactivity.binding_semantics(sym);
-        match decl {
-            BindingSemantics::MaybeReactive
-            | BindingSemantics::State(_)
-            | BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Store(_)
-            | BindingSemantics::Contextual(_)
-            | BindingSemantics::RuntimeRune { .. } => true,
-            BindingSemantics::Derived(d) => d.reactive,
-            BindingSemantics::OptimizedDerived(_) => false,
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
-
-            BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-            BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved
-            | BindingSemantics::OptimizedRune(_) => {
-                !self.data.scoping.is_component_top_level_symbol(sym)
-            }
-            BindingSemantics::LegacyApiExport => false,
         }
     }
 
@@ -724,9 +715,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
                         emit,
-
-                        reactive: true,
-                        value_known: false,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
@@ -747,8 +735,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
                         emit,
-                        reactive: true,
-                        value_known: false,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);
@@ -1599,43 +1585,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
         if let Expression::Identifier(id) = default_expr.get_inner_expression()
             && let Some(ref_id) = id.reference_id.get()
-            && self.is_reference_reactive_for_prop_default(ref_id)
+            && reference_is_reactive(
+                &self.data.reactivity,
+                &self.data.scoping,
+                ref_id,
+                ReferenceReactivityMode::PropDefault,
+            )
         {
             return PropDefaultKind::Lazy;
         }
         PropDefaultKind::Eager
-    }
-
-    fn is_reference_reactive_for_prop_default(&self, ref_id: ReferenceId) -> bool {
-        use super::data::{BindingSemantics, ConstBindingSemantics, ReferenceSemantics};
-        if matches!(
-            self.data.reactivity.reference_semantics(ref_id),
-            ReferenceSemantics::StoreRead { .. }
-                | ReferenceSemantics::StoreWrite { .. }
-                | ReferenceSemantics::StoreUpdate { .. }
-        ) {
-            return true;
-        }
-        let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
-            return false;
-        };
-        match self.data.reactivity.binding_semantics(sym) {
-            BindingSemantics::State(_)
-            | BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Store(_)
-            | BindingSemantics::Contextual(_)
-            | BindingSemantics::RuntimeRune { .. } => true,
-            BindingSemantics::Derived(d) => d.reactive,
-            BindingSemantics::OptimizedDerived(_) => false,
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
-            BindingSemantics::OptimizedRune(opt) => opt.proxy_init,
-            BindingSemantics::MaybeReactive
-            | BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved
-            | BindingSemantics::LegacyApiExport => false,
-        }
     }
 }
 

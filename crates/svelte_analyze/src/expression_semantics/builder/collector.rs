@@ -223,7 +223,16 @@ impl<'a> Collector<'_, 'a> {
             return None;
         };
         let ref_id = id.reference_id.get()?;
-        self.semantics.get_reference(ref_id).symbol_id()
+        match self.reactivity.reference_semantics(ref_id) {
+            ReferenceSemantics::StoreRead { symbol }
+            | ReferenceSemantics::StoreWrite { symbol }
+            | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }
+            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
+            _ => self.semantics.get_reference(ref_id).symbol_id(),
+        }
     }
 
     fn expression_root_is_synthetic_legacy_props(&self, expr: &Expression<'a>) -> bool {

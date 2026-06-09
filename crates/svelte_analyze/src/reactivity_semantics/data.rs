@@ -81,8 +81,6 @@ pub struct OptimizedRuneSemantics {
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
-    pub reactive: bool,
-    pub value_known: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -430,11 +428,17 @@ pub enum PropReferenceSemantics {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DerivedFacts {
+    pub(crate) decl: DerivedDeclarationSemantics,
+    pub(crate) reactive: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BindingFacts {
     State(StateDeclarationSemantics),
-    Derived(DerivedDeclarationSemantics),
-    OptimizedDerived(DerivedDeclarationSemantics),
+    Derived(DerivedFacts),
+    OptimizedDerived(DerivedFacts),
     OptimizedRune(OptimizedRuneSemantics),
     Prop(PropBindingSemantics),
 
@@ -637,7 +641,7 @@ impl ReactivitySemantics {
         BindingSemantics::NonReactive
     }
 
-    pub(crate) fn needs_effect(&self, scoping: &ComponentScoping<'_>, sym: SymbolId) -> bool {
+    pub(crate) fn symbol_is_volatile(&self, scoping: &ComponentScoping<'_>, sym: SymbolId) -> bool {
         if scoping.is_each_index_non_dynamic(sym) {
             return false;
         }
@@ -903,7 +907,20 @@ impl ReactivitySemantics {
         sym: SymbolId,
         semantics: DerivedDeclarationSemantics,
     ) {
-        self.write_binding(sym, BindingFacts::Derived(semantics));
+        self.write_binding(
+            sym,
+            BindingFacts::Derived(DerivedFacts {
+                decl: semantics,
+                reactive: true,
+            }),
+        );
+    }
+
+    pub(crate) fn derived_reactive(&self, sym: SymbolId) -> bool {
+        match self.lookup_binding_facts(sym) {
+            Some(BindingFacts::Derived(d)) => d.reactive,
+            _ => false,
+        }
     }
 
     pub(crate) fn record_prop_binding(&mut self, sym: SymbolId, semantics: PropBindingSemantics) {
@@ -1131,8 +1148,10 @@ impl ReactivitySemantics {
     fn binding_semantics_from_facts(facts: &BindingFacts) -> BindingSemantics {
         match facts {
             BindingFacts::State(state) => BindingSemantics::State(*state),
-            BindingFacts::Derived(derived) => BindingSemantics::Derived(*derived),
-            BindingFacts::OptimizedDerived(derived) => BindingSemantics::OptimizedDerived(*derived),
+            BindingFacts::Derived(derived) => BindingSemantics::Derived(derived.decl),
+            BindingFacts::OptimizedDerived(derived) => {
+                BindingSemantics::OptimizedDerived(derived.decl)
+            }
             BindingFacts::OptimizedRune(opt) => BindingSemantics::OptimizedRune(*opt),
             BindingFacts::Prop(prop) => BindingSemantics::Prop(prop.clone()),
             BindingFacts::LegacyBindableProp(legacy) => {

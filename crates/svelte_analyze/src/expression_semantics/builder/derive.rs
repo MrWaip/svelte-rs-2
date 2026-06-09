@@ -45,7 +45,8 @@ pub(super) fn is_reactive_template(
                 if matches!(semantics, BindingSemantics::MaybeReactive) {
                     return true;
                 }
-                reactivity.needs_effect(scoping, sym) || scoping.is_component_top_level_symbol(sym)
+                reactivity.symbol_is_volatile(scoping, sym)
+                    || scoping.is_component_top_level_symbol(sym)
             });
     }
 
@@ -57,7 +58,7 @@ pub(super) fn is_reactive_template(
         return true;
     }
     facts.references.iter().any(|&sym| {
-        if reactivity.needs_effect(scoping, sym) {
+        if reactivity.symbol_is_volatile(scoping, sym) {
             return true;
         }
         if is_unified_prop_source(reactivity, sym) {
@@ -155,7 +156,7 @@ pub(super) fn volatile_element_attr(
                 kind: PropBindingKind::NonSource,
                 ..
             })
-        ) || reactivity.needs_effect(scoping, sym)
+        ) || reactivity.symbol_is_volatile(scoping, sym)
     })
 }
 
