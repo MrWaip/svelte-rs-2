@@ -633,8 +633,7 @@ mod css {
     );
     diagnostic_case!(
         css_unused_selector_ignore_unknown_code,
-        "css/css_unused_selector_ignore_unknown_code",
-        ignore = "template ignore path duplicates unknown_code warnings and uses a different offset; tracked separately"
+        "css/css_unused_selector_ignore_unknown_code"
     );
     diagnostic_case!(
         css_global_block_invalid_placement,

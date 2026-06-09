@@ -53,19 +53,19 @@ pub fn analyze_css_pass(
         name: String::new(),
     }
     .code();
-    let ignores_unused = css_block
+    let mut ignores_unused = false;
+    if let Some(comment) = css_block
         .preceding_comment
         .and_then(|id| component.store.get(id).as_comment())
-        .is_some_and(|comment| {
-            extract_svelte_ignore(
-                comment.content_span.start,
-                comment.data(&component.source),
-                data.script.runes(),
-            )
-            .codes
-            .iter()
-            .any(|code| code == unused_selector_code)
-        });
+    {
+        let result = extract_svelte_ignore(
+            comment.span.start,
+            comment.data(&component.source),
+            data.script.runes(),
+        );
+        ignores_unused = result.codes.iter().any(|code| code == unused_selector_code);
+        diagnostics.extend(result.warnings);
+    }
 
     super::css_prune::prune_and_warn(
         component,

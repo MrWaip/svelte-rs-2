@@ -8,25 +8,7 @@
   {
     "severity": "warning",
     "code": "unknown_code",
-    "start": 19,
-    "end": 39
-  },
-  {
-    "severity": "warning",
-    "code": "unknown_code",
-    "start": 19,
-    "end": 39
-  },
-  {
-    "severity": "warning",
-    "code": "unknown_code",
-    "start": 19,
-    "end": 39
-  },
-  {
-    "severity": "warning",
-    "code": "unknown_code",
-    "start": 19,
-    "end": 39
+    "start": 15,
+    "end": 35
   }
 ]

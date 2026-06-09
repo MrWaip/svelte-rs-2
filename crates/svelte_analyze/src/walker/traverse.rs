@@ -466,7 +466,7 @@ fn node_id_of(node: &Node) -> NodeId {
 fn scan_preceding_ignores(
     idx: usize,
     fragment_nodes: &[NodeId],
-    ctx: &mut VisitContext<'_, '_>,
+    ctx: &VisitContext<'_, '_>,
 ) -> Vec<String> {
     let mut codes = Vec::new();
     if idx == 0 {
@@ -484,10 +484,7 @@ fn scan_preceding_ignores(
                     comment.data(ctx.source),
                     ctx.runes,
                 );
-                if !result.codes.is_empty() {
-                    codes.extend(result.codes);
-                }
-                ctx.warnings_mut().extend(result.warnings);
+                codes.extend(result.codes);
             }
             Node::Text(_) => continue,
             _ => break,
