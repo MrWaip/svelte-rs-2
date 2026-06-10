@@ -8,7 +8,7 @@ use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::utils::script_info::is_rune_name;
+use crate::reactivity_semantics::script_info::is_rune_name;
 use crate::{AnalysisData, BindingSemantics};
 
 pub(super) fn validate(

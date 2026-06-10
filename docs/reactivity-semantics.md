@@ -21,7 +21,7 @@ label: reactivity-semantics
 
 ## Архитектурные инварианты
 
-1. **Identity by id.** Ключи — `SymbolId` / `OxcNodeId` / `ReferenceId`. Никаких имён в payload, никаких `find_binding_by_name`.
+1. **Identity by id.** Ключи — `SymbolId` / `OxcNodeId` / `ReferenceId`. Никаких имён в payload, никаких `find_binding_by_name`. Поверхность `declarator_semantics(OxcNodeId)` — классификация **JS-узла** по id, не только буквального декларатора: builder пишет факты и на узлы присваиваний (class-поля в конструкторе), и на узлы вызовов runtime-рун (`RuntimeRuneCall { kind: RuntimeRuneKind }` — effect/inspect-семейства, `$host`, `$props.id`, `$state.snapshot`; в legacy факт не записывается). Сигнальные руны деклараций несут `RuneState`/`RuneDerived`/`RuneProps`/`ClassField*` — на узле вызова они не дублируются.
 2. **Read-only после build.** Любая мутация — только через `pub(crate)` API в фазах 1/2.
 3. **Один источник истины.** Никаких shadow-флагов реактивности на `ComponentSemantics`, `ScriptAnalysis`, `ElementAnalysis`.
 4. **Totality.** `binding_semantics`/`reference_semantics` всегда возвращают вариант (`NonReactive`/`Unresolved` валидные), а не `Option`.

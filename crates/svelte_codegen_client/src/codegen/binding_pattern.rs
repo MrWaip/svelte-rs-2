@@ -135,7 +135,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | DeclaratorSemantics::RuneDerived { .. }
             | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::ClassFieldState(_)
-            | DeclaratorSemantics::ClassFieldDerived(_) => CodegenError::unexpected_child(
+            | DeclaratorSemantics::ClassFieldDerived(_)
+            | DeclaratorSemantics::RuntimeRuneCall { .. } => CodegenError::unexpected_child(
                 "template-stage declarator kind",
                 "script-stage declarator kind",
             ),

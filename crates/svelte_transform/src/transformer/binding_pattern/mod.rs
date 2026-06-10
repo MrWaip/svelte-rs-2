@@ -148,6 +148,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 | DeclaratorSemantics::LetCarrier { .. } => {
                     unreachable!("template-stage declarator kind in a script declaration")
                 }
+
+                DeclaratorSemantics::RuntimeRuneCall { .. } => {
+                    unreachable!("rune-call fact is keyed by the call node, not a declarator")
+                }
             }
         }
 

@@ -5264,7 +5264,6 @@ fn diagnose_legacy_slot_forward_inflates_template_root_ids() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_dev_benchmark() {
     assert_compiler("diagnose_legacy_dev_benchmark");
 }

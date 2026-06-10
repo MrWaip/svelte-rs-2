@@ -24,18 +24,61 @@ use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::utils::script_info::{detect_rune, detect_rune_from_call};
+use crate::reactivity_semantics::data::{
+    DeclaratorSemantics, DerivedKind, ReactivitySemantics, RuntimeRuneKind,
+};
 use crate::validate::span_already_taken;
 use crate::{
     AnalysisData, BindingSemantics, PropBindingKind, PropBindingSemantics,
     StateDeclarationSemantics, StateKind, types::script::RuneKind,
 };
+use svelte_component_semantics::OxcNodeId;
 
-fn is_direct_bindable_call(expr: &Expression<'_>) -> bool {
+fn rune_call_kind(reactivity: &ReactivitySemantics, node: OxcNodeId) -> Option<RuneKind> {
+    match reactivity.declarator_semantics(node) {
+        DeclaratorSemantics::RuntimeRuneCall { kind } => Some(match kind {
+            RuntimeRuneKind::PropsId => RuneKind::PropsId,
+            RuntimeRuneKind::EffectTracking => RuneKind::EffectTracking,
+            RuntimeRuneKind::EffectPending => RuneKind::EffectPending,
+            RuntimeRuneKind::Host => RuneKind::Host,
+            RuntimeRuneKind::InspectTrace => RuneKind::InspectTrace,
+            RuntimeRuneKind::Effect => RuneKind::Effect,
+            RuntimeRuneKind::EffectPre => RuneKind::EffectPre,
+            RuntimeRuneKind::EffectRoot => RuneKind::EffectRoot,
+            RuntimeRuneKind::Inspect => RuneKind::Inspect,
+            RuntimeRuneKind::InspectWith => RuneKind::InspectWith,
+            RuntimeRuneKind::StateSnapshot => RuneKind::StateSnapshot,
+            RuntimeRuneKind::StateEager => RuneKind::StateEager,
+            RuntimeRuneKind::Bindable => RuneKind::Bindable,
+        }),
+        DeclaratorSemantics::RuneState { kind } => Some(match kind {
+            StateKind::State => RuneKind::State,
+            StateKind::StateRaw => RuneKind::StateRaw,
+            StateKind::StateEager => RuneKind::StateEager,
+        }),
+        DeclaratorSemantics::RuneDerived { kind, .. } => Some(match kind {
+            DerivedKind::Derived => RuneKind::Derived,
+            DerivedKind::DerivedBy => RuneKind::DerivedBy,
+        }),
+        DeclaratorSemantics::RuneProps => Some(RuneKind::Props),
+        DeclaratorSemantics::None
+        | DeclaratorSemantics::LegacyProps
+        | DeclaratorSemantics::LegacyState
+        | DeclaratorSemantics::ConstTag { .. }
+        | DeclaratorSemantics::LetCarrier { .. }
+        | DeclaratorSemantics::EachItem
+        | DeclaratorSemantics::AwaitValue
+        | DeclaratorSemantics::SnippetParam
+        | DeclaratorSemantics::ClassFieldState(_)
+        | DeclaratorSemantics::ClassFieldDerived(_) => None,
+    }
+}
+
+fn is_direct_bindable_call(reactivity: &ReactivitySemantics, expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return false;
     };
-    matches!(detect_rune_from_call(call), Some(RuneKind::Bindable))
+    rune_call_kind(reactivity, call.node_id()) == Some(RuneKind::Bindable)
 }
 
 fn is_this_member_assign(target: &AssignmentTarget<'_>) -> bool {
@@ -117,6 +160,7 @@ pub(super) fn validate_module_props_runes(
 }
 
 struct RuneValidator<'a> {
+    reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
     in_var_declarator_init: bool,
     in_class_property_init: bool,
@@ -148,11 +192,12 @@ struct RuneValidator<'a> {
 
 impl RuneValidator<'_> {
     fn new<'a>(
-        data: &AnalysisData,
+        data: &'a AnalysisData,
         diags: &'a mut Vec<Diagnostic>,
         is_instance_script: bool,
     ) -> RuneValidator<'a> {
         RuneValidator {
+            reactivity: &data.reactivity,
             diags,
             in_var_declarator_init: false,
             in_class_property_init: false,
@@ -418,7 +463,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        match detect_rune_from_call(call) {
+        match rune_call_kind(&self.data.reactivity, call.node_id()) {
             Some(RuneKind::State | RuneKind::StateRaw) => {
                 self.visit_expression(&call.callee);
                 let prev = mem::replace(&mut self.in_state_rune_arg, true);
@@ -503,7 +548,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             return;
         }
 
-        let Some(rune) = detect_rune_from_call(call) else {
+        let Some(rune) = rune_call_kind(self.reactivity, call.node_id()) else {
             walk_call_expression(self, call);
             return;
         };
@@ -746,18 +791,20 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
     fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
         self.visit_binding_pattern(&pat.left);
-        let allow = self.in_props_destructure && is_direct_bindable_call(&pat.right);
+        let allow =
+            self.in_props_destructure && is_direct_bindable_call(self.reactivity, &pat.right);
         let prev = mem::replace(&mut self.in_props_default_position, allow);
         self.visit_expression(&pat.right);
         self.in_props_default_position = prev;
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
-        let is_props_init = it
-            .init
-            .as_ref()
-            .and_then(|e| detect_rune(e))
-            .is_some_and(|r| matches!(r, RuneKind::Props));
+        let is_props_init = it.init.as_ref().is_some_and(|init| {
+            let Expression::CallExpression(call) = init.get_inner_expression() else {
+                return false;
+            };
+            rune_call_kind(self.reactivity, call.node_id()) == Some(RuneKind::Props)
+        });
 
         if is_props_init {
             self.validate_props_pattern(&it.id);
@@ -917,6 +964,7 @@ fn is_props_illegal_name_member(
 pub fn validate_const_tag_runes(
     component: &Component,
     parsed: &crate::types::data::JsAst,
+    data: &AnalysisData,
     diags: &mut Vec<Diagnostic>,
 ) {
     for node in component.store.iter_nodes() {
@@ -933,19 +981,23 @@ pub fn validate_const_tag_runes(
             let Some(init) = &declarator.init else {
                 continue;
             };
-            let mut probe = ConstTagRuneProbe { diags };
+            let mut probe = ConstTagRuneProbe {
+                reactivity: &data.reactivity,
+                diags,
+            };
             probe.visit_expression(init);
         }
     }
 }
 
 struct ConstTagRuneProbe<'d> {
+    reactivity: &'d ReactivitySemantics,
     diags: &'d mut Vec<Diagnostic>,
 }
 
 impl<'a> Visit<'a> for ConstTagRuneProbe<'_> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if let Some(rune) = detect_rune_from_call(call) {
+        if let Some(rune) = rune_call_kind(self.reactivity, call.node_id()) {
             let span = Span::new(call.span.start, call.span.end);
             let kind = match rune {
                 RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy => {

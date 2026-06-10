@@ -35,7 +35,6 @@ pub struct ScriptAnalysis {
     pub experimental_async: bool,
     pub dev: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
-    pub proxy_state_inits: ProxyStateInits,
     pub blocker_data: BlockerData,
 }
 
@@ -54,7 +53,6 @@ impl ScriptAnalysis {
             experimental_async: false,
             dev: false,
             ce_config: None,
-            proxy_state_inits: ProxyStateInits::new(),
             blocker_data: BlockerData::default(),
         }
     }

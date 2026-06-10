@@ -5,7 +5,8 @@ use oxc_ast::ast::{
     SimpleAssignmentTarget, UpdateOperator,
 };
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{ReferenceSemantics, RuneKind};
+use svelte_analyze::{DeclaratorSemantics, ReferenceSemantics, RuneKind};
+use svelte_component_semantics::OxcNodeId;
 
 use svelte_ast_builder::Arg;
 
@@ -654,6 +655,29 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.wrap_pending_prop_mutation_validation(node, mutation_info, span_start);
     }
 
+    fn is_class_field_rune_init(&self, node: OxcNodeId) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        match analysis.declarator_semantics(node) {
+            DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_) => {
+                true
+            }
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam => false,
+        }
+    }
+
     pub(crate) fn rewrite_private_assignment_exit(&self, node: &mut Expression<'a>) -> bool {
         if let Expression::AssignmentExpression(assign) = node
             && let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
@@ -663,15 +687,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if self.in_constructor()
                 && assign.operator == AssignmentOperator::Assign
                 && self.is_private_state_field(field_name)
-                && matches!(
-                    &assign.right,
-                    Expression::CallExpression(call)
-                        if svelte_analyze::detect_rune_from_call(call)
-                            .is_some_and(|k| matches!(
-                                k,
-                                RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy
-                            ))
-                )
+                && self.is_class_field_rune_init(assign.node_id())
             {
                 return false;
             }

@@ -53,8 +53,6 @@ pub struct DeclarationInfo {
     pub init_span: Option<Span>,
     pub is_rune: Option<RuneKind>,
 
-    pub rune_init_refs: Vec<CompactString>,
-
     pub init_literal: Option<CompactString>,
 
     pub init_known: bool,

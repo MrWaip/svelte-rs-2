@@ -1,5 +1,13 @@
 {
   "mcpServers": {
+    "diff-review": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/vscode/.vscode-server/extensions/jinqishen.diff-review-0.3.0/out/mcp-server.js"
+      ],
+      "env": {}
+    },
     "narsil-mcp": {
       "command": "narsil-mcp",
       "args": [

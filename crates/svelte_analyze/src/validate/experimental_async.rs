@@ -8,9 +8,8 @@ use oxc_semantic::ScopeFlags;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::data::AnalysisData;
-use crate::types::script::RuneKind;
-use crate::utils::script_info::detect_rune_from_call;
+use crate::reactivity_semantics::data::ReactivitySemantics;
+use crate::types::data::{AnalysisData, DeclaratorSemantics};
 
 pub(super) fn validate_instance_program(
     data: &AnalysisData<'_>,
@@ -21,6 +20,7 @@ pub(super) fn validate_instance_program(
         return;
     }
     let mut visitor = ExperimentalAsyncValidator {
+        reactivity: &data.reactivity,
         diags,
         function_depth: 0,
         expression_active: false,
@@ -29,6 +29,7 @@ pub(super) fn validate_instance_program(
 }
 
 struct ExperimentalAsyncValidator<'a> {
+    reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
     function_depth: u32,
     expression_active: bool,
@@ -59,8 +60,8 @@ impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if matches!(
-            detect_rune_from_call(call),
-            Some(RuneKind::Derived | RuneKind::DerivedBy)
+            self.reactivity.declarator_semantics(call.node_id()),
+            DeclaratorSemantics::RuneDerived { .. }
         ) {
             let prev_expression_active = self.expression_active;
             self.expression_active = true;

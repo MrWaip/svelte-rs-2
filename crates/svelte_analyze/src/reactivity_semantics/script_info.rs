@@ -1,12 +1,10 @@
 use compact_str::CompactString;
 use oxc_ast::ast::{
-    BindingPattern, CallExpression, Declaration, Expression, Function, IdentifierReference,
-    Program, PropertyKey, Statement, VariableDeclaration, VariableDeclarationKind,
+    BindingPattern, CallExpression, Declaration, Expression, Function, Program, PropertyKey,
+    Statement, VariableDeclaration, VariableDeclarationKind,
 };
-use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
 
-use rustc_hash::FxHashSet;
 use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
@@ -17,15 +15,25 @@ use crate::utils::binding_pattern::collect_binding_names;
 use crate::utils::is_simple_expression;
 use crate::utils::property_key_static_name;
 
-pub const STATE_RUNE_NAME: &str = "$state";
-pub const DERIVED_RUNE_NAME: &str = "$derived";
-pub const EFFECT_RUNE_NAME: &str = "$effect";
-pub const PROPS_RUNE_NAME: &str = "$props";
+const STATE_RUNE_NAME: &str = "$state";
+const DERIVED_RUNE_NAME: &str = "$derived";
+const EFFECT_RUNE_NAME: &str = "$effect";
+const PROPS_RUNE_NAME: &str = "$props";
 pub const BINDABLE_RUNE_NAME: &str = "$bindable";
-pub const INSPECT_RUNE_NAME: &str = "$inspect";
-pub const HOST_RUNE_NAME: &str = "$host";
+const INSPECT_RUNE_NAME: &str = "$inspect";
+const HOST_RUNE_NAME: &str = "$host";
 
-pub fn extract_script_info(
+pub(crate) fn extract_for_standalone_module(
+    program: &Program<'_>,
+    source: &str,
+    scoping: &ComponentScoping,
+) -> ScriptInfo {
+    let mut info = extract_script_info(program, source, true, scoping);
+    enrich_from_component_scoping(scoping, &mut info);
+    info
+}
+
+pub(crate) fn extract_script_info(
     program: &Program<'_>,
     source: &str,
     runes: bool,
@@ -140,14 +148,14 @@ fn detect_rune_in_runes_mode(expr: &Expression<'_>, runes: bool) -> Option<RuneK
     if runes { detect_rune(expr) } else { None }
 }
 
-pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
+pub(super) fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr.get_inner_expression() {
         return detect_rune_from_call(call);
     }
     None
 }
 
-pub fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+pub(super) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
             STATE_RUNE_NAME => Some(RuneKind::State),
@@ -191,7 +199,7 @@ pub fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     }
 }
 
-pub fn is_rune_name(name: &str) -> bool {
+pub(crate) fn is_rune_name(name: &str) -> bool {
     svelte_ast::is_rune_name(name)
 }
 
@@ -221,7 +229,6 @@ fn collect_func_declaration(func: &Function<'_>, declarations: &mut Vec<Declarat
             kind: DeclarationKind::Function,
             init_span: None,
             is_rune: None,
-            rune_init_refs: vec![],
             init_literal: None,
             init_known: true,
         });
@@ -248,25 +255,19 @@ fn collect_var_declarations(
                 let name = CompactString::from(ident.name.as_str());
                 let decl_span = Span::new(ident.span.start, ident.span.end);
 
-                let (init_span, is_rune, rune_init_refs, init_literal, init_known) =
+                let (init_span, is_rune, init_literal, init_known) =
                     if let Some(init) = &declarator.init {
                         let init_sp = Span::new(init.span().start, init.span().end);
                         let rune = detect_rune_in_runes_mode(init, runes);
-                        let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy))
-                        {
-                            collect_derived_refs(init)
-                        } else {
-                            vec![]
-                        };
                         let literal = if rune.is_some() {
                             extract_call_arg_literal(init)
                         } else {
                             extract_literal(init)
                         };
                         let known = rune.is_none() && extract_init_known(init);
-                        (Some(init_sp), rune, refs, literal, known)
+                        (Some(init_sp), rune, literal, known)
                     } else {
-                        (None, None, vec![], None, false)
+                        (None, None, None, false)
                     };
 
                 if is_rune == Some(RuneKind::Props) {
@@ -292,7 +293,6 @@ fn collect_var_declarations(
                     kind,
                     init_span,
                     is_rune,
-                    rune_init_refs,
                     init_literal,
                     init_known,
                 });
@@ -324,7 +324,6 @@ fn collect_var_declarations(
                             kind,
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
-                            rune_init_refs: vec![],
                             init_literal: None,
                             init_known: false,
                         });
@@ -352,7 +351,6 @@ fn collect_var_declarations(
                             kind,
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
-                            rune_init_refs: vec![],
                             init_literal: None,
                             init_known: false,
                         });
@@ -385,16 +383,6 @@ fn collect_var_declarations(
                 ) {
                     let mut names = Vec::new();
                     collect_binding_names(&declarator.id, &mut names);
-                    let rune_init_refs =
-                        if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
-                            declarator
-                                .init
-                                .as_ref()
-                                .map(collect_derived_refs)
-                                .unwrap_or_default()
-                        } else {
-                            vec![]
-                        };
                     for name in names {
                         let decl_span = Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
@@ -403,7 +391,6 @@ fn collect_var_declarations(
                             kind,
                             init_span: None,
                             is_rune: rune,
-                            rune_init_refs: rune_init_refs.clone(),
                             init_literal: None,
                             init_known: false,
                         });
@@ -426,16 +413,6 @@ fn collect_var_declarations(
                 {
                     let mut names = Vec::new();
                     collect_binding_names(&declarator.id, &mut names);
-                    let rune_init_refs =
-                        if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy) {
-                            declarator
-                                .init
-                                .as_ref()
-                                .map(collect_derived_refs)
-                                .unwrap_or_default()
-                        } else {
-                            vec![]
-                        };
                     for name in names {
                         let decl_span = Span::new(declarator.span.start, declarator.span.end);
                         declarations.push(DeclarationInfo {
@@ -444,7 +421,6 @@ fn collect_var_declarations(
                             kind,
                             init_span: None,
                             is_rune: Some(rune_kind),
-                            rune_init_refs: rune_init_refs.clone(),
                             init_literal: None,
                             init_known: false,
                         });
@@ -547,40 +523,7 @@ fn extract_prop_default(
     }
 }
 
-fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
-    let Expression::CallExpression(call) = expr.get_inner_expression() else {
-        return vec![];
-    };
-    if call.arguments.is_empty() {
-        return vec![];
-    }
-    let Some(arg_expr) = call.arguments[0].as_expression() else {
-        return vec![];
-    };
-    let mut collector = IdentCollector { refs: Vec::new() };
-    collector.visit_expression(arg_expr);
-    let mut seen = FxHashSet::default();
-    collector.refs.retain(|r| seen.insert(r.clone()));
-    collector.refs
-}
-
-struct IdentCollector {
-    refs: Vec<CompactString>,
-}
-
-impl<'a> Visit<'a> for IdentCollector {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        let name = ident.name.as_str();
-        if !name.starts_with('$') {
-            self.refs.push(CompactString::from(name));
-        }
-    }
-}
-
-pub fn enrich_from_unresolved<'a>(
-    unresolved: impl Iterator<Item = &'a str>,
-    info: &mut ScriptInfo,
-) {
+fn enrich_from_unresolved<'a>(unresolved: impl Iterator<Item = &'a str>, info: &mut ScriptInfo) {
     for name in unresolved {
         if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name)
         {
@@ -589,7 +532,7 @@ pub fn enrich_from_unresolved<'a>(
     }
 }
 
-pub fn enrich_from_component_scoping(
+pub(crate) fn enrich_from_component_scoping(
     scoping: &crate::scope::ComponentScoping,
     info: &mut ScriptInfo,
 ) {

@@ -31,7 +31,7 @@ const card = $.wrap_snippet(App, function($$anchor, heading = $.noop, body = $.n
 	var text_3 = $.child(p, true);
 	$.reset(p);
 	var node_1 = $.sibling(p, 2);
-	$.add_svelte_meta(() => badge(node_1, () => "new", () => "primary"), "render", App, 174, 8);
+	$.add_svelte_meta(() => badge(node_1, () => "new", () => "primary"), "render", App, 173, 8);
 	$.reset(div);
 	$.template_effect(() => {
 		$.set_text(text_2, heading());
@@ -44,62 +44,62 @@ export const MODULE_SCALE = 3;
 export function moduleLabel(name) {
 	return `${BENCHMARK_KIND}:${name}`;
 }
-var root_1 = $.add_locations($.from_html(`<meta name="description" content="Benchmark component" class="svelte-13nvtxg"/> <link rel="canonical" href="/benchmark" class="svelte-13nvtxg"/>`, 1), App[$.FILENAME], [[156, 4], [157, 4]]);
-var root_2 = $.add_locations($.from_html(`<span> </span>`), App[$.FILENAME], [[165, 4]]);
+var root_1 = $.add_locations($.from_html(`<meta name="description" content="Benchmark component" class="svelte-13nvtxg"/> <link rel="canonical" href="/benchmark" class="svelte-13nvtxg"/>`, 1), App[$.FILENAME], [[155, 4], [156, 4]]);
+var root_2 = $.add_locations($.from_html(`<span> </span>`), App[$.FILENAME], [[164, 4]]);
 var root_3 = $.add_locations($.from_html(`<div class="card svelte-13nvtxg"><h3 class="svelte-13nvtxg"> </h3> <p class="svelte-13nvtxg"> </p> <!></div>`), App[$.FILENAME], [[
-	171,
+	170,
 	4,
-	[[172, 8], [173, 8]]
+	[[171, 8], [172, 8]]
 ]]);
-var root_5 = $.add_locations($.from_html(`<span class="svelte-13nvtxg"> </span>`), App[$.FILENAME], [[182, 12]]);
+var root_5 = $.add_locations($.from_html(`<span class="svelte-13nvtxg"> </span>`), App[$.FILENAME], [[181, 12]]);
 var root_4 = $.add_locations($.from_html(`<section class="summary svelte-13nvtxg"><h4 class="svelte-13nvtxg"> </h4> <!></section>`), App[$.FILENAME], [[
-	179,
+	178,
 	4,
-	[[180, 8]]
+	[[179, 8]]
 ]]);
-var root_6 = $.add_locations($.from_html(`<span empty="" class="svelte-13nvtxg"> </span>`), App[$.FILENAME], [[216, 12]]);
-var root_8 = $.add_locations($.from_html(`<h1 class="svelte-13nvtxg">Lorem ipsum dolor sit amet. Chunk 0.</h1>`), App[$.FILENAME], [[225, 16]]);
-var root_10 = $.add_locations($.from_html(`<h2 class="svelte-13nvtxg">EMPTY</h2>`), App[$.FILENAME], [[231, 16]]);
+var root_6 = $.add_locations($.from_html(`<span empty="" class="svelte-13nvtxg"> </span>`), App[$.FILENAME], [[215, 12]]);
+var root_8 = $.add_locations($.from_html(`<h1 class="svelte-13nvtxg">Lorem ipsum dolor sit amet. Chunk 0.</h1>`), App[$.FILENAME], [[224, 16]]);
+var root_10 = $.add_locations($.from_html(`<h2 class="svelte-13nvtxg">EMPTY</h2>`), App[$.FILENAME], [[230, 16]]);
 var root_7 = $.add_locations($.from_html(`<div class="svelte-13nvtxg"><input class="svelte-13nvtxg"/></div> <!>`, 1), App[$.FILENAME], [[
-	220,
+	219,
 	12,
-	[[221, 16]]
+	[[220, 16]]
 ]]);
-var root_11 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[237, 8]]);
-var root_12 = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[242, 8]]);
-var root_13 = $.add_locations($.from_html(`<span class="item-less svelte-13nvtxg">Repeated shell chunk 0</span>`), App[$.FILENAME], [[246, 8]]);
-var root_14 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[252, 8]]);
-var root_15 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[254, 8]]);
-var root_16 = $.add_locations($.from_html(`<p class="svelte-13nvtxg">Loading chunk 0...</p>`), App[$.FILENAME], [[250, 8]]);
-var root_17 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[258, 8]]);
-var root_19 = $.add_locations($.from_html(`<strong class="svelte-13nvtxg"> </strong>`), App[$.FILENAME], [[280, 8]]);
-var root_20 = $.add_locations($.from_html(`<div slot="footer" class="svelte-13nvtxg"> </div>`), App[$.FILENAME], [[281, 8]]);
-var root_21 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[295, 12]]);
-var root_22 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[293, 8]]);
+var root_11 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[236, 8]]);
+var root_12 = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[241, 8]]);
+var root_13 = $.add_locations($.from_html(`<span class="item-less svelte-13nvtxg">Repeated shell chunk 0</span>`), App[$.FILENAME], [[245, 8]]);
+var root_14 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[251, 8]]);
+var root_15 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[253, 8]]);
+var root_16 = $.add_locations($.from_html(`<p class="svelte-13nvtxg">Loading chunk 0...</p>`), App[$.FILENAME], [[249, 8]]);
+var root_17 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[257, 8]]);
+var root_19 = $.add_locations($.from_html(`<strong class="svelte-13nvtxg"> </strong>`), App[$.FILENAME], [[279, 8]]);
+var root_20 = $.add_locations($.from_html(`<div slot="footer" class="svelte-13nvtxg"> </div>`), App[$.FILENAME], [[280, 8]]);
+var root_21 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[294, 12]]);
+var root_22 = $.add_locations($.from_html(`<p class="svelte-13nvtxg"> </p>`), App[$.FILENAME], [[292, 8]]);
 var root = $.add_locations($.from_html(`<div class="chunk-shell benchmark-reset benchmark-host svelte-13nvtxg" data-kind="chunk-0"> <p class="svelte-13nvtxg"> </p> <p class="svelte-13nvtxg"> </p> <!> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua. <!></div> <!> <!> <!> <!> <!> <input class="svelte-13nvtxg"/> <textarea class="svelte-13nvtxg"></textarea> <select class="svelte-13nvtxg"><option class="svelte-13nvtxg">Zero</option><option class="svelte-13nvtxg">One</option></select> <input type="checkbox" class="svelte-13nvtxg"/> <input type="radio" class="svelte-13nvtxg"/> <div contenteditable="" class="svelte-13nvtxg">editable</div> <video class="svelte-13nvtxg"></video> <div class="svelte-13nvtxg">action target</div> <div class="svelte-13nvtxg">transition target</div> <div class="svelte-13nvtxg">in/out target</div> <!> <!> <!> <!> <!> <!> <button class="svelte-13nvtxg">Update store</button> <p class="svelte-13nvtxg"> </p> <!></div>`, 2), App[$.FILENAME], [[
-	187,
+	186,
 	0,
 	[
+		[188, 4],
 		[189, 4],
-		[190, 4],
-		[195, 4],
+		[194, 4],
+		[260, 4],
 		[261, 4],
-		[262, 4],
 		[
-			263,
+			262,
 			4,
-			[[264, 8], [265, 8]]
+			[[263, 8], [264, 8]]
 		],
+		[266, 4],
 		[267, 4],
 		[268, 4],
 		[269, 4],
-		[270, 4],
+		[271, 4],
 		[272, 4],
 		[273, 4],
-		[274, 4],
-		[289, 4],
-		[290, 4]
+		[288, 4],
+		[289, 4]
 	]
 ]]);
 export default function App($$anchor, $$props) {
@@ -134,7 +134,7 @@ export default function App($$anchor, $$props) {
 			$.reset(span_1);
 			$.template_effect(() => $.set_text(text_5, `${index}: ${$.get(value) ?? ""}`));
 			$.append($$anchor, span_1);
-		}), "each", App, 181, 8);
+		}), "each", App, 180, 8);
 		$.reset(section);
 		$.template_effect(() => {
 			$.set_attribute(section, "data-id", $.get(id));
@@ -286,7 +286,7 @@ export default function App($$anchor, $$props) {
 					if ($.get(counter) > 30) $$render(consequent_1);
 					else if ($.equals($.get(counter), 100)) $$render(consequent_2, 1);
 					else $$render(alternate, -1);
-				}), "if", App, 224, 12);
+				}), "if", App, 223, 12);
 			}
 			$.template_effect(() => {
 				$.set_attribute(input, "title", title);
@@ -298,7 +298,7 @@ export default function App($$anchor, $$props) {
 		$.add_svelte_meta(() => $.if(node_4, ($$render) => {
 			if ($.get(state)) $$render(consequent);
 			else $$render(alternate_1, -1);
-		}), "if", App, 214, 8);
+		}), "if", App, 213, 8);
 	}
 	$.reset(div_2);
 	$.bind_this(div_2, ($$value) => $.set(dynamicEl, $$value), () => $.get(dynamicEl));
@@ -310,7 +310,7 @@ export default function App($$anchor, $$props) {
 		$.template_effect(() => $.set_text(text_11, `Keyed content chunk 0: ${$.get(counter) ?? ""}`));
 		$.transition(3, p_3, () => slide);
 		$.append($$anchor, p_3);
-	}), "key", App, 236, 4);
+	}), "key", App, 235, 4);
 	var node_7 = $.sibling(node_6, 2);
 	$.add_svelte_meta(() => $.each(node_7, 11, () => items, (item) => item.id, ($$anchor, item, idx) => {
 		const itemLabel = $.tag($.derived_safe_equal(() => ($.deep_read_state($.get(idx)), $.get(item), $.untrack(() => `${$.get(idx)}:${$.get(item).name}`))), "itemLabel");
@@ -325,12 +325,12 @@ export default function App($$anchor, $$props) {
 		$.template_effect(() => $.set_text(text_12, $.get(itemLabel)));
 		$.animation(p_4, () => flip, null);
 		$.append($$anchor, p_4);
-	}), "each", App, 240, 4);
+	}), "each", App, 239, 4);
 	var node_8 = $.sibling(node_7, 2);
 	$.add_svelte_meta(() => $.each(node_8, 1, () => items, $.index, ($$anchor, $$item) => {
 		var span_3 = root_13();
 		$.append($$anchor, span_3);
-	}), "each", App, 245, 4);
+	}), "each", App, 244, 4);
 	var node_9 = $.sibling(node_8, 2);
 	$.add_svelte_meta(() => $.await(node_9, () => promise, ($$anchor) => {
 		var p_7 = root_16();
@@ -347,7 +347,7 @@ export default function App($$anchor, $$props) {
 		$.reset(p_6);
 		$.template_effect(() => $.set_text(text_14, `Error: ${($.deep_read_state($.get(error)), $.untrack(() => $.get(error).message)) ?? ""}`));
 		$.append($$anchor, p_6);
-	}), "await", App, 249, 4);
+	}), "await", App, 248, 4);
 	var node_10 = $.sibling(node_9, 2);
 	$.add_svelte_meta(() => $.await(node_10, () => promise, null, ($$anchor, quickValue) => {
 		var p_8 = root_17();
@@ -355,7 +355,7 @@ export default function App($$anchor, $$props) {
 		$.reset(p_8);
 		$.template_effect(() => $.set_text(text_15, `Quick resolved: ${$.get(quickValue) ?? ""}`));
 		$.append($$anchor, p_8);
-	}), "await", App, 257, 4);
+	}), "await", App, 256, 4);
 	var input_1 = $.sibling(node_10, 2);
 	$.remove_input_defaults(input_1);
 	var textarea = $.sibling(input_1, 2);
@@ -387,7 +387,7 @@ export default function App($$anchor, $$props) {
 			var text_16 = $.text();
 			$.template_effect(() => $.set_text(text_16, `Dynamic element chunk 0: ${title ?? ""}`));
 			$.append($$anchor, text_16);
-		}, void 0, [275, 4]);
+		}, void 0, [274, 4]);
 	}
 	var node_12 = $.sibling(node_11, 2);
 	{
@@ -417,12 +417,12 @@ export default function App($$anchor, $$props) {
 				}
 			},
 			$$legacy: true
-		}), ($$value) => $.set(componentRef, $$value), () => $.get(componentRef)), "component", App, 279, 4, { componentTag: "ChildComponent" });
+		}), ($$value) => $.set(componentRef, $$value), () => $.get(componentRef)), "component", App, 278, 4, { componentTag: "ChildComponent" });
 	}
 	var node_13 = $.sibling(node_12, 2);
-	$.add_svelte_meta(() => badge(node_13, () => "chunk-0", () => "secondary"), "render", App, 284, 4);
+	$.add_svelte_meta(() => badge(node_13, () => "chunk-0", () => "secondary"), "render", App, 283, 4);
 	var node_14 = $.sibling(node_13, 2);
-	$.add_svelte_meta(() => card(node_14, () => title, () => "Content for chunk 0"), "render", App, 285, 4);
+	$.add_svelte_meta(() => card(node_14, () => title, () => "Content for chunk 0"), "render", App, 284, 4);
 	var node_15 = $.sibling(node_14, 2);
 	$.add_svelte_meta(() => metricSummary(node_15, () => ({
 		label: title,
@@ -432,9 +432,9 @@ export default function App($$anchor, $$props) {
 			$.get(counter)
 		],
 		meta: { id: propsId }
-	})), "render", App, 286, 4);
+	})), "render", App, 285, 4);
 	var node_16 = $.sibling(node_15, 2);
-	$.add_svelte_meta(() => show?.(node_16), "render", App, 287, 4);
+	$.add_svelte_meta(() => show?.(node_16), "render", App, 286, 4);
 	var button = $.sibling(node_16, 2);
 	var p_9 = $.sibling(button, 2);
 	var text_19 = $.child(p_9);
@@ -486,7 +486,7 @@ export default function App($$anchor, $$props) {
 	$.event("scroll", div_2, handleClick);
 	$.event("click", div_2, handleClick, true);
 	$.event("focus", div_2, function(...$$args) {
-		$.apply(() => $.get(event_handler), this, $$args, App, [208, 17], true, true);
+		$.apply(() => $.get(event_handler), this, $$args, App, [207, 17], true, true);
 	});
 	$.bind_value(input_1, function get() {
 		return $.get(state);

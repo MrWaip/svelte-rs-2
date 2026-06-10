@@ -56,7 +56,7 @@ pub fn validate(
     validate_svelte_options_warnings(component, data, runes, diags);
     validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
-    runes::validate_const_tag_runes(component, parsed, diags);
+    runes::validate_const_tag_runes(component, parsed, data, diags);
 }
 
 fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
@@ -85,7 +85,7 @@ pub fn validate_program(
     validate_perf_class_warnings(program, 1, diags);
     experimental_async::validate_instance_program(data, program, diags);
     if runes {
-        class_state_fields::validate(program, diags);
+        class_state_fields::validate(data, program, diags);
     }
     typescript::validate(program, diags);
 }

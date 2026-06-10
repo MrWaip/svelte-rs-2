@@ -57,6 +57,22 @@ pub enum RuntimeRuneKind {
     Host,
 
     InspectTrace,
+
+    Effect,
+
+    EffectPre,
+
+    EffectRoot,
+
+    Inspect,
+
+    InspectWith,
+
+    StateSnapshot,
+
+    StateEager,
+
+    Bindable,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -211,6 +227,10 @@ pub enum SnippetParamStrategy {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
+
+    RuntimeRuneCall {
+        kind: RuntimeRuneKind,
+    },
 
     RuneProps,
 

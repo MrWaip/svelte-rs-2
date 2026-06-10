@@ -327,12 +327,22 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         if self.data.uses_runes() {
             return false;
         }
+        let has_bind_directive = |p: &ComponentPropInfo| match p.kind {
+            ComponentPropKind::Bind { .. } | ComponentPropKind::BindThis { .. } => true,
+            ComponentPropKind::String { .. }
+            | ComponentPropKind::Boolean { .. }
+            | ComponentPropKind::Expression { .. }
+            | ComponentPropKind::Concatenation { .. }
+            | ComponentPropKind::Spread { .. }
+            | ComponentPropKind::Attach { .. }
+            | ComponentPropKind::Event { .. } => false,
+        };
         self.data
             .elements
             .flags
             .component_props(id)
             .iter()
-            .any(|p| matches!(p.kind, ComponentPropKind::Bind { .. }))
+            .any(has_bind_directive)
     }
     pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
         self.data.elements.flags.component_css_props(id)

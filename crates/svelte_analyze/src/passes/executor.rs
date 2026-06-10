@@ -1,9 +1,10 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
+use crate::reactivity_semantics::script_info;
 use crate::reactivity_semantics::{ReactivityInputs, build_optimized_derived, build_v2};
 use crate::types::markers::ScopingBuilt;
-use crate::utils::{ce_config, script_info};
+use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
 use crate::{attribute_semantics, block_semantics, expression_semantics};
 
@@ -60,12 +61,18 @@ pub(crate) fn execute_pass<'a>(
             if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {
                 js_analyze::analyze_script(data, script_info, program);
             }
+            if let Some(module_program) = parsed.module_program.as_ref()
+                && parsed.module_script_content_span.is_some()
+            {
+                data.output.needs_context |= js_analyze::needs_context_for_program(
+                    module_program,
+                    &data.scoping,
+                    &data.reactivity,
+                );
+            }
         }
         super::PassKey::BuildComponentSemantics => {
             super::build_component_semantics::build(component, parsed, data);
-        }
-        super::PassKey::EnrichScriptInfo => {
-            super::enrich_script_info::run(component, parsed, data);
         }
         super::PassKey::FinalizeComponentName => {
             finalize_component_name::run(data);

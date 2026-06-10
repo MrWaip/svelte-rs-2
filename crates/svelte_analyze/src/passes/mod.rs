@@ -6,7 +6,6 @@ pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod css_prune_index;
 pub(crate) mod element_flags;
-pub(crate) mod enrich_script_info;
 mod executor;
 pub(crate) mod finalize_component_name;
 pub(crate) mod fragment_topology;
@@ -24,7 +23,6 @@ pub(crate) use executor::execute_pass;
 pub(crate) enum PassKey {
     BuildComponentSemantics,
     AnalyzeScript,
-    EnrichScriptInfo,
     FinalizeComponentName,
     ScanIgnoreComments,
     ExtractCeConfig,
@@ -49,7 +47,6 @@ pub(crate) enum PassKey {
 pub(crate) enum DataToken {
     ScriptInfo,
     ComponentSemantics,
-    EnrichedScriptInfo,
     ComponentName,
     IgnoreComments,
     CeConfig,
@@ -91,13 +88,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::AnalyzeScript,
-        requires: &[],
+        requires: &[
+            DataToken::ComponentSemantics,
+            DataToken::ReactivitySemantics,
+        ],
         produces: &[DataToken::ScriptInfo],
-    },
-    PassDescriptor {
-        key: PassKey::EnrichScriptInfo,
-        requires: &[DataToken::ScriptInfo, DataToken::ComponentSemantics],
-        produces: &[DataToken::EnrichedScriptInfo],
     },
     PassDescriptor {
         key: PassKey::FinalizeComponentName,
@@ -106,7 +101,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::ScanIgnoreComments,
-        requires: &[DataToken::EnrichedScriptInfo, DataToken::ComponentSemantics],
+        requires: &[DataToken::ScriptInfo, DataToken::ComponentSemantics],
         produces: &[DataToken::IgnoreComments],
     },
     PassDescriptor {
@@ -205,7 +200,6 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::BuildComponentSemantics,
     PassKey::BuildReactivitySemantics,
     PassKey::AnalyzeScript,
-    PassKey::EnrichScriptInfo,
     PassKey::FinalizeComponentName,
     PassKey::ScanIgnoreComments,
     PassKey::ExtractCeConfig,

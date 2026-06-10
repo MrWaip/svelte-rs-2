@@ -1,7 +1,7 @@
-use crate::reactivity_semantics::data::{ReactivitySemantics, ReferenceSemantics};
-use crate::types::script::RuneKind;
+use crate::reactivity_semantics::data::{
+    DeclaratorSemantics, ReactivitySemantics, ReferenceSemantics, RuntimeRuneKind,
+};
 use crate::utils::expression_await::expression_has_await;
-use crate::utils::script_info::detect_rune_from_call;
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, CallExpression, ChainElement,
     Expression, Function, IdentifierReference, MemberExpression, SimpleAssignmentTarget,
@@ -171,6 +171,38 @@ fn top_level_form_of(expr: &Expression<'_>) -> TopLevelForm {
     }
 }
 
+fn is_state_rune_call_fact(semantics: DeclaratorSemantics) -> bool {
+    match semantics {
+        DeclaratorSemantics::RuntimeRuneCall { kind } => match kind {
+            RuntimeRuneKind::EffectPending | RuntimeRuneKind::StateEager => true,
+            RuntimeRuneKind::PropsId
+            | RuntimeRuneKind::EffectTracking
+            | RuntimeRuneKind::Host
+            | RuntimeRuneKind::InspectTrace
+            | RuntimeRuneKind::Effect
+            | RuntimeRuneKind::EffectPre
+            | RuntimeRuneKind::EffectRoot
+            | RuntimeRuneKind::Inspect
+            | RuntimeRuneKind::InspectWith
+            | RuntimeRuneKind::StateSnapshot
+            | RuntimeRuneKind::Bindable => false,
+        },
+        DeclaratorSemantics::None
+        | DeclaratorSemantics::RuneProps
+        | DeclaratorSemantics::LegacyProps
+        | DeclaratorSemantics::LegacyState
+        | DeclaratorSemantics::RuneState { .. }
+        | DeclaratorSemantics::RuneDerived { .. }
+        | DeclaratorSemantics::ConstTag { .. }
+        | DeclaratorSemantics::LetCarrier { .. }
+        | DeclaratorSemantics::EachItem
+        | DeclaratorSemantics::AwaitValue
+        | DeclaratorSemantics::SnippetParam
+        | DeclaratorSemantics::ClassFieldState(_)
+        | DeclaratorSemantics::ClassFieldDerived(_) => false,
+    }
+}
+
 struct Collector<'c, 'a> {
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
@@ -227,10 +259,6 @@ impl<'a> Collector<'_, 'a> {
             ReferenceSemantics::StoreRead { symbol }
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
-            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
-            | ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
-            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }
-            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
             _ => self.semantics.get_reference(ref_id).symbol_id(),
         }
     }
@@ -295,10 +323,6 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             ReferenceSemantics::StoreRead { symbol }
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
-            ReferenceSemantics::LegacyStateSubscribedRead { store_symbol, .. }
-            | ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
-            | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. }
-            | ReferenceSemantics::ImportSubscribedRead { store_symbol } => Some(store_symbol),
             _ => self.semantics.get_reference(ref_id).symbol_id(),
         };
         let Some(sym) = sym else { return };
@@ -364,9 +388,7 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             if !callee_is_pure(&expr.callee) {
                 self.has_impure_call = true;
             }
-            if let Some(rune) = detect_rune_from_call(expr)
-                && matches!(rune, RuneKind::EffectPending | RuneKind::StateEager)
-            {
+            if is_state_rune_call_fact(self.reactivity.declarator_semantics(expr.node_id())) {
                 self.has_state_rune = true;
             }
         }

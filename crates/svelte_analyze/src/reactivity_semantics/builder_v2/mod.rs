@@ -20,12 +20,12 @@ use super::data::{
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
+use crate::reactivity_semantics::script_info::detect_rune_from_call;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
 use crate::types::script::RuneKind;
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
-use crate::utils::script_info::detect_rune_from_call;
 use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, ClassElement,
@@ -175,6 +175,65 @@ fn reference_is_reactive(
             ReferenceReactivityMode::PropDefault => false,
         },
         BindingSemantics::LegacyApiExport => false,
+    }
+}
+
+fn runtime_rune_call_kind(kind: RuneKind) -> Option<RuntimeRuneKind> {
+    match kind {
+        RuneKind::Effect => Some(RuntimeRuneKind::Effect),
+        RuneKind::EffectPre => Some(RuntimeRuneKind::EffectPre),
+        RuneKind::EffectRoot => Some(RuntimeRuneKind::EffectRoot),
+        RuneKind::EffectTracking => Some(RuntimeRuneKind::EffectTracking),
+        RuneKind::EffectPending => Some(RuntimeRuneKind::EffectPending),
+        RuneKind::Inspect => Some(RuntimeRuneKind::Inspect),
+        RuneKind::InspectWith => Some(RuntimeRuneKind::InspectWith),
+        RuneKind::InspectTrace => Some(RuntimeRuneKind::InspectTrace),
+        RuneKind::Host => Some(RuntimeRuneKind::Host),
+        RuneKind::PropsId => Some(RuntimeRuneKind::PropsId),
+        RuneKind::StateSnapshot => Some(RuntimeRuneKind::StateSnapshot),
+        RuneKind::StateEager => Some(RuntimeRuneKind::StateEager),
+        RuneKind::Bindable => Some(RuntimeRuneKind::Bindable),
+        RuneKind::State
+        | RuneKind::StateRaw
+        | RuneKind::Derived
+        | RuneKind::DerivedBy
+        | RuneKind::Props => None,
+    }
+}
+
+fn rune_call_fact(kind: RuneKind, call: &CallExpression<'_>) -> Option<DeclaratorSemantics> {
+    if let Some(runtime) = runtime_rune_call_kind(kind) {
+        return Some(DeclaratorSemantics::RuntimeRuneCall { kind: runtime });
+    }
+    match kind {
+        RuneKind::State => Some(DeclaratorSemantics::RuneState {
+            kind: StateKind::State,
+        }),
+        RuneKind::StateRaw => Some(DeclaratorSemantics::RuneState {
+            kind: StateKind::StateRaw,
+        }),
+        RuneKind::Derived => Some(DeclaratorSemantics::RuneDerived {
+            kind: DerivedKind::Derived,
+            emit: derived_emit(call),
+        }),
+        RuneKind::DerivedBy => Some(DeclaratorSemantics::RuneDerived {
+            kind: DerivedKind::DerivedBy,
+            emit: derived_emit(call),
+        }),
+        RuneKind::Props => Some(DeclaratorSemantics::RuneProps),
+        RuneKind::Bindable
+        | RuneKind::StateEager
+        | RuneKind::StateSnapshot
+        | RuneKind::Effect
+        | RuneKind::EffectPre
+        | RuneKind::EffectRoot
+        | RuneKind::EffectTracking
+        | RuneKind::EffectPending
+        | RuneKind::Inspect
+        | RuneKind::InspectWith
+        | RuneKind::InspectTrace
+        | RuneKind::Host
+        | RuneKind::PropsId => None,
     }
 }
 
@@ -1377,12 +1436,25 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         self.classify_class_fields(class);
         walk_class(self, class);
     }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if self.data.reactivity.uses_runes()
+            && let Some(fact) =
+                detect_rune_from_call(call).and_then(|kind| rune_call_fact(kind, call))
+        {
+            self.data
+                .reactivity
+                .record_declarator_semantics(call.node_id(), fact);
+        }
+        walk_call_expression(self, call);
+    }
 }
 
 impl<'a> ScriptSemanticCollector<'_, 'a> {
     fn classify_class_fields(&mut self, class: &Class<'a>) {
-        let mut prop_record_by_name: FxHashMap<&'a str, OxcNodeId> = FxHashMap::default();
-
+        if !self.data.reactivity.uses_runes() {
+            return;
+        }
         for element in &class.body.body {
             let ClassElement::PropertyDefinition(prop) = element else {
                 continue;
@@ -1390,11 +1462,12 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             if prop.r#static || prop.computed {
                 continue;
             }
-            let name = match &prop.key {
-                PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-                PropertyKey::PrivateIdentifier(id) => id.name.as_str(),
-                _ => continue,
-            };
+            if !matches!(
+                &prop.key,
+                PropertyKey::StaticIdentifier(_) | PropertyKey::PrivateIdentifier(_)
+            ) {
+                continue;
+            }
             let Some(value) = prop.value.as_ref() else {
                 continue;
             };
@@ -1405,7 +1478,6 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
                 continue;
             };
             if let Some(semantics) = class_field_rune_semantics(rune_kind, call) {
-                prop_record_by_name.insert(name, prop.node_id());
                 self.data
                     .reactivity
                     .record_declarator_semantics(prop.node_id(), semantics);
@@ -1431,15 +1503,13 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             else {
                 continue;
             };
-            let (name, this_object) = match &assign.left {
-                AssignmentTarget::StaticMemberExpression(member) => (
-                    member.property.name.as_str(),
-                    member.object.get_inner_expression(),
-                ),
-                AssignmentTarget::PrivateFieldExpression(member) => (
-                    member.field.name.as_str(),
-                    member.object.get_inner_expression(),
-                ),
+            let this_object = match &assign.left {
+                AssignmentTarget::StaticMemberExpression(member) => {
+                    member.object.get_inner_expression()
+                }
+                AssignmentTarget::PrivateFieldExpression(member) => {
+                    member.object.get_inner_expression()
+                }
                 _ => continue,
             };
             if !matches!(this_object, Expression::ThisExpression(_)) {
@@ -1454,11 +1524,6 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             let Some(semantics) = class_field_rune_semantics(rune_kind, call) else {
                 continue;
             };
-            if let Some(prior_prop_node) = prop_record_by_name.remove(name) {
-                self.data
-                    .reactivity
-                    .record_declarator_semantics(prior_prop_node, DeclaratorSemantics::None);
-            }
             self.data
                 .reactivity
                 .record_declarator_semantics(assign.node_id(), semantics);

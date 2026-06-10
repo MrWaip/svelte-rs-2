@@ -49,6 +49,15 @@ mod legacy_props;
 #[path = "clusters/legacy_exports.rs"]
 mod legacy_exports;
 
+#[path = "clusters/legacy_coarse_deps.rs"]
+mod legacy_coarse_deps;
+
+#[path = "clusters/legacy_rune_named_stores.rs"]
+mod legacy_rune_named_stores;
+
+#[path = "clusters/legacy_component_marker.rs"]
+mod legacy_component_marker;
+
 #[path = "clusters/let_directive.rs"]
 mod let_directive;
 

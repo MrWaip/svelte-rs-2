@@ -2,8 +2,8 @@ use std::iter;
 use std::mem;
 
 use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, Expression, IdentifierReference,
-    SimpleAssignmentTarget, UpdateOperator,
+    Argument, AssignmentOperator, AssignmentTarget, Expression, SimpleAssignmentTarget,
+    UpdateOperator,
 };
 use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
@@ -12,7 +12,8 @@ use svelte_ast_builder::Arg;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, CarrierMemberReadSemantics, ContextualReadKind,
-    ContextualReadSemantics, PropReferenceSemantics, ReferenceSemantics, StateKind,
+    ContextualReadSemantics, DeclaratorSemantics, PropReferenceSemantics, ReferenceSemantics,
+    RuntimeRuneKind, StateKind,
 };
 use svelte_component_semantics::SymbolId;
 
@@ -46,19 +47,6 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
 }
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn identifier_is_store_read(&self, ident: &IdentifierReference<'a>) -> bool {
-        let Some(analysis) = self.analysis else {
-            return false;
-        };
-        let Some(ref_id) = ident.reference_id.get() else {
-            return false;
-        };
-        matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::StoreRead { .. }
-        )
-    }
-
     pub(crate) fn dispatch_identifier_read(&self, expr: &mut Expression<'a>) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -1183,20 +1171,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
         expr: &mut Expression<'a>,
         dev_snapshot_uncloneable_ignored: bool,
     ) -> bool {
-        let Expression::CallExpression(call) = expr else {
+        let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+        let Expression::CallExpression(call) = &*expr else {
             return false;
         };
-        let Expression::Identifier(obj) = member.object.get_inner_expression() else {
-            return false;
+        let kind = match analysis.declarator_semantics(call.node_id()) {
+            DeclaratorSemantics::RuntimeRuneCall { kind } => kind,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => return false,
         };
-        if self.identifier_is_store_read(obj) {
-            return false;
-        }
-        match (obj.name.as_str(), member.property.name.as_str()) {
-            ("$state", "eager") => {
+        match kind {
+            RuntimeRuneKind::StateEager => {
                 if let Expression::CallExpression(call) =
                     mem::replace(expr, self.make_eager_pending())
                 {
@@ -1208,7 +1206,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 true
             }
-            ("$state", "snapshot") => {
+            RuntimeRuneKind::StateSnapshot => {
                 let Expression::CallExpression(call) = expr else {
                     unreachable!()
                 };
@@ -1220,11 +1218,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 true
             }
-            ("$effect", "pending") => {
+            RuntimeRuneKind::EffectPending => {
                 *expr = self.make_eager_pending();
                 true
             }
-            _ => false,
+            RuntimeRuneKind::PropsId
+            | RuntimeRuneKind::EffectTracking
+            | RuntimeRuneKind::Host
+            | RuntimeRuneKind::InspectTrace
+            | RuntimeRuneKind::Effect
+            | RuntimeRuneKind::EffectPre
+            | RuntimeRuneKind::EffectRoot
+            | RuntimeRuneKind::Inspect
+            | RuntimeRuneKind::InspectWith
+            | RuntimeRuneKind::Bindable => false,
         }
     }
 

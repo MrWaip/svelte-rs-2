@@ -36,6 +36,7 @@ pub use block_semantics::{
     KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
     RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
+pub use reactivity_semantics::script_info::BINDABLE_RUNE_NAME;
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
@@ -50,16 +51,15 @@ pub use types::data::{
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
     MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
     PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, ProxyStateInits, ReactivitySemantics, ReferenceSemantics,
-    ResizeObserverKind, RichContentFacts, RichContentFactsEntry, RichContentParentKind,
-    RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind, SnippetData,
-    SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
+    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
+    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
-pub use utils::script_info::{BINDABLE_RUNE_NAME, detect_rune_from_call};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -207,9 +207,9 @@ pub fn analyze_module<'a>(
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
 
-            let mut script_info =
-                utils::script_info::extract_script_info(&program, source, true, &scoping);
-            utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
+            let script_info = reactivity_semantics::script_info::extract_for_standalone_module(
+                &program, source, &scoping,
+            );
             data.scoping = scoping;
             data.script.info = Some(script_info);
             data.script.runes_mode = svelte_ast::RunesMode::Runes;

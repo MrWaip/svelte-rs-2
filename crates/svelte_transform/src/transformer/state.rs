@@ -58,6 +58,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::EachItem
             | DeclaratorSemantics::SnippetParam
             | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
             | DeclaratorSemantics::AwaitValue => None,
             DeclaratorSemantics::RuneProps | DeclaratorSemantics::LegacyProps => None,
             DeclaratorSemantics::LegacyState

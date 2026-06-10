@@ -1,8 +1,10 @@
 use crate::reactivity_semantics::data::ReactivitySemantics;
+use crate::reactivity_semantics::data::{
+    DeclaratorSemantics, DerivedKind, RuntimeRuneKind, StateKind,
+};
 use crate::scope::ComponentScoping;
 use crate::types::data::{BindingSemantics, JsAst, SnippetData};
 use crate::types::script::RuneKind;
-use crate::utils::script_info::detect_rune_from_call;
 use compact_str::CompactString;
 use oxc_ast::ast::{
     Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
@@ -179,7 +181,10 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
 
     pub fn evaluate_binding(&self, sym: SymbolId) -> Evaluation {
         match self.bindings_init.get(&sym) {
-            Some(&init) => self.evaluate(init),
+            Some(&init) => {
+                let mut guard: FxHashSet<OxcNodeId> = FxHashSet::default();
+                set_to_evaluation(eval_binding_init(sym, init, self, &mut guard))
+            }
             None => Evaluation::unknown(),
         }
     }
@@ -345,8 +350,21 @@ fn eval_call(
     ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
-    if let Some(rune) = detect_rune_from_call(c) {
-        return eval_rune_call(rune, c, ctx, guard);
+    match ctx.reactivity.declarator_semantics(c.node_id()) {
+        DeclaratorSemantics::RuntimeRuneCall { kind } => return eval_runtime_rune_call(kind),
+        DeclaratorSemantics::None
+        | DeclaratorSemantics::RuneProps
+        | DeclaratorSemantics::LegacyProps
+        | DeclaratorSemantics::LegacyState
+        | DeclaratorSemantics::RuneState { .. }
+        | DeclaratorSemantics::RuneDerived { .. }
+        | DeclaratorSemantics::ConstTag { .. }
+        | DeclaratorSemantics::LetCarrier { .. }
+        | DeclaratorSemantics::EachItem
+        | DeclaratorSemantics::AwaitValue
+        | DeclaratorSemantics::SnippetParam
+        | DeclaratorSemantics::ClassFieldState(_)
+        | DeclaratorSemantics::ClassFieldDerived(_) => {}
     }
     let Some(keypath) = call_global_keypath(&c.callee, ctx) else {
         return smallvec![EvalAtom::Unknown];
@@ -496,6 +514,24 @@ fn fold_global_call(keypath: &str, args: &[KnownValue]) -> Option<KnownValue> {
     }
 }
 
+fn eval_runtime_rune_call(kind: RuntimeRuneKind) -> EvalSet {
+    match kind {
+        RuntimeRuneKind::PropsId => smallvec![EvalAtom::Class(ValueClass::String)],
+        RuntimeRuneKind::EffectTracking => smallvec![EvalAtom::Class(ValueClass::Boolean)],
+        RuntimeRuneKind::EffectPending
+        | RuntimeRuneKind::Host
+        | RuntimeRuneKind::InspectTrace
+        | RuntimeRuneKind::Effect
+        | RuntimeRuneKind::EffectPre
+        | RuntimeRuneKind::EffectRoot
+        | RuntimeRuneKind::Inspect
+        | RuntimeRuneKind::InspectWith
+        | RuntimeRuneKind::StateSnapshot
+        | RuntimeRuneKind::StateEager
+        | RuntimeRuneKind::Bindable => smallvec![EvalAtom::Unknown],
+    }
+}
+
 fn eval_rune_call(
     rune: RuneKind,
     c: &CallExpression<'_>,
@@ -509,8 +545,6 @@ fn eval_rune_call(
             Some(arg) => eval_set(arg, ctx, guard),
             None => smallvec![EvalAtom::Known(KnownValue::Undefined)],
         },
-        PropsId => smallvec![EvalAtom::Class(ValueClass::String)],
-        EffectTracking => smallvec![EvalAtom::Class(ValueClass::Boolean)],
         DerivedBy => match arg0.map(|e| e.get_inner_expression()) {
             Some(Expression::ArrowFunctionExpression(arrow)) if !arrow.body.is_empty() => {
                 if let Some(stmt) = arrow.body.statements.first()
@@ -775,16 +809,11 @@ fn eval_identifier(
     let Some(&init_expr) = ctx.bindings_init.get(&sym) else {
         return smallvec![EvalAtom::Unknown];
     };
-    if let Expression::CallExpression(call) = init_expr.get_inner_expression()
-        && detect_rune_from_call(call) == Some(RuneKind::PropsId)
-    {
-        return smallvec![EvalAtom::Class(ValueClass::String)];
-    }
     let init_node_id = expression_node_id(init_expr);
     if !guard.insert(init_node_id) {
         return smallvec![EvalAtom::Unknown];
     }
-    let result = eval_set(init_expr, ctx, guard);
+    let result = eval_binding_init(sym, init_expr, ctx, guard);
     guard.remove(&init_node_id);
     if ctx.read_context == ReadContext::Runtime
         && matches!(
@@ -798,6 +827,52 @@ fn eval_identifier(
         return smallvec![EvalAtom::Unknown];
     }
     result
+}
+
+fn signal_rune_kind(semantics: &BindingSemantics) -> Option<RuneKind> {
+    match semantics {
+        BindingSemantics::State(state) => match state.kind {
+            StateKind::State => Some(RuneKind::State),
+            StateKind::StateRaw => Some(RuneKind::StateRaw),
+            StateKind::StateEager => None,
+        },
+        BindingSemantics::OptimizedRune(optimized) => match optimized.kind {
+            StateKind::State => Some(RuneKind::State),
+            StateKind::StateRaw => Some(RuneKind::StateRaw),
+            StateKind::StateEager => None,
+        },
+        BindingSemantics::Derived(derived) | BindingSemantics::OptimizedDerived(derived) => {
+            match derived.kind {
+                DerivedKind::Derived => Some(RuneKind::Derived),
+                DerivedKind::DerivedBy => Some(RuneKind::DerivedBy),
+            }
+        }
+        BindingSemantics::NonReactive
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Unresolved => None,
+    }
+}
+
+fn eval_binding_init(
+    sym: SymbolId,
+    init: &Expression<'_>,
+    ctx: &ValueEvaluator<'_, '_>,
+    guard: &mut FxHashSet<OxcNodeId>,
+) -> EvalSet {
+    if let Some(rune) = signal_rune_kind(&ctx.reactivity.binding_semantics(sym))
+        && let Expression::CallExpression(call) = init.get_inner_expression()
+    {
+        return eval_rune_call(rune, call, ctx, guard);
+    }
+    eval_set(init, ctx, guard)
 }
 
 fn eval_binary(

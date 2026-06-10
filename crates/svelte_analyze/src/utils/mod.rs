@@ -8,7 +8,6 @@ pub(crate) mod ident_gen;
 pub(crate) mod legacy_slot;
 pub(crate) mod node_id_utils;
 pub(crate) mod property_key;
-pub(crate) mod script_info;
 pub(crate) mod simple_expression;
 pub(crate) mod var_decl_kind;
 

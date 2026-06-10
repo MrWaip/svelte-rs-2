@@ -100,24 +100,45 @@ pub(in crate::codegen) fn legacy_dep_expr<'a>(
 
 fn uses_deep_read_state(ctx: &Ctx<'_>, sym: SymbolId) -> bool {
     use svelte_analyze::{
-        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, PropBindingKind,
-        PropBindingSemantics,
+        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
+        PropBindingKind, PropBindingSemantics,
     };
-    let decl = ctx.query.view.binding_semantics(sym);
-    matches!(
-        decl,
+    match ctx.query.view.binding_semantics(sym) {
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::NonSource | PropBindingKind::Rest,
             ..
-        }) | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::Contextual(
-                ContextualBindingSemantics::LetDirective
-                    | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-                    | ContextualBindingSemantics::AwaitValue
-                    | ContextualBindingSemantics::AwaitError
-            )
-            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
-    ) || ctx.query.scoping().is_import(sym)
+        })
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::Contextual(
+            ContextualBindingSemantics::LetDirective
+            | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | ContextualBindingSemantics::AwaitValue
+            | ContextualBindingSemantics::AwaitError
+            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
+        )
+        | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+        | BindingSemantics::MaybeReactive => true,
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Identifier | PropBindingKind::Source { .. },
+            ..
+        })
+        | BindingSemantics::Contextual(
+            ContextualBindingSemantics::EachItem(_)
+            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct)
+            | ContextualBindingSemantics::LetDirectiveDirect
+            | ContextualBindingSemantics::SnippetParam(_),
+        )
+        | BindingSemantics::NonReactive
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Unresolved => false,
+    }
 }
 
 pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
