@@ -542,10 +542,23 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
     }
 
     fn is_reactive_dep(&self, sym: SymbolId) -> bool {
-        !matches!(
-            self.data.reactivity.binding_semantics(sym),
-            BindingSemantics::NonReactive | BindingSemantics::Unresolved
-        )
+        match self.data.reactivity.binding_semantics(sym) {
+            BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved
+            | BindingSemantics::LegacyApiExport => false,
+            BindingSemantics::MaybeReactive
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::RuntimeRune { .. } => true,
+        }
     }
 }
 

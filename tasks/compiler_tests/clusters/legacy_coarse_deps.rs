@@ -1,6 +1,39 @@
 use super::*;
 
 compiler_case!(
+    coarse_deps_reactive_api_export_fn,
+    "legacy/coarse_deps/reactive_api_export_fn"
+);
+compiler_case!(
+    coarse_deps_reactive_api_export_const,
+    "legacy/coarse_deps/reactive_api_export_const"
+);
+compiler_case!(
+    coarse_deps_reactive_api_export_class,
+    "legacy/coarse_deps/reactive_api_export_class"
+);
+compiler_case!(
+    coarse_deps_reactive_local_fn,
+    "legacy/coarse_deps/reactive_local_fn"
+);
+compiler_case!(
+    coarse_deps_reactive_local_const,
+    "legacy/coarse_deps/reactive_local_const"
+);
+compiler_case!(
+    coarse_deps_reactive_prop,
+    "legacy/coarse_deps/reactive_prop"
+);
+compiler_case!(
+    coarse_deps_reactive_import,
+    "legacy/coarse_deps/reactive_import"
+);
+compiler_case!(
+    coarse_deps_reactive_state,
+    "legacy/coarse_deps/reactive_state"
+);
+
+compiler_case!(
     coarse_deps_state_store_subscribed,
     "legacy/coarse_deps/state_store_subscribed"
 );
