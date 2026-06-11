@@ -600,7 +600,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 &mut self.prop_member_mutation_root_refs,
             ));
 
-        {
+        if !self.data.script.runes() {
             let imports = self.legacy_reactive_mutated_imports.clone();
             let lr = self.data.reactivity.legacy_reactive_mut();
             for sym in &imports {

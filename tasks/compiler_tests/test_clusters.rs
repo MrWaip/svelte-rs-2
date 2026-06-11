@@ -1,4 +1,13 @@
-use compiler_tests::harness::assert_compiler;
+use compiler_tests::harness::{assert_compiler, assert_compiler_module};
+
+macro_rules! compiler_module_case {
+    ($name:ident, $path:literal) => {
+        #[test]
+        fn $name() {
+            assert_compiler_module($path);
+        }
+    };
+}
 
 macro_rules! compiler_case {
     ($name:ident, $path:literal) => {
@@ -78,3 +87,6 @@ mod snippets;
 
 #[path = "clusters/attribute_memo.rs"]
 mod attribute_memo;
+
+#[path = "clusters/runes_imports.rs"]
+mod runes_imports;
