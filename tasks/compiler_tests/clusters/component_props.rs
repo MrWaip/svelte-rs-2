@@ -22,3 +22,11 @@ compiler_case!(
     literal_const_shorthand,
     "component_props/literal_const_shorthand"
 );
+compiler_case!(
+    function_const_shorthand,
+    "component_props/function_const_shorthand"
+);
+compiler_case!(
+    snippet_shorthand_getter,
+    "component_props/snippet_shorthand_getter"
+);

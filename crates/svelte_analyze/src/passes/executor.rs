@@ -208,6 +208,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.reactivity,
                 &data.scoping,
                 &data.expressions_v2,
+                &data.template.snippets,
                 &data.script.blocker_data,
                 &data.output.ignore_data,
                 options.dev,

@@ -21,7 +21,7 @@ use crate::reactivity_semantics::data::{
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{
     BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, IgnoreData,
-    ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, WindowBindKind,
+    ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, SnippetData, WindowBindKind,
 };
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
 use crate::utils::expression_calls_or_awaits;
@@ -71,6 +71,7 @@ pub fn build<'a>(
     reactivity: &ReactivitySemantics,
     scoping: &ComponentScoping<'a>,
     expressions: &ExpressionSemanticsStore,
+    snippets: &SnippetData,
     blockers: &BlockerData,
     ignore_data: &IgnoreData,
     dev: bool,
@@ -83,6 +84,7 @@ pub fn build<'a>(
         reactivity,
         scoping,
         expressions,
+        snippets,
         blockers,
         ignore_data,
         dev,
@@ -122,6 +124,7 @@ struct Ctx<'a, 'p> {
     reactivity: &'p ReactivitySemantics,
     scoping: &'p ComponentScoping<'a>,
     expressions: &'p ExpressionSemanticsStore,
+    snippets: &'p SnippetData,
     blockers: &'p BlockerData,
     ignore_data: &'p IgnoreData,
     dev: bool,
@@ -169,6 +172,9 @@ fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
                 }
                 if matches!(data.evaluation, Evaluation::Known(_)) {
                     return false;
+                }
+                if ctx.snippets.snippet_by_symbol(sym).is_some() {
+                    return true;
                 }
                 !matches!(data.evaluation.class(), Some(ValueClass::Function))
             }
