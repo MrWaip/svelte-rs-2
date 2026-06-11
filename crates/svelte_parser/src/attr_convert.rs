@@ -131,13 +131,14 @@ impl<'a> Parser<'a> {
                             .expression_span
                             .source_text(self.source)
                             .to_string();
+                        let event_name = name.strip_prefix("on").map(|s| s.to_string());
                         attributes.push(Attribute::ExpressionAttribute(ExpressionAttribute {
                             id: attr_id,
                             span: attr_span,
                             name,
                             expression: ExprRef::new(expr_tag.expression_span),
                             shorthand: true,
-                            event_name: None,
+                            event_name,
                         }));
                     }
                 }
