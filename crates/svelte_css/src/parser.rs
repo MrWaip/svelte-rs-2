@@ -12,6 +12,15 @@ pub fn parse(source: &str) -> (StyleSheet, Vec<Diagnostic>) {
     (stylesheet, parser.diagnostics)
 }
 
+fn is_nth_pseudo(name: &str) -> bool {
+    name.eq_ignore_ascii_case("nth-child")
+        || name.eq_ignore_ascii_case("nth-last-child")
+        || name.eq_ignore_ascii_case("nth-of-type")
+        || name.eq_ignore_ascii_case("nth-last-of-type")
+        || name.eq_ignore_ascii_case("nth-col")
+        || name.eq_ignore_ascii_case("nth-last-col")
+}
+
 struct Parser<'src> {
     scanner: Scanner<'src>,
     next_id: u32,
@@ -481,6 +490,49 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn parse_nth_selector_list(&mut self) -> Option<SelectorList> {
+        self.scanner.skip_whitespace_and_comments();
+        let start = self.scanner.current_start();
+
+        let nth = self.try_parse_nth()?;
+
+        let save = self.scanner.save();
+        self.scanner.skip_whitespace_and_comments();
+        let has_of_selector =
+            !(self.scanner.is_at(TokenKind::RParen) || self.scanner.is_at(TokenKind::Comma));
+        self.scanner.restore(save);
+
+        if has_of_selector {
+            let mut list = self.parse_selector_list(true)?;
+            let first = list.children.first_mut()?;
+            first.children[0]
+                .selectors
+                .insert(0, SimpleSelector::Nth(nth));
+            first.children[0].span.start = start;
+            first.span.start = start;
+            list.span.start = start;
+            return Some(list);
+        }
+
+        let id = self.alloc_id();
+        let end = self.scanner.prev_end;
+        let mut rel = self.new_relative_selector(None);
+        rel.selectors.push(SimpleSelector::Nth(nth));
+        rel.span = Span::new(start, end);
+        let mut rel_children: RelativeSelectorVec = SmallVec::new();
+        rel_children.push(rel);
+        let mut children: SelectorVec<ComplexSelector> = SmallVec::new();
+        children.push(ComplexSelector {
+            id,
+            span: Span::new(start, end),
+            children: rel_children,
+        });
+        Some(SelectorList {
+            span: Span::new(start, end),
+            children,
+        })
+    }
+
     fn parse_complex_selector(&mut self, inside_pseudo: bool) -> Option<ComplexSelector> {
         let id = self.alloc_id();
         let list_start = self.scanner.current_start();
@@ -546,7 +598,11 @@ impl<'src> Parser<'src> {
                     let (_, name) = self.parse_ident_with_name()?;
 
                     let args = if self.scanner.eat(TokenKind::LParen) {
-                        let sel_list = self.parse_selector_list(true)?;
+                        let sel_list = if is_nth_pseudo(&name) {
+                            self.parse_nth_selector_list()?
+                        } else {
+                            self.parse_selector_list(true)?
+                        };
                         if !self.scanner.eat(TokenKind::RParen) {
                             self.recover(
                                 DiagnosticKind::CssExpectedToken { token: ")".into() },
@@ -589,15 +645,7 @@ impl<'src> Parser<'src> {
                 }
 
                 _ => {
-                    if inside_pseudo {
-                        if let Some(nth) = self.try_parse_nth() {
-                            rel.selectors.push(SimpleSelector::Nth(nth));
-                        } else if let Some(pct) = self.try_parse_percentage() {
-                            rel.selectors.push(SimpleSelector::Percentage(pct));
-                        } else if !self.is_combinator_start() {
-                            rel.selectors.push(self.parse_type_selector(start)?);
-                        }
-                    } else if let Some(pct) = self.try_parse_percentage() {
+                    if let Some(pct) = self.try_parse_percentage() {
                         rel.selectors.push(SimpleSelector::Percentage(pct));
                     } else if !self.is_combinator_start() {
                         rel.selectors.push(self.parse_type_selector(start)?);

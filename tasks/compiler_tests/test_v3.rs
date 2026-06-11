@@ -6032,3 +6032,53 @@ fn diagnose_legacy_slot_let_const_tag_ordering() {
 fn legacy_bindable_export_with_api_export() {
     assert_compiler("legacy_bindable_export_with_api_export");
 }
+
+#[rstest]
+fn css_has_leading_plus_global() {
+    assert_compiler("css_has_leading_plus_global");
+}
+
+#[rstest]
+fn css_has_leading_plus_global_flat() {
+    assert_compiler("css_has_leading_plus_global_flat");
+}
+
+#[rstest]
+fn css_has_leading_child_global() {
+    assert_compiler("css_has_leading_child_global");
+}
+
+#[rstest]
+fn css_has_leading_plus_class() {
+    assert_compiler("css_has_leading_plus_class");
+}
+
+#[rstest]
+fn css_has_descendant_global() {
+    assert_compiler("css_has_descendant_global");
+}
+
+#[rstest]
+fn css_has_leading_tilde_global() {
+    assert_compiler("css_has_leading_tilde_global");
+}
+
+#[rstest]
+fn css_nth_child_leading_plus_sign() {
+    assert_compiler("css_nth_child_leading_plus_sign");
+}
+
+#[rstest]
+fn css_nth_child_of_selector_list() {
+    assert_compiler("css_nth_child_of_selector_list");
+}
+
+#[rstest]
+fn css_nth_child_of_combinator() {
+    assert_compiler("css_nth_child_of_combinator");
+}
+
+#[rstest]
+fn css_nth_child_uppercase_name() {
+    assert_compiler("css_nth_child_uppercase_name");
+}

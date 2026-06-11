@@ -1,0 +1,5 @@
+.a.svelte-1ic36ag {
+  &:has(> .b) {
+    color: red;
+  }
+}

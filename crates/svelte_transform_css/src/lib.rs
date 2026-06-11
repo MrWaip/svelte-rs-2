@@ -577,6 +577,7 @@ fn promoted_first_combinator(
 }
 
 fn unwrap_global(complex: &mut ComplexSelector) {
+    let outer_combinator = complex.children[0].combinator;
     let sel = complex.children[0].selectors.remove(0);
     if let SimpleSelector::Global {
         args: Some(args), ..
@@ -585,6 +586,11 @@ fn unwrap_global(complex: &mut ComplexSelector) {
         let mut new_children = svelte_css::RelativeSelectorVec::new();
         for inner_complex in args.children {
             new_children.extend(inner_complex.children);
+        }
+        if let Some(first) = new_children.first_mut()
+            && first.combinator.is_none()
+        {
+            first.combinator = outer_combinator;
         }
         complex.children = new_children;
     }

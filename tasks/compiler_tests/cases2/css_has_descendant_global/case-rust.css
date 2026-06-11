@@ -1,0 +1,5 @@
+.a.svelte-1mcpu1e {
+  &:has(.b) {
+    color: red;
+  }
+}
