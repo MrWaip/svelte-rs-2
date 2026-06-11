@@ -846,17 +846,35 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_expression,
-        "bind/validate_bind_invalid_expression",
-        ignore = "known mismatch: analyzer reports extra non_reactive_update alongside bind_invalid_expression"
+        "bind/validate_bind_invalid_expression"
     );
     diagnostic_case!(
         validate_bind_invalid_value,
-        "bind/validate_bind_invalid_value",
-        ignore = "known mismatch: analyzer reports bind_invalid_value while npm svelte/compiler reports no diagnostic"
+        "bind/validate_bind_invalid_value"
     );
     diagnostic_case!(
         validate_bind_plain_let_is_valid,
         "bind/validate_bind_plain_let_is_valid"
+    );
+    diagnostic_case!(
+        validate_bind_group_snippet_parameter_member,
+        "bind/validate_bind_group_snippet_parameter_member"
+    );
+    diagnostic_case!(
+        validate_bind_value_snippet_parameter,
+        "bind/validate_bind_value_snippet_parameter"
+    );
+    diagnostic_case!(
+        validate_bind_value_snippet_parameter_member_no_error,
+        "bind/validate_bind_value_snippet_parameter_member_no_error"
+    );
+    diagnostic_case!(
+        validate_bind_group_each_item,
+        "bind/validate_bind_group_each_item"
+    );
+    diagnostic_case!(
+        validate_bind_group_snippet_parameter_legacy,
+        "bind/validate_bind_group_snippet_parameter_legacy"
     );
     diagnostic_case!(
         validate_attribute_contenteditable_missing,
@@ -868,8 +886,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_name_with_special_element_candidates,
-        "bind/validate_bind_invalid_name_with_special_element_candidates",
-        ignore = "known mismatch: analyzer reports extra attribute_contenteditable_missing alongside bind_invalid_name"
+        "bind/validate_bind_invalid_name_with_special_element_candidates"
     );
     diagnostic_case!(
         validate_bind_invalid_parens,
@@ -889,8 +906,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_group_invalid_snippet_parameter,
-        "bind/validate_bind_group_invalid_snippet_parameter",
-        ignore = "known mismatch: analyzer reports bind_group_invalid_snippet_parameter in addition to npm svelte/compiler snippet_parameter_assignment"
+        "bind/validate_bind_group_invalid_snippet_parameter"
     );
     diagnostic_case!(
         validate_attribute_contenteditable_dynamic,
@@ -906,8 +922,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_each_rest,
-        "bind/validate_bind_invalid_each_rest",
-        ignore = "known mismatch: analyzer reports bind_invalid_each_rest as a warning while npm svelte/compiler reports an error"
+        "bind/validate_bind_invalid_each_rest"
     );
     diagnostic_case!(
         validate_bind_checked_radio_target,
@@ -919,8 +934,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_member_expression_no_error,
-        "bind/validate_bind_member_expression_no_error",
-        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning"
+        "bind/validate_bind_member_expression_no_error"
     );
     diagnostic_case!(
         validate_bind_getter_setter_no_error,
@@ -1386,8 +1400,7 @@ mod runes {
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_export_specifier,
-        "runes/validate_state_invalid_export_for_reassigned_state_export_specifier",
-        ignore = "known mismatch: analyzer reports state_invalid_export for module export specifier while npm svelte/compiler reports no diagnostic"
+        "runes/validate_state_invalid_export_for_reassigned_state_export_specifier"
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_default_export,
@@ -1857,6 +1870,10 @@ mod snippets {
         "snippets/validate_snippet_parameter_assignment"
     );
     diagnostic_case!(
+        validate_snippet_parameter_assignment_legacy,
+        "snippets/validate_snippet_parameter_assignment_legacy"
+    );
+    diagnostic_case!(
         validate_snippet_parameter_assignment_in_nested_target,
         "snippets/validate_snippet_parameter_assignment_in_nested_target"
     );
@@ -1882,8 +1899,7 @@ mod snippets {
     );
     diagnostic_case!(
         validate_snippet_invalid_export,
-        "snippets/validate_snippet_invalid_export",
-        ignore = "known mismatch: analyzer and npm svelte/compiler report snippet_invalid_export on different spans"
+        "snippets/validate_snippet_invalid_export"
     );
     diagnostic_case!(
         validate_snippet_invalid_export_no_false_positive,

@@ -5327,17 +5327,22 @@ fn bind_validator_keeps_plain_let_targets_valid() {
 fn bind_group_validator_uses_unified_snippet_param_source_kind() {
     let (_component, _data, diags) = analyze_source_with_diags(
         r#"{#snippet group(selected)}
+    <input type="checkbox" bind:group={selected.value} />
+{/snippet}"#,
+    );
+
+    assert_diag_codes(&diags, &["bind_group_invalid_snippet_parameter"]);
+}
+
+#[test]
+fn bind_group_to_snippet_parameter_reports_assignment_error_first() {
+    let (_component, _data, diags) = analyze_source_with_diags(
+        r#"{#snippet group(selected)}
     <input type="checkbox" bind:group={selected} />
 {/snippet}"#,
     );
 
-    assert_diag_codes(
-        &diags,
-        &[
-            "bind_group_invalid_snippet_parameter",
-            "snippet_parameter_assignment",
-        ],
-    );
+    assert_diag_codes(&diags, &["snippet_parameter_assignment"]);
 }
 
 #[test]

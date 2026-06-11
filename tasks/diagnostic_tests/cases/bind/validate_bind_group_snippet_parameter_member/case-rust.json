@@ -1,0 +1,8 @@
+[
+  {
+    "severity": "error",
+    "code": "bind_group_invalid_snippet_parameter",
+    "start": 122,
+    "end": 132
+  }
+]

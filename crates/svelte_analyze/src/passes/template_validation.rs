@@ -1313,7 +1313,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 if is_identifier_target {
                     validate_bind_identifier_value(dir, ctx);
                 }
-                validate_bind_group_binding(dir, ctx);
+                validate_bind_group_binding(dir, is_identifier_target, ctx);
             }
             Some(BindExpressionKind::Sequence { len, has_parens }) => {
                 validate_bind_sequence_expression(dir, len, has_parens, ctx);
@@ -1330,7 +1330,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 if is_identifier_target {
                     validate_bind_identifier_value(dir, ctx);
                 }
-                validate_bind_group_binding(dir, ctx);
+                validate_bind_group_binding(dir, is_identifier_target, ctx);
             }
         }
 
@@ -1726,9 +1726,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
     ) {
         validate_const_tag_invalid_reference_expr(id, expr, ctx);
 
-        if !ctx.runes {
-            return;
-        }
         let is_bind = ctx
             .parent()
             .is_some_and(|p| p.kind == ParentKind::BindDirective);
@@ -1741,14 +1738,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     span,
                 ));
             }
-            Expression::Identifier(ident) if is_bind && is_each_block_var_ref(ident, ctx.data) => {
+            Expression::Identifier(ident)
+                if ctx.runes && is_bind && is_each_block_var_ref(ident, ctx.data) =>
+            {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
                     span,
                 ));
             }
-            _ if !is_bind && contains_invalid_each_assignment(expr, ctx.data) => {
+            _ if ctx.runes && !is_bind && contains_invalid_each_assignment(expr, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
@@ -2122,7 +2121,11 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     }
 }
 
-fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
+fn validate_bind_group_binding(
+    dir: &BindDirective,
+    identifier_target: bool,
+    ctx: &mut VisitContext<'_, '_>,
+) {
     if dir.name.as_str() != "group" {
         return;
     }
@@ -2131,10 +2134,12 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
         return;
     };
 
-    if matches!(
-        ctx.data.reactivity.binding_semantics(sym_id),
-        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::SnippetParam(_),),
-    ) {
+    if !identifier_target
+        && matches!(
+            ctx.data.reactivity.binding_semantics(sym_id),
+            crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::SnippetParam(_),),
+        )
+    {
         emit_bind_error(
             ctx,
             dir.expression.span,

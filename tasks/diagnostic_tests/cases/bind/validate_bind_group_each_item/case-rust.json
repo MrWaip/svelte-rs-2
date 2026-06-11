@@ -2,7 +2,7 @@
   {
     "severity": "error",
     "code": "each_item_invalid_assignment",
-    "start": 131,
-    "end": 135
+    "start": 116,
+    "end": 120
   }
 ]
