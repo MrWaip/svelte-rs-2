@@ -1,8 +1,7 @@
 use std::mem;
-use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BindingSemantics, ContextualBindingSemantics, Volatility};
+use svelte_analyze::Volatility;
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -53,22 +52,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(el_id);
         let is_svelte_component_legacy = matches!(node, Node::SvelteComponentLegacy(_));
         let is_svelte_self = matches!(node, Node::SvelteSelf(_));
-        let callee_root_wrapped_through_get = matches!(node, Node::ComponentNode(cn) if {
-            let name = self.ctx.query.component.source_text(cn.name.span);
-            let root = name.split_once('.').map_or(name, |(r, _)| r);
-            self.ctx
-                .query
-                .component
-                .store
-                .node_fragment(el_id)
-                .and_then(|fid| self.ctx.query.view.fragment_scope_by_id(fid))
-                .and_then(|scope| self.ctx.query.view.find_binding(scope, root))
-                .is_some_and(|sym| matches!(
-                    self.ctx.query.view.binding_semantics(sym),
-                    BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective)
-                        | BindingSemantics::LegacyState(_)
-                ))
-        });
 
         let (cn_name, span_start, cn_fragment, named_slots) = {
             let Some(view) = node.as_component_like() else {
@@ -225,24 +208,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.alloc_str(&cn_name)
         };
-        let component_call = if callee_root_wrapped_through_get {
-            let (root, rest) = callee.split_once('.').map_or((callee, ""), |(r, s)| (r, s));
-            let root_ident = self.ctx.b.alloc_str(root);
-            let mut wrapped_callee = rune_get(&self.ctx.b, root_ident);
-            if !rest.is_empty() {
-                for seg in rest.split('.') {
-                    wrapped_callee = self.ctx.b.static_member_expr(wrapped_callee, seg);
-                }
-            }
-            self.ctx.b.call_expr_callee(
-                wrapped_callee,
-                [Arg::Expr(anchor_expr), Arg::Expr(props_expr)],
-            )
-        } else {
-            self.ctx
-                .b
-                .call_expr(callee, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)])
+        let name_expr_id = match self.ctx.query.component.store.get(el_id) {
+            Node::ComponentNode(cn) => Some(cn.name.id()),
+            _ => None,
         };
+        let callee_expr = match name_expr_id {
+            Some(id) => self
+                .ctx
+                .state
+                .parsed
+                .take_expr(id)
+                .ok_or(CodegenError::MissingExpression(el_id))?,
+            None => self.ctx.b.rid_expr(callee),
+        };
+        let component_call = self
+            .ctx
+            .b
+            .call_expr_callee(callee_expr, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)]);
 
         let final_expr = if let Some(bind_id) = props.bind_this {
             self.build_bind_this_call(el_id, bind_id, component_call)?
