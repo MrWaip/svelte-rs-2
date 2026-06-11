@@ -105,6 +105,30 @@ let is_reactive = match binding {
 };
 ```
 
+## No negated condition with an `else`
+
+`if !cond { a } else { b }` makes the reader mentally flip the test to see which branch runs when. When both branches exist, lead with the positive condition.
+
+❌ Negation forces a double-take:
+```rust
+if !user.is_active {
+    deactivate()
+} else {
+    activate()
+}
+```
+
+✅ Positive first:
+```rust
+if user.is_active {
+    activate()
+} else {
+    deactivate()
+}
+```
+
+(A lone negated guard with no `else` — `if !ok { return }` — is fine; that's the early-return pattern.)
+
 ## Human-readable code
 
 Write human-friendly code, don't write one-liners like leet code.
@@ -130,5 +154,47 @@ for session in &sessions {
     if is_active && session.region == current_region {
         active_ids.push(session.id);
     }
+}
+```
+
+## Unfold long boolean chains into guard clauses
+
+A long `||`/`&&` chain is hard to read — worse with a multi-statement `.any()` closure spliced in. Give it a `bool` function and write one guard clause per condition; iterate with a plain `for` that returns early.
+
+❌ One long `||` chain with a statement-closure inside:
+```rust
+TopLevelForm::Call => {
+    facts.has_runtime_root
+        || facts.has_store_ref
+        || reads_legacy_props_object(facts)
+        || facts.references.iter().any(|&sym| {
+            let semantics = reactivity.binding_semantics(sym);
+            if matches!(semantics, BindingSemantics::MaybeReactive) {
+                return true;
+            }
+            reactivity.symbol_is_volatile(scoping, sym)
+                || scoping.is_component_top_level_symbol(sym)
+        })
+}
+```
+
+✅ One guard clause per condition, `false` falls out the bottom:
+```rust
+fn call_form_is_reactive(facts: &TopLevelFacts, reactivity: &Reactivity, scoping: &Scoping) -> bool {
+    if facts.has_runtime_root {
+        return true;
+    }
+    if facts.has_store_ref {
+        return true;
+    }
+    if reads_legacy_props_object(facts) {
+        return true;
+    }
+    for &symbol in &facts.references {
+        if symbol_forces_reactive(reactivity, scoping, symbol) {
+            return true;
+        }
+    }
+    false
 }
 ```
