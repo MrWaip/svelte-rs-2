@@ -75,3 +75,6 @@ mod const_tag;
 
 #[path = "clusters/snippets.rs"]
 mod snippets;
+
+#[path = "clusters/attribute_memo.rs"]
+mod attribute_memo;

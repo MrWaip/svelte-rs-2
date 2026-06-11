@@ -8,7 +8,6 @@ use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::super::data_structures::{EmitState, TemplateMemoState};
-use super::super::effect::emit_effect_call_extern;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -26,18 +25,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        let (class_value, mut memo_deps) = if has_class_attr {
+        let class_value = if has_class_attr {
             let Some(class_attr_id) = self.ctx.class_attr_id(owner_id) else {
                 return CodegenError::unexpected_node(
                     owner_id,
                     "element with class attribute should have class_attr_id",
                 );
             };
-            self.build_class_attr_value(owner_id, class_attr_id)?
+            self.build_class_attr_value(owner_id, class_attr_id, &mut state.shared_memo)?
         } else {
             let static_class = self.ctx.static_class(owner_id).unwrap_or("").to_string();
             let hash = self.ctx.css_hash().to_string();
-            let expr = if self.ctx.is_css_scoped(owner_id) && !hash.is_empty() {
+            if self.ctx.is_css_scoped(owner_id) && !hash.is_empty() {
                 let combined = if static_class.is_empty() {
                     hash
                 } else {
@@ -46,8 +45,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.ctx.b.str_expr(&combined)
             } else {
                 self.ctx.b.str_expr(&static_class)
-            };
-            (expr, TemplateMemoState::default())
+            }
         };
 
         let directives_obj = if has_class_dirs {
@@ -73,13 +71,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx,
             &mut state.init,
             &mut state.update,
-            &mut state.after_update,
             owner_var,
             class_value,
             scope_hash.as_deref(),
             directives_obj,
             class_volatility,
-            &mut memo_deps,
             is_html,
         );
 
@@ -120,7 +116,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         owner_id: NodeId,
         class_attr_id: NodeId,
-    ) -> Result<(Expression<'a>, TemplateMemoState<'a>)> {
+        memo: &mut TemplateMemoState<'a>,
+    ) -> Result<Expression<'a>> {
         let el = self.ctx.element(owner_id);
         let attributes = el.attributes.clone();
 
@@ -144,9 +141,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 if self.ctx.needs_clsx(class_attr_id) {
                     expr = self.ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
                 }
-                Ok((expr, TemplateMemoState::default()))
+                let class_value = match data.as_ref().map(|d| d.volatility) {
+                    Some(Volatility::Heavy) => {
+                        if let Some(d) = &data {
+                            memo.push_expression_data(self.ctx, d);
+                        }
+                        let index = memo.sync_values_push(expr);
+                        memo.sync_param_expr(self.ctx, index)
+                    }
+                    Some(Volatility::Asynchronous) => {
+                        if let Some(d) = &data {
+                            memo.push_expression_data(self.ctx, d);
+                        }
+                        let index = memo.async_values_push(expr);
+                        memo.async_param_expr(self.ctx, index)
+                    }
+                    _ => expr,
+                };
+                Ok(class_value)
             }
-            Attribute::ConcatenationAttribute(a) => self.build_html_concat_for_class(a),
+            Attribute::ConcatenationAttribute(a) => self.build_html_concat_for_class(a, memo),
             _ => CodegenError::unexpected_node(
                 class_attr_id,
                 "class_attr_id must reference ExpressionAttribute or ConcatenationAttribute",
@@ -157,7 +171,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_html_concat_for_class(
         &mut self,
         attr: &svelte_ast::ConcatenationAttribute,
-    ) -> Result<(Expression<'a>, TemplateMemoState<'a>)> {
+        memo: &mut TemplateMemoState<'a>,
+    ) -> Result<Expression<'a>> {
         use svelte_analyze::{AttributeSemantics, HtmlConcatSemantics};
         let semantics: HtmlConcatSemantics = match self.ctx.query.analysis.attributes.get(attr.id) {
             AttributeSemantics::HtmlConcat(s) => s.clone(),
@@ -168,9 +183,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 );
             }
         };
-        let mut memo_deps = TemplateMemoState::default();
-        let expr = self.build_html_concat_expr(attr, &semantics, &mut memo_deps)?;
-        Ok((expr, memo_deps))
+        self.build_html_concat_expr(attr, &semantics, memo)
     }
 
     pub(in super::super) fn emit_svelte_element_class_directives(
@@ -206,18 +219,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let class_value = self.ctx.b.str_expr(&value);
 
-        let mut memo_deps = TemplateMemoState::default();
         emit_set_class_call(
             self.ctx,
             &mut state.init,
             &mut state.update,
-            &mut state.after_update,
             owner_var,
             class_value,
             None,
             Some(dir_obj),
             class_volatility,
-            &mut memo_deps,
             false,
         );
         Ok(())
@@ -264,13 +274,11 @@ fn emit_set_class_call<'a>(
     ctx: &mut Ctx<'a>,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
-    after_update: &mut Vec<Statement<'a>>,
     el_name: &str,
     class_value: Expression<'a>,
     scope_hash: Option<&str>,
     directives_obj: Option<Expression<'a>>,
     class_volatility: Volatility,
-    memo_deps: &mut TemplateMemoState<'a>,
     is_html: bool,
 ) {
     let scope_expr = |ctx: &mut Ctx<'a>| match scope_hash {
@@ -326,21 +334,10 @@ fn emit_set_class_call<'a>(
             args.push(Arg::Expr(ctx.b.str_expr(h)));
         }
         let set_class_call = ctx.b.call_expr("$.set_class", args);
-        if memo_deps.has_deps() {
-            let param_names = memo_deps.param_names();
-            let params = if param_names.is_empty() {
-                ctx.b.no_params()
-            } else {
-                ctx.b.params(param_names.iter().map(|s| s.as_str()))
-            };
-            let callback = ctx.b.arrow_expr(params, [ctx.b.expr_stmt(set_class_call)]);
-            emit_effect_call_extern(ctx, "$.template_effect", callback, memo_deps, after_update);
-        } else {
-            let target = match class_volatility {
-                Volatility::Static => &mut *init,
-                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => &mut *update,
-            };
-            target.push(ctx.b.expr_stmt(set_class_call));
-        }
+        let target = match class_volatility {
+            Volatility::Static => &mut *init,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => &mut *update,
+        };
+        target.push(ctx.b.expr_stmt(set_class_call));
     }
 }
