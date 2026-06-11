@@ -10,3 +10,6 @@ workspace = true
 doctest = false
 
 [dependencies]
+oxc_allocator = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_span = { workspace = true }

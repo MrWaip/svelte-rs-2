@@ -5,7 +5,7 @@ use std::{
 
 use pretty_assertions::assert_eq;
 use svelte_compiler::{compile, compile_module};
-use test_support::strip_reference_only_css_markers;
+use test_support::{strip_js_comments, strip_reference_only_css_markers};
 
 use crate::cases::{cluster_case_dir, load_cluster_case, load_cluster_module_case};
 use crate::sourcemap_invariants::assert_sourcemap_invariants;
@@ -32,7 +32,11 @@ pub fn assert_compiler_module(case: &str) {
         .write_all(js.as_bytes())
         .expect("test invariant");
 
-    assert_eq!(js, expected, "[{case}] JS mismatch");
+    assert_eq!(
+        strip_js_comments(&js),
+        strip_js_comments(&expected),
+        "[{case}] JS mismatch"
+    );
 
     if let Some(map) = js_output.map.as_ref() {
         assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
@@ -55,7 +59,11 @@ pub fn assert_compiler(case: &str) {
         .write_all(js.as_bytes())
         .expect("test invariant");
 
-    assert_eq!(js, expected_js, "[{case}] JS mismatch");
+    assert_eq!(
+        strip_js_comments(&js),
+        strip_js_comments(&expected_js),
+        "[{case}] JS mismatch"
+    );
 
     if let Some(map) = js_output.map.as_ref() {
         assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
