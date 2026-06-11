@@ -342,6 +342,8 @@ pub enum ReferenceSemantics {
 
     LegacyRestPropsIdentifierRead,
 
+    LegacySlotsIdentifierRead,
+
     LegacyStateRead {
         safe: bool,
     },
@@ -418,6 +420,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::RestPropMemberRewrite
             | ReferenceSemantics::LegacyPropsIdentifierRead
             | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { .. }
@@ -560,6 +563,8 @@ pub(crate) enum ReferenceFacts {
     LegacyPropsIdentifierRead,
 
     LegacyRestPropsIdentifierRead,
+
+    LegacySlotsIdentifierRead,
 
     LegacyStateRead {
         safe: bool,
@@ -863,6 +868,9 @@ impl ReactivitySemantics {
             }
             Some(ReferenceFacts::LegacyRestPropsIdentifierRead) => {
                 ReferenceSemantics::LegacyRestPropsIdentifierRead
+            }
+            Some(ReferenceFacts::LegacySlotsIdentifierRead) => {
+                ReferenceSemantics::LegacySlotsIdentifierRead
             }
             Some(ReferenceFacts::LegacyStateRead { safe }) => {
                 ReferenceSemantics::LegacyStateRead { safe: *safe }

@@ -246,18 +246,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 None => return Ok(None),
             };
 
-        let class_volatility = self.ctx.class_state_volatility(owner_id);
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for (id, name, has_expression, expr_id) in &dir_snapshot {
             let (expr, same_name) = if *has_expression {
                 let Some(parsed) = self.ctx.state.parsed.take_expr(*expr_id) else {
                     return CodegenError::missing_expression(*id);
-                };
-                let parsed = match class_volatility {
-                    Volatility::Static => parsed,
-                    Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
-                        self.maybe_wrap_legacy_slots_read(parsed)
-                    }
                 };
                 (parsed, self.ctx.is_expression_shorthand(*id))
             } else {

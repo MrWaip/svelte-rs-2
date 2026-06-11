@@ -18,7 +18,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
         match emit {
             ComponentAttachEmit::Wrapped => {
                 let call = self.ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);

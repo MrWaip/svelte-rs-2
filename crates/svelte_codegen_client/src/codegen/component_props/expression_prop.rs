@@ -51,7 +51,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
         match memo {
             ComponentPropMemo::Derived => {
                 let data = self.ctx.expression_data(attr_id).cloned();

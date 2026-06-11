@@ -20,6 +20,41 @@ use crate::PropsFlags;
 
 const PROPS_NAME: &str = "$$props";
 const REST_PROPS_NAME: &str = "$$restProps";
+const SLOTS_NAME: &str = "$$slots";
+
+#[derive(Clone, Copy)]
+enum LegacyMagicObject {
+    Props,
+    RestProps,
+    Slots,
+}
+
+impl LegacyMagicObject {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            PROPS_NAME => Some(Self::Props),
+            REST_PROPS_NAME => Some(Self::RestProps),
+            SLOTS_NAME => Some(Self::Slots),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Props => PROPS_NAME,
+            Self::RestProps => REST_PROPS_NAME,
+            Self::Slots => SLOTS_NAME,
+        }
+    }
+
+    fn read_fact(self) -> ReferenceFacts {
+        match self {
+            Self::Props => ReferenceFacts::LegacyPropsIdentifierRead,
+            Self::RestProps => ReferenceFacts::LegacyRestPropsIdentifierRead,
+            Self::Slots => ReferenceFacts::LegacySlotsIdentifierRead,
+        }
+    }
+}
 
 pub(super) fn classify_export_named_declaration<'a>(
     data: &mut AnalysisData<'a>,
@@ -264,34 +299,49 @@ fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags 
     flags
 }
 
-pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>) {
-    if data.script.runes() {
-        return;
-    }
+pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
+    let runes = data.script.runes();
+    let root = data.scoping.root_scope_id();
     let unresolved = data.scoping.root_unresolved_references().clone();
     let mut uses_props = false;
     let mut uses_rest_props = false;
+    let mut registered_any = false;
+
     for (name, refs) in &unresolved {
-        let (fact, props_kind) = if name.as_str() == PROPS_NAME {
-            (ReferenceFacts::LegacyPropsIdentifierRead, true)
-        } else if name.as_str() == REST_PROPS_NAME {
-            (ReferenceFacts::LegacyRestPropsIdentifierRead, false)
-        } else {
+        let Some(object) = LegacyMagicObject::from_name(name.as_str()) else {
             continue;
         };
+        let is_slots = matches!(object, LegacyMagicObject::Slots);
+        if runes && !is_slots {
+            continue;
+        }
         for &ref_id in refs {
             let reference = data.scoping.get_reference(ref_id);
             if !reference.is_read() || reference.is_write() {
                 continue;
             }
             data.reactivity
-                .record_reference_semantics(ref_id, fact.clone());
-            if props_kind {
-                uses_props = true;
-            } else {
-                uses_rest_props = true;
+                .record_reference_semantics(ref_id, object.read_fact());
+            match object {
+                LegacyMagicObject::Props => uses_props = true,
+                LegacyMagicObject::RestProps => uses_rest_props = true,
+                LegacyMagicObject::Slots => {}
             }
         }
+        if data.scoping.find_binding(root, object.name()).is_none() {
+            let sym = data.scoping.add_synthetic_binding(root, object.name());
+            data.scoping.mark_init_known(sym);
+            registered_any = true;
+        }
+        if is_slots {
+            data.output.needs_sanitized_legacy_slots = true;
+        }
+    }
+
+    if registered_any {
+        data.scoping
+            .semantics_mut()
+            .finalize_unresolved_references();
     }
     data.reactivity
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);

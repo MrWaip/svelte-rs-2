@@ -118,7 +118,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                 return CodegenError::missing_expression(attr_id);
             };
-            let expr = self.maybe_wrap_legacy_slots_read(expr);
             match emit {
                 BoundaryPropEmit::Getter => props.push(ObjProp::Getter(key, expr)),
                 BoundaryPropEmit::KeyValue => props.push(ObjProp::KeyValue(key, expr)),

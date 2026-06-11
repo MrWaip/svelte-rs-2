@@ -99,7 +99,7 @@ pub(crate) fn build_v2<'a>(
     references::collect_symbol_semantics(data);
     compute_const_tag_reactivity(component, parsed, data);
 
-    legacy::classify_unresolved_legacy_identifiers(data);
+    legacy::register_legacy_synthetic_objects(data);
     legacy::finalize_legacy_aggregates(data);
     legacy_reactive::classify_mutated_import_references(data);
     import_subscribed::classify_import_subscribed_reads(data);

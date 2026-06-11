@@ -234,6 +234,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -302,6 +303,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -385,6 +387,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -455,6 +458,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -524,6 +528,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }

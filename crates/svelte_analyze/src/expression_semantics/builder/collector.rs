@@ -259,6 +259,9 @@ impl<'a> Collector<'_, 'a> {
             ReferenceSemantics::StoreRead { symbol }
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+            ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead => None,
             _ => self.semantics.get_reference(ref_id).symbol_id(),
         }
     }
@@ -307,12 +310,7 @@ impl<'a> Collector<'_, 'a> {
 impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let name = ident.name.as_str();
-        if name == "$$props" {
-            self.reads_legacy_props = true;
-        } else if name == "$$restProps" {
-            self.reads_legacy_rest_props = true;
-        }
-        if name.starts_with('$') && name.len() > 1 && name != "$$slots" {
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
             self.has_store_ref = true;
         }
         self.in_write_position = false;
@@ -323,6 +321,15 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             ReferenceSemantics::StoreRead { symbol }
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+            ReferenceSemantics::LegacyPropsIdentifierRead => {
+                self.reads_legacy_props = true;
+                None
+            }
+            ReferenceSemantics::LegacyRestPropsIdentifierRead => {
+                self.reads_legacy_rest_props = true;
+                None
+            }
+            ReferenceSemantics::LegacySlotsIdentifierRead => None,
             _ => self.semantics.get_reference(ref_id).symbol_id(),
         };
         let Some(sym) = sym else { return };

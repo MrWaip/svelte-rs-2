@@ -67,6 +67,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::RestPropMemberRewrite
         | ReferenceSemantics::LegacyPropsIdentifierRead
         | ReferenceSemantics::LegacyRestPropsIdentifierRead
+        | ReferenceSemantics::LegacySlotsIdentifierRead
         | ReferenceSemantics::LegacyStateWrite
         | ReferenceSemantics::LegacyStateUpdate { .. }
         | ReferenceSemantics::LegacyStateSubscribedWrite { .. }

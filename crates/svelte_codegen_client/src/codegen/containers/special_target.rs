@@ -267,7 +267,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
         let handler =
             self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;

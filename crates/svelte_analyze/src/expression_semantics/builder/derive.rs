@@ -36,42 +36,63 @@ pub(super) fn is_reactive_template(
     if facts.has_await || facts.has_state_rune || needs_context(facts, reactivity) {
         return true;
     }
-
-    if matches!(facts.top_level_form, TopLevelForm::Call) {
-        return facts.has_runtime_root
-            || facts.has_store_ref
-            || facts.references.iter().any(|&sym| {
-                let semantics = reactivity.binding_semantics(sym);
-                if matches!(semantics, BindingSemantics::MaybeReactive) {
-                    return true;
-                }
-                reactivity.symbol_is_volatile(scoping, sym)
-                    || scoping.is_component_top_level_symbol(sym)
-            });
-    }
-
-    if matches!(facts.top_level_form, TopLevelForm::Member) {
-        return facts.has_runtime_root || facts.has_store_ref || !facts.references.is_empty();
-    }
-
-    if facts.has_store_ref {
+    if facts.has_store_ref || reads_legacy_props_object(facts) {
         return true;
     }
-    facts.references.iter().any(|&sym| {
-        if reactivity.symbol_is_volatile(scoping, sym) {
-            return true;
+
+    match facts.top_level_form {
+        TopLevelForm::Call => {
+            if facts.has_runtime_root {
+                return true;
+            }
+            facts
+                .references
+                .iter()
+                .any(|&sym| call_root_is_reactive(reactivity, scoping, sym))
         }
-        if is_unified_prop_source(reactivity, sym) {
-            return true;
-        }
-        if has_class_state_fields
-            && scoping.is_component_top_level_symbol(sym)
-            && is_unified_plain_symbol(reactivity, sym)
-        {
-            return true;
-        }
-        false
-    })
+        TopLevelForm::Member => facts.has_runtime_root || !facts.references.is_empty(),
+        TopLevelForm::Identifier
+        | TopLevelForm::Assignment
+        | TopLevelForm::Update
+        | TopLevelForm::Other => facts.references.iter().any(|&sym| {
+            identifier_read_is_reactive(reactivity, scoping, sym, has_class_state_fields)
+        }),
+    }
+}
+
+fn call_root_is_reactive(
+    reactivity: &ReactivitySemantics,
+    scoping: &ComponentScoping,
+    sym: SymbolId,
+) -> bool {
+    if matches!(
+        reactivity.binding_semantics(sym),
+        BindingSemantics::MaybeReactive
+    ) {
+        return true;
+    }
+    reactivity.symbol_is_volatile(scoping, sym) || scoping.is_component_top_level_symbol(sym)
+}
+
+fn identifier_read_is_reactive(
+    reactivity: &ReactivitySemantics,
+    scoping: &ComponentScoping,
+    sym: SymbolId,
+    has_class_state_fields: bool,
+) -> bool {
+    if reactivity.symbol_is_volatile(scoping, sym) {
+        return true;
+    }
+    if is_unified_prop_source(reactivity, sym) {
+        return true;
+    }
+    has_class_state_fields
+        && scoping.is_component_top_level_symbol(sym)
+        && is_unified_plain_symbol(reactivity, sym)
+}
+
+fn reads_legacy_props_object(facts: &ExprFacts) -> bool {
+    facts.reads_legacy_props || facts.reads_legacy_rest_props
 }
 
 fn is_unified_prop_source(reactivity: &ReactivitySemantics, sym_id: SymbolId) -> bool {
@@ -228,12 +249,13 @@ pub(super) fn legacy_wrap(
             TopLevelForm::Member | TopLevelForm::Assignment | TopLevelForm::Update
         )
         || has_context_member_root;
+    if !needs_coarse {
+        return LegacyWrap::None;
+    }
     let carrier = synthetic_props_carrier(facts.reads_legacy_props, facts.reads_legacy_rest_props);
-    match (needs_coarse, carrier) {
-        (false, None) => LegacyWrap::None,
-        (true, None) => LegacyWrap::CoarseWrap,
-        (false, Some(c)) => LegacyWrap::Synthetic(c),
-        (true, Some(c)) => LegacyWrap::CoarseAndSynthetic(c),
+    match carrier {
+        None => LegacyWrap::CoarseWrap,
+        Some(c) => LegacyWrap::CoarseAndSynthetic(c),
     }
 }
 

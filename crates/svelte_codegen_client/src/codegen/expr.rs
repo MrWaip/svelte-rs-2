@@ -41,7 +41,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(expr) => expr,
             None => return CodegenError::missing_expression(id),
         };
-        Ok(self.maybe_wrap_legacy_slots_read(expr))
+        Ok(expr)
     }
 
     pub(super) fn take_attr_expr(
@@ -53,23 +53,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(expr) => expr,
             None => return CodegenError::missing_expression(attr_id),
         };
-        Ok(self.maybe_wrap_legacy_slots_read(expr))
-    }
-
-    pub(in crate::codegen) fn maybe_wrap_legacy_slots_read(
-        &self,
-        expr: Expression<'a>,
-    ) -> Expression<'a> {
-        if !self.ctx.query.needs_sanitized_legacy_slots() {
-            return expr;
-        }
-        if !expr_roots_in_legacy_slots(&expr) {
-            return expr;
-        }
-        use svelte_ast_builder::Arg;
-        self.ctx
-            .b
-            .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))])
+        Ok(expr)
     }
 
     pub(super) fn take_expr_by_ref(&mut self, expr_ref: &ExprRef) -> Option<Expression<'a>> {
@@ -173,13 +157,4 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         sym,
         LegacyStateSafety::FromVarDeclared,
     )
-}
-
-fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {
-    match expr.get_inner_expression() {
-        Expression::Identifier(ident) => ident.name.as_str() == "$$slots",
-        Expression::StaticMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
-        Expression::ComputedMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
-        _ => false,
-    }
 }

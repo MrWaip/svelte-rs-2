@@ -1,0 +1,1 @@
+<script>export let x;</script>{#if $$restProps}a{/if}

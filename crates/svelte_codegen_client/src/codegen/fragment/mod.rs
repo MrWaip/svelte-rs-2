@@ -709,7 +709,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     let data = self.ctx.expression_data(prop.attr_id).cloned();
                     let expr = coarse_wrap(self.ctx, expr, data.as_ref());
-                    let expr = self.maybe_wrap_legacy_slots_read(expr);
                     match prop.memo {
                         ComponentPropMemo::Derived => {
                             let helper = self.ctx.query.view.derived_helper();

@@ -159,7 +159,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(bind_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
         let Expression::SequenceExpression(seq) = expr else {
             return Ok(None);
         };
