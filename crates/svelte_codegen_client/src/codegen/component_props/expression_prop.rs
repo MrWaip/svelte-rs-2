@@ -74,6 +74,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
             }
             ComponentPropMemo::Inline => {
+                let data = self.ctx.expression_data(attr_id).cloned();
+                let expr = coarse_wrap(self.ctx, expr, data.as_ref());
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, expr)));
             }
         }

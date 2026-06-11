@@ -52,3 +52,15 @@ compiler_case!(
     coarse_deps_text_dollar_slots_concat,
     "legacy/coarse_deps/text_dollar_slots_concat"
 );
+compiler_case!(
+    coarse_deps_prop_slots_member,
+    "legacy/coarse_deps/prop_slots_member"
+);
+compiler_case!(
+    coarse_deps_prop_global_member,
+    "legacy/coarse_deps/prop_global_member"
+);
+compiler_case!(
+    coarse_deps_prop_const_inline_bare,
+    "legacy/coarse_deps/prop_const_inline_bare"
+);
