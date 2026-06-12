@@ -4,7 +4,7 @@ use super::super::{
 use super::walker::Ctx;
 use crate::ReferenceSemantics;
 use crate::expression_semantics::{ExpressionSemantics, Volatility};
-use crate::types::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+use crate::types::data::{BindingSemantics, PropBindingKind};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
 use oxc_ast::ast::{Argument, ChainElement, Expression};
 use smallvec::SmallVec;
@@ -145,17 +145,29 @@ fn passthrough_prop_binding(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<S
     };
     let ref_id = ident.reference_id.get()?;
     let sym = ctx.semantics.get_reference(ref_id).symbol_id()?;
-    if matches!(
-        ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. },
-            ..
-        }),
-    ) {
-        Some(sym)
-    } else {
-        None
-    }
+    let is_source_prop = match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } => true,
+            PropBindingKind::Identifier | PropBindingKind::Rest | PropBindingKind::NonSource => {
+                false
+            }
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
+    if is_source_prop { Some(sym) } else { None }
 }
 
 #[cfg(test)]

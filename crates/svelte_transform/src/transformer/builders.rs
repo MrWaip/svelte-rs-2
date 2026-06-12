@@ -142,10 +142,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ast = self.b.ast;
         let make_source_read = |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
             let name = self.component_scoping.symbol_name(sym);
-            if matches!(
-                analysis.binding_semantics(sym),
-                svelte_analyze::BindingSemantics::Store(_)
-            ) {
+            if analysis.binding_semantics(sym).is_store() {
                 self.make_thunk_call(name)
             } else {
                 self.make_rune_get(name)
@@ -170,12 +167,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
             false,
         );
         let mut seq_elems = ast.vec_from_array([mutation, invalidate]);
-        if let Some(store_sym) = source_syms.iter().copied().find(|&sym| {
-            matches!(
-                analysis.binding_semantics(sym),
-                svelte_analyze::BindingSemantics::Store(_)
-            )
-        }) {
+        if let Some(store_sym) = source_syms
+            .iter()
+            .copied()
+            .find(|&sym| analysis.binding_semantics(sym).is_store())
+        {
             let store_name = self.component_scoping.symbol_name(store_sym);
             let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
             let label_arg =

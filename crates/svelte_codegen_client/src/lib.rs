@@ -385,23 +385,19 @@ pub fn generate<'a>(
                 }
             }
 
-            if (ctx.query.accessors() || runtime.has_ce_props)
-                && let Some(props_decl) = ctx.query.props()
-            {
-                for prop in &props_decl.props {
-                    if prop.is_rest || prop.is_reserved() {
-                        continue;
-                    }
-                    let key: &str = ctx.b.alloc_str(&prop.prop_name);
-                    let local: &str = ctx.b.alloc_str(&prop.local_name);
+            if ctx.query.accessors() || runtime.has_ce_props {
+                for prop in ctx.query.component_prop_accessors() {
+                    let key: &str = ctx.b.alloc_str(&prop.key);
+                    let local: &str = ctx.b.alloc_str(prop.local);
 
                     let getter_expr = ctx.b.call_expr(local, empty::<Arg<'_, '_>>());
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     let default_expr = if ctx.query.runes() {
-                        prop.default_text
-                            .as_deref()
-                            .map(|text| ctx.b.parse_expression(text))
+                        prop.default_span.map(|span| {
+                            let text = &ctx.state.source[span.start as usize..span.end as usize];
+                            ctx.b.parse_expression(text)
+                        })
                     } else {
                         None
                     };

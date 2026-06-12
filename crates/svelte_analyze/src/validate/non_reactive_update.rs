@@ -374,8 +374,20 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
 }
 
 fn is_reactive_binding(data: &AnalysisData<'_>, sym: ComponentSymbolId) -> bool {
-    !matches!(
-        data.binding_semantics(sym),
-        BindingSemantics::NonReactive | BindingSemantics::Unresolved,
-    )
+    match data.binding_semantics(sym) {
+        BindingSemantics::NonReactive | BindingSemantics::Unresolved => false,
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::LegacyApiExport => true,
+    }
 }

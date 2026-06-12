@@ -299,11 +299,9 @@ impl<'a> Collector<'_, 'a> {
         let Some(ref_id) = id.reference_id.get() else {
             return false;
         };
-        matches!(
-            self.reactivity.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyPropsIdentifierRead
-                | ReferenceSemantics::LegacyRestPropsIdentifierRead
-        )
+        self.reactivity
+            .reference_semantics(ref_id)
+            .is_legacy_props_object_read()
     }
 }
 

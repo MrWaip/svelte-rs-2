@@ -23,8 +23,7 @@ use super::fragment_topology::fragment_items;
 use crate::expression_semantics::ExpressionData;
 use crate::scope::SymbolId;
 use crate::types::data::{
-    BindingSemantics, ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis,
-    TemplateElementIndex,
+    ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis, TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
 use crate::{AnalysisData, BlockSemantics};
@@ -501,10 +500,7 @@ fn collect_component_attr_snippets(
 
 fn is_resolved_snippet_symbol(data: &AnalysisData, sym_id: SymbolId) -> bool {
     data.scoping.is_import(sym_id)
-        || matches!(
-            data.reactivity.binding_semantics(sym_id),
-            BindingSemantics::Prop(_),
-        )
+        || data.reactivity.binding_semantics(sym_id).is_runes_prop()
         || data.template.snippets.snippet_by_symbol(sym_id).is_some()
 }
 

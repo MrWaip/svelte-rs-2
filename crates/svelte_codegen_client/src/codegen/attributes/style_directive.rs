@@ -1,8 +1,7 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{
-    AttributeSemantics, BindingSemantics, Evaluation, ExpressionData, HtmlConcatSemantics,
-    Volatility,
+    AttributeSemantics, Evaluation, ExpressionData, HtmlConcatSemantics, Volatility,
 };
 use svelte_ast::{Attribute, ConcatPart, NodeId, StyleDirectiveValue};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
@@ -22,10 +21,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn style_expr_is_literal(&self, data: &ExpressionData) -> bool {
         matches!(data.evaluation, Evaluation::Known(_))
             && !data.references.iter().any(|&sym| {
-                matches!(
-                    self.ctx.query.view.binding_semantics(sym),
-                    BindingSemantics::OptimizedRune(_)
-                )
+                self.ctx
+                    .query
+                    .view
+                    .binding_semantics(sym)
+                    .is_optimized_rune()
             })
     }
 

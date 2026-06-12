@@ -1,5 +1,4 @@
 pub(crate) mod attributes;
-pub(crate) mod binding_pattern;
 pub(crate) mod ce_config;
 pub(crate) mod events;
 pub(crate) mod expression_await;

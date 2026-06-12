@@ -512,12 +512,9 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 && !trimmed.starts_with("$$")
                                 && {
                                     let root = data.scoping.root_scope_id();
-                                    data.scoping.find_binding(root, trimmed).is_some_and(|sym| {
-                                        matches!(
-                                            data.binding_semantics(sym),
-                                            BindingSemantics::Store(_),
-                                        )
-                                    })
+                                    data.scoping
+                                        .find_binding(root, trimmed)
+                                        .is_some_and(|sym| data.binding_semantics(sym).is_store())
                                 }
                         });
 

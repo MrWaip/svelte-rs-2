@@ -1,14 +1,13 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::reactivity_semantics::script_info;
 use crate::reactivity_semantics::{ReactivityInputs, build_optimized_derived, build_v2};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
 use crate::{attribute_semantics, block_semantics, expression_semantics};
 
-use super::{bundles, finalize_component_name, fragment_topology, js_analyze, post_resolve};
+use super::{bundles, finalize_component_name, fragment_topology, js_analyze};
 
 fn run_parsed_template_bundle<'d, 'a, const N: usize>(
     component: &'d Component,
@@ -49,17 +48,10 @@ pub(crate) fn execute_pass<'a>(
 
     match key {
         super::PassKey::AnalyzeScript => {
-            let script_info = parsed.program.as_ref().and_then(|program| {
-                parsed.script_content_span?;
-                Some(script_info::extract_script_info(
-                    program,
-                    &component.source,
-                    runes,
-                    &data.scoping,
-                ))
-            });
-            if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {
-                js_analyze::analyze_script(data, script_info, program);
+            if let Some(program) = parsed.program.as_ref()
+                && parsed.script_content_span.is_some()
+            {
+                js_analyze::analyze_script(data, program);
             }
             if let Some(module_program) = parsed.module_program.as_ref()
                 && parsed.module_script_content_span.is_some()
@@ -145,12 +137,6 @@ pub(crate) fn execute_pass<'a>(
             js_analyze::calculate_instance_blockers(parsed, data);
             js_analyze::classify_pickled_awaits(parsed, data);
         }
-        super::PassKey::ClassifyNeedsContext => {
-            let _ = data;
-        }
-        super::PassKey::PostResolve => {
-            post_resolve::run_post_resolve_passes(data);
-        }
         super::PassKey::BuildReactivitySemantics => {
             build_v2(
                 component,
@@ -189,6 +175,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.reactivity,
                 &data.scoping,
                 &data.template.snippets,
+                &data.value_evaluation,
                 data.script.has_class_state_fields,
                 &data.script.blocker_data,
                 data.script.runes_mode,
@@ -206,9 +193,9 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 data.scoping.semantics(),
                 &data.reactivity,
-                &data.scoping,
                 &data.expressions_v2,
                 &data.template.snippets,
+                &data.value_evaluation,
                 &data.script.blocker_data,
                 &data.output.ignore_data,
                 options.dev,

@@ -6,7 +6,9 @@ use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId as SvelteNodeId;
 
-use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen, RuneKind};
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, ComponentScoping, DeclaratorSemantics, IdentGen,
+};
 
 use svelte_ast_builder::Builder;
 
@@ -32,7 +34,7 @@ pub(crate) enum AsyncDerivedMode {
 pub(crate) struct ClassStateField {
     pub(crate) public_name: Option<String>,
     pub(crate) private_name: String,
-    pub(crate) rune_kind: RuneKind,
+    pub(crate) declarator: DeclaratorSemantics,
 }
 
 pub(crate) struct ClassStateInfo {

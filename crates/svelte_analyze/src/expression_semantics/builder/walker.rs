@@ -7,11 +7,9 @@ use super::collector::{ExprFacts, collect};
 use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{
-    BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData,
-};
+use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, SnippetData};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
-use crate::value_evaluation::{ReadContext, ValueEvaluator};
+use crate::value_evaluation::{ReadContext, ValueEvaluation, ValueEvaluator};
 use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use smallvec::SmallVec;
 use svelte_ast::{
@@ -28,6 +26,7 @@ pub(super) fn populate<'a>(
     reactivity: &ReactivitySemantics,
     scoping: &ComponentScoping,
     snippets: &SnippetData,
+    value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
     blockers: &BlockerData,
     runes_mode: svelte_ast::RunesMode,
@@ -48,6 +47,7 @@ pub(super) fn populate<'a>(
         semantics,
         reactivity,
         scoping,
+        value_evaluation,
         has_class_state_fields,
         blockers,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
@@ -62,6 +62,7 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) scoping: &'c ComponentScoping<'a>,
+    pub(super) value_evaluation: &'c ValueEvaluation,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
     pub(super) uses_legacy_coarse_wrap: bool,
@@ -359,7 +360,7 @@ fn store_render_tag(site_id: NodeId, expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink
     };
     let (data, facts) = compute(expr, ctx, SiteContext::Text);
     for &sym in facts.member_or_call_roots.iter() {
-        if ctx.scoping.is_rest_prop(sym) {
+        if ctx.reactivity.is_rest_prop(sym) {
             sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
@@ -470,12 +471,7 @@ fn compute<'a>(
 
     let evaluation = ctx.evaluator.evaluate(expr);
 
-    let is_reactive = derive::is_reactive_template(
-        &facts,
-        ctx.scoping,
-        ctx.reactivity,
-        ctx.has_class_state_fields,
-    );
+    let is_reactive = derive::is_reactive_template(&facts, ctx);
     let blockers = derive::blockers(&facts, ctx.blockers);
     let has_blockers = !blockers.is_empty();
     let reactive_gate = match context {
@@ -486,12 +482,9 @@ fn compute<'a>(
             &evaluation,
             ctx.reactivity,
         ),
-        SiteContext::ElementAttr => derive::volatile_element_attr(
-            is_reactive,
-            &facts.references,
-            ctx.scoping,
-            ctx.reactivity,
-        ),
+        SiteContext::ElementAttr => {
+            derive::volatile_element_attr(is_reactive, &facts.references, ctx)
+        }
         SiteContext::ComponentAttr => is_reactive,
         SiteContext::ComponentName => derive::volatile_component_name(
             expr,
@@ -502,18 +495,10 @@ fn compute<'a>(
         SiteContext::Structural => true,
         SiteContext::Inert => false,
     };
-    let has_context_member_root = facts.top_member_or_call_roots.iter().any(|&sym| {
-        matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::MaybeReactive
-                | BindingSemantics::Prop(PropBindingSemantics {
-                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-                    ..
-                })
-                | BindingSemantics::LegacyBindableProp(_)
-                | BindingSemantics::Contextual(_)
-        )
-    });
+    let has_context_member_root = facts
+        .top_member_or_call_roots
+        .iter()
+        .any(|&sym| is_context_member_root(ctx.reactivity.binding_semantics(sym)));
     let volatility = derive::volatility(reactive_gate, &facts);
     let data = ExpressionData {
         volatility,
@@ -534,7 +519,7 @@ fn update_aggregates(sink: &mut Sink<'_>, facts: &ExprFacts, ctx: &Ctx<'_, '_>) 
         if !is_safe_member_root(ctx.reactivity, sym) {
             sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
         }
-        if ctx.scoping.is_rest_prop(sym) {
+        if ctx.reactivity.is_rest_prop(sym) {
             sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
@@ -552,16 +537,48 @@ fn update_aggregates(sink: &mut Sink<'_>, facts: &ExprFacts, ctx: &Ctx<'_, '_>) 
     }
 }
 
+fn is_context_member_root(semantics: BindingSemantics) -> bool {
+    match semantics {
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::Contextual(_) => true,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } | PropBindingKind::NonSource => true,
+            PropBindingKind::Identifier | PropBindingKind::Rest => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
 fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool {
     match reactivity.binding_semantics(sym) {
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-            ..
-        })
-        | BindingSemantics::LegacyBindableProp(_) => false,
+        BindingSemantics::MaybeReactive | BindingSemantics::LegacyBindableProp(_) => false,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } | PropBindingKind::NonSource => false,
+            PropBindingKind::Identifier | PropBindingKind::Rest => true,
+        },
         BindingSemantics::Store(store) => is_safe_member_root(reactivity, store.base_symbol),
-        _ => true,
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => true,
     }
 }
 

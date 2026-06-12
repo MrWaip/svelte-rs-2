@@ -9,31 +9,21 @@ use oxc_ast_visit::walk::{
     walk_update_expression,
 };
 
+use super::needs_context::NeedsContextVisitor;
 use crate::reactivity_semantics::data::{
     DeclaratorSemantics, ReactivitySemantics, RuntimeRuneKind,
 };
-use crate::reactivity_semantics::script_info;
 use crate::scope::ComponentScoping;
 use crate::types::data::AnalysisData;
-use crate::types::script::ScriptInfo;
 
-pub(crate) fn analyze_script(
-    data: &mut AnalysisData,
-    mut script_info: ScriptInfo,
-    program: &Program<'_>,
-) {
+pub(crate) fn analyze_script(data: &mut AnalysisData, program: &Program<'_>) {
     let body = analyze_script_body(program, &data.reactivity);
     data.script.has_store_member_mutations = body.has_store_member_mutations;
     data.script.has_class_state_fields = body.has_class_state_fields;
-    script_info::enrich_from_component_scoping(&data.scoping, &mut script_info);
-    data.script.info = Some(script_info);
     data.output.needs_context = body.has_effects
         || body.has_class_state_fields
-        || super::needs_context::NeedsContextVisitor::check(
-            program,
-            &data.scoping,
-            &data.reactivity,
-        );
+        || body.has_store_member_mutations
+        || NeedsContextVisitor::check(program, &data.scoping, &data.reactivity);
 }
 
 pub(crate) fn needs_context_for_program(
@@ -44,7 +34,7 @@ pub(crate) fn needs_context_for_program(
     let body = analyze_script_body(program, reactivity);
     body.has_effects
         || body.has_class_state_fields
-        || super::needs_context::NeedsContextVisitor::check(program, scoping, reactivity)
+        || NeedsContextVisitor::check(program, scoping, reactivity)
 }
 
 pub(crate) fn analyze_script_body<'r>(

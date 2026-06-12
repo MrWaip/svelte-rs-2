@@ -9,8 +9,7 @@ use oxc_traverse::{ReusableTraverseCtx, traverse_mut_with_ctx};
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BindingSemantics, ComponentScoping, HtmlBindKind, IdentGen,
-    JsAst,
+    AnalysisData, AttributeSemantics, ComponentScoping, HtmlBindKind, IdentGen, JsAst,
 };
 use svelte_ast::NodeId as SvelteNodeId;
 use svelte_ast_builder::{Arg, Builder};
@@ -192,10 +191,7 @@ pub(crate) fn run_template<'a, 'b>(
         let (getter, setter) = if let Some(base_symbol) = store_base_symbol {
             let base_name = analysis.scoping.symbol_name(base_symbol);
             let dollar_name: &str = b.alloc_str(&format!("${base_name}"));
-            let base_via_legacy_state = matches!(
-                analysis.binding_semantics(base_symbol),
-                BindingSemantics::LegacyState(_)
-            );
+            let base_via_legacy_state = analysis.binding_semantics(base_symbol).is_legacy_state();
             let getter_expr = if base_via_legacy_state {
                 let thunk_call =
                     b.call_expr_callee(b.rid_expr(dollar_name), iter::empty::<Arg<'_, '_>>());

@@ -63,7 +63,6 @@ fn finalize_hoistable(
     reactivity: &ReactivitySemantics,
     store: &mut BlockSemanticsStore,
 ) {
-    use crate::reactivity_semantics::data::BindingSemantics;
     if snippet_scopes.is_empty() {
         return;
     }
@@ -91,10 +90,7 @@ fn finalize_hoistable(
                 if snippet_name_syms.contains(&sym) {
                     continue;
                 }
-                if matches!(
-                    reactivity.binding_semantics(sym),
-                    BindingSemantics::MaybeReactive
-                ) {
+                if reactivity.binding_semantics(sym).is_maybe_reactive() {
                     continue;
                 }
             }

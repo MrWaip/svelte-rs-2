@@ -141,14 +141,33 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         let field = ctx.query.symbol_name(sym);
         return Some(ctx.b.static_member_expr(rune_get(&ctx.b, tmp_ref), field));
     }
-    if matches!(
-        ctx.query.view.binding_semantics(sym),
+    let reads_directly = match ctx.query.view.binding_semantics(sym) {
         BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedDerived(_)
-            | BindingSemantics::OptimizedRune(_)
-    ) {
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_) => true,
+        BindingSemantics::Contextual(
+            ContextualBindingSemantics::EachItem(_)
+            | ContextualBindingSemantics::EachIndex(_)
+            | ContextualBindingSemantics::AwaitValue
+            | ContextualBindingSemantics::AwaitError
+            | ContextualBindingSemantics::LetDirective
+            | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | ContextualBindingSemantics::SnippetParam(_),
+        )
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
+    if reads_directly {
         return None;
     }
     read_binding(

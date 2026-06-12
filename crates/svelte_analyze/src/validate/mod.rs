@@ -21,7 +21,6 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::block_semantics::data::BlockSemantics;
-use crate::types::script::RuneKind;
 use crate::{AnalysisData, types::data::JsAst};
 
 pub fn validate(
@@ -54,7 +53,6 @@ pub fn validate(
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, data, parsed, diags);
     validate_svelte_options_warnings(component, data, runes, diags);
-    validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
     runes::validate_const_tag_runes(component, parsed, data, diags);
 }
@@ -368,52 +366,6 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
         }
         BindingPattern::AssignmentPattern(assign) => binding_contains(&assign.left, name),
     }
-}
-
-fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    if !data.output.is_custom_element_target {
-        return;
-    }
-
-    if data
-        .script
-        .ce_config
-        .as_ref()
-        .is_some_and(|c| !c.props.is_empty())
-    {
-        return;
-    }
-
-    let Some(props) = data.script.props_declaration() else {
-        return;
-    };
-
-    let should_warn = props.is_identifier_pattern || props.props.iter().any(|p| p.is_rest);
-    if !should_warn {
-        return;
-    }
-
-    let span = if let Some(rest_span) = props.rest_pattern_span {
-        rest_span
-    } else {
-        data.script
-            .info
-            .as_ref()
-            .and_then(|s| {
-                s.declarations
-                    .iter()
-                    .find(|d| d.is_rune == Some(RuneKind::Props))
-                    .map(|d| d.span)
-            })
-            .unwrap_or_else(|| {
-                panic!("data.props exists but no $props() declaration in script info")
-            })
-    };
-
-    diags.push(Diagnostic::warning(
-        DiagnosticKind::CustomElementPropsIdentifier,
-        span,
-    ));
 }
 
 fn validate_svelte_options_warnings(

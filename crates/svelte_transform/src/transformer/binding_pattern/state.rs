@@ -6,7 +6,8 @@ use oxc_ast::NONE;
 use oxc_ast::ast::{Argument, Expression, VariableDeclarationKind, VariableDeclarator};
 use oxc_span::SPAN;
 
-use svelte_analyze::{BindingSemantics, RuneKind, StateKind};
+use svelte_analyze::StateKind;
+
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
@@ -22,19 +23,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         state_kind: StateKind,
         out: &mut OxcVec<'a, VariableDeclarator<'a>>,
     ) {
-        let rune_kind = match state_kind {
-            StateKind::State => RuneKind::State,
-            StateKind::StateRaw => RuneKind::StateRaw,
-            StateKind::StateEager => RuneKind::StateEager,
-        };
-
         let init = declarator
             .init
             .take()
             .expect("$state destructure declarator carries an initializer");
         let value = self.take_state_init_value(init);
 
-        let dev_label = Self::state_destructure_dev_label(&declarator.id, rune_kind);
+        let dev_label = Self::state_destructure_dev_label(&declarator.id, state_kind);
 
         let tmp_name = self.ident_gen.generate("tmp");
         let tmp_name_str: &str = self.b.alloc_str(&tmp_name);
@@ -60,7 +55,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             leaf_declarators.push(self.build_state_leaf(
                 v.symbol,
                 expr,
-                rune_kind,
+                state_kind,
                 is_signal_source,
                 decl_kind,
             ));
@@ -96,23 +91,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
     }
 
     fn binding_is_signal_source(&self, symbol: SymbolId) -> bool {
-        matches!(
-            self.analysis.map(|a| a.binding_semantics(symbol)),
-            Some(BindingSemantics::State(state)) if state.is_signal_source
-        )
+        self.analysis.is_some_and(|a| {
+            a.binding_semantics(symbol)
+                .state()
+                .is_some_and(|state| state.is_signal_source)
+        })
     }
 
     fn build_state_leaf(
         &self,
         symbol: SymbolId,
         accessor: Expression<'a>,
-        rune_kind: RuneKind,
+        state_kind: StateKind,
         is_signal_source: bool,
         decl_kind: VariableDeclarationKind,
     ) -> VariableDeclarator<'a> {
         let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
-        let is_proxy = matches!(rune_kind, RuneKind::State) && should_proxy(&accessor);
-        let final_value = self.wrap_state_value(accessor, rune_kind, is_signal_source);
+        let is_proxy = matches!(state_kind, StateKind::State) && should_proxy(&accessor);
+        let final_value = self.wrap_state_value(accessor, state_kind, is_signal_source);
         let final_value = if self.dev {
             if is_signal_source {
                 self.b.call_expr(

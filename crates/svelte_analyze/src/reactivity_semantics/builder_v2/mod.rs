@@ -15,15 +15,13 @@ use util::{
 };
 
 use super::data::{
-    BindingFacts, BindingSemantics, ClassFieldDerivedSemantics, ClassFieldStateSemantics,
-    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind,
-    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
+    BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, OptimizedRuneSemantics, PropBindingKind,
+    PropBindingSemantics, PropDefaultKind, PropEmitMode, ReactivitySemantics, ReferenceFacts,
+    RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
-use crate::reactivity_semantics::script_info::detect_rune_from_call;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst};
-use crate::types::script::RuneKind;
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::value_evaluation::{Evaluation, ValueEvaluation};
@@ -43,11 +41,86 @@ use oxc_ast_visit::walk::{
 };
 use std::mem;
 
+use oxc_span::GetSpan as _;
 use oxc_span::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::Component;
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, sym_state};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RuneKind {
+    State,
+    StateRaw,
+    Derived,
+    DerivedBy,
+    Effect,
+    EffectPre,
+    EffectRoot,
+    EffectTracking,
+    Props,
+    Bindable,
+    StateEager,
+    EffectPending,
+    Inspect,
+    InspectWith,
+    InspectTrace,
+    Host,
+    PropsId,
+    StateSnapshot,
+}
+
+const STATE_RUNE_NAME: &str = "$state";
+const DERIVED_RUNE_NAME: &str = "$derived";
+const EFFECT_RUNE_NAME: &str = "$effect";
+const PROPS_RUNE_NAME: &str = "$props";
+const BINDABLE_RUNE_NAME: &str = "$bindable";
+const INSPECT_RUNE_NAME: &str = "$inspect";
+const HOST_RUNE_NAME: &str = "$host";
+
+fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+    match &call.callee {
+        Expression::Identifier(ident) => match ident.name.as_str() {
+            STATE_RUNE_NAME => Some(RuneKind::State),
+            DERIVED_RUNE_NAME => Some(RuneKind::Derived),
+            EFFECT_RUNE_NAME => Some(RuneKind::Effect),
+            PROPS_RUNE_NAME => Some(RuneKind::Props),
+            BINDABLE_RUNE_NAME => Some(RuneKind::Bindable),
+            INSPECT_RUNE_NAME => Some(RuneKind::Inspect),
+            HOST_RUNE_NAME => Some(RuneKind::Host),
+            _ => None,
+        },
+        Expression::StaticMemberExpression(member) => {
+            if let Expression::Identifier(obj) = &member.object {
+                let prop = member.property.name.as_str();
+                match (obj.name.as_str(), prop) {
+                    (DERIVED_RUNE_NAME, "by") => Some(RuneKind::DerivedBy),
+                    (STATE_RUNE_NAME, "raw") => Some(RuneKind::StateRaw),
+                    (STATE_RUNE_NAME, "eager") => Some(RuneKind::StateEager),
+                    (STATE_RUNE_NAME, "snapshot") => Some(RuneKind::StateSnapshot),
+                    (EFFECT_RUNE_NAME, "pre") => Some(RuneKind::EffectPre),
+                    (EFFECT_RUNE_NAME, "root") => Some(RuneKind::EffectRoot),
+                    (EFFECT_RUNE_NAME, "tracking") => Some(RuneKind::EffectTracking),
+                    (EFFECT_RUNE_NAME, "pending") => Some(RuneKind::EffectPending),
+                    (PROPS_RUNE_NAME, "id") => Some(RuneKind::PropsId),
+                    (INSPECT_RUNE_NAME, "trace") => Some(RuneKind::InspectTrace),
+                    _ => None,
+                }
+            } else if member.property.name == "with" {
+                if let Expression::CallExpression(inner) = &member.object
+                    && let Expression::Identifier(id) = &inner.callee
+                    && id.name == INSPECT_RUNE_NAME
+                {
+                    return Some(RuneKind::InspectWith);
+                }
+                None
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
 
 const JS_UNDEFINED_NAME: &str = "undefined";
 
@@ -113,10 +186,7 @@ pub(crate) fn build_optimized_derived(
     let mut optimizable = Vec::new();
 
     for symbol in semantics.symbol_ids() {
-        if !matches!(
-            reactivity.binding_semantics(symbol),
-            BindingSemantics::Derived(_)
-        ) {
+        if !reactivity.binding_semantics(symbol).is_derived() {
             continue;
         }
         if !matches!(value_evaluation.evaluation(symbol), Evaluation::Known(_)) {
@@ -140,13 +210,11 @@ fn reference_is_reactive(
     ref_id: ReferenceId,
     mode: ReferenceReactivityMode,
 ) -> bool {
-    use super::data::{BindingSemantics, ConstBindingSemantics, ReferenceSemantics};
-    if matches!(
-        reactivity.reference_semantics(ref_id),
-        ReferenceSemantics::StoreRead { .. }
-            | ReferenceSemantics::StoreWrite { .. }
-            | ReferenceSemantics::StoreUpdate { .. }
-    ) {
+    use super::data::{BindingSemantics, ConstBindingSemantics};
+    if reactivity
+        .reference_semantics(ref_id)
+        .is_store_subscription()
+    {
         return true;
     }
     let Some(sym) = scoping.symbol_for_reference(ref_id) else {
@@ -622,13 +690,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 continue;
             }
             let downgrade_ok = refs.iter().all(|&r| {
-                use super::data::ReferenceSemantics;
-                if matches!(
-                    self.data.reactivity.reference_semantics(r),
-                    ReferenceSemantics::StoreRead { .. }
-                        | ReferenceSemantics::StoreWrite { .. }
-                        | ReferenceSemantics::StoreUpdate { .. }
-                ) {
+                if self
+                    .data
+                    .reactivity
+                    .reference_semantics(r)
+                    .is_store_subscription()
+                {
                     return true;
                 }
                 !self.data.scoping.get_reference(r).is_write()
@@ -803,6 +870,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             }
             RuneKind::PropsId => {
                 self.record_runtime_rune_pattern(&declarator.id, RuntimeRuneKind::PropsId);
+                self.record_props_id_symbol(&declarator.id);
             }
             RuneKind::EffectTracking => {
                 self.record_runtime_rune_pattern(&declarator.id, RuntimeRuneKind::EffectTracking);
@@ -958,6 +1026,25 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     .record_declarator_semantics(decl_node_id, DeclaratorSemantics::LegacyState);
             }
         }
+    }
+
+    fn record_props_id_symbol(&mut self, pattern: &BindingPattern<'_>) {
+        if self.data.script.props_id.is_some() {
+            return;
+        }
+        let mut root_symbol = None;
+        svelte_component_semantics::walk_bindings(pattern, |v| {
+            if v.path.is_empty() && !v.is_rest && root_symbol.is_none() {
+                root_symbol = Some(v.symbol);
+            }
+        });
+        let Some(symbol) = root_symbol else {
+            return;
+        };
+        if !self.data.scoping.is_component_top_level_symbol(symbol) {
+            return;
+        }
+        self.data.script.props_id = Some(symbol);
     }
 
     fn record_runtime_rune_pattern(&mut self, pattern: &BindingPattern<'_>, kind: RuntimeRuneKind) {
@@ -1289,12 +1376,18 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 let bindable = prop_default_is_bindable(&assign.right);
                 let default_lowering = self.prop_default_emit(&assign.right);
                 let default_needs_proxy = prop_default_needs_proxy(&assign.right, bindable);
-                self.record_named_prop_assignment_left(
+                let sym = self.record_named_prop_assignment_left(
                     &assign.left,
                     bindable,
                     default_lowering,
                     default_needs_proxy,
-                )
+                )?;
+                let default_span = assign.right.span();
+                self.data.reactivity.record_prop_default_span(
+                    sym,
+                    svelte_span::Span::new(default_span.start, default_span.end),
+                );
+                Some(sym)
             }
             _ => None,
         }

@@ -74,10 +74,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let vd = vd.unbox();
         let is_legacy_props = vd.declarations.iter().any(|d| {
-            matches!(
-                self.analysis.map(|a| a.declarator_semantics(d.node_id())),
-                Some(DeclaratorSemantics::LegacyProps)
-            )
+            self.analysis
+                .is_some_and(|a| a.declarator_semantics(d.node_id()).is_legacy_props())
         });
         let mut produced = self.rewrite_declaration(vd);
         if is_legacy_props {

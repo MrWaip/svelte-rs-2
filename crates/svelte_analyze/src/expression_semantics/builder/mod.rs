@@ -6,6 +6,7 @@ use super::ExpressionSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::ComponentScoping;
 use crate::types::data::{BlockerData, JsAst, SnippetData};
+use crate::value_evaluation::ValueEvaluation;
 use svelte_ast::Component;
 use svelte_component_semantics::ComponentSemantics;
 
@@ -17,6 +18,7 @@ pub fn build<'a>(
     reactivity: &ReactivitySemantics,
     scoping: &ComponentScoping,
     snippets: &SnippetData,
+    value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
     blockers: &BlockerData,
     runes_mode: svelte_ast::RunesMode,
@@ -31,6 +33,7 @@ pub fn build<'a>(
         reactivity,
         scoping,
         snippets,
+        value_evaluation,
         has_class_state_fields,
         blockers,
         runes_mode,

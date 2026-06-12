@@ -19,6 +19,39 @@ label: reactivity-semantics
 - `declarator_semantics(OxcNodeId) -> DeclaratorSemantics`
 - `reference_semantics(ReferenceId) -> ReferenceSemantics`
 
+Факты уровня компонента — одной пачкой, в доменном виде:
+
+- `summary() -> ReactivitySummary { props: PropsSummary, has_store_bindings, legacy: LegacySummary }` — единый агрегат компонент-уровневых фактов реактивности. `props` — runes-props (`has_props` / `has_bindable` / `has_custom_element`); `legacy` — `has_bindable_prop` (export let), `reads_props_object` (`$$props`), `reads_rest_props_object` (`$$restProps`), `has_member_mutated`. Потребители: `build_runtime_info`, `CodegenView` (sanitized legacy props). `has_bindable` — отдельный флаг, а не скан `bindings`: оптимизация в `finish()` стирает bindable-метку у read-only source-props.
+
+Узкие запросы prop-фактов (поверх тех же `BindingFacts::Prop`, без композиции на стороне потребителя):
+
+- `is_rest_prop(SymbolId) -> bool` (crate) — биндинг объявлен `...rest` в `$props()`-паттерне.
+- `iter_runes_prop_symbols() -> impl Iterator<Item = SymbolId>` — runes-props в порядке объявления, без `Rest` и identifier-формы (`let props = $props()`); основа перечисления accessor-пропов (CE-метаданные, getter/setter `$$exports`). Имена потребитель резолвит сам: ключ — `binding_origin_key`, локальное имя — `symbol_name`.
+- `prop_default_span(SymbolId) -> Option<Span>` — положение default-выражения пропа в исходнике; кодген перепарсит слайс для setter-дефолта (`set x($$value = <default>)`).
+- `legacy_bindable_prop_symbols() / has_legacy_bindable_prop()` — `export let`-props (LEGACY(svelte4)).
+- `legacy_bindable_prop_alias(SymbolId) -> Option<&str>` — exported-алиас `export { foo as bar }` для bindable-prop (LEGACY(svelte4)). Известное отступление от «identity by id» — хранит строку; кандидат на перенос источника в `ComponentSemantics`.
+
+Узкие предикаты — методы на самих енамах семантик, каждый с exhaustive match по всем вариантам (новый вариант — ошибка компиляции, никаких `_`-проваливаний). У потребителей `matches!` по этим енамам запрещён: либо метод енама, либо локальный exhaustive `match` для сайт-специфичного набора.
+
+`BindingSemantics`:
+
+- `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`, `NonReactive`, `LegacyApiExport`, `Unresolved`.
+- `is_store()` — биндинг стор-подписки (`Store(_)` пишется только на `$`-символ).
+- `is_props()` — проп любого вида: `$props()` или `export let` (LEGACY(svelte4)); `is_runes_prop()` / `is_legacy_prop()` — точные половины; `is_rest_props()` — `...rest` в `$props()`.
+- `is_derived()`, `is_optimized_rune()`, `is_maybe_reactive()`, `is_non_reactive()`, `is_legacy_state()`, `is_reactive_const_tag()` — точечные вопросы.
+- Аксессоры payload: `state() -> Option<StateDeclarationSemantics>`, `legacy_state() -> Option<LegacyStateSemantics>` — для вопросов с гардом (`kind == StateEager`, `var_declared`, `is_signal_source`).
+
+`ReferenceSemantics`:
+
+- `is_store_subscription()` — ссылка читает/пишет через стор-подписку.
+- `is_legacy_props_object_read()` — чтение магического `$$props`/`$$restProps` (LEGACY(svelte4)).
+- `is_prop_mutation()`, `is_bindable_prop_access()`, `is_rest_prop_member_rewrite()`, `is_legacy_state_member_mutation_root()`, `is_legacy_reactive_import_member_mutation_root()` — точечные вопросы.
+
+`DeclaratorSemantics`:
+
+- `group() -> DeclaratorGroup` (`Rune | Legacy | Contextual | Plain`) — групповой срез, когда важна только категория.
+- `is_rune_props()`, `is_rune_derived()`, `is_legacy_props()`, `is_bindable_call()`; аксессор `class_field_state() -> Option<ClassFieldStateSemantics>`.
+
 ## Архитектурные инварианты
 
 1. **Identity by id.** Ключи — `SymbolId` / `OxcNodeId` / `ReferenceId`. Никаких имён в payload, никаких `find_binding_by_name`. Поверхность `declarator_semantics(OxcNodeId)` — классификация **JS-узла** по id, не только буквального декларатора: builder пишет факты и на узлы присваиваний (class-поля в конструкторе), и на узлы вызовов runtime-рун (`RuntimeRuneCall { kind: RuntimeRuneKind }` — effect/inspect-семейства, `$host`, `$props.id`, `$state.snapshot`; в legacy факт не записывается). Сигнальные руны деклараций несут `RuneState`/`RuneDerived`/`RuneProps`/`ClassField*` — на узле вызова они не дублируются.

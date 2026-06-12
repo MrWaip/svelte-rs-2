@@ -13,8 +13,7 @@ use crate::types::data::{AnalysisData, ApiExport};
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
-    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind,
-    ReferenceFacts, ReferenceSemantics,
+    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
 };
 use crate::PropsFlags;
 
@@ -36,14 +35,6 @@ impl LegacyMagicObject {
             REST_PROPS_NAME => Some(Self::RestProps),
             SLOTS_NAME => Some(Self::Slots),
             _ => None,
-        }
-    }
-
-    fn name(self) -> &'static str {
-        match self {
-            Self::Props => PROPS_NAME,
-            Self::RestProps => REST_PROPS_NAME,
-            Self::Slots => SLOTS_NAME,
         }
     }
 
@@ -225,7 +216,7 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
             data.reactivity
                 .record_legacy_bindable_prop_binding(visit.symbol, semantics);
             data.reactivity
-                .record_legacy_bindable_prop_symbol(visit.symbol);
+                .record_legacy_bindable_prop_symbol(visit.symbol, None);
         });
 
         data.reactivity
@@ -277,7 +268,8 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
                 flags,
             },
         );
-        data.reactivity.record_legacy_bindable_prop_symbol(symbol);
+        data.reactivity
+            .record_legacy_bindable_prop_symbol(symbol, alias.map(|a| a.to_string()));
     }
 }
 
@@ -301,11 +293,9 @@ fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags 
 
 pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
     let runes = data.script.runes();
-    let root = data.scoping.root_scope_id();
     let unresolved = data.scoping.root_unresolved_references().clone();
     let mut uses_props = false;
     let mut uses_rest_props = false;
-    let mut registered_any = false;
 
     for (name, refs) in &unresolved {
         let Some(object) = LegacyMagicObject::from_name(name.as_str()) else {
@@ -328,21 +318,11 @@ pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
                 LegacyMagicObject::Slots => {}
             }
         }
-        if data.scoping.find_binding(root, object.name()).is_none() {
-            let sym = data.scoping.add_synthetic_binding(root, object.name());
-            data.scoping.mark_init_known(sym);
-            registered_any = true;
-        }
         if is_slots {
             data.output.needs_sanitized_legacy_slots = true;
         }
     }
 
-    if registered_any {
-        data.scoping
-            .semantics_mut()
-            .finalize_unresolved_references();
-    }
     data.reactivity
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);
 }
@@ -354,12 +334,10 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
     let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
 
     let is_non_store_ref = |data: &AnalysisData<'_>, r| {
-        !matches!(
-            data.reactivity.reference_semantics(r),
-            ReferenceSemantics::StoreRead { .. }
-                | ReferenceSemantics::StoreWrite { .. }
-                | ReferenceSemantics::StoreUpdate { .. }
-        )
+        !data
+            .reactivity
+            .reference_semantics(r)
+            .is_store_subscription()
     };
     let prop_member_mutated = |data: &AnalysisData<'_>, sym| {
         data.scoping
@@ -405,10 +383,7 @@ fn classify_expression_default<'a>(
     if is_simple_expression(init) {
         if let Expression::Identifier(id) = init
             && let Some(sym) = data.scoping.symbol_for_identifier_reference(id)
-            && matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::LegacyBindableProp(_)
-            )
+            && data.reactivity.binding_semantics(sym).is_legacy_prop()
         {
             return PropDefaultKind::LazyAccessor;
         }
@@ -426,12 +401,7 @@ fn references_legacy_bindable_prop<'a>(data: &AnalysisData<'a>, expr: &Expressio
         Expression::Identifier(id) => data
             .scoping
             .symbol_for_identifier_reference(id)
-            .is_some_and(|sym| {
-                matches!(
-                    data.reactivity.binding_semantics(sym),
-                    crate::BindingSemantics::LegacyBindableProp(_)
-                )
-            }),
+            .is_some_and(|sym| data.reactivity.binding_semantics(sym).is_legacy_prop()),
         Expression::ConditionalExpression(c) => {
             references_legacy_bindable_prop(data, &c.test)
                 || references_legacy_bindable_prop(data, &c.consequent)

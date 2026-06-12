@@ -10,7 +10,6 @@ use crate::expression_semantics::{
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::DeclaratorSemantics;
 use crate::types::data::template_topology::Ancestors;
-use crate::types::script::PropsDeclaration;
 use crate::utils::node_id_utils::expression_node_id;
 use crate::value_evaluation::ValueEvaluation;
 use oxc_ast::ast::Expression;
@@ -23,8 +22,7 @@ use svelte_ast::{
 use svelte_component_semantics::{OriginKind, OxcNodeId, ReferenceId};
 
 pub struct ScriptAnalysis {
-    pub info: Option<ScriptInfo>,
-    pub props_id: Option<String>,
+    pub props_id: Option<SymbolId>,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
     pub runes_mode: RunesMode,
@@ -41,7 +39,6 @@ pub struct ScriptAnalysis {
 impl ScriptAnalysis {
     pub(crate) fn new() -> Self {
         Self {
-            info: None,
             props_id: None,
             has_class_state_fields: false,
             has_store_member_mutations: false,
@@ -55,10 +52,6 @@ impl ScriptAnalysis {
             ce_config: None,
             blocker_data: BlockerData::default(),
         }
-    }
-
-    pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
-        self.info.as_ref()?.props_declaration.as_ref()
     }
 
     pub fn is_state_source(&self, reassigned: bool) -> bool {

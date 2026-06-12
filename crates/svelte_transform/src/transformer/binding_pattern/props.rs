@@ -8,9 +8,7 @@ use oxc_ast::ast::{
 };
 use oxc_span::SPAN;
 
-use svelte_analyze::{
-    BINDABLE_RUNE_NAME, BindingSemantics, PropBindingKind, PropDefaultKind, PropEmitMode,
-};
+use svelte_analyze::{BindingSemantics, PropBindingKind, PropDefaultKind, PropEmitMode};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{OriginKind, SymbolId, walk_bindings};
 
@@ -72,7 +70,7 @@ fn prop_assignment_default_expr<'a>(
         Expression::CallExpression(c)
             if matches!(
                 c.callee.get_inner_expression(),
-                Expression::Identifier(id) if id.name.as_str() == BINDABLE_RUNE_NAME,
+                Expression::Identifier(id) if id.name.as_str() == "$bindable",
             )
     );
     if !is_bindable_call {

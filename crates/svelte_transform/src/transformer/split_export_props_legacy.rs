@@ -45,10 +45,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 let Some(sym) = analysis.scoping.find_binding(scope, local.as_str()) else {
                     continue;
                 };
-                if !matches!(
-                    analysis.binding_semantics(sym),
-                    BindingSemantics::LegacyBindableProp(_)
-                ) {
+                if !analysis.binding_semantics(sym).is_legacy_prop() {
                     continue;
                 }
                 let alias = if local != exported {

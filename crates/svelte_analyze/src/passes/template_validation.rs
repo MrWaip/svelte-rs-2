@@ -2096,20 +2096,8 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     };
 
     let decl = ctx.data.reactivity.binding_semantics(sym_id);
-    let valid = matches!(
-        decl,
-        crate::BindingSemantics::State(_)
-            | crate::BindingSemantics::Store(_)
-            | crate::BindingSemantics::LegacyState(_)
-            | crate::BindingSemantics::LegacyBindableProp(_)
-            | crate::BindingSemantics::Prop(crate::PropBindingSemantics {
-                kind: crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource,
-                ..
-            })
-    ) || matches!(
-        decl,
-        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::EachItem(_),),
-    ) && bind_targets_each_context(sym_id, dir.id, ctx)
+    let valid = decl_is_bindable_target(&decl)
+        || decl_is_each_item(&decl) && bind_targets_each_context(sym_id, dir.id, ctx)
         || {
             let flags = ctx.data.scoping.symbol_flags(sym_id);
             flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
@@ -2134,12 +2122,7 @@ fn validate_bind_group_binding(
         return;
     };
 
-    if !identifier_target
-        && matches!(
-            ctx.data.reactivity.binding_semantics(sym_id),
-            crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::SnippetParam(_),),
-        )
-    {
+    if !identifier_target && decl_is_snippet_param(&ctx.data.reactivity.binding_semantics(sym_id)) {
         emit_bind_error(
             ctx,
             dir.expression.span,
@@ -2652,15 +2635,7 @@ fn is_each_block_var_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -
         .reference_id
         .get()
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| {
-            matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::Contextual(
-                    crate::ContextualBindingSemantics::EachItem(_)
-                        | crate::ContextualBindingSemantics::EachIndex(_),
-                ),
-            )
-        })
+        .is_some_and(|sym| decl_is_each_contextual(&data.reactivity.binding_semantics(sym)))
 }
 
 fn is_snippet_param_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
@@ -2668,14 +2643,117 @@ fn is_snippet_param_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) ->
         .reference_id
         .get()
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| {
-            matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::Contextual(
-                    crate::ContextualBindingSemantics::SnippetParam(_),
-                ),
-            )
-        })
+        .is_some_and(|sym| decl_is_snippet_param(&data.reactivity.binding_semantics(sym)))
+}
+
+fn decl_is_bindable_target(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::State(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::LegacyBindableProp(_) => true,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource => true,
+            crate::PropBindingKind::Identifier | crate::PropBindingKind::Rest => false,
+        },
+        BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_each_item(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::EachItem(_) => true,
+            crate::ContextualBindingSemantics::EachIndex(_)
+            | crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | crate::ContextualBindingSemantics::SnippetParam(_) => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_each_contextual(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::EachItem(_)
+            | crate::ContextualBindingSemantics::EachIndex(_) => true,
+            crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | crate::ContextualBindingSemantics::SnippetParam(_) => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_snippet_param(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::SnippetParam(_) => true,
+            crate::ContextualBindingSemantics::EachItem(_)
+            | crate::ContextualBindingSemantics::EachIndex(_)
+            | crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
 }
 
 fn validate_const_tag_invalid_reference_expr(
@@ -2722,10 +2800,24 @@ fn maybe_const_tag_invalid_reference(
         .get()
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
 
-    if !matches!(
-        ctx.data.binding_semantics(sym_id),
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
-    ) {
+    let is_const_tag = match ctx.data.binding_semantics(sym_id) {
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. }) => true,
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
+    if !is_const_tag {
         return None;
     }
 

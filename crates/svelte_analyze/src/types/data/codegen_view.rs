@@ -6,11 +6,16 @@ use super::*;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::{ComponentCssProp, ComponentPropKind, DeclaratorSemantics};
-use crate::types::script::PropsDeclaration;
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
     data: &'d AnalysisData<'a>,
+}
+
+pub struct ComponentPropAccessor<'d> {
+    pub key: Cow<'d, str>,
+    pub local: &'d str,
+    pub default_span: Option<svelte_span::Span>,
 }
 
 impl<'d, 'a> CodegenView<'d, 'a> {
@@ -67,9 +72,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn exports(&self) -> &[ApiExport] {
         &self.data.output.api_exports
     }
-    pub fn props(&self) -> Option<&PropsDeclaration> {
-        self.data.script.props_declaration()
-    }
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context
     }
@@ -78,7 +80,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn needs_sanitized_legacy_props(&self) -> bool {
-        self.data.reactivity.legacy_uses_props() || self.data.reactivity.legacy_uses_rest_props()
+        let legacy = self.data.reactivity.summary().legacy;
+        legacy.reads_props_object || legacy.reads_rest_props_object
     }
 
     pub fn legacy_sanitized_props_excluded_keys(&self) -> &'static [&'static str] {
@@ -86,7 +89,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn needs_legacy_rest_props(&self) -> bool {
-        self.data.reactivity.legacy_uses_rest_props()
+        self.data
+            .reactivity
+            .summary()
+            .legacy
+            .reads_rest_props_object
     }
 
     pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
@@ -102,7 +109,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .output
             .api_exports
             .iter()
-            .map(|exp| key_for(exp.local))
+            .map(|exp| {
+                exp.alias
+                    .as_ref()
+                    .map(|alias| alias.to_string())
+                    .unwrap_or_else(|| key_for(exp.local))
+            })
             .collect();
         keys.extend(
             self.data
@@ -110,15 +122,59 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .legacy_bindable_prop_symbols()
                 .iter()
                 .copied()
-                .map(key_for),
+                .map(|sym| {
+                    self.data
+                        .reactivity
+                        .legacy_bindable_prop_alias(sym)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| key_for(sym))
+                }),
         );
         keys
+    }
+    pub fn component_prop_accessors(&self) -> Vec<ComponentPropAccessor<'d>> {
+        let mut accessors = Vec::new();
+        if self.data.uses_runes() {
+            for sym in self.data.reactivity.iter_runes_prop_symbols() {
+                let key = self
+                    .data
+                    .scoping
+                    .binding_origin_key(sym)
+                    .map(|(key, _)| key)
+                    .unwrap_or_else(|| Cow::Borrowed(self.data.scoping.symbol_name(sym)));
+                if key.starts_with("$$") {
+                    continue;
+                }
+                accessors.push(ComponentPropAccessor {
+                    key,
+                    local: self.data.scoping.symbol_name(sym),
+                    default_span: self.data.reactivity.prop_default_span(sym),
+                });
+            }
+            return accessors;
+        }
+        for &sym in self.data.reactivity.legacy_bindable_prop_symbols() {
+            let key = match self.data.reactivity.legacy_bindable_prop_alias(sym) {
+                Some(alias) => Cow::Borrowed(alias),
+                None => Cow::Borrowed(self.data.scoping.symbol_name(sym)),
+            };
+            if key.starts_with("$$") {
+                continue;
+            }
+            accessors.push(ComponentPropAccessor {
+                key,
+                local: self.data.scoping.symbol_name(sym),
+                default_span: None,
+            });
+        }
+        accessors
     }
     pub fn custom_element_slot_names(&self) -> &[String] {
         self.data.custom_element_slot_names()
     }
     pub fn props_id(&self) -> Option<&str> {
-        self.data.script.props_id.as_deref()
+        let symbol = self.data.script.props_id?;
+        Some(self.data.scoping.symbol_name(symbol))
     }
     pub fn scoping(&self) -> &ComponentScoping<'a> {
         &self.data.scoping

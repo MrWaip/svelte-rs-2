@@ -9,7 +9,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{AnalysisData, DeclaratorSemantics};
+use crate::types::data::AnalysisData;
 
 pub(super) fn validate_instance_program(
     data: &AnalysisData<'_>,
@@ -59,10 +59,11 @@ impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if matches!(
-            self.reactivity.declarator_semantics(call.node_id()),
-            DeclaratorSemantics::RuneDerived { .. }
-        ) {
+        if self
+            .reactivity
+            .declarator_semantics(call.node_id())
+            .is_rune_derived()
+        {
             let prev_expression_active = self.expression_active;
             self.expression_active = true;
             self.function_depth += 1;

@@ -18,13 +18,14 @@ use crate::reactivity_semantics::data::{
     EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
     ReferenceSemantics,
 };
-use crate::scope::{ComponentScoping, SymbolId};
+use crate::scope::SymbolId;
 use crate::types::data::{
     BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, IgnoreData,
     ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, SnippetData, WindowBindKind,
 };
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
 use crate::utils::expression_calls_or_awaits;
+use crate::value_evaluation::{ValueEvaluation, symbol_read_is_static};
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
     Expression, Function, ObjectPropertyKind, UpdateExpression,
@@ -69,9 +70,9 @@ pub fn build<'a>(
     parsed: &JsAst<'a>,
     semantics: &ComponentSemantics<'a>,
     reactivity: &ReactivitySemantics,
-    scoping: &ComponentScoping<'a>,
     expressions: &ExpressionSemanticsStore,
     snippets: &SnippetData,
+    value_evaluation: &ValueEvaluation,
     blockers: &BlockerData,
     ignore_data: &IgnoreData,
     dev: bool,
@@ -82,9 +83,9 @@ pub fn build<'a>(
         parsed,
         semantics,
         reactivity,
-        scoping,
         expressions,
         snippets,
+        value_evaluation,
         blockers,
         ignore_data,
         dev,
@@ -122,9 +123,9 @@ struct Ctx<'a, 'p> {
     parsed: &'p JsAst<'a>,
     semantics: &'p ComponentSemantics<'a>,
     reactivity: &'p ReactivitySemantics,
-    scoping: &'p ComponentScoping<'a>,
     expressions: &'p ExpressionSemanticsStore,
     snippets: &'p SnippetData,
+    value_evaluation: &'p ValueEvaluation,
     blockers: &'p BlockerData,
     ignore_data: &'p IgnoreData,
     dev: bool,
@@ -167,7 +168,7 @@ fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
                 EachIndexStrategy::Direct,
             )) => false,
             BindingSemantics::NonReactive => {
-                if ctx.scoping.is_init_known(sym) {
+                if symbol_read_is_static(ctx.value_evaluation, ctx.semantics, sym) {
                     return false;
                 }
                 if matches!(data.evaluation, Evaluation::Known(_)) {
@@ -178,12 +179,56 @@ fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
                 }
                 !matches!(data.evaluation.class(), Some(ValueClass::Function))
             }
-            BindingSemantics::OptimizedRune(_) => {
-                !(ctx.scoping.is_init_known(sym) || matches!(data.evaluation, Evaluation::Known(_)))
-            }
-            _ => true,
+            BindingSemantics::OptimizedRune(_) => !matches!(data.evaluation, Evaluation::Known(_)),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => true,
         }
     })
+}
+
+fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool {
+    match semantics {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            ContextualBindingSemantics::LetDirective
+            | ContextualBindingSemantics::SnippetParam(_)
+            | ContextualBindingSemantics::AwaitValue
+            | ContextualBindingSemantics::AwaitError => true,
+            ContextualBindingSemantics::EachItem(strategy) => match strategy {
+                EachItemStrategy::Accessor | EachItemStrategy::Signal => true,
+                EachItemStrategy::Direct => false,
+            },
+            ContextualBindingSemantics::EachIndex(strategy) => match strategy {
+                EachIndexStrategy::Signal => true,
+                EachIndexStrategy::Direct => false,
+            },
+            ContextualBindingSemantics::LetDirectiveDirect
+            | ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => false,
+        },
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
 }
 
 fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> bool {
@@ -191,10 +236,9 @@ fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> 
         return false;
     };
     data.references.iter().any(|&sym| {
-        matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive: true, .. })
-        )
+        ctx.reactivity
+            .binding_semantics(sym)
+            .is_reactive_const_tag()
     })
 }
 
@@ -706,45 +750,20 @@ fn derive_handler_emit(
                     .symbol_flags(sym)
                     .contains(SymbolFlags::Function)
             });
-            let is_maybe_reactive = symbol.is_some_and(|sym| {
-                matches!(
-                    ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::MaybeReactive
-                )
-            });
+            let is_maybe_reactive =
+                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_maybe_reactive());
             let is_reactive_const_tag = symbol.is_some_and(|sym| {
-                matches!(
-                    ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive: true, .. })
-                )
+                ctx.reactivity
+                    .binding_semantics(sym)
+                    .is_reactive_const_tag()
             });
-            let is_prop = symbol.is_some_and(|sym| {
-                matches!(
-                    ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_),
-                )
-            });
+            let is_prop =
+                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_props());
             let is_contextual_getter = symbol.is_some_and(|sym| {
-                matches!(
-                    ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::Contextual(
-                        ContextualBindingSemantics::LetDirective
-                            | ContextualBindingSemantics::SnippetParam(_)
-                            | ContextualBindingSemantics::AwaitValue
-                            | ContextualBindingSemantics::AwaitError
-                            | ContextualBindingSemantics::EachItem(
-                                EachItemStrategy::Accessor | EachItemStrategy::Signal,
-                            )
-                            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
-                    ),
-                )
+                handler_reads_through_contextual_getter(ctx.reactivity.binding_semantics(sym))
             });
-            let is_legacy_state = symbol.is_some_and(|sym| {
-                matches!(
-                    ctx.reactivity.binding_semantics(sym),
-                    BindingSemantics::LegacyState(_),
-                )
-            });
+            let is_legacy_state =
+                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_legacy_state());
             is_function
                 || (!ctx.dev
                     && !is_maybe_reactive
@@ -1268,10 +1287,8 @@ fn is_stable_literal_value(ctx: &Ctx<'_, '_>, expr: &Expression<'_>) -> bool {
             {
                 return false;
             }
-            matches!(
-                ctx.reactivity.binding_semantics(sym),
-                BindingSemantics::NonReactive
-            ) && ctx.scoping.is_init_known(sym)
+            ctx.reactivity.binding_semantics(sym).is_non_reactive()
+                && symbol_read_is_static(ctx.value_evaluation, ctx.semantics, sym)
         }
         _ => false,
     }
@@ -1283,13 +1300,33 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
         return result;
     };
     for &sym in &data.references {
-        if matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::Contextual(
-                ContextualBindingSemantics::EachItem(_) | ContextualBindingSemantics::EachIndex(_),
-            )
-        ) && !result.contains(&sym)
-        {
+        let each_contextual = match ctx.reactivity.binding_semantics(sym) {
+            BindingSemantics::Contextual(contextual) => match contextual {
+                ContextualBindingSemantics::EachItem(_)
+                | ContextualBindingSemantics::EachIndex(_) => true,
+                ContextualBindingSemantics::AwaitValue
+                | ContextualBindingSemantics::AwaitError
+                | ContextualBindingSemantics::LetDirective
+                | ContextualBindingSemantics::LetDirectiveDirect
+                | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                | ContextualBindingSemantics::SnippetParam(_) => false,
+            },
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        };
+        if each_contextual && !result.contains(&sym) {
             result.push(sym);
         }
     }

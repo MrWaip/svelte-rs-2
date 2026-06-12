@@ -10,7 +10,6 @@ mod executor;
 pub(crate) mod finalize_component_name;
 pub(crate) mod fragment_topology;
 pub(crate) mod js_analyze;
-pub(crate) mod post_resolve;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
 
@@ -29,8 +28,6 @@ pub(crate) enum PassKey {
     TemplateSideTables,
     CollectSymbols,
     JsAnalyzePostTemplate,
-    ClassifyNeedsContext,
-    PostResolve,
     BuildReactivitySemantics,
     BuildValueEvaluation,
     BuildOptimizedDerived,
@@ -54,8 +51,6 @@ pub(crate) enum DataToken {
     TemplateSideTables,
     SymbolRefs,
     JsAnalyzePostTemplate,
-    NeedsContext,
-    PostResolve,
     ReactivitySemantics,
     ValueEvaluation,
     OptimizedDerived,
@@ -125,16 +120,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::JsAnalyzePostTemplate],
     },
     PassDescriptor {
-        key: PassKey::ClassifyNeedsContext,
-        requires: &[DataToken::SymbolRefs],
-        produces: &[DataToken::NeedsContext],
-    },
-    PassDescriptor {
-        key: PassKey::PostResolve,
-        requires: &[DataToken::NeedsContext],
-        produces: &[DataToken::PostResolve],
-    },
-    PassDescriptor {
         key: PassKey::BuildFragmentTopology,
         requires: &[
             DataToken::ReactivitySemantics,
@@ -149,7 +134,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::BuildValueEvaluation,
-        requires: &[DataToken::ReactivitySemantics, DataToken::PostResolve],
+        requires: &[DataToken::ReactivitySemantics],
         produces: &[DataToken::ValueEvaluation],
     },
     PassDescriptor {
@@ -161,7 +146,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::BuildExpressionSemantics,
         requires: &[
             DataToken::ReactivitySemantics,
-            DataToken::PostResolve,
             DataToken::ValueEvaluation,
             DataToken::OptimizedDerived,
         ],
@@ -210,8 +194,6 @@ pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
 
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
-    PassKey::ClassifyNeedsContext,
-    PassKey::PostResolve,
     PassKey::BuildValueEvaluation,
     PassKey::BuildOptimizedDerived,
     PassKey::BuildExpressionSemantics,

@@ -1,3 +1,4 @@
+use crate::codegen::blocks::render_tag::render_callee_is_static;
 use crate::codegen::expr::coarse_wrap;
 use svelte_emit_builders::runes::rune_get;
 mod legacy_slot_fragment;
@@ -807,15 +808,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         match self.ctx.query.analysis.block_semantics(id) {
             svelte_analyze::BlockSemantics::Render(sem) => {
-                let Some(sym) = sem.callee_sym else {
-                    return false;
-                };
-                matches!(
-                    self.ctx.query.view.binding_semantics(sym),
-                    svelte_analyze::BindingSemantics::MaybeReactive
-                        | svelte_analyze::BindingSemantics::NonReactive
-                        | svelte_analyze::BindingSemantics::Unresolved,
-                )
+                render_callee_is_static(self.ctx, sem.callee_sym)
             }
             _ => false,
         }

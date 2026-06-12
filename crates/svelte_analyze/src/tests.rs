@@ -3,7 +3,6 @@ use crate::reactivity_semantics::data::PropDefaultKind;
 use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
 };
-use crate::types::script::RuneKind;
 use crate::{
     AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy,
     OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
@@ -1073,7 +1072,7 @@ fn assert_class_state_volatile(
     );
 }
 
-fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
+fn assert_rune_kind(data: &AnalysisData, name: &str, expected: &str) {
     use crate::types::data::{
         BindingSemantics, DerivedDeclarationSemantics, DerivedKind, OptimizedRuneSemantics,
         StateDeclarationSemantics, StateKind,
@@ -1088,46 +1087,46 @@ fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
         BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::State,
             ..
-        }) => RuneKind::State,
-        BindingSemantics::State(StateDeclarationSemantics {
-            kind: StateKind::StateRaw,
-            ..
-        }) => RuneKind::StateRaw,
-        BindingSemantics::State(StateDeclarationSemantics {
-            kind: StateKind::StateEager,
-            ..
-        }) => RuneKind::StateEager,
-        BindingSemantics::Derived(DerivedDeclarationSemantics {
-            kind: DerivedKind::Derived,
-            ..
         })
-        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
-            kind: DerivedKind::Derived,
-            ..
-        }) => RuneKind::Derived,
-        BindingSemantics::Derived(DerivedDeclarationSemantics {
-            kind: DerivedKind::DerivedBy,
-            ..
-        })
-        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
-            kind: DerivedKind::DerivedBy,
-            ..
-        }) => RuneKind::DerivedBy,
-        BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
+        | BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
             kind: StateKind::State,
             ..
-        }) => RuneKind::State,
-        BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
+        }) => "state",
+        BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::StateRaw,
             ..
-        }) => RuneKind::StateRaw,
-        BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
+        })
+        | BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
+            kind: StateKind::StateRaw,
+            ..
+        }) => "state_raw",
+        BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::StateEager,
             ..
-        }) => RuneKind::StateEager,
+        })
+        | BindingSemantics::OptimizedRune(OptimizedRuneSemantics {
+            kind: StateKind::StateEager,
+            ..
+        }) => "state_eager",
+        BindingSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            ..
+        })
+        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
+            kind: DerivedKind::Derived,
+            ..
+        }) => "derived",
+        BindingSemantics::Derived(DerivedDeclarationSemantics {
+            kind: DerivedKind::DerivedBy,
+            ..
+        })
+        | BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
+            kind: DerivedKind::DerivedBy,
+            ..
+        }) => "derived_by",
         other => panic!("'{name}' is not a rune: {other:?}"),
     };
-    assert_eq!(actual, expected, "expected '{name}' to be {expected:?}");
+    assert_eq!(actual, expected, "expected '{name}' to be {expected}");
 }
 
 fn assert_rune_is_mutated(data: &AnalysisData, name: &str) {
@@ -1969,13 +1968,13 @@ fn static_attrs_do_not_force_needs_var() {
 #[test]
 fn rune_kind_state() {
     let (_c, data) = analyze_source(r#"<script>let count = $state(0);</script>"#);
-    assert_rune_kind(&data, "count", RuneKind::State);
+    assert_rune_kind(&data, "count", "state");
 }
 
 #[test]
 fn rune_kind_state_raw() {
     let (_c, data) = analyze_source(r#"<script>let data = $state.raw({});</script>"#);
-    assert_rune_kind(&data, "data", RuneKind::StateRaw);
+    assert_rune_kind(&data, "data", "state_raw");
 }
 
 #[test]
@@ -1983,20 +1982,20 @@ fn rune_kind_derived() {
     let (_c, data) = analyze_source(
         r#"<script>let count = $state(0); let doubled = $derived(count * 2);</script>"#,
     );
-    assert_rune_kind(&data, "count", RuneKind::State);
-    assert_rune_kind(&data, "doubled", RuneKind::Derived);
+    assert_rune_kind(&data, "count", "state");
+    assert_rune_kind(&data, "doubled", "derived");
 }
 
 #[test]
 fn rune_kind_derived_by() {
     let (_c, data) = analyze_source(r#"<script>let val = $derived.by(() => 42);</script>"#);
-    assert_rune_kind(&data, "val", RuneKind::DerivedBy);
+    assert_rune_kind(&data, "val", "derived_by");
 }
 
 #[test]
 fn rune_kind_state_eager() {
     let (_c, data) = analyze_source(r#"<script>let count = $state.eager(0);</script>"#);
-    assert_rune_kind(&data, "count", RuneKind::StateEager);
+    assert_rune_kind(&data, "count", "state_eager");
 }
 
 #[test]
@@ -2016,8 +2015,8 @@ fn module_rune_kinds_and_cross_script_refs() {
 <button>{doubled}</button>"#,
     );
 
-    assert_rune_kind(&data, "shared", RuneKind::State);
-    assert_rune_kind(&data, "doubled", RuneKind::Derived);
+    assert_rune_kind(&data, "shared", "state");
+    assert_rune_kind(&data, "doubled", "derived");
     assert_rune_is_mutated(&data, "shared");
 
     let expr_id = find_expr_tag(component.root, &component, "doubled")
@@ -3973,13 +3972,6 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
         },
     );
 
-    let props = data
-        .script
-        .props_declaration()
-        .unwrap_or_else(|| panic!("expected props declaration in legacy mode"));
-    assert_eq!(props.props.len(), 1);
-    assert_eq!(props.props[0].local_name.as_str(), "count");
-    assert_eq!(props.props[0].default_text.as_deref(), Some("1"));
     assert!(
         data.output.api_exports.is_empty(),
         "legacy export let should not remain a component export"
@@ -7123,6 +7115,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7158,6 +7151,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7508,6 +7502,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7561,6 +7556,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7592,16 +7588,10 @@ async function baz() { return 2; }
     }
 
     #[test]
-    fn t5e5_legacy_sanitized_props_only() {
+    fn t5e5_legacy_bare_props_read_no_wrap() {
         let source = "<p>{$$props}</p>";
         let (component, data, parsed) = analyze_with_opts(source, legacy_opts());
-        assert_legacy_wrap(
-            &component,
-            &data,
-            &parsed,
-            "$$props",
-            LegacyWrap::Synthetic(SyntheticPropsCarrier::SanitizedProps),
-        );
+        assert_legacy_wrap(&component, &data, &parsed, "$$props", LegacyWrap::None);
     }
 
     #[test]
@@ -7633,6 +7623,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7675,6 +7666,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7712,6 +7704,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7768,6 +7761,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7798,6 +7792,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7833,6 +7828,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,
@@ -7873,6 +7869,7 @@ async function baz() { return 2; }
             &data.reactivity,
             &data.scoping,
             &data.template.snippets,
+            &data.value_evaluation,
             data.script.has_class_state_fields,
             data.blocker_data(),
             data.script.runes_mode,

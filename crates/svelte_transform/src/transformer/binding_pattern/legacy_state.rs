@@ -5,7 +5,6 @@ use oxc_ast::NONE;
 use oxc_ast::ast::{Expression, VariableDeclarationKind, VariableDeclarator};
 use oxc_span::SPAN;
 
-use svelte_analyze::BindingSemantics;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::walk_bindings;
 
@@ -43,10 +42,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 decl_kind,
             );
 
-            let is_reactive = matches!(
-                self.analysis.map(|a| a.binding_semantics(v.symbol)),
-                Some(BindingSemantics::LegacyState(_))
-            );
+            let is_reactive = self
+                .analysis
+                .is_some_and(|a| a.binding_semantics(v.symbol).is_legacy_state());
             let value = if is_reactive {
                 self.b.call_expr("$.mutable_source", [Arg::Expr(expr)])
             } else {

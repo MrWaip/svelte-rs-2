@@ -5,7 +5,7 @@ use super::super::{
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
-use crate::reactivity_semantics::data::{BindingSemantics, PropBindingKind, PropBindingSemantics};
+use crate::reactivity_semantics::data::{BindingSemantics, PropBindingKind};
 use crate::utils::node_id_utils::expression_node_id;
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
@@ -277,13 +277,29 @@ fn derive_collection_source<'a>(
         return EachCollectionSource::Local;
     }
     let sym = d.references[0];
-    if !matches!(
-        ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. },
-            ..
-        }) | BindingSemantics::LegacyBindableProp(_)
-    ) {
+    let is_source_prop = match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::LegacyBindableProp(_) => true,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } => true,
+            PropBindingKind::Identifier | PropBindingKind::Rest | PropBindingKind::NonSource => {
+                false
+            }
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
+    if !is_source_prop {
         return EachCollectionSource::Local;
     }
     EachCollectionSource::Prop { sym }

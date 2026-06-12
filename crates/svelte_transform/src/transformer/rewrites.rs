@@ -154,10 +154,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::LegacyStateMemberMutationRoot { symbol } => {
-                let safe = matches!(
-                    analysis.binding_semantics(symbol),
-                    BindingSemantics::LegacyState(s) if s.var_declared
-                );
+                let safe = analysis
+                    .binding_semantics(symbol)
+                    .legacy_state()
+                    .is_some_and(|s| s.var_declared);
                 *expr = if safe {
                     self.make_rune_safe_get(name.as_str())
                 } else {
@@ -793,10 +793,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (id.name, ref_id, assign.operator)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::PropMutation { .. }
-        ) {
+        if !analysis.reference_semantics(ref_id).is_prop_mutation() {
             return false;
         }
         let Expression::AssignmentExpression(assign) = &mut *node else {
@@ -836,10 +833,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 upd.operator == UpdateOperator::Decrement,
             )
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::PropMutation { .. }
-        ) {
+        if !analysis.reference_semantics(ref_id).is_prop_mutation() {
             return false;
         }
         let fn_name = if is_prefix {
@@ -915,10 +909,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_reactive_import_member_mutation_root()
+        {
             return false;
         }
         let import_name: &'a str = self
@@ -957,10 +951,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_reactive_import_member_mutation_root()
+        {
             return false;
         }
         let import_name: &'a str = self
@@ -996,10 +990,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_state_member_mutation_root()
+        {
             return false;
         }
         let Expression::AssignmentExpression(assign) = &mut *node else {
@@ -1034,10 +1028,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_state_member_mutation_root()
+        {
             return false;
         }
         let Expression::UpdateExpression(upd) = &mut *node else {
@@ -1256,10 +1250,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(ref_id) = id.reference_id.get() else {
             return false;
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::RestPropMemberRewrite
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_rest_prop_member_rewrite()
+        {
             return false;
         }
         member.object = self

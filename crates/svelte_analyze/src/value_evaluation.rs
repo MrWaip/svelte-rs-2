@@ -4,7 +4,6 @@ use crate::reactivity_semantics::data::{
 };
 use crate::scope::ComponentScoping;
 use crate::types::data::{BindingSemantics, JsAst, SnippetData};
-use crate::types::script::RuneKind;
 use compact_str::CompactString;
 use oxc_ast::ast::{
     Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
@@ -192,6 +191,30 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
     pub fn evaluated_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
         self.bindings_init.keys().copied()
     }
+
+    pub(crate) fn function_declaration_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.function_decls.iter().copied()
+    }
+}
+
+pub(crate) fn symbol_read_is_static(
+    evaluation: &ValueEvaluation,
+    semantics: &ComponentSemantics<'_>,
+    symbol: SymbolId,
+) -> bool {
+    if semantics.is_mutated(symbol) {
+        return false;
+    }
+    if semantics.is_reexported_specifier_local(symbol) {
+        return false;
+    }
+    match evaluation.evaluation(symbol) {
+        Evaluation::Known(_) => true,
+        defined @ Evaluation::Defined { .. } => {
+            matches!(defined.class(), Some(ValueClass::Function))
+        }
+        Evaluation::MaybeNullish { .. } => false,
+    }
 }
 
 fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
@@ -285,6 +308,14 @@ pub(crate) fn build<'a>(
     for symbol in evaluator.evaluated_symbols() {
         let evaluation = evaluator.evaluate_binding(symbol);
         by_symbol.insert(symbol, evaluation);
+    }
+    for symbol in evaluator.function_declaration_symbols() {
+        by_symbol.insert(
+            symbol,
+            Evaluation::Defined {
+                class: Some(ValueClass::Function),
+            },
+        );
     }
 
     ValueEvaluation { by_symbol }
@@ -532,31 +563,37 @@ fn eval_runtime_rune_call(kind: RuntimeRuneKind) -> EvalSet {
     }
 }
 
-fn eval_rune_call(
-    rune: RuneKind,
+fn eval_rune_first_arg(
     c: &CallExpression<'_>,
     ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
-    use RuneKind::*;
-    let arg0 = c.arguments.first().and_then(|a| a.as_expression());
-    match rune {
-        State | StateRaw | Derived => match arg0 {
-            Some(arg) => eval_set(arg, ctx, guard),
-            None => smallvec![EvalAtom::Known(KnownValue::Undefined)],
-        },
-        DerivedBy => match arg0.map(|e| e.get_inner_expression()) {
-            Some(Expression::ArrowFunctionExpression(arrow)) if !arrow.body.is_empty() => {
-                if let Some(stmt) = arrow.body.statements.first()
-                    && let Statement::ExpressionStatement(es) = stmt
-                    && arrow.expression
-                {
-                    return eval_set(&es.expression, ctx, guard);
-                }
-                smallvec![EvalAtom::Unknown]
+    match c.arguments.first().and_then(|a| a.as_expression()) {
+        Some(arg) => eval_set(arg, ctx, guard),
+        None => smallvec![EvalAtom::Known(KnownValue::Undefined)],
+    }
+}
+
+fn eval_rune_derived_by(
+    c: &CallExpression<'_>,
+    ctx: &ValueEvaluator<'_, '_>,
+    guard: &mut FxHashSet<OxcNodeId>,
+) -> EvalSet {
+    match c
+        .arguments
+        .first()
+        .and_then(|a| a.as_expression())
+        .map(|e| e.get_inner_expression())
+    {
+        Some(Expression::ArrowFunctionExpression(arrow)) if !arrow.body.is_empty() => {
+            if let Some(stmt) = arrow.body.statements.first()
+                && let Statement::ExpressionStatement(es) = stmt
+                && arrow.expression
+            {
+                return eval_set(&es.expression, ctx, guard);
             }
-            _ => smallvec![EvalAtom::Unknown],
-        },
+            smallvec![EvalAtom::Unknown]
+        }
         _ => smallvec![EvalAtom::Unknown],
     }
 }
@@ -815,11 +852,24 @@ fn eval_identifier(
     }
     let result = eval_binding_init(sym, init_expr, ctx, guard);
     guard.remove(&init_node_id);
+    let optimized_or_runtime_rune = match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. } => true,
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
     if ctx.read_context == ReadContext::Runtime
-        && matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. }
-        )
+        && optimized_or_runtime_rune
         && result
             .iter()
             .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
@@ -829,50 +879,34 @@ fn eval_identifier(
     result
 }
 
-fn signal_rune_kind(semantics: &BindingSemantics) -> Option<RuneKind> {
-    match semantics {
-        BindingSemantics::State(state) => match state.kind {
-            StateKind::State => Some(RuneKind::State),
-            StateKind::StateRaw => Some(RuneKind::StateRaw),
-            StateKind::StateEager => None,
-        },
-        BindingSemantics::OptimizedRune(optimized) => match optimized.kind {
-            StateKind::State => Some(RuneKind::State),
-            StateKind::StateRaw => Some(RuneKind::StateRaw),
-            StateKind::StateEager => None,
-        },
-        BindingSemantics::Derived(derived) | BindingSemantics::OptimizedDerived(derived) => {
-            match derived.kind {
-                DerivedKind::Derived => Some(RuneKind::Derived),
-                DerivedKind::DerivedBy => Some(RuneKind::DerivedBy),
-            }
-        }
-        BindingSemantics::NonReactive
-        | BindingSemantics::MaybeReactive
-        | BindingSemantics::Prop(_)
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::LegacyApiExport
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Store(_)
-        | BindingSemantics::Const(_)
-        | BindingSemantics::Contextual(_)
-        | BindingSemantics::RuntimeRune { .. }
-        | BindingSemantics::Unresolved => None,
-    }
-}
-
 fn eval_binding_init(
     sym: SymbolId,
     init: &Expression<'_>,
     ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
-    if let Some(rune) = signal_rune_kind(&ctx.reactivity.binding_semantics(sym))
-        && let Expression::CallExpression(call) = init.get_inner_expression()
-    {
-        return eval_rune_call(rune, call, ctx, guard);
+    let Expression::CallExpression(call) = init.get_inner_expression() else {
+        return eval_set(init, ctx, guard);
+    };
+    match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::State(state)
+            if matches!(state.kind, StateKind::State | StateKind::StateRaw) =>
+        {
+            eval_rune_first_arg(call, ctx, guard)
+        }
+        BindingSemantics::OptimizedRune(optimized)
+            if matches!(optimized.kind, StateKind::State | StateKind::StateRaw) =>
+        {
+            eval_rune_first_arg(call, ctx, guard)
+        }
+        BindingSemantics::Derived(derived) | BindingSemantics::OptimizedDerived(derived) => {
+            match derived.kind {
+                DerivedKind::Derived => eval_rune_first_arg(call, ctx, guard),
+                DerivedKind::DerivedBy => eval_rune_derived_by(call, ctx, guard),
+            }
+        }
+        _ => eval_set(init, ctx, guard),
     }
-    eval_set(init, ctx, guard)
 }
 
 fn eval_binary(

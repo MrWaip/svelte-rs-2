@@ -10,9 +10,8 @@ use oxc_ast::ast::{
 };
 use oxc_span::SPAN;
 
-use svelte_analyze::{
-    BindingSemantics, DerivedKind, PropBindingKind, PropBindingSemantics, RuneKind,
-};
+use svelte_analyze::DerivedKind;
+
 use svelte_ast_builder::{Arg, AssignLeft};
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
@@ -268,13 +267,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(sym) = self.component_scoping.symbol_for_identifier_reference(id) else {
             return false;
         };
-        matches!(
-            self.binding_semantics_for_symbol(sym),
-            Some(BindingSemantics::Prop(PropBindingSemantics {
-                kind: PropBindingKind::Rest,
-                ..
-            }))
-        )
+        self.binding_semantics_for_symbol(sym)
+            .is_some_and(|sem| sem.is_rest_props())
     }
 
     fn derived_leaf_value(
@@ -283,7 +277,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         accessor: Expression<'a>,
     ) -> (&'a str, Expression<'a>) {
         let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
-        let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+        let value = self.wrap_derived_value(accessor);
         let value = if self.dev {
             self.b
                 .call_expr("$.tag", [Arg::Expr(value), Arg::Str(name.to_string())])

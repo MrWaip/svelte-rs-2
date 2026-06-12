@@ -1,7 +1,6 @@
 pub mod data;
 pub(crate) mod markers;
 pub mod node_table;
-pub mod script;
 
 pub use data::{
     AnalysisData, ApiExport, AsyncStmtMeta, BindHostKind, BindPropertyKind, BindSemanticsData,
@@ -14,6 +13,3 @@ pub use data::{
     WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};
-pub use script::{
-    DeclarationInfo, DeclarationKind, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
-};

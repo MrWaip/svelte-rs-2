@@ -13,10 +13,7 @@ use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst, PropReferenceSemantics,
-    ReferenceSemantics,
-};
+use svelte_analyze::{AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst};
 use svelte_ast::{
     Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node,
     NodeId as SvelteNodeId, StyleDirectiveValue,
@@ -320,13 +317,10 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                             let Some(ref_id) = id.reference_id.get() else {
                                 return false;
                             };
-                            return matches!(
-                                ctx.analysis.reference_semantics(ref_id),
-                                ReferenceSemantics::PropRead(PropReferenceSemantics::Source {
-                                    bindable: true,
-                                    ..
-                                }) | ReferenceSemantics::PropMutation { bindable: true, .. }
-                            );
+                            return ctx
+                                .analysis
+                                .reference_semantics(ref_id)
+                                .is_bindable_prop_access();
                         }
                         _ => return false,
                     }

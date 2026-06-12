@@ -5,7 +5,7 @@ use oxc_ast::ast::{
     SimpleAssignmentTarget, UpdateOperator,
 };
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{DeclaratorSemantics, ReferenceSemantics, RuneKind};
+use svelte_analyze::{DeclaratorSemantics, ReferenceSemantics, StateKind};
 use svelte_component_semantics::OxcNodeId;
 
 use svelte_ast_builder::Arg;
@@ -711,9 +711,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if let Expression::PrivateFieldExpression(pfe) = node
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
-            let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
-            if let Some(kind) = rune_kind {
-                if self.in_constructor() && matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+            let declarator = self.private_state_field_declarator(pfe.field.name.as_str());
+            if let Some(declarator) = declarator {
+                let proxied_field_state =
+                    declarator
+                        .class_field_state()
+                        .is_some_and(|state| match state.kind {
+                            StateKind::State | StateKind::StateRaw => true,
+                            StateKind::StateEager => false,
+                        });
+                if self.in_constructor() && proxied_field_state {
                     let field_expr = self.b.move_expr(node);
                     *node = self.b.static_member_expr(field_expr, "v");
                 } else {

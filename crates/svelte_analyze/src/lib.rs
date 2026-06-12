@@ -36,7 +36,6 @@ pub use block_semantics::{
     KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
     RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
 };
-pub use reactivity_semantics::script_info::BINDABLE_RUNE_NAME;
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
@@ -44,21 +43,18 @@ pub use types::data::{
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
     ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
     ComponentPropKind, ConstBindingSemantics, ContentEditableKind, ContextualBindingSemantics,
-    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorSemantics,
+    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorGroup, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DocumentBindKind, EachIndexStrategy,
     EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
     ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyInit,
-    MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind, ParentRef,
-    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics, ResizeObserverKind,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
-    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
-    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
-};
-pub use types::script::{
-    DeclarationInfo, DeclarationKind, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
+    LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData, ParentKind,
+    ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
+    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
+    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
+    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {
@@ -199,11 +195,7 @@ pub fn analyze_module<'a>(
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
 
-            let script_info = reactivity_semantics::script_info::extract_for_standalone_module(
-                &program, source, &scoping,
-            );
             data.scoping = scoping;
-            data.script.info = Some(script_info);
             data.script.runes_mode = svelte_ast::RunesMode::Runes;
 
             validate::validate_standalone_module(&data, &program, true, &mut diags);
@@ -233,84 +225,140 @@ fn build_runtime_info(
     data: &AnalysisData<'_>,
     dev: bool,
 ) -> RuntimeInfo {
-    let legacy_symbols = data.reactivity.legacy_bindable_prop_symbols();
-    let has_legacy_bindable_prop = !legacy_symbols.is_empty();
-    let has_legacy_member_mutated = data.reactivity.legacy_has_member_mutated();
-    let has_legacy_props_read = data.reactivity.legacy_uses_props();
-    let has_legacy_reactive_statements = data
-        .reactivity
-        .legacy_reactive()
-        .iter_statements_topo()
-        .next()
-        .is_some();
+    let summary = data.reactivity.summary();
     let has_exports = !data.output.api_exports.is_empty();
-    let has_bindable = data
-        .script
-        .props_declaration()
-        .is_some_and(|d| d.has_bindable());
-    let has_stores = data.reactivity.has_store_bindings();
-    let has_ce_props = data.output.is_custom_element_target
-        && data
-            .script
-            .props_declaration()
-            .is_some_and(|d| !d.props.is_empty());
-    let needs_push = has_bindable
-        || has_exports
-        || has_ce_props
-        || data.output.needs_context
-        || (!data.uses_runes() && data.script.accessors)
-        || (!data.uses_runes() && data.script.immutable)
-        || dev
-        || (!data.uses_runes() && (has_legacy_member_mutated || has_legacy_reactive_statements));
-    let has_legacy_accessor_props = !data.uses_runes()
-        && data.script.accessors
-        && data
-            .script
-            .props_declaration()
-            .is_some_and(|d| d.props.iter().any(|p| !p.is_rest && !p.is_reserved()));
-    let has_component_exports = has_exports || has_ce_props || has_legacy_accessor_props || dev;
-    let has_component_bubble_event_legacy = (0..component.node_count()).any(|raw| {
-        let id = svelte_ast::NodeId(raw);
-        let Some(view) = component.store.get(id).as_component_like() else {
-            return false;
-        };
-        view.attributes.iter().any(|a| {
-            matches!(
-                a,
-                svelte_ast::Attribute::OnDirectiveLegacy(od) if od.expression.is_none()
-            )
-        })
-    });
-    let needs_props_param = data.script.props_declaration().is_some()
-        || needs_push
-        || has_legacy_bindable_prop
-        || has_legacy_props_read
-        || data.reactivity.legacy_uses_rest_props()
-        || data.output.legacy_has_export_declaration
-        || has_component_bubble_event_legacy;
-
-    let legacy_init = if data.uses_runes() {
-        LegacyInit::None
-    } else if data.script.immutable {
-        LegacyInit::Immutable
-    } else if has_legacy_member_mutated || data.output.needs_context {
-        LegacyInit::Plain
-    } else {
-        LegacyInit::None
-    };
+    let needs_push = needs_push(data, summary, has_exports, dev);
+    let has_legacy_accessor_props = has_legacy_accessor_props(data);
+    let has_component_exports =
+        has_exports || summary.props.has_custom_element || has_legacy_accessor_props || dev;
+    let needs_props_param = needs_props_param(component, data, summary, needs_push);
 
     RuntimeInfo {
         needs_push,
         has_component_exports,
         has_exports,
-        has_bindable,
-        has_stores,
-        has_ce_props,
+        has_bindable: summary.props.has_bindable,
+        has_stores: summary.has_store_bindings,
+        has_ce_props: summary.props.has_custom_element,
         has_legacy_accessor_props,
         needs_props_param,
         needs_pop_with_return: needs_push && has_component_exports,
-        legacy_init,
+        legacy_init: legacy_init(data, summary.legacy),
     }
+}
+
+fn needs_push(
+    data: &AnalysisData<'_>,
+    summary: ReactivitySummary,
+    has_exports: bool,
+    dev: bool,
+) -> bool {
+    if summary.props.has_bindable || summary.props.has_custom_element {
+        return true;
+    }
+    if has_exports {
+        return true;
+    }
+    if data.output.needs_context {
+        return true;
+    }
+    if dev {
+        return true;
+    }
+    if data.uses_runes() {
+        return false;
+    }
+    if data.script.accessors || data.script.immutable {
+        return true;
+    }
+    if summary.legacy.has_member_mutated {
+        return true;
+    }
+    has_legacy_reactive_statements(data)
+}
+
+fn has_legacy_reactive_statements(data: &AnalysisData<'_>) -> bool {
+    data.reactivity
+        .legacy_reactive()
+        .iter_statements_topo()
+        .next()
+        .is_some()
+}
+
+fn has_legacy_accessor_props(data: &AnalysisData<'_>) -> bool {
+    if data.uses_runes() {
+        return false;
+    }
+    if !data.script.accessors {
+        return false;
+    }
+    data.reactivity
+        .legacy_bindable_prop_symbols()
+        .iter()
+        .any(|&sym| !legacy_bindable_prop_key(data, sym).starts_with("$$"))
+}
+
+fn legacy_bindable_prop_key<'d>(
+    data: &'d AnalysisData<'_>,
+    sym: svelte_component_semantics::SymbolId,
+) -> &'d str {
+    match data.reactivity.legacy_bindable_prop_alias(sym) {
+        Some(alias) => alias,
+        None => data.scoping.symbol_name(sym),
+    }
+}
+
+fn needs_props_param(
+    component: &svelte_ast::Component,
+    data: &AnalysisData<'_>,
+    summary: ReactivitySummary,
+    needs_push: bool,
+) -> bool {
+    if needs_push || summary.props.has_props {
+        return true;
+    }
+    if summary.legacy.has_bindable_prop {
+        return true;
+    }
+    if summary.legacy.reads_props_object || summary.legacy.reads_rest_props_object {
+        return true;
+    }
+    if data.output.legacy_has_export_declaration {
+        return true;
+    }
+    has_component_bubble_event_legacy(component)
+}
+
+fn has_component_bubble_event_legacy(component: &svelte_ast::Component) -> bool {
+    for raw in 0..component.node_count() {
+        let id = svelte_ast::NodeId(raw);
+        let Some(view) = component.store.get(id).as_component_like() else {
+            continue;
+        };
+        let bubbles = view.attributes.iter().any(|a| {
+            matches!(
+                a,
+                svelte_ast::Attribute::OnDirectiveLegacy(od) if od.expression.is_none()
+            )
+        });
+        if bubbles {
+            return true;
+        }
+    }
+    false
+}
+
+fn legacy_init(data: &AnalysisData<'_>, legacy: LegacySummary) -> LegacyInit {
+    if data.uses_runes() {
+        return LegacyInit::None;
+    }
+    if data.script.immutable {
+        return LegacyInit::Immutable;
+    }
+    if legacy.has_member_mutated || data.output.needs_context {
+        return LegacyInit::Plain;
+    }
+    LegacyInit::None
 }
 
 #[cfg(test)]

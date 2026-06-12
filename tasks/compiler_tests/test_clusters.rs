@@ -58,6 +58,9 @@ mod legacy_props;
 #[path = "clusters/legacy_exports.rs"]
 mod legacy_exports;
 
+#[path = "clusters/legacy_rest_props.rs"]
+mod legacy_rest_props;
+
 #[path = "clusters/legacy_coarse_deps.rs"]
 mod legacy_coarse_deps;
 

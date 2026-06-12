@@ -4,7 +4,6 @@ use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
 use super::node_table::{NodeBitSet, NodeTable};
-use super::script::ScriptInfo;
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub use svelte_parser::JsAst;
@@ -30,10 +29,11 @@ pub(crate) mod template_topology;
 pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
-    ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics, DerivedDeclarationSemantics,
-    DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy, LegacyBindablePropSemantics,
-    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, ReactivitySemantics, ReferenceSemantics, RuntimeRuneKind,
+    ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy,
+    LegacyBindablePropSemantics, LegacySummary, OptimizedRuneSemantics, PropBindingKind,
+    PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
+    ReactivitySemantics, ReactivitySummary, ReferenceSemantics, RuntimeRuneKind,
     SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
     StoreBindingSemantics,
 };

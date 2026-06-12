@@ -4,11 +4,10 @@ use oxc_ast_visit::walk::walk_call_expression;
 use oxc_span::{GetSpan, Span as OxcSpan};
 use oxc_syntax::symbol::SymbolId;
 use rustc_hash::FxHashSet;
-use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::reactivity_semantics::script_info::is_rune_name;
+use crate::reactivity_semantics::data::DeclaratorGroup;
 use crate::{AnalysisData, BindingSemantics};
 
 pub(super) fn validate(
@@ -39,10 +38,6 @@ impl StoreValidator<'_> {
             return;
         }
         let base = &name[1..];
-
-        if is_rune_name(name) {
-            return;
-        }
 
         let root = self.data.scoping.root_scope_id();
 
@@ -116,17 +111,12 @@ impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
         if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
             return;
         }
-        if is_rune_name(name) {
-            return;
-        }
         let root = self.data.scoping.root_scope_id();
         if self
             .data
             .scoping
             .find_binding(root, name)
-            .is_some_and(|sym| {
-                matches!(self.data.binding_semantics(sym), BindingSemantics::Store(_),)
-            })
+            .is_some_and(|sym| self.data.binding_semantics(sym).is_store())
         {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::StoreInvalidSubscription,
@@ -140,9 +130,6 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
         let name = ident.name.as_str();
         if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
-            return;
-        }
-        if is_rune_name(name) {
             return;
         }
 
@@ -162,64 +149,78 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
     }
 }
 
+impl StoreValidator<'_> {
+    fn check_store_rune_conflict(&mut self, call: &CallExpression<'_>) {
+        let Expression::Identifier(callee) = call.callee.get_inner_expression() else {
+            return;
+        };
+        let name = callee.name.as_str();
+        if !name.starts_with('$') || name.len() <= 1 {
+            return;
+        }
+        if !is_rune_call(self.data, call) {
+            return;
+        }
+        let root = self.data.scoping.root_scope_id();
+        if let Some(subscription) = self.data.scoping.find_binding(root, name)
+            && self
+                .data
+                .reactivity
+                .binding_semantics(subscription)
+                .is_store()
+        {
+            return;
+        }
+        let base = &name[1..];
+        let Some(base_sym) = self.data.scoping.find_binding(root, base) else {
+            return;
+        };
+        if declared_as_rune_or_prop(self.data, base_sym) {
+            return;
+        }
+        self.diags.push(Diagnostic::warning(
+            DiagnosticKind::StoreRuneConflict {
+                name: base.to_string(),
+            },
+            self.span(callee.span()),
+        ));
+    }
+}
+
 impl<'ast> Visit<'ast> for StoreValidator<'_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
         self.check_scoped_subscription(ident);
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
-        if let Expression::Identifier(callee) = call.callee.get_inner_expression() {
-            let name = callee.name.as_str();
-            if is_rune_name(name) && name.starts_with('$') && name.len() > 1 {
-                let base = &name[1..];
-                let root = self.data.scoping.root_scope_id();
-                let dollar_is_store = self
-                    .data
-                    .scoping
-                    .find_binding(root, name)
-                    .is_some_and(|sym_id| is_synthetic_store_binding(self.data, sym_id));
-                if !dollar_is_store
-                    && self
-                        .data
-                        .scoping
-                        .find_binding(root, base)
-                        .is_some_and(|sym_id| {
-                            !is_rune_or_prop_origin(self.data, sym_id)
-                                && !is_synthetic_store_binding(self.data, sym_id)
-                        })
-                {
-                    self.diags.push(Diagnostic::warning(
-                        DiagnosticKind::StoreRuneConflict {
-                            name: base.to_string(),
-                        },
-                        self.span(callee.span()),
-                    ));
-                }
-            }
-        }
-
+        self.check_store_rune_conflict(call);
         walk_call_expression(self, call);
     }
 }
 
-fn is_synthetic_store_binding(data: &AnalysisData, sym_id: SymbolId) -> bool {
-    matches!(data.scoping.symbol_owner(sym_id), SymbolOwner::Synthetic)
-        && matches!(
-            data.reactivity.binding_semantics(sym_id),
-            BindingSemantics::Store(_)
-        )
+fn declared_as_rune_or_prop(data: &AnalysisData, sym_id: SymbolId) -> bool {
+    match data.reactivity.binding_semantics(sym_id) {
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_) => true,
+        BindingSemantics::Store(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
 }
 
-fn is_rune_or_prop_origin(data: &AnalysisData, sym_id: SymbolId) -> bool {
-    matches!(
-        data.reactivity.binding_semantics(sym_id),
-        BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedDerived(_)
-            | BindingSemantics::OptimizedRune(_)
-            | BindingSemantics::RuntimeRune { .. }
-            | BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_),
-    )
+fn is_rune_call(data: &AnalysisData, call: &CallExpression<'_>) -> bool {
+    match data.reactivity.declarator_semantics(call.node_id()).group() {
+        DeclaratorGroup::Rune => true,
+        DeclaratorGroup::Legacy | DeclaratorGroup::Contextual | DeclaratorGroup::Plain => false,
+    }
 }

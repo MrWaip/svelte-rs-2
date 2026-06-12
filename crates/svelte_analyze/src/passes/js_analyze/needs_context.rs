@@ -4,9 +4,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_call_expression, walk_member_expression};
 
-use crate::reactivity_semantics::data::{
-    BindingSemantics, ReactivitySemantics, ReferenceSemantics,
-};
+use crate::reactivity_semantics::data::{BindingSemantics, ReactivitySemantics};
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub(crate) struct NeedsContextVisitor<'a> {
@@ -37,11 +35,10 @@ impl<'a> NeedsContextVisitor<'a> {
 
     fn is_safe_sym(&self, ident: &IdentifierReference<'_>) -> bool {
         if let Some(ref_id) = ident.reference_id.get()
-            && matches!(
-                self.reactivity.reference_semantics(ref_id),
-                ReferenceSemantics::LegacyPropsIdentifierRead
-                    | ReferenceSemantics::LegacyRestPropsIdentifierRead
-            )
+            && self
+                .reactivity
+                .reference_semantics(ref_id)
+                .is_legacy_props_object_read()
         {
             return false;
         }
@@ -57,7 +54,17 @@ impl<'a> NeedsContextVisitor<'a> {
             | BindingSemantics::Prop(_)
             | BindingSemantics::LegacyBindableProp(_) => false,
             BindingSemantics::Store(store) => self.is_safe_binding(store.base_symbol),
-            _ => true,
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => true,
         }
     }
 

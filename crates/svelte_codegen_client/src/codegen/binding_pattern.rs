@@ -463,12 +463,33 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut names: Vec<String> = Vec::new();
         walk_bindings(pattern, |v| {
-            if matches!(
-                self.ctx.query.view.binding_semantics(v.symbol),
-                BindingSemantics::Contextual(
-                    ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-                )
-            ) {
+            let carried = match self.ctx.query.view.binding_semantics(v.symbol) {
+                BindingSemantics::Contextual(contextual) => match contextual {
+                    ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => true,
+                    ContextualBindingSemantics::EachItem(_)
+                    | ContextualBindingSemantics::EachIndex(_)
+                    | ContextualBindingSemantics::AwaitValue
+                    | ContextualBindingSemantics::AwaitError
+                    | ContextualBindingSemantics::LetDirective
+                    | ContextualBindingSemantics::LetDirectiveDirect
+                    | ContextualBindingSemantics::SnippetParam(_) => false,
+                },
+                BindingSemantics::Prop(_)
+                | BindingSemantics::State(_)
+                | BindingSemantics::Derived(_)
+                | BindingSemantics::OptimizedDerived(_)
+                | BindingSemantics::OptimizedRune(_)
+                | BindingSemantics::RuntimeRune { .. }
+                | BindingSemantics::Store(_)
+                | BindingSemantics::LegacyBindableProp(_)
+                | BindingSemantics::LegacyState(_)
+                | BindingSemantics::Const(_)
+                | BindingSemantics::MaybeReactive
+                | BindingSemantics::NonReactive
+                | BindingSemantics::LegacyApiExport
+                | BindingSemantics::Unresolved => false,
+            };
+            if carried {
                 names.push(self.ctx.query.symbol_name(v.symbol).to_string());
             }
         });

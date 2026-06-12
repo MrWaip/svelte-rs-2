@@ -10,7 +10,10 @@ use oxc_ast::ast::{
     Expression, MethodDefinition, MethodDefinitionKind, PropertyDefinition, PropertyKey, Statement,
 };
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::{DerivedKind, RuneKind, StateKind};
+use svelte_analyze::{
+    ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedKind,
+    StateKind,
+};
 
 use svelte_ast_builder::Arg;
 
@@ -21,9 +24,9 @@ use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentT
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     pub(crate) fn state_destructure_dev_label(
         pattern: &BindingPattern<'a>,
-        rune_kind: RuneKind,
+        state_kind: StateKind,
     ) -> Option<&'static str> {
-        if !matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
+        if !matches!(state_kind, StateKind::State | StateKind::StateRaw) {
             return None;
         }
 
@@ -34,48 +37,24 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-    pub(crate) fn class_field_rune_kind(&self, node: OxcNodeId) -> Option<RuneKind> {
-        use svelte_analyze::{
-            ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
-        };
+    pub(crate) fn class_field_declarator(&self, node: OxcNodeId) -> Option<DeclaratorSemantics> {
         let analysis = self.analysis.as_ref()?;
         match analysis.declarator_semantics(node) {
-            DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics { kind, .. }) => {
-                Some(match kind {
-                    StateKind::State => RuneKind::State,
-                    StateKind::StateRaw => RuneKind::StateRaw,
-                    StateKind::StateEager => RuneKind::StateEager,
-                })
-            }
-            DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics { kind, .. }) => {
-                Some(match kind {
-                    DerivedKind::Derived => RuneKind::Derived,
-                    DerivedKind::DerivedBy => RuneKind::DerivedBy,
-                })
-            }
-            DeclaratorSemantics::None
-            | DeclaratorSemantics::LetCarrier { .. }
-            | DeclaratorSemantics::EachItem
-            | DeclaratorSemantics::SnippetParam
-            | DeclaratorSemantics::ConstTag { .. }
-            | DeclaratorSemantics::RuntimeRuneCall { .. }
-            | DeclaratorSemantics::AwaitValue => None,
-            DeclaratorSemantics::RuneProps | DeclaratorSemantics::LegacyProps => None,
-            DeclaratorSemantics::LegacyState
-            | DeclaratorSemantics::RuneState { .. }
-            | DeclaratorSemantics::RuneDerived { .. } => None,
+            declarator @ (DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_)) => Some(declarator),
+            _ => None,
         }
     }
 
     pub(crate) fn wrap_state_value(
         &self,
         value: Expression<'a>,
-        rune_kind: RuneKind,
+        state_kind: StateKind,
         is_signal_source: bool,
     ) -> Expression<'a> {
         let value = value.into_inner_expression();
-        match rune_kind {
-            RuneKind::State => {
+        match state_kind {
+            StateKind::State => {
                 let proxied = if rune_refs::should_proxy(&value) {
                     self.b.call_expr("$.proxy", [Arg::Expr(value)])
                 } else {
@@ -87,22 +66,24 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     proxied
                 }
             }
-            RuneKind::StateRaw => {
+            StateKind::StateRaw => {
                 if is_signal_source {
                     self.b.call_expr("$.state", [Arg::Expr(value)])
                 } else {
                     value
                 }
             }
-            RuneKind::Derived | RuneKind::DerivedBy => {
-                let thunk = self
-                    .b
-                    .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
-                self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
-                self.b.call_expr("$.derived", [Arg::Expr(thunk)])
-            }
-            _ => value,
+            StateKind::StateEager => value,
         }
+    }
+
+    pub(crate) fn wrap_derived_value(&self, value: Expression<'a>) -> Expression<'a> {
+        let value = value.into_inner_expression();
+        let thunk = self
+            .b
+            .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
+        self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
+        self.b.call_expr("$.derived", [Arg::Expr(thunk)])
     }
 
     pub(crate) fn scan_class_state_fields(&self, body: &ClassBody<'a>) -> ClassStateInfo {
@@ -130,7 +111,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 if prop.value.is_none() {
                     continue;
                 }
-                let Some(rune_kind) = self.class_field_rune_kind(prop.node_id()) else {
+                let Some(declarator) = self.class_field_declarator(prop.node_id()) else {
                     continue;
                 };
 
@@ -139,7 +120,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         fields.push(ClassStateField {
                             public_name: None,
                             private_name: id.name.to_string(),
-                            rune_kind,
+                            declarator,
                         });
                     }
                     PropertyKey::StaticIdentifier(id) if !prop.computed => {
@@ -153,7 +134,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         fields.push(ClassStateField {
                             public_name: Some(name),
                             private_name: backing.trim_start_matches('#').to_string(),
-                            rune_kind,
+                            declarator,
                         });
                     }
                     _ => {}
@@ -186,7 +167,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     if let Statement::ExpressionStatement(es) = stmt
                         && let Expression::AssignmentExpression(assign) = &es.expression
                         && assign.operator == AssignmentOperator::Assign
-                        && let Some(rune_kind) = self.class_field_rune_kind(assign.node_id())
+                        && let Some(declarator) = self.class_field_declarator(assign.node_id())
                     {
                         match &assign.left {
                             AssignmentTarget::StaticMemberExpression(member)
@@ -210,7 +191,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 fields.push(ClassStateField {
                                     public_name: Some(name),
                                     private_name: backing.trim_start_matches('#').to_string(),
-                                    rune_kind,
+                                    declarator,
                                 });
                             }
                             AssignmentTarget::PrivateFieldExpression(member)
@@ -232,7 +213,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 fields.push(ClassStateField {
                                     public_name: None,
                                     private_name: name,
-                                    rune_kind,
+                                    declarator,
                                 });
                             }
                             _ => {}
@@ -289,7 +270,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
                     let is_rune_prop = prop.value.is_some()
-                        && self.class_field_rune_kind(prop.node_id()).is_some();
+                        && self.class_field_declarator(prop.node_id()).is_some();
                     if !is_rune_prop {
                         let is_ctor_placeholder = prop.value.is_none()
                             && match &prop.key {
@@ -346,13 +327,16 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     fn rewrite_private_field_callee(&self, prop: &mut PropertyDefinition<'a>) {
-        let rune_kind = self.class_field_rune_kind(prop.node_id());
+        let declarator = self.class_field_declarator(prop.node_id());
         if let Some(value) = prop.value.take() {
             prop.value = Some(value.into_inner_expression());
         }
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
-            match rune_kind {
-                Some(RuneKind::State) => {
+            match &declarator {
+                Some(DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                    kind: StateKind::State,
+                    ..
+                })) => {
                     call.callee = self.b.rid_expr("$.state");
                     if !call.arguments.is_empty() {
                         let mut dummy = Argument::from(self.b.cheap_expr());
@@ -366,10 +350,16 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         call.arguments[0] = Argument::from(wrapped);
                     }
                 }
-                Some(RuneKind::StateRaw) => {
+                Some(DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                    kind: StateKind::StateRaw,
+                    ..
+                })) => {
                     call.callee = self.b.rid_expr("$.state");
                 }
-                Some(RuneKind::Derived) => {
+                Some(DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                    kind: DerivedKind::Derived,
+                    ..
+                })) => {
                     call.callee = self.b.rid_expr("$.derived");
                     if !call.arguments.is_empty() {
                         let mut dummy = Argument::from(self.b.cheap_expr());
@@ -378,12 +368,15 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         call.arguments[0] = Argument::from(thunked);
                     }
                 }
-                Some(RuneKind::DerivedBy) => {
+                Some(DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                    kind: DerivedKind::DerivedBy,
+                    ..
+                })) => {
                     call.callee = self.b.rid_expr("$.derived");
                 }
                 _ => {}
             }
-            if self.dev && rune_kind.is_some() {
+            if self.dev && declarator.is_some() {
                 let field_name = match &prop.key {
                     PropertyKey::PrivateIdentifier(id) => format!("#{}", id.name),
                     _ => String::new(),
@@ -423,19 +416,28 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             None
         };
 
-        let init_call = match field_info.rune_kind {
-            RuneKind::Derived => {
+        let init_call = match &field_info.declarator {
+            DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                kind: DerivedKind::Derived,
+                ..
+            }) => {
                 let thunked = self.b.thunk(arg.unwrap_or_else(|| self.b.cheap_expr()));
                 self.b.call_expr("$.derived", [Arg::Expr(thunked)])
             }
-            RuneKind::DerivedBy => {
+            DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                kind: DerivedKind::DerivedBy,
+                ..
+            }) => {
                 if let Some(arg) = arg {
                     self.b.call_expr("$.derived", [Arg::Expr(arg)])
                 } else {
                     self.b.call_expr("$.derived", iter::empty::<Arg<'a, '_>>())
                 }
             }
-            RuneKind::State => {
+            DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                kind: StateKind::State,
+                ..
+            }) => {
                 if let Some(arg) = arg {
                     let wrapped = if rune_refs::should_proxy(&arg) {
                         self.b.call_expr("$.proxy", [Arg::Expr(arg)])
@@ -493,7 +495,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             Arg::Expr(self.b.this_private_member(&field_info.private_name)),
             Arg::Ident("value"),
         ];
-        if field_info.rune_kind == RuneKind::State {
+        if field_info
+            .declarator
+            .class_field_state()
+            .is_some_and(|state| state.kind == StateKind::State)
+        {
             set_args.push(Arg::Bool(true));
         }
         let set_call = self.b.call_stmt("$.set", set_args);
@@ -549,8 +555,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 if let Some(field_info) = resolved_field
                     && let Expression::CallExpression(call) = &mut assign.right
                 {
-                    match field_info.rune_kind {
-                        RuneKind::Derived => {
+                    match &field_info.declarator {
+                        DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                            kind: DerivedKind::Derived,
+                            ..
+                        }) => {
                             call.callee = self.b.rid_expr("$.derived");
                             if !call.arguments.is_empty() {
                                 let mut dummy = Argument::from(self.b.cheap_expr());
@@ -559,10 +568,16 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 call.arguments[0] = Argument::from(thunked);
                             }
                         }
-                        RuneKind::DerivedBy => {
+                        DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
+                            kind: DerivedKind::DerivedBy,
+                            ..
+                        }) => {
                             call.callee = self.b.rid_expr("$.derived");
                         }
-                        RuneKind::State => {
+                        DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                            kind: StateKind::State,
+                            ..
+                        }) => {
                             call.callee = self.b.rid_expr("$.state");
                             let needs_proxy = call
                                 .arguments
@@ -577,7 +592,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                                 call.arguments[0] = Argument::from(proxied);
                             }
                         }
-                        RuneKind::StateRaw => {
+                        DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                            kind: StateKind::StateRaw,
+                            ..
+                        }) => {
                             call.callee = self.b.rid_expr("$.state");
                         }
                         _ => {
@@ -605,15 +623,15 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     pub(crate) fn is_private_state_field(&self, name: &str) -> bool {
-        self.private_state_field_rune_kind(name).is_some()
+        self.private_state_field_declarator(name).is_some()
     }
 
-    pub(crate) fn private_state_field_rune_kind(&self, name: &str) -> Option<RuneKind> {
+    pub(crate) fn private_state_field_declarator(&self, name: &str) -> Option<DeclaratorSemantics> {
         self.class_state_stack.last().and_then(|info| {
             info.fields
                 .iter()
                 .find(|f| f.public_name.is_none() && f.private_name == name)
-                .map(|f| f.rune_kind)
+                .map(|f| f.declarator.clone())
         })
     }
 
