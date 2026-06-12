@@ -14,7 +14,6 @@
         "--repos",
         ".",
         "--git",
-        "--watch",
         "--lsp",
         "--persist",
         "--index-path",

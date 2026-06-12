@@ -1,2 +1,70 @@
 version: "1.0"
-preset: "balanced"
+preset: "minimal"
+
+tools:
+  categories:
+    Repository:
+      enabled: true
+    Symbols:
+      enabled: true
+    Search:
+      enabled: true
+    LSP:
+      enabled: true
+    Git:
+      enabled: false
+    Analysis:
+      enabled: false
+    CallGraph:
+      enabled: false
+    Security:
+      enabled: false
+    SupplyChain:
+      enabled: false
+    Graph:
+      enabled: false
+    Remote:
+      enabled: false
+  overrides:
+    find_similar_code:
+      enabled: false
+      reason: "duplicate-detection, not used for parity work"
+    find_similar_to_symbol:
+      enabled: false
+      reason: "duplicate-detection, not used for parity work"
+    find_semantic_clones:
+      enabled: false
+      reason: "requires --neural"
+    neural_search:
+      enabled: false
+      reason: "requires --neural"
+    get_neural_stats:
+      enabled: false
+      reason: "requires --neural"
+    hybrid_search:
+      enabled: false
+      reason: "search_code + semantic_search cover this"
+    get_chunks:
+      enabled: false
+      reason: "chunk plumbing, use get_file/get_excerpt"
+    search_chunks:
+      enabled: false
+      reason: "chunk plumbing, use search_code"
+    get_chunk_stats:
+      enabled: false
+      reason: "index plumbing"
+    get_embedding_stats:
+      enabled: false
+      reason: "index plumbing"
+    validate_repo:
+      enabled: false
+      reason: "one-shot setup tool"
+    discover_repos:
+      enabled: false
+      reason: "single fixed repo"
+    get_incremental_status:
+      enabled: false
+      reason: "watch/incremental plumbing"
+    get_metrics:
+      enabled: false
+      reason: "server telemetry"
