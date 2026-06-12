@@ -509,25 +509,35 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
 
     fn record_member_root(&mut self, expr: &Expression<'_>) {
         match expr.get_inner_expression() {
-            Expression::Identifier(id) => self.record_assignment_ident(id),
+            Expression::Identifier(id) => self.record_member_root_dep(id),
             Expression::StaticMemberExpression(m) => self.record_member_root(&m.object),
             Expression::ComputedMemberExpression(m) => self.record_member_root(&m.object),
             _ => {}
         }
     }
 
+    fn record_member_root_dep(&mut self, ident: &IdentifierReference<'_>) {
+        let name = ident.name.as_str();
+        let ref_id = ident.reference_id.get();
+        let sym = ref_id
+            .and_then(|r| self.subscribed_store_symbol(r))
+            .or_else(|| ref_id.and_then(|r| self.data.scoping.symbol_for_reference(r)))
+            .or_else(|| self.implicit_map.get(name).copied());
+        let Some(sym) = sym else {
+            return;
+        };
+        if !self.is_reactive_dep(sym) {
+            return;
+        }
+        if self.seen_deps.insert(sym) {
+            self.dependencies.push(sym);
+        }
+    }
+
     fn record_assignment_ident(&mut self, ident: &IdentifierReference<'_>) {
         let name = ident.name.as_str();
         let ref_id = ident.reference_id.get();
-        let subscribed_store = ref_id.and_then(|r| match self.data.reactivity.reference_facts(r) {
-            Some(ReferenceFacts::StoreWrite { symbol })
-            | Some(ReferenceFacts::StoreUpdate { symbol }) => Some(*symbol),
-            Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol })
-            | Some(ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. }) => {
-                Some(*store_symbol)
-            }
-            _ => None,
-        });
+        let subscribed_store = ref_id.and_then(|r| self.subscribed_store_symbol(r));
         let sym = subscribed_store
             .or_else(|| ref_id.and_then(|r| self.data.scoping.symbol_for_reference(r)))
             .or_else(|| self.implicit_map.get(name).copied());
@@ -539,6 +549,13 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
                 self.dependencies.push(sym);
             }
         }
+    }
+
+    fn subscribed_store_symbol(&self, ref_id: ReferenceId) -> Option<SymbolId> {
+        self.data
+            .reactivity
+            .reference_facts(ref_id)?
+            .subscribed_store_symbol()
     }
 
     fn is_reactive_dep(&self, sym: SymbolId) -> bool {
@@ -583,17 +600,7 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
         if self.direct_assign_skip.contains(&ref_id) {
             return;
         }
-        let store_sym = match self.data.reactivity.reference_facts(ref_id) {
-            Some(ReferenceFacts::StoreRead { symbol })
-            | Some(ReferenceFacts::StoreUpdate { symbol })
-            | Some(ReferenceFacts::StoreWrite { symbol }) => Some(*symbol),
-            Some(ReferenceFacts::LegacyStateSubscribedRead { store_symbol, .. })
-            | Some(ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. })
-            | Some(ReferenceFacts::LegacyStateSubscribedWrite { store_symbol }) => {
-                Some(*store_symbol)
-            }
-            _ => None,
-        };
+        let store_sym = self.subscribed_store_symbol(ref_id);
         let sym = store_sym
             .or_else(|| self.data.scoping.symbol_for_reference(ref_id))
             .or_else(|| self.implicit_map.get(ident.name.as_str()).copied());

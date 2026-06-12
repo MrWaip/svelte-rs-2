@@ -97,3 +97,35 @@ compiler_case!(
     coarse_deps_prop_const_inline_bare,
     "legacy/coarse_deps/prop_const_inline_bare"
 );
+compiler_case!(
+    coarse_deps_dep_order_store_member_lhs_read,
+    "legacy/coarse_deps/dep_order_store_member_lhs_read"
+);
+compiler_case!(
+    coarse_deps_dep_order_store_member_lhs_only,
+    "legacy/coarse_deps/dep_order_store_member_lhs_only"
+);
+compiler_case!(
+    coarse_deps_dep_order_nested_member_lhs,
+    "legacy/coarse_deps/dep_order_nested_member_lhs"
+);
+compiler_case!(
+    coarse_deps_dep_order_plain_member_lhs_read,
+    "legacy/coarse_deps/dep_order_plain_member_lhs_read"
+);
+compiler_case!(
+    coarse_deps_dep_order_ident_lhs_reassign_read,
+    "legacy/coarse_deps/dep_order_ident_lhs_reassign_read"
+);
+compiler_case!(
+    coarse_deps_dep_order_ident_lhs_only,
+    "legacy/coarse_deps/dep_order_ident_lhs_only"
+);
+compiler_case!(
+    coarse_deps_dep_order_compound_assign,
+    "legacy/coarse_deps/dep_order_compound_assign"
+);
+compiler_case!(
+    coarse_deps_dep_order_readonly_block,
+    "legacy/coarse_deps/dep_order_readonly_block"
+);

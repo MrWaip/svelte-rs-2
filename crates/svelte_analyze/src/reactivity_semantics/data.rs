@@ -1322,6 +1322,47 @@ pub(crate) enum ReferenceFacts {
     Proxy,
 }
 
+impl ReferenceFacts {
+    pub(crate) fn subscribed_store_symbol(&self) -> Option<SymbolId> {
+        match self {
+            ReferenceFacts::StoreRead { symbol }
+            | ReferenceFacts::StoreWrite { symbol }
+            | ReferenceFacts::StoreUpdate { symbol } => Some(*symbol),
+            ReferenceFacts::LegacyStateSubscribedRead { store_symbol, .. }
+            | ReferenceFacts::LegacyStateSubscribedWrite { store_symbol }
+            | ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. } => {
+                Some(*store_symbol)
+            }
+            ReferenceFacts::SignalRead { .. }
+            | ReferenceFacts::SignalWrite { .. }
+            | ReferenceFacts::SignalUpdate { .. }
+            | ReferenceFacts::DerivedWrite
+            | ReferenceFacts::PropRead(_)
+            | ReferenceFacts::PropMutation { .. }
+            | ReferenceFacts::PropSourceMemberMutationRoot { .. }
+            | ReferenceFacts::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceFacts::ConstAliasRead { .. }
+            | ReferenceFacts::ContextualRead(_)
+            | ReferenceFacts::CarrierMemberRead(_)
+            | ReferenceFacts::RestPropMemberRewrite
+            | ReferenceFacts::LegacyPropsIdentifierRead
+            | ReferenceFacts::LegacyRestPropsIdentifierRead
+            | ReferenceFacts::LegacySlotsIdentifierRead
+            | ReferenceFacts::LegacyStateRead { .. }
+            | ReferenceFacts::LegacyStateWrite
+            | ReferenceFacts::LegacyStateUpdate { .. }
+            | ReferenceFacts::LegacyStateMemberMutationRoot { .. }
+            | ReferenceFacts::LegacyReactiveImportRead
+            | ReferenceFacts::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceFacts::ImportSubscribedRead { .. }
+            | ReferenceFacts::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceFacts::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceFacts::IllegalWrite
+            | ReferenceFacts::Proxy => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ReactivitySemantics {
     bindings: IndexVec<SymbolId, Option<BindingFacts>>,
