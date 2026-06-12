@@ -39,6 +39,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut ns_thunk: Option<Expression<'a>> = None;
         let mut memo: TemplateMemoState<'a> = TemplateMemoState::default();
 
+        if !options.skip_directives {
+            for attr in attributes {
+                match attr {
+                    Attribute::UseDirective(d) => {
+                        self.emit_use_directive(state, owner_id, owner_var, d)?;
+                    }
+                    Attribute::OnDirectiveLegacy(d) => {
+                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
+                    }
+                    Attribute::TransitionDirective(d) => {
+                        self.emit_transition_directive(state, owner_id, owner_var, d)?;
+                    }
+                    Attribute::AnimateDirective(d) => {
+                        self.emit_animate_directive(state, owner_id, owner_var, d)?;
+                    }
+                    Attribute::BindDirective(d) => {
+                        self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         for attr in attributes {
             let attr_id = attr.id();
             match attr {
@@ -275,29 +298,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state
                 .init
                 .push(self.ctx.b.call_stmt("$.attribute_effect", args));
-        }
-
-        if !options.skip_directives {
-            for attr in attributes {
-                match attr {
-                    Attribute::UseDirective(d) => {
-                        self.emit_use_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::OnDirectiveLegacy(d) => {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::TransitionDirective(d) => {
-                        self.emit_transition_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::AnimateDirective(d) => {
-                        self.emit_animate_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::BindDirective(d) => {
-                        self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
-                    }
-                    _ => {}
-                }
-            }
         }
 
         Ok(ns_thunk)

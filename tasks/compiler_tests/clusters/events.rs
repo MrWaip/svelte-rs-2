@@ -24,3 +24,33 @@ compiler_case!(
     shorthand_event_on_component,
     "events/shorthand_event_on_component"
 );
+
+compiler_case!(spread_order_one_handler, "events/spread_order_one_handler");
+compiler_case!(
+    spread_order_two_handlers,
+    "events/spread_order_two_handlers"
+);
+compiler_case!(
+    spread_order_plain_handler,
+    "events/spread_order_plain_handler"
+);
+compiler_case!(spread_order_no_handler, "events/spread_order_no_handler");
+compiler_case!(spread_order_no_spread, "events/spread_order_no_spread");
+compiler_case!(
+    spread_order_runes_onclick,
+    "events/spread_order_runes_onclick"
+);
+compiler_case!(
+    spread_order_runes_onclick_no_spread,
+    "events/spread_order_runes_onclick_no_spread"
+);
+compiler_case!(
+    spread_order_use_directive,
+    "events/spread_order_use_directive"
+);
+compiler_case!(spread_order_bind, "events/spread_order_bind");
+compiler_case!(spread_order_transition, "events/spread_order_transition");
+compiler_case!(
+    spread_order_memo_with_use,
+    "events/spread_order_memo_with_use"
+);
