@@ -2,7 +2,8 @@ use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
     Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, FragmentRole, HtmlTag,
     Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
-    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg, is_void,
+    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow,
+    is_mathml, is_svg, is_void,
 };
 
 use crate::ElementFactsEntry;
@@ -811,6 +812,17 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template_topology
             .record_node_parent(el.id, ctx.parent());
         record_custom_element_slot_name(ctx.data, &el.attributes, ctx.source);
+    }
+
+    fn visit_svelte_fragment_legacy(
+        &mut self,
+        el: &SvelteFragmentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        ctx.data
+            .template
+            .template_topology
+            .record_node_parent(el.id, ctx.parent());
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {

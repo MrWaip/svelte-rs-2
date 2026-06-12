@@ -34,6 +34,9 @@ mod component_props;
 #[path = "clusters/snippet_hoist.rs"]
 mod snippet_hoist;
 
+#[path = "clusters/css_scope_svelte_fragment.rs"]
+mod css_scope_svelte_fragment;
+
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
 

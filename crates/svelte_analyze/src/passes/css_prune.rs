@@ -1318,8 +1318,17 @@ fn collect_descendants_from_node(
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
-    let store = &pruner.component.store;
-    match store.get(node_id) {
+    if let Some(view) = pruner.component.store.get(node_id).as_component_like() {
+        let cn_fragment = view.fragment;
+        let slot_frags: Vec<FragmentId> = view.legacy_slots.iter().map(|s| s.fragment).collect();
+        collect_descendants_from_fragment(pruner, cn_fragment, adjacent_only, seen_snippets, out);
+        for slot_fid in slot_frags {
+            collect_descendants_from_fragment(pruner, slot_fid, adjacent_only, seen_snippets, out);
+        }
+        return;
+    }
+
+    match pruner.component.store.get(node_id) {
         Node::Element(el) => collect_descendants_from_fragment(
             pruner,
             el.fragment,
@@ -1334,24 +1343,17 @@ fn collect_descendants_from_node(
             seen_snippets,
             out,
         ),
-        Node::ComponentNode(cn) => collect_descendants_from_fragment(
-            pruner,
-            cn.fragment,
-            adjacent_only,
-            seen_snippets,
-            out,
-        ),
-        Node::SvelteComponentLegacy(cn) => collect_descendants_from_fragment(
-            pruner,
-            cn.fragment,
-            adjacent_only,
-            seen_snippets,
-            out,
-        ),
         Node::SnippetBlock(block) => {
             collect_descendants_from_fragment(pruner, block.body, adjacent_only, seen_snippets, out)
         }
         Node::SlotElementLegacy(el) => collect_descendants_from_fragment(
+            pruner,
+            el.fragment,
+            adjacent_only,
+            seen_snippets,
+            out,
+        ),
+        Node::SvelteFragmentLegacy(el) => collect_descendants_from_fragment(
             pruner,
             el.fragment,
             adjacent_only,
@@ -1392,7 +1394,7 @@ fn collect_descendants_from_fragment(
     let store = &pruner.component.store;
     for &id in &lowered {
         match store.get(id) {
-            Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
+            Node::Element(_) | Node::SlotElementLegacy(_) => {
                 out.push(id);
                 if !adjacent_only {
                     collect_descendants_from_node(pruner, id, false, seen_snippets, out);
@@ -1404,7 +1406,11 @@ fn collect_descendants_from_fragment(
                     collect_descendants_from_node(pruner, id, false, seen_snippets, out);
                 }
             }
-            Node::RenderTag(_) | Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+            Node::RenderTag(_)
+            | Node::ComponentNode(_)
+            | Node::SvelteComponentLegacy(_)
+            | Node::SvelteSelf(_)
+            | Node::SvelteFragmentLegacy(_) => {
                 collect_descendants_from_node(pruner, id, adjacent_only, seen_snippets, out);
             }
             _ => {}
