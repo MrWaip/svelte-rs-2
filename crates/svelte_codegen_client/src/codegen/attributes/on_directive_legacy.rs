@@ -7,16 +7,8 @@ use super::super::data_structures::EmitState;
 use super::super::{Codegen, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    pub(in super::super) fn emit_on_directive_legacy(
-        &mut self,
-        state: &mut EmitState<'a>,
-        owner_id: NodeId,
-        owner_var: &str,
-        od: &OnDirectiveLegacy,
-    ) -> Result<()> {
-        let attr_id = od.id;
-        let expr_offset = od.expression.as_ref().map(|r| r.span.start);
-        let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
+    fn on_directive_handler_emit(&self, attr_id: NodeId) -> HandlerEmit {
+        match self.ctx.query.analysis.attributes.get(attr_id) {
             AttributeSemantics::Event(ev) => match &ev.emit {
                 EventEmit::HtmlDelegated { handler }
                 | EventEmit::HtmlDirect { handler, .. }
@@ -24,7 +16,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 EventEmit::HtmlBubble => HandlerEmit::Direct,
             },
             _ => HandlerEmit::Direct,
-        };
+        }
+    }
+
+    fn build_on_directive_handler(
+        &mut self,
+        state: &mut EmitState<'a>,
+        od: &OnDirectiveLegacy,
+    ) -> Result<Expression<'a>> {
+        let attr_id = od.id;
+        let expr_offset = od.expression.as_ref().map(|r| r.span.start);
+        let handler_emit = self.on_directive_handler_emit(attr_id);
 
         let handler: Expression<'a> =
             if let (Some(offset), Some(expr_ref)) = (expr_offset, od.expression.as_ref()) {
@@ -49,11 +51,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )
             };
 
-        let handler = if expr_offset.is_some() {
-            self.dev_event_handler(attr_id, handler, &od.name)?
+        if expr_offset.is_some() {
+            self.dev_event_handler(attr_id, handler, &od.name)
         } else {
-            handler
-        };
+            Ok(handler)
+        }
+    }
+
+    pub(in super::super) fn emit_on_directive_legacy(
+        &mut self,
+        state: &mut EmitState<'a>,
+        owner_id: NodeId,
+        owner_var: &str,
+        od: &OnDirectiveLegacy,
+    ) -> Result<()> {
+        let handler = self.build_on_directive_handler(state, od)?;
 
         let mods = od.parsed_modifiers();
         let mut wrapped = handler;

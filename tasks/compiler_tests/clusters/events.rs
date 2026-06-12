@@ -54,3 +54,31 @@ compiler_case!(
     spread_order_memo_with_use,
     "events/spread_order_memo_with_use"
 );
+
+compiler_case!(input_defaults_memo_on, "events/input_defaults_memo_on");
+compiler_case!(
+    textarea_remove_child_memo_on,
+    "events/textarea_remove_child_memo_on"
+);
+compiler_case!(input_defaults_plain_on, "events/input_defaults_plain_on");
+compiler_case!(input_defaults_no_on, "events/input_defaults_no_on");
+compiler_case!(
+    input_defaults_static_attr,
+    "events/input_defaults_static_attr"
+);
+compiler_case!(
+    input_no_defaults_memo_on,
+    "events/input_no_defaults_memo_on"
+);
+compiler_case!(
+    nospread_on_then_transition,
+    "events/nospread_on_then_transition"
+);
+compiler_case!(
+    nospread_transition_then_on,
+    "events/nospread_transition_then_on"
+);
+compiler_case!(
+    nospread_memo_on_with_use,
+    "events/nospread_memo_on_with_use"
+);

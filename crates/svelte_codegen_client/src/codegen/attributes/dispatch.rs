@@ -1,7 +1,7 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, MustBePropertyValue, Volatility};
+use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::AssignLeft;
 
@@ -134,39 +134,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let saved_after_update = mem::take(&mut state.after_update);
         let mut event_stmts: Vec<Statement<'a>> = Vec::new();
 
-        let mut on_legacy_emitted: smallvec::SmallVec<[NodeId; 4]> = smallvec::SmallVec::new();
-        match self.ctx.class_state_volatility(owner_id) {
-            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
-                if (has_class_directives || has_class_attribute)
-                    && !self.ctx.has_use_directive(owner_id) =>
-            {
-                for attr in attributes {
-                    if let Attribute::OnDirectiveLegacy(d) = attr {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                        on_legacy_emitted.push(attr.id());
-                    }
-                }
-            }
-            Volatility::Static
-            | Volatility::Reactive
-            | Volatility::Heavy
-            | Volatility::Asynchronous => {}
-        }
-
         for attr in attributes {
             let attr_id = attr.id();
-            if on_legacy_emitted.contains(&attr_id) {
-                continue;
-            }
             match self.ctx.query.analysis.attributes.get(attr_id) {
                 AttributeSemantics::ElementBind(_) => {
-                    let Attribute::BindDirective(d) = attr else {
+                    if !matches!(attr, Attribute::BindDirective(_)) {
                         return CodegenError::semantic_mismatch(
                             attr_id,
                             "ElementBind requires BindDirective",
                         );
-                    };
-                    self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
+                    }
                 }
                 AttributeSemantics::Event(_) => match attr {
                     Attribute::ExpressionAttribute(a) => {
@@ -174,9 +151,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
                         event_stmts.extend(state.after_update.drain(before..));
                     }
-                    Attribute::OnDirectiveLegacy(d) => {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    }
+                    Attribute::OnDirectiveLegacy(_) => {}
                     _ => {
                         return CodegenError::semantic_mismatch(
                             attr_id,
@@ -339,18 +314,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     | Attribute::ClassDirective(_)
                     | Attribute::StyleDirective(_) => continue,
                     Attribute::LetDirectiveLegacy(_) => continue,
-                    Attribute::UseDirective(d) => {
-                        self.emit_use_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::OnDirectiveLegacy(d) => {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::TransitionDirective(d) => {
-                        self.emit_transition_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::AnimateDirective(d) => {
-                        self.emit_animate_directive(state, owner_id, owner_var, d)?;
-                    }
+                    Attribute::UseDirective(_)
+                    | Attribute::OnDirectiveLegacy(_)
+                    | Attribute::TransitionDirective(_)
+                    | Attribute::AnimateDirective(_) => {}
                     Attribute::AttachTag(a) => {
                         self.emit_attach_tag(state, owner_id, owner_var, a)?;
                     }

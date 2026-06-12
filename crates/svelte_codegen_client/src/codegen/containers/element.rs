@@ -133,8 +133,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         };
         let is_ghost = el_name.is_empty();
+        let has_spread = self.ctx.has_spread(el_id);
 
-        if !is_ghost && self.ctx.needs_input_defaults(el_id) && !self.ctx.has_spread(el_id) {
+        let prev_pending_element_init = mem::take(&mut state.pending_element_init);
+        let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
+        let element_after_update_len_before = state.element_after_update.len();
+
+        if !is_ghost && !is_noscript && !has_spread {
+            self.emit_element_directives(state, el_id, &el_name_hint, &el_name, &attributes)?;
+        }
+
+        if !is_ghost && self.ctx.needs_input_defaults(el_id) && !has_spread {
             state.init.push(
                 self.ctx
                     .b
@@ -145,7 +154,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if !is_ghost
             && el_name_hint == "textarea"
             && !self.ctx.needs_textarea_value_lowering(el_id)
-            && needs_textarea_content_reset(&attributes, self.ctx.has_spread(el_id))
+            && needs_textarea_content_reset(&attributes, has_spread)
         {
             state.init.push(
                 self.ctx
@@ -159,9 +168,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .cloned()
             .partition(|a| matches!(a, Attribute::AttachTag(_)));
 
-        let prev_pending_element_init = mem::take(&mut state.pending_element_init);
-        let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
-        let element_after_update_len_before = state.element_after_update.len();
         if !is_noscript {
             self.emit_dom_attributes(
                 state,
@@ -243,6 +249,40 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state.template.pop_element();
 
         Ok(el_name)
+    }
+
+    fn emit_element_directives(
+        &mut self,
+        state: &mut EmitState<'a>,
+        owner_id: NodeId,
+        owner_tag: &str,
+        owner_var: &str,
+        attributes: &[Attribute],
+    ) -> Result<()> {
+        let saved_after_update = mem::take(&mut state.after_update);
+        for attr in attributes {
+            match attr {
+                Attribute::OnDirectiveLegacy(d) => {
+                    self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
+                }
+                Attribute::BindDirective(d) => {
+                    self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
+                }
+                Attribute::TransitionDirective(d) => {
+                    self.emit_transition_directive(state, owner_id, owner_var, d)?;
+                }
+                Attribute::UseDirective(d) => {
+                    self.emit_use_directive(state, owner_id, owner_var, d)?;
+                }
+                Attribute::AnimateDirective(d) => {
+                    self.emit_animate_directive(state, owner_id, owner_var, d)?;
+                }
+                _ => {}
+            }
+        }
+        let scoped = mem::replace(&mut state.after_update, saved_after_update);
+        state.element_after_update.extend(scoped);
+        Ok(())
     }
 
     fn emit_option_synthetic_value(
