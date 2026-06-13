@@ -13,9 +13,11 @@ use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst};
+use svelte_analyze::{
+    AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, IdentGen, JsAst,
+};
 use svelte_ast::{
-    Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node,
+    Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
     NodeId as SvelteNodeId, StyleDirectiveValue,
 };
 
@@ -103,6 +105,29 @@ fn walk_fragment<'a>(
     }
 }
 
+fn reserve_each_synthetic_index_legacy(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
+    if block.index.is_some() {
+        return;
+    }
+    let BlockSemantics::Each(sem) = ctx.analysis.block_semantics(block.id) else {
+        return;
+    };
+    let EachItemKind::Identifier(item_sym) = &sem.item else {
+        return;
+    };
+    if !ctx
+        .analysis
+        .binding_semantics(*item_sym)
+        .is_each_item_indexed_legacy()
+    {
+        return;
+    }
+    let name = ctx.ident_gen.generate("$$index");
+    ctx.transform_data
+        .each_synthetic_index_names_legacy
+        .insert(*item_sym, name);
+}
+
 fn walk_node<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     node: &Node,
@@ -154,6 +179,7 @@ fn walk_node<'a>(
             if let Some(key) = block.key.as_ref() {
                 ctx.expr_handles.push((key.id(), Some(block.id)));
             }
+            reserve_each_synthetic_index_legacy(ctx, block);
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {

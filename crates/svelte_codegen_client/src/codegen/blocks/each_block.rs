@@ -161,14 +161,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => false,
             };
 
+        let synthetic_reassign_index = match &sem.item {
+            EachItemKind::Identifier(sym) => self
+                .ctx
+                .state
+                .transform_data
+                .each_synthetic_index_names_legacy
+                .get(sym)
+                .cloned(),
+            EachItemKind::Pattern(_) | EachItemKind::NoBinding => None,
+        };
+
         let render_index_name = if !(body_uses_index
             || needs_group_index
             || needs_collection_id
-            || needs_store_index)
+            || needs_store_index
+            || synthetic_reassign_index.is_some())
         {
             None
         } else if let Some(name) = &user_index_name {
             Some(name.clone())
+        } else if let Some(name) = synthetic_reassign_index {
+            Some(name)
         } else {
             let generated = self.ctx.state.gen_ident("$$index");
             if needs_group_index {

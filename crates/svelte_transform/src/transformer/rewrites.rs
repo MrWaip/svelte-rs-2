@@ -1163,9 +1163,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let Some(index_sym) = index_sym else {
-            return false;
-        };
         let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
             return false;
         };
@@ -1195,9 +1192,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
-            return false;
-        };
-        let Some(index_sym) = index_sym else {
             return false;
         };
         let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {

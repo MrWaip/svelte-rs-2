@@ -150,12 +150,19 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
         item_sym: svelte_component_semantics::SymbolId,
-        index_sym: svelte_component_semantics::SymbolId,
+        index_sym: Option<svelte_component_semantics::SymbolId>,
     ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
         let ast = self.b.ast;
         let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
         let collection = self.make_source_read(analysis, source_sym);
-        let index_name = self.component_scoping.symbol_name(index_sym);
+        let index_name = match index_sym {
+            Some(index_sym) => self.component_scoping.symbol_name(index_sym),
+            None => self
+                .transform_data
+                .each_synthetic_index_names_legacy
+                .get(&item_sym)?
+                .as_str(),
+        };
         let property = ast.expression_identifier(SPAN, ast.atom(index_name));
         Some(ast.alloc(ast.computed_member_expression(SPAN, collection, property, false)))
     }
@@ -166,7 +173,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         item_sym: svelte_component_semantics::SymbolId,
         index_sym: Option<svelte_component_semantics::SymbolId>,
     ) -> Option<Expression<'a>> {
-        let index_sym = index_sym?;
         Some(Expression::ComputedMemberExpression(
             self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)?,
         ))

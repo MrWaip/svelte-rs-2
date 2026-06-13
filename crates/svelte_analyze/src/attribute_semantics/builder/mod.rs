@@ -1385,12 +1385,11 @@ fn derive_component_bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Component
         return ComponentBindKind::Expression;
     };
 
-    if matches!(
-        ctx.reactivity.binding_semantics(sym),
-        BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
-            EachItemStrategy::IndexedLegacy
-        ))
-    ) {
+    if ctx
+        .reactivity
+        .binding_semantics(sym)
+        .is_each_item_indexed_legacy()
+    {
         return ComponentBindKind::Expression;
     }
 
