@@ -531,11 +531,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         param: &SnippetParam,
         idx: usize,
         pattern: Option<BindingPattern<'a>>,
+        default: Option<Expression<'a>>,
     ) -> Result<(FormalParameter<'a>, Vec<Statement<'a>>)> {
         match param {
             SnippetParam::Identifier { sym } => {
                 let name = self.ctx.query.view.symbol_name(*sym).to_string();
-                Ok((self.formal_param_ident(&name, true), Vec::new()))
+                let Some(default) = default else {
+                    return Ok((self.formal_param_ident(&name, true), Vec::new()));
+                };
+                Ok(self.emit_snippet_identifier_default(&name, idx, &default))
             }
             SnippetParam::Pattern { pattern_id } => {
                 let arg_name = format!("$$arg{idx}");
@@ -561,6 +565,32 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 Ok((formal, stmts))
             }
         }
+    }
+
+    fn emit_snippet_identifier_default(
+        &mut self,
+        name: &str,
+        idx: usize,
+        default: &Expression<'a>,
+    ) -> (FormalParameter<'a>, Vec<Statement<'a>>) {
+        let arg_name = format!("$$arg{idx}");
+        let formal = self.formal_param_ident(&arg_name, false);
+        let arg_read = self
+            .ctx
+            .b
+            .maybe_call_expr(self.ctx.b.rid_expr(&arg_name), iter::empty::<Arg<'_, '_>>());
+        let value = bp::fallback(&self.ctx.b, arg_read, default, None);
+        let thunk = self.ctx.b.thunk(value);
+        let init = self
+            .ctx
+            .b
+            .call_expr("$.derived_safe_equal", [Arg::Expr(thunk)]);
+        let mut stmts = vec![self.ctx.b.let_init_stmt(name, init)];
+        if self.ctx.state.dev {
+            let name_alloc = self.ctx.b.alloc_str(name);
+            stmts.push(self.ctx.b.call_stmt("$.get", [Arg::Ident(name_alloc)]));
+        }
+        (formal, stmts)
     }
 
     fn emit_snippet_param_bindings(

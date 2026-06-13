@@ -110,8 +110,20 @@ compiler_case!(
     "snippets/declaration/runes/default_leaf_object"
 );
 compiler_case!(
+    declaration_runes_default_expression,
+    "snippets/declaration/runes/default_expression"
+);
+compiler_case!(
     declaration_runes_flat_object,
     "snippets/declaration/runes/flat_object"
+);
+compiler_case!(
+    declaration_runes_identifier_default,
+    "snippets/declaration/runes/identifier_default"
+);
+compiler_case!(
+    declaration_runes_mixed_default,
+    "snippets/declaration/runes/mixed_default"
 );
 compiler_case!(
     declaration_runes_nested_array,
@@ -136,6 +148,10 @@ compiler_case!(
 compiler_case!(
     declaration_runes_single_array,
     "snippets/declaration/runes/single_array"
+);
+compiler_case!(
+    declaration_runes_single_identifier,
+    "snippets/declaration/runes/single_identifier"
 );
 compiler_case!(
     declaration_runes_string_key,

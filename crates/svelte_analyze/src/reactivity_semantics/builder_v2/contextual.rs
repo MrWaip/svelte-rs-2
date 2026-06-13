@@ -1,6 +1,7 @@
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentPattern, BindingIdentifier, BindingPattern,
-    BindingRestElement, Expression, IdentifierReference, Statement, VariableDeclarator,
+    BindingRestElement, Expression, FormalParameter, IdentifierReference, Statement,
+    VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
@@ -933,6 +934,15 @@ impl<'a> Visit<'a> for SnippetParamMarker<'_, '_, 'a> {
         let was_in_default = self.in_default;
         self.in_default = true;
         self.visit_binding_pattern(&pat.left);
+        self.in_default = was_in_default;
+    }
+
+    fn visit_formal_parameter(&mut self, param: &FormalParameter<'a>) {
+        let was_in_default = self.in_default;
+        if param.initializer.is_some() {
+            self.in_default = true;
+        }
+        self.visit_binding_pattern(&param.pattern);
         self.in_default = was_in_default;
     }
 
