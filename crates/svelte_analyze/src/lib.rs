@@ -268,7 +268,7 @@ fn needs_push(
     if data.uses_runes() {
         return false;
     }
-    if data.script.accessors || data.script.immutable {
+    if has_legacy_accessor_props(data) || data.script.immutable {
         return true;
     }
     if summary.legacy.has_member_mutated {

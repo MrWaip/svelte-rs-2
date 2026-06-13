@@ -532,6 +532,9 @@ fn update_aggregates(sink: &mut Sink<'_>, facts: &ExprFacts, ctx: &Ctx<'_, '_>) 
     if facts.has_unsafe_member_root {
         sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
+    if facts.has_unsafe_callee_or_new {
+        sink.note_context(ContextSignal::UNSAFE_CALLEE_OR_NEW);
+    }
     if facts.has_store_member_mutation {
         sink.note_context(ContextSignal::STORE_MUTATION);
     }

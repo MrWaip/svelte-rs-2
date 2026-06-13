@@ -4,13 +4,14 @@ use crate::reactivity_semantics::data::{
 use crate::utils::expression_await::expression_has_await;
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, CallExpression, ChainElement,
-    Expression, Function, IdentifierReference, MemberExpression, SimpleAssignmentTarget,
-    SpreadElement, UpdateExpression,
+    Expression, Function, IdentifierReference, MemberExpression, NewExpression,
+    SimpleAssignmentTarget, SpreadElement, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_call_expression, walk_function, walk_member_expression,
-    walk_simple_assignment_target, walk_spread_element, walk_update_expression,
+    walk_new_expression, walk_simple_assignment_target, walk_spread_element,
+    walk_update_expression,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -41,6 +42,7 @@ pub(super) struct ExprFacts {
     pub reads_legacy_rest_props: bool,
     pub has_legacy_props_member_root: bool,
     pub has_unsafe_member_root: bool,
+    pub has_unsafe_callee_or_new: bool,
     pub has_runtime_root: bool,
     pub top_level_form: TopLevelForm,
 }
@@ -67,6 +69,7 @@ pub(super) fn collect<'a>(
         reads_legacy_rest_props: false,
         has_legacy_props_member_root: false,
         has_unsafe_member_root: false,
+        has_unsafe_callee_or_new: false,
         fn_depth: 0,
         in_write_position: false,
     };
@@ -86,6 +89,7 @@ pub(super) fn collect<'a>(
         reads_legacy_rest_props: visitor.reads_legacy_rest_props,
         has_legacy_props_member_root: visitor.has_legacy_props_member_root,
         has_unsafe_member_root: visitor.has_unsafe_member_root,
+        has_unsafe_callee_or_new: visitor.has_unsafe_callee_or_new,
         has_runtime_root: peeled_root_is_runtime(expr),
         top_level_form,
     }
@@ -109,6 +113,18 @@ fn callee_is_pure(callee: &Expression<'_>) -> bool {
             _ => return false,
         }
     }
+}
+
+fn callee_forces_context(callee: &Expression<'_>) -> bool {
+    let mut node = callee.get_inner_expression();
+    loop {
+        match node {
+            Expression::StaticMemberExpression(m) => node = m.object.get_inner_expression(),
+            Expression::ComputedMemberExpression(m) => node = m.object.get_inner_expression(),
+            _ => break,
+        }
+    }
+    !matches!(node, Expression::Identifier(_))
 }
 
 fn member_object_peels_to_identifier(expr: &Expression<'_>) -> bool {
@@ -219,6 +235,7 @@ struct Collector<'c, 'a> {
     reads_legacy_rest_props: bool,
     has_legacy_props_member_root: bool,
     has_unsafe_member_root: bool,
+    has_unsafe_callee_or_new: bool,
     fn_depth: u32,
     in_write_position: bool,
 }
@@ -397,6 +414,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
                 self.has_state_rune = true;
             }
         }
+        if callee_forces_context(&expr.callee) {
+            self.has_unsafe_callee_or_new = true;
+        }
         if let Some(sym) = self.expression_root_sym(&expr.callee) {
             if !self.member_or_call_roots.contains(&sym) {
                 self.member_or_call_roots.push(sym);
@@ -406,6 +426,11 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             }
         }
         walk_call_expression(self, expr);
+    }
+
+    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+        self.has_unsafe_callee_or_new = true;
+        walk_new_expression(self, expr);
     }
 
     fn visit_spread_element(&mut self, spread: &SpreadElement<'a>) {

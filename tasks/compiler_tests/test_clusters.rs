@@ -99,3 +99,6 @@ mod attribute_memo;
 
 #[path = "clusters/runes_imports.rs"]
 mod runes_imports;
+
+#[path = "clusters/needs_context.rs"]
+mod needs_context;

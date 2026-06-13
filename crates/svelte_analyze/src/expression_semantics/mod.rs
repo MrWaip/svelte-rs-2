@@ -18,6 +18,7 @@ bitflags! {
         const IMPORT_OR_PROP_MEMBER = 1 << 0;
         const REST_PROP_MEMBER      = 1 << 1;
         const STORE_MUTATION        = 1 << 2;
+        const UNSAFE_CALLEE_OR_NEW  = 1 << 3;
     }
 }
 
