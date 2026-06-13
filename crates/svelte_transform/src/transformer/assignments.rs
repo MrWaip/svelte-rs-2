@@ -492,7 +492,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && self.dispatch_identifier_assignment(node, false) {
+        if is_identifier_target && self.dispatch_identifier_assignment(node, false, ctx) {
             return;
         }
 
@@ -614,7 +614,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && self.dispatch_identifier_update(node) {
+        if is_identifier_target && self.dispatch_identifier_update(node, ctx) {
             return;
         }
 

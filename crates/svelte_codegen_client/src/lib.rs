@@ -77,6 +77,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::ImportSubscribedRead { .. }
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+        | ReferenceSemantics::EachItemIndexedLegacy { .. }
         | ReferenceSemantics::IllegalWrite => None,
     }
 }

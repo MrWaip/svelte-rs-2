@@ -204,7 +204,10 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
             | ContextualBindingSemantics::AwaitValue
             | ContextualBindingSemantics::AwaitError => true,
             ContextualBindingSemantics::EachItem(strategy) => match strategy {
-                EachItemStrategy::Accessor | EachItemStrategy::Signal => true,
+                EachItemStrategy::Accessor
+                | EachItemStrategy::Signal
+                | EachItemStrategy::IndexedLegacy
+                | EachItemStrategy::DestructuredLegacy => true,
                 EachItemStrategy::Direct => false,
             },
             ContextualBindingSemantics::EachIndex(strategy) => match strategy {
@@ -1382,6 +1385,15 @@ fn derive_component_bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Component
         return ComponentBindKind::Expression;
     };
 
+    if matches!(
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
+            EachItemStrategy::IndexedLegacy
+        ))
+    ) {
+        return ComponentBindKind::Expression;
+    }
+
     let target = derive_component_bind_target(ctx, d, sym);
     ComponentBindKind::Identifier {
         symbol: sym,
@@ -1413,6 +1425,9 @@ fn derive_component_bind_target(
                 ComponentBindTarget::LegacyState
             }
         }
+        BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
+            EachItemStrategy::DestructuredLegacy,
+        )) => ComponentBindTarget::EachItemDestructureLegacy { symbol: sym },
         _ => ComponentBindTarget::Plain,
     };
     if matches!(base, ComponentBindTarget::PropSource)

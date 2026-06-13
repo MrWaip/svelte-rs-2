@@ -1,5 +1,6 @@
+use oxc_allocator::Box as OxcBox;
 use oxc_ast::NONE;
-use oxc_ast::ast::{Argument, Expression, NumberBase};
+use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
@@ -132,6 +133,45 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
     }
 
+    pub(crate) fn make_source_read(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        let name = self.component_scoping.symbol_name(sym);
+        if analysis.binding_semantics(sym).is_store() {
+            self.make_thunk_call(name)
+        } else {
+            self.make_rune_get(name)
+        }
+    }
+
+    pub(crate) fn build_each_item_indexed_member_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        index_sym: svelte_component_semantics::SymbolId,
+    ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
+        let ast = self.b.ast;
+        let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
+        let collection = self.make_source_read(analysis, source_sym);
+        let index_name = self.component_scoping.symbol_name(index_sym);
+        let property = ast.expression_identifier(SPAN, ast.atom(index_name));
+        Some(ast.alloc(ast.computed_member_expression(SPAN, collection, property, false)))
+    }
+
+    pub(crate) fn make_each_item_indexed_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        index_sym: Option<svelte_component_semantics::SymbolId>,
+    ) -> Option<Expression<'a>> {
+        let index_sym = index_sym?;
+        Some(Expression::ComputedMemberExpression(
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)?,
+        ))
+    }
+
     pub(crate) fn make_each_item_invalidate_seq(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
@@ -140,20 +180,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
-        let make_source_read = |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
-            let name = self.component_scoping.symbol_name(sym);
-            if analysis.binding_semantics(sym).is_store() {
-                self.make_thunk_call(name)
-            } else {
-                self.make_rune_get(name)
-            }
-        };
         let body_expr = match source_syms {
-            [single] => make_source_read(*single),
+            [single] => self.make_source_read(analysis, *single),
             many => {
                 let mut elems = ast.vec_with_capacity(many.len());
                 for &sym in many {
-                    elems.push(make_source_read(sym));
+                    elems.push(self.make_source_read(analysis, sym));
                 }
                 ast.expression_sequence(SPAN, elems)
             }

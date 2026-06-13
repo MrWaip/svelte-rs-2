@@ -1,10 +1,12 @@
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKind, Statement};
+use oxc_span::SPAN;
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{ComponentBindSemantics, ComponentBindTarget};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use svelte_emit_builders::runes::rune_get;
+use svelte_emit_builders::runtime::thunk_call;
 use svelte_emit_builders::store::build_store_base_read;
 
 use super::super::Codegen;
@@ -272,10 +274,93 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     vec![self.ctx.b.expr_stmt(set_body)],
                 )));
             }
+            ComponentBindTarget::EachItemDestructureLegacy { symbol } => {
+                match self.build_each_item_destructure_writeback_legacy(symbol) {
+                    Some(setter_body) => {
+                        let getter = self.ctx.b.call_expr(source_ref, []);
+                        items.push(PropOrSpread::Prop(ObjProp::Getter(key, getter)));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(
+                            key,
+                            "$$value",
+                            None,
+                            vec![self.ctx.b.expr_stmt(setter_body)],
+                        )));
+                    }
+                    None => self.emit_bind_plain(name, source_text, items),
+                }
+            }
             ComponentBindTarget::Plain => {
                 self.emit_bind_plain(name, source_text, items);
             }
         }
+    }
+
+    fn read_each_item_source_legacy(&self, sym: SymbolId) -> Expression<'a> {
+        let name = self.ctx.query.view.symbol_name(sym);
+        if self.ctx.query.analysis.binding_semantics(sym).is_store() {
+            thunk_call(&self.ctx.b, name)
+        } else {
+            rune_get(&self.ctx.b, name)
+        }
+    }
+
+    fn build_each_item_destructure_writeback_legacy(
+        &self,
+        symbol: SymbolId,
+    ) -> Option<Expression<'a>> {
+        let place = self
+            .ctx
+            .state
+            .each_item_writeback_places
+            .as_ref()?
+            .get(&symbol)?
+            .clone_in(self.ctx.b.ast.allocator);
+        let assignment = self.ctx.b.assign_expr_raw(
+            self.ctx.b.expr_to_assignment_target(place),
+            self.ctx.b.rid_expr("$$value"),
+        );
+
+        let analysis = self.ctx.query.analysis;
+        let sources = analysis.each_item_indirect_sources(symbol).unwrap_or(&[]);
+        let inner = match sources {
+            [single] => self.read_each_item_source_legacy(*single),
+            many => {
+                let reads: Vec<Expression<'a>> = many
+                    .iter()
+                    .map(|&s| self.read_each_item_source_legacy(s))
+                    .collect();
+                self.ctx
+                    .b
+                    .ast
+                    .expression_sequence(SPAN, self.ctx.b.ast.vec_from_iter(reads))
+            }
+        };
+        let thunk = self
+            .ctx
+            .b
+            .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(inner)]);
+        let invalidate_inner = self
+            .ctx
+            .b
+            .call_expr("$.invalidate_inner_signals", [Arg::Expr(thunk)]);
+
+        let mut seq: Vec<Expression<'a>> = vec![assignment, invalidate_inner];
+        if let Some(&store_sym) = sources
+            .iter()
+            .find(|&&s| analysis.binding_semantics(s).is_store())
+        {
+            let store_name = self.ctx.query.view.symbol_name(store_sym).to_string();
+            seq.push(self.ctx.b.call_expr(
+                "$.invalidate_store",
+                [Arg::Ident("$$stores"), Arg::Str(store_name)],
+            ));
+        }
+        Some(
+            self.ctx
+                .b
+                .ast
+                .expression_sequence(SPAN, self.ctx.b.ast.vec_from_iter(seq)),
+        )
     }
 
     pub(super) fn emit_bind_store(

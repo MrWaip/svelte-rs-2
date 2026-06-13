@@ -82,6 +82,9 @@ mod stores;
 #[path = "clusters/each.rs"]
 mod each;
 
+#[path = "clusters/each_item_writeback.rs"]
+mod each_item_writeback;
+
 #[path = "clusters/await_block.rs"]
 mod await_block;
 

@@ -537,6 +537,10 @@ pub enum EachItemStrategy {
     Signal,
 
     Direct,
+
+    IndexedLegacy,
+
+    DestructuredLegacy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -859,6 +863,11 @@ pub enum ReferenceSemantics {
         collection_store: SymbolId,
     },
 
+    EachItemIndexedLegacy {
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+    },
+
     IllegalWrite,
 
     Unresolved,
@@ -900,6 +909,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -939,6 +949,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -978,6 +989,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1023,6 +1035,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1062,6 +1075,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1101,6 +1115,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1140,6 +1155,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1317,6 +1333,10 @@ pub(crate) enum ReferenceFacts {
         collection_store: SymbolId,
     },
 
+    EachItemIndexedLegacy {
+        item_symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Proxy,
@@ -1357,6 +1377,7 @@ impl ReferenceFacts {
             | ReferenceFacts::ImportSubscribedRead { .. }
             | ReferenceFacts::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceFacts::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceFacts::EachItemIndexedLegacy { .. }
             | ReferenceFacts::IllegalWrite
             | ReferenceFacts::Proxy => None,
         }
@@ -1401,6 +1422,8 @@ pub struct ReactivitySemantics {
 
     each_item_collection_store: FxHashMap<SymbolId, SymbolId>,
 
+    each_item_index_legacy: FxHashMap<SymbolId, SymbolId>,
+
     base_to_store: FxHashMap<SymbolId, SymbolId>,
 
     uses_runes: bool,
@@ -1425,6 +1448,7 @@ impl ReactivitySemantics {
             contextual_reads_in_each_key: FxHashMap::default(),
             each_item_indirect_sources: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
+            each_item_index_legacy: FxHashMap::default(),
             base_to_store: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             maybe_reactive_symbols: FxHashSet::default(),
@@ -1705,6 +1729,12 @@ impl ReactivitySemantics {
                 item_sym: *item_sym,
                 collection_store: *collection_store,
             },
+            Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
+                ReferenceSemantics::EachItemIndexedLegacy {
+                    item_sym: *item_symbol,
+                    index_sym: self.each_item_index_legacy(*item_symbol),
+                }
+            }
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
@@ -1941,6 +1971,14 @@ impl ReactivitySemantics {
 
     pub(crate) fn each_item_collection_store(&self, item_sym: SymbolId) -> Option<SymbolId> {
         self.each_item_collection_store.get(&item_sym).copied()
+    }
+
+    pub(crate) fn set_each_item_index_legacy(&mut self, item_sym: SymbolId, index_sym: SymbolId) {
+        self.each_item_index_legacy.insert(item_sym, index_sym);
+    }
+
+    fn each_item_index_legacy(&self, item_sym: SymbolId) -> Option<SymbolId> {
+        self.each_item_index_legacy.get(&item_sym).copied()
     }
 
     pub(super) fn mark_each_rest(&mut self, sym: SymbolId) {

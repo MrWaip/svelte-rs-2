@@ -260,7 +260,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
 
     fn exit_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
-            template_rewrites::rewrite_template_exit(self, node);
+            template_rewrites::rewrite_template_exit(self, node, ctx);
             return;
         }
 

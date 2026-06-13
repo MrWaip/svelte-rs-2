@@ -68,7 +68,9 @@ pub fn read_binding<'a>(
             destructured: true, ..
         }) => None,
         BindingSemantics::Contextual(ck) => match ck {
+            ContextualBindingSemantics::EachItem(EachItemStrategy::IndexedLegacy) => None,
             ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor)
+            | ContextualBindingSemantics::EachItem(EachItemStrategy::DestructuredLegacy)
             | ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
                 Some(thunk_call(b, name))
             }

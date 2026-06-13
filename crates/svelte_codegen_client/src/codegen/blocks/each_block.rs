@@ -334,27 +334,45 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
+
+        let saved_writeback_places = self.ctx.state.each_item_writeback_places.take();
+        let each_item_decls: Option<Vec<Statement<'a>>> = match (context_pattern, item_pattern_node)
+        {
+            (Some(pattern), Some(decl_node))
+                if matches!(
+                    pattern,
+                    BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
+                ) =>
+            {
+                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
+                let BindingPatternOutput::EachItem {
+                    decls,
+                    writeback_places,
+                } = self.emit_binding_pattern(
+                    decl_node,
+                    BindingPatternSource::EachItem {
+                        block_id,
+                        pattern: pattern_ref,
+                    },
+                )?
+                else {
+                    return CodegenError::unexpected_child(
+                        "each-item binding output",
+                        "other binding output",
+                    );
+                };
+                self.ctx.state.each_item_writeback_places = Some(writeback_places);
+                Some(decls)
+            }
+            _ => None,
+        };
+
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let mut frag_body = self.pack_callback_body(inner_state, "$$anchor")?;
 
-        if let Some(pattern) = context_pattern
-            && matches!(
-                pattern,
-                BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
-            )
-            && let Some(decl_node) = item_pattern_node
-        {
-            let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-            let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
-                decl_node,
-                BindingPatternSource::EachItem {
-                    block_id,
-                    pattern: pattern_ref,
-                },
-            )?
-            else {
-                return CodegenError::unexpected_child("each-item statements", "const tag derived");
-            };
+        self.ctx.state.each_item_writeback_places = saved_writeback_places;
+
+        if let Some(mut decls) = each_item_decls {
             decls.append(&mut frag_body);
             frag_body = decls;
         }

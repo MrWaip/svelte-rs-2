@@ -1,7 +1,7 @@
 use super::super::data::{
-    BindingFacts, ConstBindingSemantics, ContextualReadSemantics, DerivedKind, PropBindingKind,
-    PropDefaultKind, PropEmitMode, PropReferenceSemantics, ReferenceFacts, SignalReferenceKind,
-    StateKind,
+    BindingFacts, ConstBindingSemantics, ContextualBindingSemantics, ContextualReadSemantics,
+    DerivedKind, EachItemStrategy, PropBindingKind, PropDefaultKind, PropEmitMode,
+    PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -260,6 +260,12 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::Contextual(kind) => {
+            if matches!(
+                kind,
+                ContextualBindingSemantics::EachItem(EachItemStrategy::IndexedLegacy)
+            ) {
+                return Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol: sym });
+            }
             if is_write {
                 return Some(ReferenceFacts::IllegalWrite);
             }

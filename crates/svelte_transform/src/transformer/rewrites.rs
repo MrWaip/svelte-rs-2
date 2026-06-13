@@ -180,6 +180,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
                 true
             }
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+            } => {
+                if let Some(member) =
+                    self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym)
+                {
+                    *expr = member;
+                }
+                true
+            }
             ReferenceSemantics::ContextualRead(ContextualReadSemantics {
                 kind,
                 in_key_expression,
@@ -243,6 +254,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         node: &mut Expression<'a>,
         suppress_proxy: bool,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -259,6 +271,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+            } => self.rewrite_each_item_reassignment_assignment(node, item_sym, index_sym, ctx),
             ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreWrite { .. }
@@ -329,7 +345,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         true
     }
 
-    pub(crate) fn dispatch_identifier_update(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn dispatch_identifier_update(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -345,6 +365,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+            } => self.rewrite_each_item_reassignment_update(node, item_sym, index_sym, ctx),
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
@@ -456,6 +480,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::LegacySlotsIdentifierRead
@@ -526,6 +551,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::LegacySlotsIdentifierRead
@@ -1121,6 +1147,74 @@ impl<'a> ComponentTransformer<'_, 'a> {
             &mut upd.argument,
             self.make_rune_get(item_name.as_str()),
         );
+        let placeholder = self.make_rune_get("");
+        let mutation = mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        true
+    }
+
+    fn rewrite_each_item_reassignment_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Some(index_sym) = index_sym else {
+            return false;
+        };
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        let Some(member) =
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)
+        else {
+            return false;
+        };
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
+        assign.left = AssignmentTarget::ComputedMemberExpression(member);
+        let placeholder = self.make_rune_get("");
+        let mutation = mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        true
+    }
+
+    fn rewrite_each_item_reassignment_update(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Some(index_sym) = index_sym else {
+            return false;
+        };
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        let Some(member) =
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)
+        else {
+            return false;
+        };
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
+        upd.argument = SimpleAssignmentTarget::ComputedMemberExpression(member);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
         *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);

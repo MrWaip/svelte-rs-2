@@ -5,7 +5,9 @@ use super::super::{
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
-use crate::reactivity_semantics::data::{BindingSemantics, PropBindingKind};
+use crate::reactivity_semantics::data::{
+    BindingSemantics, ContextualBindingSemantics, EachItemStrategy, PropBindingKind,
+};
 use crate::utils::node_id_utils::expression_node_id;
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
@@ -84,14 +86,23 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
                 Some(expr) => expression_contains_reference_to(expr, sym, ctx.semantics),
                 None => false,
             };
-            let used_in_body = if !used_in_key {
-                !all_refs.is_empty()
-            } else {
-                let key_ref_count = key_expr
-                    .map(|e| count_references_to_in_expr(e, sym, ctx.semantics))
-                    .unwrap_or(0);
-                all_refs.len() > key_ref_count
-            };
+            let item_is_indexed_legacy = item_sym.is_some_and(|item| {
+                matches!(
+                    ctx.reactivity.binding_semantics(item),
+                    BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
+                        EachItemStrategy::IndexedLegacy
+                    ))
+                )
+            });
+            let used_in_body = item_is_indexed_legacy
+                || if !used_in_key {
+                    !all_refs.is_empty()
+                } else {
+                    let key_ref_count = key_expr
+                        .map(|e| count_references_to_in_expr(e, sym, ctx.semantics))
+                        .unwrap_or(0);
+                    all_refs.len() > key_ref_count
+                };
             EachIndexKind::Declared {
                 sym,
                 used_in_body,

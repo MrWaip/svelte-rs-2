@@ -6,7 +6,7 @@ use oxc_ast::ast::{
     BindingPattern, ChainElement, Expression, FormalParameter, PropertyKey, Statement,
 };
 use oxc_semantic::SymbolId;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::{
     BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics, DerivedEmit,
     EachFlags, SnippetParam,
@@ -45,6 +45,10 @@ pub(in crate::codegen) enum BindingPatternSource<'a> {
 
 pub(in crate::codegen) enum BindingPatternOutput<'a> {
     Statements(Vec<Statement<'a>>),
+    EachItem {
+        decls: Vec<Statement<'a>>,
+        writeback_places: FxHashMap<SymbolId, Expression<'a>>,
+    },
     ConstTagDerived(ConstTagDerived<'a>),
 }
 
@@ -71,7 +75,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 };
                 let item_reactive = self.each_item_reactive(block_id)?;
-                Ok(Out::Statements(self.emit_each_item(pattern, item_reactive)))
+                let (decls, writeback_places) = self.emit_each_item(pattern, item_reactive);
+                Ok(Out::EachItem {
+                    decls,
+                    writeback_places,
+                })
             }
             DeclaratorSemantics::AwaitValue => {
                 let BindingPatternSource::AwaitValue { binding_stmt } = source else {
@@ -185,14 +193,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         pattern: &'a BindingPattern<'a>,
         item_reactive: bool,
-    ) -> Vec<Statement<'a>> {
+    ) -> (Vec<Statement<'a>>, FxHashMap<SymbolId, Expression<'a>>) {
         let mut carriers: HashMap<String, String> = HashMap::new();
         let mut carrier_stmts: Vec<Statement<'a>> = Vec::new();
         let mut binding_stmts: Vec<Statement<'a>> = Vec::new();
+        let mut writeback_places: FxHashMap<SymbolId, Expression<'a>> = FxHashMap::default();
 
         walk_bindings(pattern, |v| {
             let needs_derived = v.path.iter().any(|s| s.default.is_some());
             let mut expr = self.item_read_expr(item_reactive);
+            let mut direct_member = !needs_derived && !v.is_rest;
 
             for (i, step) in v.path.iter().enumerate() {
                 match step.access {
@@ -204,6 +214,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         len,
                         has_rest,
                     } => {
+                        direct_member = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -218,6 +229,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                     Access::Slice { from } => {
+                        direct_member = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -245,6 +257,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
             }
 
+            if direct_member {
+                writeback_places.insert(v.symbol, expr.clone_in(self.ctx.b.ast.allocator));
+            }
+
             let name = self.ctx.query.symbol_name(v.symbol).to_string();
             let thunk = self.ctx.b.thunk(expr);
             let init = if needs_derived {
@@ -258,7 +274,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         });
 
         carrier_stmts.extend(binding_stmts);
-        carrier_stmts
+        (carrier_stmts, writeback_places)
     }
 
     fn emit_await_value(&mut self, pattern: &'a BindingPattern<'a>) -> Vec<Statement<'a>> {

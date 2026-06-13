@@ -23,7 +23,7 @@ pub(crate) fn rewrite_template_enter<'a>(
     }
 
     if matches!(it, Expression::UpdateExpression(_)) {
-        if t.dispatch_identifier_update(it) {
+        if t.dispatch_identifier_update(it, ctx) {
             return;
         }
         t.dispatch_member_update(it, ctx);
@@ -38,6 +38,7 @@ pub(crate) fn rewrite_template_enter<'a>(
 pub(crate) fn rewrite_template_exit<'a>(
     t: &mut ComponentTransformer<'_, 'a>,
     it: &mut Expression<'a>,
+    ctx: &mut TraverseCtx<'a, ()>,
 ) {
     t.rewrite_shared_call(it, false);
 
@@ -85,7 +86,7 @@ pub(crate) fn rewrite_template_exit<'a>(
     t.rewrite_prop_update_ownership_exit(it);
 
     let suppress_proxy = t.in_bind_setter_traverse;
-    t.dispatch_identifier_assignment(it, suppress_proxy);
+    t.dispatch_identifier_assignment(it, suppress_proxy, ctx);
 
     if t.dev {
         wrap_binary_equals_dev(t.b, it);

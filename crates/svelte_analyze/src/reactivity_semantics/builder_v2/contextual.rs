@@ -83,7 +83,13 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
         let semantics = match kind {
             PendingKind::EachItem => {
                 let strategy = if getter_symbols.contains(&sym) {
-                    EachItemStrategy::Accessor
+                    if !data.uses_runes() && data.scoping.is_mutated(sym) {
+                        EachItemStrategy::DestructuredLegacy
+                    } else {
+                        EachItemStrategy::Accessor
+                    }
+                } else if !data.uses_runes() && data.scoping.is_mutated(sym) {
+                    EachItemStrategy::IndexedLegacy
                 } else if each_non_reactive_symbols.contains(&sym) {
                     EachItemStrategy::Direct
                 } else {
@@ -456,6 +462,21 @@ impl TemplateVisitor for EachSourcePromoter {
                     .set_each_item_collection_store(item_sym, store_sym);
             }
         }
+
+        let index_sym = block
+            .index
+            .as_ref()
+            .and_then(|r| parsed.stmt(r.id()))
+            .and_then(declarator_from_stmt_local)
+            .and_then(|d| d.id.get_binding_identifier())
+            .and_then(|ident| ident.symbol_id.get());
+        if let Some(index_sym) = index_sym {
+            for &item_sym in &item_syms {
+                ctx.data
+                    .reactivity
+                    .set_each_item_index_legacy(item_sym, index_sym);
+            }
+        }
     }
 }
 
@@ -577,18 +598,18 @@ pub(super) fn classify_contextual_read_kind(
 ) -> ContextualReadKind {
     let _ = (data, sym);
     match kind {
-        ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor) => {
-            ContextualReadKind::EachItem {
-                accessor: true,
-                signal: false,
-            }
-        }
-        ContextualBindingSemantics::EachItem(EachItemStrategy::Direct) => {
-            ContextualReadKind::EachItem {
-                accessor: false,
-                signal: false,
-            }
-        }
+        ContextualBindingSemantics::EachItem(
+            EachItemStrategy::Accessor | EachItemStrategy::DestructuredLegacy,
+        ) => ContextualReadKind::EachItem {
+            accessor: true,
+            signal: false,
+        },
+        ContextualBindingSemantics::EachItem(
+            EachItemStrategy::Direct | EachItemStrategy::IndexedLegacy,
+        ) => ContextualReadKind::EachItem {
+            accessor: false,
+            signal: false,
+        },
         ContextualBindingSemantics::EachItem(EachItemStrategy::Signal) => {
             ContextualReadKind::EachItem {
                 accessor: false,

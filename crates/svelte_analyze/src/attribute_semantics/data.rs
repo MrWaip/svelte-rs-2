@@ -217,6 +217,7 @@ pub enum ComponentBindTarget {
     LegacyStateSubscribed,
     PropSource,
     PropSourceOwned,
+    EachItemDestructureLegacy { symbol: SymbolId },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
