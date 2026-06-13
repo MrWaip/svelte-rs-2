@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "options_deprecated_accessors",
-    "start": 16,
-    "end": 32
-  }
-]

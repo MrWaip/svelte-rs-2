@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "a11y_unknown_aria_attribute",
-    "start": 16,
-    "end": 20
-  }
-]

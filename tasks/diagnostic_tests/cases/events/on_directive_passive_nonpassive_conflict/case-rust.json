@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "event_handler_invalid_modifier_combination",
-    "start": 36,
-    "end": 71
-  }
-]

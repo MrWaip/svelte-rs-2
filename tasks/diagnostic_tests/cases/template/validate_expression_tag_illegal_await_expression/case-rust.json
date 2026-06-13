@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "experimental_async",
-    "start": 64,
-    "end": 76
-  }
-]
