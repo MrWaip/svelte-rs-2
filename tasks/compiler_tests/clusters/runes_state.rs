@@ -59,6 +59,62 @@ compiler_case!(
     "runes/state/assignment/object_pattern_literal_rhs"
 );
 compiler_case!(assignment_object_rest, "runes/state/assignment/object_rest");
+compiler_case!(
+    proxy_flag_red_const_primitive_rhs,
+    "runes/state/proxy_flag/red_const_primitive_rhs"
+);
+compiler_case!(
+    proxy_flag_red_private_field_opaque_rhs,
+    "runes/state/proxy_flag/red_private_field_opaque_rhs"
+);
+compiler_case!(
+    proxy_flag_guard_raw_bind_this_regular_element,
+    "runes/state/proxy_flag/guard_raw_bind_this_regular_element"
+);
+compiler_case!(
+    proxy_flag_red_raw_component_bind_this,
+    "runes/state/proxy_flag/red_raw_component_bind_this"
+);
+compiler_case!(
+    proxy_flag_red_raw_bindable_prop,
+    "runes/state/proxy_flag/red_raw_bindable_prop"
+);
+compiler_case!(
+    proxy_flag_guard_opaque_rhs_proxies,
+    "runes/state/proxy_flag/guard_opaque_rhs_proxies"
+);
+compiler_case!(
+    proxy_flag_guard_coercive_operator,
+    "runes/state/proxy_flag/guard_coercive_operator"
+);
+compiler_case!(
+    proxy_flag_guard_private_field_literal_rhs,
+    "runes/state/proxy_flag/guard_private_field_literal_rhs"
+);
+compiler_case!(
+    proxy_flag_red_nested_scope_const_rhs,
+    "runes/state/proxy_flag/red_nested_scope_const_rhs"
+);
+compiler_case!(
+    proxy_flag_red_state_init_const_arg,
+    "runes/state/proxy_flag/red_state_init_const_arg"
+);
+compiler_case!(
+    proxy_flag_red_nested_scope_private_const_rhs,
+    "runes/state/proxy_flag/red_nested_scope_private_const_rhs"
+);
+compiler_case!(
+    class_field_public_field_accessor,
+    "runes/state/class_field/public_field_accessor"
+);
+compiler_case!(
+    class_field_nested_member_private,
+    "runes/state/class_field/nested_member_private"
+);
+compiler_case!(
+    class_field_constructor_public_and_private,
+    "runes/state/class_field/constructor_public_and_private"
+);
 compiler_case!(declaration_alias, "runes/state/declaration/alias");
 compiler_case!(declaration_array_hole, "runes/state/declaration/array_hole");
 compiler_case!(

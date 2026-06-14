@@ -9,6 +9,7 @@ use oxc_syntax::symbol::SymbolFlags;
 use oxc_syntax::symbol::SymbolId;
 use smallvec::SmallVec;
 
+use crate::class_table::ClassFieldAccess;
 use crate::pattern::walk_assignment_target_idents;
 use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
@@ -33,6 +34,8 @@ pub struct JsSemanticVisitor<'s, 'a> {
     next_node_id: u32,
 
     start_node_id: u32,
+
+    class_access_stack: Vec<Vec<ClassFieldAccess>>,
 }
 
 impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
@@ -52,6 +55,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id: 0,
             start_node_id: 0,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -72,6 +76,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id,
             start_node_id: next_node_id,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -87,6 +92,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id: 0,
             start_node_id: 0,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -340,8 +346,35 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             self.visit_binding_identifier(ident);
         }
 
+        self.class_access_stack.push(Vec::new());
         walk::walk_class(self, class);
+        let accesses = self.class_access_stack.pop().unwrap_or_default();
+        self.semantics.record_class(class, &accesses);
         self.leave_scope(parent);
+    }
+
+    fn visit_private_field_expression(&mut self, expr: &PrivateFieldExpression<'a>) {
+        walk::walk_private_field_expression(self, expr);
+        if let Some(accesses) = self.class_access_stack.last_mut() {
+            accesses.push(ClassFieldAccess {
+                node: expr.node_id(),
+                name: CompactString::from(expr.field.name.as_str()),
+                is_private: true,
+            });
+        }
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        walk::walk_static_member_expression(self, expr);
+        if matches!(&expr.object, Expression::ThisExpression(_))
+            && let Some(accesses) = self.class_access_stack.last_mut()
+        {
+            accesses.push(ClassFieldAccess {
+                node: expr.node_id(),
+                name: CompactString::from(expr.property.name.as_str()),
+                is_private: false,
+            });
+        }
     }
 
     fn visit_block_statement(&mut self, stmt: &BlockStatement<'a>) {

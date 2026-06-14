@@ -30,7 +30,7 @@ pub(crate) enum PassKey {
     JsAnalyzePostTemplate,
     BuildReactivitySemantics,
     BuildValueEvaluation,
-    BuildOptimizedDerived,
+    FinalizeReactivity,
     BuildFragmentTopology,
     TemplateClassificationWalk,
     BuildExpressionSemantics,
@@ -138,7 +138,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ValueEvaluation],
     },
     PassDescriptor {
-        key: PassKey::BuildOptimizedDerived,
+        key: PassKey::FinalizeReactivity,
         requires: &[DataToken::ValueEvaluation],
         produces: &[DataToken::OptimizedDerived],
     },
@@ -195,7 +195,7 @@ pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
     PassKey::BuildValueEvaluation,
-    PassKey::BuildOptimizedDerived,
+    PassKey::FinalizeReactivity,
     PassKey::BuildExpressionSemantics,
     PassKey::BuildAttributeSemantics,
 ];

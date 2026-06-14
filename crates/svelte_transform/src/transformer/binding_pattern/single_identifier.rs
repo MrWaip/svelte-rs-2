@@ -8,7 +8,6 @@ use svelte_analyze::{BindingSemantics, DerivedKind, RuntimeRuneKind, StateKind};
 use svelte_ast_builder::Arg;
 
 use super::super::model::{AsyncDerivedMode, ComponentTransformer};
-use crate::rune_refs::should_proxy;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_variable_rune_init(&mut self, node: &mut VariableDeclarator<'a>) {
@@ -48,6 +47,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     binding_name,
                     state.kind,
                     state.is_signal_source,
+                    state.proxied,
                 );
             }
             Some(BindingSemantics::Derived(derived))
@@ -55,7 +55,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_derived_binding_init(node, binding_name, derived.kind, sym_id);
             }
             Some(BindingSemantics::OptimizedRune(opt)) => {
-                self.rewrite_state_binding_init(node, binding_name, opt.kind, false);
+                self.rewrite_state_binding_init(
+                    node,
+                    binding_name,
+                    opt.kind,
+                    false,
+                    opt.proxy_init,
+                );
             }
             Some(BindingSemantics::RuntimeRune {
                 kind: RuntimeRuneKind::EffectPending,
@@ -72,6 +78,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         binding_name: &'a str,
         kind: StateKind,
         is_signal_source: bool,
+        proxied: bool,
     ) {
         let Some(init) = node.init.as_mut() else {
             return;
@@ -96,7 +103,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         .expression_unary(SPAN, UnaryOperator::Void, self.b.num_expr(0.0));
                 call.arguments.push(void_zero.into());
             } else if matches!(kind, StateKind::State) {
-                let needs_proxy = call.arguments[0].as_expression().is_some_and(should_proxy);
+                let needs_proxy = proxied;
                 if needs_proxy {
                     let mut dummy = Argument::from(self.b.cheap_expr());
                     mem::swap(&mut call.arguments[0], &mut dummy);
@@ -125,7 +132,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 mem::swap(&mut call.arguments[0], &mut dummy);
                 dummy.into_expression().into_inner_expression()
             };
-            let is_proxy = matches!(kind, StateKind::State) && should_proxy(&value);
+            let is_proxy = matches!(kind, StateKind::State) && proxied;
             let value = if is_proxy {
                 self.b.call_expr("$.proxy", [Arg::Expr(value)])
             } else {

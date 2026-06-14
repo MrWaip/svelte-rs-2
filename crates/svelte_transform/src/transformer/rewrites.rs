@@ -253,7 +253,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn dispatch_identifier_assignment(
         &self,
         node: &mut Expression<'a>,
-        suppress_proxy: bool,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
@@ -281,12 +280,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
-                self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy)
+                self.rewrite_signal_or_store_identifier_assignment(node)
             }
             ReferenceSemantics::DerivedWrite => self.rewrite_derived_identifier_assignment(node),
             ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
             | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
-                if !self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy) {
+                if !self.rewrite_signal_or_store_identifier_assignment(node) {
                     return false;
                 }
                 let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
@@ -630,7 +629,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_signal_or_store_identifier_assignment(
         &self,
         node: &mut Expression<'a>,
-        suppress_proxy: bool,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -664,29 +662,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *node = make_store_set(self.b, base_expr, value);
                 true
             }
-            ReferenceSemantics::SignalWrite { kind } => {
+            ReferenceSemantics::SignalWrite { proxy, .. } => {
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
                 let right = mem::replace(&mut assign.right, self.make_rune_get(""));
-                let needs_proxy = !suppress_proxy
-                    && kind == StateKind::State
-                    && rune_refs::is_non_coercive_operator(operator)
-                    && rune_refs::should_proxy(&right);
+                let needs_proxy = proxy;
                 let left_read = self.make_rune_get(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
                 *node = self.make_rune_set(name.as_str(), value, needs_proxy);
                 true
             }
-            ReferenceSemantics::SignalUpdate { kind, safe } => {
+            ReferenceSemantics::SignalUpdate { safe, proxy, .. } => {
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
                 let right = mem::replace(&mut assign.right, self.make_rune_get(""));
-                let needs_proxy = !suppress_proxy
-                    && kind == StateKind::State
-                    && rune_refs::is_non_coercive_operator(operator)
-                    && rune_refs::should_proxy(&right);
+                let needs_proxy = proxy;
                 let left_read = if safe {
                     self.make_rune_safe_get(name.as_str())
                 } else {

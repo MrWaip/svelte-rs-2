@@ -5,7 +5,7 @@ use oxc_ast::ast::{
     SimpleAssignmentTarget, UpdateOperator,
 };
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{DeclaratorSemantics, ReferenceSemantics, StateKind};
+use svelte_analyze::{ClassFieldSemantics, DeclaratorSemantics, ReferenceSemantics, StateKind};
 use svelte_component_semantics::OxcNodeId;
 
 use svelte_ast_builder::Arg;
@@ -492,7 +492,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && self.dispatch_identifier_assignment(node, false, ctx) {
+        if is_identifier_target && self.dispatch_identifier_assignment(node, ctx) {
             return;
         }
 
@@ -624,7 +624,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         if let SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument
             && matches!(&pfe.object, Expression::ThisExpression(_))
-            && self.is_private_state_field(pfe.field.name.as_str())
+            && self
+                .analysis
+                .is_some_and(|analysis| analysis.class_field_semantics(pfe.node_id()).is_field())
         {
             let field_name = pfe.field.name.as_str();
             let fn_name = if upd.prefix {
@@ -683,26 +685,38 @@ impl<'a> ComponentTransformer<'_, 'a> {
             && let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
+            let Some(analysis) = self.analysis else {
+                return false;
+            };
             let field_name = pfe.field.name.as_str();
+            let access_node = pfe.node_id();
+            let semantics = analysis.class_field_semantics(access_node);
+            if !semantics.is_field() {
+                return false;
+            }
             if self.in_constructor()
                 && assign.operator == AssignmentOperator::Assign
-                && self.is_private_state_field(field_name)
                 && self.is_class_field_rune_init(assign.node_id())
             {
                 return false;
             }
-            if self.is_private_state_field(field_name) {
-                let left_expr = self.b.this_private_member(field_name);
-                let right = self.b.move_expr(&mut assign.right);
-                let get_expr = self.b.this_private_member(field_name);
-                let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
-                let value = self.build_compound_value(assign.operator, left_read, right);
+            let proxy = matches!(semantics, ClassFieldSemantics::State { proxy: true, .. });
+            let left_expr = self.b.this_private_member(field_name);
+            let right = self.b.move_expr(&mut assign.right);
+            let get_expr = self.b.this_private_member(field_name);
+            let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
+            let value = self.build_compound_value(assign.operator, left_read, right);
 
-                *node = self
-                    .b
-                    .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)]);
-                return true;
-            }
+            *node = if proxy {
+                self.b.call_expr(
+                    "$.set",
+                    [Arg::Expr(left_expr), Arg::Expr(value), Arg::Bool(true)],
+                )
+            } else {
+                self.b
+                    .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)])
+            };
+            return true;
         }
         false
     }
@@ -711,24 +725,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if let Expression::PrivateFieldExpression(pfe) = node
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
-            let declarator = self.private_state_field_declarator(pfe.field.name.as_str());
-            if let Some(declarator) = declarator {
-                let proxied_field_state =
-                    declarator
-                        .class_field_state()
-                        .is_some_and(|state| match state.kind {
-                            StateKind::State | StateKind::StateRaw => true,
-                            StateKind::StateEager => false,
-                        });
-                if self.in_constructor() && proxied_field_state {
-                    let field_expr = self.b.move_expr(node);
-                    *node = self.b.static_member_expr(field_expr, "v");
-                } else {
-                    let field_expr = self.b.move_expr(node);
-                    *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
-                }
-                return true;
+            let Some(analysis) = self.analysis else {
+                return false;
+            };
+            let semantics = analysis.class_field_semantics(pfe.node_id());
+            if !semantics.is_field() {
+                return false;
             }
+            let proxied_field_state = matches!(
+                semantics,
+                ClassFieldSemantics::State {
+                    kind: StateKind::State | StateKind::StateRaw,
+                    ..
+                }
+            );
+            if self.in_constructor() && proxied_field_state {
+                let field_expr = self.b.move_expr(node);
+                *node = self.b.static_member_expr(field_expr, "v");
+            } else {
+                let field_expr = self.b.move_expr(node);
+                *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
+            }
+            return true;
         }
         false
     }

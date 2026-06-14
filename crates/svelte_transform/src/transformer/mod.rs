@@ -41,22 +41,12 @@ use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
-    fn enter_class_body(&mut self, node: &mut ClassBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
-        let info = self.scan_class_state_fields(node);
-        self.class_state_stack.push(info);
-    }
-
     fn exit_class_body(&mut self, node: &mut ClassBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
         }
 
-        let Some(info) = self.class_state_stack.pop() else {
-            return;
-        };
+        let info = self.scan_class_state_fields(node);
         if info.fields.is_empty() {
             return;
         }

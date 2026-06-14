@@ -211,7 +211,7 @@ pub enum ComponentBindKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComponentBindTarget {
     Plain,
-    Rune,
+    Rune { proxy: bool },
     RuneDerived,
     LegacyState,
     LegacyStateSubscribed,

@@ -17,8 +17,6 @@ use svelte_analyze::{
 
 use svelte_ast_builder::Arg;
 
-use crate::rune_refs;
-
 use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
@@ -51,11 +49,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         value: Expression<'a>,
         state_kind: StateKind,
         is_signal_source: bool,
+        proxied: bool,
     ) -> Expression<'a> {
         let value = value.into_inner_expression();
         match state_kind {
             StateKind::State => {
-                let proxied = if rune_refs::should_proxy(&value) {
+                let proxied = if proxied {
                     self.b.call_expr("$.proxy", [Arg::Expr(value)])
                 } else {
                     value
@@ -87,140 +86,76 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
     }
 
     pub(crate) fn scan_class_state_fields(&self, body: &ClassBody<'a>) -> ClassStateInfo {
-        let mut fields = Vec::new();
+        let Some(analysis) = self.analysis else {
+            return ClassStateInfo::default();
+        };
+        let declarations = analysis.scoping.semantics().class_fields(body.node_id());
 
         let mut existing_private: FxHashSet<String> = FxHashSet::default();
-        for element in &body.body {
-            if let ClassElement::PropertyDefinition(prop) = element
-                && let PropertyKey::PrivateIdentifier(id) = &prop.key
-            {
-                existing_private.insert(id.name.to_string());
-            }
-        }
-
-        let mut body_public_names: FxHashSet<String> = FxHashSet::default();
+        let mut body_private_field_names: FxHashSet<String> = FxHashSet::default();
         let mut placeholder_public_names: FxHashSet<String> = FxHashSet::default();
         for element in &body.body {
-            if let ClassElement::PropertyDefinition(prop) = element {
-                if let PropertyKey::StaticIdentifier(id) = &prop.key
-                    && !prop.computed
-                    && prop.value.is_none()
-                {
+            let ClassElement::PropertyDefinition(prop) = element else {
+                continue;
+            };
+            match &prop.key {
+                PropertyKey::PrivateIdentifier(id) => {
+                    existing_private.insert(id.name.to_string());
+                    body_private_field_names.insert(id.name.to_string());
+                }
+                PropertyKey::StaticIdentifier(id) if prop.value.is_none() => {
                     placeholder_public_names.insert(id.name.to_string());
                 }
-                if prop.value.is_none() {
-                    continue;
-                }
-                let Some(declarator) = self.class_field_declarator(prop.node_id()) else {
-                    continue;
-                };
-
-                match &prop.key {
-                    PropertyKey::PrivateIdentifier(id) => {
-                        fields.push(ClassStateField {
-                            public_name: None,
-                            private_name: id.name.to_string(),
-                            declarator,
-                        });
-                    }
-                    PropertyKey::StaticIdentifier(id) if !prop.computed => {
-                        let name = id.name.to_string();
-                        let mut backing = format!("#{}", name);
-                        while existing_private.contains(backing.trim_start_matches('#')) {
-                            backing = format!("#_{}", backing.trim_start_matches('#'));
-                        }
-                        existing_private.insert(backing.trim_start_matches('#').to_string());
-                        body_public_names.insert(name.clone());
-                        fields.push(ClassStateField {
-                            public_name: Some(name),
-                            private_name: backing.trim_start_matches('#').to_string(),
-                            declarator,
-                        });
-                    }
-                    _ => {}
-                }
+                _ => {}
             }
         }
 
+        let mut fields = Vec::new();
         let mut ctor_synth_names = FxHashSet::default();
         let mut ctor_placeholder_names = FxHashSet::default();
-        let mut ctor_private_names: FxHashSet<String> = FxHashSet::default();
-        let body_private_field_names: FxHashSet<String> = body
-            .body
-            .iter()
-            .filter_map(|el| {
-                if let ClassElement::PropertyDefinition(prop) = el
-                    && let PropertyKey::PrivateIdentifier(id) = &prop.key
-                {
-                    Some(id.name.to_string())
-                } else {
-                    None
+        let mut seen_public: FxHashSet<String> = FxHashSet::default();
+        let mut seen_private: FxHashSet<String> = FxHashSet::default();
+
+        for declaration in declarations {
+            let Some(declarator) = self.class_field_declarator(declaration.decl_node) else {
+                continue;
+            };
+            let name = declaration.name.to_string();
+
+            if declaration.is_private {
+                if declaration.from_constructor && !body_private_field_names.contains(&name) {
+                    continue;
                 }
-            })
-            .collect();
-        for element in &body.body {
-            if let ClassElement::MethodDefinition(method) = element
-                && method.kind == MethodDefinitionKind::Constructor
-                && let Some(func_body) = &method.value.body
-            {
-                for stmt in &func_body.statements {
-                    if let Statement::ExpressionStatement(es) = stmt
-                        && let Expression::AssignmentExpression(assign) = &es.expression
-                        && assign.operator == AssignmentOperator::Assign
-                        && let Some(declarator) = self.class_field_declarator(assign.node_id())
-                    {
-                        match &assign.left {
-                            AssignmentTarget::StaticMemberExpression(member)
-                                if matches!(&member.object, Expression::ThisExpression(_)) =>
-                            {
-                                let name = member.property.name.to_string();
-                                if body_public_names.contains(&name)
-                                    || !ctor_synth_names.insert(name.clone())
-                                {
-                                    continue;
-                                }
-                                let mut backing = format!("#{}", name);
-                                while existing_private.contains(backing.trim_start_matches('#')) {
-                                    backing = format!("#_{}", backing.trim_start_matches('#'));
-                                }
-                                existing_private
-                                    .insert(backing.trim_start_matches('#').to_string());
-                                if placeholder_public_names.contains(&name) {
-                                    ctor_placeholder_names.insert(name.clone());
-                                }
-                                fields.push(ClassStateField {
-                                    public_name: Some(name),
-                                    private_name: backing.trim_start_matches('#').to_string(),
-                                    declarator,
-                                });
-                            }
-                            AssignmentTarget::PrivateFieldExpression(member)
-                                if matches!(&member.object, Expression::ThisExpression(_)) =>
-                            {
-                                let name = member.field.name.to_string();
-                                if !body_private_field_names.contains(&name) {
-                                    continue;
-                                }
-                                if !ctor_private_names.insert(name.clone()) {
-                                    continue;
-                                }
-                                if fields
-                                    .iter()
-                                    .any(|f| f.public_name.is_none() && f.private_name == name)
-                                {
-                                    continue;
-                                }
-                                fields.push(ClassStateField {
-                                    public_name: None,
-                                    private_name: name,
-                                    declarator,
-                                });
-                            }
-                            _ => {}
-                        }
-                    }
+                if !seen_private.insert(name.clone()) {
+                    continue;
+                }
+                fields.push(ClassStateField {
+                    public_name: None,
+                    private_name: name,
+                    declarator,
+                });
+                continue;
+            }
+
+            if !seen_public.insert(name.clone()) {
+                continue;
+            }
+            let mut backing = format!("#{}", name);
+            while existing_private.contains(backing.trim_start_matches('#')) {
+                backing = format!("#_{}", backing.trim_start_matches('#'));
+            }
+            existing_private.insert(backing.trim_start_matches('#').to_string());
+            if declaration.from_constructor {
+                ctor_synth_names.insert(name.clone());
+                if placeholder_public_names.contains(&name) {
+                    ctor_placeholder_names.insert(name.clone());
                 }
             }
+            fields.push(ClassStateField {
+                public_name: Some(name),
+                private_name: backing.trim_start_matches('#').to_string(),
+                declarator,
+            });
         }
 
         ClassStateInfo {
@@ -335,14 +270,14 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             match &declarator {
                 Some(DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
                     kind: StateKind::State,
-                    ..
+                    proxied,
                 })) => {
                     call.callee = self.b.rid_expr("$.state");
                     if !call.arguments.is_empty() {
                         let mut dummy = Argument::from(self.b.cheap_expr());
                         mem::swap(&mut call.arguments[0], &mut dummy);
                         let arg = dummy.into_expression();
-                        let wrapped = if rune_refs::should_proxy(&arg) {
+                        let wrapped = if *proxied {
                             self.b.call_expr("$.proxy", [Arg::Expr(arg)])
                         } else {
                             arg
@@ -436,10 +371,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             }
             DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
                 kind: StateKind::State,
-                ..
+                proxied,
             }) => {
                 if let Some(arg) = arg {
-                    let wrapped = if rune_refs::should_proxy(&arg) {
+                    let wrapped = if *proxied {
                         self.b.call_expr("$.proxy", [Arg::Expr(arg)])
                     } else {
                         arg
@@ -576,14 +511,10 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         }
                         DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
                             kind: StateKind::State,
-                            ..
+                            proxied,
                         }) => {
                             call.callee = self.b.rid_expr("$.state");
-                            let needs_proxy = call
-                                .arguments
-                                .first()
-                                .and_then(|a| a.as_expression())
-                                .is_some_and(|e| rune_refs::should_proxy(e));
+                            let needs_proxy = *proxied;
                             if needs_proxy {
                                 let mut dummy = Argument::from(self.b.cheap_expr());
                                 mem::swap(&mut call.arguments[0], &mut dummy);
@@ -620,19 +551,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 }
             }
         }
-    }
-
-    pub(crate) fn is_private_state_field(&self, name: &str) -> bool {
-        self.private_state_field_declarator(name).is_some()
-    }
-
-    pub(crate) fn private_state_field_declarator(&self, name: &str) -> Option<DeclaratorSemantics> {
-        self.class_state_stack.last().and_then(|info| {
-            info.fields
-                .iter()
-                .find(|f| f.public_name.is_none() && f.private_name == name)
-                .map(|f| f.declarator.clone())
-        })
     }
 
     pub(crate) fn in_constructor(&self) -> bool {

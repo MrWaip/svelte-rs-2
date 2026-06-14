@@ -1,7 +1,7 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::reactivity_semantics::{ReactivityInputs, build_optimized_derived, build_v2};
+use crate::reactivity_semantics::{ReactivityInputs, build_v2, finalize_reactivity};
 use crate::types::markers::ScopingBuilt;
 use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
@@ -160,11 +160,15 @@ pub(crate) fn execute_pass<'a>(
                 data.script.dev,
             );
         }
-        super::PassKey::BuildOptimizedDerived => {
-            build_optimized_derived(
+        super::PassKey::FinalizeReactivity => {
+            finalize_reactivity(
+                parsed,
                 &mut data.reactivity,
                 &data.value_evaluation,
+                &data.scoping,
+                &data.template.snippets,
                 data.scoping.semantics(),
+                data.script.dev,
             );
         }
         super::PassKey::BuildExpressionSemantics => {

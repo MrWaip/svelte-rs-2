@@ -85,8 +85,7 @@ pub(crate) fn rewrite_template_exit<'a>(
 
     t.rewrite_prop_update_ownership_exit(it);
 
-    let suppress_proxy = t.in_bind_setter_traverse;
-    t.dispatch_identifier_assignment(it, suppress_proxy, ctx);
+    t.dispatch_identifier_assignment(it, ctx);
 
     if t.dev {
         wrap_binary_equals_dev(t.b, it);

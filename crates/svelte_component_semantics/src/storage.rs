@@ -3,7 +3,7 @@ use std::{borrow::Cow, mem};
 use crate::symbol::state as sym_state;
 
 use compact_str::CompactString;
-use oxc_ast::{AstKind, ast::IdentifierReference, ast::PropertyKey};
+use oxc_ast::{AstKind, ast::Class, ast::IdentifierReference, ast::PropertyKey};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
@@ -14,6 +14,7 @@ use std::marker::PhantomData;
 
 use crate::symbol::SymbolOwner;
 
+use crate::class_table::{ClassFieldAccess, ClassFieldDecl, ClassTable};
 use crate::reference::{Reference, ReferenceTable};
 use crate::scope::ScopeTable;
 use crate::symbol::SymbolTable;
@@ -128,6 +129,8 @@ pub struct ComponentSemantics<'a> {
     pub(crate) references: ReferenceTable,
     pub(crate) js: JsStorage<'a>,
 
+    class_table: ClassTable,
+
     template_reference_ids: FxHashSet<ReferenceId>,
 
     root_unresolved_references: FxHashMap<CompactString, Vec<ReferenceId>>,
@@ -164,6 +167,7 @@ impl<'a> ComponentSemantics<'a> {
             symbols: SymbolTable::with_capacity(symbols_cap),
             references: ReferenceTable::with_capacity(refs_cap),
             js: JsStorage::with_capacity(js_cap),
+            class_table: ClassTable::default(),
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
             store_candidate_refs: Vec::new(),
@@ -186,6 +190,18 @@ impl<'a> ComponentSemantics<'a> {
 
     pub fn instance_scope_id(&self) -> Option<ScopeId> {
         self.instance_scope_id
+    }
+
+    pub fn field_access_target(&self, access_node: OxcNodeId) -> Option<OxcNodeId> {
+        self.class_table.field_access_target(access_node)
+    }
+
+    pub fn class_fields(&self, class_node: OxcNodeId) -> &[ClassFieldDecl] {
+        self.class_table.class_fields(class_node)
+    }
+
+    pub(crate) fn record_class(&mut self, class: &Class<'a>, accesses: &[ClassFieldAccess]) {
+        self.class_table.record_class(class, accesses);
     }
 
     pub fn scope_parent_id(&self, id: ScopeId) -> Option<ScopeId> {

@@ -27,7 +27,7 @@ mod template_element_index;
 pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
-    BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
+    BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics, ClassFieldSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy,

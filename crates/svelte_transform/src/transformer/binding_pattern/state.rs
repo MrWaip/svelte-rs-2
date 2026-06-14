@@ -11,7 +11,7 @@ use svelte_analyze::StateKind;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
-use crate::rune_refs::should_proxy;
+use crate::rune_refs;
 
 use super::super::model::ComponentTransformer;
 
@@ -107,8 +107,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         decl_kind: VariableDeclarationKind,
     ) -> VariableDeclarator<'a> {
         let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
-        let is_proxy = matches!(state_kind, StateKind::State) && should_proxy(&accessor);
-        let final_value = self.wrap_state_value(accessor, state_kind, is_signal_source);
+        let is_proxy = matches!(state_kind, StateKind::State) && rune_refs::should_proxy(&accessor);
+        let final_value = self.wrap_state_value(accessor, state_kind, is_signal_source, is_proxy);
         let final_value = if self.dev {
             if is_signal_source {
                 self.b.call_expr(

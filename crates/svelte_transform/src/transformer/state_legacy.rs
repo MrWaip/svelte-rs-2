@@ -69,7 +69,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     let target =
                         AssignmentTarget::AssignmentTargetIdentifier(self.b.ast.alloc(idref));
                     let mut setter = self.b.assign_expr_raw(target, access);
-                    if self.dispatch_identifier_assignment(&mut setter, false, ctx) {
+                    if self.dispatch_identifier_assignment(&mut setter, ctx) {
                         changed = true;
                     }
                     setters.push(setter);

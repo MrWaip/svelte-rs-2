@@ -37,6 +37,7 @@ pub(crate) struct ClassStateField {
     pub(crate) declarator: DeclaratorSemantics,
 }
 
+#[derive(Default)]
 pub(crate) struct ClassStateInfo {
     pub(crate) fields: Vec<ClassStateField>,
 
@@ -98,7 +99,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,
     pub(crate) ident_gen: &'b mut IdentGen,
-    pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,
     pub(crate) experimental_async: bool,
 

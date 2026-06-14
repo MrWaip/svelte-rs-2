@@ -8,8 +8,8 @@ use crate::expression_semantics::{
     ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, Volatility,
 };
 use crate::passes::fragment_topology::fragment_items;
-use crate::types::data::DeclaratorSemantics;
 use crate::types::data::template_topology::Ancestors;
+use crate::types::data::{ClassFieldSemantics, DeclaratorSemantics};
 use crate::utils::node_id_utils::expression_node_id;
 use crate::value_evaluation::ValueEvaluation;
 use oxc_ast::ast::Expression;
@@ -300,6 +300,9 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         self.reactivity.reference_semantics(ref_id)
+    }
+    pub fn class_field_semantics(&self, access_node: OxcNodeId) -> ClassFieldSemantics {
+        self.reactivity.class_field_semantics(access_node)
     }
     pub fn uses_runes(&self) -> bool {
         self.reactivity.uses_runes()

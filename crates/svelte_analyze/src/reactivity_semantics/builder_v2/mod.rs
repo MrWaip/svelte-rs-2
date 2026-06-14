@@ -15,29 +15,31 @@ use util::{
 };
 
 use super::data::{
-    BindingFacts, ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, OptimizedRuneSemantics, PropBindingKind,
-    PropBindingSemantics, PropDefaultKind, PropEmitMode, ReactivitySemantics, ReferenceFacts,
-    RuntimeRuneKind, StateDeclarationSemantics, StateKind,
+    BindingFacts, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
+    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind,
+    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{AnalysisData, JsAst};
+use crate::types::data::{AnalysisData, JsAst, SnippetData};
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
-use crate::value_evaluation::{Evaluation, ValueEvaluation};
+use crate::value_evaluation::{
+    Evaluation, ReadContext, ValueClass, ValueEvaluation, ValueEvaluator,
+};
 use oxc_ast::ast::{
-    AssignmentExpression, AssignmentTarget, BindingPattern, CallExpression, Class, ClassElement,
-    ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
-    MethodDefinitionKind, NewExpression, Program, PropertyKey, Statement, StaticMemberExpression,
-    TaggedTemplateExpression, UpdateExpression, VariableDeclaration, VariableDeclarationKind,
-    VariableDeclarator,
+    AssignmentExpression, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression,
+    Class, ClassElement, ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
+    MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program, PropertyDefinition,
+    PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression, UpdateExpression,
+    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_assignment_expression, walk_call_expression, walk_class, walk_export_named_declaration,
-    walk_member_expression, walk_new_expression, walk_program, walk_static_member_expression,
-    walk_tagged_template_expression, walk_update_expression, walk_variable_declaration,
-    walk_variable_declarator,
+    walk_member_expression, walk_new_expression, walk_private_field_expression, walk_program,
+    walk_property_definition, walk_static_member_expression, walk_tagged_template_expression,
+    walk_update_expression, walk_variable_declaration, walk_variable_declarator,
 };
 use std::mem;
 
@@ -46,7 +48,9 @@ use oxc_span::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::Component;
-use svelte_component_semantics::{ComponentSemantics, OxcNodeId, ReferenceId, sym_state};
+use svelte_component_semantics::{
+    ComponentSemantics, OxcNodeId, ReferenceId, WriteTarget, sym_state, walk_assignment_targets,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RuneKind {
@@ -178,7 +182,20 @@ pub(crate) fn build_v2<'a>(
     import_subscribed::classify_import_subscribed_reads(data);
 }
 
-pub(crate) fn build_optimized_derived(
+pub(crate) fn finalize_reactivity(
+    parsed: &JsAst<'_>,
+    reactivity: &mut ReactivitySemantics,
+    value_evaluation: &ValueEvaluation,
+    scoping: &ComponentScoping<'_>,
+    snippets: &SnippetData,
+    semantics: &ComponentSemantics<'_>,
+    dev: bool,
+) {
+    optimize_derived(reactivity, value_evaluation, semantics);
+    finalize_proxy(parsed, reactivity, scoping, snippets, semantics, dev);
+}
+
+fn optimize_derived(
     reactivity: &mut ReactivitySemantics,
     value_evaluation: &ValueEvaluation,
     semantics: &ComponentSemantics<'_>,
@@ -196,6 +213,403 @@ pub(crate) fn build_optimized_derived(
     }
 
     reactivity.optimize_derived_rune(&optimizable);
+}
+
+fn is_non_coercive(operator: AssignmentOperator) -> bool {
+    match operator {
+        AssignmentOperator::Assign
+        | AssignmentOperator::LogicalAnd
+        | AssignmentOperator::LogicalOr
+        | AssignmentOperator::LogicalNullish => true,
+        AssignmentOperator::Addition
+        | AssignmentOperator::Subtraction
+        | AssignmentOperator::Multiplication
+        | AssignmentOperator::Division
+        | AssignmentOperator::Remainder
+        | AssignmentOperator::Exponential
+        | AssignmentOperator::ShiftLeft
+        | AssignmentOperator::ShiftRight
+        | AssignmentOperator::ShiftRightZeroFill
+        | AssignmentOperator::BitwiseOR
+        | AssignmentOperator::BitwiseXOR
+        | AssignmentOperator::BitwiseAnd => false,
+    }
+}
+
+pub(crate) fn finalize_proxy(
+    parsed: &JsAst<'_>,
+    reactivity: &mut ReactivitySemantics,
+    scoping: &ComponentScoping<'_>,
+    snippets: &SnippetData,
+    semantics: &ComponentSemantics<'_>,
+    dev: bool,
+) {
+    if !reactivity.uses_runes() {
+        return;
+    }
+
+    let (binding_inits, field_inits, signal_writes, class_fields) = {
+        let evaluator = ValueEvaluator::new(
+            parsed,
+            scoping,
+            semantics,
+            reactivity,
+            snippets,
+            ReadContext::Declaration,
+            dev,
+        );
+        let init_proxyable = collect_init_proxyable(parsed, &evaluator);
+        let mut collector = ProxyCollector {
+            reactivity,
+            evaluator: &evaluator,
+            semantics,
+            init_proxyable: &init_proxyable,
+            binding_inits: Vec::new(),
+            field_inits: Vec::new(),
+            signal_writes: Vec::new(),
+            class_fields: FxHashMap::default(),
+        };
+        for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            collector.visit_program(program);
+        }
+        for expression in parsed.iter_exprs() {
+            collector.visit_expression(expression);
+        }
+        for statement in parsed.iter_stmts() {
+            collector.visit_statement(statement);
+        }
+        (
+            collector.binding_inits,
+            collector.field_inits,
+            collector.signal_writes,
+            collector.class_fields,
+        )
+    };
+
+    for (sym, proxied) in binding_inits {
+        reactivity.set_state_proxied(sym, proxied);
+    }
+    for (decl_node, proxied) in field_inits {
+        reactivity.set_class_field_proxied(decl_node, proxied);
+    }
+    for ref_id in signal_writes {
+        reactivity.set_signal_write_proxy(ref_id, true);
+    }
+    for (access_node, field) in class_fields {
+        reactivity.record_class_field_semantics(access_node, field);
+    }
+}
+
+struct ProxyCollector<'c, 'a> {
+    reactivity: &'c ReactivitySemantics,
+    evaluator: &'c ValueEvaluator<'c, 'a>,
+    semantics: &'c ComponentSemantics<'a>,
+    init_proxyable: &'c FxHashMap<SymbolId, bool>,
+    binding_inits: Vec<(SymbolId, bool)>,
+    field_inits: Vec<(OxcNodeId, bool)>,
+    signal_writes: Vec<ReferenceId>,
+    class_fields: FxHashMap<OxcNodeId, ClassFieldSemantics>,
+}
+
+impl<'c, 'a> Visit<'a> for ProxyCollector<'c, 'a> {
+    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
+        self.classify_binding_init(declarator);
+        walk_variable_declarator(self, declarator);
+    }
+
+    fn visit_property_definition(&mut self, prop: &PropertyDefinition<'a>) {
+        self.classify_field_init(prop.node_id(), prop.value.as_ref());
+        walk_property_definition(self, prop);
+    }
+
+    fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
+        self.classify_assignment(expr);
+        walk_assignment_expression(self, expr);
+    }
+
+    fn visit_private_field_expression(&mut self, expr: &PrivateFieldExpression<'a>) {
+        self.classify_field_read(expr.node_id());
+        walk_private_field_expression(self, expr);
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        if matches!(&expr.object, Expression::ThisExpression(_)) {
+            self.classify_field_read(expr.node_id());
+        }
+        walk_static_member_expression(self, expr);
+    }
+}
+
+impl<'c, 'a> ProxyCollector<'c, 'a> {
+    fn classify_binding_init(&mut self, declarator: &VariableDeclarator<'a>) {
+        let BindingPattern::BindingIdentifier(id) = &declarator.id else {
+            return;
+        };
+        let Some(sym) = id.symbol_id.get() else {
+            return;
+        };
+        let Some((call, rune_kind)) = rune_call(declarator) else {
+            return;
+        };
+        if rune_kind != RuneKind::State {
+            return;
+        }
+        let proxied = self.state_arg_proxies(call);
+        self.binding_inits.push((sym, proxied));
+    }
+
+    fn classify_field_init(&mut self, decl_node: OxcNodeId, value: Option<&Expression<'a>>) {
+        let DeclaratorSemantics::ClassFieldState(state) =
+            self.reactivity.declarator_semantics(decl_node)
+        else {
+            return;
+        };
+        if state.kind != StateKind::State {
+            return;
+        }
+        let Some(Expression::CallExpression(call)) = value.map(|v| v.get_inner_expression()) else {
+            return;
+        };
+        let proxied = self.state_arg_proxies(call);
+        self.field_inits.push((decl_node, proxied));
+    }
+
+    fn classify_assignment(&mut self, expr: &AssignmentExpression<'a>) {
+        if let DeclaratorSemantics::ClassFieldState(state) =
+            self.reactivity.declarator_semantics(expr.node_id())
+        {
+            if state.kind == StateKind::State
+                && let Expression::CallExpression(call) = expr.right.get_inner_expression()
+            {
+                let proxied = self.state_arg_proxies(call);
+                self.field_inits.push((expr.node_id(), proxied));
+            }
+            return;
+        }
+        match &expr.left {
+            AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                self.classify_identifier_write(id, expr.operator, &expr.right);
+            }
+            AssignmentTarget::PrivateFieldExpression(field) => {
+                self.classify_field_write(field.node_id(), expr.operator, &expr.right);
+            }
+            AssignmentTarget::StaticMemberExpression(member)
+                if matches!(&member.object, Expression::ThisExpression(_)) =>
+            {
+                self.classify_field_write(member.node_id(), expr.operator, &expr.right);
+            }
+            AssignmentTarget::ArrayAssignmentTarget(_)
+            | AssignmentTarget::ObjectAssignmentTarget(_) => {
+                self.classify_destructure_write(&expr.left);
+            }
+            _ => {}
+        }
+    }
+
+    fn classify_identifier_write(
+        &mut self,
+        id: &IdentifierReference<'a>,
+        operator: AssignmentOperator,
+        right: &Expression<'a>,
+    ) {
+        let Some(ref_id) = id.reference_id.get() else {
+            return;
+        };
+        if self.signal_write_state_kind(ref_id) != Some(StateKind::State) {
+            return;
+        }
+        if is_non_coercive(operator) && self.should_proxy(right) {
+            self.signal_writes.push(ref_id);
+        }
+    }
+
+    fn classify_destructure_write(&mut self, target: &AssignmentTarget<'a>) {
+        let mut targets: Vec<ReferenceId> = Vec::new();
+        walk_assignment_targets(target, |visit| {
+            let WriteTarget::Identifier(id) = visit.target else {
+                return;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return;
+            };
+            targets.push(ref_id);
+        });
+        for ref_id in targets {
+            if self.signal_write_state_kind(ref_id) == Some(StateKind::State) {
+                self.signal_writes.push(ref_id);
+            }
+        }
+    }
+
+    fn classify_field_write(
+        &mut self,
+        access_node: OxcNodeId,
+        operator: AssignmentOperator,
+        right: &Expression<'a>,
+    ) {
+        let Some(base) = self.resolved_field(access_node) else {
+            return;
+        };
+        let field = match base {
+            ClassFieldSemantics::State { kind, .. } => {
+                let proxy = kind == StateKind::State
+                    && is_non_coercive(operator)
+                    && self.write_value_proxies(operator, right);
+                ClassFieldSemantics::State { kind, proxy }
+            }
+            ClassFieldSemantics::Derived { .. } | ClassFieldSemantics::None => base,
+        };
+        self.class_fields.insert(access_node, field);
+    }
+
+    fn classify_field_read(&mut self, access_node: OxcNodeId) {
+        if self.class_fields.contains_key(&access_node) {
+            return;
+        }
+        let Some(base) = self.resolved_field(access_node) else {
+            return;
+        };
+        self.class_fields.insert(access_node, base);
+    }
+
+    fn resolved_field(&self, access_node: OxcNodeId) -> Option<ClassFieldSemantics> {
+        let decl_node = self.semantics.field_access_target(access_node)?;
+        match self.reactivity.declarator_semantics(decl_node) {
+            DeclaratorSemantics::ClassFieldState(state) => Some(ClassFieldSemantics::State {
+                kind: state.kind,
+                proxy: false,
+            }),
+            DeclaratorSemantics::ClassFieldDerived(derived) => {
+                Some(ClassFieldSemantics::Derived { kind: derived.kind })
+            }
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam => None,
+        }
+    }
+
+    fn write_value_proxies(&self, operator: AssignmentOperator, right: &Expression<'a>) -> bool {
+        match operator {
+            AssignmentOperator::Assign => self.should_proxy(right),
+            AssignmentOperator::LogicalAnd
+            | AssignmentOperator::LogicalOr
+            | AssignmentOperator::LogicalNullish => true,
+            AssignmentOperator::Addition
+            | AssignmentOperator::Subtraction
+            | AssignmentOperator::Multiplication
+            | AssignmentOperator::Division
+            | AssignmentOperator::Remainder
+            | AssignmentOperator::Exponential
+            | AssignmentOperator::ShiftLeft
+            | AssignmentOperator::ShiftRight
+            | AssignmentOperator::ShiftRightZeroFill
+            | AssignmentOperator::BitwiseOR
+            | AssignmentOperator::BitwiseXOR
+            | AssignmentOperator::BitwiseAnd => false,
+        }
+    }
+
+    fn state_arg_proxies(&self, call: &CallExpression<'a>) -> bool {
+        let Some(arg) = call.arguments.first().and_then(|a| a.as_expression()) else {
+            return false;
+        };
+        self.should_proxy(arg)
+    }
+
+    fn signal_write_state_kind(&self, ref_id: ReferenceId) -> Option<StateKind> {
+        self.reactivity
+            .reference_semantics(ref_id)
+            .signal_write_kind()
+    }
+
+    fn should_proxy(&self, expr: &Expression<'a>) -> bool {
+        let expr = expr.get_inner_expression();
+        let Expression::Identifier(id) = expr else {
+            return proxies_evaluation(&self.evaluator.evaluate(expr));
+        };
+        let Some(symbol) = self.semantics.symbol_for_identifier_reference(id) else {
+            return proxies_evaluation(&self.evaluator.evaluate(expr));
+        };
+        if self.semantics.is_mutated(symbol) {
+            return true;
+        }
+        self.init_proxyable.get(&symbol).copied().unwrap_or(true)
+    }
+}
+
+fn collect_init_proxyable<'a>(
+    parsed: &JsAst<'a>,
+    evaluator: &ValueEvaluator<'_, 'a>,
+) -> FxHashMap<SymbolId, bool> {
+    let mut collector = InitProxyableCollector {
+        evaluator,
+        proxyable: FxHashMap::default(),
+    };
+    for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        collector.visit_program(program);
+    }
+    for expression in parsed.iter_exprs() {
+        collector.visit_expression(expression);
+    }
+    for statement in parsed.iter_stmts() {
+        collector.visit_statement(statement);
+    }
+    collector.proxyable
+}
+
+struct InitProxyableCollector<'c, 'a> {
+    evaluator: &'c ValueEvaluator<'c, 'a>,
+    proxyable: FxHashMap<SymbolId, bool>,
+}
+
+impl<'c, 'a> Visit<'a> for InitProxyableCollector<'c, 'a> {
+    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id
+            && let Some(init) = &declarator.init
+            && let Some(symbol) = id.symbol_id.get()
+        {
+            let proxyable =
+                proxies_evaluation(&self.evaluator.evaluate(init.get_inner_expression()));
+            self.proxyable.insert(symbol, proxyable);
+        }
+        walk_variable_declarator(self, declarator);
+    }
+}
+
+fn proxies_evaluation(evaluation: &Evaluation) -> bool {
+    match evaluation {
+        Evaluation::Known(_) => false,
+        Evaluation::Defined { class } => proxies_value_class(*class),
+        Evaluation::MaybeNullish { .. } => true,
+    }
+}
+
+fn proxies_value_class(class: Option<ValueClass>) -> bool {
+    match class {
+        None | Some(ValueClass::Object) => true,
+        Some(
+            ValueClass::String
+            | ValueClass::Number
+            | ValueClass::Boolean
+            | ValueClass::BigInt
+            | ValueClass::Function,
+        ) => false,
+    }
 }
 
 #[derive(Clone, Copy)]

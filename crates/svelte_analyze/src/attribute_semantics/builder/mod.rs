@@ -16,7 +16,7 @@ use crate::expression_semantics::{
 use crate::reactivity_semantics::data::{
     BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
     EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
-    ReferenceSemantics,
+    ReferenceSemantics, StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{
@@ -1411,9 +1411,12 @@ fn derive_component_bind_target(
             ..
         })
         | BindingSemantics::LegacyBindableProp(_) => ComponentBindTarget::PropSource,
-        BindingSemantics::State(_) | BindingSemantics::OptimizedRune(_) => {
-            ComponentBindTarget::Rune
-        }
+        BindingSemantics::State(state) => ComponentBindTarget::Rune {
+            proxy: state.kind == StateKind::State,
+        },
+        BindingSemantics::OptimizedRune(opt) => ComponentBindTarget::Rune {
+            proxy: opt.proxy_init,
+        },
         BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => {
             ComponentBindTarget::RuneDerived
         }

@@ -20,6 +20,7 @@ const FROZEN_APIS: &[(&str, &str, &[&str])] = &[
             "binding_semantics",
             "declarator_semantics",
             "reference_semantics",
+            "class_field_semantics",
             "summary",
             "iter_runes_prop_symbols",
             "prop_default_span",

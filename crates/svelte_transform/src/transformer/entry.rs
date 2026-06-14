@@ -55,7 +55,6 @@ pub fn transform_script<'a, 'b>(
         filename,
         next_arrow_name: None,
         ident_gen,
-        class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         experimental_async,
         ignore_query,

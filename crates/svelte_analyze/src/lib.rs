@@ -40,8 +40,8 @@ pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
-    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldStateSemantics, CodegenView,
-    ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
+    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
+    CodegenView, ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
     ComponentPropKind, ConstBindingSemantics, ContentEditableKind, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorGroup, DeclaratorSemantics,
     DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DocumentBindKind, EachIndexStrategy,
@@ -183,7 +183,6 @@ pub fn analyze_module<'a>(
     is_ts: bool,
     dev: bool,
 ) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
-    let _ = dev;
     let mut diags = Vec::new();
     let mut data = AnalysisData::new_empty(0);
     let mut parsed = JsAst::new();
@@ -213,6 +212,14 @@ pub fn analyze_module<'a>(
                     immutable: false,
                     accessors: false,
                 },
+            );
+            reactivity_semantics::finalize_proxy(
+                &parsed,
+                &mut data.reactivity,
+                &data.scoping,
+                &data.template.snippets,
+                data.scoping.semantics(),
+                dev,
             );
         }
         Err(errs) => diags.extend(errs),

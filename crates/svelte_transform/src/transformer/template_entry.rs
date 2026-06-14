@@ -54,7 +54,6 @@ pub(crate) fn run_template<'a, 'b>(
         filename: "",
         next_arrow_name: None,
         ident_gen,
-        class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         experimental_async: false,
         ignore_query: IgnoreQuery::empty(),

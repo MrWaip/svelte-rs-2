@@ -156,9 +156,13 @@ fn classify_reference_semantics(
                 Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,
                     safe: state.var_declared,
+                    proxy: false,
                 })
             } else if is_write {
-                Some(ReferenceFacts::SignalWrite { kind: state.kind })
+                Some(ReferenceFacts::SignalWrite {
+                    kind: state.kind,
+                    proxy: false,
+                })
             } else if is_read && is_signal_source {
                 Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::State(state.kind),

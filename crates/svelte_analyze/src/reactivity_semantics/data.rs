@@ -759,6 +759,22 @@ pub struct ClassFieldStateSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClassFieldSemantics {
+    None,
+    State { kind: StateKind, proxy: bool },
+    Derived { kind: DerivedKind },
+}
+
+impl ClassFieldSemantics {
+    pub fn is_field(&self) -> bool {
+        match self {
+            ClassFieldSemantics::State { .. } | ClassFieldSemantics::Derived { .. } => true,
+            ClassFieldSemantics::None => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
@@ -777,11 +793,13 @@ pub enum ReferenceSemantics {
 
     SignalWrite {
         kind: StateKind,
+        proxy: bool,
     },
 
     SignalUpdate {
         kind: StateKind,
         safe: bool,
+        proxy: bool,
     },
 
     DerivedWrite,
@@ -888,6 +906,47 @@ pub enum ReferenceSemantics {
 }
 
 impl ReferenceSemantics {
+    pub fn signal_write_kind(&self) -> Option<StateKind> {
+        match self {
+            ReferenceSemantics::SignalWrite { kind, .. }
+            | ReferenceSemantics::SignalUpdate { kind, .. } => Some(*kind),
+
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => None,
+        }
+    }
+
     pub fn is_store_subscription(&self) -> bool {
         match self {
             ReferenceSemantics::StoreRead { .. }
@@ -1264,10 +1323,12 @@ pub(crate) enum ReferenceFacts {
     },
     SignalWrite {
         kind: StateKind,
+        proxy: bool,
     },
     SignalUpdate {
         kind: StateKind,
         safe: bool,
+        proxy: bool,
     },
     DerivedWrite,
     StoreRead {
@@ -1408,6 +1469,8 @@ pub struct ReactivitySemantics {
 
     reference_facts: IndexVec<ReferenceId, Option<ReferenceFacts>>,
 
+    class_field_semantics: FxHashMap<OxcNodeId, ClassFieldSemantics>,
+
     prop_member_mutation_root_refs: rustc_hash::FxHashSet<ReferenceId>,
 
     contextual_owner: FxHashMap<SymbolId, NodeId>,
@@ -1457,6 +1520,7 @@ impl ReactivitySemantics {
             declarators,
             store_declaration_symbols: Vec::new(),
             reference_facts: IndexVec::new(),
+            class_field_semantics: FxHashMap::default(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
             contextual_reads_in_each_key: FxHashMap::default(),
@@ -1491,6 +1555,62 @@ impl ReactivitySemantics {
 
     pub fn runes_mode(&self) -> RunesMode {
         self.runes_mode
+    }
+
+    pub fn class_field_semantics(&self, access_node: OxcNodeId) -> ClassFieldSemantics {
+        self.class_field_semantics
+            .get(&access_node)
+            .copied()
+            .unwrap_or(ClassFieldSemantics::None)
+    }
+
+    pub(crate) fn record_class_field_semantics(
+        &mut self,
+        access_node: OxcNodeId,
+        semantics: ClassFieldSemantics,
+    ) {
+        self.class_field_semantics.insert(access_node, semantics);
+    }
+
+    pub(crate) fn set_state_proxied(&mut self, sym: SymbolId, proxied: bool) {
+        let Some(facts) = self.binding_facts_mut(sym) else {
+            return;
+        };
+        match facts {
+            BindingFacts::State(state) if state.kind == StateKind::State => state.proxied = proxied,
+            BindingFacts::OptimizedRune(opt) if opt.kind == StateKind::State => {
+                opt.proxy_init = proxied
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn set_class_field_proxied(&mut self, decl_node: OxcNodeId, proxied: bool) {
+        let DeclaratorSemantics::ClassFieldState(state) = self.declarator_semantics(decl_node)
+        else {
+            return;
+        };
+        if state.kind != StateKind::State {
+            return;
+        }
+        self.record_declarator_semantics(
+            decl_node,
+            DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                kind: state.kind,
+                proxied,
+            }),
+        );
+    }
+
+    pub(crate) fn set_signal_write_proxy(&mut self, ref_id: ReferenceId, proxy: bool) {
+        let Some(Some(fact)) = self.reference_facts.get_mut(ref_id) else {
+            return;
+        };
+        match fact {
+            ReferenceFacts::SignalWrite { proxy: slot, .. }
+            | ReferenceFacts::SignalUpdate { proxy: slot, .. } => *slot = proxy,
+            _ => {}
+        }
     }
 
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
@@ -1639,13 +1759,17 @@ impl ReactivitySemantics {
                 kind: *kind,
                 safe: *safe,
             },
-            Some(ReferenceFacts::SignalWrite { kind }) => {
-                ReferenceSemantics::SignalWrite { kind: *kind }
-            }
-            Some(ReferenceFacts::SignalUpdate { kind, safe }) => ReferenceSemantics::SignalUpdate {
+            Some(ReferenceFacts::SignalWrite { kind, proxy }) => ReferenceSemantics::SignalWrite {
                 kind: *kind,
-                safe: *safe,
+                proxy: *proxy,
             },
+            Some(ReferenceFacts::SignalUpdate { kind, safe, proxy }) => {
+                ReferenceSemantics::SignalUpdate {
+                    kind: *kind,
+                    safe: *safe,
+                    proxy: *proxy,
+                }
+            }
             Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }

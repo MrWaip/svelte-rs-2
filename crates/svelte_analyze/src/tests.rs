@@ -8,9 +8,14 @@ use crate::{
     OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
     SnippetParamStrategy,
 };
-use oxc_ast::ast::{BindingPattern, IdentifierReference, Program, Statement};
+use oxc_ast::ast::{
+    BindingPattern, Expression, IdentifierReference, PrivateFieldExpression, Program, Statement,
+    StaticMemberExpression,
+};
 use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::walk_assignment_expression;
+use oxc_ast_visit::walk::{
+    walk_assignment_expression, walk_private_field_expression, walk_static_member_expression,
+};
 use oxc_semantic::ReferenceId;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{
@@ -884,6 +889,317 @@ fn script_reference_semantics(
         )
     });
     data.reference_semantics(ref_id)
+}
+
+fn class_field_semantics_at(
+    data: &AnalysisData,
+    parsed: &JsAst<'_>,
+    field_name: &str,
+    is_private: bool,
+    occurrence: usize,
+) -> ClassFieldSemantics {
+    struct FieldFinder<'n> {
+        target: &'n str,
+        is_private: bool,
+        nodes: Vec<OxcNodeId>,
+    }
+
+    impl<'a> Visit<'a> for FieldFinder<'_> {
+        fn visit_private_field_expression(&mut self, expr: &PrivateFieldExpression<'a>) {
+            if self.is_private
+                && expr.field.name == self.target
+                && matches!(&expr.object, Expression::ThisExpression(_))
+            {
+                self.nodes.push(expr.node_id());
+            }
+            walk_private_field_expression(self, expr);
+        }
+
+        fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+            if !self.is_private
+                && expr.property.name == self.target
+                && matches!(&expr.object, Expression::ThisExpression(_))
+            {
+                self.nodes.push(expr.node_id());
+            }
+            walk_static_member_expression(self, expr);
+        }
+    }
+
+    let program = parsed.program.as_ref().expect("expected instance program");
+    let mut finder = FieldFinder {
+        target: field_name,
+        is_private,
+        nodes: Vec::new(),
+    };
+    finder.visit_program(program);
+
+    let node = *finder
+        .nodes
+        .get(occurrence)
+        .unwrap_or_else(|| panic!("missing `this.{field_name}` access occurrence={occurrence}"));
+    data.reactivity.class_field_semantics(node)
+}
+
+#[track_caller]
+fn assert_class_field_semantics(
+    data: &AnalysisData,
+    parsed: &JsAst<'_>,
+    field_name: &str,
+    is_private: bool,
+    occurrence: usize,
+    expected: ClassFieldSemantics,
+) {
+    let actual = class_field_semantics_at(data, parsed, field_name, is_private, occurrence);
+    let sigil = if is_private { "#" } else { "" };
+    assert_eq!(
+        actual, expected,
+        "class field semantics for `this.{sigil}{field_name}` (occurrence {occurrence}): expected {expected:?}, got {actual:?}"
+    );
+}
+
+#[test]
+fn class_field_semantics_private_state_write_proxies_opaque_rhs() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state(0);
+        set count(val) { this.#count = val; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: true,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_private_state_write_nested_scope_const_no_proxy() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state(0);
+        set count(x) {
+            const local = 5;
+            this.#count = local;
+        }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_private_state_write_literal_rhs_no_proxy() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state(0);
+        reset() { this.#count = 5; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_private_state_read_ignores_proxy() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state(0);
+        get count() { return this.#count; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_private_raw_state_never_proxies() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state.raw(0);
+        set count(val) { this.#count = val; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::StateRaw,
+            proxy: false,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_private_derived_field_read() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count = $state(0);
+        #double = $derived(this.#count * 2);
+        get double() { return this.#double; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "double",
+        true,
+        0,
+        ClassFieldSemantics::Derived {
+            kind: DerivedKind::Derived,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_constructor_declared_private_state() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count;
+        constructor() { this.#count = $state(0); }
+        bump(val) { this.#count = val; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        1,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: true,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_public_state_write_proxies_opaque_rhs() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Box {
+        value = $state(0);
+        update(obj) { this.value = obj; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "value",
+        false,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: true,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_public_state_read() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Box {
+        value = $state(0);
+        get current() { return this.value; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "value",
+        false,
+        0,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_constructor_declared_public_state() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Box {
+        constructor() { this.total = $state(0); }
+        get value() { return this.total; }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "total",
+        false,
+        1,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+        },
+    );
 }
 
 fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text: &str) {
@@ -3325,6 +3641,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         script_reference_semantics(&data, &parsed, "count", false, true, 0),
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
+            proxy: false,
         }
     );
     assert_eq!(
@@ -3332,6 +3649,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalUpdate {
             kind: StateKind::State,
             safe: true,
+            proxy: false,
         }
     );
     assert_eq!(
@@ -3468,6 +3786,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         script_reference_semantics(&data, &parsed, "left", false, true, 0),
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
+            proxy: false,
         }
     );
     assert_eq!(
@@ -3482,6 +3801,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalUpdate {
             kind: StateKind::State,
             safe: false,
+            proxy: false,
         }
     );
     assert_eq!(
@@ -3550,6 +3870,7 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
         ReferenceSemantics::SignalUpdate {
             kind: StateKind::StateRaw,
             safe: true,
+            proxy: false,
         }
     );
 }
@@ -8553,7 +8874,7 @@ const v = writable("");
             AttributeSemantics::ComponentBind(b) => match &b.kind {
                 ComponentBindKind::Identifier { symbol, target } => {
                     assert_eq!(*symbol, x_sym);
-                    assert_eq!(*target, ComponentBindTarget::Rune);
+                    assert_eq!(*target, ComponentBindTarget::Rune { proxy: true });
                 }
                 other => panic!("expected Identifier, got {other:?}"),
             },

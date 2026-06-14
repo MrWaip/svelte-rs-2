@@ -1,4 +1,5 @@
 pub mod builder;
+mod class_table;
 pub mod pattern;
 mod reference;
 mod scope;
@@ -8,6 +9,7 @@ mod symbol;
 pub use builder::{
     ComponentSemanticsBuilder, JsSemanticVisitor, TemplateBuildContext, TemplateWalker,
 };
+pub use class_table::{ClassFieldDecl, ClassTable};
 pub use pattern::{
     Access, AssignmentTargetVisit, BindingVisit, Step, WriteAccess, WriteStep, WriteTarget,
     walk_assignment_target_idents, walk_assignment_targets, walk_bindings,

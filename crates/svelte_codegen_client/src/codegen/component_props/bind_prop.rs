@@ -205,17 +205,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     });
                 }
             }
-            ComponentBindTarget::Rune => {
+            ComponentBindTarget::Rune { proxy } => {
                 let get_body = rune_get(&self.ctx.b, source_ref);
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                let set_body = self.ctx.b.call_expr(
-                    "$.set",
-                    [
-                        Arg::Ident(source_ref),
-                        Arg::Ident("$$value"),
-                        Arg::Bool(true),
-                    ],
-                );
+                let set_body = if proxy {
+                    self.ctx.b.call_expr(
+                        "$.set",
+                        [
+                            Arg::Ident(source_ref),
+                            Arg::Ident("$$value"),
+                            Arg::Bool(true),
+                        ],
+                    )
+                } else {
+                    self.ctx
+                        .b
+                        .call_expr("$.set", [Arg::Ident(source_ref), Arg::Ident("$$value")])
+                };
                 items.push(PropOrSpread::Prop(ObjProp::Setter(
                     key,
                     "$$value",

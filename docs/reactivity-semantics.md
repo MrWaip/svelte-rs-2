@@ -13,11 +13,14 @@ label: reactivity-semantics
 
 ## Public API
 
-Только три точки расширения наружу + узкие итераторы. `BindingFacts`/`ReferenceFacts` — приватные, наружу не видны. Builder — `pub(crate)`.
+Четыре точки расширения наружу + узкие итераторы. `BindingFacts`/`ReferenceFacts` — приватные, наружу не видны. Builder — `pub(crate)`.
 
 - `binding_semantics(SymbolId) -> BindingSemantics`
 - `declarator_semantics(OxcNodeId) -> DeclaratorSemantics`
 - `reference_semantics(ReferenceId) -> ReferenceSemantics`
+- `class_field_semantics(OxcNodeId) -> ClassFieldSemantics` — семантика доступа к полю класса (`this.field` / `this.#field`) по узлу доступа. Тотальный (`None`-дефолт, `is_field()`); варианты `State { kind, proxy }`, `Derived { kind }`. Композиция: `field_access_target` (резолв в декларацию) + `declarator_semantics` (вид поля) + per-write `proxy`. Трансформ — один запрос, без строк и резолва на своей стороне.
+
+**Per-write proxy.** Флаг для `$.set(source, value, should_proxy)` живёт в самом варианте: `ReferenceSemantics::SignalWrite/SignalUpdate { proxy }` (identifier-записи) и `ClassFieldSemantics::State { proxy }` (приватное поле). Init-proxy `$state`-инициализатора — на семантике декларации (`StateDeclarationSemantics.proxied` / `ClassFieldStateSemantics.proxied`), не в сайд-таблице. Считает `finalize_proxy` (в пассе после `BuildValueEvaluation`): `proxy ⟺ kind == State ∧ оператор не-coercive ∧ правая часть не доказуемо примитив`. Примитивность — через `ValueEvaluation`; one-level резолв `const`-инициализатора (`ValueEvaluation` видит только top-level биндинги) даёт карта `init_proxyable`, чей verdict тоже считается через `evaluate`. Деструктур-листья переиспользуют тот же `ReferenceId`. Трансформ читает готовый флаг.
 
 Факты уровня компонента — одной пачкой, в доменном виде:
 
