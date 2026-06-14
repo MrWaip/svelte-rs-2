@@ -59,9 +59,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let bind_blockers = payload.blockers.to_vec();
 
         let placement = if matches!(payload.kind, HtmlBindKind::BindableProp)
-            && let Some(p) =
-                self.emit_bind_bindable_prop_shorthand(bind, owner_var, has_use, &bind_blockers)?
-        {
+            && let Some(p) = self.emit_bind_bindable_prop_shorthand(
+                bind,
+                owner_var,
+                owner_tag,
+                has_use,
+                &bind_blockers,
+            )? {
             Some(p)
         } else {
             self.gen_bind_placement(bind, bind_property, owner_var, owner_tag, has_use)?
@@ -118,6 +122,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         bind: &BindDirective,
         el_name: &str,
+        tag_name: &str,
         has_use_directive: bool,
         bind_blockers: &[u32],
     ) -> Result<Option<BindPlacement<'a>>> {
@@ -138,6 +143,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let var_alloc = self.ctx.b.alloc_str(&var_name);
 
         let stmt = match payload.property {
+            ElementBindPropertyKind::Value if tag_name == "select" => self.ctx.b.call_stmt(
+                "$.bind_select_value",
+                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
+            ),
             ElementBindPropertyKind::Value => self
                 .ctx
                 .b
