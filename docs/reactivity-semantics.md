@@ -94,6 +94,7 @@ label: reactivity-semantics
 ### Cross-cutting
 - **MaybeReactive** — кросс-модульные импорты неизвестной реактивности.
 - **Contextual bindings** — each-item/index, await value/error, let-directive, snippet-params.
+- **Read-form «параметр» (`raw_param`)** — each-контекстная ячейка читается сыро, потому что объемлющее замыкание получает её параметром: ключ `{#each … (key)}` и get/set `bind:this`. Это read-form-факт (доменно — reactivity), он лежит на самом варианте ссылки (`ContextualReadKind::EachItem/EachIndex`, `LegacyEachItemMemberMutationRoot`, `EachItemMemberMutationStoreInvalidate`), а не отдельной таблицей у потребителя — потребитель читает один вариант. Сканирование позиций идёт по общему AST на фазе build (как у each-key, так и у `bind:this`); промежуточный `raw_param_reads` — узаконенный builder-time staging: сворачивается в вариант при классификации и за пределы анализа (в transform/codegen) не выходит. Аналогично proxy-таргет `bind:this` доводится штатным `set_signal_write_proxy`, а не shadow-таблицей.
 - **Const-tag реактивность** — `{@const}` как реактивный alias.
 - **Let-carrier desugaring** — destructure-инициализаторы через carrier-символ.
 - **Each-item member-mutation** — мутации полей item-а в `{#each}`.

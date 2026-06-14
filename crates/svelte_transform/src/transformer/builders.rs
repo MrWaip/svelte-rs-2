@@ -139,7 +139,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         sym: svelte_component_semantics::SymbolId,
     ) -> Expression<'a> {
         let name = self.component_scoping.symbol_name(sym);
-        if analysis.binding_semantics(sym).is_store() {
+        let semantics = analysis.binding_semantics(sym);
+        if semantics.reads_via_thunk() {
             self.make_thunk_call(name)
         } else {
             self.make_rune_get(name)

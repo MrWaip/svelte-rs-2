@@ -14,7 +14,7 @@ use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, IdentGen, JsAst,
+    AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, HtmlBindKind, IdentGen, JsAst,
 };
 use svelte_ast::{
     Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
@@ -83,6 +83,7 @@ struct TransformCtx<'a, 'b> {
 pub(crate) enum BindHandleKind {
     Element,
     Component { prop_name: String },
+    This,
 }
 
 pub(crate) struct BindExprHandle {
@@ -318,6 +319,23 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 matches!(e.get_inner_expression(), Expression::SequenceExpression(_))
             });
             if bind.name == "this" {
+                if is_user_sequence {
+                    continue;
+                }
+                let route_this = match ctx.analysis.attributes.get(attr.id()) {
+                    AttributeSemantics::ComponentBind(_) => true,
+                    AttributeSemantics::ElementBind(b) => {
+                        !matches!(b.kind, HtmlBindKind::StoreSubscribed { .. })
+                    }
+                    _ => false,
+                };
+                if route_this {
+                    ctx.bind_expr_handles.push(BindExprHandle {
+                        bind_id,
+                        owner: attr.id(),
+                        kind: BindHandleKind::This,
+                    });
+                }
                 continue;
             }
 

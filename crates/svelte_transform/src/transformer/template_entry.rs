@@ -187,6 +187,15 @@ pub(crate) fn run_template<'a, 'b>(
             continue;
         }
 
+        if matches!(bind_handle_kind, BindHandleKind::This) {
+            let getter_body = b.make_optional_chain(getter_body);
+            let getter = b.arrow_expr(b.no_params(), [b.expr_stmt(getter_body)]);
+            let setter = b.arrow_expr(b.params(["$$value"]), [b.expr_stmt(setter_body)]);
+            let seq = b.seq_expr([getter, setter]);
+            parsed.replace_expr(handle, seq);
+            continue;
+        }
+
         let (getter, setter) = if let Some(base_symbol) = store_base_symbol {
             let base_name = analysis.scoping.symbol_name(base_symbol);
             let dollar_name: &str = b.alloc_str(&format!("${base_name}"));

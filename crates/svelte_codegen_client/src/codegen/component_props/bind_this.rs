@@ -1,7 +1,6 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, NodeId};
-use svelte_ast_builder::{Arg, AssignLeft};
-use svelte_emit_builders::runes::rune_get;
+use svelte_ast_builder::Arg;
 
 use super::super::{Codegen, CodegenError, Result};
 
@@ -32,157 +31,34 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::unexpected_node(el_id, "bind:this attribute must exist");
         };
 
-        let var_name = if bind.shorthand {
-            bind.name.clone()
-        } else {
-            self.ctx
-                .query
-                .component
-                .source_text(bind.expression.span)
-                .to_string()
-        };
-
-        enum SignalKind {
-            Plain,
-            Rune { proxy: bool },
-            LegacyState,
-        }
-        let signal_shape = match self.ctx.query.analysis.attributes.get(bind_id) {
-            svelte_analyze::AttributeSemantics::ComponentBind(b) => match &b.kind {
-                svelte_analyze::ComponentBindKind::This { target, .. } => match target {
-                    svelte_analyze::ComponentBindTarget::Rune { proxy } => {
-                        SignalKind::Rune { proxy: *proxy }
-                    }
-                    svelte_analyze::ComponentBindTarget::RuneDerived => {
-                        SignalKind::Rune { proxy: true }
-                    }
-                    svelte_analyze::ComponentBindTarget::LegacyState => SignalKind::LegacyState,
-                    _ => SignalKind::Plain,
-                },
-                _ => SignalKind::Plain,
-            },
-            _ => SignalKind::Plain,
-        };
-        let is_rune = !matches!(signal_shape, SignalKind::Plain);
-
-        let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
-
-        if !svelte_analyze::is_simple_identifier(&var_name) {
-            let each_context_syms: Vec<oxc_semantic::SymbolId> =
-                match self.ctx.query.analysis.attributes.get(bind_id) {
-                    svelte_analyze::AttributeSemantics::ComponentBind(b) => {
-                        b.each_context_vars.iter().copied().collect()
-                    }
-                    _ => Vec::new(),
-                };
-            let each_context: Vec<String> = each_context_syms
-                .iter()
-                .map(|&sym| self.ctx.symbol_name(sym).to_string())
-                .collect();
-
-            let setter_body = format!("{var_name} = $$value");
-            let setter_expr = self.ctx.b.parse_expression(&setter_body);
-            let mut setter_params: Vec<&str> = vec!["$$value"];
-            for v in &each_context {
-                setter_params.push(v);
-            }
-            let setter = self.ctx.b.arrow_expr(
-                self.ctx.b.params(setter_params),
-                [self.ctx.b.expr_stmt(setter_expr)],
+        let Some(Expression::SequenceExpression(seq)) =
+            self.ctx.state.parsed.take_expr(bind.expression.id())
+        else {
+            return CodegenError::unexpected_node(
+                bind_id,
+                "component bind:this must be lowered to a getter/setter sequence by the transform",
             );
-
-            let getter_expr = self.ctx.b.parse_expression(&var_name);
-            let getter_expr = self.ctx.b.make_optional_chain(getter_expr);
-            let mut getter_params: Vec<&str> = Vec::new();
-            for v in &each_context {
-                getter_params.push(v);
-            }
-            let getter = self.ctx.b.arrow_expr(
-                self.ctx.b.params(getter_params),
-                [self.ctx.b.expr_stmt(getter_expr)],
+        };
+        let seq = seq.unbox();
+        let mut exprs = seq.expressions.into_iter();
+        let (Some(get_expr), Some(set_expr)) = (exprs.next(), exprs.next()) else {
+            return CodegenError::unexpected_node(
+                bind_id,
+                "bind:this transformed sequence must carry getter and setter",
             );
-
-            if each_context.is_empty() {
-                return Ok(self.ctx.b.call_expr(
-                    "$.bind_this",
-                    [Arg::Expr(value), Arg::Expr(setter), Arg::Expr(getter)],
-                ));
-            } else {
-                let context_values: Vec<Arg<'_, '_>> = each_context
-                    .iter()
-                    .map(|v| {
-                        let s = self.ctx.b.alloc_str(v);
-                        Arg::Ident(s)
-                    })
-                    .collect();
-                let context_array = self.ctx.b.array_from_args(context_values);
-                let context_thunk = self.ctx.b.thunk(context_array);
-
-                return Ok(self.ctx.b.call_expr(
-                    "$.bind_this",
-                    [
-                        Arg::Expr(value),
-                        Arg::Expr(setter),
-                        Arg::Expr(getter),
-                        Arg::Expr(context_thunk),
-                    ],
-                ));
-            }
-        }
-
-        let expr_text = self.ctx.b.alloc_str(&var_name);
-
-        let setter = if let SignalKind::Rune { proxy } = signal_shape {
-            let body = if proxy {
-                self.ctx.b.call_expr(
-                    "$.set",
-                    [
-                        Arg::Ident(expr_text),
-                        Arg::Ident("$$value"),
-                        Arg::Expr(self.ctx.b.bool_expr(true)),
-                    ],
-                )
-            } else {
-                self.ctx
-                    .b
-                    .call_expr("$.set", [Arg::Ident(expr_text), Arg::Ident("$$value")])
+        };
+        let each_context: Vec<oxc_semantic::SymbolId> =
+            match self.ctx.query.analysis.attributes.get(bind_id) {
+                svelte_analyze::AttributeSemantics::ComponentBind(b) => {
+                    b.each_context_vars.iter().copied().collect()
+                }
+                _ => Vec::new(),
             };
-            self.ctx
-                .b
-                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])
-        } else if let SignalKind::LegacyState = signal_shape {
-            let body = self
-                .ctx
-                .b
-                .call_expr("$.set", [Arg::Ident(expr_text), Arg::Ident("$$value")]);
-            self.ctx
-                .b
-                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])
-        } else {
-            let body = self
-                .ctx
-                .b
-                .assign_expr(AssignLeft::Ident(var_name), self.ctx.b.rid_expr("$$value"));
-            self.ctx
-                .b
-                .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])
-        };
-
-        let getter = if is_rune {
-            let body = rune_get(&self.ctx.b, expr_text);
-            self.ctx
-                .b
-                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])
-        } else {
-            let body = self.ctx.b.rid_expr(expr_text);
-            self.ctx
-                .b
-                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])
-        };
-
-        Ok(self.ctx.b.call_expr(
-            "$.bind_this",
-            [Arg::Expr(value), Arg::Expr(setter), Arg::Expr(getter)],
-        ))
+        let (setter, getter, dep) = self.build_bind_this_get_set(get_expr, set_expr, &each_context);
+        let mut args = vec![Arg::Expr(value), Arg::Expr(setter), Arg::Expr(getter)];
+        if let Some(dep) = dep {
+            args.push(Arg::Expr(dep));
+        }
+        Ok(self.ctx.b.call_expr("$.bind_this", args))
     }
 }

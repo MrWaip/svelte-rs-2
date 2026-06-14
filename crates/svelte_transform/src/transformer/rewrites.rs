@@ -60,6 +60,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (id.name, ref_id)
         };
+
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
@@ -94,6 +95,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_thunk_call(name.as_str());
                 true
             }
+            ReferenceSemantics::PropMutation { bindable: true, .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                *expr = self.make_thunk_call(name.as_str());
+                true
+            }
+            ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
+                raw_param: true, ..
+            }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                raw_param: true, ..
+            } => true,
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
                 if !self.in_bind_setter_traverse =>
@@ -191,15 +204,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 true
             }
-            ReferenceSemantics::ContextualRead(ContextualReadSemantics {
-                kind,
-                in_key_expression,
-                ..
-            }) => {
-                if in_key_expression {
-                    return true;
-                }
+            ReferenceSemantics::ContextualRead(ContextualReadSemantics { kind, .. }) => {
                 match kind {
+                    ContextualReadKind::EachItem {
+                        raw_param: true, ..
+                    }
+                    | ContextualReadKind::EachIndex {
+                        raw_param: true, ..
+                    } => {}
                     ContextualReadKind::EachItem { accessor: true, .. }
                     | ContextualReadKind::SnippetParam { accessor: true, .. } => {
                         *expr = self.make_thunk_call(name.as_str());
@@ -207,8 +219,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     ContextualReadKind::EachItem {
                         signal: true,
                         accessor: false,
+                        ..
                     }
-                    | ContextualReadKind::EachIndex { signal: true }
+                    | ContextualReadKind::EachIndex {
+                        signal: true,
+                        raw_param: false,
+                    }
                     | ContextualReadKind::SnippetParam {
                         signal: true,
                         accessor: false,
@@ -221,8 +237,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     ContextualReadKind::EachItem {
                         accessor: false,
                         signal: false,
+                        ..
                     }
-                    | ContextualReadKind::EachIndex { signal: false }
+                    | ContextualReadKind::EachIndex {
+                        signal: false,
+                        raw_param: false,
+                    }
                     | ContextualReadKind::SnippetParam {
                         accessor: false,
                         signal: false,
@@ -450,12 +470,19 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_assignment(node, is_expr_stmt, ctx)
             }
-            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
-                self.rewrite_legacy_each_item_member_assignment(node, item_sym, ctx)
-            }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                item_sym,
+                raw_param,
+            } => self.rewrite_legacy_each_item_member_assignment(node, item_sym, raw_param, ctx),
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
-                collection_store, ..
-            } => self.rewrite_each_item_member_store_invalidate_assignment(node, collection_store),
+                collection_store,
+                raw_param,
+                ..
+            } => self.rewrite_each_item_member_store_invalidate_assignment(
+                node,
+                collection_store,
+                raw_param,
+            ),
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -521,7 +548,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_update(node)
             }
-            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym, .. } => {
                 self.rewrite_legacy_each_item_member_update(node, item_sym, ctx)
             }
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
@@ -562,6 +589,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         node: &mut Expression<'a>,
         collection_store: SymbolId,
+        raw_param: bool,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -581,10 +609,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
-        rune_refs::replace_expr_root_in_assign_target(
-            &mut assign.left,
-            self.make_rune_get(item_name.as_str()),
-        );
+        let root_read = if raw_param {
+            self.b.rid_expr(item_name.as_str())
+        } else {
+            self.make_rune_get(item_name.as_str())
+        };
+        rune_refs::replace_expr_root_in_assign_target(&mut assign.left, root_read);
         let dollar_name = analysis.scoping.symbol_name(collection_store).to_string();
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
@@ -1069,6 +1099,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         node: &mut Expression<'a>,
         item_sym: SymbolId,
+        raw_param: bool,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
@@ -1095,10 +1126,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
-        rune_refs::replace_expr_root_in_assign_target(
-            &mut assign.left,
-            self.make_rune_get(item_name.as_str()),
-        );
+        let root_read = if raw_param {
+            self.b.rid_expr(item_name.as_str())
+        } else {
+            self.make_rune_get(item_name.as_str())
+        };
+        rune_refs::replace_expr_root_in_assign_target(&mut assign.left, root_read);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
         *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);

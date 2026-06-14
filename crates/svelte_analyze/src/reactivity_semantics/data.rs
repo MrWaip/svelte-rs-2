@@ -139,6 +139,25 @@ impl BindingSemantics {
         }
     }
 
+    pub fn reads_via_thunk(&self) -> bool {
+        match self {
+            BindingSemantics::Store(_) | BindingSemantics::LegacyBindableProp(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
     pub fn is_rest_props(&self) -> bool {
         match self {
             BindingSemantics::Prop(prop) => match &prop.kind {
@@ -888,11 +907,13 @@ pub enum ReferenceSemantics {
 
     LegacyEachItemMemberMutationRoot {
         item_sym: SymbolId,
+        raw_param: bool,
     },
 
     EachItemMemberMutationStoreInvalidate {
         item_sym: SymbolId,
         collection_store: SymbolId,
+        raw_param: bool,
     },
 
     EachItemIndexedLegacy {
@@ -1246,14 +1267,20 @@ pub struct ContextualReadSemantics {
     pub kind: ContextualReadKind,
     pub owner_node: NodeId,
     pub symbol: SymbolId,
-    pub in_key_expression: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextualReadKind {
-    EachItem { accessor: bool, signal: bool },
+    EachItem {
+        accessor: bool,
+        signal: bool,
+        raw_param: bool,
+    },
 
-    EachIndex { signal: bool },
+    EachIndex {
+        signal: bool,
+        raw_param: bool,
+    },
 
     AwaitValue,
 
@@ -1263,7 +1290,10 @@ pub enum ContextualReadKind {
 
     LetDirectiveDirect,
 
-    SnippetParam { accessor: bool, signal: bool },
+    SnippetParam {
+        accessor: bool,
+        signal: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1401,11 +1431,13 @@ pub(crate) enum ReferenceFacts {
 
     LegacyEachItemMemberMutationRoot {
         item_symbol: SymbolId,
+        raw_param: bool,
     },
 
     EachItemMemberMutationStoreInvalidate {
         item_symbol: SymbolId,
         collection_store: SymbolId,
+        raw_param: bool,
     },
 
     EachItemIndexedLegacy {
@@ -1475,7 +1507,7 @@ pub struct ReactivitySemantics {
 
     contextual_owner: FxHashMap<SymbolId, NodeId>,
 
-    contextual_reads_in_each_key: FxHashMap<ReferenceId, NodeId>,
+    raw_param_reads: FxHashSet<ReferenceId>,
 
     each_rest_symbols: FxHashSet<SymbolId>,
 
@@ -1523,7 +1555,7 @@ impl ReactivitySemantics {
             class_field_semantics: FxHashMap::default(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
-            contextual_reads_in_each_key: FxHashMap::default(),
+            raw_param_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
             each_item_index_legacy: FxHashMap::default(),
@@ -1855,17 +1887,21 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
-            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_symbol }) => {
-                ReferenceSemantics::LegacyEachItemMemberMutationRoot {
-                    item_sym: *item_symbol,
-                }
-            }
+            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
+                item_symbol,
+                raw_param,
+            }) => ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                item_sym: *item_symbol,
+                raw_param: *raw_param,
+            },
             Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
                 item_symbol: item_sym,
                 collection_store,
+                raw_param,
             }) => ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
                 item_sym: *item_sym,
                 collection_store: *collection_store,
+                raw_param: *raw_param,
             },
             Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
                 ReferenceSemantics::EachItemIndexedLegacy {
@@ -2070,16 +2106,12 @@ impl ReactivitySemantics {
         self.contextual_owner.get(&sym).copied()
     }
 
-    pub(crate) fn record_contextual_read_in_each_key(
-        &mut self,
-        ref_id: ReferenceId,
-        each_block: NodeId,
-    ) {
-        self.contextual_reads_in_each_key.insert(ref_id, each_block);
+    pub(crate) fn record_raw_param_read(&mut self, ref_id: ReferenceId) {
+        self.raw_param_reads.insert(ref_id);
     }
 
-    pub(crate) fn contextual_read_in_each_key(&self, ref_id: ReferenceId) -> Option<NodeId> {
-        self.contextual_reads_in_each_key.get(&ref_id).copied()
+    pub(crate) fn is_raw_param_read(&self, ref_id: ReferenceId) -> bool {
+        self.raw_param_reads.contains(&ref_id)
     }
 
     pub(crate) fn add_each_item_indirect_source(

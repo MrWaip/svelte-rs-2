@@ -41,40 +41,110 @@ use svelte_component_semantics::ReferenceId;
 
 use super::contextual;
 
-pub(super) fn collect_each_key_contextual_reads<'a>(
+pub(super) fn collect_raw_param_reads<'a>(
     component: &Component,
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
-) {
+) -> Vec<ReferenceId> {
+    let mut proxy_targets = Vec::new();
     for node in component.store.iter_nodes() {
-        let Node::EachBlock(block) = node else {
+        if let Node::EachBlock(block) = node
+            && let Some(key) = block.key.as_ref()
+            && let Some(expr) = parsed.expr(key.id())
+        {
+            let mut collector = EachKeyRawParamCollector {
+                data,
+                each_block_id: block.id,
+            };
+            collector.visit_expression(expr);
+        }
+
+        let (attrs, proxy_target): (&[svelte_ast::Attribute], bool) = match node {
+            Node::Element(n) => (&n.attributes, false),
+            Node::SvelteElement(n) => (&n.attributes, true),
+            Node::ComponentNode(n) => (&n.attributes, true),
+            Node::SvelteComponentLegacy(n) => (&n.attributes, true),
+            Node::SvelteSelf(n) => (&n.attributes, true),
+            _ => continue,
+        };
+        for attr in attrs {
+            let svelte_ast::Attribute::BindDirective(d) = attr else {
+                continue;
+            };
+            if d.name != "this" {
+                continue;
+            }
+            let Some(expr) = parsed.expr(d.expression.id()) else {
+                continue;
+            };
+            if proxy_target && let Some(root_ref) = super::util::expression_root_reference_id(expr)
+            {
+                proxy_targets.push(root_ref);
+            }
+            let mut collector = BindThisRawParamCollector { data };
+            collector.visit_expression(expr);
+        }
+    }
+    proxy_targets
+}
+
+pub(super) fn apply_bind_this_proxy_targets(
+    data: &mut AnalysisData,
+    proxy_targets: &[ReferenceId],
+) {
+    for &root_ref in proxy_targets {
+        let Some(sym) = data.scoping.symbol_for_reference(root_ref) else {
             continue;
         };
-        let Some(key) = block.key.as_ref() else {
-            continue;
-        };
-        let Some(expr) = parsed.expr(key.id()) else {
-            continue;
-        };
-        let mut collector = EachKeyRefCollector {
-            data,
-            each_block_id: block.id,
-        };
-        collector.visit_expression(expr);
+        let proxyable_state = matches!(
+            data.reactivity.binding_facts(sym),
+            Some(BindingFacts::State(state)) if state.kind == StateKind::State
+        );
+        if proxyable_state {
+            data.reactivity.set_signal_write_proxy(root_ref, true);
+        }
     }
 }
 
-struct EachKeyRefCollector<'d, 'a> {
+struct EachKeyRawParamCollector<'d, 'a> {
     data: &'d mut AnalysisData<'a>,
     each_block_id: svelte_ast::NodeId,
 }
 
-impl<'a> Visit<'a> for EachKeyRefCollector<'_, 'a> {
+impl<'a> Visit<'a> for EachKeyRawParamCollector<'_, 'a> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(ref_id) = ident.reference_id.get() {
-            self.data
-                .reactivity
-                .record_contextual_read_in_each_key(ref_id, self.each_block_id);
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
+            return;
+        };
+        if self.data.reactivity.contextual_owner(sym) == Some(self.each_block_id) {
+            self.data.reactivity.record_raw_param_read(ref_id);
+        }
+    }
+}
+
+struct BindThisRawParamCollector<'d, 'a> {
+    data: &'d mut AnalysisData<'a>,
+}
+
+impl<'a> Visit<'a> for BindThisRawParamCollector<'_, 'a> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
+            return;
+        };
+        let is_each_context = matches!(
+            self.data.reactivity.binding_facts(sym),
+            Some(BindingFacts::Contextual(
+                ContextualBindingSemantics::EachItem(_) | ContextualBindingSemantics::EachIndex(_)
+            ))
+        );
+        if is_each_context {
+            self.data.reactivity.record_raw_param_read(ref_id);
         }
     }
 }
@@ -276,31 +346,28 @@ fn classify_reference_semantics(
             if !is_read {
                 return None;
             }
+            let raw_param = data.reactivity.is_raw_param_read(ref_id);
             if is_member_mutation_root {
                 if data.reactivity.each_item_indirect_sources(sym).is_some() {
                     return Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
                         item_symbol: sym,
+                        raw_param,
                     });
                 }
                 if let Some(collection_store) = data.reactivity.each_item_collection_store(sym) {
                     return Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
                         item_symbol: sym,
                         collection_store,
+                        raw_param,
                     });
                 }
             }
             let owner_node = data.reactivity.contextual_owner(sym)?;
-            let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind);
-            let in_key_expression = data
-                .reactivity
-                .contextual_read_in_each_key(ref_id)
-                .map(|each_block_id| each_block_id == owner_node)
-                .unwrap_or(false);
+            let read_kind = contextual::classify_contextual_read_kind(data, sym, *kind, raw_param);
             Some(ReferenceFacts::ContextualRead(ContextualReadSemantics {
                 kind: read_kind,
                 owner_node,
                 symbol: sym,
-                in_key_expression,
             }))
         }
 

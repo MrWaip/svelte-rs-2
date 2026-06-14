@@ -10,8 +10,9 @@ use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, S
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
-    ContextualBindingSemantics, ContextualReadKind, DeclaratorSemantics, EachIndexStrategy,
-    EachItemStrategy, LegacyStateSemantics, ReferenceSemantics, SnippetParamStrategy,
+    BindingFacts, ContextualBindingSemantics, ContextualReadKind, DeclaratorSemantics,
+    EachIndexStrategy, EachItemStrategy, LegacyStateSemantics, ReferenceSemantics,
+    SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -430,7 +431,10 @@ impl TemplateVisitor for EachSourcePromoter {
             if !ctx.data.scoping.is_component_top_level_symbol(sym) {
                 continue;
             }
-            if ctx.data.reactivity.binding_facts(sym).is_some() {
+            if let Some(facts) = ctx.data.reactivity.binding_facts(sym) {
+                if matches!(facts, BindingFacts::LegacyBindableProp(_)) {
+                    promoted_sources.push(sym);
+                }
                 continue;
             }
             if ctx.data.reactivity.store_shadow_of_internal(sym).is_some() {
@@ -596,6 +600,7 @@ pub(super) fn classify_contextual_read_kind(
     data: &AnalysisData,
     sym: SymbolId,
     kind: ContextualBindingSemantics,
+    raw_param: bool,
 ) -> ContextualReadKind {
     let _ = (data, sym);
     match kind {
@@ -604,24 +609,33 @@ pub(super) fn classify_contextual_read_kind(
         ) => ContextualReadKind::EachItem {
             accessor: true,
             signal: false,
+            raw_param,
         },
         ContextualBindingSemantics::EachItem(
             EachItemStrategy::Direct | EachItemStrategy::IndexedLegacy,
         ) => ContextualReadKind::EachItem {
             accessor: false,
             signal: false,
+            raw_param,
         },
         ContextualBindingSemantics::EachItem(EachItemStrategy::Signal) => {
             ContextualReadKind::EachItem {
                 accessor: false,
                 signal: true,
+                raw_param,
             }
         }
         ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct) => {
-            ContextualReadKind::EachIndex { signal: false }
+            ContextualReadKind::EachIndex {
+                signal: false,
+                raw_param,
+            }
         }
         ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal) => {
-            ContextualReadKind::EachIndex { signal: true }
+            ContextualReadKind::EachIndex {
+                signal: true,
+                raw_param,
+            }
         }
         ContextualBindingSemantics::AwaitValue => ContextualReadKind::AwaitValue,
         ContextualBindingSemantics::AwaitError => ContextualReadKind::AwaitError,

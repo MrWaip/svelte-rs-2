@@ -117,3 +117,6 @@ mod needs_context;
 
 #[path = "clusters/select_value_dispatch.rs"]
 mod select_value_dispatch;
+
+#[path = "clusters/bind_this.rs"]
+mod bind_this;

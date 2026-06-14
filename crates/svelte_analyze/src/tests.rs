@@ -6108,6 +6108,7 @@ fn each_item_read_is_classified_as_contextual_signal_read() {
                 ContextualReadKind::EachItem {
                     accessor: false,
                     signal: true,
+                    ..
                 },
             ..
         }) => {}

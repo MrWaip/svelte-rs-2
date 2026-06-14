@@ -30,37 +30,6 @@ impl<'a> Builder<'a> {
         self.call_stmt("$.bind_property", args)
     }
 
-    pub fn bind_this_getter_arrow(&self, var_name: &str, is_rune: bool) -> Expression<'a> {
-        let body = if is_rune {
-            self.call_expr("$.get", [Arg::Ident(var_name)])
-        } else {
-            let parsed = self.parse_expression(var_name);
-            self.make_optional_chain(parsed)
-        };
-        self.arrow_expr(self.no_params(), [self.expr_stmt(body)])
-    }
-
-    pub fn bind_this_setter_arrow(
-        &self,
-        var_name: &str,
-        is_rune: bool,
-        set_marker: bool,
-    ) -> Expression<'a> {
-        let body = if is_rune {
-            let mut args: Vec<Arg<'_, '_>> = vec![Arg::Ident(var_name), Arg::Ident("$$value")];
-            if set_marker {
-                args.push(Arg::Expr(self.bool_expr(true)));
-            }
-            self.call_expr("$.set", args)
-        } else {
-            self.assign_expr(
-                AssignLeft::Ident(var_name.to_string()),
-                self.rid_expr("$$value"),
-            )
-        };
-        self.arrow_expr(self.params(["$$value"]), [self.expr_stmt(body)])
-    }
-
     pub fn rewrap_arrow_body(&self, expr: Expression<'a>) -> Expression<'a> {
         let Expression::ArrowFunctionExpression(arrow) = expr else {
             return expr;
@@ -68,6 +37,19 @@ impl<'a> Builder<'a> {
         let arrow = arrow.unbox();
         let body_stmts: Vec<_> = arrow.body.unbox().statements.into_iter().collect();
         self.arrow_expr(self.no_params(), body_stmts)
+    }
+
+    pub fn rewrap_arrow_with_params(
+        &self,
+        expr: Expression<'a>,
+        params: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Expression<'a> {
+        let Expression::ArrowFunctionExpression(arrow) = expr else {
+            return expr;
+        };
+        let arrow = arrow.unbox();
+        let body_stmts: Vec<_> = arrow.body.unbox().statements.into_iter().collect();
+        self.arrow_expr(self.params(params), body_stmts)
     }
 
     pub fn rewrap_arrow_body_with_first_param(&self, expr: Expression<'a>) -> Expression<'a> {
