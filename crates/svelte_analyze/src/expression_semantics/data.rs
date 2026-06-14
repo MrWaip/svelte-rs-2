@@ -28,6 +28,15 @@ pub enum Volatility {
     Asynchronous,
 }
 
+impl Volatility {
+    pub fn is_volatile(&self) -> bool {
+        match self {
+            Volatility::Static => false,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LegacyWrap {
     None,

@@ -9,6 +9,7 @@ use svelte_ast_builder::TemplatePart;
 
 use super::super::data_structures::{EmitState, TemplateMemoState};
 use super::super::{Codegen, CodegenError, Result};
+use super::option_value::OptionValueForm;
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_attr_concatenation(
@@ -23,7 +24,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        let (semantics, special_kind) = match self.ctx.query.analysis.attributes.get(attr.id) {
+        let (semantics, special) = match self.ctx.query.analysis.attributes.get(attr.id) {
             AttributeSemantics::HtmlConcat(s) => (s.clone(), None),
             AttributeSemantics::SpecialValueAttr(s) => {
                 let Some(concat) = s.concat.as_ref() else {
@@ -32,7 +33,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         "SpecialValueAttr on ConcatenationAttribute requires concat semantics",
                     );
                 };
-                (concat.clone(), Some(s.kind))
+                (concat.clone(), Some((s.kind, s.defined, s.volatile)))
             }
             _ => {
                 return CodegenError::semantic_mismatch(
@@ -44,18 +45,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let val = self.build_html_concat_expr(attr, &semantics, &mut state.shared_memo)?;
 
-        if let Some(kind) = special_kind {
+        if let Some((kind, defined, volatile)) = special {
+            let coalesce = !defined;
             match kind {
                 SpecialValueKind::Option => {
-                    self.emit_option_concat_value(state, owner_var, val);
+                    let form = OptionValueForm::Reflected { coalesce };
+                    self.emit_option_value(state, owner_var, val, form, volatile);
                     return Ok(());
                 }
                 SpecialValueKind::Select => {
-                    self.emit_select_concat_value(state, owner_var, attr.id, val);
+                    self.emit_select_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
                 SpecialValueKind::InputBindGroup | SpecialValueKind::InputBindChecked => {
-                    self.emit_input_special_concat_value(state, owner_var, val);
+                    self.emit_input_value(state, owner_var, val, coalesce);
                     return Ok(());
                 }
             }

@@ -20,6 +20,7 @@ pub(crate) struct EmitState<'a> {
     pub skip_snippets: bool,
     pub last_fragment_needs_reset: bool,
     pub pending_element_init: Vec<Statement<'a>>,
+    pub pending_element_update: Vec<Statement<'a>>,
     pub pending_pre_update: Vec<Statement<'a>>,
     pub pending_anchor_idents: Option<(String, String)>,
     pub anchor_comment_pre_emitted: bool,

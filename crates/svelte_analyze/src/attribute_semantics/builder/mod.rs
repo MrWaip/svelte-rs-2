@@ -453,6 +453,8 @@ fn classify_element_attrs(
                         ea.id,
                         AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
                             kind,
+                            defined: special_value_defined(ctx, ea.id),
+                            volatile: special_value_volatile(ctx, ea.id),
                             concat: None,
                         }),
                     );
@@ -465,6 +467,8 @@ fn classify_element_attrs(
                         ca.id,
                         AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
                             kind,
+                            defined: concat_special_value_defined(ctx, ca),
+                            volatile: special_value_volatile(ctx, ca.id),
                             concat: Some(semantics),
                         }),
                     );
@@ -984,6 +988,28 @@ fn parse_event_modifiers(modifiers: &[String]) -> EventModifier {
             };
             flags
         })
+}
+
+fn special_value_defined(ctx: &Ctx<'_, '_>, node_id: NodeId) -> bool {
+    ctx.expression_data(node_id)
+        .map(|data| data.evaluation.is_defined())
+        .unwrap_or(false)
+}
+
+fn special_value_volatile(ctx: &Ctx<'_, '_>, node_id: NodeId) -> bool {
+    ctx.expression_data(node_id)
+        .map(|data| data.volatility.is_volatile())
+        .unwrap_or(false)
+}
+
+fn concat_special_value_defined(
+    ctx: &Ctx<'_, '_>,
+    ca: &svelte_ast::ConcatenationAttribute,
+) -> bool {
+    let [svelte_ast::ConcatPart::Dynamic { id, .. }] = ca.parts.as_slice() else {
+        return true;
+    };
+    special_value_defined(ctx, *id)
 }
 
 fn derive_html_concat_semantics(

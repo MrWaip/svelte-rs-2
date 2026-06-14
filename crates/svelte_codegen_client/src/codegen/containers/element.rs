@@ -1,6 +1,5 @@
 use std::mem;
 
-use oxc_allocator::CloneIn;
 use oxc_ast::ast::Statement;
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -136,6 +135,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let has_spread = self.ctx.has_spread(el_id);
 
         let prev_pending_element_init = mem::take(&mut state.pending_element_init);
+        let prev_pending_element_update = mem::take(&mut state.pending_element_update);
         let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
         let element_after_update_len_before = state.element_after_update.len();
 
@@ -191,8 +191,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .call_stmt("$.replay_events", [Arg::Ident(&el_name)]),
             );
         }
+        if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
+            self.emit_option_synthetic_value(state, &el_name, expr_id)?;
+        }
         let my_element_init = mem::take(&mut state.pending_element_init);
         state.pending_element_init = prev_pending_element_init;
+        let my_element_update = mem::take(&mut state.pending_element_update);
+        state.pending_element_update = prev_pending_element_update;
         let my_pre_update = mem::take(&mut state.pending_pre_update);
         state.pending_pre_update = prev_pending_pre_update;
 
@@ -202,9 +207,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.last_fragment_needs_reset = true;
             } else if self.ctx.needs_textarea_value_lowering(el_id) {
                 self.emit_textarea_value_lowering(state, el_id, &el_name)?;
-            } else if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
-                self.emit_option_synthetic_value(state, &el_name, expr_id)?;
-                state.last_fragment_needs_reset = true;
             } else {
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
@@ -235,6 +237,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         state.init.extend(my_element_init);
         state.init.extend(my_pre_update);
+        state.update.extend(my_element_update);
         let scoped: Vec<Statement<'a>> = state
             .element_after_update
             .split_off(element_after_update_len_before);
@@ -282,36 +285,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let scoped = mem::replace(&mut state.after_update, saved_after_update);
         state.element_after_update.extend(scoped);
-        Ok(())
-    }
-
-    fn emit_option_synthetic_value(
-        &mut self,
-        state: &mut EmitState<'a>,
-        el_name: &str,
-        expr_id: NodeId,
-    ) -> Result<()> {
-        let known = self
-            .ctx
-            .query
-            .view
-            .expression_data(expr_id)
-            .and_then(|d| d.evaluation.known_str());
-        let expr = self.take_node_expr(expr_id)?;
-        let text_expr = match known {
-            Some(s) => self.ctx.b.str_expr(&s),
-            None => expr.clone_in(self.ctx.b.ast.allocator),
-        };
-
-        let b = &self.ctx.b;
-        let text_member = b.static_member(b.rid_expr(el_name), "textContent");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(text_member), text_expr));
-        let value_member = b.static_member(b.rid_expr(el_name), "__value");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(value_member), expr));
         Ok(())
     }
 

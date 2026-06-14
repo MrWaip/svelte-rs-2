@@ -8,6 +8,7 @@ use svelte_ast_builder::Arg;
 
 use super::super::data_structures::{EmitState, MemoValueRef};
 use super::super::{Codegen, CodegenError, Result};
+use super::option_value::OptionValueForm;
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_attr_expression(
@@ -45,6 +46,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let AttributeSemantics::SpecialValueAttr(s) =
             self.ctx.query.analysis.attributes.get(attr.id)
         {
+            let coalesce = !s.defined;
+            let volatile = s.volatile;
             match s.kind {
                 SpecialValueKind::InputBindGroup => {
                     let backup = self
@@ -65,17 +68,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 SpecialValueKind::Option => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
-                    self.emit_option_expr_value(state, owner_var, attr.id, val);
+                    let form = OptionValueForm::Reflected { coalesce };
+                    self.emit_option_value(state, owner_var, val, form, volatile);
                     return Ok(());
                 }
                 SpecialValueKind::Select => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
-                    self.emit_select_expr_value(state, owner_var, attr.id, val);
+                    self.emit_select_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
                 SpecialValueKind::InputBindChecked => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
-                    self.emit_input_bind_checked_value(state, owner_var, attr.id, val);
+                    self.emit_input_value(state, owner_var, val, coalesce);
                     return Ok(());
                 }
             }

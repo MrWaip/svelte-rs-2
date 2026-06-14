@@ -1,3 +1,4 @@
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{Evaluation, KnownValue};
@@ -42,6 +43,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None => return CodegenError::missing_expression(id),
         };
         Ok(expr)
+    }
+
+    pub(in crate::codegen) fn clone_node_expr(&self, id: NodeId) -> Result<Expression<'a>> {
+        let node = self.ctx.query.component.store.get(id);
+        let Some(expr_ref) = expr_ref_for_node(node) else {
+            return CodegenError::missing_expression(id);
+        };
+        let Some(expr) = self.ctx.state.parsed.expr(expr_ref.id()) else {
+            return CodegenError::missing_expression(id);
+        };
+        Ok(expr.clone_in(self.ctx.b.ast.allocator))
     }
 
     pub(super) fn take_attr_expr(

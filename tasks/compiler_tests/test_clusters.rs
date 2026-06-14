@@ -43,6 +43,9 @@ mod text_reactivity;
 #[path = "clusters/customizable_select.rs"]
 mod customizable_select;
 
+#[path = "clusters/special_value_attribute.rs"]
+mod special_value_attribute;
+
 #[path = "clusters/runes_state.rs"]
 mod runes_state;
 

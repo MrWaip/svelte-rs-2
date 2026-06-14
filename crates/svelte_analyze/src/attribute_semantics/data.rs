@@ -31,6 +31,8 @@ pub enum AttributeSemantics {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecialValueSemantics {
     pub kind: SpecialValueKind,
+    pub defined: bool,
+    pub volatile: bool,
     pub concat: Option<HtmlConcatSemantics>,
 }
 

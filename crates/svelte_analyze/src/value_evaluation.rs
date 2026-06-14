@@ -74,10 +74,7 @@ impl Evaluation {
         let v = self.known_value()?;
         Some(known_value_to_concat_str(v))
     }
-}
 
-#[cfg(test)]
-impl Evaluation {
     pub(crate) fn is_defined(&self) -> bool {
         match self {
             Self::Known(KnownValue::Null | KnownValue::Undefined) => false,
@@ -85,7 +82,10 @@ impl Evaluation {
             Self::MaybeNullish { .. } => false,
         }
     }
+}
 
+#[cfg(test)]
+impl Evaluation {
     pub(crate) fn is_known(&self) -> bool {
         matches!(self, Self::Known(_))
     }

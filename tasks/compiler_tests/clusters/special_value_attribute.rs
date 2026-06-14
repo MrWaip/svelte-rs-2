@@ -1,0 +1,34 @@
+use super::*;
+
+compiler_case!(
+    select_oneway_prop,
+    "special_value_attribute/select_oneway_prop"
+);
+compiler_case!(
+    option_value_static_text,
+    "special_value_attribute/option_value_static_text"
+);
+compiler_case!(
+    option_value_static_null,
+    "special_value_attribute/option_value_static_null"
+);
+compiler_case!(
+    option_value_reactive_each,
+    "special_value_attribute/option_value_reactive_each"
+);
+compiler_case!(
+    option_value_prop_text,
+    "special_value_attribute/option_value_prop_text"
+);
+compiler_case!(
+    option_synthetic_reactive_each,
+    "special_value_attribute/option_synthetic_reactive_each"
+);
+compiler_case!(
+    option_value_member_prop,
+    "special_value_attribute/option_value_member_prop"
+);
+compiler_case!(
+    select_oneway_reactive_options,
+    "special_value_attribute/select_oneway_reactive_options"
+);
