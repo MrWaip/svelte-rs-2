@@ -160,10 +160,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if tpl_parts.len() == 1
-            && let TemplatePart::Str(s) = &tpl_parts[0]
-        {
-            return Ok(self.ctx.b.str_expr(s));
+        if tpl_parts.len() == 1 {
+            return Ok(match tpl_parts.into_iter().next() {
+                Some(TemplatePart::Str(s)) => self.ctx.b.str_expr(&s),
+                Some(TemplatePart::Expr(expr, _)) => expr,
+                None => self.ctx.b.template_parts_expr(Vec::new()),
+            });
         }
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }

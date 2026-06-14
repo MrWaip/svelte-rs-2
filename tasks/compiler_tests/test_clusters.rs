@@ -103,6 +103,9 @@ mod snippets;
 #[path = "clusters/attribute_memo.rs"]
 mod attribute_memo;
 
+#[path = "clusters/attribute_single_expr.rs"]
+mod attribute_single_expr;
+
 #[path = "clusters/runes_imports.rs"]
 mod runes_imports;
 
