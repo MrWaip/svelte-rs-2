@@ -3,7 +3,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::NamespaceKind;
-use svelte_ast::{Attribute, Node, NodeId};
+use svelte_ast::{Attribute, ConcatPart, Node, NodeId};
 use svelte_ast_builder::Arg;
 
 use super::super::attributes::AttributeOwnerKind;
@@ -13,6 +13,27 @@ use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
+    fn svelte_element_tag_expr(&mut self, el_id: NodeId) -> Result<Expression<'a>> {
+        let el = self.ctx.query.svelte_element(el_id);
+        let Some(this) = el.attributes.iter().find(|a| a.is_svelte_element_this()) else {
+            return CodegenError::missing_expression(el_id);
+        };
+
+        match this {
+            Attribute::ExpressionAttribute(ea) => self.take_attr_expr(el_id, &ea.expression),
+            Attribute::ConcatenationAttribute(ca) => {
+                let Some(first) = ca.parts.first() else {
+                    return CodegenError::missing_expression(el_id);
+                };
+                match first {
+                    ConcatPart::Static(value) => Ok(self.ctx.b.str_expr(value)),
+                    ConcatPart::Dynamic { expr, .. } => self.take_attr_expr(el_id, expr),
+                }
+            }
+            _ => CodegenError::missing_expression(el_id),
+        }
+    }
+
     pub(in crate::codegen) fn emit_svelte_element(
         &mut self,
         state: &mut EmitState<'a>,
@@ -38,7 +59,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let value = self.ctx.query.component.source_text(tag_span);
             self.ctx.b.str_expr(value)
         } else {
-            self.take_node_expr(el_id)?
+            self.svelte_element_tag_expr(el_id)?
         };
 
         let el_span_start = el.span.start;

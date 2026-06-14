@@ -1671,6 +1671,14 @@ mod special {
         svelte_element_invalid_this_string,
         "special/svelte_element_invalid_this_string"
     );
+    diagnostic_case!(
+        svelte_element_invalid_this_concat,
+        "special/svelte_element_invalid_this_concat"
+    );
+    diagnostic_case!(
+        svelte_element_this_quoted_expr_ok,
+        "special/svelte_element_this_quoted_expr_ok"
+    );
 }
 
 mod module {

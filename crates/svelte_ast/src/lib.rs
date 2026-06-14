@@ -675,6 +675,7 @@ impl Attribute {
             Attribute::ExpressionAttribute(a) => a.name == "this",
             Attribute::StringAttribute(a) => a.name == "this",
             Attribute::BooleanAttribute(a) => a.name == "this",
+            Attribute::ConcatenationAttribute(a) => a.name == "this",
             _ => false,
         }
     }

@@ -3138,6 +3138,15 @@ fn validate_svelte_element_this(el: &SvelteElement, ctx: &mut VisitContext<'_, '
                 s.span,
             ));
         }
+        Some(Attribute::ConcatenationAttribute(c)) => {
+            let is_lone_expression = matches!(c.parts.as_slice(), [ConcatPart::Dynamic { .. }]);
+            if !is_lone_expression {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::SvelteElementInvalidThis,
+                    c.span,
+                ));
+            }
+        }
         _ => {}
     }
 }

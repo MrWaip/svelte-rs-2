@@ -76,6 +76,9 @@ mod legacy_component_marker;
 #[path = "clusters/legacy_quoted_directive.rs"]
 mod legacy_quoted_directive;
 
+#[path = "clusters/svelte_element_this_tag.rs"]
+mod svelte_element_this_tag;
+
 #[path = "clusters/let_directive.rs"]
 mod let_directive;
 
