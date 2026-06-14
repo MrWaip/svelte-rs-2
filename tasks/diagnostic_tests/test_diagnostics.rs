@@ -1095,6 +1095,18 @@ mod directives {
         validate_animate_directive_illegal_await_expression,
         "directives/validate_animate_directive_illegal_await_expression"
     );
+    diagnostic_case!(
+        quoted_directive_text_value,
+        "directives/quoted_directive_text_value"
+    );
+    diagnostic_case!(
+        quoted_directive_concat_value,
+        "directives/quoted_directive_concat_value"
+    );
+    diagnostic_case!(
+        quoted_directive_empty_value,
+        "directives/quoted_directive_empty_value"
+    );
 }
 
 mod options {

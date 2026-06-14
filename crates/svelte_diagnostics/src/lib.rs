@@ -1392,6 +1392,10 @@ impl Diagnostic {
         Self::error(DiagnosticKind::UnknownDirective, span)
     }
 
+    pub fn directive_invalid_value(span: Span) -> Self {
+        Self::error(DiagnosticKind::DirectiveInvalidValue, span)
+    }
+
     pub fn no_each_block_to_close(span: Span) -> Self {
         Self::error(DiagnosticKind::NoEachBlockToClose, span)
     }

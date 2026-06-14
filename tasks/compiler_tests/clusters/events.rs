@@ -1,5 +1,10 @@
 use super::*;
 
+compiler_case!(
+    legacy_dev_arrow_handler_return,
+    "events/legacy_dev_arrow_handler_return",
+    ignore = "divergence: legacy dev arrow handler expression body loses implicit return — on:click={() => n++} emits $.update(n) instead of return $.update(n); reproduces unquoted too, unrelated to quoted directives"
+);
 compiler_case!(snippet_param, "events/snippet_param");
 compiler_case!(await_value, "events/await_value");
 compiler_case!(await_error, "events/await_error");

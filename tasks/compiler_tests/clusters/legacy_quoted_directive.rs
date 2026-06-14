@@ -1,0 +1,26 @@
+use super::*;
+
+compiler_case!(use_bare, "legacy/quoted_directive/use_bare");
+compiler_case!(use_unquoted, "legacy/quoted_directive/use_unquoted");
+compiler_case!(
+    use_quoted_double,
+    "legacy/quoted_directive/use_quoted_double"
+);
+compiler_case!(
+    use_quoted_single,
+    "legacy/quoted_directive/use_quoted_single"
+);
+compiler_case!(bind_quoted, "legacy/quoted_directive/bind_quoted");
+compiler_case!(class_quoted, "legacy/quoted_directive/class_quoted");
+compiler_case!(
+    transition_quoted,
+    "legacy/quoted_directive/transition_quoted"
+);
+compiler_case!(on_quoted, "legacy/quoted_directive/on_quoted");
+compiler_case!(animate_quoted, "legacy/quoted_directive/animate_quoted");
+compiler_case!(let_quoted, "legacy/quoted_directive/let_quoted");
+compiler_case!(
+    style_quoted_expr,
+    "legacy/quoted_directive/style_quoted_expr",
+    ignore = "divergence: style: directive emits literal instead of reactive expression for quoted value style:color=\"{c}\" — separate codegen fork, not the directive-parsing fix"
+);

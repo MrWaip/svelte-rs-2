@@ -534,7 +534,7 @@ impl<'a> Scanner<'a> {
 
     fn class_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::ClassDirective(ClassDirective {
                 span: SPAN,
@@ -595,7 +595,7 @@ impl<'a> Scanner<'a> {
 
     fn bind_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::BindDirective(BindDirective {
                 span: SPAN,
@@ -619,7 +619,7 @@ impl<'a> Scanner<'a> {
         _name: &str,
     ) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
                 span: SPAN,
@@ -650,7 +650,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::UseDirective(UseDirective {
                 span: SPAN,
@@ -679,7 +679,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
                 span: SPAN,
                 name_span,
@@ -721,7 +721,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::TransitionDirective(TransitionDirective {
                 span: SPAN,
                 name_span,
@@ -752,7 +752,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::AnimateDirective(AnimateDirective {
                 span: SPAN,
                 name_span,
@@ -797,6 +797,31 @@ impl<'a> Scanner<'a> {
         }
 
         self.unquoted_attribute_concatenation_or_string()
+    }
+
+    fn directive_expression(&mut self) -> Result<ExpressionTag, Diagnostic> {
+        if let Some(quote) = self.peek().filter(|c| *c == '"' || *c == '\'') {
+            self.advance();
+            let value_start = self.current;
+
+            if self.peek() == Some('{') {
+                let tag = self.expression_tag()?;
+                if self.match_char(quote) {
+                    return Ok(tag);
+                }
+            }
+
+            while self.peek().is_some_and(|c| c != quote) {
+                self.advance();
+            }
+            self.match_char(quote);
+
+            return Err(Diagnostic::directive_invalid_value(
+                self.span(value_start, value_start),
+            ));
+        }
+
+        self.expression_tag()
     }
 
     fn expression_tag(&mut self) -> Result<ExpressionTag, Diagnostic> {
