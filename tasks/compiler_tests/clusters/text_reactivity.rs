@@ -25,3 +25,4 @@ compiler_case!(
     derived_nonreactive_dep_attr,
     "text_reactivity/derived_nonreactive_dep_attr"
 );
+compiler_case!(literal_root_call, "text_reactivity/literal_root_call");

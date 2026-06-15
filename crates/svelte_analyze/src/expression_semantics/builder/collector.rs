@@ -110,6 +110,12 @@ fn callee_is_pure(callee: &Expression<'_>) -> bool {
                 ChainElement::CallExpression(_) => return false,
                 ChainElement::TSNonNullExpression(t) => node = &t.expression,
             },
+            Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::RegExpLiteral(_) => return true,
             _ => return false,
         }
     }

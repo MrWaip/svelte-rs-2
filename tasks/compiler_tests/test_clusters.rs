@@ -109,6 +109,9 @@ mod snippets;
 #[path = "clusters/attribute_memo.rs"]
 mod attribute_memo;
 
+#[path = "clusters/if_else.rs"]
+mod if_else;
+
 #[path = "clusters/attribute_single_expr.rs"]
 mod attribute_single_expr;
 
