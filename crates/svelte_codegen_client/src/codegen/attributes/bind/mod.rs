@@ -5,11 +5,13 @@ mod this;
 
 use std::iter;
 
+use oxc_ast::ast::Statement;
 use svelte_analyze::{
     AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind, MediaBindKind,
 };
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::SymbolId;
 
 use super::super::data_structures::EmitState;
 use super::super::{Codegen, CodegenError, Result};
@@ -95,27 +97,64 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return Ok(None),
         };
         let bind_blockers = payload.blockers.to_vec();
-        let is_this = matches!(payload.property, ElementBindPropertyKind::This);
 
-        if !is_this
-            && let Some(stmt) =
-                self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
-        {
-            let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
-            if has_use_directive {
-                return Ok(Some(BindPlacement::Init(stmt)));
-            }
-            return Ok(Some(BindPlacement::AfterUpdate(stmt)));
+        if payload.property.is_this() {
+            return self.emit_bind_this(bind, el_name, tag_name);
         }
 
-        if !matches!(bind_property, BindPropertyKind::This) {
+        let stmt = match payload.kind {
+            HtmlBindKind::EachItemDestructureLegacy { symbol } => self
+                .build_each_item_destructure_bind_stmt(
+                    bind,
+                    bind_property,
+                    el_name,
+                    tag_name,
+                    symbol,
+                )?,
+            HtmlBindKind::Plain
+            | HtmlBindKind::Rune
+            | HtmlBindKind::LegacyState
+            | HtmlBindKind::BindableProp
+            | HtmlBindKind::StoreSubscribed { .. } => {
+                self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
+            }
+        };
+        let Some(stmt) = stmt else {
             return CodegenError::unexpected_node(
                 bind.id,
                 "bind without getter/setter must be bind:this",
             );
+        };
+        let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
+        if has_use_directive {
+            Ok(Some(BindPlacement::Init(stmt)))
+        } else {
+            Ok(Some(BindPlacement::AfterUpdate(stmt)))
         }
+    }
 
-        self.emit_bind_this(bind, el_name, tag_name)
+    fn build_each_item_destructure_bind_stmt(
+        &mut self,
+        bind: &BindDirective,
+        bind_property: BindPropertyKind,
+        el_name: &str,
+        tag_name: &str,
+        symbol: SymbolId,
+    ) -> Result<Option<Statement<'a>>> {
+        let Some(setter_body) = self.build_each_item_destructure_writeback_legacy(symbol) else {
+            return Ok(None);
+        };
+        let name = self
+            .ctx
+            .b
+            .alloc_str(self.ctx.query.view.symbol_name(symbol));
+        let getter = self.ctx.b.rid_expr(name);
+        let setter = self.ctx.b.arrow_expr(
+            self.ctx.b.params(["$$value"]),
+            [self.ctx.b.expr_stmt(setter_body)],
+        );
+        self.build_bind_call_stmt(bind, bind_property, el_name, tag_name, getter, setter)
+            .map(Some)
     }
 
     fn emit_bind_bindable_prop_shorthand(

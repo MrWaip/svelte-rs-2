@@ -1188,6 +1188,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
+        let operator = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            assign.operator
+        };
         let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
             return false;
         };
@@ -1199,9 +1205,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         else {
             return false;
         };
+        let value = if operator.is_assign() {
+            None
+        } else {
+            let Some(left_read) =
+                self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym)
+            else {
+                return false;
+            };
+            Some(left_read)
+        };
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
+        if let Some(left_read) = value {
+            let right = self.b.move_expr(&mut assign.right);
+            assign.right = self.build_compound_value(operator, left_read, right);
+            assign.operator = AssignmentOperator::Assign;
+        }
         assign.left = AssignmentTarget::ComputedMemberExpression(member);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);

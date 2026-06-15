@@ -256,6 +256,12 @@ pub enum ElementBindPropertyKind {
     Focused,
 }
 
+impl ElementBindPropertyKind {
+    pub fn is_this(self) -> bool {
+        matches!(self, ElementBindPropertyKind::This)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WindowBindSemantics {
     pub property: WindowBindKind,
@@ -277,4 +283,5 @@ pub enum HtmlBindKind {
     LegacyState,
     BindableProp,
     StoreSubscribed { base_symbol: SymbolId },
+    EachItemDestructureLegacy { symbol: SymbolId },
 }

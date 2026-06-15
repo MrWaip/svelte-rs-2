@@ -690,7 +690,41 @@ fn classify_identifier_kind(
         | ReferenceSemantics::LegacyStateWrite
         | ReferenceSemantics::LegacyStateUpdate { .. }
         | ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => HtmlBindKind::LegacyState,
-        _ => HtmlBindKind::Plain,
+        ReferenceSemantics::NonReactive
+        | ReferenceSemantics::Proxy
+        | ReferenceSemantics::DerivedWrite
+        | ReferenceSemantics::PropRead(_)
+        | ReferenceSemantics::PropMutation { .. }
+        | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+        | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+        | ReferenceSemantics::ConstAliasRead { .. }
+        | ReferenceSemantics::ContextualRead(_)
+        | ReferenceSemantics::CarrierMemberRead(_)
+        | ReferenceSemantics::RestPropMemberRewrite
+        | ReferenceSemantics::LegacyPropsIdentifierRead
+        | ReferenceSemantics::LegacyRestPropsIdentifierRead
+        | ReferenceSemantics::LegacySlotsIdentifierRead
+        | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+        | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+        | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+        | ReferenceSemantics::LegacyReactiveImportRead
+        | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+        | ReferenceSemantics::ImportSubscribedRead { .. }
+        | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+        | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+        | ReferenceSemantics::EachItemIndexedLegacy { .. }
+        | ReferenceSemantics::IllegalWrite
+        | ReferenceSemantics::Unresolved => {
+            let symbol = ctx.semantics.get_reference(ref_id).symbol_id();
+            match symbol.map(|s| ctx.reactivity.binding_semantics(s)) {
+                Some(BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
+                    EachItemStrategy::DestructuredLegacy,
+                ))) => HtmlBindKind::EachItemDestructureLegacy {
+                    symbol: symbol.expect("binding_semantics resolved from symbol"),
+                },
+                _ => HtmlBindKind::Plain,
+            }
+        }
     }
 }
 

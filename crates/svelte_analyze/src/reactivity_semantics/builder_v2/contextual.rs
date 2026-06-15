@@ -428,26 +428,48 @@ impl TemplateVisitor for EachSourcePromoter {
             let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
                 continue;
             };
-            if !ctx.data.scoping.is_component_top_level_symbol(sym) {
-                continue;
-            }
-            if let Some(facts) = ctx.data.reactivity.binding_facts(sym) {
-                if matches!(facts, BindingFacts::LegacyBindableProp(_)) {
-                    promoted_sources.push(sym);
+            match ctx.data.reactivity.binding_facts(sym) {
+                Some(
+                    BindingFacts::LegacyBindableProp(_)
+                    | BindingFacts::LegacyState(_)
+                    | BindingFacts::Contextual(ContextualBindingSemantics::AwaitValue),
+                ) => promoted_sources.push(sym),
+                Some(
+                    BindingFacts::State(_)
+                    | BindingFacts::Derived(_)
+                    | BindingFacts::OptimizedDerived(_)
+                    | BindingFacts::OptimizedRune(_)
+                    | BindingFacts::Prop(_)
+                    | BindingFacts::LegacyApiExport
+                    | BindingFacts::Store(_)
+                    | BindingFacts::Const(_)
+                    | BindingFacts::Contextual(
+                        ContextualBindingSemantics::EachItem(_)
+                        | ContextualBindingSemantics::EachIndex(_)
+                        | ContextualBindingSemantics::AwaitError
+                        | ContextualBindingSemantics::LetDirective
+                        | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                        | ContextualBindingSemantics::LetDirectiveDirect
+                        | ContextualBindingSemantics::SnippetParam(_),
+                    )
+                    | BindingFacts::RuntimeRune { .. }
+                    | BindingFacts::CarrierAlias { .. },
+                ) => {}
+                None => {
+                    if ctx.data.scoping.is_component_top_level_symbol(sym)
+                        && ctx.data.reactivity.store_shadow_of_internal(sym).is_none()
+                    {
+                        ctx.data.reactivity.record_legacy_state_binding(
+                            sym,
+                            LegacyStateSemantics {
+                                var_declared: false,
+                                immutable,
+                            },
+                        );
+                        promoted_sources.push(sym);
+                    }
                 }
-                continue;
             }
-            if ctx.data.reactivity.store_shadow_of_internal(sym).is_some() {
-                continue;
-            }
-            ctx.data.reactivity.record_legacy_state_binding(
-                sym,
-                LegacyStateSemantics {
-                    var_declared: false,
-                    immutable,
-                },
-            );
-            promoted_sources.push(sym);
         }
 
         if !promoted_sources.is_empty() {

@@ -33,3 +33,39 @@ compiler_case!(
     legacy_store_destructure_bind_noindex,
     "each_item_writeback/legacy_store_destructure_bind_noindex"
 );
+compiler_case!(
+    legacy_reactive_array_item_assign,
+    "each_item_writeback/legacy_reactive_array_item_assign"
+);
+compiler_case!(
+    legacy_reactive_array_item_mutate,
+    "each_item_writeback/legacy_reactive_array_item_mutate"
+);
+compiler_case!(
+    legacy_reactive_element_bind_member,
+    "each_item_writeback/legacy_reactive_element_bind_member"
+);
+compiler_case!(
+    legacy_reactive_destructure_element_bind,
+    "each_item_writeback/legacy_reactive_destructure_element_bind"
+);
+compiler_case!(
+    legacy_reactive_filtered_collection_mutate,
+    "each_item_writeback/legacy_reactive_filtered_collection_mutate"
+);
+compiler_case!(
+    legacy_reactive_keyed_element_bind_member,
+    "each_item_writeback/legacy_reactive_keyed_element_bind_member"
+);
+compiler_case!(
+    legacy_reactive_collection_reassigned_bind,
+    "each_item_writeback/legacy_reactive_collection_reassigned_bind"
+);
+compiler_case!(
+    legacy_reactive_await_rooted_collection_mutate,
+    "each_item_writeback/legacy_reactive_await_rooted_collection_mutate"
+);
+compiler_case!(
+    runes_array_item_mutate_guard,
+    "each_item_writeback/runes_array_item_mutate_guard"
+);

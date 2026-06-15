@@ -18,7 +18,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         else {
             return Ok(None);
         };
+        self.build_bind_call_stmt(bind, bind_property, el_name, tag_name, get_fn, set_fn)
+            .map(Some)
+    }
 
+    pub(super) fn build_bind_call_stmt(
+        &mut self,
+        bind: &BindDirective,
+        bind_property: BindPropertyKind,
+        el_name: &str,
+        tag_name: &str,
+        get_fn: Expression<'a>,
+        set_fn: Expression<'a>,
+    ) -> Result<Statement<'a>> {
         let ctx = &mut *self.ctx;
         let stmt = match bind_property {
             BindPropertyKind::Value if tag_name == "select" => ctx.b.call_stmt(
@@ -134,9 +146,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .call_stmt("$.bind_focused", [Arg::Ident(el_name), Arg::Expr(set_fn)]),
             BindPropertyKind::Group => {
-                return self
-                    .emit_bind_group(bind, el_name, get_fn, set_fn)
-                    .map(Some);
+                return self.emit_bind_group(bind, el_name, get_fn, set_fn);
             }
             BindPropertyKind::This
             | BindPropertyKind::Window(_)
@@ -148,7 +158,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 );
             }
         };
-        Ok(Some(stmt))
+        Ok(stmt)
     }
 
     pub(super) fn take_bind_getter_setter(
