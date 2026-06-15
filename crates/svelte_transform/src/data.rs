@@ -5,7 +5,9 @@ use svelte_ast::NodeId;
 pub struct TransformData {
     pub const_tag_tmp_names: FxHashMap<NodeId, String>,
 
-    pub each_synthetic_index_names_legacy: FxHashMap<SymbolId, String>,
+    pub each_index_internal_names: FxHashMap<NodeId, String>,
+
+    pub each_index_block_by_item: FxHashMap<SymbolId, NodeId>,
 }
 
 impl Default for TransformData {
@@ -18,7 +20,8 @@ impl TransformData {
     pub fn new() -> Self {
         Self {
             const_tag_tmp_names: FxHashMap::default(),
-            each_synthetic_index_names_legacy: FxHashMap::default(),
+            each_index_internal_names: FxHashMap::default(),
+            each_index_block_by_item: FxHashMap::default(),
         }
     }
 }

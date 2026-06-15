@@ -157,41 +157,46 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_collection_id = sem.shadows_outer;
         let needs_store_index = sem.each_flags.contains(EachFlags::ITEM_REACTIVE)
             && match &sem.item {
-                EachItemKind::Identifier(sym) => self.ctx.query.scoping().is_member_mutated(*sym),
-                _ => false,
+                EachItemKind::Identifier(item) => self.ctx.query.scoping().is_member_mutated(*item),
+                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
             };
 
-        let synthetic_reassign_index = match &sem.item {
-            EachItemKind::Identifier(sym) => self
-                .ctx
-                .state
-                .transform_data
-                .each_synthetic_index_names_legacy
-                .get(sym)
-                .cloned(),
-            EachItemKind::Pattern(_) | EachItemKind::NoBinding => None,
-        };
+        let needs_legacy_writeback_index = user_index_name.is_none()
+            && match &sem.item {
+                EachItemKind::Identifier(item) => self
+                    .ctx
+                    .query
+                    .analysis
+                    .binding_semantics(*item)
+                    .is_each_item_indexed_legacy(),
+                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
+            };
 
-        let render_index_name = if !(body_uses_index
-            || needs_group_index
-            || needs_collection_id
-            || needs_store_index
-            || synthetic_reassign_index.is_some())
-        {
+        let internal_index_name = self
+            .ctx
+            .state
+            .transform_data
+            .each_index_internal_names
+            .get(&block_id)
+            .cloned();
+
+        let render_reasons = [
+            body_uses_index,
+            needs_group_index,
+            needs_collection_id,
+            needs_store_index,
+            needs_legacy_writeback_index,
+        ];
+        let needs_render = render_reasons.contains(&true);
+
+        let render_index_name = if !needs_render {
             None
+        } else if needs_group_index {
+            internal_index_name.clone()
         } else if let Some(name) = &user_index_name {
             Some(name.clone())
-        } else if let Some(name) = synthetic_reassign_index {
-            Some(name)
         } else {
-            let generated = self.ctx.state.gen_ident("$$index");
-            if needs_group_index {
-                self.ctx
-                    .state
-                    .group_index_names
-                    .insert(block_id, generated.clone());
-            }
-            Some(generated)
+            internal_index_name.clone()
         };
 
         let collection_id_name = needs_collection_id.then(|| self.ctx.state.gen_ident("$$array"));
@@ -389,6 +394,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(mut decls) = each_item_decls {
             decls.append(&mut frag_body);
             frag_body = decls;
+        }
+
+        if let (Some(user), Some(render)) = (&plan.user_index_name, &plan.render_index_name)
+            && user != render
+        {
+            let rebind = self.ctx.b.let_init_stmt(user, self.ctx.b.rid_expr(render));
+            frag_body.insert(0, rebind);
         }
 
         let arrow = match (&plan.render_index_name, &plan.collection_id_name) {

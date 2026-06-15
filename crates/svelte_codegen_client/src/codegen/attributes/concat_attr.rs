@@ -57,7 +57,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.emit_select_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
-                SpecialValueKind::InputBindGroup | SpecialValueKind::InputBindChecked => {
+                SpecialValueKind::InputBindGroup => {
+                    self.emit_bind_group_value_with(state, owner_var, val, defined, volatile);
+                    return Ok(());
+                }
+                SpecialValueKind::InputBindChecked => {
                     self.emit_input_value(state, owner_var, val, coalesce);
                     return Ok(());
                 }

@@ -158,11 +158,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let collection = self.make_source_read(analysis, source_sym);
         let index_name = match index_sym {
             Some(index_sym) => self.component_scoping.symbol_name(index_sym),
-            None => self
-                .transform_data
-                .each_synthetic_index_names_legacy
-                .get(&item_sym)?
-                .as_str(),
+            None => {
+                let block_id = self
+                    .transform_data
+                    .each_index_block_by_item
+                    .get(&item_sym)?;
+                self.transform_data
+                    .each_index_internal_names
+                    .get(block_id)?
+                    .as_str()
+            }
         };
         let property = ast.expression_identifier(SPAN, ast.atom(index_name));
         Some(ast.alloc(ast.computed_member_expression(SPAN, collection, property, false)))

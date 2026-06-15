@@ -123,3 +123,6 @@ mod select_value_dispatch;
 
 #[path = "clusters/bind_this.rs"]
 mod bind_this;
+
+#[path = "clusters/bind_group.rs"]
+mod bind_group;

@@ -273,7 +273,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ElementBindPropertyKind::Group => {
                 let has_value_attr = matches!(
                     self.ctx.query.analysis.attributes.get(bind.id),
-                    AttributeSemantics::ElementBind(b) if b.group_value_attr.is_some()
+                    AttributeSemantics::ElementBind(b) if b.group_value.is_some()
                 );
                 let getter = if has_value_attr {
                     let call = self

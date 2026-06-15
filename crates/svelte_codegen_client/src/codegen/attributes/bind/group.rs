@@ -1,7 +1,5 @@
 use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
-use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::Volatility;
 use svelte_analyze::types::data::binding_group_name;
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -33,8 +31,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             for each_id in &parent_eaches {
                 let Some(idx_name) = self
                     .ctx
-                    .each_index_name(*each_id)
-                    .or_else(|| self.ctx.state.group_index_names.get(each_id).cloned())
+                    .state
+                    .transform_data
+                    .each_index_internal_names
+                    .get(each_id)
+                    .cloned()
                 else {
                     return CodegenError::unexpected_node(
                         *each_id,
@@ -46,44 +47,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.array_expr(indexes)
         };
 
-        let group_value_attr = match self.ctx.query.analysis.attributes.get(bind.id) {
-            svelte_analyze::AttributeSemantics::ElementBind(b) => b.group_value_attr,
+        let group_value = match self.ctx.query.analysis.attributes.get(bind.id) {
+            svelte_analyze::AttributeSemantics::ElementBind(b) => b.group_value,
             _ => None,
         };
-        let getter = if let Some(val_attr_id) = group_value_attr {
-            let val_expr = {
-                let store = &self.ctx.query.component.store;
-                let mut found_id: Option<OxcNodeId> = None;
-                for n in store.iter_nodes() {
-                    let attrs: &[svelte_ast::Attribute] = match n {
-                        svelte_ast::Node::Element(el) => &el.attributes,
-                        svelte_ast::Node::SvelteElement(el) => &el.attributes,
-                        _ => match n.as_component_like() {
-                            Some(view) => view.attributes,
-                            None => continue,
-                        },
-                    };
-                    for a in attrs {
-                        if a.id() == val_attr_id {
-                            if let svelte_ast::Attribute::ExpressionAttribute(ea) = a {
-                                found_id = Some(ea.expression.id());
-                            }
-                            break;
-                        }
-                    }
-                    if found_id.is_some() {
-                        break;
-                    }
-                }
-                found_id
-                    .and_then(|id| self.ctx.state.parsed.expr(id))
-                    .map(|expr| self.ctx.b.clone_expr(expr))
-                    .unwrap_or_else(|| self.ctx.b.str_expr(""))
-            };
-            let val_expr = {
-                let data = self.ctx.expression_data(val_attr_id).cloned();
-                coarse_wrap(self.ctx, val_expr, data.as_ref())
-            };
+        let getter = if let Some(value) = group_value {
+            let val_expr = self
+                .ctx
+                .state
+                .parsed
+                .expr(value.expression)
+                .map(|expr| self.ctx.b.clone_expr(expr))
+                .unwrap_or_else(|| self.ctx.b.str_expr(""));
+            let data = self.ctx.expression_data(value.data).cloned();
+            let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
             let val_stmt = self.ctx.b.expr_stmt(val_expr);
 
             let Some(body_expr) =
@@ -152,14 +129,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .as_ref()
             .is_some_and(|d| evaluation_is_defined(&d.evaluation));
         let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
+        let is_volatile = match data.as_ref() {
+            Some(d) => d.volatility.is_volatile(),
+            None => true,
+        };
+        self.emit_bind_group_value_with(state, el_name, val_expr, is_defined, is_volatile);
+    }
 
-        match data.as_ref().map(|d| d.volatility) {
-            Some(Volatility::Static) => {
-                self.emit_bind_group_value_static(state, el_name, val_expr, is_defined);
-            }
-            Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) | None => {
-                self.emit_bind_group_value_stateful(state, el_name, val_expr, is_defined);
-            }
+    pub(in super::super) fn emit_bind_group_value_with(
+        &mut self,
+        state: &mut EmitState<'a>,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        is_defined: bool,
+        is_volatile: bool,
+    ) {
+        if is_volatile {
+            self.emit_bind_group_value_stateful(state, el_name, val_expr, is_defined);
+        } else {
+            self.emit_bind_group_value_static(state, el_name, val_expr, is_defined);
         }
     }
 

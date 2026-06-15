@@ -2206,7 +2206,7 @@ fn bind_group_records_expression_value_attr_only() {
         .expect("no expression value attr on first input");
 
     let actual = match data.attributes.get(bind_id) {
-        AttributeSemantics::ElementBind(b) => b.group_value_attr,
+        AttributeSemantics::ElementBind(b) => b.group_value.map(|v| v.data),
         _ => None,
     };
     assert_eq!(actual, Some(value_attr_id));
@@ -9037,7 +9037,7 @@ const s = writable(0);</script>
         match data.attributes.get(attr_id) {
             AttributeSemantics::ElementBind(b) => {
                 assert!(!b.parent_each_blocks.is_empty(), "parent_each_blocks");
-                assert!(b.group_value_attr.is_some(), "group_value_attr");
+                assert!(b.group_value.is_some(), "group_value");
             }
             other => panic!("expected ElementBind, got {other:?}"),
         }
@@ -9054,7 +9054,7 @@ const s = writable(0);</script>
                 assert_eq!(b.property, ElementBindPropertyKind::Value);
                 assert_eq!(b.kind, HtmlBindKind::Rune);
                 assert!(b.parent_each_blocks.is_empty());
-                assert_eq!(b.group_value_attr, None);
+                assert_eq!(b.group_value, None);
             }
             other => panic!("expected ElementBind, got {other:?}"),
         }

@@ -86,8 +86,6 @@ pub struct CodegenState<'a> {
 
     pub module_hoisted: Vec<Statement<'a>>,
 
-    pub group_index_names: FxHashMap<NodeId, String>,
-
     pub delegated_events: Vec<String>,
     delegated_events_set: FxHashSet<String>,
 
@@ -126,7 +124,6 @@ impl<'a> CodegenState<'a> {
             parsed,
             ident_gen,
             module_hoisted: Vec::new(),
-            group_index_names: FxHashMap::default(),
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
             css_text,
@@ -217,9 +214,6 @@ impl<'a> Ctx<'a> {
 
     pub fn attr_index(&self, id: NodeId) -> Option<&svelte_analyze::AttrIndex> {
         self.query.view.attr_index(id)
-    }
-    pub fn each_index_name(&self, id: NodeId) -> Option<String> {
-        self.query.view.each_index_name(id).map(str::to_string)
     }
     pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
         self.query.view.expression_data(id)

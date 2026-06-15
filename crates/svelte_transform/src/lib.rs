@@ -106,7 +106,12 @@ fn walk_fragment<'a>(
     }
 }
 
-fn reserve_each_synthetic_index_legacy(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
+fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
+    let name = ctx.ident_gen.generate("$$index");
+    ctx.transform_data
+        .each_index_internal_names
+        .insert(block.id, name);
+
     if block.index.is_some() {
         return;
     }
@@ -123,10 +128,9 @@ fn reserve_each_synthetic_index_legacy(ctx: &mut TransformCtx<'_, '_>, block: &E
     {
         return;
     }
-    let name = ctx.ident_gen.generate("$$index");
     ctx.transform_data
-        .each_synthetic_index_names_legacy
-        .insert(*item_sym, name);
+        .each_index_block_by_item
+        .insert(*item_sym, block.id);
 }
 
 fn walk_node<'a>(
@@ -180,12 +184,12 @@ fn walk_node<'a>(
             if let Some(key) = block.key.as_ref() {
                 ctx.expr_handles.push((key.id(), Some(block.id)));
             }
-            reserve_each_synthetic_index_legacy(ctx, block);
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {
                 walk_fragment(ctx, fb, component, parsed, scope);
             }
+            reserve_each_index_name(ctx, block);
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.effective_fragment_scope(block.body, scope);

@@ -5,7 +5,7 @@ use super::data::{
     ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
     ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
     MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
     SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
@@ -412,11 +412,11 @@ fn classify_element_attrs(
                         bind_kind(ctx, d)
                     };
                     let blockers = derive_blockers(ctx, d);
-                    let (parent_each_blocks, group_value_attr) =
+                    let (parent_each_blocks, group_value) =
                         if matches!(property, ElementBindPropertyKind::Group) {
                             (
                                 derive_parent_each_blocks(ctx, state, d),
-                                el.and_then(find_value_attr_id),
+                                el.and_then(find_group_bind_value),
                             )
                         } else if is_this {
                             (derive_parent_each_blocks(ctx, state, d), None)
@@ -439,7 +439,7 @@ fn classify_element_attrs(
                             blockers,
                             parent_each_blocks,
                             each_context_vars,
-                            group_value_attr,
+                            group_value,
                             group_id: None,
                         }),
                     );
@@ -630,9 +630,19 @@ fn special_value_kind_for(el: Option<&Element>, attr_name: &str) -> Option<Speci
     }
 }
 
-fn find_value_attr_id(el: &Element) -> Option<NodeId> {
+fn find_group_bind_value(el: &Element) -> Option<GroupBindValue> {
     el.attributes.iter().find_map(|attr| match attr {
-        Attribute::ExpressionAttribute(a) if a.name == "value" => Some(a.id),
+        Attribute::ExpressionAttribute(a) if a.name == "value" => Some(GroupBindValue {
+            expression: a.expression.id(),
+            data: a.id,
+        }),
+        Attribute::ConcatenationAttribute(a) if a.name == "value" => match a.parts.as_slice() {
+            [ConcatPart::Dynamic { id, expr }] => Some(GroupBindValue {
+                expression: expr.id(),
+                data: *id,
+            }),
+            _ => None,
+        },
         _ => None,
     })
 }

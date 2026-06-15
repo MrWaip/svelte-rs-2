@@ -228,6 +228,12 @@ pub enum ComponentBindTarget {
     EachItemDestructureLegacy { symbol: SymbolId },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GroupBindValue {
+    pub expression: OxcNodeId,
+    pub data: NodeId,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ElementBindSemantics {
     pub property: ElementBindPropertyKind,
@@ -235,7 +241,7 @@ pub struct ElementBindSemantics {
     pub blockers: SmallVec<[u32; 2]>,
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
-    pub group_value_attr: Option<NodeId>,
+    pub group_value: Option<GroupBindValue>,
     pub group_id: Option<u32>,
 }
 
