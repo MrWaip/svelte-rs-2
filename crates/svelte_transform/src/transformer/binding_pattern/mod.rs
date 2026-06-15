@@ -73,22 +73,46 @@ impl<'a> ComponentTransformer<'_, 'a> {
             unreachable!()
         };
         let vd = vd.unbox();
-        let is_legacy_props = vd.declarations.iter().any(|d| {
-            self.analysis
-                .is_some_and(|a| a.declarator_semantics(d.node_id()).is_legacy_props())
-        });
-        let mut produced = self.rewrite_declaration(vd);
-        if is_legacy_props {
-            return produced;
+        let kind = vd.kind;
+        let span = vd.span;
+        let declare = vd.declare;
+        let export_span = export.span;
+        let export_kind = export.export_kind;
+
+        let mut out: Vec<Statement<'a>> = Vec::new();
+        for declarator in vd.declarations {
+            let is_legacy_props = self.analysis.is_some_and(|a| {
+                a.declarator_semantics(declarator.node_id())
+                    .is_legacy_props()
+            });
+
+            let mut decls = self.b.ast.vec_with_capacity(1);
+            decls.push(declarator);
+            let single = self.b.ast.variable_declaration(span, kind, decls, declare);
+
+            let mut produced = self.rewrite_declaration(single);
+            if is_legacy_props {
+                out.append(&mut produced);
+                continue;
+            }
+            if produced.len() == 1 && matches!(produced[0], Statement::VariableDeclaration(_)) {
+                let Some(Statement::VariableDeclaration(new_vd)) = produced.pop() else {
+                    unreachable!()
+                };
+                let new_export = self.b.ast.export_named_declaration(
+                    export_span,
+                    Some(Declaration::VariableDeclaration(new_vd)),
+                    self.b.ast.vec(),
+                    None,
+                    export_kind,
+                    NONE,
+                );
+                out.push(Statement::ExportNamedDeclaration(self.b.alloc(new_export)));
+            } else {
+                out.append(&mut produced);
+            }
         }
-        if produced.len() == 1 && matches!(produced[0], Statement::VariableDeclaration(_)) {
-            let Some(Statement::VariableDeclaration(new_vd)) = produced.pop() else {
-                unreachable!()
-            };
-            export.declaration = Some(Declaration::VariableDeclaration(new_vd));
-            return vec![Statement::ExportNamedDeclaration(self.b.alloc(export))];
-        }
-        produced
+        out
     }
 
     fn rewrite_declaration(&mut self, decl: VariableDeclaration<'a>) -> Vec<Statement<'a>> {

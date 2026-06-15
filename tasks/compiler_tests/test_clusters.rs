@@ -67,6 +67,9 @@ mod legacy_exports;
 #[path = "clusters/legacy_rest_props.rs"]
 mod legacy_rest_props;
 
+#[path = "clusters/multi_declarator_split.rs"]
+mod multi_declarator_split;
+
 #[path = "clusters/legacy_coarse_deps.rs"]
 mod legacy_coarse_deps;
 
