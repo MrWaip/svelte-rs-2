@@ -6,7 +6,7 @@ use crate::types::data::{
 };
 use compact_str::CompactString;
 use smallvec::SmallVec;
-use svelte_ast::NodeId;
+use svelte_ast::{NodeId, OxcNodeId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum AttributeSemantics {
@@ -20,6 +20,7 @@ pub enum AttributeSemantics {
 
     Event(EventSemantics),
     ComponentProp(ComponentPropSemantics),
+    SvelteComponentThis(SvelteComponentThisSemantics),
     ComponentSpread(ComponentSpreadSemantics),
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
@@ -123,6 +124,11 @@ pub struct BoundaryPropSemantics {
 pub enum BoundaryPropEmit {
     KeyValue,
     Getter,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SvelteComponentThisSemantics {
+    pub expr_id: OxcNodeId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

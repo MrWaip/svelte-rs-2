@@ -655,6 +655,10 @@ impl SvelteComponentLegacy {
     pub fn this_expr(&self) -> Option<&ExprRef> {
         self.attributes.iter().find_map(|a| match a {
             Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+            Attribute::ConcatenationAttribute(x) if x.name == "this" => match x.parts.as_slice() {
+                [ConcatPart::Dynamic { expr, .. }] => Some(expr),
+                _ => None,
+            },
             _ => None,
         })
     }

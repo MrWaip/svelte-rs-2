@@ -14,7 +14,7 @@ pub use attribute_semantics::{
     ConcatPartEmit, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
     EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
     MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
-    TemplateEffect, WindowBindSemantics,
+    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,

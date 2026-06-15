@@ -163,6 +163,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | AttributeSemantics::DocumentBind(_)
                 | AttributeSemantics::ComponentBind(_)
                 | AttributeSemantics::ComponentProp(_)
+                | AttributeSemantics::SvelteComponentThis(_)
                 | AttributeSemantics::ComponentSpread(_)
                 | AttributeSemantics::ComponentAttach(_)
                 | AttributeSemantics::BoundaryProp(_) => {

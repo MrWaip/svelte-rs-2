@@ -7,7 +7,7 @@ use super::data::{
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
     EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
     MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
-    TemplateEffect, WindowBindSemantics,
+    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -34,8 +34,8 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
-    Attribute, BindDirective, Component, Element, ExpressionAttribute, FragmentId, Node, NodeId,
-    OnDirectiveLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
+    Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute, FragmentId,
+    Node, NodeId, OnDirectiveLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -297,7 +297,7 @@ fn walk_fragment(
                     &cn.attributes,
                     store,
                     groups,
-                    ComponentPropCarrier::Component,
+                    ComponentPropCarrier::SvelteComponentLegacy,
                 );
                 walk_fragment(ctx, state, cn.fragment, store, groups);
                 for slot in &cn.legacy_slots {
@@ -885,6 +885,7 @@ fn element_property(name: &str) -> Option<ElementBindPropertyKind> {
 #[derive(Copy, Clone)]
 enum ComponentPropCarrier {
     Component,
+    SvelteComponentLegacy,
     SlotLegacy,
 }
 
@@ -918,6 +919,17 @@ fn classify_component_attrs(
                 );
             }
             Attribute::ExpressionAttribute(ea) => {
+                if matches!(carrier, ComponentPropCarrier::SvelteComponentLegacy)
+                    && ea.name == "this"
+                {
+                    store.set(
+                        ea.id,
+                        AttributeSemantics::SvelteComponentThis(SvelteComponentThisSemantics {
+                            expr_id: ea.expression.id(),
+                        }),
+                    );
+                    continue;
+                }
                 let memo = derive_component_prop_memo_for_expression(ctx, ea, carrier);
                 let shorthand = ea.shorthand && !references_include_reactive_const_tag(ctx, ea.id);
                 store.set(
@@ -928,6 +940,18 @@ fn classify_component_attrs(
                 );
             }
             Attribute::ConcatenationAttribute(ca) => {
+                if matches!(carrier, ComponentPropCarrier::SvelteComponentLegacy)
+                    && ca.name == "this"
+                    && let [ConcatPart::Dynamic { expr, .. }] = ca.parts.as_slice()
+                {
+                    store.set(
+                        ca.id,
+                        AttributeSemantics::SvelteComponentThis(SvelteComponentThisSemantics {
+                            expr_id: expr.id(),
+                        }),
+                    );
+                    continue;
+                }
                 let (memo, plan) = derive_component_concat_semantics(ctx, ca);
                 store.set(
                     ca.id,
@@ -1262,7 +1286,9 @@ fn derive_component_prop_memo_for_expression(
         ComponentPropMemo::Getter
     } else if needs_wrap {
         match carrier {
-            ComponentPropCarrier::Component => ComponentPropMemo::Derived,
+            ComponentPropCarrier::Component | ComponentPropCarrier::SvelteComponentLegacy => {
+                ComponentPropMemo::Derived
+            }
             ComponentPropCarrier::SlotLegacy => ComponentPropMemo::Getter,
         }
     } else {

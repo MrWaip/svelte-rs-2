@@ -44,7 +44,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_component_props(
         &mut self,
         el_id: NodeId,
-        is_svelte_component_legacy: bool,
         initial_memo_counter: u32,
     ) -> Result<ComponentPropsOutput<'a>> {
         let mut out = ComponentPropsOutput {
@@ -113,6 +112,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut out.items,
                     )?;
                 }
+                AttributeSemantics::SvelteComponentThis(s) => {
+                    let expr = self
+                        .ctx
+                        .state
+                        .parsed
+                        .take_expr(s.expr_id)
+                        .ok_or(CodegenError::MissingExpression(attr_id))?;
+                    out.svelte_component_this = Some(expr);
+                }
                 AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
                     let Attribute::ExpressionAttribute(ea) = attr else {
                         return CodegenError::semantic_mismatch(
@@ -120,16 +128,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             "ComponentProp::Expression requires ExpressionAttribute",
                         );
                     };
-                    if is_svelte_component_legacy && ea.name == "this" {
-                        let expr = self
-                            .ctx
-                            .state
-                            .parsed
-                            .take_expr(ea.expression.id())
-                            .ok_or(CodegenError::MissingExpression(ea.id))?;
-                        out.svelte_component_this = Some(expr);
-                        continue;
-                    }
                     self.emit_component_prop_expression(
                         &ea.name,
                         ea.id,

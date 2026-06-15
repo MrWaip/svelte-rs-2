@@ -83,8 +83,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
 
-        let mut props =
-            self.build_component_props(el_id, is_svelte_component_legacy, initial_memo_counter)?;
+        let mut props = self.build_component_props(el_id, initial_memo_counter)?;
 
         let mut init_stmts: Vec<Statement<'a>> = Vec::new();
         let events = mem::take(&mut props.events);
