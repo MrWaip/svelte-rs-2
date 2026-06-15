@@ -464,7 +464,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_legacy_reactive_import_member_assignment(node)
             }
             ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => {
-                self.rewrite_legacy_state_member_assignment(node)
+                self.rewrite_legacy_state_member_assignment(node, ctx)
             }
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
@@ -542,7 +542,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_legacy_reactive_import_member_update(node)
             }
             ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => {
-                self.rewrite_legacy_state_member_update(node)
+                self.rewrite_legacy_state_member_update(node, ctx)
             }
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
@@ -1019,7 +1019,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         true
     }
 
-    pub(crate) fn rewrite_legacy_state_member_assignment(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_legacy_state_member_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -1053,11 +1057,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        let mutated = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, mutated, ref_id, ctx);
         true
     }
 
-    pub(crate) fn rewrite_legacy_state_member_update(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_legacy_state_member_update(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -1091,7 +1100,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        let mutated = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, mutated, ref_id, ctx);
         true
     }
 

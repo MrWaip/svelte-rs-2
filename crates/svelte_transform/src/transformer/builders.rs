@@ -1,9 +1,10 @@
 use oxc_allocator::Box as OxcBox;
 use oxc_ast::NONE;
-use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase};
+use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase, Statement};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
+use svelte_component_semantics::ReferenceId;
 use svelte_emit_builders::props::{props_computed_access, props_member};
 use svelte_emit_builders::runes::{member_get_via_get, rune_get, rune_safe_get, rune_set};
 use svelte_emit_builders::runtime::{thunk_call, untrack_ident};
@@ -230,6 +231,55 @@ impl<'a> ComponentTransformer<'_, 'a> {
             seq_elems.push(invalidate_store);
         }
         ast.expression_sequence(SPAN, seq_elems)
+    }
+
+    pub(crate) fn maybe_wrap_legacy_indirect_invalidate(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        expr: Expression<'a>,
+        root_ref_id: ReferenceId,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> Expression<'a> {
+        let Some(root_sym) = analysis.symbol_for_reference(root_ref_id) else {
+            return expr;
+        };
+        let Some(indirect_syms) = analysis.legacy_indirect_bindings(root_sym) else {
+            return expr;
+        };
+        if indirect_syms.is_empty() {
+            return expr;
+        }
+        let ast = self.b.ast;
+        let mut statements: Vec<Statement<'a>> = Vec::with_capacity(indirect_syms.len());
+        for &sym in indirect_syms {
+            let getter = self.make_legacy_indirect_getter(analysis, sym);
+            statements.push(self.b.expr_stmt(getter));
+        }
+        let thunk = self.b.thunk_block(statements);
+        self.b
+            .seed_arrow_scope(&thunk, Some(ctx.current_scope_id()));
+        let invalidate = ast.expression_call(
+            SPAN,
+            self.make_dollar_member("invalidate_inner_signals"),
+            NONE,
+            ast.vec1(Argument::from(thunk)),
+            false,
+        );
+        ast.expression_sequence(SPAN, ast.vec_from_array([expr, invalidate]))
+    }
+
+    fn make_legacy_indirect_getter(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        if analysis.binding_semantics(sym).is_reactive() {
+            return self.make_source_read(analysis, sym);
+        }
+        let name = self.component_scoping.symbol_name(sym);
+        self.b
+            .ast
+            .expression_identifier(SPAN, self.b.ast.atom(name))
     }
 
     pub(crate) fn make_legacy_state_mutate(

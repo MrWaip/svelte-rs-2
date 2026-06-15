@@ -266,6 +266,9 @@ impl<'a> AnalysisData<'a> {
     pub fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
         self.reactivity.each_item_indirect_sources(item_sym)
     }
+    pub fn legacy_indirect_bindings(&self, root_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.reactivity.legacy_indirect_bindings(root_sym)
+    }
     pub fn symbol_for_reference(&self, ref_id: ReferenceId) -> Option<SymbolId> {
         self.scoping.symbol_for_reference(ref_id)
     }

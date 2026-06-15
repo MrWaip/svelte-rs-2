@@ -169,6 +169,11 @@ pub(crate) fn build_v2<'a>(
         lr_collected.labeled_nodes,
         lr_collected.implicit_names,
     );
+    promote_each_sources_transitive_legacy(
+        &mut data.reactivity,
+        &data.scoping,
+        data.script.immutable,
+    );
 
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
@@ -194,6 +199,163 @@ pub(crate) fn finalize_reactivity(
 ) {
     optimize_derived(reactivity, value_evaluation, semantics);
     finalize_proxy(parsed, reactivity, scoping, snippets, semantics, dev);
+}
+
+fn promote_each_sources_transitive_legacy(
+    reactivity: &mut ReactivitySemantics,
+    scoping: &ComponentScoping<'_>,
+    immutable: bool,
+) {
+    use super::data::LegacyStateSemantics;
+
+    if reactivity.uses_runes() {
+        return;
+    }
+
+    let mut reads_by_target: FxHashMap<SymbolId, SmallVec<[SymbolId; 8]>> = FxHashMap::default();
+    let mut statements: Vec<(OxcNodeId, SmallVec<[SymbolId; 8]>)> = Vec::new();
+    for statement in reactivity.legacy_reactive().iter_statements_topo() {
+        statements.push((statement.stmt_node, statement.structural_reads.clone()));
+        for &target in &statement.assignments {
+            let reads = reads_by_target.entry(target).or_default();
+            for &read in &statement.structural_reads {
+                if !reads.contains(&read) {
+                    reads.push(read);
+                }
+            }
+        }
+    }
+    if reads_by_target.is_empty() {
+        return;
+    }
+
+    let each_sources: Vec<(SymbolId, Vec<SymbolId>)> = reactivity
+        .iter_each_item_indirect_sources()
+        .map(|(item_sym, sources)| (item_sym, sources.to_vec()))
+        .collect();
+    if each_sources.is_empty() {
+        return;
+    }
+
+    let mut additions: Vec<(SymbolId, Vec<SymbolId>)> = Vec::new();
+    let mut promotions: Vec<SymbolId> = Vec::new();
+    let mut seen_promotion: FxHashSet<SymbolId> = FxHashSet::default();
+    for (item_sym, direct_sources) in &each_sources {
+        let mut reached: Vec<SymbolId> = Vec::new();
+        let mut seen: FxHashSet<SymbolId> = FxHashSet::default();
+        for &source in direct_sources {
+            collect_transitive_legacy_reads(source, &reads_by_target, &mut seen, &mut reached);
+        }
+        for &sym in &reached {
+            if !is_promotable_legacy_let(reactivity, scoping, sym) {
+                continue;
+            }
+            if seen_promotion.insert(sym) {
+                promotions.push(sym);
+            }
+        }
+        additions.push((*item_sym, reached));
+    }
+
+    for &sym in &promotions {
+        reactivity.record_legacy_state_binding(
+            sym,
+            LegacyStateSemantics {
+                var_declared: false,
+                immutable,
+            },
+        );
+    }
+    for (item_sym, reached) in &additions {
+        for &sym in reached {
+            reactivity.add_each_item_indirect_source(*item_sym, sym);
+        }
+    }
+
+    if promotions.is_empty() {
+        return;
+    }
+
+    let mut rederived: Vec<(OxcNodeId, SmallVec<[SymbolId; 8]>)> =
+        Vec::with_capacity(statements.len());
+    for (stmt_node, structural_reads) in &statements {
+        let mut dependencies: SmallVec<[SymbolId; 8]> = SmallVec::new();
+        for &sym in structural_reads {
+            if legacy_reactive::is_reactive_legacy_dep(reactivity.binding_semantics(sym)) {
+                dependencies.push(sym);
+            }
+        }
+        rederived.push((*stmt_node, dependencies));
+    }
+    for (stmt_node, dependencies) in rederived {
+        reactivity
+            .legacy_reactive_mut()
+            .set_statement_dependencies(stmt_node, dependencies);
+    }
+}
+
+fn collect_transitive_legacy_reads(
+    sym: SymbolId,
+    reads_by_target: &FxHashMap<SymbolId, SmallVec<[SymbolId; 8]>>,
+    seen: &mut FxHashSet<SymbolId>,
+    out: &mut Vec<SymbolId>,
+) {
+    if !seen.insert(sym) {
+        return;
+    }
+    out.push(sym);
+    let Some(reads) = reads_by_target.get(&sym) else {
+        return;
+    };
+    for &read in reads {
+        collect_transitive_legacy_reads(read, reads_by_target, seen, out);
+    }
+}
+
+fn is_promotable_legacy_let(
+    reactivity: &ReactivitySemantics,
+    scoping: &ComponentScoping<'_>,
+    sym: SymbolId,
+) -> bool {
+    use super::data::BindingSemantics;
+    let is_plain = match reactivity.binding_semantics(sym) {
+        BindingSemantics::NonReactive => true,
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Unresolved
+        | BindingSemantics::LegacyApiExport => false,
+    };
+    if !is_plain {
+        return false;
+    }
+    if !scoping.is_component_top_level_symbol(sym) {
+        return false;
+    }
+    if symbol_is_function_declaration(scoping, sym) {
+        return false;
+    }
+    reactivity.store_shadow_of_internal(sym).is_none()
+}
+
+pub(super) fn symbol_is_function_declaration(
+    scoping: &ComponentScoping<'_>,
+    sym: SymbolId,
+) -> bool {
+    use oxc_ast::AstKind;
+    let Some(parent) = scoping.js_parent_id(scoping.symbol_declaration(sym)) else {
+        return false;
+    };
+    matches!(scoping.js_kind(parent), Some(AstKind::Function(_)))
 }
 
 fn optimize_derived(

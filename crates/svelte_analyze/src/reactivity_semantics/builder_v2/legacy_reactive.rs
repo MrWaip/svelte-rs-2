@@ -410,6 +410,8 @@ fn build_statement<'a>(
         seen_assignments: FxHashSet::default(),
         seen_deps: FxHashSet::default(),
         read_deps: FxHashSet::default(),
+        structural_reads: SmallVec::new(),
+        seen_structural: FxHashSet::default(),
         direct_assign_skip: FxHashSet::default(),
         uses_props: false,
         uses_rest_props: false,
@@ -422,6 +424,7 @@ fn build_statement<'a>(
         kind,
         assignments: analyzer.assignments,
         dependencies: analyzer.dependencies,
+        structural_reads: analyzer.structural_reads,
         uses_props: analyzer.uses_props,
         uses_rest_props: analyzer.uses_rest_props,
     }
@@ -435,6 +438,8 @@ struct LegacyBodyAnalyzer<'d, 'a> {
     seen_assignments: FxHashSet<SymbolId>,
     seen_deps: FxHashSet<SymbolId>,
     read_deps: FxHashSet<SymbolId>,
+    structural_reads: SmallVec<[SymbolId; 8]>,
+    seen_structural: FxHashSet<SymbolId>,
     direct_assign_skip: FxHashSet<ReferenceId>,
     uses_props: bool,
     uses_rest_props: bool,
@@ -559,23 +564,27 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
     }
 
     fn is_reactive_dep(&self, sym: SymbolId) -> bool {
-        match self.data.reactivity.binding_semantics(sym) {
-            BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved
-            | BindingSemantics::LegacyApiExport => false,
-            BindingSemantics::MaybeReactive
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedDerived(_)
-            | BindingSemantics::OptimizedRune(_)
-            | BindingSemantics::Prop(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Store(_)
-            | BindingSemantics::Const(_)
-            | BindingSemantics::Contextual(_)
-            | BindingSemantics::RuntimeRune { .. } => true,
-        }
+        is_reactive_legacy_dep(self.data.reactivity.binding_semantics(sym))
+    }
+}
+
+pub(super) fn is_reactive_legacy_dep(semantics: BindingSemantics) -> bool {
+    match semantics {
+        BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved
+        | BindingSemantics::LegacyApiExport => false,
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. } => true,
     }
 }
 
@@ -612,6 +621,10 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
             }
             return;
         };
+        if self.data.scoping.is_component_top_level_symbol(sym) && self.seen_structural.insert(sym)
+        {
+            self.structural_reads.push(sym);
+        }
         if !self.is_reactive_dep(sym) {
             return;
         }

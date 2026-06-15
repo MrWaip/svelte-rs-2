@@ -69,3 +69,23 @@ compiler_case!(
     runes_array_item_mutate_guard,
     "each_item_writeback/runes_array_item_mutate_guard"
 );
+compiler_case!(
+    legacy_reactive_derived_collection_bind,
+    "each_item_writeback/legacy_reactive_derived_collection_bind"
+);
+compiler_case!(
+    legacy_reactive_derived_chain_collection_bind,
+    "each_item_writeback/legacy_reactive_derived_chain_collection_bind"
+);
+compiler_case!(
+    legacy_reactive_derived_collection_no_writeback,
+    "each_item_writeback/legacy_reactive_derived_collection_no_writeback"
+);
+compiler_case!(
+    runes_derived_collection_bind,
+    "each_item_writeback/runes_derived_collection_bind"
+);
+compiler_case!(
+    legacy_reactive_function_in_collection_expr,
+    "each_item_writeback/legacy_reactive_function_in_collection_expr"
+);

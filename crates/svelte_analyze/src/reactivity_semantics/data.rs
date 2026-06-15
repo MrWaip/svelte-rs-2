@@ -1529,6 +1529,8 @@ pub struct ReactivitySemantics {
 
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
+    legacy_indirect_bindings: FxHashMap<SymbolId, SmallVec<[SymbolId; 4]>>,
+
     each_item_collection_store: FxHashMap<SymbolId, SymbolId>,
 
     each_item_index_legacy: FxHashMap<SymbolId, SymbolId>,
@@ -1557,6 +1559,7 @@ impl ReactivitySemantics {
             contextual_owner: FxHashMap::default(),
             raw_param_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
+            legacy_indirect_bindings: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
             each_item_index_legacy: FxHashMap::default(),
             base_to_store: FxHashMap::default(),
@@ -2128,6 +2131,31 @@ impl ReactivitySemantics {
     pub(crate) fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
         self.each_item_indirect_sources
             .get(&item_sym)
+            .map(|v| v.as_slice())
+    }
+
+    pub(crate) fn iter_each_item_indirect_sources(
+        &self,
+    ) -> impl Iterator<Item = (SymbolId, &[SymbolId])> + '_ {
+        self.each_item_indirect_sources
+            .iter()
+            .map(|(item_sym, sources)| (*item_sym, sources.as_slice()))
+    }
+
+    pub(crate) fn add_legacy_indirect_binding(
+        &mut self,
+        root_sym: SymbolId,
+        indirect_sym: SymbolId,
+    ) {
+        let entry = self.legacy_indirect_bindings.entry(root_sym).or_default();
+        if !entry.contains(&indirect_sym) {
+            entry.push(indirect_sym);
+        }
+    }
+
+    pub(crate) fn legacy_indirect_bindings(&self, root_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.legacy_indirect_bindings
+            .get(&root_sym)
             .map(|v| v.as_slice())
     }
 

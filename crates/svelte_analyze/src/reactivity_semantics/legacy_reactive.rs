@@ -16,6 +16,7 @@ pub struct LegacyReactiveStatement {
     pub kind: LegacyReactiveKind,
     pub assignments: SmallVec<[SymbolId; 4]>,
     pub dependencies: SmallVec<[SymbolId; 8]>,
+    pub structural_reads: SmallVec<[SymbolId; 8]>,
     pub uses_props: bool,
     pub uses_rest_props: bool,
 }
@@ -95,6 +96,17 @@ impl LegacyReactivitySemantics {
 
     pub(crate) fn record_statement(&mut self, statement: LegacyReactiveStatement) {
         self.statements.insert(statement.stmt_node, statement);
+    }
+
+    pub(crate) fn set_statement_dependencies(
+        &mut self,
+        stmt_node: OxcNodeId,
+        dependencies: SmallVec<[SymbolId; 8]>,
+    ) {
+        let Some(statement) = self.statements.get_mut(&stmt_node) else {
+            return;
+        };
+        statement.dependencies = dependencies;
     }
 
     pub(crate) fn set_topo_order(&mut self, order: SmallVec<[OxcNodeId; 4]>) {

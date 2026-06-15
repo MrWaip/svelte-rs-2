@@ -6,7 +6,9 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
-use svelte_ast::{AwaitBlock, Component, EachBlock, LetDirectiveLegacy, NodeId, SnippetBlock};
+use svelte_ast::{
+    Attribute, AwaitBlock, Component, EachBlock, Element, LetDirectiveLegacy, NodeId, SnippetBlock,
+};
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
@@ -34,6 +36,7 @@ struct ContextualStaging {
     pending: Vec<(SymbolId, PendingKind)>,
     getter_symbols: FxHashSet<SymbolId>,
     each_non_reactive_symbols: FxHashSet<SymbolId>,
+    select_bind_roots: Vec<SymbolId>,
 }
 
 impl ContextualStaging {
@@ -42,6 +45,11 @@ impl ContextualStaging {
     }
     fn mark_each_non_reactive(&mut self, sym: SymbolId) {
         self.each_non_reactive_symbols.insert(sym);
+    }
+    fn push_select_bind_root(&mut self, sym: SymbolId) {
+        if !self.select_bind_roots.contains(&sym) {
+            self.select_bind_roots.push(sym);
+        }
     }
     fn push(&mut self, sym: SymbolId, kind: PendingKind) {
         self.pending.push((sym, kind));
@@ -80,7 +88,9 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
         pending,
         getter_symbols,
         each_non_reactive_symbols,
+        select_bind_roots,
     } = staging;
+    record_legacy_indirect_bindings(data, &select_bind_roots);
     for (sym, kind) in pending {
         let semantics = match kind {
             PendingKind::EachItem => {
@@ -128,6 +138,33 @@ struct TemplateDeclarationCollector<'s> {
 }
 
 impl TemplateVisitor for TemplateDeclarationCollector<'_> {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
+        if ctx.data.script.runes() || el.name != "select" {
+            return;
+        }
+        let Some(parsed) = ctx.parsed else {
+            return;
+        };
+        for attr in &el.attributes {
+            let Attribute::BindDirective(directive) = attr else {
+                continue;
+            };
+            if directive.name != "value" {
+                continue;
+            }
+            let Some(expr) = parsed.expr(directive.expression.id()) else {
+                continue;
+            };
+            let Some(ref_id) = super::expression_root_reference_id(expr) else {
+                continue;
+            };
+            let Some(sym) = ctx.data.scoping.symbol_for_reference(ref_id) else {
+                continue;
+            };
+            self.staging.push_select_bind_root(sym);
+        }
+    }
+
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_, '_>) {
         let Some(parsed) = ctx.parsed() else {
             return;
@@ -458,6 +495,7 @@ impl TemplateVisitor for EachSourcePromoter {
                 None => {
                     if ctx.data.scoping.is_component_top_level_symbol(sym)
                         && ctx.data.reactivity.store_shadow_of_internal(sym).is_none()
+                        && !super::symbol_is_function_declaration(&ctx.data.scoping, sym)
                     {
                         ctx.data.reactivity.record_legacy_state_binding(
                             sym,
@@ -502,6 +540,35 @@ impl TemplateVisitor for EachSourcePromoter {
                 ctx.data
                     .reactivity
                     .set_each_item_index_legacy(item_sym, index_sym);
+            }
+        }
+    }
+}
+
+fn record_legacy_indirect_bindings(data: &mut AnalysisData<'_>, roots: &[SymbolId]) {
+    if roots.is_empty() {
+        return;
+    }
+
+    let mut referenced: Vec<SymbolId> = Vec::new();
+    for sym in data.scoping.semantics().symbol_ids() {
+        if !data.scoping.is_component_top_level_symbol(sym) {
+            continue;
+        }
+        let has_template_reference = data
+            .scoping
+            .get_resolved_reference_ids(sym)
+            .iter()
+            .any(|&ref_id| data.scoping.is_template_reference(ref_id));
+        if has_template_reference {
+            referenced.push(sym);
+        }
+    }
+
+    for &root in roots {
+        for &sym in &referenced {
+            if sym != root {
+                data.reactivity.add_legacy_indirect_binding(root, sym);
             }
         }
     }

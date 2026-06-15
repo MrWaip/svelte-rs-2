@@ -100,6 +100,9 @@ mod each;
 #[path = "clusters/each_item_writeback.rs"]
 mod each_item_writeback;
 
+#[path = "clusters/legacy_select_indirect.rs"]
+mod legacy_select_indirect;
+
 #[path = "clusters/await_block.rs"]
 mod await_block;
 

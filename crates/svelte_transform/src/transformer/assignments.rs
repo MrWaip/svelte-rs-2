@@ -1,4 +1,5 @@
 use std::iter;
+use std::mem;
 
 use oxc_ast::ast::{
     AssignmentOperator, AssignmentTarget, Expression, IdentifierReference, MemberExpression,
@@ -374,11 +375,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut semantic_bindable = false;
         let mut semantic_source_root_name = None;
         let mut semantic_segments = None;
+        let mut semantic_ref_id = None;
         if let Some(analysis) = self.analysis
             && let Some(member) = assign.left.as_member_expression()
             && let Some(root_id) = self.member_root_identifier(member)
             && let Some(ref_id) = root_id.reference_id.get()
         {
+            semantic_ref_id = Some(ref_id);
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
                     if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
@@ -413,6 +416,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
             semantic_segments,
             ctx,
         );
+        if let (Some(analysis), Some(ref_id)) = (self.analysis, semantic_ref_id)
+            && let Some(root_sym) = analysis.symbol_for_reference(ref_id)
+            && analysis.legacy_indirect_bindings(root_sym).is_some()
+        {
+            let placeholder = self.make_rune_get("");
+            let built = mem::replace(node, placeholder);
+            *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, built, ref_id, ctx);
+        }
         true
     }
 
