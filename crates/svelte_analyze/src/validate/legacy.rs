@@ -122,39 +122,29 @@ fn validate_reactive_declaration_module_script_dependency(
     let Some(module_scope) = data.scoping.module_scope_id() else {
         return;
     };
-    let stmts: Vec<_> = data
+    let stmt_nodes: Vec<_> = data
         .reactivity
         .legacy_reactive()
         .iter_statements_topo()
-        .map(|s| {
-            (
-                s.stmt_node,
-                s.dependencies.iter().copied().collect::<Vec<_>>(),
-            )
-        })
+        .map(|s| s.stmt_node)
         .collect();
-    for (stmt_node, deps) in stmts {
-        for dep_sym in deps {
+    for stmt_node in stmt_nodes {
+        let Some(AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(stmt_node) else {
+            continue;
+        };
+        for (ref_id, span) in collect_reference_sites(&labeled.body) {
+            let Some(dep_sym) = data.scoping.symbol_for_reference(ref_id) else {
+                continue;
+            };
             if data.scoping.symbol_scope_id(dep_sym) != module_scope {
                 continue;
             }
             if !data.scoping.is_mutated_any(dep_sym) {
                 continue;
             }
-            let dep_name = data.scoping.symbol_name(dep_sym).to_string();
-            let Some(labeled) = (match data.scoping.js_kind(stmt_node) {
-                Some(AstKind::LabeledStatement(l)) => Some(l),
-                _ => None,
-            }) else {
-                continue;
-            };
-            let body_span = labeled.body.span();
-            let mut found_span: Option<Span> = None;
-            collect_module_dep_ref_span(&labeled.body, &dep_name, &mut found_span);
-            let span = found_span.unwrap_or_else(|| Span::new(body_span.start, body_span.end));
             diags.push(Diagnostic::warning(
                 DiagnosticKind::ReactiveDeclarationModuleScriptDependency,
-                Span::new(span.start, span.end),
+                span,
             ));
             break;
         }
@@ -162,21 +152,22 @@ fn validate_reactive_declaration_module_script_dependency(
     let _ = program;
 }
 
-fn collect_module_dep_ref_span(body: &Statement<'_>, name: &str, out: &mut Option<Span>) {
+fn collect_reference_sites(body: &Statement<'_>) -> Vec<(ReferenceId, Span)> {
     use oxc_ast_visit::Visit;
-    struct Finder<'a> {
-        name: &'a str,
-        out: &'a mut Option<Span>,
+    struct Finder {
+        out: Vec<(ReferenceId, Span)>,
     }
-    impl<'a, 'b> Visit<'b> for Finder<'a> {
+    impl<'b> Visit<'b> for Finder {
         fn visit_identifier_reference(&mut self, id: &IdentifierReference<'b>) {
-            if self.out.is_none() && id.name.as_str() == self.name {
-                *self.out = Some(Span::new(id.span.start, id.span.end));
+            if let Some(ref_id) = id.reference_id.get() {
+                self.out
+                    .push((ref_id, Span::new(id.span.start, id.span.end)));
             }
         }
     }
-    let mut f = Finder { name, out };
+    let mut f = Finder { out: Vec::new() };
     f.visit_statement(body);
+    f.out
 }
 
 fn validate_legacy_export_invalid(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {

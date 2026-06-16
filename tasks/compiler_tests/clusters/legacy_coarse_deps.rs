@@ -42,6 +42,23 @@ compiler_case!(
     "legacy/coarse_deps/each_index_keyed"
 );
 compiler_case!(coarse_deps_state_plain, "legacy/coarse_deps/state_plain");
+
+compiler_case!(
+    coarse_deps_module_mutated_read_template,
+    "legacy/coarse_deps/module_mutated_read_template"
+);
+compiler_case!(
+    coarse_deps_module_mutated_read_reactive_stmt,
+    "legacy/coarse_deps/module_mutated_read_reactive_stmt"
+);
+compiler_case!(
+    coarse_deps_module_unmutated_read_template,
+    "legacy/coarse_deps/module_unmutated_read_template"
+);
+compiler_case!(
+    coarse_deps_instance_mutated_read_template,
+    "legacy/coarse_deps/instance_mutated_read_template"
+);
 compiler_case!(
     coarse_deps_each_index_unkeyed,
     "legacy/coarse_deps/each_index_unkeyed"

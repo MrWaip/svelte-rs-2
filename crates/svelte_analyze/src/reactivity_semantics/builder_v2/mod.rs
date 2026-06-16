@@ -2135,7 +2135,9 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         self.record_rune_declarator(declarator);
-        self.record_legacy_state_declarator(declarator);
+        if self.is_instance_program {
+            self.record_legacy_state_declarator(declarator);
+        }
         walk_variable_declarator(self, declarator);
     }
 
