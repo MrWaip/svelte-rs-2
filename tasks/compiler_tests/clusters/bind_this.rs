@@ -9,3 +9,12 @@ compiler_case!(member_prop_computed, "bind_this/member_prop_computed");
 compiler_case!(component_prop_ident, "bind_this/component_prop_ident");
 compiler_case!(component_each_member, "bind_this/component_each_member");
 compiler_case!(component_runes_state, "bind_this/component_runes_state");
+compiler_case!(
+    export_const_each_member,
+    "bind_this/export_const_each_member"
+);
+compiler_case!(
+    export_const_each_destructured,
+    "bind_this/export_const_each_destructured"
+);
+compiler_case!(local_const_each_member, "bind_this/local_const_each_member");

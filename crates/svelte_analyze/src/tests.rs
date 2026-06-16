@@ -4617,6 +4617,65 @@ fn legacy_state_skipped_when_not_mutated() {
     );
 }
 
+#[track_caller]
+fn assert_legacy_state(data: &AnalysisData<'_>, name: &str) {
+    use crate::types::data::BindingSemantics;
+    let sym = data
+        .scoping
+        .find_binding_in_any_scope(name)
+        .unwrap_or_else(|| panic!("no binding '{name}'"));
+    let decl = data.binding_semantics(sym);
+    assert!(
+        matches!(decl, BindingSemantics::LegacyState(_)),
+        "expected LegacyState for '{name}', got {decl:?}"
+    );
+}
+
+#[test]
+fn legacy_exported_const_mutated_via_bind_this_promotes_to_state() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export const items1 = {}; let data = [{ id: 1 }];</script>{#each data as item (item.id)}<div bind:this={items1[item.id]}>{item.id}</div>{/each}",
+        legacy_options(),
+    );
+    assert_legacy_state(&data, "items1");
+}
+
+#[test]
+fn legacy_exported_const_unmutated_stays_api_export() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>export const greet = () => 'hi';</script><p>{greet()}</p>",
+        legacy_options(),
+    );
+    let sym = data
+        .scoping
+        .find_binding_in_any_scope("greet")
+        .expect("greet binding");
+    let decl = data.binding_semantics(sym);
+    assert!(
+        matches!(decl, BindingSemantics::LegacyApiExport),
+        "unmutated export const must stay LegacyApiExport (got {decl:?})"
+    );
+}
+
+#[test]
+fn legacy_exported_const_store_stays_api_export() {
+    use crate::types::data::BindingSemantics;
+    let (_c, data) = analyze_source_with_options(
+        "<script>import { writable } from 'svelte/store'; export const name = writable('world');</script><input bind:value={$name}>",
+        legacy_options(),
+    );
+    let sym = data
+        .scoping
+        .find_binding_in_any_scope("name")
+        .expect("name binding");
+    let decl = data.binding_semantics(sym);
+    assert!(
+        matches!(decl, BindingSemantics::LegacyApiExport),
+        "exported const store must stay LegacyApiExport, not promoted to state (got {decl:?})"
+    );
+}
+
 #[test]
 fn legacy_reactive_materializes_simple_assignment() {
     use crate::reactivity_semantics::legacy_reactive::LegacyReactiveKind;

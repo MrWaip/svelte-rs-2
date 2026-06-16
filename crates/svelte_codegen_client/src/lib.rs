@@ -97,6 +97,9 @@ fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics
                 safe: false,
             }
         }
+        BindingSemantics::LegacyState(state) => ReferenceSemantics::LegacyStateRead {
+            safe: state.var_declared,
+        },
         _ => ReferenceSemantics::NonReactive,
     }
 }
@@ -358,6 +361,15 @@ pub fn generate<'a>(
                                 ctx.b.call_expr("$.set", [Arg::Ident(name), value]),
                             )])
                         }
+                        BindingSemantics::LegacyState(_) => {
+                            Some(vec![ctx.b.expr_stmt(ctx.b.call_expr(
+                                "$.set",
+                                [
+                                    Arg::Ident(name),
+                                    Arg::Expr(ctx.b.call_expr("$.proxy", [Arg::Ident("$$value")])),
+                                ],
+                            ))])
+                        }
                         BindingSemantics::NonReactive | BindingSemantics::LegacyApiExport => ctx
                             .query
                             .scoping()
@@ -427,9 +439,20 @@ pub fn generate<'a>(
                     .as_deref()
                     .map(|a| ctx.b.alloc_str(a))
                     .unwrap_or(name);
+                let value = match ctx.query.binding_semantics(e.local).legacy_state() {
+                    Some(state) => {
+                        let getter = if state.var_declared {
+                            "$.safe_get"
+                        } else {
+                            "$.get"
+                        };
+                        Arg::Expr(ctx.b.call_expr(getter, [Arg::Ident(name)]))
+                    }
+                    None => Arg::Ident(name),
+                };
                 bind_prop_stmts.push(ctx.b.call_stmt(
                     "$.bind_prop",
-                    [Arg::Ident("$$props"), Arg::StrRef(key), Arg::Ident(name)],
+                    [Arg::Ident("$$props"), Arg::StrRef(key), value],
                 ));
             }
         }

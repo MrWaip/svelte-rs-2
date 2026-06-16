@@ -174,6 +174,12 @@ pub(crate) fn build_v2<'a>(
         &data.scoping,
         data.script.immutable,
     );
+    promote_legacy_exported_const_state(
+        &mut data.reactivity,
+        &data.scoping,
+        data.scoping.semantics(),
+        data.script.immutable,
+    );
 
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
@@ -199,6 +205,56 @@ pub(crate) fn finalize_reactivity(
 ) {
     optimize_derived(reactivity, value_evaluation, semantics);
     finalize_proxy(parsed, reactivity, scoping, snippets, semantics, dev);
+}
+
+fn promote_legacy_exported_const_state(
+    reactivity: &mut ReactivitySemantics,
+    scoping: &ComponentScoping<'_>,
+    semantics: &ComponentSemantics<'_>,
+    immutable: bool,
+) {
+    use super::data::LegacyStateSemantics;
+
+    if reactivity.uses_runes() {
+        return;
+    }
+
+    let mut promotable: Vec<SymbolId> = Vec::new();
+    for sym in semantics.symbol_ids() {
+        if !reactivity.binding_semantics(sym).is_legacy_api_export() {
+            continue;
+        }
+        if reactivity.store_shadow_of_internal(sym).is_some() {
+            continue;
+        }
+        if !scoping.is_member_mutated(sym) && !scoping.is_mutated_any(sym) {
+            continue;
+        }
+        if !legacy_export_has_template_reference(scoping, sym) {
+            continue;
+        }
+        promotable.push(sym);
+    }
+    if promotable.is_empty() {
+        return;
+    }
+
+    reactivity.promote_legacy_api_export_to_state(
+        &promotable,
+        LegacyStateSemantics {
+            var_declared: false,
+            immutable,
+        },
+    );
+}
+
+fn legacy_export_has_template_reference(scoping: &ComponentScoping<'_>, sym: SymbolId) -> bool {
+    for &ref_id in scoping.get_resolved_reference_ids(sym) {
+        if scoping.is_template_reference(ref_id) {
+            return true;
+        }
+    }
+    false
 }
 
 fn promote_each_sources_transitive_legacy(

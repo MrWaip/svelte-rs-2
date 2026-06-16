@@ -223,6 +223,26 @@ impl BindingSemantics {
         }
     }
 
+    pub(crate) fn is_legacy_api_export(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyApiExport => true,
+            BindingSemantics::LegacyState(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
     pub fn is_each_item_indexed_legacy(&self) -> bool {
         let BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(strategy)) = self
         else {
@@ -2052,6 +2072,21 @@ impl ReactivitySemantics {
             if let Some(BindingFacts::Derived(derived)) = slot {
                 let derived = *derived;
                 *slot = Some(BindingFacts::OptimizedDerived(derived));
+            }
+        }
+    }
+
+    pub(crate) fn promote_legacy_api_export_to_state(
+        &mut self,
+        symbols: &[SymbolId],
+        semantics: LegacyStateSemantics,
+    ) {
+        for &symbol in symbols {
+            let Some(slot) = self.bindings.get_mut(symbol) else {
+                continue;
+            };
+            if let Some(BindingFacts::LegacyApiExport) = slot {
+                *slot = Some(BindingFacts::LegacyState(semantics));
             }
         }
     }
