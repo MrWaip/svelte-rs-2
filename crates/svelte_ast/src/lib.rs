@@ -639,6 +639,36 @@ impl Node {
             _ => None,
         }
     }
+
+    pub fn attributes(&self) -> &[Attribute] {
+        match self {
+            Node::Element(n) => &n.attributes,
+            Node::SlotElementLegacy(n) => &n.attributes,
+            Node::ComponentNode(n) => &n.attributes,
+            Node::SvelteHead(n) => &n.attributes,
+            Node::SvelteFragmentLegacy(n) => &n.attributes,
+            Node::SvelteComponentLegacy(n) => &n.attributes,
+            Node::SvelteElement(n) => &n.attributes,
+            Node::SvelteWindow(n) => &n.attributes,
+            Node::SvelteDocument(n) => &n.attributes,
+            Node::SvelteBody(n) => &n.attributes,
+            Node::SvelteSelf(n) => &n.attributes,
+            Node::SvelteBoundary(n) => &n.attributes,
+            Node::Text(_)
+            | Node::Comment(_)
+            | Node::ExpressionTag(_)
+            | Node::IfBlock(_)
+            | Node::EachBlock(_)
+            | Node::SnippetBlock(_)
+            | Node::RenderTag(_)
+            | Node::HtmlTag(_)
+            | Node::ConstTag(_)
+            | Node::DebugTag(_)
+            | Node::KeyBlock(_)
+            | Node::AwaitBlock(_)
+            | Node::Error(_) => &[],
+        }
+    }
 }
 
 impl SvelteComponentLegacy {

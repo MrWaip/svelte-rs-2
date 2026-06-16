@@ -4268,6 +4268,63 @@ fn needs_props_param_set_by_template_only_legacy_rest_props() {
     );
 }
 
+#[track_caller]
+fn assert_needs_props_param(source: &str, expected: bool) {
+    let (_c, data) = analyze_source_with_options(
+        source,
+        AnalyzeOptions {
+            runes: svelte_ast::RunesOption::Legacy,
+            ..AnalyzeOptions::default()
+        },
+    );
+    let got = data.output.runtime_plan.needs_props_param;
+    assert_eq!(
+        got, expected,
+        "needs_props_param for {source:?}: expected {expected}, got {got}"
+    );
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_on_regular_element() {
+    assert_needs_props_param("<input on:click />", true);
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_on_svelte_body() {
+    assert_needs_props_param("<svelte:body on:click />", true);
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_on_svelte_element() {
+    assert_needs_props_param("<svelte:element this={\"div\"} on:click />", true);
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_nested_in_if_block() {
+    assert_needs_props_param("{#if true}<input on:click />{/if}", true);
+}
+
+#[test]
+fn needs_props_param_stays_unset_for_on_directive_with_handler() {
+    assert_needs_props_param(
+        "<script>let x = 0;</script><button on:click={() => x++}>x</button>",
+        false,
+    );
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_on_svelte_window() {
+    assert_needs_props_param("<svelte:window on:resize />", true);
+}
+
+#[test]
+fn needs_props_param_set_by_bare_on_directive_on_component() {
+    assert_needs_props_param(
+        "<script>import Widget from \"./Widget.svelte\";</script><Widget on:click />",
+        true,
+    );
+}
+
 #[test]
 fn needs_context_stays_false_for_bare_legacy_props_identifier_read() {
     let (_c, data) = analyze_source_with_options(

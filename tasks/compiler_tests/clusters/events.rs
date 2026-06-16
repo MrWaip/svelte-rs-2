@@ -20,6 +20,24 @@ compiler_case!(
     "events/shorthand_event_non_delegatable"
 );
 compiler_case!(shorthand_event_bare_on, "events/shorthand_event_bare_on");
+compiler_case!(forward_bare_on_regular, "events/forward_bare_on_regular");
+compiler_case!(
+    forward_bare_on_svelte_body,
+    "events/forward_bare_on_svelte_body"
+);
+compiler_case!(
+    forward_bare_on_svelte_element,
+    "events/forward_bare_on_svelte_element"
+);
+compiler_case!(
+    forward_bare_on_nested_if,
+    "events/forward_bare_on_nested_if"
+);
+compiler_case!(
+    forward_bare_on_handler_present,
+    "events/forward_bare_on_handler_present"
+);
+compiler_case!(forward_bare_on_window, "events/forward_bare_on_window");
 compiler_case!(shorthand_non_event, "events/shorthand_non_event");
 compiler_case!(
     explicit_event_delegatable,

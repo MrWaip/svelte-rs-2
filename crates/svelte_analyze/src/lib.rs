@@ -333,22 +333,20 @@ fn needs_props_param(
     if data.output.legacy_has_export_declaration {
         return true;
     }
-    has_component_bubble_event_legacy(component)
+    has_legacy_event_forward(component)
 }
 
-fn has_component_bubble_event_legacy(component: &svelte_ast::Component) -> bool {
+fn has_legacy_event_forward(component: &svelte_ast::Component) -> bool {
     for raw in 0..component.node_count() {
         let id = svelte_ast::NodeId(raw);
-        let Some(view) = component.store.get(id).as_component_like() else {
-            continue;
-        };
-        let bubbles = view.attributes.iter().any(|a| {
+        let node = component.store.get(id);
+        let forwards = node.attributes().iter().any(|a| {
             matches!(
                 a,
                 svelte_ast::Attribute::OnDirectiveLegacy(od) if od.expression.is_none()
             )
         });
-        if bubbles {
+        if forwards {
             return true;
         }
     }

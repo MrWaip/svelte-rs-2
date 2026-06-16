@@ -19,7 +19,7 @@ use svelte_analyze::{
     AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind,
     StateDeclarationSemantics, StateKind,
 };
-use svelte_ast::{Attribute, Node};
+use svelte_ast::Node;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
@@ -515,32 +515,12 @@ pub fn generate<'a>(
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    let has_bubble_events = component
-        .store
-        .fragment(component.root)
-        .nodes
-        .iter()
-        .any(|&id| {
-            let node = component.store.get(id);
-            let attrs = match node {
-                Node::SvelteWindow(w) => Some(&w.attributes),
-                Node::SvelteDocument(d) => Some(&d.attributes),
-                _ => None,
-            };
-            attrs.is_some_and(|attrs| {
-                attrs.iter().any(
-                    |a| matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()),
-                )
-            })
-        });
-
     let has_legacy_slots = (0..component.node_count()).any(|raw_id| {
         let id = svelte_ast::NodeId(raw_id);
         matches!(component.store.get(id), Node::SlotElementLegacy(_))
     });
 
     let fn_params = if runtime.needs_props_param
-        || has_bubble_events
         || has_legacy_slots
         || ctx.query.needs_sanitized_legacy_slots()
     {
