@@ -257,6 +257,19 @@ impl BindingSemantics {
         }
     }
 
+    pub fn reads_via_each_item_accessor(&self) -> bool {
+        let BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(strategy)) = self
+        else {
+            return false;
+        };
+        match strategy {
+            EachItemStrategy::Accessor | EachItemStrategy::DestructuredLegacy => true,
+            EachItemStrategy::IndexedLegacy
+            | EachItemStrategy::Signal
+            | EachItemStrategy::Direct => false,
+        }
+    }
+
     pub fn is_reactive_const_tag(&self) -> bool {
         match self {
             BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => *reactive,

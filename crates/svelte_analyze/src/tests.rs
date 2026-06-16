@@ -6414,6 +6414,7 @@ fn derived_reactivity_flag_true_when_dep_is_mutated_state() {
 
 mod block_semantics_each_tests {
     use super::analyze_source;
+    use super::analyze_source_with_options;
     use crate::AnalysisData;
     use crate::block_semantics::{
         BlockSemantics, EachBlockSemantics, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
@@ -6459,6 +6460,57 @@ mod block_semantics_each_tests {
         assert_eq!(sem.index, EachIndexKind::Absent);
         assert_eq!(sem.key, EachKeyKind::Unkeyed);
         assert_eq!(sem.flavor, EachFlavor::Regular);
+    }
+
+    #[track_caller]
+    fn assert_each_item_shadows_collection_by_distinct_id(
+        data: &AnalysisData<'_>,
+        component: &svelte_ast::Component,
+        outer_name: &str,
+    ) {
+        let sem = first_each_semantics(data, component);
+        assert!(sem.shadows_outer, "shadows_outer: expected true, got false");
+        let item_sym = match &sem.item {
+            EachItemKind::Identifier(sym) => *sym,
+            other => panic!("item: expected Identifier, got {other:?}"),
+        };
+        let scoping = data.scoping.semantics();
+        let instance = scoping
+            .instance_scope_id()
+            .expect("instance scope required");
+        let outer_sym = scoping
+            .find_binding(instance, outer_name)
+            .unwrap_or_else(|| panic!("outer binding `{outer_name}` required"));
+        assert_ne!(
+            item_sym, outer_sym,
+            "item vs outer symbol: expected distinct SymbolId, got same {item_sym:?}"
+        );
+        assert_ne!(
+            scoping.symbol_scope_id(item_sym),
+            scoping.symbol_scope_id(outer_sym),
+            "item vs outer scope: expected distinct ScopeId, got same {:?}",
+            scoping.symbol_scope_id(item_sym)
+        );
+        let sources = data
+            .each_item_indirect_sources(item_sym)
+            .expect("each item must resolve to a collection source");
+        assert_eq!(
+            sources,
+            [outer_sym].as_slice(),
+            "collection source: expected outer `{outer_name}` {outer_sym:?}, got {sources:?}"
+        );
+    }
+
+    #[test]
+    fn each_item_alias_shadowing_collection_resolves_to_distinct_outer_symbol() {
+        let (component, data) = analyze_source_with_options(
+            r#"<script>let a = ['x'];</script>{#each a as a}{a}<input bind:value={a} />{/each}"#,
+            crate::AnalyzeOptions {
+                runes: svelte_ast::RunesOption::Legacy,
+                ..Default::default()
+            },
+        );
+        assert_each_item_shadows_collection_by_distinct_id(&data, &component, "a");
     }
 
     #[test]

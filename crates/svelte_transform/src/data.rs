@@ -8,6 +8,10 @@ pub struct TransformData {
     pub each_index_internal_names: FxHashMap<NodeId, String>,
 
     pub each_index_block_by_item: FxHashMap<SymbolId, NodeId>,
+
+    pub each_collection_internal_names_legacy: FxHashMap<NodeId, String>,
+
+    pub each_collection_block_by_item_legacy: FxHashMap<SymbolId, NodeId>,
 }
 
 impl Default for TransformData {
@@ -22,6 +26,8 @@ impl TransformData {
             const_tag_tmp_names: FxHashMap::default(),
             each_index_internal_names: FxHashMap::default(),
             each_index_block_by_item: FxHashMap::default(),
+            each_collection_internal_names_legacy: FxHashMap::default(),
+            each_collection_block_by_item_legacy: FxHashMap::default(),
         }
     }
 }

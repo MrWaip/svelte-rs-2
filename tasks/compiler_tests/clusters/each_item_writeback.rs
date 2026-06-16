@@ -89,3 +89,27 @@ compiler_case!(
     legacy_reactive_function_in_collection_expr,
     "each_item_writeback/legacy_reactive_function_in_collection_expr"
 );
+compiler_case!(
+    legacy_shadow_item_bind,
+    "each_item_writeback/legacy_shadow_item_bind"
+);
+compiler_case!(
+    legacy_shadow_item_member_bind,
+    "each_item_writeback/legacy_shadow_item_member_bind"
+);
+compiler_case!(
+    legacy_shadow_item_readonly_mutated,
+    "each_item_writeback/legacy_shadow_item_readonly_mutated"
+);
+compiler_case!(
+    legacy_noshadow_item_bind_guard,
+    "each_item_writeback/legacy_noshadow_item_bind_guard"
+);
+compiler_case!(
+    legacy_shadow_keyed_item_member_bind,
+    "each_item_writeback/legacy_shadow_keyed_item_member_bind"
+);
+compiler_case!(
+    legacy_shadow_destructure_member_bind,
+    "each_item_writeback/legacy_shadow_destructure_member_bind"
+);

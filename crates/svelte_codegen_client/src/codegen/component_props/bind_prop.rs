@@ -316,6 +316,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
+    fn read_each_item_collection_legacy(
+        &self,
+        item_sym: SymbolId,
+        source_sym: SymbolId,
+    ) -> Expression<'a> {
+        if let Some(block_id) = self
+            .ctx
+            .state
+            .transform_data
+            .each_collection_block_by_item_legacy
+            .get(&item_sym)
+            && let Some(name) = self
+                .ctx
+                .state
+                .transform_data
+                .each_collection_internal_names_legacy
+                .get(block_id)
+        {
+            return thunk_call(&self.ctx.b, name.as_str());
+        }
+        self.read_each_item_source_legacy(source_sym)
+    }
+
     pub(crate) fn build_each_item_destructure_writeback_legacy(
         &self,
         symbol: SymbolId,
@@ -335,11 +358,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let analysis = self.ctx.query.analysis;
         let sources = analysis.each_item_indirect_sources(symbol).unwrap_or(&[]);
         let inner = match sources {
-            [single] => self.read_each_item_source_legacy(*single),
+            [single] => self.read_each_item_collection_legacy(symbol, *single),
             many => {
                 let reads: Vec<Expression<'a>> = many
                     .iter()
-                    .map(|&s| self.read_each_item_source_legacy(s))
+                    .map(|&s| self.read_each_item_collection_legacy(symbol, s))
                     .collect();
                 self.ctx
                     .b

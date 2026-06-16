@@ -148,6 +148,42 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
+    pub(crate) fn each_item_member_root_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        name: &str,
+    ) -> Expression<'a> {
+        if analysis
+            .binding_semantics(item_sym)
+            .reads_via_each_item_accessor()
+        {
+            self.make_thunk_call(name)
+        } else {
+            self.make_rune_get(name)
+        }
+    }
+
+    pub(crate) fn each_item_collection_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        source_sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        if let Some(block_id) = self
+            .transform_data
+            .each_collection_block_by_item_legacy
+            .get(&item_sym)
+            && let Some(name) = self
+                .transform_data
+                .each_collection_internal_names_legacy
+                .get(block_id)
+        {
+            return self.make_thunk_call(name.as_str());
+        }
+        self.make_source_read(analysis, source_sym)
+    }
+
     pub(crate) fn build_each_item_indexed_member_legacy(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
@@ -156,7 +192,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
         let ast = self.b.ast;
         let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
-        let collection = self.make_source_read(analysis, source_sym);
+        let collection = self.each_item_collection_read_legacy(analysis, item_sym, source_sym);
         let index_name = match index_sym {
             Some(index_sym) => self.component_scoping.symbol_name(index_sym),
             None => {
@@ -190,15 +226,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         analysis: &svelte_analyze::AnalysisData<'_>,
         mutation: Expression<'a>,
         source_syms: &[svelte_component_semantics::SymbolId],
+        item_sym: svelte_component_semantics::SymbolId,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
         let body_expr = match source_syms {
-            [single] => self.make_source_read(analysis, *single),
+            [single] => self.each_item_collection_read_legacy(analysis, item_sym, *single),
             many => {
                 let mut elems = ast.vec_with_capacity(many.len());
                 for &sym in many {
-                    elems.push(self.make_source_read(analysis, sym));
+                    elems.push(self.each_item_collection_read_legacy(analysis, item_sym, sym));
                 }
                 ast.expression_sequence(SPAN, elems)
             }
@@ -252,7 +289,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ast = self.b.ast;
         let mut statements: Vec<Statement<'a>> = Vec::with_capacity(indirect_syms.len());
         for &sym in indirect_syms {
-            let getter = self.make_legacy_indirect_getter(analysis, sym);
+            let getter = self.make_legacy_indirect_getter(analysis, root_sym, sym);
             statements.push(self.b.expr_stmt(getter));
         }
         let thunk = self.b.thunk_block(statements);
@@ -271,10 +308,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
     fn make_legacy_indirect_getter(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
         sym: svelte_component_semantics::SymbolId,
     ) -> Expression<'a> {
         if analysis.binding_semantics(sym).is_reactive() {
-            return self.make_source_read(analysis, sym);
+            return self.each_item_collection_read_legacy(analysis, item_sym, sym);
         }
         let name = self.component_scoping.symbol_name(sym);
         self.b

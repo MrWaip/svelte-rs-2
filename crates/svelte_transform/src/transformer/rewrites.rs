@@ -108,10 +108,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 raw_param: true, ..
             } => true,
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
-            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
                 if !self.in_bind_setter_traverse =>
             {
                 *expr = self.make_rune_get(name.as_str());
+                true
+            }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym, .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                *expr = self.each_item_member_root_read_legacy(analysis, item_sym, name.as_str());
                 true
             }
             ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { symbol }) => {
@@ -1139,12 +1144,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let root_read = if raw_param {
             self.b.rid_expr(item_name.as_str())
         } else {
-            self.make_rune_get(item_name.as_str())
+            self.each_item_member_root_read_legacy(analysis, item_sym, item_name.as_str())
         };
         rune_refs::replace_expr_root_in_assign_target(&mut assign.left, root_read);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 
@@ -1180,11 +1185,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         rune_refs::replace_expr_root_in_simple_target(
             &mut upd.argument,
-            self.make_rune_get(item_name.as_str()),
+            self.each_item_member_root_read_legacy(analysis, item_sym, item_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 
@@ -1236,7 +1241,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         assign.left = AssignmentTarget::ComputedMemberExpression(member);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 
@@ -1267,7 +1272,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         upd.argument = SimpleAssignmentTarget::ComputedMemberExpression(member);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 

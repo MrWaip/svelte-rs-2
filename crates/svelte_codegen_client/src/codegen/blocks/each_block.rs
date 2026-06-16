@@ -199,7 +199,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             internal_index_name.clone()
         };
 
-        let collection_id_name = needs_collection_id.then(|| self.ctx.state.gen_ident("$$array"));
+        let reserved_collection_name = self
+            .ctx
+            .state
+            .transform_data
+            .each_collection_internal_names_legacy
+            .get(&block_id)
+            .cloned();
+        let collection_id_name = needs_collection_id.then(|| {
+            reserved_collection_name.unwrap_or_else(|| self.ctx.state.gen_ident("$$array"))
+        });
 
         let mut flags: u32 = sem.each_flags.bits() as u32;
         if is_controlled {

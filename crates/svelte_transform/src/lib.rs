@@ -133,6 +133,51 @@ fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
         .insert(*item_sym, block.id);
 }
 
+fn reserve_each_collection_name_legacy(
+    ctx: &mut TransformCtx<'_, '_>,
+    block: &EachBlock,
+    body_scope: ScopeId,
+) {
+    let BlockSemantics::Each(sem) = ctx.analysis.block_semantics(block.id) else {
+        return;
+    };
+    if !sem.shadows_outer {
+        return;
+    }
+    let mut writeback_syms: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+    {
+        let storage = ctx.analysis.scoping.semantics();
+        let names: Vec<String> = storage
+            .own_binding_names(body_scope)
+            .map(|name| name.to_string())
+            .collect();
+        for name in &names {
+            let Some(sym) = storage.get_binding(body_scope, name) else {
+                continue;
+            };
+            let writes_back = ctx
+                .analysis
+                .each_item_indirect_sources(sym)
+                .is_some_and(|sources| !sources.is_empty());
+            if writes_back {
+                writeback_syms.push(sym);
+            }
+        }
+    }
+    if writeback_syms.is_empty() {
+        return;
+    }
+    let name = ctx.ident_gen.generate("$$array");
+    ctx.transform_data
+        .each_collection_internal_names_legacy
+        .insert(block.id, name);
+    for sym in writeback_syms {
+        ctx.transform_data
+            .each_collection_block_by_item_legacy
+            .insert(sym, block.id);
+    }
+}
+
 fn walk_node<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     node: &Node,
@@ -190,6 +235,7 @@ fn walk_node<'a>(
                 walk_fragment(ctx, fb, component, parsed, scope);
             }
             reserve_each_index_name(ctx, block);
+            reserve_each_collection_name_legacy(ctx, block, body_scope);
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
