@@ -149,8 +149,12 @@ fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -
     }
 }
 
+fn call_has_dynamic_input(facts: &ExprFacts) -> bool {
+    !facts.references.is_empty() || facts.has_impure_call || reads_legacy_props_object(facts)
+}
+
 pub(super) fn is_heavy(facts: &ExprFacts) -> bool {
-    facts.has_call && (!facts.references.is_empty() || facts.has_impure_call)
+    facts.has_call && call_has_dynamic_input(facts)
 }
 
 pub(super) fn volatility(reactive_gate: bool, facts: &ExprFacts) -> Volatility {
@@ -189,8 +193,7 @@ pub(super) fn volatile(
         return true;
     }
     if facts.has_call {
-        let dynamic = !facts.references.is_empty() || facts.has_impure_call;
-        return dynamic || facts.has_state_rune;
+        return call_has_dynamic_input(facts) || facts.has_state_rune;
     }
     if matches!(evaluation, Evaluation::Known(_)) && !references_optimized_rune(facts, reactivity) {
         return false;

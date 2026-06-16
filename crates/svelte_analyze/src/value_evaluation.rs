@@ -360,10 +360,7 @@ fn eval_set(
         Expression::StaticMemberExpression(m) => eval_static_member(m, ctx, guard),
         Expression::CallExpression(c) => eval_call(c, ctx, guard),
         Expression::NewExpression(n) => eval_new(n, ctx),
-        Expression::SequenceExpression(s) => match s.expressions.last() {
-            Some(last) => eval_set(last, ctx, guard),
-            None => smallvec![EvalAtom::Unknown],
-        },
+        Expression::SequenceExpression(_) => smallvec![EvalAtom::Unknown],
         Expression::ParenthesizedExpression(p) => eval_set(&p.expression, ctx, guard),
         Expression::TSAsExpression(_)
         | Expression::TSSatisfiesExpression(_)

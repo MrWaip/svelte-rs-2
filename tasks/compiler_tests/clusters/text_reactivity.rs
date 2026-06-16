@@ -26,3 +26,23 @@ compiler_case!(
     "text_reactivity/derived_nonreactive_dep_attr"
 );
 compiler_case!(literal_root_call, "text_reactivity/literal_root_call");
+compiler_case!(
+    legacy_rest_props_call,
+    "text_reactivity/legacy_rest_props_call"
+);
+compiler_case!(
+    legacy_props_object_call,
+    "text_reactivity/legacy_props_object_call"
+);
+compiler_case!(
+    each_sequence_reactive_read,
+    "text_reactivity/each_sequence_reactive_read"
+);
+compiler_case!(
+    legacy_static_sequence,
+    "text_reactivity/legacy_static_sequence"
+);
+compiler_case!(
+    legacy_reactive_let_text,
+    "text_reactivity/legacy_reactive_let_text"
+);
