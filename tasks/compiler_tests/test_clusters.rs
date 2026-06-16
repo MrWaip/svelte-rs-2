@@ -85,6 +85,9 @@ mod legacy_quoted_directive;
 #[path = "clusters/svelte_element_this_tag.rs"]
 mod svelte_element_this_tag;
 
+#[path = "clusters/svelte_element_named_slot.rs"]
+mod svelte_element_named_slot;
+
 #[path = "clusters/svelte_component_this_tag.rs"]
 mod svelte_component_this_tag;
 

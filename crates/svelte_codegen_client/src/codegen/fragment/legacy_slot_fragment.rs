@@ -60,6 +60,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let _ = self.ctx.state.gen_ident("root");
                 self.emit_legacy_slot_like(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
+            Node::SvelteElement(_) => {
+                let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
+                inner_state.init.extend(let_stmts);
+                self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
+            }
             n if n.as_component_like().is_some() => {
                 let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
                 inner_state.init.extend(let_stmts);
@@ -105,6 +110,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(slot_el_id);
         let fragment_id = match node {
             Node::Element(_) => return false,
+            Node::SvelteElement(_) => return false,
             Node::SvelteFragmentLegacy(el) => el.fragment,
             Node::SlotElementLegacy(_) => return false,
             n if n.as_component_like().is_some() => return false,
