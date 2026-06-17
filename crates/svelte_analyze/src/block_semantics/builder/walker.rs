@@ -1,4 +1,4 @@
-use crate::expression_semantics::ExpressionSemanticsStore;
+use crate::expression_semantics::{ExpressionSemantics, ExpressionSemanticsStore};
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
 
@@ -278,16 +278,36 @@ impl<'a> Ctx<'_, 'a> {
         };
         let mut collector = RefCollector { refs: Vec::new() };
         collector.visit_expression(expr);
+        let mut ids: SmallVec<[SymbolId; 8]> = SmallVec::new();
         for ref_id in collector.refs {
             let Some(sym) = self.semantics.get_reference(ref_id).symbol_id() else {
                 continue;
             };
-            for frame in &self.each_stack {
-                if frame.introduced.contains(&sym) {
-                    self.bind_group_hits.insert(frame.block_id);
+            if !ids.contains(&sym) {
+                ids.push(sym);
+            }
+        }
+        for i in (0..self.each_stack.len()).rev() {
+            let frame = &self.each_stack[i];
+            let owns_any = ids.iter().any(|sym| frame.introduced.contains(sym));
+            if !owns_any {
+                continue;
+            }
+            let block_id = frame.block_id;
+            self.bind_group_hits.insert(block_id);
+            for sym in self.each_collection_symbols(block_id) {
+                if !ids.contains(&sym) {
+                    ids.push(sym);
                 }
             }
         }
+    }
+
+    fn each_collection_symbols(&self, block_id: NodeId) -> SmallVec<[SymbolId; 4]> {
+        let ExpressionSemantics::Expression(data) = self.expressions.get(block_id) else {
+            return SmallVec::new();
+        };
+        data.references.iter().copied().collect()
     }
 }
 

@@ -586,16 +586,31 @@ fn derive_parent_each_blocks(
     let Some(data) = ctx.expression_data(d.id) else {
         return result;
     };
+    let mut ids: SmallVec<[SymbolId; 8]> = data.references.iter().copied().collect();
     for &each_id in state.each_stack.iter().rev() {
-        let referenced = data
-            .references
+        let owns_any = ids
             .iter()
-            .any(|sym| ctx.reactivity.contextual_owner(*sym) == Some(each_id));
-        if referenced && !result.contains(&each_id) {
+            .any(|&sym| ctx.reactivity.contextual_owner(sym) == Some(each_id));
+        if !owns_any {
+            continue;
+        }
+        if !result.contains(&each_id) {
             result.push(each_id);
+        }
+        for sym in each_collection_symbols(ctx, each_id) {
+            if !ids.contains(&sym) {
+                ids.push(sym);
+            }
         }
     }
     result
+}
+
+fn each_collection_symbols(ctx: &Ctx<'_, '_>, each_id: NodeId) -> SmallVec<[SymbolId; 4]> {
+    let Some(data) = ctx.expression_data(each_id) else {
+        return SmallVec::new();
+    };
+    data.references.iter().copied().collect()
 }
 
 fn special_value_kind_for(el: Option<&Element>, attr_name: &str) -> Option<SpecialValueKind> {

@@ -13,3 +13,11 @@ compiler_case!(
     legacy_nested_multi_level,
     "bind_group/legacy/nested_multi_level"
 );
+compiler_case!(
+    runes_transitive_collection_two_each,
+    "bind_group/runes/transitive_collection_two_each"
+);
+compiler_case!(
+    runes_transitive_collection_keyed_outer,
+    "bind_group/runes/transitive_collection_keyed_outer"
+);
