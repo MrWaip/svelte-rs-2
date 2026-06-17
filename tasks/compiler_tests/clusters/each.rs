@@ -22,6 +22,18 @@ compiler_case!(
     "each/declaration/legacy/computed_key"
 );
 compiler_case!(
+    declaration_legacy_computed_key_sibling_ref,
+    "each/declaration/legacy/computed_key_sibling_ref"
+);
+compiler_case!(
+    declaration_legacy_computed_key_prop_ref,
+    "each/declaration/legacy/computed_key_prop_ref"
+);
+compiler_case!(
+    declaration_legacy_default_value_sibling_ref,
+    "each/declaration/legacy/default_value_sibling_ref"
+);
+compiler_case!(
     declaration_legacy_default_intermediate_array,
     "each/declaration/legacy/default_intermediate_array"
 );

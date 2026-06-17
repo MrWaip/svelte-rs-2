@@ -229,6 +229,9 @@ fn walk_node<'a>(
             if let Some(key) = block.key.as_ref() {
                 ctx.expr_handles.push((key.id(), Some(block.id)));
             }
+            if let Some(context) = block.context.as_ref() {
+                ctx.stmt_handles.push((context.id(), Some(block.id)));
+            }
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {
