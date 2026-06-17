@@ -5,8 +5,8 @@ use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{ComponentBindSemantics, ComponentBindTarget};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
+use svelte_emit_builders::each_item;
 use svelte_emit_builders::runes::rune_get;
-use svelte_emit_builders::runtime::thunk_call;
 use svelte_emit_builders::store::build_store_base_read;
 
 use super::super::Codegen;
@@ -301,39 +301,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    fn read_each_item_source_legacy(&self, sym: SymbolId) -> Expression<'a> {
-        let name = self.ctx.query.view.symbol_name(sym);
-        let semantics = self.ctx.query.analysis.binding_semantics(sym);
-        if semantics.reads_via_each_item_accessor() || semantics.reads_via_thunk() {
-            return thunk_call(&self.ctx.b, name);
-        }
-        if semantics.is_non_reactive() {
-            return self.ctx.b.rid_expr(name);
-        }
-        rune_get(&self.ctx.b, name)
-    }
-
     fn read_each_item_collection_legacy(
         &self,
         item_sym: SymbolId,
         source_sym: SymbolId,
     ) -> Expression<'a> {
-        if let Some(block_id) = self
+        let hoisted = self
             .ctx
             .state
             .transform_data
             .each_collection_block_by_item_legacy
             .get(&item_sym)
-            && let Some(name) = self
-                .ctx
-                .state
-                .transform_data
-                .each_collection_internal_names_legacy
-                .get(block_id)
-        {
-            return thunk_call(&self.ctx.b, name.as_str());
-        }
-        self.read_each_item_source_legacy(source_sym)
+            .and_then(|block_id| {
+                self.ctx
+                    .state
+                    .transform_data
+                    .each_collection_internal_names_legacy
+                    .get(block_id)
+            })
+            .map(String::as_str);
+        each_item::each_item_collection_read_legacy(
+            &self.ctx.b,
+            self.ctx.query.analysis,
+            source_sym,
+            hoisted,
+        )
     }
 
     pub(crate) fn build_each_item_destructure_writeback_legacy(

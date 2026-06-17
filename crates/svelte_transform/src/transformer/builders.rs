@@ -5,6 +5,7 @@ use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
 use svelte_component_semantics::ReferenceId;
+use svelte_emit_builders::each_item;
 use svelte_emit_builders::props::{props_computed_access, props_member};
 use svelte_emit_builders::runes::{member_get_via_get, rune_get, rune_safe_get, rune_set};
 use svelte_emit_builders::runtime::{thunk_call, untrack_ident};
@@ -134,25 +135,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
     }
 
-    pub(crate) fn make_each_invalidate_source_read_legacy(
-        &self,
-        analysis: &svelte_analyze::AnalysisData<'_>,
-        sym: svelte_component_semantics::SymbolId,
-    ) -> Expression<'a> {
-        let name = self.component_scoping.symbol_name(sym);
-        let semantics = analysis.binding_semantics(sym);
-        if semantics.reads_via_each_item_accessor() || semantics.reads_via_thunk() {
-            return self.make_thunk_call(name);
-        }
-        if semantics.is_non_reactive() {
-            return self
-                .b
-                .ast
-                .expression_identifier(SPAN, self.b.ast.atom(name));
-        }
-        self.make_rune_get(name)
-    }
-
     pub(crate) fn each_item_member_root_read_legacy(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
@@ -175,18 +157,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         item_sym: svelte_component_semantics::SymbolId,
         source_sym: svelte_component_semantics::SymbolId,
     ) -> Expression<'a> {
-        if let Some(block_id) = self
+        let hoisted = self
             .transform_data
             .each_collection_block_by_item_legacy
             .get(&item_sym)
-            && let Some(name) = self
-                .transform_data
-                .each_collection_internal_names_legacy
-                .get(block_id)
-        {
-            return self.make_thunk_call(name.as_str());
-        }
-        self.make_each_invalidate_source_read_legacy(analysis, source_sym)
+            .and_then(|block_id| {
+                self.transform_data
+                    .each_collection_internal_names_legacy
+                    .get(block_id)
+            })
+            .map(String::as_str);
+        each_item::each_item_collection_read_legacy(self.b, analysis, source_sym, hoisted)
     }
 
     pub(crate) fn build_each_item_indexed_member_legacy(

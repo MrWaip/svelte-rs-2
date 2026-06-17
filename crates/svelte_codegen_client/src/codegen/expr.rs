@@ -4,6 +4,9 @@ use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{Evaluation, KnownValue};
 use svelte_ast::{ExprRef, Node, NodeId};
 use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
+use svelte_emit_builders::each_item::{
+    each_item_collection_read_legacy, each_item_indexed_member_legacy,
+};
 use svelte_emit_builders::legacy_wrap;
 use svelte_emit_builders::runes::rune_get;
 
@@ -153,6 +156,15 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         let field = ctx.query.symbol_name(sym);
         return Some(ctx.b.static_member_expr(rune_get(&ctx.b, tmp_ref), field));
     }
+    if ctx
+        .query
+        .view
+        .binding_semantics(sym)
+        .is_each_item_indexed_legacy()
+        && let Some(expr) = build_each_item_indexed_dep_legacy(ctx, sym)
+    {
+        return Some(expr);
+    }
     let reads_directly = match ctx.query.view.binding_semantics(sym) {
         BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
         | BindingSemantics::State(_)
@@ -188,4 +200,30 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         sym,
         LegacyStateSafety::FromVarDeclared,
     )
+}
+
+fn build_each_item_indexed_dep_legacy<'a>(
+    ctx: &Ctx<'a>,
+    item_sym: SymbolId,
+) -> Option<Expression<'a>> {
+    let analysis = ctx.query.analysis;
+    let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
+    let hoisted = ctx
+        .transform_data
+        .each_collection_block_by_item_legacy
+        .get(&item_sym)
+        .and_then(|block_id| {
+            ctx.transform_data
+                .each_collection_internal_names_legacy
+                .get(block_id)
+        })
+        .map(String::as_str);
+    let collection = each_item_collection_read_legacy(&ctx.b, analysis, source_sym, hoisted);
+    let block_id = ctx.transform_data.each_index_block_by_item.get(&item_sym)?;
+    let index_name = ctx.transform_data.each_index_internal_names.get(block_id)?;
+    Some(each_item_indexed_member_legacy(
+        &ctx.b,
+        collection,
+        index_name.as_str(),
+    ))
 }

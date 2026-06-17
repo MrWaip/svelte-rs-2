@@ -125,3 +125,15 @@ compiler_case!(
     legacy_reactive_nested_member_arg_value,
     "each_item_writeback/legacy_reactive_nested_member_arg_value"
 );
+compiler_case!(
+    legacy_prop_item_member_read_assign,
+    "each_item_writeback/legacy_prop_item_member_read_assign"
+);
+compiler_case!(
+    legacy_local_item_member_read_assign,
+    "each_item_writeback/legacy_local_item_member_read_assign"
+);
+compiler_case!(
+    legacy_prop_item_member_read_only,
+    "each_item_writeback/legacy_prop_item_member_read_only"
+);
