@@ -303,17 +303,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn read_each_item_source_legacy(&self, sym: SymbolId) -> Expression<'a> {
         let name = self.ctx.query.view.symbol_name(sym);
-        if self
-            .ctx
-            .query
-            .analysis
-            .binding_semantics(sym)
-            .reads_via_thunk()
-        {
-            thunk_call(&self.ctx.b, name)
-        } else {
-            rune_get(&self.ctx.b, name)
+        let semantics = self.ctx.query.analysis.binding_semantics(sym);
+        if semantics.reads_via_each_item_accessor() || semantics.reads_via_thunk() {
+            return thunk_call(&self.ctx.b, name);
         }
+        if semantics.is_non_reactive() {
+            return self.ctx.b.rid_expr(name);
+        }
+        rune_get(&self.ctx.b, name)
     }
 
     fn read_each_item_collection_legacy(

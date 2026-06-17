@@ -7,7 +7,8 @@ use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use svelte_ast::{
-    Attribute, AwaitBlock, Component, EachBlock, Element, LetDirectiveLegacy, NodeId, SnippetBlock,
+    Attribute, AwaitBlock, Component, EachBlock, Element, LetDirectiveLegacy, Node, NodeId,
+    SnippetBlock,
 };
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
@@ -19,7 +20,7 @@ use super::super::data::{
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
 use crate::utils::legacy_slot::legacy_slot_pattern;
-use crate::walker::{TemplateVisitor, VisitContext, walk_template};
+use crate::walker::{ParentKind, TemplateVisitor, VisitContext, walk_template};
 
 #[derive(Clone, Copy)]
 enum PendingKind {
@@ -427,87 +428,36 @@ impl TemplateVisitor for EachSourcePromoter {
             return;
         }
 
-        let Some(expr) = parsed.expr(block.expression.id()) else {
-            return;
-        };
-
-        let mut collector = ExprRefCollector { refs: Vec::new() };
-        collector.visit_expression(expr);
-
-        let immutable = ctx.data.script.immutable;
-        let store_candidate_refs: FxHashSet<ReferenceId> = ctx
-            .data
-            .scoping
-            .store_candidate_refs()
-            .iter()
-            .map(|(_, ref_id)| *ref_id)
-            .collect();
         let mut promoted_sources: Vec<SymbolId> = Vec::new();
         let mut collection_store: Option<SymbolId> = None;
-        for ref_id in collector.refs {
-            if store_candidate_refs.contains(&ref_id) {
-                let Some(base_sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
-                    continue;
-                };
-                if let Some(store_sym) = ctx.data.reactivity.store_shadow_of_internal(base_sym) {
-                    if collection_store.is_none() {
-                        collection_store = Some(store_sym);
-                    }
-                    if !runes {
-                        promoted_sources.push(store_sym);
-                    }
-                }
-                continue;
-            }
-            if runes {
-                continue;
-            }
-            let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+        collect_each_block_collection_sources_legacy(
+            block,
+            ctx,
+            runes,
+            true,
+            &mut promoted_sources,
+            &mut collection_store,
+        );
+
+        let mut ancestor_each_block_ids: Vec<NodeId> = ctx
+            .ancestors()
+            .filter(|parent| parent.kind == ParentKind::EachBlock)
+            .map(|parent| parent.id)
+            .collect();
+        ancestor_each_block_ids.reverse();
+        let store = ctx.store;
+        for ancestor_id in ancestor_each_block_ids {
+            let Node::EachBlock(ancestor) = store.get(ancestor_id) else {
                 continue;
             };
-            match ctx.data.reactivity.binding_facts(sym) {
-                Some(
-                    BindingFacts::LegacyBindableProp(_)
-                    | BindingFacts::LegacyState(_)
-                    | BindingFacts::Contextual(ContextualBindingSemantics::AwaitValue),
-                ) => promoted_sources.push(sym),
-                Some(
-                    BindingFacts::State(_)
-                    | BindingFacts::Derived(_)
-                    | BindingFacts::OptimizedDerived(_)
-                    | BindingFacts::OptimizedRune(_)
-                    | BindingFacts::Prop(_)
-                    | BindingFacts::LegacyApiExport
-                    | BindingFacts::Store(_)
-                    | BindingFacts::Const(_)
-                    | BindingFacts::Contextual(
-                        ContextualBindingSemantics::EachItem(_)
-                        | ContextualBindingSemantics::EachIndex(_)
-                        | ContextualBindingSemantics::AwaitError
-                        | ContextualBindingSemantics::LetDirective
-                        | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-                        | ContextualBindingSemantics::LetDirectiveDirect
-                        | ContextualBindingSemantics::SnippetParam(_),
-                    )
-                    | BindingFacts::RuntimeRune { .. }
-                    | BindingFacts::CarrierAlias { .. },
-                ) => {}
-                None => {
-                    if ctx.data.scoping.is_component_top_level_symbol(sym)
-                        && ctx.data.reactivity.store_shadow_of_internal(sym).is_none()
-                        && !super::symbol_is_function_declaration(&ctx.data.scoping, sym)
-                    {
-                        ctx.data.reactivity.record_legacy_state_binding(
-                            sym,
-                            LegacyStateSemantics {
-                                var_declared: false,
-                                immutable,
-                            },
-                        );
-                        promoted_sources.push(sym);
-                    }
-                }
-            }
+            collect_each_block_collection_sources_legacy(
+                ancestor,
+                ctx,
+                runes,
+                false,
+                &mut promoted_sources,
+                &mut collection_store,
+            );
         }
 
         if !promoted_sources.is_empty() {
@@ -540,6 +490,106 @@ impl TemplateVisitor for EachSourcePromoter {
                 ctx.data
                     .reactivity
                     .set_each_item_index_legacy(item_sym, index_sym);
+            }
+        }
+    }
+}
+
+fn collect_each_block_collection_sources_legacy(
+    block: &EachBlock,
+    ctx: &mut VisitContext<'_, '_>,
+    runes: bool,
+    is_primary_block: bool,
+    out_sources: &mut Vec<SymbolId>,
+    out_collection_store: &mut Option<SymbolId>,
+) {
+    let Some(parsed) = ctx.parsed else {
+        return;
+    };
+    let Some(expr) = parsed.expr(block.expression.id()) else {
+        return;
+    };
+
+    let mut collector = ExprRefCollector { refs: Vec::new() };
+    collector.visit_expression(expr);
+
+    let immutable = ctx.data.script.immutable;
+    let store_candidate_refs: FxHashSet<ReferenceId> = ctx
+        .data
+        .scoping
+        .store_candidate_refs()
+        .iter()
+        .map(|(_, ref_id)| *ref_id)
+        .collect();
+    for ref_id in collector.refs {
+        if store_candidate_refs.contains(&ref_id) {
+            if !is_primary_block {
+                continue;
+            }
+            let Some(base_sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+                continue;
+            };
+            if let Some(store_sym) = ctx.data.reactivity.store_shadow_of_internal(base_sym) {
+                if out_collection_store.is_none() {
+                    *out_collection_store = Some(store_sym);
+                }
+                if !runes {
+                    out_sources.push(store_sym);
+                }
+            }
+            continue;
+        }
+        if runes {
+            continue;
+        }
+        let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() else {
+            continue;
+        };
+        match ctx.data.reactivity.binding_facts(sym) {
+            Some(
+                BindingFacts::LegacyBindableProp(_)
+                | BindingFacts::LegacyState(_)
+                | BindingFacts::Contextual(
+                    ContextualBindingSemantics::AwaitValue
+                    | ContextualBindingSemantics::EachItem(_),
+                ),
+            ) => out_sources.push(sym),
+            Some(
+                BindingFacts::State(_)
+                | BindingFacts::Derived(_)
+                | BindingFacts::OptimizedDerived(_)
+                | BindingFacts::OptimizedRune(_)
+                | BindingFacts::Prop(_)
+                | BindingFacts::LegacyApiExport
+                | BindingFacts::Store(_)
+                | BindingFacts::Const(_)
+                | BindingFacts::Contextual(
+                    ContextualBindingSemantics::EachIndex(_)
+                    | ContextualBindingSemantics::AwaitError
+                    | ContextualBindingSemantics::LetDirective
+                    | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                    | ContextualBindingSemantics::LetDirectiveDirect
+                    | ContextualBindingSemantics::SnippetParam(_),
+                )
+                | BindingFacts::RuntimeRune { .. }
+                | BindingFacts::CarrierAlias { .. },
+            ) => {}
+            None => {
+                if ctx.data.scoping.is_component_top_level_symbol(sym)
+                    && ctx.data.reactivity.store_shadow_of_internal(sym).is_none()
+                    && !super::symbol_is_function_declaration(&ctx.data.scoping, sym)
+                {
+                    if is_primary_block {
+                        ctx.data.reactivity.record_legacy_state_binding(
+                            sym,
+                            LegacyStateSemantics {
+                                var_declared: false,
+                                immutable,
+                            },
+                        );
+                    }
+                    out_sources.push(sym);
+                }
             }
         }
     }

@@ -134,18 +134,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
     }
 
-    pub(crate) fn make_source_read(
+    pub(crate) fn make_each_invalidate_source_read_legacy(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
         sym: svelte_component_semantics::SymbolId,
     ) -> Expression<'a> {
         let name = self.component_scoping.symbol_name(sym);
         let semantics = analysis.binding_semantics(sym);
-        if semantics.reads_via_thunk() {
-            self.make_thunk_call(name)
-        } else {
-            self.make_rune_get(name)
+        if semantics.reads_via_each_item_accessor() || semantics.reads_via_thunk() {
+            return self.make_thunk_call(name);
         }
+        if semantics.is_non_reactive() {
+            return self
+                .b
+                .ast
+                .expression_identifier(SPAN, self.b.ast.atom(name));
+        }
+        self.make_rune_get(name)
     }
 
     pub(crate) fn each_item_member_root_read_legacy(
@@ -181,7 +186,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             return self.make_thunk_call(name.as_str());
         }
-        self.make_source_read(analysis, source_sym)
+        self.make_each_invalidate_source_read_legacy(analysis, source_sym)
     }
 
     pub(crate) fn build_each_item_indexed_member_legacy(

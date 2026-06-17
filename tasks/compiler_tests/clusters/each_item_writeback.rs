@@ -113,3 +113,15 @@ compiler_case!(
     legacy_shadow_destructure_member_bind,
     "each_item_writeback/legacy_shadow_destructure_member_bind"
 );
+compiler_case!(
+    legacy_reactive_nested_parent_collection_mutate,
+    "each_item_writeback/legacy_reactive_nested_parent_collection_mutate"
+);
+compiler_case!(
+    legacy_reactive_nested_destructure_parent_collection,
+    "each_item_writeback/legacy_reactive_nested_destructure_parent_collection"
+);
+compiler_case!(
+    legacy_reactive_nested_member_arg_value,
+    "each_item_writeback/legacy_reactive_nested_member_arg_value"
+);
