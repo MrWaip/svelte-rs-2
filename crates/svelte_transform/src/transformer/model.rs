@@ -110,6 +110,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) in_bind_setter_traverse: bool,
 
+    pub(crate) destructure_lhs_depth: u32,
+
     pub(crate) gen_arrow_scope: Option<ScopeId>,
 }
 

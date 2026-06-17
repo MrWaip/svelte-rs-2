@@ -493,6 +493,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
+        if super::state_legacy::is_destructure_assignment_lhs(node) {
+            self.destructure_lhs_depth += 1;
+        }
+
         let is_identifier_target = {
             let Expression::AssignmentExpression(assign) = &*node else {
                 unreachable!();

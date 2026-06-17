@@ -9,10 +9,7 @@ mod util;
 
 pub(crate) use util::expression_root_reference_id;
 
-use util::{
-    assignment_target_member_root_reference_id, property_key_atom,
-    simple_assignment_target_member_root_reference_id,
-};
+use util::{property_key_atom, simple_assignment_target_member_root_reference_id};
 
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
@@ -2142,9 +2139,7 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
-        if let Some(ref_id) = assignment_target_member_root_reference_id(&expr.left) {
-            self.prop_member_mutation_root_refs.insert(ref_id);
-        }
+        self.record_member_mutation_root_refs(&expr.left);
         walk_assignment_expression(self, expr);
     }
 
@@ -2179,6 +2174,17 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
 }
 
 impl<'a> ScriptSemanticCollector<'_, 'a> {
+    fn record_member_mutation_root_refs(&mut self, target: &AssignmentTarget<'a>) {
+        walk_assignment_targets(target, |visit| {
+            if let WriteTarget::Member(member) = visit.target
+                && let Some(member_expr) = member.as_member_expression()
+                && let Some(ref_id) = expression_root_reference_id(member_expr.object())
+            {
+                self.prop_member_mutation_root_refs.insert(ref_id);
+            }
+        });
+    }
+
     fn classify_class_fields(&mut self, class: &Class<'a>) {
         if !self.data.reactivity.uses_runes() {
             return;

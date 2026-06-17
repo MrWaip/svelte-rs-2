@@ -1,16 +1,6 @@
-use oxc_ast::ast::{AssignmentTarget, Expression, PropertyKey, SimpleAssignmentTarget};
+use oxc_ast::ast::{Expression, PropertyKey, SimpleAssignmentTarget};
 use oxc_span::Ident;
 use svelte_component_semantics::ReferenceId;
-
-pub(super) fn assignment_target_member_root_reference_id(
-    target: &AssignmentTarget<'_>,
-) -> Option<ReferenceId> {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => expression_root_reference_id(&m.object),
-        AssignmentTarget::ComputedMemberExpression(m) => expression_root_reference_id(&m.object),
-        _ => None,
-    }
-}
 
 pub(super) fn simple_assignment_target_member_root_reference_id(
     target: &SimpleAssignmentTarget<'_>,

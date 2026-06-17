@@ -27,14 +27,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
+        self.destructure_lhs_depth = self.destructure_lhs_depth.saturating_sub(1);
         if assign_box.operator != AssignmentOperator::Assign {
             return false;
         }
 
-        let is_standalone = ctx
-            .ancestors()
-            .find(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)))
-            .is_some_and(ancestor_is_statement);
+        let is_standalone = destructure_assignment_is_standalone(ctx);
 
         let placeholder = self.b.cheap_expr();
         let owned = mem::replace(node, placeholder);
@@ -265,6 +263,40 @@ impl<'a> ComponentTransformer<'_, 'a> {
             "$.fallback",
             [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
         )
+    }
+}
+
+pub(crate) fn is_destructure_assignment_lhs(node: &Expression<'_>) -> bool {
+    matches!(
+        node,
+        Expression::AssignmentExpression(assign)
+            if matches!(
+                assign.left,
+                AssignmentTarget::ArrayAssignmentTarget(_)
+                    | AssignmentTarget::ObjectAssignmentTarget(_)
+            )
+    )
+}
+
+fn destructure_assignment_is_standalone(ctx: &TraverseCtx<'_, ()>) -> bool {
+    let mut ancestors = ctx
+        .ancestors()
+        .filter(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)));
+    let Some(first) = ancestors.next() else {
+        return false;
+    };
+    if !ancestor_is_statement(first) {
+        return false;
+    }
+    if !first.is_expression_statement() {
+        return true;
+    }
+    match ancestors.next() {
+        Some(Ancestor::FunctionBodyStatements(_)) => match ancestors.next() {
+            Some(Ancestor::ArrowFunctionExpressionBody(arrow)) => !*arrow.expression(),
+            _ => true,
+        },
+        _ => true,
     }
 }
 

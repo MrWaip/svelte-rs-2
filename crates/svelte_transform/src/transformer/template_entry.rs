@@ -60,6 +60,7 @@ pub(crate) fn run_template<'a, 'b>(
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         in_bind_setter_traverse: false,
+        destructure_lhs_depth: 0,
         gen_arrow_scope: None,
     };
 

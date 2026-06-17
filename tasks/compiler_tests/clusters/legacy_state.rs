@@ -45,6 +45,26 @@ compiler_case!(
     assignment_object_rest,
     "legacy/state/assignment/object_rest"
 );
+compiler_case!(
+    assignment_member_array,
+    "legacy/state/assignment/member_array"
+);
+compiler_case!(
+    assignment_member_array_default,
+    "legacy/state/assignment/member_array_default"
+);
+compiler_case!(
+    assignment_member_object,
+    "legacy/state/assignment/member_object"
+);
+compiler_case!(
+    assignment_member_nonreactive_guard,
+    "legacy/state/assignment/member_nonreactive_guard"
+);
+compiler_case!(
+    assignment_member_template_handler,
+    "legacy/state/assignment/member_template_handler"
+);
 compiler_case!(declaration_alias, "legacy/state/declaration/alias");
 compiler_case!(
     declaration_array_hole,

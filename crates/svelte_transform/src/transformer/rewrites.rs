@@ -171,6 +171,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
+            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+                if self.destructure_lhs_depth > 0 =>
+            {
+                true
+            }
             ReferenceSemantics::LegacyStateMemberMutationRoot { symbol } => {
                 let safe = analysis
                     .binding_semantics(symbol)

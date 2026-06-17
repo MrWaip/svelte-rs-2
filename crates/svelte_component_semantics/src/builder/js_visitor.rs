@@ -10,7 +10,7 @@ use oxc_syntax::symbol::SymbolId;
 use smallvec::SmallVec;
 
 use crate::class_table::ClassFieldAccess;
-use crate::pattern::walk_assignment_target_idents;
+use crate::pattern::{WriteTarget, walk_assignment_target_idents, walk_assignment_targets};
 use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
 use crate::symbol::SymbolOwner;
@@ -639,9 +639,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             self.current_ref_flags = ReferenceFlags::read_write();
         }
         walk::walk_assignment_expression(self, expr);
-        if let Some(sym) = assignment_target_member_root_symbol(self.semantics, &expr.left) {
-            self.semantics.mark_symbol_member_mutated(sym);
-        }
+        mark_member_mutation_roots(self.semantics, &expr.left);
     }
 
     fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
@@ -690,16 +688,21 @@ fn store_candidate_base(name: &str) -> Option<&str> {
     }
 }
 
-fn assignment_target_member_root_symbol(
-    semantics: &ComponentSemantics<'_>,
-    target: &AssignmentTarget<'_>,
-) -> Option<SymbolId> {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
-        AssignmentTarget::ComputedMemberExpression(m) => {
-            expression_root_symbol(semantics, &m.object)
+fn mark_member_mutation_roots<'a>(
+    semantics: &mut ComponentSemantics<'a>,
+    target: &AssignmentTarget<'a>,
+) {
+    let mut roots: SmallVec<[SymbolId; 4]> = SmallVec::new();
+    walk_assignment_targets(target, |v| {
+        if let WriteTarget::Member(member) = v.target
+            && let Some(member_expr) = member.as_member_expression()
+            && let Some(sym) = expression_root_symbol(semantics, member_expr.object())
+        {
+            roots.push(sym);
         }
-        _ => None,
+    });
+    for sym in roots {
+        semantics.mark_symbol_member_mutated(sym);
     }
 }
 

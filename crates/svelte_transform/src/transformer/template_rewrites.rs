@@ -31,6 +31,9 @@ pub(crate) fn rewrite_template_enter<'a>(
     }
 
     if matches!(it, Expression::AssignmentExpression(_)) {
+        if super::state_legacy::is_destructure_assignment_lhs(it) {
+            t.destructure_lhs_depth += 1;
+        }
         t.dispatch_member_assignment(it, false, ctx);
     }
 }
@@ -81,6 +84,10 @@ pub(crate) fn rewrite_template_exit<'a>(
             await_expr.argument = arg;
             return;
         }
+    }
+
+    if t.rewrite_destructure_assignment_exit(it, ctx) {
+        return;
     }
 
     t.rewrite_prop_update_ownership_exit(it);
