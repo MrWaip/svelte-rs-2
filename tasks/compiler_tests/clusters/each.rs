@@ -34,6 +34,27 @@ compiler_case!(
     "each/declaration/legacy/default_value_sibling_ref"
 );
 compiler_case!(
+    declaration_legacy_default_value_binary_sibling,
+    "each/declaration/legacy/default_value_binary_sibling"
+);
+compiler_case!(
+    declaration_legacy_default_value_ident_sibling,
+    "each/declaration/legacy/default_value_ident_sibling"
+);
+compiler_case!(
+    declaration_legacy_unkeyed_index_component_prop,
+    "each/declaration/legacy/unkeyed_index_component_prop"
+);
+compiler_case!(
+    declaration_legacy_item_closure_component_prop,
+    "each/declaration/legacy/item_closure_component_prop"
+);
+compiler_case!(
+    declaration_legacy_import_collection,
+    "each/declaration/legacy/import_collection",
+    ignore = "legacy each with imported collection: an import is non-reactive in legacy mode (read bare, not via $.get) and the component still emits $.push/$.init/$.pop; pending follow-up"
+);
+compiler_case!(
     declaration_legacy_default_intermediate_array,
     "each/declaration/legacy/default_intermediate_array"
 );

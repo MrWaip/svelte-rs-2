@@ -283,8 +283,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     return Ok(self.ctx.b.rid_expr(&name));
                 }
                 let expr = self.take_node_expr(block_id)?;
-                let wrapped = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
-                Ok(self.ctx.b.thunk(wrapped))
+                let data = self.ctx.expression_data(block_id);
+                let is_static = data.is_some_and(|d| !d.volatility.is_volatile());
+                let collection = if is_static {
+                    expr
+                } else {
+                    coarse_wrap(self.ctx, expr, data)
+                };
+                Ok(self.ctx.b.thunk(collection))
             }
         }
     }

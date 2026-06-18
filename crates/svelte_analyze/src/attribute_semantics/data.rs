@@ -225,7 +225,7 @@ pub enum ComponentBindTarget {
     LegacyStateSubscribed,
     PropSource,
     PropSourceOwned,
-    EachItemDestructureLegacy { symbol: SymbolId },
+    EachItemWriteLegacy { symbol: SymbolId },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -289,5 +289,5 @@ pub enum HtmlBindKind {
     LegacyState,
     BindableProp,
     StoreSubscribed { base_symbol: SymbolId },
-    EachItemDestructureLegacy { symbol: SymbolId },
+    EachItemWriteLegacy { symbol: SymbolId },
 }

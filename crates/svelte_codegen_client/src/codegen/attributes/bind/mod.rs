@@ -103,14 +103,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let stmt = match payload.kind {
-            HtmlBindKind::EachItemDestructureLegacy { symbol } => self
-                .build_each_item_destructure_bind_stmt(
-                    bind,
-                    bind_property,
-                    el_name,
-                    tag_name,
-                    symbol,
-                )?,
+            HtmlBindKind::EachItemWriteLegacy { symbol } => self.build_each_item_write_bind_stmt(
+                bind,
+                bind_property,
+                el_name,
+                tag_name,
+                symbol,
+            )?,
             HtmlBindKind::Plain
             | HtmlBindKind::Rune
             | HtmlBindKind::LegacyState
@@ -133,7 +132,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    fn build_each_item_destructure_bind_stmt(
+    fn build_each_item_write_bind_stmt(
         &mut self,
         bind: &BindDirective,
         bind_property: BindPropertyKind,
@@ -141,14 +140,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tag_name: &str,
         symbol: SymbolId,
     ) -> Result<Option<Statement<'a>>> {
-        let Some(setter_body) = self.build_each_item_destructure_writeback_legacy(symbol) else {
+        let Some(setter_body) = self.build_each_item_writeback_legacy(symbol) else {
             return Ok(None);
         };
         let name = self
             .ctx
             .b
             .alloc_str(self.ctx.query.view.symbol_name(symbol));
-        let getter = self.ctx.b.rid_expr(name);
+        let reads_via_signal = !self
+            .ctx
+            .query
+            .view
+            .binding_semantics(symbol)
+            .reads_via_each_item_accessor();
+        let getter = if reads_via_signal {
+            self.ctx
+                .b
+                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident(name)]))
+        } else {
+            self.ctx.b.rid_expr(name)
+        };
         let setter = self.ctx.b.arrow_expr(
             self.ctx.b.params(["$$value"]),
             [self.ctx.b.expr_stmt(setter_body)],

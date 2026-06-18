@@ -206,8 +206,7 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
             ContextualBindingSemantics::EachItem(strategy) => match strategy {
                 EachItemStrategy::Accessor
                 | EachItemStrategy::Signal
-                | EachItemStrategy::IndexedLegacy
-                | EachItemStrategy::DestructuredLegacy => true,
+                | EachItemStrategy::IndexedLegacy => true,
                 EachItemStrategy::Direct => false,
             },
             ContextualBindingSemantics::EachIndex(strategy) => match strategy {
@@ -739,17 +738,21 @@ fn classify_identifier_kind(
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
         | ReferenceSemantics::EachItemIndexedLegacy { .. }
         | ReferenceSemantics::IllegalWrite
-        | ReferenceSemantics::Unresolved => {
-            let symbol = ctx.semantics.get_reference(ref_id).symbol_id();
-            match symbol.map(|s| ctx.reactivity.binding_semantics(s)) {
-                Some(BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
-                    EachItemStrategy::DestructuredLegacy,
-                ))) => HtmlBindKind::EachItemDestructureLegacy {
-                    symbol: symbol.expect("binding_semantics resolved from symbol"),
-                },
-                _ => HtmlBindKind::Plain,
-            }
-        }
+        | ReferenceSemantics::Unresolved => HtmlBindKind::Plain,
+    }
+}
+
+fn each_item_write_root_symbol(
+    ctx: &Ctx<'_, '_>,
+    ident: &oxc_ast::ast::IdentifierReference,
+) -> Option<SymbolId> {
+    let ref_id = ident.reference_id.get()?;
+    let sym = ctx.semantics.get_reference(ref_id).symbol_id()?;
+    match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
+            EachItemStrategy::Accessor | EachItemStrategy::Signal | EachItemStrategy::Direct,
+        )) => Some(sym),
+        _ => None,
     }
 }
 
@@ -761,6 +764,11 @@ fn bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> HtmlBindKind {
         Expression::Identifier(ident) => ident,
         _ => return HtmlBindKind::Plain,
     };
+    if !ctx.reactivity.uses_runes()
+        && let Some(symbol) = each_item_write_root_symbol(ctx, ident)
+    {
+        return HtmlBindKind::EachItemWriteLegacy { symbol };
+    }
     classify_identifier_kind(ctx, ident)
 }
 
@@ -1011,7 +1019,7 @@ fn classify_component_attrs(
                     );
                     continue;
                 }
-                let (memo, plan) = derive_component_concat_semantics(ctx, ca);
+                let (memo, plan) = derive_component_concat_semantics(ctx, ca, carrier);
                 store.set(
                     ca.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(
@@ -1201,7 +1209,19 @@ fn derive_html_concat_semantics(
 fn derive_component_concat_semantics(
     ctx: &Ctx<'_, '_>,
     ca: &svelte_ast::ConcatenationAttribute,
+    carrier: ComponentPropCarrier,
 ) -> (ComponentPropMemo, SmallVec<[ConcatPartEmit; 4]>) {
+    if let [ConcatPart::Dynamic { id, expr }] = ca.parts.as_slice()
+        && let Some(expr_raw) = ctx.parsed.expr(expr.id())
+        && let Some(data) = ctx.expression_data(*id)
+    {
+        let memo = derive_component_prop_memo_core(ctx, expr_raw, data, carrier);
+        let emit = match memo {
+            ComponentPropMemo::Derived => ConcatPartEmit::HoistDerived,
+            ComponentPropMemo::Getter | ComponentPropMemo::Inline => ConcatPartEmit::Inline,
+        };
+        return (memo, SmallVec::from_iter([emit]));
+    }
     let forces_wrap = ca.parts.iter().any(|part| {
         let svelte_ast::ConcatPart::Dynamic { id, expr } = part else {
             return false;
@@ -1315,6 +1335,18 @@ fn derive_component_prop_memo_for_expression(
     let Some(expr_raw) = ctx.parsed.expr(ea.expression.id()) else {
         return ComponentPropMemo::Inline;
     };
+    let Some(data) = ctx.expression_data(ea.id) else {
+        return ComponentPropMemo::Inline;
+    };
+    derive_component_prop_memo_core(ctx, expr_raw, data, carrier)
+}
+
+fn derive_component_prop_memo_core(
+    ctx: &Ctx<'_, '_>,
+    expr_raw: &Expression<'_>,
+    data: &ExpressionData,
+    carrier: ComponentPropCarrier,
+) -> ComponentPropMemo {
     let expr = expr_raw.get_inner_expression();
     if matches!(
         expr,
@@ -1335,9 +1367,6 @@ fn derive_component_prop_memo_for_expression(
             | Expression::StaticMemberExpression(_)
             | Expression::ComputedMemberExpression(_)
     );
-    let Some(data) = ctx.expression_data(ea.id) else {
-        return ComponentPropMemo::Inline;
-    };
     let needs_wrap = references_need_wrap(ctx, data);
     if expression_calls_or_awaits(expr_raw) || !data.blockers.is_empty() {
         ComponentPropMemo::Derived
@@ -1516,6 +1545,15 @@ fn derive_component_bind_target(
     d: &BindDirective,
     sym: SymbolId,
 ) -> ComponentBindTarget {
+    if !ctx.reactivity.uses_runes()
+        && let Some(Expression::Identifier(ident)) = ctx
+            .parsed
+            .expr(d.expression.id())
+            .map(|e| e.get_inner_expression())
+        && let Some(symbol) = each_item_write_root_symbol(ctx, ident)
+    {
+        return ComponentBindTarget::EachItemWriteLegacy { symbol };
+    }
     let base = match ctx.reactivity.binding_semantics(sym) {
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::Source { .. },
@@ -1538,9 +1576,6 @@ fn derive_component_bind_target(
                 ComponentBindTarget::LegacyState
             }
         }
-        BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(
-            EachItemStrategy::DestructuredLegacy,
-        )) => ComponentBindTarget::EachItemDestructureLegacy { symbol: sym },
         _ => ComponentBindTarget::Plain,
     };
     if matches!(base, ComponentBindTarget::PropSource)

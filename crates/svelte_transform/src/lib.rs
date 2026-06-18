@@ -11,7 +11,7 @@ use std::slice;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{
     AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, HtmlBindKind, IdentGen, JsAst,
@@ -20,6 +20,34 @@ use svelte_ast::{
     Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
     NodeId as SvelteNodeId, StyleDirectiveValue,
 };
+use svelte_component_semantics::walk_bindings;
+
+pub(crate) fn is_simple_expression(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::Identifier(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ParenthesizedExpression(inner) => is_simple_expression(&inner.expression),
+        Expression::ConditionalExpression(cond) => {
+            is_simple_expression(&cond.test)
+                && is_simple_expression(&cond.consequent)
+                && is_simple_expression(&cond.alternate)
+        }
+        Expression::BinaryExpression(bin) => {
+            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
+        }
+        Expression::LogicalExpression(log) => {
+            is_simple_expression(&log.left) && is_simple_expression(&log.right)
+        }
+        _ => false,
+    }
+}
 
 pub fn transform_component<'a>(
     ctx: &mut svelte_types::CompileContext<'a, '_>,
@@ -133,6 +161,35 @@ fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
         .insert(*item_sym, block.id);
 }
 
+fn reserve_destructure_default_simple<'a>(
+    ctx: &mut TransformCtx<'a, '_>,
+    block: &EachBlock,
+    parsed: &JsAst<'a>,
+) {
+    let Some(context) = block.context.as_ref() else {
+        return;
+    };
+    let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(context.id()) else {
+        return;
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return;
+    };
+    walk_bindings(&declarator.id, |v| {
+        let mut flags: Vec<bool> = Vec::new();
+        for step in v.path {
+            if let Some(default) = step.default {
+                flags.push(is_simple_expression(default));
+            }
+        }
+        if !flags.is_empty() {
+            ctx.transform_data
+                .destructure_default_simple
+                .insert(v.symbol, flags);
+        }
+    });
+}
+
 fn reserve_each_collection_name_legacy(
     ctx: &mut TransformCtx<'_, '_>,
     block: &EachBlock,
@@ -232,6 +289,7 @@ fn walk_node<'a>(
             if let Some(context) = block.context.as_ref() {
                 ctx.stmt_handles.push((context.id(), Some(block.id)));
             }
+            reserve_destructure_default_simple(ctx, block, parsed);
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {

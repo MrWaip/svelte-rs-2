@@ -50,6 +50,20 @@ compiler_case!(
     "each_item_writeback/legacy_reactive_destructure_element_bind"
 );
 compiler_case!(
+    legacy_destructure_default_bind,
+    "each_item_writeback/legacy_destructure_default_bind"
+);
+compiler_case!(
+    legacy_keyed_index_bind,
+    "each_item_writeback/legacy_keyed_index_bind",
+    ignore = "legacy keyed each: the key expression must be evaluated without the reassigned-item writeback rewrite (Original uses a separate key state), and the reassigned-item writeback index must use the reactive index read when keyed; pending follow-up"
+);
+compiler_case!(
+    legacy_reassigned_collection_expr,
+    "each_item_writeback/legacy_reassigned_collection_expr",
+    ignore = "legacy each reassigned item: the writeback must index the full instrumented collection expression (e.g. foo().bar), not a read reconstructed from the source symbol (foo()); pending follow-up"
+);
+compiler_case!(
     legacy_reactive_filtered_collection_mutate,
     "each_item_writeback/legacy_reactive_filtered_collection_mutate"
 );

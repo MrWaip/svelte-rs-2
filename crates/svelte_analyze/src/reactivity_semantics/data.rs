@@ -250,10 +250,9 @@ impl BindingSemantics {
         };
         match strategy {
             EachItemStrategy::IndexedLegacy => true,
-            EachItemStrategy::Accessor
-            | EachItemStrategy::Signal
-            | EachItemStrategy::Direct
-            | EachItemStrategy::DestructuredLegacy => false,
+            EachItemStrategy::Accessor | EachItemStrategy::Signal | EachItemStrategy::Direct => {
+                false
+            }
         }
     }
 
@@ -263,7 +262,7 @@ impl BindingSemantics {
             return false;
         };
         match strategy {
-            EachItemStrategy::Accessor | EachItemStrategy::DestructuredLegacy => true,
+            EachItemStrategy::Accessor => true,
             EachItemStrategy::IndexedLegacy
             | EachItemStrategy::Signal
             | EachItemStrategy::Direct => false,
@@ -605,8 +604,6 @@ pub enum EachItemStrategy {
     Direct,
 
     IndexedLegacy,
-
-    DestructuredLegacy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

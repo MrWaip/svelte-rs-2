@@ -25,6 +25,10 @@ compiler_case!(
     "const_tag/declaration/legacy/computed_key"
 );
 compiler_case!(
+    declaration_legacy_computed_key_self_ref,
+    "const_tag/declaration/legacy/computed_key_self_ref"
+);
+compiler_case!(
     declaration_legacy_default_intermediate_array,
     "const_tag/declaration/legacy/default_intermediate_array"
 );

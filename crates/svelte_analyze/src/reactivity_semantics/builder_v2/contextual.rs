@@ -1,7 +1,6 @@
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentPattern, BindingIdentifier, BindingPattern,
-    BindingRestElement, Expression, FormalParameter, IdentifierReference, Statement,
-    VariableDeclarator,
+    ArrowFunctionExpression, AssignmentPattern, BindingIdentifier, BindingPattern, Expression,
+    FormalParameter, IdentifierReference, Statement, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
@@ -37,6 +36,7 @@ struct ContextualStaging {
     pending: Vec<(SymbolId, PendingKind)>,
     getter_symbols: FxHashSet<SymbolId>,
     each_non_reactive_symbols: FxHashSet<SymbolId>,
+    signal_read_symbols: FxHashSet<SymbolId>,
     select_bind_roots: Vec<SymbolId>,
 }
 
@@ -46,6 +46,9 @@ impl ContextualStaging {
     }
     fn mark_each_non_reactive(&mut self, sym: SymbolId) {
         self.each_non_reactive_symbols.insert(sym);
+    }
+    fn mark_signal_read(&mut self, sym: SymbolId) {
+        self.signal_read_symbols.insert(sym);
     }
     fn push_select_bind_root(&mut self, sym: SymbolId) {
         if !self.select_bind_roots.contains(&sym) {
@@ -89,19 +92,19 @@ fn finalize_contextual_declarations(data: &mut AnalysisData<'_>, staging: Contex
         pending,
         getter_symbols,
         each_non_reactive_symbols,
+        signal_read_symbols,
         select_bind_roots,
     } = staging;
     record_legacy_indirect_bindings(data, &select_bind_roots);
     for (sym, kind) in pending {
         let semantics = match kind {
             PendingKind::EachItem => {
+                let mutated_legacy = !data.uses_runes() && data.scoping.is_mutated(sym);
                 let strategy = if getter_symbols.contains(&sym) {
-                    if !data.uses_runes() && data.scoping.is_mutated(sym) {
-                        EachItemStrategy::DestructuredLegacy
-                    } else {
-                        EachItemStrategy::Accessor
-                    }
-                } else if !data.uses_runes() && data.scoping.is_mutated(sym) {
+                    EachItemStrategy::Accessor
+                } else if signal_read_symbols.contains(&sym) {
+                    EachItemStrategy::Signal
+                } else if mutated_legacy {
                     EachItemStrategy::IndexedLegacy
                 } else if each_non_reactive_symbols.contains(&sym) {
                     EachItemStrategy::Direct
@@ -743,13 +746,13 @@ pub(super) fn classify_contextual_read_kind(
 ) -> ContextualReadKind {
     let _ = (data, sym);
     match kind {
-        ContextualBindingSemantics::EachItem(
-            EachItemStrategy::Accessor | EachItemStrategy::DestructuredLegacy,
-        ) => ContextualReadKind::EachItem {
-            accessor: true,
-            signal: false,
-            raw_param,
-        },
+        ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor) => {
+            ContextualReadKind::EachItem {
+                accessor: true,
+                signal: false,
+                raw_param,
+            }
+        }
         ContextualBindingSemantics::EachItem(
             EachItemStrategy::Direct | EachItemStrategy::IndexedLegacy,
         ) => ContextualReadKind::EachItem {
@@ -808,14 +811,28 @@ fn run_each_context_marker<'a>(
     let Some(stmt) = block.context.as_ref().and_then(|r| parsed.stmt(r.id())) else {
         return;
     };
-    let mut marker = EachContextMarker {
-        data: ctx.data,
-        staging,
-        owner_node: block.id,
-        classify_leaves: is_destructured,
-        in_default: false,
+    let Some(declarator) = declarator_from_stmt_local(stmt) else {
+        return;
     };
-    marker.visit_statement(stmt);
+    let owner = block.id;
+    svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+        ctx.data.reactivity.record_contextual_owner(v.symbol, owner);
+        staging.push(v.symbol, PendingKind::EachItem);
+        if !is_destructured {
+            return;
+        }
+        let has_default = v.path.iter().any(|step| step.default.is_some());
+        if v.is_rest {
+            ctx.data.reactivity.mark_each_rest(v.symbol);
+            if !has_default {
+                staging.mark_getter(v.symbol);
+            }
+        } else if has_default {
+            staging.mark_signal_read(v.symbol);
+        } else {
+            staging.mark_getter(v.symbol);
+        }
+    });
 }
 
 fn run_each_index_marker<'a>(
@@ -977,63 +994,6 @@ fn destructure_pattern_node(pattern: &BindingPattern<'_>) -> Option<OxcNodeId> {
 fn await_destructure_node(stmt: &Statement<'_>) -> Option<OxcNodeId> {
     let decl = declarator_from_stmt_local(stmt)?;
     destructure_pattern_node(&decl.id)
-}
-
-struct EachContextMarker<'d, 's, 'a> {
-    data: &'d mut AnalysisData<'a>,
-    staging: &'s mut ContextualStaging,
-    owner_node: NodeId,
-    classify_leaves: bool,
-    in_default: bool,
-}
-
-impl<'a> EachContextMarker<'_, '_, 'a> {
-    fn record_declaration(&mut self, sym: SymbolId) {
-        self.data
-            .reactivity
-            .record_contextual_owner(sym, self.owner_node);
-        self.staging.push(sym, PendingKind::EachItem);
-    }
-}
-
-impl<'a> Visit<'a> for EachContextMarker<'_, '_, 'a> {
-    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        let Some(sym_id) = ident.symbol_id.get() else {
-            return;
-        };
-        self.record_declaration(sym_id);
-        if self.classify_leaves && !self.in_default {
-            self.staging.mark_getter(sym_id);
-        }
-    }
-
-    fn visit_binding_rest_element(&mut self, it: &BindingRestElement<'a>) {
-        let Some(ident) = it.argument.get_binding_identifier() else {
-            self.visit_binding_pattern(&it.argument);
-            return;
-        };
-        let Some(sym_id) = ident.symbol_id.get() else {
-            return;
-        };
-        self.record_declaration(sym_id);
-        if self.classify_leaves {
-            self.data.reactivity.mark_each_rest(sym_id);
-            if !self.in_default {
-                self.staging.mark_getter(sym_id);
-            }
-        }
-    }
-
-    fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
-        let was_in_default = self.in_default;
-        self.in_default = true;
-        self.visit_binding_pattern(&pat.left);
-        self.in_default = was_in_default;
-    }
-
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
-        self.visit_binding_pattern(&decl.id);
-    }
 }
 
 struct EachIndexMarker<'d, 's, 'a> {

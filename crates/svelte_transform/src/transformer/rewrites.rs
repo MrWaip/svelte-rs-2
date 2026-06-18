@@ -15,7 +15,7 @@ use svelte_analyze::{
     ContextualReadSemantics, DeclaratorSemantics, PropReferenceSemantics, ReferenceSemantics,
     RuntimeRuneKind, StateKind,
 };
-use svelte_component_semantics::SymbolId;
+use svelte_component_semantics::{ReferenceId, SymbolId};
 
 use svelte_emit_builders::store::{
     build_store_base_read, make_store_mutate, make_store_set, make_store_update,
@@ -46,19 +46,34 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
     }
 }
 
+fn is_forward_each_item_sibling_read(
+    analysis: &AnalysisData<'_>,
+    kind: ContextualReadKind,
+    ref_id: ReferenceId,
+    ref_start: u32,
+) -> bool {
+    if !matches!(kind, ContextualReadKind::EachItem { .. }) {
+        return false;
+    }
+    let Some(symbol) = analysis.scoping.symbol_for_reference(ref_id) else {
+        return false;
+    };
+    analysis.scoping.symbol_span(symbol).start > ref_start
+}
+
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn dispatch_identifier_read(&self, expr: &mut Expression<'a>) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let (name, ref_id) = {
+        let (name, ref_id, ref_start) = {
             let Expression::Identifier(id) = &*expr else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
                 return false;
             };
-            (id.name, ref_id)
+            (id.name, ref_id, id.span.start)
         };
 
         let sem = analysis.reference_semantics(ref_id);
@@ -142,6 +157,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::ConstAliasRead { owner_node } => {
+                if self.template_owner_node == Some(owner_node) {
+                    return true;
+                }
                 if let Some(tmp) = self.transform_data.const_tag_tmp_names.get(&owner_node) {
                     *expr = self.make_member_get(tmp.as_str(), name.as_str());
                 }
@@ -215,6 +233,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::ContextualRead(ContextualReadSemantics { kind, .. }) => {
+                if is_forward_each_item_sibling_read(analysis, kind, ref_id, ref_start) {
+                    return true;
+                }
                 match kind {
                     ContextualReadKind::EachItem {
                         raw_param: true, ..

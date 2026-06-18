@@ -10,6 +10,7 @@ use svelte_component_semantics::{WriteAccess, WriteStep, WriteTarget};
 
 use super::async_check::is_expression_async;
 use super::model::ComponentTransformer;
+use crate::is_simple_expression;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_destructure_assignment_exit(
@@ -344,32 +345,6 @@ fn serialize_prefix(prefix: &[WriteStep<'_>]) -> String {
         out.push('/');
     }
     out
-}
-
-fn is_simple_expression(node: &Expression<'_>) -> bool {
-    match node {
-        Expression::NullLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_)
-        | Expression::Identifier(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        Expression::ConditionalExpression(cond) => {
-            is_simple_expression(&cond.test)
-                && is_simple_expression(&cond.consequent)
-                && is_simple_expression(&cond.alternate)
-        }
-        Expression::BinaryExpression(bin) => {
-            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
-        }
-        Expression::LogicalExpression(log) => {
-            is_simple_expression(&log.left) && is_simple_expression(&log.right)
-        }
-        _ => false,
-    }
 }
 
 fn copy_member_root_ref<'x, 'y>(cloned: &mut AssignmentTarget<'x>, orig: &AssignmentTarget<'y>) {

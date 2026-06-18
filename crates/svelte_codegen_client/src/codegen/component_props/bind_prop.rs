@@ -280,8 +280,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     vec![self.ctx.b.expr_stmt(set_body)],
                 )));
             }
-            ComponentBindTarget::EachItemDestructureLegacy { symbol } => {
-                match self.build_each_item_destructure_writeback_legacy(symbol) {
+            ComponentBindTarget::EachItemWriteLegacy { symbol } => {
+                match self.build_each_item_writeback_legacy(symbol) {
                     Some(setter_body) => {
                         let getter = self.ctx.b.call_expr(source_ref, []);
                         items.push(PropOrSpread::Prop(ObjProp::Getter(key, getter)));
@@ -328,7 +328,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         )
     }
 
-    pub(crate) fn build_each_item_destructure_writeback_legacy(
+    pub(crate) fn build_each_item_writeback_legacy(
         &self,
         symbol: SymbolId,
     ) -> Option<Expression<'a>> {

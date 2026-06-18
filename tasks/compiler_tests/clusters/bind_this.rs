@@ -39,3 +39,7 @@ compiler_case!(
     guard_window_size_member,
     "bind_this/guard_window_size_member"
 );
+compiler_case!(
+    legacy_each_collection_untrack,
+    "bind_this/legacy_each_collection_untrack"
+);

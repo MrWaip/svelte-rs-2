@@ -202,19 +202,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         walk_bindings(pattern, |v| {
             let needs_derived = v.path.iter().any(|s| s.default.is_some());
             let mut expr = self.item_read_expr(item_reactive);
-            let mut direct_member = !needs_derived && !v.is_rest;
+            let mut update_expr = self.item_read_expr(item_reactive);
+            let mut member_chain = !v.is_rest;
+
+            let simple_flags: Option<Vec<bool>> = self
+                .ctx
+                .transform_data
+                .destructure_default_simple
+                .get(&v.symbol)
+                .cloned();
+            let mut default_cursor = 0usize;
 
             for (i, step) in v.path.iter().enumerate() {
                 match step.access {
                     Access::Key { key, computed } => {
                         expr = bp::member_access(&self.ctx.b, expr, key, computed);
+                        update_expr = bp::member_access(&self.ctx.b, update_expr, key, computed);
                     }
                     Access::Index {
                         index,
                         len,
                         has_rest,
                     } => {
-                        direct_member = false;
+                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -229,7 +239,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                     Access::Slice { from } => {
-                        direct_member = false;
+                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -249,7 +259,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 if let Some(default) = step.default {
-                    expr = bp::fallback(&self.ctx.b, expr, default, None);
+                    let simple = simple_flags
+                        .as_ref()
+                        .and_then(|f| f.get(default_cursor).copied())
+                        .unwrap_or(false);
+                    default_cursor += 1;
+                    expr = bp::fallback_with_simple(&self.ctx.b, expr, default, None, simple);
                 }
             }
 
@@ -257,8 +272,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
             }
 
-            if direct_member {
-                writeback_places.insert(v.symbol, expr.clone_in(self.ctx.b.ast.allocator));
+            if member_chain {
+                writeback_places.insert(v.symbol, update_expr);
             }
 
             let name = self.ctx.query.symbol_name(v.symbol).to_string();
