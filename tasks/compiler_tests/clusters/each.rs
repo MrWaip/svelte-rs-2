@@ -171,3 +171,24 @@ compiler_case!(
     declaration_runes_string_key,
     "each/declaration/runes/string_key"
 );
+
+compiler_case!(
+    kiw_sample_keyed_item_bind,
+    "each/keyed_index_writeback/legacy/sample_keyed_item_bind"
+);
+compiler_case!(
+    kiw_keyed_item_no_bind,
+    "each/keyed_index_writeback/legacy/keyed_item_no_bind"
+);
+compiler_case!(
+    kiw_keyed_item_member_bind,
+    "each/keyed_index_writeback/legacy/keyed_item_member_bind"
+);
+compiler_case!(
+    kiw_unkeyed_item_bind_guard,
+    "each/keyed_index_writeback/legacy/unkeyed_item_bind_guard"
+);
+compiler_case!(
+    kiw_keyed_by_index_guard,
+    "each/keyed_index_writeback/legacy/keyed_by_index_guard"
+);

@@ -4,6 +4,7 @@ use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase, S
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
+use svelte_analyze::EachIndexStrategy;
 use svelte_component_semantics::ReferenceId;
 use svelte_emit_builders::each_item;
 use svelte_emit_builders::props::{props_computed_access, props_member};
@@ -175,6 +176,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         analysis: &svelte_analyze::AnalysisData<'_>,
         item_sym: svelte_component_semantics::SymbolId,
         index_sym: Option<svelte_component_semantics::SymbolId>,
+        index_read: EachIndexStrategy,
     ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
         let ast = self.b.ast;
         let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
@@ -192,7 +194,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     .as_str()
             }
         };
-        let property = ast.expression_identifier(SPAN, ast.atom(index_name));
+        let property = match index_read {
+            EachIndexStrategy::Signal => self.make_rune_get(index_name),
+            EachIndexStrategy::Direct => ast.expression_identifier(SPAN, ast.atom(index_name)),
+        };
         Some(ast.alloc(ast.computed_member_expression(SPAN, collection, property, false)))
     }
 
@@ -201,9 +206,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         analysis: &svelte_analyze::AnalysisData<'_>,
         item_sym: svelte_component_semantics::SymbolId,
         index_sym: Option<svelte_component_semantics::SymbolId>,
+        index_read: EachIndexStrategy,
     ) -> Option<Expression<'a>> {
         Some(Expression::ComputedMemberExpression(
-            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)?,
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)?,
         ))
     }
 

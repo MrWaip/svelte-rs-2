@@ -55,8 +55,7 @@ compiler_case!(
 );
 compiler_case!(
     legacy_keyed_index_bind,
-    "each_item_writeback/legacy_keyed_index_bind",
-    ignore = "legacy keyed each: the key expression must be evaluated without the reassigned-item writeback rewrite (Original uses a separate key state), and the reassigned-item writeback index must use the reactive index read when keyed; pending follow-up"
+    "each_item_writeback/legacy_keyed_index_bind"
 );
 compiler_case!(
     legacy_reassigned_collection_expr,

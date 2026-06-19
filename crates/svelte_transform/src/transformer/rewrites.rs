@@ -12,8 +12,8 @@ use svelte_ast_builder::Arg;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, CarrierMemberReadSemantics, ContextualReadKind,
-    ContextualReadSemantics, DeclaratorSemantics, PropReferenceSemantics, ReferenceSemantics,
-    RuntimeRuneKind, StateKind,
+    ContextualReadSemantics, DeclaratorSemantics, EachIndexStrategy, PropReferenceSemantics,
+    ReferenceSemantics, RuntimeRuneKind, StateKind,
 };
 use svelte_component_semantics::{ReferenceId, SymbolId};
 
@@ -224,9 +224,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::EachItemIndexedLegacy {
                 item_sym,
                 index_sym,
+                index_read,
             } => {
-                if let Some(member) =
-                    self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym)
+                if let Some(member) = self
+                    .make_each_item_indexed_read_legacy(analysis, item_sym, index_sym, index_read)
                 {
                     *expr = member;
                 }
@@ -324,7 +325,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::EachItemIndexedLegacy {
                 item_sym,
                 index_sym,
-            } => self.rewrite_each_item_reassignment_assignment(node, item_sym, index_sym, ctx),
+                index_read,
+            } => self.rewrite_each_item_reassignment_assignment(
+                node, item_sym, index_sym, index_read, ctx,
+            ),
             ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreWrite { .. }
@@ -418,7 +422,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::EachItemIndexedLegacy {
                 item_sym,
                 index_sym,
-            } => self.rewrite_each_item_reassignment_update(node, item_sym, index_sym, ctx),
+                index_read,
+            } => self
+                .rewrite_each_item_reassignment_update(node, item_sym, index_sym, index_read, ctx),
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
@@ -1224,6 +1230,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut Expression<'a>,
         item_sym: SymbolId,
         index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
@@ -1242,7 +1249,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return false;
         }
         let Some(member) =
-            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)
         else {
             return false;
         };
@@ -1250,7 +1257,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             None
         } else {
             let Some(left_read) =
-                self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym)
+                self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym, index_read)
             else {
                 return false;
             };
@@ -1276,6 +1283,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         node: &mut Expression<'a>,
         item_sym: SymbolId,
         index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
@@ -1288,7 +1296,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return false;
         }
         let Some(member) =
-            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym)
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)
         else {
             return false;
         };

@@ -949,6 +949,7 @@ pub enum ReferenceSemantics {
     EachItemIndexedLegacy {
         item_sym: SymbolId,
         index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
     },
 
     IllegalWrite,
@@ -1937,9 +1938,11 @@ impl ReactivitySemantics {
                 raw_param: *raw_param,
             },
             Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
+                let index_sym = self.each_item_index_legacy(*item_symbol);
                 ReferenceSemantics::EachItemIndexedLegacy {
                     item_sym: *item_symbol,
-                    index_sym: self.each_item_index_legacy(*item_symbol),
+                    index_sym,
+                    index_read: self.each_index_read_legacy(index_sym),
                 }
             }
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
@@ -2222,6 +2225,15 @@ impl ReactivitySemantics {
 
     fn each_item_index_legacy(&self, item_sym: SymbolId) -> Option<SymbolId> {
         self.each_item_index_legacy.get(&item_sym).copied()
+    }
+
+    fn each_index_read_legacy(&self, index_sym: Option<SymbolId>) -> EachIndexStrategy {
+        match index_sym.and_then(|sym| self.lookup_binding_facts(sym)) {
+            Some(BindingFacts::Contextual(ContextualBindingSemantics::EachIndex(strategy))) => {
+                *strategy
+            }
+            _ => EachIndexStrategy::Direct,
+        }
     }
 
     pub(super) fn mark_each_rest(&mut self, sym: SymbolId) {

@@ -337,7 +337,8 @@ fn classify_reference_semantics(
             if matches!(
                 kind,
                 ContextualBindingSemantics::EachItem(EachItemStrategy::IndexedLegacy)
-            ) {
+            ) && !data.reactivity.is_raw_param_read(ref_id)
+            {
                 return Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol: sym });
             }
             if is_write {
