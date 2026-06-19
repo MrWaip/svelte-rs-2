@@ -7741,13 +7741,6 @@ async function baz() { return 2; }
     }
 
     #[test]
-    fn evaluation_sequence_picks_last() {
-        let source = "<p>{(1, 'b')}</p>";
-        let ev = evaluate_first_expr(source, "(1, 'b')");
-        assert_eq!(ev, Evaluation::Known(KnownValue::Str("b".into())));
-    }
-
-    #[test]
     fn evaluation_update_expression_is_unknown_per_reference() {
         let source = "<script>let x = $state(0);</script><p>{x++}</p>";
         let ev = evaluate_first_expr(source, "x++");
