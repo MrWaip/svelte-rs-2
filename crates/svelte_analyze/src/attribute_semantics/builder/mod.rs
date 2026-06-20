@@ -1123,6 +1123,11 @@ fn derive_html_concat_semantics(
     let mut has_async = false;
     let mut has_dynamic = false;
 
+    let single = matches!(
+        ca.parts.as_slice(),
+        [svelte_ast::ConcatPart::Dynamic { .. }]
+    );
+
     for part in &ca.parts {
         match part {
             svelte_ast::ConcatPart::Static(s) => {
@@ -1138,7 +1143,7 @@ fn derive_html_concat_semantics(
                     has_dynamic = true;
                     continue;
                 };
-                if let Evaluation::Known(_) = &data.evaluation {
+                if !single && let Evaluation::Known(_) = &data.evaluation {
                     let text = data.evaluation.known_str().unwrap_or_default();
                     parts.push(HtmlConcatPart::StaticText(text.into()));
                     continue;

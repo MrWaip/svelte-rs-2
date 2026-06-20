@@ -6,13 +6,43 @@ compiler_case!(prop_reactive, "attribute/single_expr/prop_reactive");
 compiler_case!(prop_call, "attribute/single_expr/prop_call");
 compiler_case!(class_reactive, "attribute/single_expr/class_reactive");
 
-compiler_case!(g_elem_unquoted, "attribute/single_expr/g_elem_unquoted");
+compiler_case!(elem_quoted_const, "attribute/single_expr/elem_quoted_const");
 compiler_case!(
-    g_elem_concat_text,
-    "attribute/single_expr/g_elem_concat_text"
+    value_quoted_const,
+    "attribute/single_expr/value_quoted_const"
 );
-compiler_case!(g_elem_two_expr, "attribute/single_expr/g_elem_two_expr");
-compiler_case!(g_elem_static, "attribute/single_expr/g_elem_static");
-compiler_case!(g_elem_boolean, "attribute/single_expr/g_elem_boolean");
-compiler_case!(g_prop_unquoted, "attribute/single_expr/g_prop_unquoted");
-compiler_case!(g_prop_concat, "attribute/single_expr/g_prop_concat");
+
+compiler_case!(
+    elem_unquoted_guard,
+    "attribute/single_expr/elem_unquoted_guard"
+);
+compiler_case!(
+    elem_unquoted_const_guard,
+    "attribute/single_expr/elem_unquoted_const_guard"
+);
+compiler_case!(
+    elem_concat_text_guard,
+    "attribute/single_expr/elem_concat_text_guard"
+);
+compiler_case!(
+    elem_two_expr_guard,
+    "attribute/single_expr/elem_two_expr_guard"
+);
+compiler_case!(elem_static_guard, "attribute/single_expr/elem_static_guard");
+compiler_case!(
+    elem_boolean_guard,
+    "attribute/single_expr/elem_boolean_guard"
+);
+compiler_case!(
+    prop_unquoted_guard,
+    "attribute/single_expr/prop_unquoted_guard"
+);
+compiler_case!(prop_concat_guard, "attribute/single_expr/prop_concat_guard");
+compiler_case!(
+    elem_concat_const_guard,
+    "attribute/single_expr/elem_concat_const_guard"
+);
+compiler_case!(
+    elem_two_const_guard,
+    "attribute/single_expr/elem_two_const_guard"
+);
