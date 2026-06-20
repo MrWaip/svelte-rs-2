@@ -7,7 +7,8 @@ use std::iter;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{
-    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind, MediaBindKind,
+    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind,
+    ImageNaturalSizeKind, MediaBindKind,
 };
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
@@ -299,6 +300,65 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 let setter = self.ctx.b.rid_expr(var_alloc);
                 self.emit_bind_group(bind, el_name, getter, setter)?
+            }
+            ElementBindPropertyKind::Open => self.ctx.b.bind_property_call_stmt(
+                "open",
+                "toggle",
+                el_name,
+                self.ctx.b.rid_expr(var_alloc),
+                Some(self.ctx.b.rid_expr(var_alloc)),
+            ),
+            ElementBindPropertyKind::Indeterminate => self.ctx.b.bind_property_call_stmt(
+                "indeterminate",
+                "change",
+                el_name,
+                self.ctx.b.rid_expr(var_alloc),
+                Some(self.ctx.b.rid_expr(var_alloc)),
+            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Duration) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "duration",
+                    "durationchange",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::Media(MediaBindKind::VideoWidth) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "videoWidth",
+                    "resize",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::Media(MediaBindKind::VideoHeight) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "videoHeight",
+                    "resize",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "naturalWidth",
+                    "load",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalHeight) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "naturalHeight",
+                    "load",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
             }
             _ => return Ok(None),
         };

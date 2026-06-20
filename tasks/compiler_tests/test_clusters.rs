@@ -144,3 +144,6 @@ mod bind_this;
 
 #[path = "clusters/bind_group.rs"]
 mod bind_group;
+
+#[path = "clusters/bind_property.rs"]
+mod bind_property;
