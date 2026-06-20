@@ -3,7 +3,7 @@ use std::mem;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
-use svelte_ast_builder::AssignLeft;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::super::data_structures::EmitState;
 use super::super::{Codegen, CodegenError, Result};
@@ -228,6 +228,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         b.static_member(b.rid_expr(owner_var), s.property.as_str()),
                     );
                     state.init.push(b.assign_stmt(target, value_expr));
+                }
+                AttributeSemantics::Autofocus => {
+                    let value = match attr {
+                        Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
+                        Attribute::StringAttribute(a) => {
+                            let text = a.value(&self.ctx.query.component.source).to_string();
+                            self.ctx.b.str_expr(&text)
+                        }
+                        Attribute::ExpressionAttribute(a) => {
+                            self.take_attr_expr(a.id, &a.expression)?
+                        }
+                        _ => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "Autofocus requires boolean, string, or expression attribute",
+                            );
+                        }
+                    };
+                    state.init.push(
+                        self.ctx
+                            .b
+                            .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(value)]),
+                    );
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {

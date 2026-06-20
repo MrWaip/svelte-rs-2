@@ -124,6 +124,9 @@ mod if_else;
 #[path = "clusters/attribute_single_expr.rs"]
 mod attribute_single_expr;
 
+#[path = "clusters/attribute_autofocus.rs"]
+mod attribute_autofocus;
+
 #[path = "clusters/runes_imports.rs"]
 mod runes_imports;
 

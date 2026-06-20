@@ -101,6 +101,12 @@ impl ElementFactsEntry {
                     has_spread = true;
                     has_runtime_attrs = true;
                 }
+                Attribute::BooleanAttribute(attr) if attr.name == "autofocus" => {
+                    has_runtime_attrs = true;
+                }
+                Attribute::StringAttribute(attr) if attr.name == "autofocus" => {
+                    has_runtime_attrs = true;
+                }
                 Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
                 _ => {
                     has_runtime_attrs = true;

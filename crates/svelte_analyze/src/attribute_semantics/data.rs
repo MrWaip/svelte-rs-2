@@ -27,6 +27,7 @@ pub enum AttributeSemantics {
     HtmlConcat(HtmlConcatSemantics),
     MustBeProperty(MustBePropertySemantics),
     SpecialValueAttr(SpecialValueSemantics),
+    Autofocus,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

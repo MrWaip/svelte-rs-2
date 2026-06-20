@@ -33,16 +33,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return self.emit_event_attribute(state, owner_var, attr, raw_event_name, emit);
         }
 
-        if attr.name == "autofocus" {
-            let val = self.take_attr_expr(attr.id, &attr.expression)?;
-            state.init.push(
-                self.ctx
-                    .b
-                    .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(val)]),
-            );
-            return Ok(());
-        }
-
         if let AttributeSemantics::SpecialValueAttr(s) =
             self.ctx.query.analysis.attributes.get(attr.id)
         {

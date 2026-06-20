@@ -447,6 +447,8 @@ fn classify_element_attrs(
             Attribute::ExpressionAttribute(ea) => {
                 if ea.event_name.is_some() {
                     classify_html_event(ctx, ea, store);
+                } else if ea.name == "autofocus" {
+                    store.set(ea.id, AttributeSemantics::Autofocus);
                 } else if let Some(kind) = special_value_kind_for(el, &ea.name) {
                     store.set(
                         ea.id,
@@ -477,6 +479,12 @@ fn classify_element_attrs(
             }
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);
+            }
+            Attribute::BooleanAttribute(a) if a.name == "autofocus" => {
+                store.set(a.id, AttributeSemantics::Autofocus);
+            }
+            Attribute::StringAttribute(a) if a.name == "autofocus" => {
+                store.set(a.id, AttributeSemantics::Autofocus);
             }
             Attribute::BooleanAttribute(a) if a.name == "muted" => {
                 store.set(
