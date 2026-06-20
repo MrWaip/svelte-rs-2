@@ -2,13 +2,84 @@ use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::walk_call_expression;
 use oxc_span::{GetSpan, Span as OxcSpan};
+use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::symbol::SymbolId;
 use rustc_hash::FxHashSet;
+use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::reactivity_semantics::data::DeclaratorGroup;
 use crate::{AnalysisData, BindingSemantics};
+
+pub(super) fn validate_global_references(
+    data: &AnalysisData<'_>,
+    legacy_explicit: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if legacy_explicit {
+        return;
+    }
+
+    let mut global_store_names: FxHashSet<&str> = FxHashSet::default();
+    for (store_symbol, store) in data.reactivity.iter_store_bindings() {
+        if is_undeclared_global_store(data, store.base_symbol) {
+            global_store_names.insert(data.scoping.symbol_name(store_symbol));
+        }
+    }
+    if global_store_names.is_empty() {
+        return;
+    }
+
+    for (name, refs) in data.scoping.root_unresolved_references() {
+        let name = name.as_str();
+        if !global_store_names.contains(name) {
+            continue;
+        }
+        if !name.as_bytes().get(1).is_some_and(u8::is_ascii_lowercase) {
+            continue;
+        }
+        push_global_reference_invalid(data, name, refs, diags);
+    }
+}
+
+fn is_undeclared_global_store(data: &AnalysisData<'_>, base_symbol: SymbolId) -> bool {
+    if data.scoping.symbol_owner(base_symbol) != SymbolOwner::Synthetic {
+        return false;
+    }
+    data.reactivity
+        .binding_semantics(base_symbol)
+        .is_non_reactive()
+}
+
+fn push_global_reference_invalid(
+    data: &AnalysisData<'_>,
+    name: &str,
+    refs: &[ReferenceId],
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(span) = earliest_reference_span(data, refs) else {
+        return;
+    };
+    diags.push(Diagnostic::error(
+        DiagnosticKind::GlobalReferenceInvalid {
+            name: name.to_string(),
+        },
+        Span {
+            start: span.start,
+            end: span.end,
+        },
+    ));
+}
+
+fn earliest_reference_span(data: &AnalysisData<'_>, refs: &[ReferenceId]) -> Option<OxcSpan> {
+    refs.iter()
+        .filter_map(|&ref_id| {
+            let node_id = data.scoping.get_reference(ref_id).node_id();
+            data.scoping.js_kind(node_id).map(|kind| kind.span())
+        })
+        .min_by_key(|span| span.start)
+}
 
 pub(super) fn validate(
     data: &AnalysisData<'_>,

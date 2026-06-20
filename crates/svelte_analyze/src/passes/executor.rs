@@ -255,7 +255,11 @@ pub(crate) fn execute_pass<'a>(
             );
         }
         super::PassKey::Validate => {
-            validate::validate(component, data, parsed, runes, diags);
+            let legacy_explicit = match options.runes {
+                svelte_ast::RunesOption::Legacy => true,
+                svelte_ast::RunesOption::Auto | svelte_ast::RunesOption::Runes => false,
+            };
+            validate::validate(component, data, parsed, runes, legacy_explicit, diags);
         }
     }
 }

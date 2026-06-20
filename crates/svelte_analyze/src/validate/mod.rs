@@ -28,6 +28,7 @@ pub fn validate(
     data: &AnalysisData,
     parsed: &JsAst,
     runes: bool,
+    legacy_explicit: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     if let Some(program) = &parsed.program {
@@ -35,6 +36,8 @@ pub fn validate(
         runes::validate_invalid_exports(data, program, true, None, diags);
         validate_illegal_default_export(program, diags);
     }
+
+    stores::validate_global_references(data, legacy_explicit, diags);
 
     validate_module_program(parsed, diags);
     if let Some(module_program) = &parsed.module_program {

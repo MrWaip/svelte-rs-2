@@ -1,0 +1,1 @@
+<p>{$MyGlobalStore}</p>

@@ -1563,6 +1563,26 @@ mod stores {
         validate_store_invalid_subscription_in_module,
         "stores/validate_store_invalid_subscription_in_module"
     );
+    diagnostic_case!(
+        global_ref_invalid_dollar_script,
+        "stores/global_ref_invalid_dollar_script"
+    );
+    diagnostic_case!(
+        global_ref_invalid_dollar_template,
+        "stores/global_ref_invalid_dollar_template"
+    );
+    diagnostic_case!(
+        global_ref_valid_uppercase_global,
+        "stores/global_ref_valid_uppercase_global"
+    );
+    diagnostic_case!(
+        global_ref_declared_store_no_error,
+        "stores/global_ref_declared_store_no_error"
+    );
+    diagnostic_case!(
+        global_ref_explicit_legacy_no_error,
+        "stores/global_ref_explicit_legacy_no_error"
+    );
 }
 
 mod host {
