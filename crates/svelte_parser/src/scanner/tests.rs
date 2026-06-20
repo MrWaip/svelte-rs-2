@@ -181,6 +181,34 @@ fn start_tag_attributes() {
 }
 
 #[test]
+fn unquoted_attribute_value_stops_before_self_close_slash() {
+    let source = "<circle cx=50 cy=50 r=50/>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "circle",
+        vec![("cx", "50"), ("cy", "50"), ("r", "50")],
+        true,
+    );
+}
+
+#[test]
+fn unquoted_attribute_value_keeps_bare_slash_not_before_gt() {
+    let source = "<a href=foo/bar/baz>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "a",
+        vec![("href", "foo/bar/baz")],
+        false,
+    );
+}
+
+#[test]
 fn attribute_tokens_capture_full_source_spans() {
     let source = "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
     let mut scanner = Scanner::new(source);
@@ -270,6 +298,7 @@ fn each_block() {
     assert!(tokens[1].token_type == TokenType::EOF);
 }
 
+#[track_caller]
 fn assert_start_tag(
     source: &str,
     token: &Token,

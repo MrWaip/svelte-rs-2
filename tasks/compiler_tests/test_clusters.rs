@@ -130,6 +130,9 @@ mod if_else;
 #[path = "clusters/attribute_single_expr.rs"]
 mod attribute_single_expr;
 
+#[path = "clusters/attribute_unquoted_value.rs"]
+mod attribute_unquoted_value;
+
 #[path = "clusters/custom_element.rs"]
 mod custom_element;
 

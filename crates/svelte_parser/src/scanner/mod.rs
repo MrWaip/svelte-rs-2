@@ -912,6 +912,10 @@ impl<'a> Scanner<'a> {
                 break;
             }
 
+            if char == '/' && self.peek_next() == Some('>') {
+                break;
+            }
+
             if char == '{' {
                 has_expression = true;
 
