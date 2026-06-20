@@ -1,6 +1,7 @@
 # PRD: ExpressionSemantics (корневой)
 
 label: expression-semantics
+topics: template expression, volatility, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding
 
 Корневой PRD для модуля `svelte_analyze::expression_semantics` (3.A.3).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`.

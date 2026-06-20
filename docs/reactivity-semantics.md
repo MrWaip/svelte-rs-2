@@ -1,6 +1,7 @@
 # PRD: ReactivitySemantics (корневой)
 
 label: reactivity-semantics
+topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$store, legacy state, $: reactive statement, maybe-reactive, contextual (each-item/index/await), BindingSemantics, ReferenceSemantics, OptimizedDerived, proxy, writeback reactivity
 
 Корневой PRD для кластера `crates/svelte_analyze/src/reactivity_semantics/`.
 Описывает архитектурную рамку и перечень реактивных фич. Алгоритмы классификации каждой фичи — в дочерних PRD 

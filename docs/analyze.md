@@ -1,6 +1,7 @@
 # PRD: Анализ (корневой, рамка слоя)
 
 label: analyze
+topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, semantics frame, semantic diagnostics
 
 Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и догму **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`.
 

@@ -1,6 +1,7 @@
 # PRD: AttributeSemantics (корневой)
 
 label: attribute-semantics
+topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/animate, spread/rest, ComponentBind, prop passing
 
 Корневой PRD для модуля `svelte_analyze::attribute_semantics` (3.A.4).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`, `ExpressionSemantics`.

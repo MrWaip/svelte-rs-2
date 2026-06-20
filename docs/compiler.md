@@ -1,6 +1,7 @@
 # PRD: Compiler entry (корневой)
 
 label: compiler
+topics: compiler entry, compile/compile_module, pipeline orchestration, CompileOptions, diagnostics aggregation, standalone .svelte.js
 
 Корневой PRD для crate `svelte_compiler` — единственного оркестратора пайплайна.
 Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry: `compile_module(source, &ModuleCompileOptions)`.

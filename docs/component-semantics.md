@@ -1,6 +1,7 @@
 # PRD: ComponentSemantics (корневой)
 
 label: component-semantics
+topics: ComponentSemantics, scope, Symbol/SymbolId, Reference/ReferenceId, SymbolTable, shadowing, scope graph, BindingPattern store
 
 Корневой PRD для кластера `svelte_component_semantics` (3.A.1) — generic JS scope-граф.
 Дочерний по слою: `analyze.md`.
