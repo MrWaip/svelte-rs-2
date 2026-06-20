@@ -932,29 +932,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if has_slot
-            && !ctx.data.parent(el.id).is_some_and(|p| {
-                matches!(
-                    p.kind,
-                    ParentKind::ComponentNode
-                        | ParentKind::SvelteComponentLegacy
-                        | ParentKind::SvelteSelf
-                )
-            })
-        {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::SlotAttributeInvalidPlacement,
-                el.span,
-            ));
-        } else if has_slot && let Some(attr) = slot_attr {
-            if !matches!(attr, Attribute::StringAttribute(_)) {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::SlotAttributeInvalid,
-                    attr_value_span(attr),
-                ));
-            } else {
-                validate_component_slot_conflicts(el, attr, ctx);
-            }
+        if has_slot && let Some(attr) = slot_attr {
+            validate_slot_attribute_placement(el, attr, ctx);
         }
 
         a11y::check_element_warnings(
@@ -2469,6 +2448,74 @@ fn scope_is_within(ctx: &VisitContext<'_, '_>, mut scope: ScopeId, target: Scope
             None => return false,
         }
     }
+}
+
+fn validate_slot_attribute_placement(
+    el: &Element,
+    slot_attr: &Attribute,
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    if ctx
+        .data
+        .parent(el.id)
+        .is_some_and(|parent| parent.kind == ParentKind::SnippetBlock)
+    {
+        if !matches!(slot_attr, Attribute::StringAttribute(_)) {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SlotAttributeInvalid,
+                attr_value_span(slot_attr),
+            ));
+        }
+        return;
+    }
+
+    let owner = ctx.data.ancestors(el.id).find(|ancestor| {
+        matches!(
+            ancestor.kind,
+            ParentKind::ComponentNode
+                | ParentKind::SvelteComponentLegacy
+                | ParentKind::SvelteSelf
+                | ParentKind::SvelteElement
+        ) || ctx.data.is_custom_element(ancestor.id)
+    });
+
+    let Some(owner) = owner else {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalidPlacement,
+            el.span,
+        ));
+        return;
+    };
+
+    let owner_is_component = matches!(
+        owner.kind,
+        ParentKind::ComponentNode | ParentKind::SvelteComponentLegacy | ParentKind::SvelteSelf
+    );
+    if !owner_is_component {
+        return;
+    }
+
+    let is_direct_child = ctx
+        .data
+        .parent(el.id)
+        .is_some_and(|parent| parent.id == owner.id);
+    if !is_direct_child {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalidPlacement,
+            el.span,
+        ));
+        return;
+    }
+
+    if !matches!(slot_attr, Attribute::StringAttribute(_)) {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalid,
+            attr_value_span(slot_attr),
+        ));
+        return;
+    }
+
+    validate_component_slot_conflicts(el, slot_attr, ctx);
 }
 
 fn validate_component_slot_conflicts(

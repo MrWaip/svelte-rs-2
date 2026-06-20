@@ -1746,6 +1746,22 @@ mod slots {
         "slots/slot_attribute_invalid_placement_nested_inside_component"
     );
     diagnostic_case!(
+        slot_attribute_custom_element_child_ok,
+        "slots/slot_attribute_custom_element_child_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_svelte_element_child_ok,
+        "slots/slot_attribute_svelte_element_child_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_custom_element_descendant_ok,
+        "slots/slot_attribute_custom_element_descendant_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_svelte_element_descendant_ok,
+        "slots/slot_attribute_svelte_element_descendant_ok"
+    );
+    diagnostic_case!(
         slot_element_invalid_name_dynamic,
         "slots/slot_element_invalid_name_dynamic"
     );
