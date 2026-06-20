@@ -84,6 +84,11 @@ fn classify_clsx(
     if !matches!(
         expr.get_inner_expression(),
         Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::RegExpLiteral(_)
             | Expression::TemplateLiteral(_)
             | Expression::BinaryExpression(_)
     ) {

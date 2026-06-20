@@ -46,3 +46,28 @@ compiler_case!(
     elem_two_const_guard,
     "attribute/single_expr/elem_two_const_guard"
 );
+
+compiler_case!(clsx_literal_false, "attribute/clsx/literal_false");
+compiler_case!(clsx_literal_null, "attribute/clsx/literal_null");
+compiler_case!(clsx_literal_number, "attribute/clsx/literal_number");
+compiler_case!(
+    clsx_string_literal_guard,
+    "attribute/clsx/string_literal_guard"
+);
+compiler_case!(clsx_binary_guard, "attribute/clsx/binary_guard");
+compiler_case!(
+    clsx_identifier_clsx_guard,
+    "attribute/clsx/identifier_clsx_guard"
+);
+compiler_case!(clsx_object_clsx_guard, "attribute/clsx/object_clsx_guard");
+compiler_case!(clsx_array_clsx_guard, "attribute/clsx/array_clsx_guard");
+compiler_case!(clsx_call_clsx_guard, "attribute/clsx/call_clsx_guard");
+
+compiler_case!(
+    concat_each_sequence,
+    "attribute/concat_sequence/each_class_sequence"
+);
+compiler_case!(
+    concat_plain_reactive_guard,
+    "attribute/concat_sequence/plain_reactive_guard"
+);

@@ -118,7 +118,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     if let Some(d) = &data {
                         memo_deps.push_expression_data(self.ctx, d);
                     }
-                    tpl_parts.push(TemplatePart::Expr(wrapped, *defined));
+                    let is_sequence = matches!(wrapped, Expression::SequenceExpression(_));
+                    tpl_parts.push(TemplatePart::Expr(wrapped, *defined && !is_sequence));
                 }
                 HtmlConcatPart::SyncMemoSlot {
                     part_id, defined, ..
