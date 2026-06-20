@@ -287,6 +287,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.anchor_comment_pre_emitted = true;
         }
 
+        let special_block_end = state.init.len();
+
         if needs_anchor_reserve && !pre_emit_frag_pending {
             let frag = self.ctx.state.gen_ident("fragment");
             if skip_node_reserve {
@@ -305,6 +307,32 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         {
             let _ = self.ctx.state.gen_ident("fragment");
         }
+
+        let strategy_is_text_root = match &strategy {
+            ContentStrategy::SingleStatic
+            | ContentStrategy::SingleExpr(_)
+            | ContentStrategy::SingleConcat => true,
+            ContentStrategy::Empty
+            | ContentStrategy::SingleElement(_)
+            | ContentStrategy::SingleBlock(_)
+            | ContentStrategy::CssWrappedComponent(_)
+            | ContentStrategy::ControlledEach(_)
+            | ContentStrategy::Multi { .. } => false,
+        };
+        let anchor_is_root_text = match &ctx.anchor {
+            FragmentAnchor::Root => true,
+            FragmentAnchor::CallbackParam {
+                append_inside: false,
+                ..
+            } => true,
+            FragmentAnchor::CallbackParam {
+                append_inside: true,
+                ..
+            } => false,
+            FragmentAnchor::Child { .. } | FragmentAnchor::SiblingVar { .. } => false,
+        };
+        let rotate_text_root_before_specials =
+            special_block_end > init_len_before && strategy_is_text_root && anchor_is_root_text;
 
         state.last_fragment_needs_reset = needs_reset;
         match strategy {
@@ -372,6 +400,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 needs_reset = state.last_fragment_needs_reset;
             }
         }
+
+        if rotate_text_root_before_specials {
+            state.init[init_len_before..].rotate_left(special_block_end - init_len_before);
+        }
+
         state.last_fragment_needs_reset = needs_reset;
 
         if !is_root_anchor {

@@ -28,6 +28,9 @@ macro_rules! compiler_case {
 #[path = "clusters/events.rs"]
 mod events;
 
+#[path = "clusters/special_element_order.rs"]
+mod special_element_order;
+
 #[path = "clusters/component_props.rs"]
 mod component_props;
 
