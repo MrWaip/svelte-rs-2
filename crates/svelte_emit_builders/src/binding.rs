@@ -1,4 +1,5 @@
 use oxc_ast::ast::Expression;
+use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     EachIndexStrategy, EachItemStrategy, PropBindingKind, PropBindingSemantics,
@@ -24,6 +25,10 @@ pub fn read_binding<'a>(
     safety: LegacyStateSafety,
 ) -> Option<Expression<'a>> {
     let name = analysis.scoping.symbol_name(sym);
+    if analysis.reactivity.legacy_reactive().is_mutated_import(sym) {
+        let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(name));
+        return Some(b.call_expr_callee(b.rid_expr(wrapper), []));
+    }
     match analysis.binding_semantics(sym) {
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::NonSource,

@@ -387,6 +387,15 @@ impl<'a> ComponentSemantics<'a> {
             .add_resolved_reference(symbol_id, reference_id, is_write);
     }
 
+    pub fn add_store_subscription_reference(
+        &mut self,
+        symbol_id: SymbolId,
+        reference_id: ReferenceId,
+    ) {
+        self.symbols
+            .add_resolved_reference(symbol_id, reference_id, false);
+    }
+
     pub fn mark_symbol_member_mutated(&mut self, symbol_id: SymbolId) {
         self.symbols.set_state(symbol_id, sym_state::MEMBER_MUTATED);
     }

@@ -1,6 +1,7 @@
 use oxc_ast::NONE;
 use oxc_ast::ast::{Argument, Expression, NumberBase};
 use oxc_span::SPAN;
+use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, PropBindingKind, PropBindingSemantics, PropEmitMode,
 };
@@ -16,6 +17,14 @@ pub fn build_store_base_read<'a>(
 ) -> Expression<'a> {
     let ast = b.ast;
     let base_name = analysis.scoping.symbol_name(base_sym);
+    if analysis
+        .reactivity
+        .legacy_reactive()
+        .is_mutated_import(base_sym)
+    {
+        let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(base_name));
+        return b.call_expr_callee(b.rid_expr(wrapper), []);
+    }
     match analysis.binding_semantics(base_sym) {
         BindingSemantics::LegacyState(_)
         | BindingSemantics::State(_)

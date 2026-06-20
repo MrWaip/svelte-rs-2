@@ -76,6 +76,9 @@ mod multi_declarator_split;
 #[path = "clusters/legacy_coarse_deps.rs"]
 mod legacy_coarse_deps;
 
+#[path = "clusters/legacy_reactive_import_wrap.rs"]
+mod legacy_reactive_import_wrap;
+
 #[path = "clusters/legacy_rune_named_stores.rs"]
 mod legacy_rune_named_stores;
 

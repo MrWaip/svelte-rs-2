@@ -90,10 +90,6 @@ impl LegacyReactivitySemantics {
         }
     }
 
-    pub(crate) fn remove_mutated_import(&mut self, sym: SymbolId) {
-        self.mutated_imports.retain(|s| *s != sym);
-    }
-
     pub(crate) fn record_statement(&mut self, statement: LegacyReactiveStatement) {
         self.statements.insert(statement.stmt_node, statement);
     }

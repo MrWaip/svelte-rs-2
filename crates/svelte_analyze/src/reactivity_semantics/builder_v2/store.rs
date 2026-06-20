@@ -77,9 +77,6 @@ pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
                     },
                 );
             }
-            data.reactivity
-                .legacy_reactive_mut()
-                .remove_mutated_import(base_sym);
             seen.insert(dollar_name.clone(), (base_sym, store_sym));
             (base_sym, store_sym)
         };

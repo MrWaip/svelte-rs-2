@@ -206,7 +206,8 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
                 self.semantics
                     .get_reference_mut(ref_id)
                     .set_symbol_id(sym_id);
-                self.semantics.add_resolved_reference(sym_id, ref_id);
+                self.semantics
+                    .add_store_subscription_reference(sym_id, ref_id);
                 self.semantics.add_store_candidate_ref(sym_id, ref_id);
             } else if let Some(current_level) = self.unresolved_stack.last_mut() {
                 current_level.push((CompactString::from(name), ref_id));
@@ -652,8 +653,9 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         self.current_ref_flags = ReferenceFlags::read_write();
         walk::walk_update_expression(self, expr);
-        if let Some(sym) =
-            simple_assignment_target_member_root_symbol(self.semantics, &expr.argument)
+        if !simple_assignment_target_root_is_store_subscription(&expr.argument)
+            && let Some(sym) =
+                simple_assignment_target_member_root_symbol(self.semantics, &expr.argument)
         {
             self.semantics.mark_symbol_member_mutated(sym);
         }
@@ -696,6 +698,7 @@ fn mark_member_mutation_roots<'a>(
     walk_assignment_targets(target, |v| {
         if let WriteTarget::Member(member) = v.target
             && let Some(member_expr) = member.as_member_expression()
+            && !expression_root_is_store_subscription(member_expr.object())
             && let Some(sym) = expression_root_symbol(semantics, member_expr.object())
         {
             roots.push(sym);
@@ -727,6 +730,32 @@ fn unwrap_assignment_expression<'r, 'a>(
     match expr.get_inner_expression() {
         Expression::AssignmentExpression(assign) => Some(assign),
         _ => None,
+    }
+}
+
+fn expression_root_is_store_subscription(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::Identifier(id) => store_candidate_base(id.name.as_str()).is_some(),
+        Expression::StaticMemberExpression(m) => expression_root_is_store_subscription(&m.object),
+        Expression::ComputedMemberExpression(m) => expression_root_is_store_subscription(&m.object),
+        Expression::ParenthesizedExpression(p) => {
+            expression_root_is_store_subscription(&p.expression)
+        }
+        _ => false,
+    }
+}
+
+fn simple_assignment_target_root_is_store_subscription(
+    target: &SimpleAssignmentTarget<'_>,
+) -> bool {
+    match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            expression_root_is_store_subscription(&m.object)
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            expression_root_is_store_subscription(&m.object)
+        }
+        _ => false,
     }
 }
 

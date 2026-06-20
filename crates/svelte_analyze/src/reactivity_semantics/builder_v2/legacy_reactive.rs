@@ -198,6 +198,13 @@ pub(super) fn classify_mutated_import_references(data: &mut AnalysisData<'_>) {
     for sym in imports {
         let ref_ids: Vec<_> = data.scoping.get_resolved_reference_ids(sym).to_vec();
         for ref_id in ref_ids {
+            if data
+                .reactivity
+                .reference_semantics(ref_id)
+                .is_store_subscription()
+            {
+                continue;
+            }
             let is_member_mutation_root = data.reactivity.is_prop_member_mutation_root_ref(ref_id);
             let reference = data.scoping.get_reference(ref_id);
             let fact = if is_member_mutation_root {
