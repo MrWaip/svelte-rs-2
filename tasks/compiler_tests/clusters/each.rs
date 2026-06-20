@@ -51,8 +51,7 @@ compiler_case!(
 );
 compiler_case!(
     declaration_legacy_import_collection,
-    "each/declaration/legacy/import_collection",
-    ignore = "legacy each with imported collection: an import is non-reactive in legacy mode (read bare, not via $.get) and the component still emits $.push/$.init/$.pop; pending follow-up"
+    "each/declaration/legacy/import_collection"
 );
 compiler_case!(
     declaration_legacy_default_intermediate_array,
@@ -103,6 +102,10 @@ compiler_case!(
     "each/declaration/legacy/string_key"
 );
 compiler_case!(declaration_runes_alias, "each/declaration/runes/alias");
+compiler_case!(
+    declaration_runes_import_collection,
+    "each/declaration/runes/import_collection"
+);
 compiler_case!(
     declaration_runes_array_hole,
     "each/declaration/runes/array_hole"

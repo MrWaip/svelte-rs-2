@@ -39,7 +39,55 @@ pub enum BindingSemantics {
     Unresolved,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LegacyDependency {
+    SelfTracked,
+    Shallow,
+    Deep,
+}
+
 impl BindingSemantics {
+    pub fn legacy_dependency(&self) -> LegacyDependency {
+        match self {
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect) => {
+                LegacyDependency::SelfTracked
+            }
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::NonSource | PropBindingKind::Rest,
+                ..
+            })
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirective
+                | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                | ContextualBindingSemantics::AwaitValue
+                | ContextualBindingSemantics::AwaitError
+                | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
+            ) => LegacyDependency::Deep,
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::Identifier | PropBindingKind::Source { .. },
+                ..
+            })
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved
+            | BindingSemantics::Contextual(
+                ContextualBindingSemantics::EachItem(_)
+                | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct)
+                | ContextualBindingSemantics::SnippetParam(_),
+            ) => LegacyDependency::Shallow,
+        }
+    }
+
     pub fn is_reactive(&self) -> bool {
         match self {
             BindingSemantics::State(_)

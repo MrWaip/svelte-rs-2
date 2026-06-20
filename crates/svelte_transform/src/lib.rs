@@ -92,6 +92,7 @@ pub fn transform_component<'a>(
         bind_expr_handles,
         transform_data,
         parsed,
+        component,
         line_index,
         dev,
     )

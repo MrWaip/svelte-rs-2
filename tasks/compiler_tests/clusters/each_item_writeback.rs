@@ -59,8 +59,7 @@ compiler_case!(
 );
 compiler_case!(
     legacy_reassigned_collection_expr,
-    "each_item_writeback/legacy_reassigned_collection_expr",
-    ignore = "legacy each reassigned item: the writeback must index the full instrumented collection expression (e.g. foo().bar), not a read reconstructed from the source symbol (foo()); pending follow-up"
+    "each_item_writeback/legacy_reassigned_collection_expr"
 );
 compiler_case!(
     legacy_reactive_filtered_collection_mutate,

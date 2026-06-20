@@ -63,6 +63,8 @@ pub fn transform_script<'a, 'b>(
         in_bind_setter_traverse: false,
         destructure_lhs_depth: 0,
         gen_arrow_scope: None,
+        parsed: None,
+        component: None,
     };
 
     let empty_scoping = Scoping::default();

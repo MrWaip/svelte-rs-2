@@ -582,7 +582,7 @@ fn collect_each_block_collection_sources_legacy(
                     && ctx.data.reactivity.store_shadow_of_internal(sym).is_none()
                     && !super::symbol_is_function_declaration(&ctx.data.scoping, sym)
                 {
-                    if is_primary_block {
+                    if is_primary_block && !ctx.data.scoping.is_import(sym) {
                         ctx.data.reactivity.record_legacy_state_binding(
                             sym,
                             LegacyStateSemantics {

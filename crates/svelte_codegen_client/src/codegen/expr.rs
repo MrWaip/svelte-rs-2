@@ -98,45 +98,10 @@ pub(in crate::codegen) fn legacy_dep_expr<'a>(
 }
 
 fn uses_deep_read_state(ctx: &Ctx<'_>, sym: SymbolId) -> bool {
-    use svelte_analyze::{
-        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
-        PropBindingKind, PropBindingSemantics,
-    };
-    match ctx.query.view.binding_semantics(sym) {
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::NonSource | PropBindingKind::Rest,
-            ..
-        })
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::Contextual(
-            ContextualBindingSemantics::LetDirective
-            | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-            | ContextualBindingSemantics::AwaitValue
-            | ContextualBindingSemantics::AwaitError
-            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
-        )
-        | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
-        | BindingSemantics::MaybeReactive => true,
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Identifier | PropBindingKind::Source { .. },
-            ..
-        })
-        | BindingSemantics::Contextual(
-            ContextualBindingSemantics::EachItem(_)
-            | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct)
-            | ContextualBindingSemantics::LetDirectiveDirect
-            | ContextualBindingSemantics::SnippetParam(_),
-        )
-        | BindingSemantics::NonReactive
-        | BindingSemantics::State(_)
-        | BindingSemantics::Derived(_)
-        | BindingSemantics::OptimizedDerived(_)
-        | BindingSemantics::OptimizedRune(_)
-        | BindingSemantics::LegacyApiExport
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Store(_)
-        | BindingSemantics::RuntimeRune { .. }
-        | BindingSemantics::Unresolved => false,
+    use svelte_analyze::LegacyDependency;
+    match ctx.query.view.binding_semantics(sym).legacy_dependency() {
+        LegacyDependency::Deep => true,
+        LegacyDependency::SelfTracked | LegacyDependency::Shallow => false,
     }
 }
 
@@ -144,7 +109,7 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics};
+    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, LegacyDependency};
     if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
         destructured: true,
         owner_node,
@@ -165,31 +130,9 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     {
         return Some(expr);
     }
-    let reads_directly = match ctx.query.view.binding_semantics(sym) {
-        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
-        | BindingSemantics::State(_)
-        | BindingSemantics::Derived(_)
-        | BindingSemantics::OptimizedDerived(_)
-        | BindingSemantics::OptimizedRune(_) => true,
-        BindingSemantics::Contextual(
-            ContextualBindingSemantics::EachItem(_)
-            | ContextualBindingSemantics::EachIndex(_)
-            | ContextualBindingSemantics::AwaitValue
-            | ContextualBindingSemantics::AwaitError
-            | ContextualBindingSemantics::LetDirective
-            | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-            | ContextualBindingSemantics::SnippetParam(_),
-        )
-        | BindingSemantics::Prop(_)
-        | BindingSemantics::RuntimeRune { .. }
-        | BindingSemantics::Store(_)
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Const(_)
-        | BindingSemantics::MaybeReactive
-        | BindingSemantics::NonReactive
-        | BindingSemantics::LegacyApiExport
-        | BindingSemantics::Unresolved => false,
+    let reads_directly = match ctx.query.view.binding_semantics(sym).legacy_dependency() {
+        LegacyDependency::SelfTracked => true,
+        LegacyDependency::Shallow | LegacyDependency::Deep => false,
     };
     if reads_directly {
         return None;

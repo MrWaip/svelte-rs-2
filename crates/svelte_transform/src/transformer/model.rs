@@ -4,10 +4,10 @@ use oxc_syntax::scope::ScopeId;
 
 use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
-use svelte_ast::NodeId as SvelteNodeId;
+use svelte_ast::{Component, NodeId as SvelteNodeId};
 
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentScoping, DeclaratorSemantics, IdentGen,
+    AnalysisData, BindingSemantics, ComponentScoping, DeclaratorSemantics, IdentGen, JsAst,
 };
 
 use svelte_ast_builder::Builder;
@@ -113,6 +113,10 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) destructure_lhs_depth: u32,
 
     pub(crate) gen_arrow_scope: Option<ScopeId>,
+
+    pub(crate) parsed: Option<&'b mut JsAst<'a>>,
+
+    pub(crate) component: Option<&'b Component>,
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {

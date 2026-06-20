@@ -1,10 +1,12 @@
 use oxc_allocator::Box as OxcBox;
+use oxc_allocator::CloneIn;
 use oxc_ast::NONE;
 use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase, Statement};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
 use svelte_analyze::EachIndexStrategy;
+use svelte_ast::Node;
 use svelte_component_semantics::ReferenceId;
 use svelte_emit_builders::each_item;
 use svelte_emit_builders::props::{props_computed_access, props_member};
@@ -171,6 +173,46 @@ impl<'a> ComponentTransformer<'_, 'a> {
         each_item::each_item_collection_read_legacy(self.b, analysis, source_sym, hoisted)
     }
 
+    fn rebuilt_each_collection_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+    ) -> Option<Expression<'a>> {
+        let hoisted = self
+            .transform_data
+            .each_collection_block_by_item_legacy
+            .get(&item_sym)
+            .and_then(|block_id| {
+                self.transform_data
+                    .each_collection_internal_names_legacy
+                    .get(block_id)
+            });
+        if hoisted.is_some() {
+            return None;
+        }
+        let &block_id = self
+            .transform_data
+            .each_index_block_by_item
+            .get(&item_sym)?;
+        let Node::EachBlock(block) = self.component?.store.get(block_id) else {
+            return None;
+        };
+        let oxc_id = block.expression.id();
+        let raw = self
+            .parsed
+            .as_ref()?
+            .expr(oxc_id)?
+            .clone_in_with_semantic_ids(self.b.ast.allocator);
+        let expr_data = analysis.expression_data_by_oxc(oxc_id)?;
+        Some(each_item::wrap_each_collection_legacy(
+            self.b,
+            analysis,
+            raw,
+            expr_data,
+            self.component_scoping.root_scope_id(),
+        ))
+    }
+
     pub(crate) fn build_each_item_indexed_member_legacy(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
@@ -180,7 +222,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
         let ast = self.b.ast;
         let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
-        let collection = self.each_item_collection_read_legacy(analysis, item_sym, source_sym);
+        let collection = self
+            .rebuilt_each_collection_legacy(analysis, item_sym)
+            .unwrap_or_else(|| {
+                self.each_item_collection_read_legacy(analysis, item_sym, source_sym)
+            });
         let index_name = match index_sym {
             Some(index_sym) => self.component_scoping.symbol_name(index_sym),
             None => {
