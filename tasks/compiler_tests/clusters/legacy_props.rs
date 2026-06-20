@@ -114,3 +114,32 @@ compiler_case!(
     declaration_string_key,
     "legacy/props/declaration/string_key"
 );
+compiler_case!(default_store_autosub, "legacy/props/default/store_autosub");
+compiler_case!(
+    default_store_in_binary,
+    "legacy/props/default/store_in_binary"
+);
+compiler_case!(
+    default_store_in_conditional,
+    "legacy/props/default/store_in_conditional"
+);
+compiler_case!(
+    default_guard_literal_eager,
+    "legacy/props/default/guard_literal_eager"
+);
+compiler_case!(
+    default_guard_bare_call,
+    "legacy/props/default/guard_bare_call"
+);
+compiler_case!(
+    default_guard_member_thunk,
+    "legacy/props/default/guard_member_thunk"
+);
+compiler_case!(
+    default_guard_legacy_prop_ref,
+    "legacy/props/default/guard_legacy_prop_ref"
+);
+compiler_case!(
+    default_guard_no_default,
+    "legacy/props/default/guard_no_default"
+);

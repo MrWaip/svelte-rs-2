@@ -364,11 +364,63 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
         let reassigned = non_store_write;
         let updated = if immutable { reassigned } else { updated_any };
         let new_flags = compute_flags(updated, accessors, immutable);
+        let store_default = store_default_kind_override(data, sym);
         if let Some(BindingFacts::LegacyBindableProp(legacy)) =
             data.reactivity.binding_facts_mut(sym)
         {
             legacy.flags = new_flags;
+            if let Some(kind) = store_default {
+                legacy.default_kind = kind;
+            }
         }
+    }
+}
+
+fn store_default_kind_override(data: &AnalysisData<'_>, sym: SymbolId) -> Option<PropDefaultKind> {
+    let Some(BindingFacts::LegacyBindableProp(legacy)) = data.reactivity.binding_facts(sym) else {
+        return None;
+    };
+    if legacy.default_kind != PropDefaultKind::Eager {
+        return None;
+    }
+    let init = lookup_let_or_var_init(data, sym)?.1?;
+    if is_store_subscription_identifier(data, init) {
+        Some(PropDefaultKind::LazyAccessor)
+    } else if references_store_subscription(data, init) {
+        Some(PropDefaultKind::Lazy)
+    } else {
+        None
+    }
+}
+
+fn is_store_subscription_identifier(data: &AnalysisData<'_>, expr: &Expression<'_>) -> bool {
+    let Expression::Identifier(id) = expr.get_inner_expression() else {
+        return false;
+    };
+    id.reference_id.get().is_some_and(|ref_id| {
+        data.reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+    })
+}
+
+fn references_store_subscription(data: &AnalysisData<'_>, expr: &Expression<'_>) -> bool {
+    match expr.get_inner_expression() {
+        Expression::Identifier(_) => is_store_subscription_identifier(data, expr),
+        Expression::ConditionalExpression(c) => {
+            references_store_subscription(data, &c.test)
+                || references_store_subscription(data, &c.consequent)
+                || references_store_subscription(data, &c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            references_store_subscription(data, &b.left)
+                || references_store_subscription(data, &b.right)
+        }
+        Expression::LogicalExpression(b) => {
+            references_store_subscription(data, &b.left)
+                || references_store_subscription(data, &b.right)
+        }
+        _ => false,
     }
 }
 
