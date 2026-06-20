@@ -114,8 +114,11 @@ impl ElementFactsEntry {
             }
         }
 
+        let attr_index = AttrIndex::build(attrs, source);
+        let is_custom_element = is_custom_element || attr_index.has("is");
+
         Self {
-            attr_index: AttrIndex::build(attrs, source),
+            attr_index,
             has_spread,
             has_runtime_attrs,
             namespace,

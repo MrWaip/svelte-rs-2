@@ -82,6 +82,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
+    pub(in super::super) fn emit_custom_element_static_class(
+        &mut self,
+        state: &mut EmitState<'a>,
+        owner_id: NodeId,
+        owner_var: &str,
+        value: &str,
+        is_html: bool,
+    ) {
+        let hash = self.ctx.css_hash().to_string();
+        let scope_hash = (self.ctx.is_css_scoped(owner_id) && !hash.is_empty()).then_some(hash);
+        let class_value = self.ctx.b.str_expr(value);
+        emit_set_class_call(
+            self.ctx,
+            &mut state.init,
+            &mut state.update,
+            owner_var,
+            class_value,
+            scope_hash.as_deref(),
+            None,
+            Volatility::Static,
+            is_html,
+        );
+    }
+
     fn maybe_hoist_class_directives_obj(
         &mut self,
         state: &mut EmitState<'a>,

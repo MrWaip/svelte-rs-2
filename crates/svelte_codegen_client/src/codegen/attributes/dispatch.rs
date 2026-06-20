@@ -1,7 +1,7 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
+use svelte_analyze::{AttributeSemantics, MustBePropertyValue, Volatility};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -251,6 +251,107 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .b
                             .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(value)]),
                     );
+                }
+                AttributeSemantics::NonSpecial
+                    if self.ctx.query.view.is_custom_element(owner_id) =>
+                {
+                    match attr {
+                        Attribute::StringAttribute(a) => {
+                            if a.name == "class" {
+                                let val = a.value(&self.ctx.query.component.source).to_string();
+                                self.emit_custom_element_static_class(
+                                    state, owner_id, owner_var, &val, is_html,
+                                );
+                                emitted_class = true;
+                                continue;
+                            }
+                            if a.name == "style" {
+                                let val = a.value(&self.ctx.query.component.source).to_string();
+                                let style_call = self.ctx.b.call_expr(
+                                    "$.set_style",
+                                    [Arg::Ident(owner_var), Arg::Str(val)],
+                                );
+                                state.init.push(self.ctx.b.expr_stmt(style_call));
+                                continue;
+                            }
+                            if a.name == "is" && is_html {
+                                let val = a.value(&self.ctx.query.component.source);
+                                state.template.set_attribute(&a.name, Some(val.to_string()));
+                                continue;
+                            }
+                            let val = a.value(&self.ctx.query.component.source).to_string();
+                            let value = self.ctx.b.str_expr(&val);
+                            self.emit_custom_element_data(state, owner_var, &a.name, value, false);
+                        }
+                        Attribute::BooleanAttribute(a) => {
+                            let value = self.ctx.b.bool_expr(true);
+                            self.emit_custom_element_data(state, owner_var, &a.name, value, false);
+                        }
+                        Attribute::ExpressionAttribute(a) => {
+                            if a.name == "class" {
+                                if !emitted_class {
+                                    self.emit_class_attribute_and_directives(
+                                        state, owner_id, owner_var, is_html,
+                                    )?;
+                                    emitted_class = true;
+                                }
+                                continue;
+                            }
+                            if a.name == "style" {
+                                if has_style_directives {
+                                    self.emit_style_directives_aggregate(
+                                        state,
+                                        owner_id,
+                                        owner_var,
+                                        Some(a.id),
+                                    )?;
+                                    emitted_style_directives = true;
+                                } else {
+                                    self.emit_attr_expression(
+                                        state, owner_id, owner_tag, owner_var, a,
+                                    )?;
+                                }
+                                continue;
+                            }
+                            let attr_id = a.id;
+                            let value = self.take_attr_expr(attr_id, &a.expression)?;
+                            let reactive =
+                                match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                                    Some(
+                                        Volatility::Reactive
+                                        | Volatility::Heavy
+                                        | Volatility::Asynchronous,
+                                    ) => true,
+                                    Some(Volatility::Static) | None => false,
+                                };
+                            self.emit_custom_element_data(
+                                state, owner_var, &a.name, value, reactive,
+                            );
+                        }
+                        Attribute::ConcatenationAttribute(_) => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "ConcatenationAttribute must classify as HtmlConcat",
+                            );
+                        }
+                        Attribute::SpreadAttribute(_)
+                        | Attribute::ClassDirective(_)
+                        | Attribute::StyleDirective(_)
+                        | Attribute::LetDirectiveLegacy(_) => continue,
+                        Attribute::UseDirective(_)
+                        | Attribute::OnDirectiveLegacy(_)
+                        | Attribute::TransitionDirective(_)
+                        | Attribute::AnimateDirective(_) => {}
+                        Attribute::AttachTag(a) => {
+                            self.emit_attach_tag(state, owner_id, owner_var, a)?;
+                        }
+                        Attribute::BindDirective(_) => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "BindDirective in NonSpecial branch",
+                            );
+                        }
+                    }
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
