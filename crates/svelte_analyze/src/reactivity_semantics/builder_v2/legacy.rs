@@ -6,7 +6,7 @@ use oxc_ast::{
         Function, ModuleExportName, VariableDeclaration, VariableDeclarationKind,
     },
 };
-use svelte_component_semantics::{ReferenceId, walk_bindings};
+use svelte_component_semantics::{OxcNodeId, ReferenceId, walk_bindings};
 
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, ApiExport};
@@ -249,10 +249,14 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             record_api_export(data, symbol, specifier_reference_id(spec), alias);
             continue;
         }
-        let init = lookup_let_or_var_init(data, symbol).and_then(|(_, init)| init);
-        let default_kind = match init {
-            Some(init_expr) => classify_expression_default(data, init_expr),
-            None => PropDefaultKind::None,
+        let destructure_node = specifier_destructure_declarator_node(data, symbol);
+        let default_kind = if destructure_node.is_some() {
+            PropDefaultKind::Lazy
+        } else {
+            match lookup_let_or_var_init(data, symbol).and_then(|(_, init)| init) {
+                Some(init_expr) => classify_expression_default(data, init_expr),
+                None => PropDefaultKind::None,
+            }
         };
 
         let updated = if data.script.immutable {
@@ -270,6 +274,30 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         );
         data.reactivity
             .record_legacy_bindable_prop_symbol(symbol, alias.map(|a| a.to_string()));
+
+        if let Some(node) = destructure_node {
+            data.reactivity
+                .record_declarator_semantics(node, DeclaratorSemantics::LegacyProps);
+        }
+    }
+}
+
+fn specifier_destructure_declarator_node(
+    data: &AnalysisData<'_>,
+    symbol: SymbolId,
+) -> Option<OxcNodeId> {
+    let decl_node = data.scoping.symbol_declaration(symbol);
+    let mut current = data.scoping.js_parent_id(decl_node)?;
+    let mut result = None;
+    loop {
+        match data.scoping.js_kind(current)? {
+            AstKind::VariableDeclarator(declarator) => {
+                result = is_destructured_pattern(&declarator.id).then_some(current);
+            }
+            AstKind::VariableDeclaration(_) => return result,
+            _ => {}
+        }
+        current = data.scoping.js_parent_id(current)?;
     }
 }
 
