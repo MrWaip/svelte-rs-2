@@ -195,6 +195,7 @@ fn emit_child_node<'a, 'ctx>(
         }
         Node::ComponentNode(_)
         | Node::SvelteComponentLegacy(_)
+        | Node::SvelteSelf(_)
         | Node::SvelteElement(_)
         | Node::SvelteBoundary(_)
         | Node::SlotElementLegacy(_)
@@ -207,7 +208,7 @@ fn emit_child_node<'a, 'ctx>(
         | Node::RenderTag(_) => {
             let is_css_wrapped_component = matches!(
                 node,
-                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_)
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_)
             ) && cg.ctx.has_component_css_props(id);
 
             if is_css_wrapped_component {

@@ -622,7 +622,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
             }
-            svelte_ast::Node::SvelteComponentLegacy(_) => self.ctx.has_component_css_props(id),
+            svelte_ast::Node::SvelteComponentLegacy(_) | svelte_ast::Node::SvelteSelf(_) => {
+                self.ctx.has_component_css_props(id)
+            }
             _ => false,
         }
     }

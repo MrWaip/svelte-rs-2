@@ -1954,6 +1954,31 @@ fn svelte_self_if() {
 }
 
 #[rstest]
+fn svelte_self_if_sibling() {
+    assert_compiler("svelte_self_if_sibling");
+}
+
+#[rstest]
+fn svelte_self_if_else_sibling() {
+    assert_compiler("svelte_self_if_else_sibling");
+}
+
+#[rstest]
+fn svelte_self_each_sibling() {
+    assert_compiler("svelte_self_each_sibling");
+}
+
+#[rstest]
+fn svelte_self_element_sibling() {
+    assert_compiler("svelte_self_element_sibling");
+}
+
+#[rstest]
+fn svelte_self_css_props() {
+    assert_compiler("svelte_self_css_props");
+}
+
+#[rstest]
 fn svelte_self_each() {
     assert_compiler("svelte_self_each");
 }
