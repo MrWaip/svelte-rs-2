@@ -352,6 +352,12 @@ fn walk_node<'a>(
         }
         Node::AwaitBlock(block) => {
             record_expr(ctx, parsed, &block.expression, Some(block.id));
+            if let Some(value) = block.value.as_ref() {
+                ctx.stmt_handles.push((value.id(), Some(block.id)));
+            }
+            if let Some(error) = block.error.as_ref() {
+                ctx.stmt_handles.push((error.id(), Some(block.id)));
+            }
             if let Some(p) = block.pending {
                 let pending_scope = ctx.analysis.effective_fragment_scope(p, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);

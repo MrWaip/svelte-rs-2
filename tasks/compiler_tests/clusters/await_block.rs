@@ -138,3 +138,27 @@ compiler_case!(
     declaration_runes_string_key,
     "await/declaration/runes/string_key"
 );
+compiler_case!(
+    declaration_legacy_reactive_computed_key,
+    "await/declaration/legacy/reactive_computed_key"
+);
+compiler_case!(
+    declaration_legacy_reactive_computed_key_read,
+    "await/declaration/legacy/reactive_computed_key_read"
+);
+compiler_case!(
+    declaration_legacy_reactive_default,
+    "await/declaration/legacy/reactive_default"
+);
+compiler_case!(
+    declaration_legacy_reactive_catch_computed_key,
+    "await/declaration/legacy/reactive_catch_computed_key"
+);
+compiler_case!(
+    declaration_runes_reactive_computed_key,
+    "await/declaration/runes/reactive_computed_key"
+);
+compiler_case!(
+    declaration_runes_reactive_default,
+    "await/declaration/runes/reactive_default"
+);
