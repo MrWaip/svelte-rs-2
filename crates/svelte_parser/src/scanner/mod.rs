@@ -433,6 +433,10 @@ impl<'a> Scanner<'a> {
             };
         }
 
+        if name == "textarea" && !self_closing {
+            return self.textarea_rcdata(name, name_span, attributes);
+        }
+
         self.add_token(TokenType::StartTag(StartTag {
             attributes,
             name_span,
@@ -986,6 +990,95 @@ impl<'a> Scanner<'a> {
         self.leave_fragment();
 
         Ok(())
+    }
+
+    fn textarea_rcdata(
+        &mut self,
+        tag_name: &str,
+        name_span: Span,
+        attributes: Vec<Attribute>,
+    ) -> Result<(), Diagnostic> {
+        let open_tag_span = Span::new(self.start as u32, self.current as u32);
+        self.push_token(
+            TokenType::StartTag(StartTag {
+                attributes,
+                name_span,
+                self_closing: false,
+            }),
+            open_tag_span,
+        );
+        self.enter_fragment();
+
+        let mut text_start = self.current;
+        loop {
+            match memchr2(b'<', b'{', &self.bytes[self.current..]) {
+                None => {
+                    if text_start < self.bytes.len() {
+                        self.push_token(TokenType::Text, self.span(text_start, self.bytes.len()));
+                    }
+                    self.current = self.bytes.len();
+                    self.recover(Diagnostic::unexpected_end_of_file(
+                        self.span(text_start, self.current),
+                    ));
+                    self.leave_fragment();
+                    return Ok(());
+                }
+                Some(off) => {
+                    let pos = self.current + off;
+                    if self.bytes[pos] == b'{' {
+                        if text_start < pos {
+                            self.push_token(TokenType::Text, self.span(text_start, pos));
+                        }
+                        self.start = pos;
+                        self.current = pos;
+                        self.advance();
+                        self.skip_whitespace();
+                        self.interpolation()?;
+                        text_start = self.current;
+                    } else {
+                        self.current = pos;
+                        self.advance();
+                        if self.match_char('/') {
+                            let close_name_start = self.current;
+                            let name_matches = self.identifier().eq_ignore_ascii_case(tag_name);
+                            let name_end = self.current;
+                            if name_matches && self.consume_rcdata_close_tail() {
+                                if text_start < pos {
+                                    self.push_token(TokenType::Text, self.span(text_start, pos));
+                                }
+                                self.push_token(
+                                    TokenType::EndTag(token::EndTag {
+                                        name_span: self.span(close_name_start, name_end),
+                                    }),
+                                    self.span(pos, self.current),
+                                );
+                                self.leave_fragment();
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn consume_rcdata_close_tail(&mut self) -> bool {
+        match self.peek() {
+            Some('>') => {
+                self.advance();
+                true
+            }
+            Some(c) if c.is_ascii_whitespace() => {
+                while let Some(c) = self.peek() {
+                    self.advance();
+                    if c == '>' {
+                        return true;
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn raw_text_element(

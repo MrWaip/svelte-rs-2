@@ -1215,3 +1215,205 @@ fn attribute_name_stops_at_pipe_modifier() {
     };
     assert_eq!(od.name_span.source_text(source), "click");
 }
+
+#[test]
+fn textarea_static_content_is_single_text() {
+    let source = "<textarea>just text</textarea>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "just text"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_interpolation_only() {
+    let source = "<textarea>{value}</textarea>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("interpolation", "value"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_treats_nested_markup_as_text() {
+    let source = "<textarea><b>bold</b></textarea>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "<b>bold</b>"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_mixed_text_markup_and_interpolation() {
+    let source = "<textarea>a <p>{foo}</p> b</textarea>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "a <p>"),
+            ("interpolation", "foo"),
+            ("text", "</p> b"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_close_tag_allows_whitespace_before_gt() {
+    let source = "<textarea>x</textarea\n>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "x"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_close_tag_is_case_insensitive() {
+    let source = "<textarea>x</TEXTAREA>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "x"),
+            ("end", "TEXTAREA"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_close_tag_allows_attributes_before_gt() {
+    let source = "<textarea>x</textarea foo=\"y\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "x"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_partial_close_name_is_text() {
+    let source = "<textarea>a</textareax>b</textarea>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_rcdata_tokens(
+        source,
+        &tokens,
+        &[
+            ("start", "textarea"),
+            ("text", "a</textareax>b"),
+            ("end", "textarea"),
+            ("eof", ""),
+        ],
+    );
+}
+
+#[test]
+fn textarea_unterminated_reports_eof_diagnostic() {
+    let (_, diagnostics) = Scanner::new("<textarea>abc").scan_tokens();
+
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[track_caller]
+fn assert_rcdata_tokens(source: &str, tokens: &[Token], expected: &[(&str, &str)]) {
+    assert_eq!(
+        tokens.len(),
+        expected.len(),
+        "token count: expected {}, got {} ({:?})",
+        expected.len(),
+        tokens.len(),
+        tokens.iter().map(|t| &t.token_type).collect::<Vec<_>>()
+    );
+
+    for (index, (expected_kind, expected_text)) in expected.iter().enumerate() {
+        let token = &tokens[index];
+        let (kind, text): (&str, String) = match &token.token_type {
+            TokenType::StartTag(t) => ("start", t.name_span.source_text(source).to_string()),
+            TokenType::EndTag(t) => ("end", t.name_span.source_text(source).to_string()),
+            TokenType::Text => ("text", token.span.source_text(source).to_string()),
+            TokenType::Interpolation(et) => (
+                "interpolation",
+                et.expression_span.source_text(source).to_string(),
+            ),
+            TokenType::EOF => ("eof", String::new()),
+            other => ("other", format!("{other:?}")),
+        };
+
+        assert_eq!(
+            kind, *expected_kind,
+            "token {index} kind: expected {expected_kind:?}, got {kind:?}"
+        );
+        assert_eq!(
+            text, *expected_text,
+            "token {index} text: expected {expected_text:?}, got {text:?}"
+        );
+    }
+}
+
+#[test]
+fn textarea_unclosed_interpolation_recovers() {
+    let (tokens, diagnostics) = Scanner::new("<textarea>{foo").scan_tokens();
+
+    assert_recovers(&tokens, &diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[track_caller]
+fn assert_recovers(tokens: &[Token], diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
+    assert!(
+        diagnostics.iter().any(|d| d.kind == err_kind),
+        "expected diagnostic {err_kind:?}, got: {diagnostics:?}"
+    );
+    assert_eq!(
+        tokens.last().map(|t| &t.token_type),
+        Some(&TokenType::EOF),
+        "recovery must still terminate with EOF, got: {:?}",
+        tokens.last().map(|t| &t.token_type)
+    );
+}
