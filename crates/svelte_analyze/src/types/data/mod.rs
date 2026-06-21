@@ -49,7 +49,7 @@ pub use directive_modifier_flags::EventModifier;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentCssProp, ComponentCssPropValue,
-    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode,
+    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode, LegacyDefaultSlot,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;

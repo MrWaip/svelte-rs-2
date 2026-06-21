@@ -99,6 +99,14 @@ pub enum EventHandlerMode {
     Direct { capture: bool, passive: bool },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LegacyDefaultSlot {
+    #[default]
+    ChildrenProp,
+    SlotDefaultInvalid,
+    SlotDefault,
+}
+
 pub struct ElementFlags {
     pub(crate) class_attr_id: NodeTable<NodeId>,
     pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
@@ -126,6 +134,9 @@ pub struct ElementFlags {
     pub(crate) is_selectedcontent: NodeBitSet,
 
     pub(crate) svelte_fragment_slots: NodeBitSet,
+
+    pub(crate) legacy_default_slot: NodeTable<LegacyDefaultSlot>,
+    pub(crate) legacy_slot_has_fallback: NodeBitSet,
 
     pub(crate) hydration_attribute_changed_ignored: NodeBitSet,
 
@@ -156,6 +167,8 @@ impl ElementFlags {
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
             svelte_fragment_slots: NodeBitSet::new(node_count),
+            legacy_default_slot: NodeTable::new(node_count),
+            legacy_slot_has_fallback: NodeBitSet::new(node_count),
             hydration_attribute_changed_ignored: NodeBitSet::new(node_count),
             needs_class_base: NodeBitSet::new(node_count),
             needs_style_base: NodeBitSet::new(node_count),
@@ -234,6 +247,15 @@ impl ElementFlags {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.svelte_fragment_slots.contains(&id)
+    }
+    pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
+        self.legacy_default_slot
+            .get(id)
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn legacy_slot_has_fallback(&self, id: NodeId) -> bool {
+        self.legacy_slot_has_fallback.contains(&id)
     }
     pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
         self.hydration_attribute_changed_ignored.contains(&id)

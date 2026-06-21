@@ -47,14 +47,15 @@ pub use types::data::{
     DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DocumentBindKind, EachIndexStrategy,
     EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
     ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
-    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDependency,
-    LegacyInit, LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData,
-    ParentKind, ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
-    PropEmitMode, PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
-    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
-    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDefaultSlot,
+    LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
+    OptimizedRuneSemantics, OutputData, ParentKind, ParentRef, PickledAwaits, PropBindingKind,
+    PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
+    ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
+    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
+    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {

@@ -5,7 +5,9 @@ use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, Referenc
 use super::*;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
 use crate::passes::fragment_topology::fragment_items;
-use crate::types::data::{ComponentCssProp, ComponentPropKind, DeclaratorSemantics};
+use crate::types::data::{
+    ComponentCssProp, ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot,
+};
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -426,6 +428,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_fragment_slot(id)
+    }
+    pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
+        self.data.elements.flags.legacy_default_slot(id)
+    }
+    pub fn legacy_slot_has_fallback(&self, id: NodeId) -> bool {
+        self.data.elements.flags.legacy_slot_has_fallback(id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)

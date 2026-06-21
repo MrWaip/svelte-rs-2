@@ -28,6 +28,9 @@ macro_rules! compiler_case {
 #[path = "clusters/events.rs"]
 mod events;
 
+#[path = "clusters/legacy_slots.rs"]
+mod legacy_slots;
+
 #[path = "clusters/special_element_order.rs"]
 mod special_element_order;
 

@@ -1,7 +1,7 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::Volatility;
+use svelte_analyze::{LegacyDefaultSlot, Volatility};
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -110,12 +110,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
 
-        let default_has_let = self.default_slot_has_let_directive_legacy(el_id);
-        let children_body = if default_has_let {
-            self.build_component_default_children_with_let(ctx, el_id, cn_fragment)?
-        } else {
-            self.build_component_default_children(ctx, cn_fragment)?
-        };
+        let children_body =
+            self.build_component_default_children_with_let(ctx, el_id, cn_fragment)?;
 
         let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
         for slot_key in &snippet_children.slot_keys {
@@ -123,27 +119,33 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             slot_entries.push(ObjProp::KeyValue(key, self.ctx.b.bool_expr(true)));
         }
         if let Some(arrow) = children_body {
-            let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
-            if default_has_let {
-                props
-                    .items
-                    .push(super::super::component_props::PropOrSpread::Prop(
-                        ObjProp::KeyValue(
-                            "children",
-                            self.ctx.b.static_member_expr(
-                                self.ctx.b.rid_expr("$"),
-                                "invalid_default_snippet",
+            match self.ctx.query.legacy_default_slot(el_id) {
+                LegacyDefaultSlot::ChildrenProp => {
+                    slot_entries.push(ObjProp::KeyValue("default", self.ctx.b.bool_expr(true)));
+                    let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
+                    props
+                        .items
+                        .push(super::super::component_props::PropOrSpread::Prop(
+                            ObjProp::KeyValue("children", arrow),
+                        ));
+                }
+                LegacyDefaultSlot::SlotDefaultInvalid => {
+                    props
+                        .items
+                        .push(super::super::component_props::PropOrSpread::Prop(
+                            ObjProp::KeyValue(
+                                "children",
+                                self.ctx.b.static_member_expr(
+                                    self.ctx.b.rid_expr("$"),
+                                    "invalid_default_snippet",
+                                ),
                             ),
-                        ),
-                    ));
-                slot_entries.push(ObjProp::KeyValue("default", arrow));
-            } else {
-                slot_entries.push(ObjProp::KeyValue("default", self.ctx.b.bool_expr(true)));
-                props
-                    .items
-                    .push(super::super::component_props::PropOrSpread::Prop(
-                        ObjProp::KeyValue("children", arrow),
-                    ));
+                        ));
+                    slot_entries.push(ObjProp::KeyValue("default", arrow));
+                }
+                LegacyDefaultSlot::SlotDefault => {
+                    slot_entries.push(ObjProp::KeyValue("default", arrow));
+                }
             }
         }
         for (slot_name, slot_el_id) in named_slots {

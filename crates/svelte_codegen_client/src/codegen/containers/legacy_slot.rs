@@ -7,7 +7,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
-use super::super::{Codegen, CodegenError, FragmentEmitKind, Result};
+use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_legacy_slot_like(
@@ -196,6 +196,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             svelte_ast::Node::SvelteFragmentLegacy(el) => el.fragment,
             _ => return Ok(self.ctx.b.null_expr()),
         };
+        if !self.ctx.query.legacy_slot_has_fallback(el_id) {
+            return Ok(self.ctx.b.null_expr());
+        }
         let inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             el_fragment,
@@ -205,10 +208,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
         );
         let mut inner_state = EmitState::new();
-        match self.emit_fragment(&mut inner_state, &inner_ctx, el_fragment)? {
-            FragmentEmitKind::Empty => return Ok(self.ctx.b.null_expr()),
-            FragmentEmitKind::Rendered => {}
-        }
+        self.emit_fragment(&mut inner_state, &inner_ctx, el_fragment)?;
         let body: Vec<Statement<'a>> = self.pack_callback_body(inner_state, "$$anchor")?;
         Ok(self
             .ctx
