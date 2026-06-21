@@ -46,6 +46,9 @@ mod css_scope_svelte_fragment;
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
 
+#[path = "clusters/style_directive.rs"]
+mod style_directive;
+
 #[path = "clusters/customizable_select.rs"]
 mod customizable_select;
 

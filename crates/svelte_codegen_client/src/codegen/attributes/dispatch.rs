@@ -252,6 +252,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(value)]),
                     );
                 }
+                AttributeSemantics::StyleDirectives(_) => {}
                 AttributeSemantics::NonSpecial
                     if self.ctx.query.view.is_custom_element(owner_id) =>
                 {

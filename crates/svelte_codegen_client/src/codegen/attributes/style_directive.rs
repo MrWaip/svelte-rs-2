@@ -1,16 +1,13 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{
-    AttributeSemantics, Evaluation, ExpressionData, HtmlConcatSemantics, Volatility,
-};
-use svelte_ast::{Attribute, ConcatPart, NodeId, StyleDirectiveValue};
+use svelte_analyze::{AttributeSemantics, HtmlConcatSemantics, Volatility};
+use svelte_ast::{Attribute, NodeId, StyleDirectiveValue};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use crate::context::Ctx;
 
 use super::super::data_structures::{EmitState, MemoValueRef, TemplateMemoState};
 use super::super::{Codegen, CodegenError, Result};
-use super::regular::literal_value;
 
 pub(super) struct StyleProps<'a> {
     pub normal: Vec<ObjProp<'a>>,
@@ -18,17 +15,6 @@ pub(super) struct StyleProps<'a> {
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    fn style_expr_is_literal(&self, data: &ExpressionData) -> bool {
-        matches!(data.evaluation, Evaluation::Known(_))
-            && !data.references.iter().any(|&sym| {
-                self.ctx
-                    .query
-                    .view
-                    .binding_semantics(sym)
-                    .is_optimized_rune()
-            })
-    }
-
     pub(super) fn build_style_props(&mut self, owner_id: NodeId) -> Result<StyleProps<'a>> {
         let style_dirs = self.ctx.style_directives(owner_id).to_vec();
         let mut normal: Vec<ObjProp<'a>> = Vec::new();
@@ -80,30 +66,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(id) => Some(self.build_style_attr_value(state, owner_id, id)?),
             None => None,
         };
-        let style_attr_non_stateful = matches!(style_attr_value, Some((_, false)));
         let static_style = self.ctx.static_style(owner_id).unwrap_or("").to_string();
-        let all_static = style_attr_value.is_none()
-            && self
-                .ctx
-                .style_directives(owner_id)
-                .iter()
-                .all(|sd| match &sd.value {
-                    StyleDirectiveValue::String(_) => true,
-                    StyleDirectiveValue::Concatenation(parts) => parts.iter().all(|p| match p {
-                        ConcatPart::Static(_) => true,
-                        ConcatPart::Dynamic { expr, .. } => self
-                            .ctx
-                            .state
-                            .parsed
-                            .expr(expr.id())
-                            .and_then(literal_value)
-                            .is_some(),
-                    }),
-                    StyleDirectiveValue::Expression => self
-                        .ctx
-                        .expression_data(sd.id)
-                        .is_some_and(|d| self.style_expr_is_literal(d)),
-                });
+        let stateful = match self.ctx.query.analysis.attributes.get(owner_id) {
+            AttributeSemantics::StyleDirectives(s) => s.volatility.is_volatile(),
+            _ => false,
+        };
         let props = self.build_style_props(owner_id)?;
 
         let directives_expr = if props.important.is_empty() {
@@ -116,36 +83,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
         };
 
-        let directives_expr = if all_static {
-            directives_expr
-        } else {
-            self.maybe_hoist_style_directives_obj(state, owner_id, directives_expr)
-        };
-
-        if all_static {
-            let empty = self.ctx.b.object_expr(Vec::new());
-            let set_style_call = self.ctx.b.call_expr(
-                "$.set_style",
-                [
-                    Arg::Ident(owner_var),
-                    Arg::Str(static_style),
-                    Arg::Expr(empty),
-                    Arg::Expr(directives_expr),
-                ],
-            );
-            state.init.push(self.ctx.b.expr_stmt(set_style_call));
-            return Ok(());
-        }
-
         let value_expr = match style_attr_value {
             Some((expr, _)) => expr,
             None => self.ctx.b.str_expr(&static_style),
         };
 
-        if style_attr_id.is_some()
-            && style_attr_non_stateful
-            && self.style_directives_all_literal(owner_id)
-        {
+        if !stateful {
             let empty = self.ctx.b.object_expr(Vec::new());
             let set_style_call = self.ctx.b.call_expr(
                 "$.set_style",
@@ -159,6 +102,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.init.push(self.ctx.b.expr_stmt(set_style_call));
             return Ok(());
         }
+
+        let directives_expr =
+            self.maybe_hoist_style_directives_obj(state, owner_id, directives_expr);
 
         emit_set_style_call(
             self.ctx,
@@ -266,29 +212,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "style_attr_id must reference ExpressionAttribute or ConcatenationAttribute",
             ),
         }
-    }
-
-    fn style_directives_all_literal(&self, owner_id: NodeId) -> bool {
-        self.ctx
-            .style_directives(owner_id)
-            .iter()
-            .all(|sd| match &sd.value {
-                StyleDirectiveValue::String(_) => true,
-                StyleDirectiveValue::Concatenation(parts) => parts.iter().all(|p| match p {
-                    ConcatPart::Static(_) => true,
-                    ConcatPart::Dynamic { expr, .. } => self
-                        .ctx
-                        .state
-                        .parsed
-                        .expr(expr.id())
-                        .and_then(literal_value)
-                        .is_some(),
-                }),
-                StyleDirectiveValue::Expression => self
-                    .ctx
-                    .expression_data(sd.id)
-                    .is_some_and(|d| matches!(d.evaluation, Evaluation::Known(_))),
-            })
     }
 
     fn maybe_hoist_style_directives_obj(

@@ -7,7 +7,7 @@ use super::data::{
     DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
     EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
     MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
-    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    StyleDirectivesSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -35,7 +35,8 @@ use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute, FragmentId,
-    Node, NodeId, OnDirectiveLegacy, SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
+    Node, NodeId, OnDirectiveLegacy, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument,
+    SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -419,7 +420,7 @@ fn classify_svelte_element(
     store: &mut AttributeSemanticsStore,
     groups: &mut BindingGroupTable,
 ) {
-    classify_element_attrs(ctx, state, &el.attributes, None, store, groups);
+    classify_element_attrs(ctx, state, el.id, &el.attributes, None, store, groups);
 }
 
 fn classify_element(
@@ -429,17 +430,30 @@ fn classify_element(
     store: &mut AttributeSemanticsStore,
     groups: &mut BindingGroupTable,
 ) {
-    classify_element_attrs(ctx, state, &el.attributes, Some(el), store, groups);
+    classify_element_attrs(ctx, state, el.id, &el.attributes, Some(el), store, groups);
 }
 
 fn classify_element_attrs(
     ctx: &Ctx<'_, '_>,
     state: &WalkState,
+    owner_id: NodeId,
     attrs: &[Attribute],
     el: Option<&Element>,
     store: &mut AttributeSemanticsStore,
     groups: &mut BindingGroupTable,
 ) {
+    if attrs
+        .iter()
+        .any(|attr| matches!(attr, Attribute::StyleDirective(_)))
+    {
+        store.set(
+            owner_id,
+            AttributeSemantics::StyleDirectives(StyleDirectivesSemantics {
+                volatility: style_set_volatility(ctx, attrs),
+            }),
+        );
+    }
+
     for attr in attrs {
         match attr {
             Attribute::BindDirective(d) => {
@@ -570,6 +584,48 @@ fn classify_element_attrs(
             }
             _ => {}
         }
+    }
+}
+
+fn style_set_volatility(ctx: &Ctx<'_, '_>, attrs: &[Attribute]) -> Volatility {
+    let mut volatility = Volatility::Static;
+    for attr in attrs {
+        let attr_volatility = match attr {
+            Attribute::StyleDirective(d) => style_directive_volatility(ctx, d),
+            Attribute::ExpressionAttribute(ea) if ea.name == "style" => {
+                style_value_volatility(ctx, ea.id)
+            }
+            Attribute::ConcatenationAttribute(ca) if ca.name == "style" => {
+                style_value_volatility(ctx, ca.id)
+            }
+            _ => Volatility::Static,
+        };
+        volatility = volatility.max(attr_volatility);
+    }
+    volatility
+}
+
+fn style_value_volatility(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> Volatility {
+    ctx.expression_data(attr_id)
+        .map(|data| data.volatility)
+        .unwrap_or(Volatility::Static)
+}
+
+fn style_directive_volatility(ctx: &Ctx<'_, '_>, directive: &StyleDirective) -> Volatility {
+    let base = style_value_volatility(ctx, directive.id);
+    if !directive.shorthand {
+        return base;
+    }
+    let references_reactive_decl = ctx.expression_data(directive.id).is_some_and(|data| {
+        data.references.iter().any(|&sym| {
+            let binding = ctx.reactivity.binding_semantics(sym);
+            binding.is_reactive() || binding.is_optimized_rune()
+        })
+    });
+    if references_reactive_decl {
+        base.max(Volatility::Reactive)
+    } else {
+        base
     }
 }
 

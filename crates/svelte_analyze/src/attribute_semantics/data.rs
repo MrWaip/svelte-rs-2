@@ -1,4 +1,4 @@
-use crate::expression_semantics::LegacyWrap;
+use crate::expression_semantics::{LegacyWrap, Volatility};
 use crate::scope::SymbolId;
 use crate::types::data::{
     ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, ImageNaturalSizeKind,
@@ -27,7 +27,13 @@ pub enum AttributeSemantics {
     HtmlConcat(HtmlConcatSemantics),
     MustBeProperty(MustBePropertySemantics),
     SpecialValueAttr(SpecialValueSemantics),
+    StyleDirectives(StyleDirectivesSemantics),
     Autofocus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StyleDirectivesSemantics {
+    pub volatility: Volatility,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

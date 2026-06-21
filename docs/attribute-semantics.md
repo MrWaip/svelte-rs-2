@@ -25,6 +25,7 @@ topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/
 - `ComponentAttach(ComponentAttachSemantics)` — `{@attach …}`.
 - `BoundaryProp(BoundaryPropSemantics)` — prop на `<svelte:boundary>`.
 - `HtmlConcat(HtmlConcatSemantics)` — concat-атрибут на обычном элементе.
+- `StyleDirectives(StyleDirectivesSemantics)` — агрегат style-директив элемента
 - `NonSpecial` — default.
 
 Каждый вариант несёт выбранную emit-форму (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, `HtmlConcatPart`, `TemplateEffect`, `ElementBindPropertyKind`, …). Кодген читает, не комбинирует.
