@@ -6,6 +6,14 @@ compiler_case!(
     ignore = "divergence: legacy dev arrow handler expression body loses implicit return — on:click={() => n++} emits $.update(n) instead of return $.update(n); reproduces unquoted too, unrelated to quoted directives"
 );
 compiler_case!(snippet_param, "events/snippet_param");
+compiler_case!(store_handler_onclick, "events/store_handler_onclick");
+compiler_case!(store_handler_legacy_on, "events/store_handler_legacy_on");
+compiler_case!(state_handler, "events/state_handler");
+compiler_case!(derived_handler, "events/derived_handler");
+compiler_case!(
+    legacy_reactive_state_handler,
+    "events/legacy_reactive_state_handler"
+);
 compiler_case!(await_value, "events/await_value");
 compiler_case!(await_error, "events/await_error");
 compiler_case!(each_item, "events/each_item");

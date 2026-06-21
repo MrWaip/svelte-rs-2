@@ -266,6 +266,13 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
     }
 }
 
+fn handler_reads_through_cell(semantics: BindingSemantics) -> bool {
+    if let BindingSemantics::Contextual(_) = semantics {
+        return handler_reads_through_contextual_getter(semantics);
+    }
+    semantics.is_reactive() || semantics.is_reactive_const_tag()
+}
+
 fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> bool {
     let Some(data) = ctx.expression_data(expr_id) else {
         return false;
@@ -865,27 +872,16 @@ fn derive_handler_emit(
                     .symbol_flags(sym)
                     .contains(SymbolFlags::Function)
             });
-            let is_maybe_reactive =
-                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_maybe_reactive());
-            let is_reactive_const_tag = symbol.is_some_and(|sym| {
+            let is_store_subscription = ident.reference_id.get().is_some_and(|ref_id| {
                 ctx.reactivity
-                    .binding_semantics(sym)
-                    .is_reactive_const_tag()
+                    .reference_semantics(ref_id)
+                    .is_store_subscription()
             });
-            let is_prop =
-                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_props());
-            let is_contextual_getter = symbol.is_some_and(|sym| {
-                handler_reads_through_contextual_getter(ctx.reactivity.binding_semantics(sym))
-            });
-            let is_legacy_state =
-                symbol.is_some_and(|sym| ctx.reactivity.binding_semantics(sym).is_legacy_state());
-            is_function
-                || (!ctx.dev
-                    && !is_maybe_reactive
-                    && !is_reactive_const_tag
-                    && !is_prop
-                    && !is_contextual_getter
-                    && !is_legacy_state)
+            let needs_wrap = is_store_subscription
+                || symbol.is_some_and(|sym| {
+                    handler_reads_through_cell(ctx.reactivity.binding_semantics(sym))
+                });
+            is_function || (!ctx.dev && !needs_wrap)
         }
         _ => false,
     };
