@@ -48,6 +48,7 @@ pub struct BindingGroupTable {
 
 #[derive(Debug, PartialEq, Eq)]
 struct BindingGroupKey {
+    keypath: String,
     references: SmallVec<[SymbolId; 2]>,
     parent_each_blocks: SmallVec<[NodeId; 4]>,
 }
@@ -112,9 +113,41 @@ fn derive_group_key(ctx: &Ctx<'_, '_>, state: &WalkState, d: &BindDirective) -> 
     let data = ctx.expression_data(d.id);
     let references = data.map(|d| d.references.clone()).unwrap_or_default();
     let parent_each_blocks = derive_parent_each_blocks(ctx, state, d);
+    let keypath = derive_group_keypath(ctx, d);
     BindingGroupKey {
+        keypath,
         references,
         parent_each_blocks,
+    }
+}
+
+fn derive_group_keypath(ctx: &Ctx<'_, '_>, d: &BindDirective) -> String {
+    let Some(expr) = ctx.parsed.expr(d.expression.id()) else {
+        return String::new();
+    };
+    let mut tokens: Vec<String> = Vec::new();
+    push_group_keypath(expr, &mut tokens);
+    tokens.join(".")
+}
+
+fn push_group_keypath(expr: &Expression<'_>, out: &mut Vec<String>) {
+    match expr.get_inner_expression() {
+        Expression::Identifier(id) => out.push(id.name.to_string()),
+        Expression::ThisExpression(_) => out.push("this".to_string()),
+        Expression::StaticMemberExpression(m) => {
+            push_group_keypath(&m.object, out);
+            out.push(m.property.name.to_string());
+        }
+        Expression::ComputedMemberExpression(m) => {
+            push_group_keypath(&m.object, out);
+            match m.expression.get_inner_expression() {
+                Expression::Identifier(id) => out.push(format!("[{}]", id.name)),
+                Expression::StringLiteral(s) => out.push(format!("[\"{}\"]", s.value)),
+                Expression::NumericLiteral(n) => out.push(format!("[{}]", n.value)),
+                _ => out.push("[?]".to_string()),
+            }
+        }
+        _ => {}
     }
 }
 

@@ -14,6 +14,18 @@ compiler_case!(
     "bind_group/legacy/nested_multi_level"
 );
 compiler_case!(
+    legacy_distinct_keypath_two_groups,
+    "bind_group/legacy/distinct_keypath_two_groups"
+);
+compiler_case!(
+    legacy_same_keypath_guard,
+    "bind_group/legacy/same_keypath_guard"
+);
+compiler_case!(
+    legacy_distinct_base_guard,
+    "bind_group/legacy/distinct_base_guard"
+);
+compiler_case!(
     runes_transitive_collection_two_each,
     "bind_group/runes/transitive_collection_two_each"
 );
