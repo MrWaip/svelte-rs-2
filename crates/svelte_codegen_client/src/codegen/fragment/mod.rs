@@ -51,6 +51,9 @@ fn single_fragment_anchor<'a>(ctx: &FragmentCtx<'a>) -> Result<ConcatenationAnch
         FragmentAnchor::Child { parent_var } => Ok(ConcatenationAnchor::SingleFragmentChild {
             parent_var: parent_var.clone(),
         }),
+        FragmentAnchor::ElementContentChild { .. } => {
+            CodegenError::unexpected_child("Single", "ElementContentChild anchor")
+        }
         FragmentAnchor::SiblingVar { .. } => {
             CodegenError::unexpected_child("Single", "SiblingVar anchor")
         }
@@ -334,7 +337,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 append_inside: true,
                 ..
             } => false,
-            FragmentAnchor::Child { .. } | FragmentAnchor::SiblingVar { .. } => false,
+            FragmentAnchor::Child { .. }
+            | FragmentAnchor::ElementContentChild { .. }
+            | FragmentAnchor::SiblingVar { .. } => false,
         };
         let rotate_text_root_before_specials =
             special_block_end > init_len_before && strategy_is_text_root && anchor_is_root_text;
@@ -710,7 +715,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_ident = match &ctx.anchor {
             FragmentAnchor::Root => "$$anchor".to_string(),
             FragmentAnchor::CallbackParam { name, .. } => name.clone(),
-            FragmentAnchor::Child { parent_var } => parent_var.clone(),
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => parent_var.clone(),
             FragmentAnchor::SiblingVar { var } => var.clone(),
         };
         state.init.push(
@@ -1047,7 +1053,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.init.push(b.var_stmt(&name, call));
                 state.root_var = Some(name);
             }
-            FragmentAnchor::Child { .. } => {
+            FragmentAnchor::Child { .. } | FragmentAnchor::ElementContentChild { .. } => {
                 let html = ctx.static_html_of(part).unwrap_or(text);
                 state.template.push_text(html);
             }
@@ -1086,7 +1092,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 Ok(())
             }
-            FragmentAnchor::Child { parent_var } => {
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => {
                 if let svelte_ast::Node::Element(el) = node {
                     if !self.ctx.needs_var(el_id) {
                         self.emit_element_ghost(state, ctx, el_id)?;

@@ -33,3 +33,11 @@ compiler_case!(
     runes_transitive_collection_keyed_outer,
     "bind_group/runes/transitive_collection_keyed_outer"
 );
+compiler_case!(
+    legacy_referenced_in_if,
+    "bind_group/legacy/referenced_in_if"
+);
+compiler_case!(
+    legacy_referenced_plain_guard,
+    "bind_group/legacy/referenced_plain_guard"
+);

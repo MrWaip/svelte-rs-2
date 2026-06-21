@@ -1,8 +1,11 @@
 use std::mem;
 
 use oxc_ast::ast::Statement;
+use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
-use svelte_ast_builder::{Arg, AssignLeft};
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
+
+use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -207,6 +210,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.last_fragment_needs_reset = true;
             } else if self.ctx.needs_textarea_value_lowering(el_id) {
                 self.emit_textarea_value_lowering(state, el_id, &el_name)?;
+            } else if el_name_hint == "template" && self.ctx.needs_var(el_id) {
+                state.init.push(
+                    self.ctx
+                        .b
+                        .call_stmt("$.hydrate_template", [Arg::Ident(&el_name)]),
+                );
+                let child_ctx = ctx.child_of_element(
+                    self.ctx,
+                    &el_name_hint,
+                    el.fragment,
+                    el_ns,
+                    FragmentAnchor::ElementContentChild {
+                        parent_var: el_name.clone(),
+                    },
+                );
+                self.emit_fragment(state, &child_ctx, el.fragment)?;
+                state
+                    .init
+                    .push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(&el_name)]));
+                state.last_fragment_needs_reset = false;
             } else {
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
@@ -459,6 +482,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         el_name: &str,
     ) -> Result<()> {
+        enum Raw {
+            Text(String),
+            Expr(NodeId),
+        }
+
         let el = self.ctx.element(el_id);
         let child_ids: Vec<NodeId> = self
             .ctx
@@ -469,31 +497,94 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .nodes
             .clone();
 
-        let mut expr_id: Option<NodeId> = None;
+        let mut parts: Vec<Raw> = Vec::new();
         for child_id in &child_ids {
             match self.ctx.query.component.store.get(*child_id) {
-                svelte_ast::Node::ExpressionTag(ex) => {
-                    expr_id = Some(ex.id);
-                    break;
+                Node::Text(t) => {
+                    let text = t.value(&self.ctx.query.component.source).to_string();
+                    if let Some(Raw::Text(prev)) = parts.last_mut() {
+                        prev.push_str(&text);
+                    } else {
+                        parts.push(Raw::Text(text));
+                    }
                 }
-                _ => continue,
+                Node::ExpressionTag(ex) => parts.push(Raw::Expr(ex.id)),
+                _ => {}
             }
         }
 
-        let Some(id) = expr_id else {
+        if parts.is_empty() {
             return Ok(());
-        };
-        let expr = self.take_node_expr(id)?;
+        }
+
+        if let Some(Raw::Text(first)) = parts.first_mut() {
+            let stripped = first
+                .strip_prefix("\r\n")
+                .or_else(|| first.strip_prefix('\n'))
+                .map(str::to_string);
+            if let Some(s) = stripped {
+                *first = s;
+            }
+        }
+
+        let volatility = parts
+            .iter()
+            .filter_map(|p| match p {
+                Raw::Expr(id) => self.ctx.expression_data(*id).map(|d| d.volatility),
+                Raw::Text(_) => None,
+            })
+            .max()
+            .unwrap_or(Volatility::Static);
+
         state.init.push(
             self.ctx
                 .b
                 .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
         );
-        state.init.push(
-            self.ctx
+
+        let single_expr_id = match parts.as_slice() {
+            [Raw::Expr(id)] => Some(*id),
+            _ => None,
+        };
+        let value_expr = if let Some(id) = single_expr_id {
+            self.take_node_expr(id)?
+        } else {
+            let mut tpl: Vec<TemplatePart<'a>> = Vec::new();
+            for part in parts {
+                match part {
+                    Raw::Text(s) => tpl.push(TemplatePart::Str(s)),
+                    Raw::Expr(id) => {
+                        let data = self.ctx.expression_data(id).cloned();
+                        let defined = data
+                            .as_ref()
+                            .map(|d| evaluation_is_defined(&d.evaluation))
+                            .unwrap_or(false);
+                        let expr = self.take_node_expr(id)?;
+                        let expr = coarse_wrap(self.ctx, expr, data.as_ref());
+                        tpl.push(TemplatePart::Expr(expr, defined));
+                    }
+                }
+            }
+            self.ctx.b.template_parts_expr(tpl)
+        };
+
+        let set_value = self
+            .ctx
+            .b
+            .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(value_expr)]);
+        if volatility.is_volatile() {
+            let arrow = self
+                .ctx
                 .b
-                .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]),
-        );
+                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(set_value)]);
+            state.init.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.template_effect", [Arg::Expr(arrow)]),
+            );
+        } else {
+            state.init.push(self.ctx.b.expr_stmt(set_value));
+        }
         Ok(())
     }
 }

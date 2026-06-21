@@ -156,3 +156,12 @@ mod bind_group;
 
 #[path = "clusters/bind_property.rs"]
 mod bind_property;
+
+#[path = "clusters/template_element.rs"]
+mod template_element;
+
+#[path = "clusters/textarea_content.rs"]
+mod textarea_content;
+
+#[path = "clusters/element_reset.rs"]
+mod element_reset;
