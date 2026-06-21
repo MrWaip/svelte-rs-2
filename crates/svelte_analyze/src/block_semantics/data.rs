@@ -201,6 +201,8 @@ pub struct ConstTagBlockSemantics {
     pub decl_node_id: OxcNodeId,
 
     pub async_kind: ConstTagAsyncKind,
+
+    pub order_rank: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

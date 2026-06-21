@@ -34,11 +34,20 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
         ExpressionSemantics::NonSpecial => ConstTagAsyncKind::Sync,
     };
 
+    let order_rank = ctx
+        .reactivity
+        .const_tags_in_order_legacy(ctx.current_fragment_id)
+        .iter()
+        .position(|&id| id == tag.id)
+        .map(|pos| pos as u32)
+        .unwrap_or(0);
+
     ctx.store.set(
         tag.id,
         BlockSemantics::ConstTag(ConstTagBlockSemantics {
             decl_node_id,
             async_kind,
+            order_rank,
         }),
     );
 }

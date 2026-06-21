@@ -58,6 +58,23 @@ pub fn validate(
     validate_svelte_options_warnings(component, data, runes, diags);
     validate_script_context(component, runes, diags);
     runes::validate_const_tag_runes(component, parsed, data, diags);
+    validate_const_tag_cycle_legacy(component, data, diags);
+}
+
+fn validate_const_tag_cycle_legacy(
+    component: &Component,
+    data: &AnalysisData,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(cycle) = data.reactivity.const_tag_cycle_legacy() else {
+        return;
+    };
+    diags.push(Diagnostic::error(
+        DiagnosticKind::ConstTagCycle {
+            cycle: cycle.names.clone(),
+        },
+        component.store.get(cycle.at_node).span(),
+    ));
 }
 
 fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {

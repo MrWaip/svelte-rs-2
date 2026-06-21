@@ -2,7 +2,7 @@ use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{NodeId, RunesMode};
+use svelte_ast::{FragmentId, NodeId, RunesMode};
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 use svelte_span::Span;
 
@@ -1570,6 +1570,12 @@ impl ReferenceFacts {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ConstTagCycleFactLegacy {
+    pub(crate) names: String,
+    pub(crate) at_node: NodeId,
+}
+
 #[derive(Clone, Debug)]
 pub struct ReactivitySemantics {
     bindings: IndexVec<SymbolId, Option<BindingFacts>>,
@@ -1620,6 +1626,10 @@ pub struct ReactivitySemantics {
 
     runes_mode: RunesMode,
 
+    const_tag_order_legacy: Vec<SmallVec<[NodeId; 4]>>,
+
+    const_tag_cycle_legacy: Option<ConstTagCycleFactLegacy>,
+
     legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics,
 }
 
@@ -1653,6 +1663,8 @@ impl ReactivitySemantics {
             legacy_has_member_mutated: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
+            const_tag_order_legacy: Vec::new(),
+            const_tag_cycle_legacy: None,
             legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
         }
     }
@@ -2016,6 +2028,26 @@ impl ReactivitySemantics {
 
     pub(crate) fn set_runes_mode(&mut self, runes_mode: RunesMode) {
         self.runes_mode = runes_mode;
+    }
+
+    pub(crate) fn set_const_tag_order_legacy(
+        &mut self,
+        order: Vec<SmallVec<[NodeId; 4]>>,
+        cycle: Option<ConstTagCycleFactLegacy>,
+    ) {
+        self.const_tag_order_legacy = order;
+        self.const_tag_cycle_legacy = cycle;
+    }
+
+    pub(crate) fn const_tags_in_order_legacy(&self, fragment: FragmentId) -> &[NodeId] {
+        self.const_tag_order_legacy
+            .get(fragment.0 as usize)
+            .map(|tags| tags.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn const_tag_cycle_legacy(&self) -> Option<&ConstTagCycleFactLegacy> {
+        self.const_tag_cycle_legacy.as_ref()
     }
 
     pub(crate) fn binding_facts(&self, sym: SymbolId) -> Option<BindingFacts> {

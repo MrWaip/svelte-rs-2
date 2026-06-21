@@ -1,3 +1,4 @@
+mod const_tag_order_legacy;
 mod contextual;
 
 mod import_subscribed;
@@ -183,6 +184,7 @@ pub(crate) fn build_v2<'a>(
     let bind_this_proxy_targets = references::collect_raw_param_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
+    const_tag_order_legacy::build(component, parsed, data);
     compute_const_tag_reactivity(component, parsed, data);
 
     legacy::register_legacy_synthetic_objects(data);
@@ -960,8 +962,22 @@ fn compute_const_tag_reactivity<'a>(
     use super::data::ConstBindingSemantics;
     use svelte_component_semantics::walk_bindings;
 
-    for node in component.store.iter_nodes() {
-        let svelte_ast::Node::ConstTag(tag) = node else {
+    let mut processing_order: Vec<svelte_ast::NodeId> = Vec::new();
+    for fragment in component.store.iter_fragments() {
+        let ordered = data.reactivity.const_tags_in_order_legacy(fragment.id);
+        if ordered.is_empty() {
+            for &node_id in &fragment.nodes {
+                if matches!(component.store.get(node_id), svelte_ast::Node::ConstTag(_)) {
+                    processing_order.push(node_id);
+                }
+            }
+        } else {
+            processing_order.extend_from_slice(ordered);
+        }
+    }
+
+    for node_id in processing_order {
+        let svelte_ast::Node::ConstTag(tag) = component.store.get(node_id) else {
             continue;
         };
         let Some(stmt) = parsed.stmt(tag.decl.id()) else {
@@ -2476,9 +2492,9 @@ fn pattern_binding_symbols(pattern: &BindingPattern<'_>) -> Vec<SymbolId> {
     out
 }
 
-struct RefCollector<'s> {
-    refs: &'s mut SmallVec<[ReferenceId; 4]>,
-    reactive_rune_call: &'s mut bool,
+pub(super) struct RefCollector<'s> {
+    pub(super) refs: &'s mut SmallVec<[ReferenceId; 4]>,
+    pub(super) reactive_rune_call: &'s mut bool,
 }
 
 impl<'a> Visit<'a> for RefCollector<'_> {

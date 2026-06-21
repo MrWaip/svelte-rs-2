@@ -1871,6 +1871,10 @@ mod const_tag {
         validate_const_tag_reference_inside_snippet_scope_is_allowed_async,
         "const_tag/validate_const_tag_reference_inside_snippet_scope_is_allowed_async"
     );
+    diagnostic_case!(
+        validate_const_tag_cycle,
+        "const_tag/validate_const_tag_cycle"
+    );
 }
 
 mod each {

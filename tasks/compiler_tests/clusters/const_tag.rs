@@ -145,3 +145,28 @@ compiler_case!(
     declaration_runes_string_key,
     "const_tag/declaration/runes/string_key"
 );
+compiler_case!(
+    order_legacy_forward_dependency,
+    "const_tag/order/legacy/forward_dependency"
+);
+compiler_case!(order_legacy_deep_chain, "const_tag/order/legacy/deep_chain");
+compiler_case!(
+    order_legacy_forward_reactive,
+    "const_tag/order/legacy/forward_reactive"
+);
+compiler_case!(
+    order_legacy_in_order_guard,
+    "const_tag/order/legacy/in_order_guard"
+);
+compiler_case!(
+    order_legacy_independent_guard,
+    "const_tag/order/legacy/independent_guard"
+);
+compiler_case!(
+    order_legacy_single_guard,
+    "const_tag/order/legacy/single_guard"
+);
+compiler_case!(
+    order_runes_in_order_guard,
+    "const_tag/order/runes/in_order_guard"
+);

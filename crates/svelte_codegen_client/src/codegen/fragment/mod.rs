@@ -160,10 +160,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         ConstTagAsyncKind::Sync => false,
                     }
                 });
+            let mut ordered: SmallVec<[NodeId; 4]> = bucket.const_tags.iter().copied().collect();
+            ordered.sort_by_key(|&id| match self.ctx.query.analysis.block_semantics(id) {
+                BlockSemantics::ConstTag(s) => s.order_rank,
+                _ => 0,
+            });
             if has_async {
-                self.emit_const_tags_async_batch(state, &bucket.const_tags)?;
+                self.emit_const_tags_async_batch(state, &ordered)?;
             } else {
-                for &id in &bucket.const_tags {
+                for &id in &ordered {
                     self.emit_hoisted_const_tag(state, ctx, id)?;
                 }
             }
