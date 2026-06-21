@@ -106,7 +106,14 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
 
     for sym in &implicit_syms {
         let name = analysis.scoping.symbol_name(*sym);
-        let init = b.call_expr("$.mutable_source", []);
+        let init = if analysis.script.immutable {
+            b.call_expr(
+                "$.mutable_source",
+                [Arg::Expr(b.void_zero_expr()), Arg::Bool(true)],
+            )
+        } else {
+            b.call_expr("$.mutable_source", [])
+        };
         new_body.push(b.const_stmt(name, init));
     }
 

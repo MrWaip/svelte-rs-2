@@ -74,18 +74,11 @@ impl<'a> JsPostprocessor<'a> {
             && paren.expression.is_typescript_syntax()
         {
             self.unwrap_ts_inner(&mut paren.expression);
+            if matches!(paren.expression, Expression::ChainExpression(_)) {
+                return;
+            }
             let inner = self.take_expr(&mut paren.expression);
-            *node = match inner {
-                Expression::ChainExpression(chain) => match chain.unbox().expression {
-                    ChainElement::CallExpression(c) => Expression::CallExpression(c),
-                    ChainElement::TSNonNullExpression(ts) => {
-                        let mut ts = ts.unbox();
-                        self.take_expr(&mut ts.expression)
-                    }
-                    elem => Expression::from(elem.into_member_expression()),
-                },
-                other => other,
-            };
+            *node = inner;
         }
     }
 

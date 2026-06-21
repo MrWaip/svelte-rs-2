@@ -2519,6 +2519,41 @@ fn svelte_options_immutable_legacy() {
 }
 
 #[rstest]
+fn immutable_init_ctx_mutable() {
+    assert_compiler("immutable_init_ctx_mutable");
+}
+
+#[rstest]
+fn immutable_init_noctx_immutable() {
+    assert_compiler("immutable_init_noctx_immutable");
+}
+
+#[rstest]
+fn immutable_init_noctx_mutable() {
+    assert_compiler("immutable_init_noctx_mutable");
+}
+
+#[rstest]
+fn immutable_source_init_immutable() {
+    assert_compiler("immutable_source_init_immutable");
+}
+
+#[rstest]
+fn immutable_source_noinit_immutable() {
+    assert_compiler("immutable_source_noinit_immutable");
+}
+
+#[rstest]
+fn immutable_source_noinit_mutable() {
+    assert_compiler("immutable_source_noinit_mutable");
+}
+
+#[rstest]
+fn immutable_reactive_immutable() {
+    assert_compiler("immutable_reactive_immutable");
+}
+
+#[rstest]
 fn legacy_export_let_required() {
     assert_compiler("legacy_export_let_required");
 }

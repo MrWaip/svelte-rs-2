@@ -37,7 +37,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     };
                     node.init = Some(call);
                 } else {
-                    let call = self.b.call_expr("$.mutable_source", iter::empty::<Arg>());
+                    let call = if state.immutable {
+                        self.b.call_expr(
+                            "$.mutable_source",
+                            [Arg::Expr(self.b.void_zero_expr()), Arg::Bool(true)],
+                        )
+                    } else {
+                        self.b.call_expr("$.mutable_source", iter::empty::<Arg>())
+                    };
                     node.init = Some(call);
                 }
             }

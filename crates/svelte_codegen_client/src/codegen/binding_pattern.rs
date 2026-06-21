@@ -628,7 +628,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             for (i, step) in v.path.iter().enumerate() {
                 match step.access {
                     Access::Key { key, computed } => {
-                        expr = chain_member_access(self, expr, key, computed);
+                        expr = param_member_access(self, expr, key, computed);
                     }
                     Access::Index {
                         index,
@@ -713,92 +713,28 @@ fn carrier_count(len: u32, has_rest: bool) -> Option<u32> {
     if has_rest { None } else { Some(len) }
 }
 
-fn chain_member_access<'a, 'ctx>(
+fn param_member_access<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
     object: Expression<'a>,
     key: &PropertyKey<'_>,
     computed: bool,
 ) -> Expression<'a> {
+    let object = break_optional_chain(cg, object);
     if !computed && let PropertyKey::StaticIdentifier(id) = key {
-        return build_chain_static_member(cg, &object, id.name.as_str());
+        return cg.ctx.b.static_member_expr(object, id.name.as_str());
     }
     let key_expr = clone_property_key_expr(cg, key);
-    build_chain_computed_member(cg, &object, key_expr)
+    cg.ctx.b.computed_member_expr(object, key_expr)
 }
 
-fn build_chain_static_member<'a, 'ctx>(
+fn break_optional_chain<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
-    object: &Expression<'a>,
-    prop: &str,
+    object: Expression<'a>,
 ) -> Expression<'a> {
     use oxc_span::SPAN;
-    if let Expression::ChainExpression(chain) = object {
-        let property = cg.ctx.b.ast.identifier_name(SPAN, cg.ctx.b.ast.atom(prop));
-        let member = cg.ctx.b.ast.alloc_static_member_expression(
-            SPAN,
-            clone_chain_element_expr(cg, &chain.expression),
-            property,
-            false,
-        );
-        return Expression::ChainExpression(
-            cg.ctx.b.alloc(
-                cg.ctx
-                    .b
-                    .ast
-                    .chain_expression(SPAN, ChainElement::StaticMemberExpression(member)),
-            ),
-        );
-    }
-    cg.ctx
-        .b
-        .static_member_expr(cg.ctx.b.clone_expr(object), prop)
-}
-
-fn build_chain_computed_member<'a, 'ctx>(
-    cg: &Codegen<'a, 'ctx>,
-    object: &Expression<'a>,
-    property: Expression<'a>,
-) -> Expression<'a> {
-    use oxc_span::SPAN;
-    if let Expression::ChainExpression(chain) = object {
-        let member = cg.ctx.b.ast.alloc_computed_member_expression(
-            SPAN,
-            clone_chain_element_expr(cg, &chain.expression),
-            property,
-            false,
-        );
-        return Expression::ChainExpression(
-            cg.ctx.b.alloc(
-                cg.ctx
-                    .b
-                    .ast
-                    .chain_expression(SPAN, ChainElement::ComputedMemberExpression(member)),
-            ),
-        );
-    }
-    cg.ctx
-        .b
-        .computed_member_expr(cg.ctx.b.clone_expr(object), property)
-}
-
-fn clone_chain_element_expr<'a, 'ctx>(
-    cg: &Codegen<'a, 'ctx>,
-    element: &ChainElement<'a>,
-) -> Expression<'a> {
-    match element {
-        ChainElement::CallExpression(call) => {
-            Expression::CallExpression(call.clone_in(cg.ctx.b.ast.allocator))
-        }
-        ChainElement::StaticMemberExpression(member) => {
-            Expression::StaticMemberExpression(member.clone_in(cg.ctx.b.ast.allocator))
-        }
-        ChainElement::ComputedMemberExpression(member) => {
-            Expression::ComputedMemberExpression(member.clone_in(cg.ctx.b.ast.allocator))
-        }
-        ChainElement::PrivateFieldExpression(member) => {
-            Expression::PrivateFieldExpression(member.clone_in(cg.ctx.b.ast.allocator))
-        }
-        ChainElement::TSNonNullExpression(_) => unreachable!("TS stripped at parse"),
+    match object {
+        Expression::ChainExpression(_) => cg.ctx.b.ast.expression_parenthesized(SPAN, object),
+        other => other,
     }
 }
 

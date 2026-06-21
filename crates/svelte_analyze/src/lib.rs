@@ -275,7 +275,7 @@ fn needs_push(
     if data.uses_runes() {
         return false;
     }
-    if has_legacy_accessor_props(data) || data.script.immutable {
+    if has_legacy_accessor_props(data) {
         return true;
     }
     if summary.legacy.has_member_mutated {
@@ -357,13 +357,14 @@ fn legacy_init(data: &AnalysisData<'_>, legacy: LegacySummary) -> LegacyInit {
     if data.uses_runes() {
         return LegacyInit::None;
     }
+    let needs_init = legacy.has_member_mutated || data.output.needs_context;
+    if !needs_init {
+        return LegacyInit::None;
+    }
     if data.script.immutable {
         return LegacyInit::Immutable;
     }
-    if legacy.has_member_mutated || data.output.needs_context {
-        return LegacyInit::Plain;
-    }
-    LegacyInit::None
+    LegacyInit::Plain
 }
 
 #[cfg(test)]
