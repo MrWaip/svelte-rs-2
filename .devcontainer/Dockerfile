@@ -54,4 +54,11 @@ RUN --mount=type=cache,target=/home/vscode/.npm,sharing=locked,uid=1000,gid=1000
 RUN echo 'alias claude="claude --dangerously-skip-permissions"' >> /home/vscode/.bashrc \
     && mkdir -p ~/.local/share/bash-completion/completions \
     && just --completions bash > ~/.local/share/bash-completion/completions/just \
-    && echo 'source <(just --completions bash)' >> /home/vscode/.bashrc
+    && echo 'source <(just --completions bash)' >> /home/vscode/.bashrc \
+    && printf '%s\n' \
+        '$include /etc/inputrc' \
+        '"\e[A": history-search-backward' \
+        '"\e[B": history-search-forward' \
+        '"\eOA": history-search-backward' \
+        '"\eOB": history-search-forward' \
+        > /home/vscode/.inputrc

@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "css_global_block_invalid_combinator",
-    "start": 12,
-    "end": 21
-  }
-]

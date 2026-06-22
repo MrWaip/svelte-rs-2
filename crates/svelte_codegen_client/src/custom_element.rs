@@ -2,7 +2,7 @@ use std::iter;
 
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
-use svelte_parser::{CePropConfig, CeDomMode, ParsedCeConfig};
+use svelte_parser::{CeDomMode, CePropConfig, ParsedCeConfig};
 
 use crate::context::Ctx;
 use svelte_ast_builder::{Arg, ObjProp};
@@ -122,45 +122,35 @@ fn take_extend_expr<'a>(
 fn build_props_metadata<'a>(ctx: &Ctx<'a>, parsed_opts: Option<&ParsedCeConfig>) -> Expression<'a> {
     let b = &ctx.b;
     let mut obj_props: Vec<ObjProp<'a>> = Vec::new();
-
-    let ce_prop_names: Vec<&str> = parsed_opts
-        .map(|o| o.props.iter().map(|p| p.name.as_str()).collect())
-        .unwrap_or_default();
+    let mut emitted_keys: Vec<String> = Vec::new();
 
     if let Some(opts) = parsed_opts {
         for prop in &opts.props {
             let prop_key = resolve_prop_key(ctx, &prop.name);
             let value = build_prop_def_expr(b, prop);
             obj_props.push(ObjProp::KeyValue(b.alloc_str(&prop_key), value));
+            emitted_keys.push(prop.name.clone());
+            emitted_keys.push(prop_key);
         }
     }
 
-    if let Some(props_decl) = ctx.query.props() {
-        for prop in &props_decl.props {
-            if prop.is_rest || prop.is_reserved() {
-                continue;
-            }
-            let key: &str = prop.prop_name.as_str();
-
-            if ce_prop_names.contains(&key) {
-                continue;
-            }
-            obj_props.push(ObjProp::KeyValue(
-                b.alloc_str(key),
-                b.object_expr(iter::empty::<ObjProp<'_>>()),
-            ));
+    for accessor in ctx.query.component_prop_accessors() {
+        if emitted_keys.iter().any(|key| key == accessor.key.as_ref()) {
+            continue;
         }
+        obj_props.push(ObjProp::KeyValue(
+            b.alloc_str(&accessor.key),
+            b.object_expr(iter::empty::<ObjProp<'_>>()),
+        ));
     }
 
     b.object_expr(obj_props)
 }
 
 fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
-    if let Some(props) = ctx.query.props() {
-        for prop in &props.props {
-            if prop.local_name == name || prop.prop_name == name {
-                return prop.prop_name.to_string();
-            }
+    for accessor in ctx.query.component_prop_accessors() {
+        if accessor.local == name || accessor.key.as_ref() == name {
+            return accessor.key.into_owned();
         }
     }
     name.to_string()

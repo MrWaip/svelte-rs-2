@@ -1,0 +1,4 @@
+
+	.a.svelte-189pawj {
+		&:has(+ .b:hover) { color: red; }
+	}

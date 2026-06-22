@@ -2,7 +2,8 @@ use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
     Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, FragmentRole, HtmlTag,
     Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
-    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteWindow, is_mathml, is_svg, is_void,
+    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow,
+    is_mathml, is_svg, is_void,
 };
 
 use crate::ElementFactsEntry;
@@ -185,8 +186,9 @@ fn fragment_namespace_for(
     use svelte_ast::FragmentRole;
     let role = store.fragment(fragment_id).role;
     match role {
-        FragmentRole::Root => infer_namespace_from_children(fragment_id, store, data)
-            .unwrap_or(root_ns),
+        FragmentRole::Root => {
+            infer_namespace_from_children(fragment_id, store, data).unwrap_or(root_ns)
+        }
         FragmentRole::SvelteHeadBody => svelte_ast::Namespace::Html,
         FragmentRole::ComponentChildren | FragmentRole::NamedSlot => {
             infer_namespace_from_children(fragment_id, store, data)
@@ -304,10 +306,7 @@ fn visit_node_for_namespace(
     }
 }
 
-pub(crate) fn collect_fragment_facts(
-    component: &svelte_ast::Component,
-    data: &mut AnalysisData,
-) {
+pub(crate) fn collect_fragment_facts(component: &svelte_ast::Component, data: &mut AnalysisData) {
     collect_fragment_facts_in(
         component.root,
         &component.store,
@@ -336,11 +335,7 @@ fn collect_fragment_facts_in(
 ) {
     facts.record(
         fragment_id,
-        FragmentFactsEntry::from_fragment(
-            store.fragment(fragment_id),
-            store,
-            source,
-        ),
+        FragmentFactsEntry::from_fragment(store.fragment(fragment_id), store, source),
     );
 
     let nodes = store.fragment_nodes(fragment_id).to_vec();
@@ -616,16 +611,16 @@ fn record_legacy_slot_wrappers(
             continue;
         };
         if matches!(ctx.store.get(wrapper_id), Node::SvelteFragmentLegacy(_)) {
-            ctx.data.elements.flags.svelte_fragment_slots.insert(wrapper_id);
+            ctx.data
+                .elements
+                .flags
+                .svelte_fragment_slots
+                .insert(wrapper_id);
         }
     }
 }
 
-fn record_custom_element_slot_name(
-    data: &mut AnalysisData,
-    attrs: &[Attribute],
-    source: &str,
-) {
+fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute], source: &str) {
     if !data.output.is_custom_element_target {
         return;
     }
@@ -802,19 +797,32 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template_elements
             .record(el.id, &el.name, facts, parent_element);
         let frag_id = ctx.current_fragment_id();
-        if el.name == "title"
-            && ctx.store.fragment(frag_id).role == FragmentRole::SvelteHeadBody
-        {
+        if el.name == "title" && ctx.store.fragment(frag_id).role == FragmentRole::SvelteHeadBody {
             push_into_bucket(&mut self.title_buckets, frag_id, el.id);
         }
     }
 
-    fn visit_slot_element_legacy(&mut self, el: &SlotElementLegacy, ctx: &mut VisitContext<'_, '_>) {
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
         ctx.data
             .template
             .template_topology
             .record_node_parent(el.id, ctx.parent());
         record_custom_element_slot_name(ctx.data, &el.attributes, ctx.source);
+    }
+
+    fn visit_svelte_fragment_legacy(
+        &mut self,
+        el: &SvelteFragmentLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        ctx.data
+            .template
+            .template_topology
+            .record_node_parent(el.id, ctx.parent());
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
@@ -861,11 +869,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         record_legacy_slot_wrappers(&cn.legacy_slots, ctx);
     }
 
-    fn visit_svelte_self(
-        &mut self,
-        cn: &svelte_ast::SvelteSelf,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
+    fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         ctx.data
             .template
             .template_topology

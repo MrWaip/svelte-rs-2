@@ -1301,8 +1301,8 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
-        let program = parse_script_with_alloc(&alloc, arena_source, 0, false)
-            .expect("test invariant");
+        let program =
+            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 
@@ -1311,8 +1311,8 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
-        let program = parse_script_with_alloc(&alloc, arena_source, 0, false)
-            .expect("test invariant");
+        let program =
+            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 }
@@ -1418,7 +1418,10 @@ fn slot_default_value_normalizes_to_default_group() {
     );
     let default = &c.store.fragment(cn.fragment).nodes;
     assert_eq!(default.len(), 1);
-    assert!(matches!(c.store.get(default[0]), Node::SvelteFragmentLegacy(_)));
+    assert!(matches!(
+        c.store.get(default[0]),
+        Node::SvelteFragmentLegacy(_)
+    ));
 }
 
 #[test]
@@ -1612,10 +1615,7 @@ fn span_shift_snippet_decl_name_and_params_use_distinct_deltas() {
     let BindingPattern::BindingIdentifier(id) = &declarator.id else {
         panic!("expected BindingIdentifier")
     };
-    assert_eq!(
-        &source[id.span.start as usize..id.span.end as usize],
-        "row"
-    );
+    assert_eq!(&source[id.span.start as usize..id.span.end as usize], "row");
     let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
         panic!("expected arrow init")
     };
@@ -1695,9 +1695,7 @@ fn ts_stripped_from_parser_output_in_instance_script() {
             }
             match expr {
                 Expression::TSAsExpression(_) => self.found = Some("TSAsExpression"),
-                Expression::TSSatisfiesExpression(_) => {
-                    self.found = Some("TSSatisfiesExpression")
-                }
+                Expression::TSSatisfiesExpression(_) => self.found = Some("TSSatisfiesExpression"),
                 Expression::TSNonNullExpression(_) => self.found = Some("TSNonNullExpression"),
                 Expression::TSTypeAssertion(_) => self.found = Some("TSTypeAssertion"),
                 Expression::TSInstantiationExpression(_) => {
@@ -1784,8 +1782,9 @@ const q = v!;
     let program = js.program.as_ref().expect("instance program");
     let mut det = TsDetector { found: None };
     det.visit_program(program);
-    assert!(det.found.is_none(), "TS leaked through parser: {:?}", det.found);
+    assert!(
+        det.found.is_none(),
+        "TS leaked through parser: {:?}",
+        det.found
+    );
 }
-
-
-

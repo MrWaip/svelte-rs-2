@@ -6,75 +6,15 @@ use smallvec::SmallVec;
 
 use crate::SymbolId;
 
-pub fn walk_assignment_target_idents<'a, F>(
-    target: &'a AssignmentTarget<'a>,
-    mut visit: F,
-) -> bool
+pub fn walk_assignment_target_idents<'a, F>(target: &'a AssignmentTarget<'a>, mut visit: F)
 where
     F: FnMut(&'a IdentifierReference<'a>),
 {
-    walk_assignment_target_inner(target, &mut visit)
-}
-
-fn walk_assignment_target_inner<'a, F>(target: &'a AssignmentTarget<'a>, visit: &mut F) -> bool
-where
-    F: FnMut(&'a IdentifierReference<'a>),
-{
-    match target {
-        AssignmentTarget::AssignmentTargetIdentifier(id) => {
-            visit(id.as_ref());
-            true
+    walk_assignment_targets(target, |v| {
+        if let WriteTarget::Identifier(id) = v.target {
+            visit(id);
         }
-        AssignmentTarget::ObjectAssignmentTarget(obj) => {
-            if obj.rest.is_some() {
-                return false;
-            }
-            for prop in &obj.properties {
-                match prop {
-                    AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(sh) => {
-                        if sh.init.is_some() {
-                            return false;
-                        }
-                        visit(&sh.binding);
-                    }
-                    AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
-                        if kv.computed {
-                            return false;
-                        }
-                        let Some(inner) = kv.binding.as_assignment_target() else {
-                            return false;
-                        };
-                        if !walk_assignment_target_inner(inner, visit) {
-                            return false;
-                        }
-                    }
-                }
-            }
-            true
-        }
-        AssignmentTarget::ArrayAssignmentTarget(arr) => {
-            if arr.rest.is_some() {
-                return false;
-            }
-            for elem in arr.elements.iter() {
-                let Some(elem) = elem else {
-                    return false;
-                };
-                let AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(_) = elem else {
-                    let Some(inner) = elem.as_assignment_target() else {
-                        return false;
-                    };
-                    if !walk_assignment_target_inner(inner, visit) {
-                        return false;
-                    }
-                    continue;
-                };
-                return false;
-            }
-            true
-        }
-        _ => false,
-    }
+    });
 }
 
 pub fn walk_bindings<'a, F>(pat: &'a BindingPattern<'a>, mut visit: F)
@@ -208,13 +148,23 @@ pub enum WriteTarget<'a> {
 
 #[derive(Clone, Copy)]
 pub enum WriteAccess<'a> {
-    Index { index: u32, len: u32, has_rest: bool },
+    Index {
+        index: u32,
+        len: u32,
+        has_rest: bool,
+    },
 
-    Slice { from: u32 },
+    Slice {
+        from: u32,
+    },
 
-    Key { name: &'a str },
+    Key {
+        name: &'a str,
+    },
 
-    Computed { key: &'a Expression<'a> },
+    Computed {
+        key: &'a Expression<'a>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -333,15 +283,21 @@ fn walk_target_inner<'a, F>(
                         path.pop();
                     }
                     AssignmentTargetProperty::AssignmentTargetPropertyProperty(kv) => {
-                        let access = match write_static_key(&kv.name, kv.computed) {
-                            Some(name) => {
+                        let access = match &kv.name {
+                            PropertyKey::StaticIdentifier(id) if !kv.computed => {
+                                let name = id.name.as_str();
                                 keys.push(name);
                                 WriteAccess::Key { name }
                             }
-                            None => match kv.name.as_expression() {
-                                Some(key) => WriteAccess::Computed { key },
-                                None => continue,
-                            },
+                            _ => {
+                                if let Some(name) = write_static_key(&kv.name, kv.computed) {
+                                    keys.push(name);
+                                }
+                                match kv.name.as_expression() {
+                                    Some(key) => WriteAccess::Computed { key },
+                                    None => continue,
+                                }
+                            }
                         };
                         let (inner, default) = write_maybe_default(&kv.binding);
                         path.push(WriteStep { access, default });
@@ -715,7 +671,10 @@ mod tests {
 
     #[test]
     fn assign_property_default() {
-        assert_eq!(summarize_assign("({ a: b = 5 } = o);"), vec![".a={d} id(b)"]);
+        assert_eq!(
+            summarize_assign("({ a: b = 5 } = o);"),
+            vec![".a={d} id(b)"]
+        );
     }
 
     fn array_index_steps(source: &str) -> Vec<(u32, u32, bool)> {

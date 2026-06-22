@@ -35,33 +35,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(out)
     }
 
-    pub(in crate::codegen) fn default_slot_has_let_directive_legacy(
-        &self,
-        component_id: NodeId,
-    ) -> bool {
-        let store = &self.ctx.query.component.store;
-        let Some(view) = store.get(component_id).as_component_like() else {
-            return false;
-        };
-        if view
-            .attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
-        {
-            return true;
-        }
-        store
-            .fragment_nodes(view.fragment)
-            .iter()
-            .any(|&child_id| match store.get(child_id) {
-                Node::SvelteFragmentLegacy(el) => el
-                    .attributes
-                    .iter()
-                    .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_))),
-                _ => false,
-            })
-    }
-
     fn emit_let_directive_legacy(
         &mut self,
         dir: &svelte_ast::LetDirectiveLegacy,
@@ -83,8 +56,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let declarator = decl.declarations.remove(0);
         let slot_prop_name: &'a str = self.ctx.b.alloc_str(&dir.name);
-        let pattern_ref: &'a BindingPattern<'a> =
-            self.ctx.b.ast.allocator.alloc(declarator.id);
+        let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(declarator.id);
         let out = self.emit_binding_pattern(
             decl_oxc_node_id,
             BindingPatternSource::LetCarrier {

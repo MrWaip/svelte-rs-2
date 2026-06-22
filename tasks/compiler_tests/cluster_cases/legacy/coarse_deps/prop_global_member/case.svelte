@@ -1,0 +1,1 @@
+<script>export let x;</script><Child prop={Math.PI} />

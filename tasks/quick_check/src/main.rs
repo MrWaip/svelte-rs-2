@@ -1,7 +1,9 @@
 use std::{
     any::Any,
     collections::HashMap,
-    env, fs, panic,
+    env, fs,
+    io::{self, Read},
+    panic,
     path::{Path, PathBuf},
     process::{self, Command, ExitCode},
 };
@@ -16,7 +18,7 @@ use svelte_compiler::{
 };
 use svelte_transform_css::compact_css_for_injection;
 
-const USAGE: &str = "usage: quick_check <path-to-.svelte-file> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]";
+const USAGE: &str = "usage: quick_check <path-to-.svelte-file|-> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]\n  pass `-` to read source from stdin (extension inferred from --filename, default .svelte)";
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum PrintMode {
@@ -117,20 +119,37 @@ fn main() -> ExitCode {
         }
     };
 
-    let input_path = match fs::canonicalize(&raw_path) {
-        Ok(p) => p,
-        Err(err) => {
-            eprintln!("quick_check: cannot open {raw_path}: {err}");
+    let _stdin_temp;
+    let (source, input_path) = if raw_path == "-" {
+        let mut source = String::new();
+        if let Err(err) = io::stdin().read_to_string(&mut source) {
+            eprintln!("quick_check: read stdin: {err}");
             return ExitCode::from(2);
         }
-    };
-
-    let source = match fs::read_to_string(&input_path) {
-        Ok(s) => s,
-        Err(err) => {
-            eprintln!("quick_check: read {}: {err}", input_path.display());
+        let ext = stdin_extension(&cli_opts);
+        let temp = env::temp_dir().join(format!("svelte_quick_check_stdin_{}{ext}", process::id()));
+        if let Err(err) = fs::write(&temp, &source) {
+            eprintln!("quick_check: write stdin temp {}: {err}", temp.display());
             return ExitCode::from(2);
         }
+        _stdin_temp = TempFileGuard(temp.clone());
+        (source, temp)
+    } else {
+        let input_path = match fs::canonicalize(&raw_path) {
+            Ok(p) => p,
+            Err(err) => {
+                eprintln!("quick_check: cannot open {raw_path}: {err}");
+                return ExitCode::from(2);
+            }
+        };
+        let source = match fs::read_to_string(&input_path) {
+            Ok(s) => s,
+            Err(err) => {
+                eprintln!("quick_check: read {}: {err}", input_path.display());
+                return ExitCode::from(2);
+            }
+        };
+        (source, input_path)
     };
 
     let workspace_root = resolve_workspace_root();
@@ -189,7 +208,11 @@ fn main() -> ExitCode {
         }
         println!(
             "---- {} ----",
-            if js_match && css_match { "OK" } else { "MISMATCH" }
+            if js_match && css_match {
+                "OK"
+            } else {
+                "MISMATCH"
+            }
         );
         return if js_match && css_match {
             ExitCode::SUCCESS
@@ -238,6 +261,22 @@ struct ReferenceOutput {
 fn is_module_path(path: &Path) -> bool {
     let s = path.to_string_lossy();
     s.ends_with(".svelte.js") || s.ends_with(".svelte.ts")
+}
+
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+fn stdin_extension(cli: &CliOptions) -> &'static str {
+    match cli.filename.as_deref() {
+        Some(name) if name.ends_with(".svelte.ts") => ".svelte.ts",
+        Some(name) if name.ends_with(".svelte.js") => ".svelte.js",
+        _ => ".svelte",
+    }
 }
 
 fn run_our_compiler(source: &str, cli: &CliOptions, is_module: bool) -> OurOutcome {

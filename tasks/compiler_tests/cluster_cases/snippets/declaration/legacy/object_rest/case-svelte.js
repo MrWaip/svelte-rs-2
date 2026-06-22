@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 const s = ($$anchor, $$arg0) => {
-	let a = () => $$arg0?.().a;
+	let a = () => ($$arg0?.()).a;
 	let rest = () => $.exclude_from_object($$arg0?.(), ["a"]);
 	var button = root_1();
 	var text = $.child(button);

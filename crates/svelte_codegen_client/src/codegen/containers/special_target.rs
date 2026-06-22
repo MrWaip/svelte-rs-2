@@ -1,5 +1,6 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
+use svelte_emit_builders::runes::rune_get;
+use svelte_emit_builders::store::build_store_base_read;
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -105,12 +106,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Document(DocumentBindKind),
         }
         let (host_prop, bind_kind) = match self.ctx.query.analysis.attributes.get(bind.id) {
-            AttributeSemantics::WindowBind(WindowBindSemantics {
-                property, kind, ..
-            }) => (HostProp::Window(*property), kind.clone()),
-            AttributeSemantics::DocumentBind(DocumentBindSemantics {
-                property, kind, ..
-            }) => (HostProp::Document(*property), kind.clone()),
+            AttributeSemantics::WindowBind(WindowBindSemantics { property, kind, .. }) => {
+                (HostProp::Window(*property), kind.clone())
+            }
+            AttributeSemantics::DocumentBind(DocumentBindSemantics { property, kind, .. }) => {
+                (HostProp::Document(*property), kind.clone())
+            }
             _ => return Ok(()),
         };
 
@@ -128,20 +129,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let stmt = match host_prop {
             HostProp::Window(WindowBindKind::ScrollX) => {
-                let getter = self.build_binding_getter(&var_name, &bind_kind);
-                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
-                self.ctx.b.call_stmt(
-                    "$.bind_window_scroll",
-                    [Arg::StrRef("x"), Arg::Expr(getter), Arg::Expr(setter)],
-                )
+                self.build_window_scroll_stmt("x", &var_name, &bind_kind)
             }
             HostProp::Window(WindowBindKind::ScrollY) => {
-                let getter = self.build_binding_getter(&var_name, &bind_kind);
-                let setter = self.build_binding_setter_silent(&var_name, &bind_kind);
-                self.ctx.b.call_stmt(
-                    "$.bind_window_scroll",
-                    [Arg::StrRef("y"), Arg::Expr(getter), Arg::Expr(setter)],
-                )
+                self.build_window_scroll_stmt("y", &var_name, &bind_kind)
             }
             HostProp::Window(
                 size_kind @ (WindowBindKind::InnerWidth
@@ -192,11 +183,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
+    fn build_window_scroll_stmt(
+        &self,
+        axis: &'static str,
+        var: &str,
+        kind: &HtmlBindKind,
+    ) -> Statement<'a> {
+        let getter = self.build_binding_getter(var, kind);
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::StrRef(axis), Arg::Expr(getter)];
+        if !matches!(kind, HtmlBindKind::BindableProp) {
+            let setter = self.build_binding_setter_silent(var, kind);
+            args.push(Arg::Expr(setter));
+        }
+        self.ctx.b.call_stmt("$.bind_window_scroll", args)
+    }
+
     fn build_binding_getter(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
+        if let HtmlBindKind::BindableProp | HtmlBindKind::StoreSubscribed { .. } = kind {
+            return self.ctx.b.rid_expr(var);
+        }
         let body = match kind {
-            HtmlBindKind::Rune | HtmlBindKind::LegacyState => {
-                rune_get(&self.ctx.b, var)
-            }
+            HtmlBindKind::Rune | HtmlBindKind::LegacyState => rune_get(&self.ctx.b, var),
             _ => self.ctx.b.rid_expr(var),
         };
         self.ctx
@@ -205,6 +212,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn build_binding_setter_silent(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
+        if let HtmlBindKind::BindableProp = kind {
+            return self.ctx.b.rid_expr(var);
+        }
         let body = match kind {
             HtmlBindKind::Rune => self.ctx.b.call_expr(
                 "$.set",
@@ -214,6 +224,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .ctx
                 .b
                 .call_expr("$.set", [Arg::Ident(var), Arg::Ident("$$value")]),
+            HtmlBindKind::StoreSubscribed { base_symbol } => {
+                let base =
+                    build_store_base_read(&self.ctx.b, self.ctx.query.analysis, *base_symbol);
+                self.ctx
+                    .b
+                    .call_expr("$.store_set", [Arg::Expr(base), Arg::Ident("$$value")])
+            }
             _ => self.ctx.b.assign_expr(
                 AssignLeft::Ident(var.to_string()),
                 self.ctx.b.rid_expr("$$value"),
@@ -251,12 +268,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         raw_event_name: &str,
         expr_offset: u32,
     ) -> Result<()> {
-        let (event_name, capture) =
-            if let Some(base) = strip_capture_event(raw_event_name) {
-                (base.to_string(), true)
-            } else {
-                (raw_event_name.to_string(), false)
-            };
+        let (event_name, capture) = if let Some(base) = strip_capture_event(raw_event_name) {
+            (base.to_string(), true)
+        } else {
+            (raw_event_name.to_string(), false)
+        };
 
         let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
             AttributeSemantics::Event(ev) => match &ev.emit {
@@ -270,14 +286,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
-        let handler = self.build_event_handler_s5(
-            attr_id,
-            expr,
-            handler_emit,
-            &mut state.init,
-            expr_offset,
-        );
+        let handler =
+            self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
         let passive = is_passive_event(&event_name);

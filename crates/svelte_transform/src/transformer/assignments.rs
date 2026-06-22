@@ -1,11 +1,13 @@
 use std::iter;
+use std::mem;
 
 use oxc_ast::ast::{
     AssignmentOperator, AssignmentTarget, Expression, IdentifierReference, MemberExpression,
     SimpleAssignmentTarget, UpdateOperator,
 };
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{ReferenceSemantics, RuneKind};
+use svelte_analyze::{ClassFieldSemantics, DeclaratorSemantics, ReferenceSemantics, StateKind};
+use svelte_component_semantics::OxcNodeId;
 
 use svelte_ast_builder::Arg;
 
@@ -13,7 +15,9 @@ use super::async_check::is_expression_async;
 use super::model::PendingPropMutationValidation;
 
 use super::model::ComponentTransformer;
-use crate::rune_refs::{replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy};
+use crate::rune_refs::{
+    replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy,
+};
 
 fn assign_op_literal(op: AssignmentOperator) -> Option<&'static str> {
     match op {
@@ -87,8 +91,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) {
         replace_expr_root_in_assign_target(
             target,
-            self.b
-                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
+            self.b.call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
@@ -99,8 +102,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) {
         replace_expr_root_in_simple_target(
             target,
-            self.b
-                .call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
+            self.b.call_expr(root_name, iter::empty::<Arg<'a, '_>>()),
         );
     }
 
@@ -224,14 +226,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let op_literal = assign_op_literal(assign.operator);
-        let is_static = matches!(
-            &assign.left,
-            AssignmentTarget::StaticMemberExpression(_)
-        );
-        let is_computed = matches!(
-            &assign.left,
-            AssignmentTarget::ComputedMemberExpression(_)
-        );
+        let is_static = matches!(&assign.left, AssignmentTarget::StaticMemberExpression(_));
+        let is_computed = matches!(&assign.left, AssignmentTarget::ComputedMemberExpression(_));
         let should_rewrite_assign = op_literal.is_some() && (is_static || is_computed);
         if !should_rewrite_assign {
             if let Some(source_root_name) = bindable_prop_source_root_name {
@@ -379,11 +375,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut semantic_bindable = false;
         let mut semantic_source_root_name = None;
         let mut semantic_segments = None;
+        let mut semantic_ref_id = None;
         if let Some(analysis) = self.analysis
             && let Some(member) = assign.left.as_member_expression()
             && let Some(root_id) = self.member_root_identifier(member)
             && let Some(ref_id) = root_id.reference_id.get()
         {
+            semantic_ref_id = Some(ref_id);
             match analysis.reference_semantics(ref_id) {
                 ReferenceSemantics::PropSourceMemberMutationRoot { bindable, symbol } => {
                     if let Some((prop_alias, _origin_kind)) = analysis.binding_origin_key(symbol) {
@@ -418,6 +416,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
             semantic_segments,
             ctx,
         );
+        if let (Some(analysis), Some(ref_id)) = (self.analysis, semantic_ref_id)
+            && let Some(root_sym) = analysis.symbol_for_reference(ref_id)
+            && analysis.legacy_indirect_bindings(root_sym).is_some()
+        {
+            let placeholder = self.make_rune_get("");
+            let built = mem::replace(node, placeholder);
+            *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, built, ref_id, ctx);
+        }
         true
     }
 
@@ -487,6 +493,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
+        if super::state_legacy::is_destructure_assignment_lhs(node) {
+            self.destructure_lhs_depth += 1;
+        }
+
         let is_identifier_target = {
             let Expression::AssignmentExpression(assign) = &*node else {
                 unreachable!();
@@ -497,7 +507,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && self.dispatch_identifier_assignment(node, false) {
+        if is_identifier_target && self.dispatch_identifier_assignment(node, ctx) {
             return;
         }
 
@@ -523,17 +533,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         };
         let op_literal = assign_op_literal(assign.operator);
-        let is_static = matches!(
-            &assign.left,
-            AssignmentTarget::StaticMemberExpression(_)
-        );
-        let is_computed = matches!(
-            &assign.left,
-            AssignmentTarget::ComputedMemberExpression(_)
-        );
-        let should_rewrite_assign = op_literal.is_some()
-            && (is_static || is_computed)
-            && should_proxy(&assign.right);
+        let is_static = matches!(&assign.left, AssignmentTarget::StaticMemberExpression(_));
+        let is_computed = matches!(&assign.left, AssignmentTarget::ComputedMemberExpression(_));
+        let should_rewrite_assign =
+            op_literal.is_some() && (is_static || is_computed) && should_proxy(&assign.right);
         if !should_rewrite_assign {
             return;
         }
@@ -626,7 +629,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             )
         };
 
-        if is_identifier_target && self.dispatch_identifier_update(node) {
+        if is_identifier_target && self.dispatch_identifier_update(node, ctx) {
             return;
         }
 
@@ -636,7 +639,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         if let SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument
             && matches!(&pfe.object, Expression::ThisExpression(_))
-            && self.is_private_state_field(pfe.field.name.as_str())
+            && self
+                .analysis
+                .is_some_and(|analysis| analysis.class_field_semantics(pfe.node_id()).is_field())
         {
             let field_name = pfe.field.name.as_str();
             let fn_name = if upd.prefix {
@@ -667,39 +672,66 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.wrap_pending_prop_mutation_validation(node, mutation_info, span_start);
     }
 
+    fn is_class_field_rune_init(&self, node: OxcNodeId) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        match analysis.declarator_semantics(node) {
+            DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_) => {
+                true
+            }
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam => false,
+        }
+    }
+
     pub(crate) fn rewrite_private_assignment_exit(&self, node: &mut Expression<'a>) -> bool {
         if let Expression::AssignmentExpression(assign) = node
             && let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
+            let Some(analysis) = self.analysis else {
+                return false;
+            };
             let field_name = pfe.field.name.as_str();
+            let access_node = pfe.node_id();
+            let semantics = analysis.class_field_semantics(access_node);
+            if !semantics.is_field() {
+                return false;
+            }
             if self.in_constructor()
                 && assign.operator == AssignmentOperator::Assign
-                && self.is_private_state_field(field_name)
-                && matches!(
-                    &assign.right,
-                    Expression::CallExpression(call)
-                        if svelte_analyze::detect_rune_from_call(call)
-                            .is_some_and(|k| matches!(
-                                k,
-                                RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy
-                            ))
-                )
+                && self.is_class_field_rune_init(assign.node_id())
             {
                 return false;
             }
-            if self.is_private_state_field(field_name) {
-                let left_expr = self.b.this_private_member(field_name);
-                let right = self.b.move_expr(&mut assign.right);
-                let get_expr = self.b.this_private_member(field_name);
-                let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
-                let value = self.build_compound_value(assign.operator, left_read, right);
+            let proxy = matches!(semantics, ClassFieldSemantics::State { proxy: true, .. });
+            let left_expr = self.b.this_private_member(field_name);
+            let right = self.b.move_expr(&mut assign.right);
+            let get_expr = self.b.this_private_member(field_name);
+            let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
+            let value = self.build_compound_value(assign.operator, left_read, right);
 
-                *node = self
-                    .b
-                    .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)]);
-                return true;
-            }
+            *node = if proxy {
+                self.b.call_expr(
+                    "$.set",
+                    [Arg::Expr(left_expr), Arg::Expr(value), Arg::Bool(true)],
+                )
+            } else {
+                self.b
+                    .call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)])
+            };
+            return true;
         }
         false
     }
@@ -708,17 +740,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if let Expression::PrivateFieldExpression(pfe) = node
             && matches!(&pfe.object, Expression::ThisExpression(_))
         {
-            let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
-            if let Some(kind) = rune_kind {
-                if self.in_constructor() && matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                    let field_expr = self.b.move_expr(node);
-                    *node = self.b.static_member_expr(field_expr, "v");
-                } else {
-                    let field_expr = self.b.move_expr(node);
-                    *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
-                }
-                return true;
+            let Some(analysis) = self.analysis else {
+                return false;
+            };
+            let semantics = analysis.class_field_semantics(pfe.node_id());
+            if !semantics.is_field() {
+                return false;
             }
+            let proxied_field_state = matches!(
+                semantics,
+                ClassFieldSemantics::State {
+                    kind: StateKind::State | StateKind::StateRaw,
+                    ..
+                }
+            );
+            if self.in_constructor() && proxied_field_state {
+                let field_expr = self.b.move_expr(node);
+                *node = self.b.static_member_expr(field_expr, "v");
+            } else {
+                let field_expr = self.b.move_expr(node);
+                *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
+            }
+            return true;
         }
         false
     }

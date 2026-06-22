@@ -1,11 +1,11 @@
-use svelte_emit_builders::legacy_wrap;
 use oxc_ast::ast::Expression;
 use std::iter::empty;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
+use svelte_emit_builders::legacy_wrap;
 
 use super::data_structures::{ConcatPart, EmitState, FragmentCtx, TemplateMemoState};
-use super::fragment::role_needs_text_first_next;
 use super::expr::legacy_dep_expr;
+use super::fragment::role_needs_text_first_next;
 use super::{Codegen, Result};
 
 pub(in crate::codegen) enum ConcatenationAnchor {
@@ -80,7 +80,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
 
             let expr = self.take_node_expr(*id)?;
-            use svelte_analyze::{Evaluation, ExprKind};
+            use svelte_analyze::{Evaluation, Volatility};
             let source_defined = match self.ctx.query.view.expression_semantics(*id) {
                 ExpressionSemantics::Expression(data) => match data.evaluation {
                     Evaluation::Known(_) | Evaluation::Defined { .. } => true,
@@ -93,51 +93,43 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 needs_effect = true;
                 extra_blockers.extend(const_blockers);
             }
-            let (effective_expr, part_needs_effect, was_memoized) =
-                match self.ctx.query.view.expression_semantics(*id) {
-                    ExpressionSemantics::NonSpecial => (expr, false, false),
-                    ExpressionSemantics::Expression(data) => {
-                        let part_needs_effect = matches!(
-                            data.kind,
-                            ExprKind::SimpleRead { reactive: true }
-                                | ExprKind::Computed { reactive: true }
-                                | ExprKind::Call { dynamic: true }
-                                | ExprKind::Async { .. }
-                        );
-                        let expr = legacy_wrap::apply(
-                            &self.ctx.b,
-                            expr,
-                            data.legacy_wrap,
-                            &data.references,
-                            |sym| legacy_dep_expr(self.ctx, sym),
-                        );
-                        let (effective, memoized) = match data.kind {
-                            ExprKind::Call { dynamic: true } => {
-                                memo_deps.push_node_deps(self.ctx, *id);
-                                let cloned = self.ctx.b.clone_expr(&expr);
-                                let index = memo_deps.sync_values_push(cloned);
-                                (memo_deps.sync_param_expr(self.ctx, index), true)
-                            }
-                            ExprKind::Async { has_await: true } => {
-                                memo_deps.push_node_deps(self.ctx, *id);
-                                let cloned = self.ctx.b.clone_expr(&expr);
-                                let index = memo_deps.async_values_push(cloned);
-                                (memo_deps.async_param_expr(self.ctx, index), true)
-                            }
-                            ExprKind::KnownLiteral
-                            | ExprKind::SimpleRead { .. }
-                            | ExprKind::Computed { .. }
-                            | ExprKind::Call { dynamic: false }
-                            | ExprKind::Async { has_await: false } => (expr, false),
-                        };
-                        (effective, part_needs_effect, memoized)
+            let plain_part = |expr: Expression<'a>| {
+                let is_sequence = matches!(expr, Expression::SequenceExpression(_));
+                (expr, source_defined && !is_sequence)
+            };
+            let (effective_expr, defined) = match self.ctx.query.view.expression_semantics(*id) {
+                ExpressionSemantics::NonSpecial => plain_part(expr),
+                ExpressionSemantics::Expression(data) => {
+                    let expr = legacy_wrap::apply(
+                        &self.ctx.b,
+                        expr,
+                        data.legacy_wrap,
+                        &data.references,
+                        |sym| legacy_dep_expr(self.ctx, sym),
+                    );
+                    match data.volatility {
+                        Volatility::Heavy => {
+                            memo_deps.push_node_deps(self.ctx, *id);
+                            let cloned = self.ctx.b.clone_expr(&expr);
+                            let index = memo_deps.sync_values_push(cloned);
+                            needs_effect = true;
+                            (memo_deps.sync_param_expr(self.ctx, index), false)
+                        }
+                        Volatility::Asynchronous => {
+                            memo_deps.push_node_deps(self.ctx, *id);
+                            let cloned = self.ctx.b.clone_expr(&expr);
+                            let index = memo_deps.async_values_push(cloned);
+                            needs_effect = true;
+                            (memo_deps.async_param_expr(self.ctx, index), false)
+                        }
+                        Volatility::Reactive => {
+                            needs_effect = true;
+                            plain_part(expr)
+                        }
+                        Volatility::Static => plain_part(expr),
                     }
-                };
-            if part_needs_effect {
-                needs_effect = true;
-            }
-            let is_sequence = matches!(effective_expr, Expression::SequenceExpression(_));
-            let defined = source_defined && !was_memoized && !is_sequence;
+                }
+            };
             tpl_parts.push(TemplatePart::Expr(effective_expr, defined));
         }
 
@@ -229,10 +221,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             if !extra_blockers.is_empty() {
                 state.extra_blockers.extend(extra_blockers);
             }
-            state.update.push(b.call_stmt(
-                "$.set_text",
-                [Arg::Ident(node_var), Arg::Expr(final_expr)],
-            ));
+            state
+                .update
+                .push(b.call_stmt("$.set_text", [Arg::Ident(node_var), Arg::Expr(final_expr)]));
         } else {
             let member = b.static_member(b.rid_expr(node_var), "nodeValue");
             state
@@ -296,10 +287,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.extra_blockers.extend(extra_blockers);
         }
         let b = &self.ctx.state.b;
-        state.update.push(b.call_stmt(
-            "$.set_text",
-            [Arg::Ident(&name), Arg::Expr(final_expr)],
-        ));
+        state
+            .update
+            .push(b.call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(final_expr)]));
         Ok(())
     }
 
@@ -320,10 +310,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .init
                 .push(b.call_stmt("$.next", empty::<Arg<'a, '_>>()));
         }
-        state.init.push(b.var_stmt(
-            &name,
-            b.call_expr("$.text", empty::<Arg<'a, '_>>()),
-        ));
+        state
+            .init
+            .push(b.var_stmt(&name, b.call_expr("$.text", empty::<Arg<'a, '_>>())));
         state.root_var = Some(name.clone());
 
         self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
@@ -346,10 +335,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .init
                 .push(b.call_stmt("$.next", empty::<Arg<'a, '_>>()));
         }
-        state.init.push(b.var_stmt(
-            &name,
-            b.call_expr("$.text", empty::<Arg<'a, '_>>()),
-        ));
+        state
+            .init
+            .push(b.var_stmt(&name, b.call_expr("$.text", empty::<Arg<'a, '_>>())));
         state.root_var = Some(name.clone());
         self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
     }
@@ -372,10 +360,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.extra_blockers.extend(extra_blockers);
             }
             let b = &self.ctx.state.b;
-            state.update.push(b.call_stmt(
-                "$.set_text",
-                [Arg::Ident(node_var), Arg::Expr(final_expr)],
-            ));
+            state
+                .update
+                .push(b.call_stmt("$.set_text", [Arg::Ident(node_var), Arg::Expr(final_expr)]));
         } else {
             let b = &self.ctx.state.b;
             let member = b.static_member(b.rid_expr(node_var), "nodeValue");

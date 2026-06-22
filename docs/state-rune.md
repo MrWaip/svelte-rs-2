@@ -1,6 +1,7 @@
 # PRD: $state rune
 
 label: state-rune
+topics: $state, $state.raw, $state.snapshot, $state.eager, proxy, class-field state, State binding, reactive state
 
 Дочерний PRD кластера `reactivity-semantics`, ось — runes.
 

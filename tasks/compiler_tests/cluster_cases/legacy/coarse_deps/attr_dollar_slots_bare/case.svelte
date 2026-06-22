@@ -1,0 +1,1 @@
+<script>export let x;</script><p hidden={$$slots}>a</p>

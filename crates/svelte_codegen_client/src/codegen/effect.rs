@@ -3,8 +3,8 @@ use svelte_ast_builder::Arg;
 
 use crate::context::Ctx;
 
-use super::data_structures::TemplateMemoState;
 use super::Result;
+use super::data_structures::TemplateMemoState;
 
 pub(in crate::codegen) fn emit_effect_call_extern<'a>(
     ctx: &Ctx<'a>,

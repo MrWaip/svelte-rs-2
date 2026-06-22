@@ -476,6 +476,7 @@ pub struct LegacySlot {
 pub struct Comment {
     pub id: NodeId,
     pub span: Span,
+    pub content_span: Span,
 }
 
 impl Comment {
@@ -484,9 +485,7 @@ impl Comment {
     }
 
     pub fn data<'a>(&self, source: &'a str) -> &'a str {
-        let raw = self.value(source);
-        let inner = raw.strip_prefix("<!--").unwrap_or(raw);
-        inner.strip_suffix("-->").unwrap_or(inner)
+        &source[self.content_span.start as usize..self.content_span.end as usize]
     }
 }
 
@@ -640,6 +639,36 @@ impl Node {
             _ => None,
         }
     }
+
+    pub fn attributes(&self) -> &[Attribute] {
+        match self {
+            Node::Element(n) => &n.attributes,
+            Node::SlotElementLegacy(n) => &n.attributes,
+            Node::ComponentNode(n) => &n.attributes,
+            Node::SvelteHead(n) => &n.attributes,
+            Node::SvelteFragmentLegacy(n) => &n.attributes,
+            Node::SvelteComponentLegacy(n) => &n.attributes,
+            Node::SvelteElement(n) => &n.attributes,
+            Node::SvelteWindow(n) => &n.attributes,
+            Node::SvelteDocument(n) => &n.attributes,
+            Node::SvelteBody(n) => &n.attributes,
+            Node::SvelteSelf(n) => &n.attributes,
+            Node::SvelteBoundary(n) => &n.attributes,
+            Node::Text(_)
+            | Node::Comment(_)
+            | Node::ExpressionTag(_)
+            | Node::IfBlock(_)
+            | Node::EachBlock(_)
+            | Node::SnippetBlock(_)
+            | Node::RenderTag(_)
+            | Node::HtmlTag(_)
+            | Node::ConstTag(_)
+            | Node::DebugTag(_)
+            | Node::KeyBlock(_)
+            | Node::AwaitBlock(_)
+            | Node::Error(_) => &[],
+        }
+    }
 }
 
 impl SvelteComponentLegacy {
@@ -656,6 +685,10 @@ impl SvelteComponentLegacy {
     pub fn this_expr(&self) -> Option<&ExprRef> {
         self.attributes.iter().find_map(|a| match a {
             Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+            Attribute::ConcatenationAttribute(x) if x.name == "this" => match x.parts.as_slice() {
+                [ConcatPart::Dynamic { expr, .. }] => Some(expr),
+                _ => None,
+            },
             _ => None,
         })
     }
@@ -676,6 +709,7 @@ impl Attribute {
             Attribute::ExpressionAttribute(a) => a.name == "this",
             Attribute::StringAttribute(a) => a.name == "this",
             Attribute::BooleanAttribute(a) => a.name == "this",
+            Attribute::ConcatenationAttribute(a) => a.name == "this",
             _ => false,
         }
     }
@@ -1081,6 +1115,7 @@ pub enum ScriptLanguage {
 pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
+    pub preceding_comment: Option<NodeId>,
 }
 
 pub struct SvelteOptions {

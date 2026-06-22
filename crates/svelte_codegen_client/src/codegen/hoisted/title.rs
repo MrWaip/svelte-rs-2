@@ -1,5 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
+use svelte_analyze::Volatility;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -59,8 +60,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let mut memo = TemplateMemoState::default();
         let mut built_parts: Vec<TitlePart<'a>> = Vec::new();
-        let mut has_state = false;
         let mut expr_count = 0usize;
+
+        let title_volatility = parts
+            .iter()
+            .filter_map(|part| {
+                let ConcatPart::Expr(eid) = part else {
+                    return None;
+                };
+                let d = self.ctx.expression_data(*eid)?;
+                if d.blockers.is_empty() {
+                    Some(d.volatility)
+                } else {
+                    Some(d.volatility.max(Volatility::Reactive))
+                }
+            })
+            .max()
+            .unwrap_or(Volatility::Static);
 
         for part in &parts {
             match part {
@@ -82,19 +98,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ConcatPart::Expr(eid) => {
                     expr_count += 1;
                     let data = self.ctx.expression_data(*eid);
-                    if self.ctx.is_dynamic(*eid)
-                        || data.is_some_and(|d| {
-                            matches!(
-                                d.kind,
-                                svelte_analyze::ExprKind::Async { has_await: true }
-                            ) || !d.blockers.is_empty()
-                        })
-                    {
-                        has_state = true;
-                    }
-                    if let Some(known) =
-                        data.and_then(|d| d.evaluation.known_str())
-                    {
+                    if let Some(known) = data.and_then(|d| d.evaluation.known_str()) {
                         if let Some(TitlePart::Str(prev)) = built_parts.last_mut() {
                             prev.push_str(&known);
                         } else {
@@ -166,12 +170,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.template_parts_expr(tpl)
         };
 
-        let value = if has_state && single_dynamic_expr {
-            self.ctx
-                .b
-                .logical_coalesce(value_expr, self.ctx.b.str_expr(""))
-        } else {
-            value_expr
+        let value = match title_volatility {
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous
+                if single_dynamic_expr =>
+            {
+                self.ctx
+                    .b
+                    .logical_coalesce(value_expr, self.ctx.b.str_expr(""))
+            }
+            Volatility::Static
+            | Volatility::Reactive
+            | Volatility::Heavy
+            | Volatility::Asynchronous => value_expr,
         };
 
         let b = &self.ctx.state.b;
@@ -179,36 +189,39 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let title_member = b.static_member(doc_expr, "title");
         let assignment = b.assign_stmt(AssignLeft::StaticMember(title_member), value);
 
-        if has_state {
-            let params = memo.param_names();
-            let arrow = if params.is_empty() {
-                self.ctx.b.thunk_block(vec![assignment])
-            } else {
-                self.ctx.b.arrow_block_expr(
-                    self.ctx.b.params(params.iter().map(|s| s.as_str())),
-                    vec![assignment],
-                )
-            };
-            if memo.has_deps() {
-                super::super::effect::emit_effect_call_extern(
-                    self.ctx,
-                    "$.deferred_template_effect",
-                    arrow,
-                    &mut memo,
-                    &mut state.after_update,
-                );
-            } else {
-                state.after_update.push(
-                    self.ctx
-                        .b
-                        .call_stmt("$.deferred_template_effect", [Arg::Expr(arrow)]),
-                );
+        match title_volatility {
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
+                let params = memo.param_names();
+                let arrow = if params.is_empty() {
+                    self.ctx.b.thunk_block(vec![assignment])
+                } else {
+                    self.ctx.b.arrow_block_expr(
+                        self.ctx.b.params(params.iter().map(|s| s.as_str())),
+                        vec![assignment],
+                    )
+                };
+                if memo.has_deps() {
+                    super::super::effect::emit_effect_call_extern(
+                        self.ctx,
+                        "$.deferred_template_effect",
+                        arrow,
+                        &mut memo,
+                        &mut state.after_update,
+                    );
+                } else {
+                    state.after_update.push(
+                        self.ctx
+                            .b
+                            .call_stmt("$.deferred_template_effect", [Arg::Expr(arrow)]),
+                    );
+                }
             }
-        } else {
-            let arrow = self.ctx.b.thunk_block(vec![assignment]);
-            state
-                .after_update
-                .push(self.ctx.b.call_stmt("$.effect", [Arg::Expr(arrow)]));
+            Volatility::Static => {
+                let arrow = self.ctx.b.thunk_block(vec![assignment]);
+                state
+                    .after_update
+                    .push(self.ctx.b.call_stmt("$.effect", [Arg::Expr(arrow)]));
+            }
         }
         Ok(())
     }

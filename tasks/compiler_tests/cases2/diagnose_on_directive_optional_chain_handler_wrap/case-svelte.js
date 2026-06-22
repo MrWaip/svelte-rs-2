@@ -7,7 +7,7 @@ export default function App($$anchor, $$props) {
 	$.init();
 	var button = root();
 	$.event("click", button, function(...$$args) {
-		store()?.reset?.apply(this, $$args);
+		(store()?.reset)?.apply(this, $$args);
 	});
 	$.append($$anchor, button);
 	$.pop();

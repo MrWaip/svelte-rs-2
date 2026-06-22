@@ -4,9 +4,11 @@ use oxc_syntax::scope::ScopeId;
 
 use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
-use svelte_ast::NodeId as SvelteNodeId;
+use svelte_ast::{Component, NodeId as SvelteNodeId};
 
-use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen, RuneKind};
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, ComponentScoping, DeclaratorSemantics, IdentGen, JsAst,
+};
 
 use svelte_ast_builder::Builder;
 
@@ -32,9 +34,10 @@ pub(crate) enum AsyncDerivedMode {
 pub(crate) struct ClassStateField {
     pub(crate) public_name: Option<String>,
     pub(crate) private_name: String,
-    pub(crate) rune_kind: RuneKind,
+    pub(crate) declarator: DeclaratorSemantics,
 }
 
+#[derive(Default)]
 pub(crate) struct ClassStateInfo {
     pub(crate) fields: Vec<ClassStateField>,
 
@@ -96,7 +99,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) filename: &'b str,
     pub(crate) next_arrow_name: Option<String>,
     pub(crate) ident_gen: &'b mut IdentGen,
-    pub(crate) class_state_stack: Vec<ClassStateInfo>,
     pub(crate) class_name_stack: Vec<Option<String>>,
     pub(crate) experimental_async: bool,
 
@@ -108,7 +110,13 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) in_bind_setter_traverse: bool,
 
+    pub(crate) destructure_lhs_depth: u32,
+
     pub(crate) gen_arrow_scope: Option<ScopeId>,
+
+    pub(crate) parsed: Option<&'b mut JsAst<'a>>,
+
+    pub(crate) component: Option<&'b Component>,
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {

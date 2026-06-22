@@ -3,7 +3,7 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{BindingPattern, Statement, VariableDeclaration};
 use oxc_span::SPAN;
-use svelte_analyze::{BindingSemantics, StateKind};
+use svelte_analyze::StateKind;
 
 use super::inspect::{is_inspect_call, is_inspect_trace_call};
 use super::model::ComponentTransformer;
@@ -21,12 +21,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         for stmt in stmts.drain(..) {
             let stmt = if self.strip_exports {
                 match stmt {
-                    Statement::ExportNamedDeclaration(export) => {
-                        match export.unbox().declaration {
-                            Some(decl) => Statement::from(decl),
-                            None => continue,
-                        }
-                    }
+                    Statement::ExportNamedDeclaration(export) => match export.unbox().declaration {
+                        Some(decl) => Statement::from(decl),
+                        None => continue,
+                    },
                     other => other,
                 }
             } else {
@@ -49,7 +47,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 Statement::VariableDeclaration(decl) => {
-                    if Self::is_props_id_declaration(decl) || self.is_eager_state_declaration(decl) {
+                    if Self::is_props_id_declaration(decl) || self.is_eager_state_declaration(decl)
+                    {
                         continue;
                     }
                 }
@@ -72,10 +71,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Some(sym) = ident.symbol_id.get() else {
                 return false;
             };
-            matches!(
-                analysis.binding_semantics(sym),
-                BindingSemantics::State(state) if state.kind == StateKind::StateEager
-            )
+            analysis
+                .binding_semantics(sym)
+                .state()
+                .is_some_and(|state| state.kind == StateKind::StateEager)
         })
     }
 

@@ -1,6 +1,7 @@
 # PRD: Парсер (корневой)
 
 label: parser
+topics: parser/parse/parsing, scanner, svelte-to-ast, handlers, walk_js, js_postprocess, special elements, css parse
 
 Корневой PRD для слоя парсинга: `svelte_parser` (template + JS entry), `svelte_css::parser` (CSS).
 Единственное место, превращающее исходный текст в AST. Даунстрим-слои не пере-парсят.

@@ -2,8 +2,9 @@ use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{NodeId, RunesMode};
+use svelte_ast::{FragmentId, NodeId, RunesMode};
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
+use svelte_span::Span;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BindingSemantics {
@@ -14,6 +15,8 @@ pub enum BindingSemantics {
     State(StateDeclarationSemantics),
 
     Derived(DerivedDeclarationSemantics),
+
+    OptimizedDerived(DerivedDeclarationSemantics),
 
     OptimizedRune(OptimizedRuneSemantics),
 
@@ -37,6 +40,405 @@ pub enum BindingSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LegacyDependency {
+    SelfTracked,
+    Shallow,
+    Deep,
+}
+
+impl BindingSemantics {
+    pub fn legacy_dependency(&self) -> LegacyDependency {
+        match self {
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect) => {
+                LegacyDependency::SelfTracked
+            }
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::NonSource | PropBindingKind::Rest,
+                ..
+            })
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::Contextual(
+                ContextualBindingSemantics::LetDirective
+                | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+                | ContextualBindingSemantics::AwaitValue
+                | ContextualBindingSemantics::AwaitError
+                | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Signal),
+            ) => LegacyDependency::Deep,
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::Identifier | PropBindingKind::Source { .. },
+                ..
+            })
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved
+            | BindingSemantics::Contextual(
+                ContextualBindingSemantics::EachItem(_)
+                | ContextualBindingSemantics::EachIndex(EachIndexStrategy::Direct)
+                | ContextualBindingSemantics::SnippetParam(_),
+            ) => LegacyDependency::Shallow,
+        }
+    }
+
+    pub fn is_reactive(&self) -> bool {
+        match self {
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive => true,
+            BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Const(_)
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_store(&self) -> bool {
+        match self {
+            BindingSemantics::Store(_) => true,
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_props(&self) -> bool {
+        match self {
+            BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_) => true,
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_runes_prop(&self) -> bool {
+        match self {
+            BindingSemantics::Prop(_) => true,
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_prop(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyBindableProp(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn reads_via_thunk(&self) -> bool {
+        match self {
+            BindingSemantics::Store(_) | BindingSemantics::LegacyBindableProp(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_rest_props(&self) -> bool {
+        match self {
+            BindingSemantics::Prop(prop) => match &prop.kind {
+                PropBindingKind::Rest => true,
+                PropBindingKind::Identifier
+                | PropBindingKind::Source { .. }
+                | PropBindingKind::NonSource => false,
+            },
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_maybe_reactive(&self) -> bool {
+        match self {
+            BindingSemantics::MaybeReactive => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_state(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyState(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub(crate) fn is_legacy_api_export(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyApiExport => true,
+            BindingSemantics::LegacyState(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_each_item_indexed_legacy(&self) -> bool {
+        let BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(strategy)) = self
+        else {
+            return false;
+        };
+        match strategy {
+            EachItemStrategy::IndexedLegacy => true,
+            EachItemStrategy::Accessor | EachItemStrategy::Signal | EachItemStrategy::Direct => {
+                false
+            }
+        }
+    }
+
+    pub fn reads_via_each_item_accessor(&self) -> bool {
+        let BindingSemantics::Contextual(ContextualBindingSemantics::EachItem(strategy)) = self
+        else {
+            return false;
+        };
+        match strategy {
+            EachItemStrategy::Accessor => true,
+            EachItemStrategy::IndexedLegacy
+            | EachItemStrategy::Signal
+            | EachItemStrategy::Direct => false,
+        }
+    }
+
+    pub fn is_reactive_const_tag(&self) -> bool {
+        match self {
+            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => *reactive,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_derived(&self) -> bool {
+        match self {
+            BindingSemantics::Derived(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_non_reactive(&self) -> bool {
+        match self {
+            BindingSemantics::NonReactive => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_optimized_rune(&self) -> bool {
+        match self {
+            BindingSemantics::OptimizedRune(_) => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn state(&self) -> Option<StateDeclarationSemantics> {
+        match self {
+            BindingSemantics::State(state) => Some(*state),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
+        }
+    }
+
+    pub fn legacy_state(&self) -> Option<LegacyStateSemantics> {
+        match self {
+            BindingSemantics::LegacyState(state) => Some(*state),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateDeclarationSemantics {
     pub kind: StateKind,
     pub proxied: bool,
@@ -55,6 +457,42 @@ pub enum RuntimeRuneKind {
     Host,
 
     InspectTrace,
+
+    Effect,
+
+    EffectPre,
+
+    EffectRoot,
+
+    Inspect,
+
+    InspectWith,
+
+    StateSnapshot,
+
+    StateEager,
+
+    Bindable,
+}
+
+impl RuntimeRuneKind {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            RuntimeRuneKind::PropsId => "$props.id",
+            RuntimeRuneKind::EffectTracking => "$effect.tracking",
+            RuntimeRuneKind::EffectPending => "$effect.pending",
+            RuntimeRuneKind::Host => "$host",
+            RuntimeRuneKind::InspectTrace => "$inspect.trace",
+            RuntimeRuneKind::Effect => "$effect",
+            RuntimeRuneKind::EffectPre => "$effect.pre",
+            RuntimeRuneKind::EffectRoot => "$effect.root",
+            RuntimeRuneKind::Inspect => "$inspect",
+            RuntimeRuneKind::InspectWith => "$inspect().with",
+            RuntimeRuneKind::StateSnapshot => "$state.snapshot",
+            RuntimeRuneKind::StateEager => "$state.eager",
+            RuntimeRuneKind::Bindable => "$bindable",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,7 +517,6 @@ pub struct OptimizedRuneSemantics {
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
-    pub reactive: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +544,28 @@ pub enum PropEmitMode {
     Standard,
 
     CustomElement,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PropsSummary {
+    pub has_props: bool,
+    pub has_bindable: bool,
+    pub has_custom_element: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReactivitySummary {
+    pub props: PropsSummary,
+    pub has_store_bindings: bool,
+    pub legacy: LegacySummary,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LegacySummary {
+    pub has_bindable_prop: bool,
+    pub reads_props_object: bool,
+    pub reads_rest_props_object: bool,
+    pub has_member_mutated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,6 +650,8 @@ pub enum EachItemStrategy {
     Signal,
 
     Direct,
+
+    IndexedLegacy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,10 +668,13 @@ pub enum SnippetParamStrategy {
     Signal,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeclaratorSemantics {
     None,
+
+    RuntimeRuneCall {
+        kind: RuntimeRuneKind,
+    },
 
     RuneProps,
 
@@ -247,9 +711,164 @@ pub enum DeclaratorSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeclaratorGroup {
+    Rune,
+    Legacy,
+    Contextual,
+    Plain,
+}
+
+impl DeclaratorSemantics {
+    pub fn group(&self) -> DeclaratorGroup {
+        match self {
+            DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => DeclaratorGroup::Rune,
+            DeclaratorSemantics::LegacyProps | DeclaratorSemantics::LegacyState => {
+                DeclaratorGroup::Legacy
+            }
+            DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam => DeclaratorGroup::Contextual,
+            DeclaratorSemantics::None => DeclaratorGroup::Plain,
+        }
+    }
+
+    pub fn is_rune_props(&self) -> bool {
+        match self {
+            DeclaratorSemantics::RuneProps => true,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        }
+    }
+
+    pub fn is_legacy_props(&self) -> bool {
+        match self {
+            DeclaratorSemantics::LegacyProps => true,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        }
+    }
+
+    pub fn is_rune_derived(&self) -> bool {
+        match self {
+            DeclaratorSemantics::RuneDerived { .. } => true,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        }
+    }
+
+    pub fn is_bindable_call(&self) -> bool {
+        match self {
+            DeclaratorSemantics::RuntimeRuneCall { kind } => match kind {
+                RuntimeRuneKind::Bindable => true,
+                RuntimeRuneKind::PropsId
+                | RuntimeRuneKind::EffectTracking
+                | RuntimeRuneKind::EffectPending
+                | RuntimeRuneKind::Host
+                | RuntimeRuneKind::InspectTrace
+                | RuntimeRuneKind::Effect
+                | RuntimeRuneKind::EffectPre
+                | RuntimeRuneKind::EffectRoot
+                | RuntimeRuneKind::Inspect
+                | RuntimeRuneKind::InspectWith
+                | RuntimeRuneKind::StateSnapshot
+                | RuntimeRuneKind::StateEager => false,
+            },
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        }
+    }
+
+    pub fn class_field_state(&self) -> Option<ClassFieldStateSemantics> {
+        match self {
+            DeclaratorSemantics::ClassFieldState(state) => Some(*state),
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldDerived(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldStateSemantics {
     pub kind: StateKind,
     pub proxied: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClassFieldSemantics {
+    None,
+    State { kind: StateKind, proxy: bool },
+    Derived { kind: DerivedKind },
+}
+
+impl ClassFieldSemantics {
+    pub fn is_field(&self) -> bool {
+        match self {
+            ClassFieldSemantics::State { .. } | ClassFieldSemantics::Derived { .. } => true,
+            ClassFieldSemantics::None => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -271,11 +890,13 @@ pub enum ReferenceSemantics {
 
     SignalWrite {
         kind: StateKind,
+        proxy: bool,
     },
 
     SignalUpdate {
         kind: StateKind,
         safe: bool,
+        proxy: bool,
     },
 
     DerivedWrite,
@@ -322,6 +943,8 @@ pub enum ReferenceSemantics {
 
     LegacyRestPropsIdentifierRead,
 
+    LegacySlotsIdentifierRead,
+
     LegacyStateRead {
         safe: bool,
     },
@@ -362,16 +985,354 @@ pub enum ReferenceSemantics {
 
     LegacyEachItemMemberMutationRoot {
         item_sym: SymbolId,
+        raw_param: bool,
     },
 
     EachItemMemberMutationStoreInvalidate {
         item_sym: SymbolId,
         collection_store: SymbolId,
+        raw_param: bool,
+    },
+
+    EachItemIndexedLegacy {
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
     },
 
     IllegalWrite,
 
     Unresolved,
+}
+
+impl ReferenceSemantics {
+    pub fn signal_write_kind(&self) -> Option<StateKind> {
+        match self {
+            ReferenceSemantics::SignalWrite { kind, .. }
+            | ReferenceSemantics::SignalUpdate { kind, .. } => Some(*kind),
+
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => None,
+        }
+    }
+
+    pub fn is_store_subscription(&self) -> bool {
+        match self {
+            ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. } => true,
+
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_props_object_read(&self) -> bool {
+        match self {
+            ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead => true,
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_prop_mutation(&self) -> bool {
+        match self {
+            ReferenceSemantics::PropMutation { .. } => true,
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_bindable_prop_access(&self) -> bool {
+        match self {
+            ReferenceSemantics::PropRead(PropReferenceSemantics::Source { bindable, .. }) => {
+                *bindable
+            }
+            ReferenceSemantics::PropMutation { bindable, .. } => *bindable,
+            ReferenceSemantics::PropRead(
+                PropReferenceSemantics::NonSourceStatic { .. }
+                | PropReferenceSemantics::NonSourceComputed { .. },
+            )
+            | ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_rest_prop_member_rewrite(&self) -> bool {
+        match self {
+            ReferenceSemantics::RestPropMemberRewrite => true,
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_state_member_mutation_root(&self) -> bool {
+        match self {
+            ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => true,
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_reactive_import_member_mutation_root(&self) -> bool {
+        match self {
+            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. } => true,
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -385,14 +1346,20 @@ pub struct ContextualReadSemantics {
     pub kind: ContextualReadKind,
     pub owner_node: NodeId,
     pub symbol: SymbolId,
-    pub in_key_expression: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextualReadKind {
-    EachItem { accessor: bool, signal: bool },
+    EachItem {
+        accessor: bool,
+        signal: bool,
+        raw_param: bool,
+    },
 
-    EachIndex { signal: bool },
+    EachIndex {
+        signal: bool,
+        raw_param: bool,
+    },
 
     AwaitValue,
 
@@ -402,7 +1369,10 @@ pub enum ContextualReadKind {
 
     LetDirectiveDirect,
 
-    SnippetParam { accessor: bool, signal: bool },
+    SnippetParam {
+        accessor: bool,
+        signal: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -428,10 +1398,17 @@ pub enum PropReferenceSemantics {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DerivedFacts {
+    pub(crate) decl: DerivedDeclarationSemantics,
+    pub(crate) reactive: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BindingFacts {
     State(StateDeclarationSemantics),
-    Derived(DerivedDeclarationSemantics),
+    Derived(DerivedFacts),
+    OptimizedDerived(DerivedFacts),
     OptimizedRune(OptimizedRuneSemantics),
     Prop(PropBindingSemantics),
 
@@ -455,10 +1432,12 @@ pub(crate) enum ReferenceFacts {
     },
     SignalWrite {
         kind: StateKind,
+        proxy: bool,
     },
     SignalUpdate {
         kind: StateKind,
         safe: bool,
+        proxy: bool,
     },
     DerivedWrite,
     StoreRead {
@@ -492,6 +1471,8 @@ pub(crate) enum ReferenceFacts {
     LegacyPropsIdentifierRead,
 
     LegacyRestPropsIdentifierRead,
+
+    LegacySlotsIdentifierRead,
 
     LegacyStateRead {
         safe: bool,
@@ -529,16 +1510,70 @@ pub(crate) enum ReferenceFacts {
 
     LegacyEachItemMemberMutationRoot {
         item_symbol: SymbolId,
+        raw_param: bool,
     },
 
     EachItemMemberMutationStoreInvalidate {
         item_symbol: SymbolId,
         collection_store: SymbolId,
+        raw_param: bool,
+    },
+
+    EachItemIndexedLegacy {
+        item_symbol: SymbolId,
     },
 
     IllegalWrite,
 
     Proxy,
+}
+
+impl ReferenceFacts {
+    pub(crate) fn subscribed_store_symbol(&self) -> Option<SymbolId> {
+        match self {
+            ReferenceFacts::StoreRead { symbol }
+            | ReferenceFacts::StoreWrite { symbol }
+            | ReferenceFacts::StoreUpdate { symbol } => Some(*symbol),
+            ReferenceFacts::LegacyStateSubscribedRead { store_symbol, .. }
+            | ReferenceFacts::LegacyStateSubscribedWrite { store_symbol }
+            | ReferenceFacts::LegacyStateSubscribedUpdate { store_symbol, .. } => {
+                Some(*store_symbol)
+            }
+            ReferenceFacts::SignalRead { .. }
+            | ReferenceFacts::SignalWrite { .. }
+            | ReferenceFacts::SignalUpdate { .. }
+            | ReferenceFacts::DerivedWrite
+            | ReferenceFacts::PropRead(_)
+            | ReferenceFacts::PropMutation { .. }
+            | ReferenceFacts::PropSourceMemberMutationRoot { .. }
+            | ReferenceFacts::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceFacts::ConstAliasRead { .. }
+            | ReferenceFacts::ContextualRead(_)
+            | ReferenceFacts::CarrierMemberRead(_)
+            | ReferenceFacts::RestPropMemberRewrite
+            | ReferenceFacts::LegacyPropsIdentifierRead
+            | ReferenceFacts::LegacyRestPropsIdentifierRead
+            | ReferenceFacts::LegacySlotsIdentifierRead
+            | ReferenceFacts::LegacyStateRead { .. }
+            | ReferenceFacts::LegacyStateWrite
+            | ReferenceFacts::LegacyStateUpdate { .. }
+            | ReferenceFacts::LegacyStateMemberMutationRoot { .. }
+            | ReferenceFacts::LegacyReactiveImportRead
+            | ReferenceFacts::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceFacts::ImportSubscribedRead { .. }
+            | ReferenceFacts::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceFacts::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceFacts::EachItemIndexedLegacy { .. }
+            | ReferenceFacts::IllegalWrite
+            | ReferenceFacts::Proxy => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ConstTagCycleFactLegacy {
+    pub(crate) names: String,
+    pub(crate) at_node: NodeId,
 }
 
 #[derive(Clone, Debug)]
@@ -551,17 +1586,25 @@ pub struct ReactivitySemantics {
 
     reference_facts: IndexVec<ReferenceId, Option<ReferenceFacts>>,
 
+    class_field_semantics: FxHashMap<OxcNodeId, ClassFieldSemantics>,
+
     prop_member_mutation_root_refs: rustc_hash::FxHashSet<ReferenceId>,
 
     contextual_owner: FxHashMap<SymbolId, NodeId>,
 
-    contextual_reads_in_each_key: FxHashMap<ReferenceId, NodeId>,
+    raw_param_reads: FxHashSet<ReferenceId>,
 
     each_rest_symbols: FxHashSet<SymbolId>,
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
 
     legacy_bindable_prop_symbols: Vec<SymbolId>,
+
+    legacy_bindable_prop_aliases: FxHashMap<SymbolId, String>,
+
+    prop_default_spans: FxHashMap<SymbolId, Span>,
+
+    has_bindable_prop: bool,
 
     legacy_uses_props: bool,
 
@@ -571,13 +1614,21 @@ pub struct ReactivitySemantics {
 
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
+    legacy_indirect_bindings: FxHashMap<SymbolId, SmallVec<[SymbolId; 4]>>,
+
     each_item_collection_store: FxHashMap<SymbolId, SymbolId>,
+
+    each_item_index_legacy: FxHashMap<SymbolId, SymbolId>,
 
     base_to_store: FxHashMap<SymbolId, SymbolId>,
 
     uses_runes: bool,
 
     runes_mode: RunesMode,
+
+    const_tag_order_legacy: Vec<SmallVec<[NodeId; 4]>>,
+
+    const_tag_cycle_legacy: Option<ConstTagCycleFactLegacy>,
 
     legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics,
 }
@@ -592,20 +1643,28 @@ impl ReactivitySemantics {
             declarators,
             store_declaration_symbols: Vec::new(),
             reference_facts: IndexVec::new(),
+            class_field_semantics: FxHashMap::default(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
-            contextual_reads_in_each_key: FxHashMap::default(),
+            raw_param_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
+            legacy_indirect_bindings: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
+            each_item_index_legacy: FxHashMap::default(),
             base_to_store: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             maybe_reactive_symbols: FxHashSet::default(),
             legacy_bindable_prop_symbols: Vec::new(),
+            legacy_bindable_prop_aliases: FxHashMap::default(),
+            prop_default_spans: FxHashMap::default(),
+            has_bindable_prop: false,
             legacy_uses_props: false,
             legacy_uses_rest_props: false,
             legacy_has_member_mutated: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
+            const_tag_order_legacy: Vec::new(),
+            const_tag_cycle_legacy: None,
             legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
         }
     }
@@ -622,6 +1681,62 @@ impl ReactivitySemantics {
 
     pub fn runes_mode(&self) -> RunesMode {
         self.runes_mode
+    }
+
+    pub fn class_field_semantics(&self, access_node: OxcNodeId) -> ClassFieldSemantics {
+        self.class_field_semantics
+            .get(&access_node)
+            .copied()
+            .unwrap_or(ClassFieldSemantics::None)
+    }
+
+    pub(crate) fn record_class_field_semantics(
+        &mut self,
+        access_node: OxcNodeId,
+        semantics: ClassFieldSemantics,
+    ) {
+        self.class_field_semantics.insert(access_node, semantics);
+    }
+
+    pub(crate) fn set_state_proxied(&mut self, sym: SymbolId, proxied: bool) {
+        let Some(facts) = self.binding_facts_mut(sym) else {
+            return;
+        };
+        match facts {
+            BindingFacts::State(state) if state.kind == StateKind::State => state.proxied = proxied,
+            BindingFacts::OptimizedRune(opt) if opt.kind == StateKind::State => {
+                opt.proxy_init = proxied
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn set_class_field_proxied(&mut self, decl_node: OxcNodeId, proxied: bool) {
+        let DeclaratorSemantics::ClassFieldState(state) = self.declarator_semantics(decl_node)
+        else {
+            return;
+        };
+        if state.kind != StateKind::State {
+            return;
+        }
+        self.record_declarator_semantics(
+            decl_node,
+            DeclaratorSemantics::ClassFieldState(ClassFieldStateSemantics {
+                kind: state.kind,
+                proxied,
+            }),
+        );
+    }
+
+    pub(crate) fn set_signal_write_proxy(&mut self, ref_id: ReferenceId, proxy: bool) {
+        let Some(Some(fact)) = self.reference_facts.get_mut(ref_id) else {
+            return;
+        };
+        match fact {
+            ReferenceFacts::SignalWrite { proxy: slot, .. }
+            | ReferenceFacts::SignalUpdate { proxy: slot, .. } => *slot = proxy,
+            _ => {}
+        }
     }
 
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
@@ -657,28 +1772,71 @@ impl ReactivitySemantics {
         })
     }
 
-    pub fn has_store_bindings(&self) -> bool {
-        !self.store_declaration_symbols.is_empty()
-    }
-
     pub fn legacy_bindable_prop_symbols(&self) -> &[SymbolId] {
         &self.legacy_bindable_prop_symbols
     }
 
-    pub fn has_legacy_bindable_prop(&self) -> bool {
-        !self.legacy_bindable_prop_symbols.is_empty()
+    pub fn summary(&self) -> ReactivitySummary {
+        ReactivitySummary {
+            props: self.props_summary(),
+            has_store_bindings: !self.store_declaration_symbols.is_empty(),
+            legacy: LegacySummary {
+                has_bindable_prop: !self.legacy_bindable_prop_symbols.is_empty(),
+                reads_props_object: self.legacy_uses_props,
+                reads_rest_props_object: self.legacy_uses_rest_props,
+                has_member_mutated: self.legacy_has_member_mutated,
+            },
+        }
     }
 
-    pub fn legacy_uses_props(&self) -> bool {
-        self.legacy_uses_props
+    fn props_summary(&self) -> PropsSummary {
+        let mut has_props = false;
+        let mut has_custom_element = false;
+        for facts in self.bindings.iter() {
+            let Some(BindingFacts::Prop(prop)) = facts else {
+                continue;
+            };
+            has_props = true;
+            match prop.emit_mode {
+                PropEmitMode::CustomElement => has_custom_element = true,
+                PropEmitMode::Standard => {}
+            }
+        }
+        PropsSummary {
+            has_props,
+            has_bindable: self.has_bindable_prop,
+            has_custom_element,
+        }
     }
 
-    pub fn legacy_uses_rest_props(&self) -> bool {
-        self.legacy_uses_rest_props
+    pub fn iter_runes_prop_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.bindings.iter_enumerated().filter_map(|(sym, facts)| {
+            let Some(BindingFacts::Prop(prop)) = facts else {
+                return None;
+            };
+            match prop.kind {
+                PropBindingKind::Source { .. } | PropBindingKind::NonSource => Some(sym),
+                PropBindingKind::Identifier | PropBindingKind::Rest => None,
+            }
+        })
     }
 
-    pub fn legacy_has_member_mutated(&self) -> bool {
-        self.legacy_has_member_mutated
+    pub fn prop_default_span(&self, sym: SymbolId) -> Option<Span> {
+        self.prop_default_spans.get(&sym).copied()
+    }
+
+    pub(crate) fn record_prop_default_span(&mut self, sym: SymbolId, span: Span) {
+        self.prop_default_spans.insert(sym, span);
+    }
+
+    pub(crate) fn is_rest_prop(&self, sym: SymbolId) -> bool {
+        matches!(
+            self.lookup_binding_facts(sym),
+            Some(BindingFacts::Prop(PropBindingSemantics {
+                kind: PropBindingKind::Rest,
+                ..
+            }))
+        )
     }
 
     pub fn legacy_reactive(&self) -> &super::legacy_reactive::LegacyReactivitySemantics {
@@ -691,8 +1849,21 @@ impl ReactivitySemantics {
         &mut self.legacy_reactive
     }
 
-    pub(crate) fn record_legacy_bindable_prop_symbol(&mut self, symbol: SymbolId) {
+    pub(crate) fn record_legacy_bindable_prop_symbol(
+        &mut self,
+        symbol: SymbolId,
+        alias: Option<String>,
+    ) {
         self.legacy_bindable_prop_symbols.push(symbol);
+        if let Some(alias) = alias {
+            self.legacy_bindable_prop_aliases.insert(symbol, alias);
+        }
+    }
+
+    pub fn legacy_bindable_prop_alias(&self, symbol: SymbolId) -> Option<&str> {
+        self.legacy_bindable_prop_aliases
+            .get(&symbol)
+            .map(String::as_str)
     }
 
     pub(crate) fn record_legacy_api_export_binding(&mut self, symbol: SymbolId) {
@@ -714,13 +1885,17 @@ impl ReactivitySemantics {
                 kind: *kind,
                 safe: *safe,
             },
-            Some(ReferenceFacts::SignalWrite { kind }) => {
-                ReferenceSemantics::SignalWrite { kind: *kind }
-            }
-            Some(ReferenceFacts::SignalUpdate { kind, safe }) => ReferenceSemantics::SignalUpdate {
+            Some(ReferenceFacts::SignalWrite { kind, proxy }) => ReferenceSemantics::SignalWrite {
                 kind: *kind,
-                safe: *safe,
+                proxy: *proxy,
             },
+            Some(ReferenceFacts::SignalUpdate { kind, safe, proxy }) => {
+                ReferenceSemantics::SignalUpdate {
+                    kind: *kind,
+                    safe: *safe,
+                    proxy: *proxy,
+                }
+            }
             Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }
@@ -765,6 +1940,9 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyRestPropsIdentifierRead) => {
                 ReferenceSemantics::LegacyRestPropsIdentifierRead
             }
+            Some(ReferenceFacts::LegacySlotsIdentifierRead) => {
+                ReferenceSemantics::LegacySlotsIdentifierRead
+            }
             Some(ReferenceFacts::LegacyStateRead { safe }) => {
                 ReferenceSemantics::LegacyStateRead { safe: *safe }
             }
@@ -803,18 +1981,30 @@ impl ReactivitySemantics {
             Some(ReferenceFacts::LegacyReactiveImportMemberMutationRoot { symbol }) => {
                 ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { symbol: *symbol }
             }
-            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot { item_symbol }) => {
-                ReferenceSemantics::LegacyEachItemMemberMutationRoot {
-                    item_sym: *item_symbol,
-                }
-            }
+            Some(ReferenceFacts::LegacyEachItemMemberMutationRoot {
+                item_symbol,
+                raw_param,
+            }) => ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                item_sym: *item_symbol,
+                raw_param: *raw_param,
+            },
             Some(ReferenceFacts::EachItemMemberMutationStoreInvalidate {
                 item_symbol: item_sym,
                 collection_store,
+                raw_param,
             }) => ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
                 item_sym: *item_sym,
                 collection_store: *collection_store,
+                raw_param: *raw_param,
             },
+            Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
+                let index_sym = self.each_item_index_legacy(*item_symbol);
+                ReferenceSemantics::EachItemIndexedLegacy {
+                    item_sym: *item_symbol,
+                    index_sym,
+                    index_read: self.each_index_read_legacy(index_sym),
+                }
+            }
             Some(ReferenceFacts::IllegalWrite) => ReferenceSemantics::IllegalWrite,
             Some(ReferenceFacts::Proxy) => ReferenceSemantics::Proxy,
             None => ReferenceSemantics::NonReactive,
@@ -838,6 +2028,26 @@ impl ReactivitySemantics {
 
     pub(crate) fn set_runes_mode(&mut self, runes_mode: RunesMode) {
         self.runes_mode = runes_mode;
+    }
+
+    pub(crate) fn set_const_tag_order_legacy(
+        &mut self,
+        order: Vec<SmallVec<[NodeId; 4]>>,
+        cycle: Option<ConstTagCycleFactLegacy>,
+    ) {
+        self.const_tag_order_legacy = order;
+        self.const_tag_cycle_legacy = cycle;
+    }
+
+    pub(crate) fn const_tags_in_order_legacy(&self, fragment: FragmentId) -> &[NodeId] {
+        self.const_tag_order_legacy
+            .get(fragment.0 as usize)
+            .map(|tags| tags.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn const_tag_cycle_legacy(&self) -> Option<&ConstTagCycleFactLegacy> {
+        self.const_tag_cycle_legacy.as_ref()
     }
 
     pub(crate) fn binding_facts(&self, sym: SymbolId) -> Option<BindingFacts> {
@@ -869,10 +2079,29 @@ impl ReactivitySemantics {
         sym: SymbolId,
         semantics: DerivedDeclarationSemantics,
     ) {
-        self.write_binding(sym, BindingFacts::Derived(semantics));
+        self.write_binding(
+            sym,
+            BindingFacts::Derived(DerivedFacts {
+                decl: semantics,
+                reactive: true,
+            }),
+        );
+    }
+
+    pub(crate) fn derived_reactive(&self, sym: SymbolId) -> bool {
+        match self.lookup_binding_facts(sym) {
+            Some(BindingFacts::Derived(d)) => d.reactive,
+            _ => false,
+        }
     }
 
     pub(crate) fn record_prop_binding(&mut self, sym: SymbolId, semantics: PropBindingSemantics) {
+        if matches!(
+            semantics.kind,
+            PropBindingKind::Source { bindable: true, .. }
+        ) {
+            self.has_bindable_prop = true;
+        }
         self.write_binding(sym, BindingFacts::Prop(semantics));
     }
 
@@ -925,6 +2154,33 @@ impl ReactivitySemantics {
     pub(crate) fn set_derived_reactive(&mut self, sym: SymbolId, reactive: bool) {
         if let Some(Some(BindingFacts::Derived(d))) = self.bindings.get_mut(sym) {
             d.reactive = reactive;
+        }
+    }
+
+    pub(crate) fn optimize_derived_rune(&mut self, symbols: &[SymbolId]) {
+        for &symbol in symbols {
+            let Some(slot) = self.bindings.get_mut(symbol) else {
+                continue;
+            };
+            if let Some(BindingFacts::Derived(derived)) = slot {
+                let derived = *derived;
+                *slot = Some(BindingFacts::OptimizedDerived(derived));
+            }
+        }
+    }
+
+    pub(crate) fn promote_legacy_api_export_to_state(
+        &mut self,
+        symbols: &[SymbolId],
+        semantics: LegacyStateSemantics,
+    ) {
+        for &symbol in symbols {
+            let Some(slot) = self.bindings.get_mut(symbol) else {
+                continue;
+            };
+            if let Some(BindingFacts::LegacyApiExport) = slot {
+                *slot = Some(BindingFacts::LegacyState(semantics));
+            }
         }
     }
 
@@ -981,16 +2237,12 @@ impl ReactivitySemantics {
         self.contextual_owner.get(&sym).copied()
     }
 
-    pub(crate) fn record_contextual_read_in_each_key(
-        &mut self,
-        ref_id: ReferenceId,
-        each_block: NodeId,
-    ) {
-        self.contextual_reads_in_each_key.insert(ref_id, each_block);
+    pub(crate) fn record_raw_param_read(&mut self, ref_id: ReferenceId) {
+        self.raw_param_reads.insert(ref_id);
     }
 
-    pub(crate) fn contextual_read_in_each_key(&self, ref_id: ReferenceId) -> Option<NodeId> {
-        self.contextual_reads_in_each_key.get(&ref_id).copied()
+    pub(crate) fn is_raw_param_read(&self, ref_id: ReferenceId) -> bool {
+        self.raw_param_reads.contains(&ref_id)
     }
 
     pub(crate) fn add_each_item_indirect_source(
@@ -1010,6 +2262,31 @@ impl ReactivitySemantics {
             .map(|v| v.as_slice())
     }
 
+    pub(crate) fn iter_each_item_indirect_sources(
+        &self,
+    ) -> impl Iterator<Item = (SymbolId, &[SymbolId])> + '_ {
+        self.each_item_indirect_sources
+            .iter()
+            .map(|(item_sym, sources)| (*item_sym, sources.as_slice()))
+    }
+
+    pub(crate) fn add_legacy_indirect_binding(
+        &mut self,
+        root_sym: SymbolId,
+        indirect_sym: SymbolId,
+    ) {
+        let entry = self.legacy_indirect_bindings.entry(root_sym).or_default();
+        if !entry.contains(&indirect_sym) {
+            entry.push(indirect_sym);
+        }
+    }
+
+    pub(crate) fn legacy_indirect_bindings(&self, root_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.legacy_indirect_bindings
+            .get(&root_sym)
+            .map(|v| v.as_slice())
+    }
+
     pub(crate) fn set_each_item_collection_store(
         &mut self,
         item_sym: SymbolId,
@@ -1020,6 +2297,23 @@ impl ReactivitySemantics {
 
     pub(crate) fn each_item_collection_store(&self, item_sym: SymbolId) -> Option<SymbolId> {
         self.each_item_collection_store.get(&item_sym).copied()
+    }
+
+    pub(crate) fn set_each_item_index_legacy(&mut self, item_sym: SymbolId, index_sym: SymbolId) {
+        self.each_item_index_legacy.insert(item_sym, index_sym);
+    }
+
+    fn each_item_index_legacy(&self, item_sym: SymbolId) -> Option<SymbolId> {
+        self.each_item_index_legacy.get(&item_sym).copied()
+    }
+
+    fn each_index_read_legacy(&self, index_sym: Option<SymbolId>) -> EachIndexStrategy {
+        match index_sym.and_then(|sym| self.lookup_binding_facts(sym)) {
+            Some(BindingFacts::Contextual(ContextualBindingSemantics::EachIndex(strategy))) => {
+                *strategy
+            }
+            _ => EachIndexStrategy::Direct,
+        }
     }
 
     pub(super) fn mark_each_rest(&mut self, sym: SymbolId) {
@@ -1085,7 +2379,10 @@ impl ReactivitySemantics {
     fn binding_semantics_from_facts(facts: &BindingFacts) -> BindingSemantics {
         match facts {
             BindingFacts::State(state) => BindingSemantics::State(*state),
-            BindingFacts::Derived(derived) => BindingSemantics::Derived(*derived),
+            BindingFacts::Derived(derived) => BindingSemantics::Derived(derived.decl),
+            BindingFacts::OptimizedDerived(derived) => {
+                BindingSemantics::OptimizedDerived(derived.decl)
+            }
             BindingFacts::OptimizedRune(opt) => BindingSemantics::OptimizedRune(*opt),
             BindingFacts::Prop(prop) => BindingSemantics::Prop(prop.clone()),
             BindingFacts::LegacyBindableProp(legacy) => {

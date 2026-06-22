@@ -10,8 +10,8 @@ use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
-use crate::context::Ctx;
 use super::super::{Codegen, CodegenError, Result};
+use crate::context::Ctx;
 
 fn const_tag_bindings(
     ctx: &Ctx<'_>,
@@ -89,12 +89,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 match self.ctx.query.analysis.attributes.get(attr_id) {
                     AttributeSemantics::BoundaryProp(BoundaryPropSemantics { emit }) => {
                         match attr {
-                            Attribute::ExpressionAttribute(a) => Ok(Some((
-                                a.name.to_string(),
-                                a.id,
-                                a.expression.id(),
-                                *emit,
-                            ))),
+                            Attribute::ExpressionAttribute(a) => {
+                                Ok(Some((a.name.to_string(), a.id, a.expression.id(), *emit)))
+                            }
                             _ => CodegenError::semantic_mismatch(
                                 attr_id,
                                 "BoundaryProp payload requires ExpressionAttribute",
@@ -121,7 +118,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                 return CodegenError::missing_expression(attr_id);
             };
-            let expr = self.maybe_wrap_legacy_slots_read(expr);
             match emit {
                 BoundaryPropEmit::Getter => props.push(ObjProp::Getter(key, expr)),
                 BoundaryPropEmit::KeyValue => props.push(ObjProp::KeyValue(key, expr)),

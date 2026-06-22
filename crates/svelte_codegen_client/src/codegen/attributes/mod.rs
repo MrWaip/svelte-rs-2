@@ -3,6 +3,7 @@ mod attach_tag;
 mod bind;
 mod class_directive;
 mod concat_attr;
+mod custom_element_attr;
 mod dispatch;
 mod events_common;
 mod expression_attr;

@@ -1,14 +1,15 @@
 use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
-use oxc_span::SPAN;
 use oxc_ast::ast::{Expression, Program, Statement};
+use oxc_span::SPAN;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::AnalysisData;
 use svelte_analyze::reactivity_semantics::legacy_reactive::{
-    LegacyReactiveKind, LegacyReactiveStatement, legacy_reactive_import_wrapper_name,
+    LegacyReactiveDep, LegacyReactiveKind, LegacyReactiveStatement,
+    legacy_reactive_import_wrapper_name,
 };
-use svelte_analyze::types::data::{binding_group_name, BindingSemantics};
+use svelte_analyze::types::data::{BindingSemantics, binding_group_name};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{OxcNodeId, SymbolId};
 
@@ -106,7 +107,14 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
 
     for sym in &implicit_syms {
         let name = analysis.scoping.symbol_name(*sym);
-        let init = b.call_expr("$.mutable_source", []);
+        let init = if analysis.script.immutable {
+            b.call_expr(
+                "$.mutable_source",
+                [Arg::Expr(b.void_zero_expr()), Arg::Bool(true)],
+            )
+        } else {
+            b.call_expr("$.mutable_source", [])
+        };
         new_body.push(b.const_stmt(name, init));
     }
 
@@ -144,19 +152,19 @@ fn build_deps_thunk<'a>(
     stmt: &LegacyReactiveStatement,
     analysis: &AnalysisData<'a>,
 ) -> Expression<'a> {
-    let mut dep_exprs: Vec<Expression<'a>> = stmt
-        .dependencies
-        .iter()
-        .map(|&sym| build_dep_read(b, sym, analysis))
-        .collect();
-    if stmt.uses_props {
-        dep_exprs.push(b.call_expr(
-            "$.deep_read_state",
-            [Arg::Expr(b.rid_expr("$$sanitized_props"))],
-        ));
-    }
-    if stmt.uses_rest_props {
-        dep_exprs.push(b.call_expr("$.deep_read_state", [Arg::Expr(b.rid_expr("$$restProps"))]));
+    let mut dep_exprs: Vec<Expression<'a>> = Vec::with_capacity(stmt.dependencies.len());
+    for dep in &stmt.dependencies {
+        let expr = match dep {
+            LegacyReactiveDep::Binding(sym) => build_dep_read(b, *sym, analysis),
+            LegacyReactiveDep::PropsObject => b.call_expr(
+                "$.deep_read_state",
+                [Arg::Expr(b.rid_expr("$$sanitized_props"))],
+            ),
+            LegacyReactiveDep::RestPropsObject => {
+                b.call_expr("$.deep_read_state", [Arg::Expr(b.rid_expr("$$restProps"))])
+            }
+        };
+        dep_exprs.push(expr);
     }
 
     if dep_exprs.is_empty() {
@@ -207,6 +215,7 @@ fn build_dep_read<'a>(
         BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::RuntimeRune { .. } => {

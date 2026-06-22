@@ -1,5 +1,7 @@
 # Биндинги, ссылки и BindingPattern (OXC)
 
+topics: binding, reference, SymbolId/ReferenceId, BindingPattern, walk_bindings, identifier resolution, name vs alias, OXC binding API
+
 Карта системы идентификаторов проекта: как читать биндинги/ссылки и обходить
 `BindingPattern`. `ComponentSemantics` (раздел 1) — пасс, который всё это порождает.
 

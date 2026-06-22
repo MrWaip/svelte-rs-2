@@ -1,9 +1,9 @@
-use svelte_emit_builders::runes::rune_get;
 use oxc_ast::ast::Statement;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::ComponentSpreadEmit;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::{Codegen, CodegenError, Result};
 use super::dispatch::PropOrSpread;

@@ -57,7 +57,10 @@ mod tests {
     fn uses_filename_when_known() {
         let h1 = css_component_hash("App.svelte", None, "p { color: red; }");
         let h2 = css_component_hash("App.svelte", None, "div { color: blue; }");
-        assert_eq!(h1, h2, "hash must depend on filename only when filename is known");
+        assert_eq!(
+            h1, h2,
+            "hash must depend on filename only when filename is known"
+        );
     }
 
     #[test]
@@ -72,11 +75,8 @@ mod tests {
     #[test]
     fn root_dir_prefix_is_stripped_before_hashing() {
         let css = "p { color: red; }";
-        let with_root = css_component_hash(
-            "/home/user/proj/src/A.svelte",
-            Some("/home/user/proj"),
-            css,
-        );
+        let with_root =
+            css_component_hash("/home/user/proj/src/A.svelte", Some("/home/user/proj"), css);
         let relative = css_component_hash("src/A.svelte", None, css);
         assert_eq!(with_root, relative);
     }

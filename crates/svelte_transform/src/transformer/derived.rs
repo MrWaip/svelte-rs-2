@@ -57,12 +57,10 @@ fn wrap_derived_thunks_in_stmts<'a>(
                         dev_ctx,
                     );
                     let sym_id = match &declarator.id {
-                        BindingPattern::BindingIdentifier(id) => {
-                            match id.symbol_id.get() {
-                                Some(s) => s,
-                                None => continue,
-                            }
-                        }
+                        BindingPattern::BindingIdentifier(id) => match id.symbol_id.get() {
+                            Some(s) => s,
+                            None => continue,
+                        },
                         _ => continue,
                     };
                     if !pending.contains(&sym_id) {
@@ -80,9 +78,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             || async_mode.is_some();
 
                         let var_name = match &declarator.id {
-                            BindingPattern::BindingIdentifier(id) => {
-                                id.name.to_string()
-                            }
+                            BindingPattern::BindingIdentifier(id) => id.name.to_string(),
                             _ => String::new(),
                         };
 
@@ -98,8 +94,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
 
                             let mut extra_args: Vec<Argument<'a>> = Vec::new();
                             if let Some(ctx) = dev_ctx {
-                                extra_args
-                                    .push(Argument::from(b.str_expr(&var_name)));
+                                extra_args.push(Argument::from(b.str_expr(&var_name)));
 
                                 if !ctx
                                     .ignore_query
@@ -210,13 +205,7 @@ fn wrap_derived_thunks_in_class<'a>(
         if let ClassElement::MethodDefinition(method) = element
             && let Some(body) = &mut method.value.body
         {
-            wrap_derived_thunks_in_stmts(
-                b,
-                &mut body.statements,
-                pending,
-                async_pending,
-                dev_ctx,
-            );
+            wrap_derived_thunks_in_stmts(b, &mut body.statements, pending, async_pending, dev_ctx);
         }
     }
 }
@@ -255,13 +244,7 @@ fn recurse_into_function_init<'a>(
         Expression::CallExpression(call) => {
             for arg in call.arguments.iter_mut() {
                 if let Some(arg_expr) = arg.as_expression_mut() {
-                    recurse_into_function_init(
-                        b,
-                        Some(arg_expr),
-                        pending,
-                        async_pending,
-                        dev_ctx,
-                    );
+                    recurse_into_function_init(b, Some(arg_expr), pending, async_pending, dev_ctx);
                 }
             }
         }

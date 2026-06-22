@@ -2,14 +2,15 @@ use compact_str::CompactString;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use smallvec::SmallVec;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::{ReferenceFlags, ReferenceId};
-use oxc_syntax::symbol::SymbolId;
 use oxc_syntax::scope::{ScopeFlags, ScopeId};
 use oxc_syntax::symbol::SymbolFlags;
+use oxc_syntax::symbol::SymbolId;
+use smallvec::SmallVec;
 
-use crate::pattern::walk_assignment_target_idents;
+use crate::class_table::ClassFieldAccess;
+use crate::pattern::{WriteTarget, walk_assignment_target_idents, walk_assignment_targets};
 use crate::reference::Reference;
 use crate::storage::ComponentSemantics;
 use crate::symbol::SymbolOwner;
@@ -33,6 +34,8 @@ pub struct JsSemanticVisitor<'s, 'a> {
     next_node_id: u32,
 
     start_node_id: u32,
+
+    class_access_stack: Vec<Vec<ClassFieldAccess>>,
 }
 
 impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
@@ -52,6 +55,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id: 0,
             start_node_id: 0,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -72,6 +76,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id,
             start_node_id: next_node_id,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -87,6 +92,7 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             current_node_id: OxcNodeId::DUMMY,
             next_node_id: 0,
             start_node_id: 0,
+            class_access_stack: Vec::new(),
         }
     }
 
@@ -200,7 +206,8 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
                 self.semantics
                     .get_reference_mut(ref_id)
                     .set_symbol_id(sym_id);
-                self.semantics.add_resolved_reference(sym_id, ref_id);
+                self.semantics
+                    .add_store_subscription_reference(sym_id, ref_id);
                 self.semantics.add_store_candidate_ref(sym_id, ref_id);
             } else if let Some(current_level) = self.unresolved_stack.last_mut() {
                 current_level.push((CompactString::from(name), ref_id));
@@ -234,14 +241,13 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             let mut names: SmallVec<[CompactString; 4]> = SmallVec::new();
             let mut spans: SmallVec<[oxc_span::Span; 4]> = SmallVec::new();
             let mut node_ids: SmallVec<[OxcNodeId; 4]> = SmallVec::new();
-            if walk_assignment_target_idents(&assign.left, |id| {
+            walk_assignment_target_idents(&assign.left, |id| {
                 names.push(CompactString::from(id.name.as_str()));
                 spans.push(id.span);
                 node_ids.push(id.node_id.get());
-            }) {
-                for ((name, span), node_id) in names.iter().zip(spans.iter()).zip(node_ids.iter()) {
-                    self.declare_implicit_target_ident_raw(name.as_str(), *span, *node_id);
-                }
+            });
+            for ((name, span), node_id) in names.iter().zip(spans.iter()).zip(node_ids.iter()) {
+                self.declare_implicit_target_ident_raw(name.as_str(), *span, *node_id);
             }
         }
     }
@@ -267,7 +273,6 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
             SymbolOwner::Synthetic,
         );
     }
-
 }
 
 impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
@@ -342,8 +347,35 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             self.visit_binding_identifier(ident);
         }
 
+        self.class_access_stack.push(Vec::new());
         walk::walk_class(self, class);
+        let accesses = self.class_access_stack.pop().unwrap_or_default();
+        self.semantics.record_class(class, &accesses);
         self.leave_scope(parent);
+    }
+
+    fn visit_private_field_expression(&mut self, expr: &PrivateFieldExpression<'a>) {
+        walk::walk_private_field_expression(self, expr);
+        if let Some(accesses) = self.class_access_stack.last_mut() {
+            accesses.push(ClassFieldAccess {
+                node: expr.node_id(),
+                name: CompactString::from(expr.field.name.as_str()),
+                is_private: true,
+            });
+        }
+    }
+
+    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
+        walk::walk_static_member_expression(self, expr);
+        if matches!(&expr.object, Expression::ThisExpression(_))
+            && let Some(accesses) = self.class_access_stack.last_mut()
+        {
+            accesses.push(ClassFieldAccess {
+                node: expr.node_id(),
+                name: CompactString::from(expr.property.name.as_str()),
+                is_private: false,
+            });
+        }
     }
 
     fn visit_block_statement(&mut self, stmt: &BlockStatement<'a>) {
@@ -608,9 +640,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
             self.current_ref_flags = ReferenceFlags::read_write();
         }
         walk::walk_assignment_expression(self, expr);
-        if let Some(sym) = assignment_target_member_root_symbol(self.semantics, &expr.left) {
-            self.semantics.mark_symbol_member_mutated(sym);
-        }
+        mark_member_mutation_roots(self.semantics, &expr.left);
     }
 
     fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
@@ -623,8 +653,9 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
         self.current_ref_flags = ReferenceFlags::read_write();
         walk::walk_update_expression(self, expr);
-        if let Some(sym) =
-            simple_assignment_target_member_root_symbol(self.semantics, &expr.argument)
+        if !simple_assignment_target_root_is_store_subscription(&expr.argument)
+            && let Some(sym) =
+                simple_assignment_target_member_root_symbol(self.semantics, &expr.argument)
         {
             self.semantics.mark_symbol_member_mutated(sym);
         }
@@ -659,16 +690,22 @@ fn store_candidate_base(name: &str) -> Option<&str> {
     }
 }
 
-fn assignment_target_member_root_symbol(
-    semantics: &ComponentSemantics<'_>,
-    target: &AssignmentTarget<'_>,
-) -> Option<SymbolId> {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => expression_root_symbol(semantics, &m.object),
-        AssignmentTarget::ComputedMemberExpression(m) => {
-            expression_root_symbol(semantics, &m.object)
+fn mark_member_mutation_roots<'a>(
+    semantics: &mut ComponentSemantics<'a>,
+    target: &AssignmentTarget<'a>,
+) {
+    let mut roots: SmallVec<[SymbolId; 4]> = SmallVec::new();
+    walk_assignment_targets(target, |v| {
+        if let WriteTarget::Member(member) = v.target
+            && let Some(member_expr) = member.as_member_expression()
+            && !expression_root_is_store_subscription(member_expr.object())
+            && let Some(sym) = expression_root_symbol(semantics, member_expr.object())
+        {
+            roots.push(sym);
         }
-        _ => None,
+    });
+    for sym in roots {
+        semantics.mark_symbol_member_mutated(sym);
     }
 }
 
@@ -693,6 +730,32 @@ fn unwrap_assignment_expression<'r, 'a>(
     match expr.get_inner_expression() {
         Expression::AssignmentExpression(assign) => Some(assign),
         _ => None,
+    }
+}
+
+fn expression_root_is_store_subscription(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::Identifier(id) => store_candidate_base(id.name.as_str()).is_some(),
+        Expression::StaticMemberExpression(m) => expression_root_is_store_subscription(&m.object),
+        Expression::ComputedMemberExpression(m) => expression_root_is_store_subscription(&m.object),
+        Expression::ParenthesizedExpression(p) => {
+            expression_root_is_store_subscription(&p.expression)
+        }
+        _ => false,
+    }
+}
+
+fn simple_assignment_target_root_is_store_subscription(
+    target: &SimpleAssignmentTarget<'_>,
+) -> bool {
+    match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            expression_root_is_store_subscription(&m.object)
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            expression_root_is_store_subscription(&m.object)
+        }
+        _ => false,
     }
 }
 

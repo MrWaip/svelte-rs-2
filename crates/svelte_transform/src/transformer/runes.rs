@@ -1,27 +1,36 @@
 use oxc_ast::ast::Expression;
 use oxc_traverse::{Ancestor, TraverseCtx};
 
-use svelte_analyze::{RuneKind, detect_rune_from_call};
+use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind};
 
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_call_expression(&mut self, node: &mut Expression<'a>) {
-        if !self
-            .analysis
-            .as_ref()
-            .is_some_and(|a| a.uses_runes())
-        {
+        let Some(analysis) = self.analysis else {
             return;
-        }
+        };
         let Expression::CallExpression(call) = &*node else {
             return;
         };
-        let Some(rune_kind) = detect_rune_from_call(call) else {
-            return;
+        let kind = match analysis.declarator_semantics(call.node_id()) {
+            DeclaratorSemantics::RuntimeRuneCall { kind } => kind,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => return,
         };
 
-        if matches!(rune_kind, RuneKind::Host) {
+        if matches!(kind, RuntimeRuneKind::Host) {
             *node = self
                 .b
                 .static_member_expr(self.b.rid_expr("$$props"), "$$host");
@@ -34,12 +43,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let new_callee = match rune_kind {
-            RuneKind::Effect => Some("$.user_effect"),
-            RuneKind::EffectPre => Some("$.user_pre_effect"),
-            RuneKind::EffectRoot => Some("$.effect_root"),
-            RuneKind::EffectTracking => Some("$.effect_tracking"),
-            _ => None,
+        let new_callee = match kind {
+            RuntimeRuneKind::Effect => Some("$.user_effect"),
+            RuntimeRuneKind::EffectPre => Some("$.user_pre_effect"),
+            RuntimeRuneKind::EffectRoot => Some("$.effect_root"),
+            RuntimeRuneKind::EffectTracking => Some("$.effect_tracking"),
+            RuntimeRuneKind::PropsId
+            | RuntimeRuneKind::EffectPending
+            | RuntimeRuneKind::Host
+            | RuntimeRuneKind::Inspect
+            | RuntimeRuneKind::InspectWith
+            | RuntimeRuneKind::InspectTrace
+            | RuntimeRuneKind::StateSnapshot
+            | RuntimeRuneKind::StateEager
+            | RuntimeRuneKind::Bindable => None,
         };
         if let Some(callee_name) = new_callee {
             let Expression::CallExpression(call) = node else {

@@ -1,0 +1,1 @@
+<script>export let foo;</script>{#if foo}a{/if}

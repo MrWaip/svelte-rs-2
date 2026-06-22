@@ -50,7 +50,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     sibling_var: None,
                 }
             }
-            FragmentAnchor::Child { parent_var } => {
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => {
                 let node_name = self.ctx.state.gen_ident("node");
                 PreAnchor {
                     node_name,
@@ -171,7 +172,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Ident(&parent)])));
                 Ok(node_name)
             }
-            FragmentAnchor::Child { parent_var } => {
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => {
                 state.template.push_comment(None);
                 let node_name = self.ctx.state.gen_ident("node");
                 let parent = parent_var.clone();
@@ -224,7 +226,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.root_var = Some(frag_name.clone());
                 Ok(b.rid_expr(&node_name))
             }
-            FragmentAnchor::Child { parent_var } => {
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => {
                 state.template.push_comment(None);
                 let node_name = self.ctx.state.gen_ident("node");
                 let parent = parent_var.clone();

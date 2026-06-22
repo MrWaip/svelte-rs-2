@@ -1,6 +1,7 @@
 # PRD: Кодген (корневой)
 
 label: codegen
+topics: codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, runtime calls $.*, fragment/blocks/attributes visitors
 
 Корневой PRD для слоя кодгена (`svelte_codegen_client`).
 Догма: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.

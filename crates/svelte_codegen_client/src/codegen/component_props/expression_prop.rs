@@ -1,10 +1,10 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{ComponentPropMemo, ConcatPartEmit};
 use svelte_ast::{ConcatPart, NodeId};
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
@@ -51,7 +51,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        let expr = self.maybe_wrap_legacy_slots_read(expr);
         match memo {
             ComponentPropMemo::Derived => {
                 let data = self.ctx.expression_data(attr_id).cloned();
@@ -75,6 +74,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
             }
             ComponentPropMemo::Inline => {
+                let data = self.ctx.expression_data(attr_id).cloned();
+                let expr = coarse_wrap(self.ctx, expr, data.as_ref());
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, expr)));
             }
         }
@@ -159,14 +160,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if tpl_parts.len() == 1
-            && let TemplatePart::Str(s) = &tpl_parts[0]
-        {
-            return Ok(self.ctx.b.str_expr(s));
+        if tpl_parts.len() == 1 {
+            return Ok(match tpl_parts.into_iter().next() {
+                Some(TemplatePart::Str(s)) => self.ctx.b.str_expr(&s),
+                Some(TemplatePart::Expr(expr, _)) => expr,
+                None => self.ctx.b.template_parts_expr(Vec::new()),
+            });
         }
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
-
 }
 
 fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {

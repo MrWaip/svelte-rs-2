@@ -56,9 +56,7 @@ pub fn apply<'a>(
         return expr;
     };
     let mut sequence = first;
-    for next in iter.chain(once(
-        b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]),
-    )) {
+    for next in iter.chain(once(b.call_expr("$.untrack", [Arg::Expr(b.thunk(expr))]))) {
         sequence = b.seq_expr([sequence, next]);
     }
     sequence

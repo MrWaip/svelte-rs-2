@@ -1,13 +1,17 @@
-use svelte_emit_builders::legacy_wrap;
-use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
-use svelte_emit_builders::runes::rune_get;
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::Expression;
 use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{Evaluation, KnownValue};
 use svelte_ast::{ExprRef, Node, NodeId};
+use svelte_emit_builders::binding::{LegacyStateSafety, read_binding};
+use svelte_emit_builders::each_item::{
+    each_item_collection_read_legacy, each_item_indexed_member_legacy,
+};
+use svelte_emit_builders::legacy_wrap;
+use svelte_emit_builders::runes::rune_get;
 
-use crate::context::Ctx;
 use super::{Codegen, CodegenError, Result};
+use crate::context::Ctx;
 
 pub(crate) fn evaluation_is_defined(eval: &Evaluation) -> bool {
     match eval {
@@ -41,7 +45,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(expr) => expr,
             None => return CodegenError::missing_expression(id),
         };
-        Ok(self.maybe_wrap_legacy_slots_read(expr))
+        Ok(expr)
+    }
+
+    pub(in crate::codegen) fn clone_node_expr(&self, id: NodeId) -> Result<Expression<'a>> {
+        let node = self.ctx.query.component.store.get(id);
+        let Some(expr_ref) = expr_ref_for_node(node) else {
+            return CodegenError::missing_expression(id);
+        };
+        let Some(expr) = self.ctx.state.parsed.expr(expr_ref.id()) else {
+            return CodegenError::missing_expression(id);
+        };
+        Ok(expr.clone_in(self.ctx.b.ast.allocator))
     }
 
     pub(super) fn take_attr_expr(
@@ -53,23 +68,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(expr) => expr,
             None => return CodegenError::missing_expression(attr_id),
         };
-        Ok(self.maybe_wrap_legacy_slots_read(expr))
-    }
-
-    pub(in crate::codegen) fn maybe_wrap_legacy_slots_read(
-        &self,
-        expr: Expression<'a>,
-    ) -> Expression<'a> {
-        if !self.ctx.query.needs_sanitized_legacy_slots() {
-            return expr;
-        }
-        if !expr_roots_in_legacy_slots(&expr) {
-            return expr;
-        }
-        use svelte_ast_builder::Arg;
-        self.ctx
-            .b
-            .call_expr("$.untrack", [Arg::Expr(self.ctx.b.thunk(expr))])
+        Ok(expr)
     }
 
     pub(super) fn take_expr_by_ref(&mut self, expr_ref: &ExprRef) -> Option<Expression<'a>> {
@@ -99,32 +98,18 @@ pub(in crate::codegen) fn legacy_dep_expr<'a>(
 }
 
 fn uses_deep_read_state(ctx: &Ctx<'_>, sym: SymbolId) -> bool {
-    use svelte_analyze::{
-        BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, PropBindingKind,
-        PropBindingSemantics,
-    };
-    let decl = ctx.query.view.binding_semantics(sym);
-    matches!(
-        decl,
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::NonSource | PropBindingKind::Rest,
-            ..
-        }) | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::Contextual(
-                ContextualBindingSemantics::LetDirective
-                    | ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
-                    | ContextualBindingSemantics::AwaitValue
-                    | ContextualBindingSemantics::AwaitError
-            )
-            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
-    ) || ctx.query.scoping().is_import(sym)
+    use svelte_analyze::LegacyDependency;
+    match ctx.query.view.binding_semantics(sym).legacy_dependency() {
+        LegacyDependency::Deep => true,
+        LegacyDependency::SelfTracked | LegacyDependency::Shallow => false,
+    }
 }
 
 pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics};
+    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, LegacyDependency};
     if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
         destructured: true,
         owner_node,
@@ -134,18 +119,22 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
         let tmp = ctx.transform_data.const_tag_tmp_names.get(&owner_node)?;
         let tmp_ref: &str = ctx.b.alloc_str(tmp);
         let field = ctx.query.symbol_name(sym);
-        return Some(ctx.b.static_member_expr(
-            rune_get(&ctx.b, tmp_ref),
-            field,
-        ));
+        return Some(ctx.b.static_member_expr(rune_get(&ctx.b, tmp_ref), field));
     }
-    if matches!(
-        ctx.query.view.binding_semantics(sym),
-        BindingSemantics::Contextual(ContextualBindingSemantics::LetDirectiveDirect)
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedRune(_)
-    ) {
+    if ctx
+        .query
+        .view
+        .binding_semantics(sym)
+        .is_each_item_indexed_legacy()
+        && let Some(expr) = build_each_item_indexed_dep_legacy(ctx, sym)
+    {
+        return Some(expr);
+    }
+    let reads_directly = match ctx.query.view.binding_semantics(sym).legacy_dependency() {
+        LegacyDependency::SelfTracked => true,
+        LegacyDependency::Shallow | LegacyDependency::Deep => false,
+    };
+    if reads_directly {
         return None;
     }
     read_binding(
@@ -156,11 +145,28 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     )
 }
 
-fn expr_roots_in_legacy_slots(expr: &Expression<'_>) -> bool {
-    match expr.get_inner_expression() {
-        Expression::Identifier(ident) => ident.name.as_str() == "$$slots",
-        Expression::StaticMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
-        Expression::ComputedMemberExpression(member) => expr_roots_in_legacy_slots(&member.object),
-        _ => false,
-    }
+fn build_each_item_indexed_dep_legacy<'a>(
+    ctx: &Ctx<'a>,
+    item_sym: SymbolId,
+) -> Option<Expression<'a>> {
+    let analysis = ctx.query.analysis;
+    let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
+    let hoisted = ctx
+        .transform_data
+        .each_collection_block_by_item_legacy
+        .get(&item_sym)
+        .and_then(|block_id| {
+            ctx.transform_data
+                .each_collection_internal_names_legacy
+                .get(block_id)
+        })
+        .map(String::as_str);
+    let collection = each_item_collection_read_legacy(&ctx.b, analysis, source_sym, hoisted);
+    let block_id = ctx.transform_data.each_index_block_by_item.get(&item_sym)?;
+    let index_name = ctx.transform_data.each_index_internal_names.get(block_id)?;
+    Some(each_item_indexed_member_legacy(
+        &ctx.b,
+        collection,
+        index_name.as_str(),
+    ))
 }

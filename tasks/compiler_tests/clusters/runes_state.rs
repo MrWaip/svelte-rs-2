@@ -1,37 +1,177 @@
 use super::*;
 
-compiler_case!(assignment_array_default, "runes/state/assignment/array_default");
-compiler_case!(assignment_array_pattern_reactive, "runes/state/assignment/array_pattern_reactive");
+compiler_case!(
+    assignment_array_default,
+    "runes/state/assignment/array_default"
+);
+compiler_case!(
+    assignment_array_pattern_reactive,
+    "runes/state/assignment/array_pattern_reactive"
+);
 compiler_case!(assignment_array_rest, "runes/state/assignment/array_rest");
-compiler_case!(assignment_async_default, "runes/state/assignment/async_default");
+compiler_case!(
+    assignment_async_default,
+    "runes/state/assignment/async_default"
+);
 compiler_case!(assignment_async_value, "runes/state/assignment/async_value");
-compiler_case!(assignment_computed_key, "runes/state/assignment/computed_key");
-compiler_case!(assignment_default_nested_pattern, "runes/state/assignment/default_nested_pattern");
-compiler_case!(assignment_expression_position, "runes/state/assignment/expression_position");
-compiler_case!(assignment_guard_nonreactive_locals, "runes/state/assignment/guard_nonreactive_locals");
-compiler_case!(assignment_guard_single_identifier, "runes/state/assignment/guard_single_identifier");
-compiler_case!(assignment_member_target_mixed, "runes/state/assignment/member_target_mixed");
-compiler_case!(assignment_nested_object_in_array, "runes/state/assignment/nested_object_in_array");
-compiler_case!(assignment_nested_pattern, "runes/state/assignment/nested_pattern");
-compiler_case!(assignment_nested_rest_pattern, "runes/state/assignment/nested_rest_pattern");
-compiler_case!(assignment_object_pattern_ident_rhs, "runes/state/assignment/object_pattern_ident_rhs");
-compiler_case!(assignment_object_pattern_literal_rhs, "runes/state/assignment/object_pattern_literal_rhs");
+compiler_case!(
+    assignment_computed_key,
+    "runes/state/assignment/computed_key"
+);
+compiler_case!(
+    assignment_default_nested_pattern,
+    "runes/state/assignment/default_nested_pattern"
+);
+compiler_case!(
+    assignment_expression_position,
+    "runes/state/assignment/expression_position"
+);
+compiler_case!(
+    assignment_guard_nonreactive_locals,
+    "runes/state/assignment/guard_nonreactive_locals"
+);
+compiler_case!(
+    assignment_guard_single_identifier,
+    "runes/state/assignment/guard_single_identifier"
+);
+compiler_case!(
+    assignment_member_target_mixed,
+    "runes/state/assignment/member_target_mixed"
+);
+compiler_case!(
+    assignment_nested_object_in_array,
+    "runes/state/assignment/nested_object_in_array"
+);
+compiler_case!(
+    assignment_nested_pattern,
+    "runes/state/assignment/nested_pattern"
+);
+compiler_case!(
+    assignment_nested_rest_pattern,
+    "runes/state/assignment/nested_rest_pattern"
+);
+compiler_case!(
+    assignment_object_pattern_ident_rhs,
+    "runes/state/assignment/object_pattern_ident_rhs"
+);
+compiler_case!(
+    assignment_object_pattern_literal_rhs,
+    "runes/state/assignment/object_pattern_literal_rhs"
+);
 compiler_case!(assignment_object_rest, "runes/state/assignment/object_rest");
+compiler_case!(
+    proxy_flag_red_const_primitive_rhs,
+    "runes/state/proxy_flag/red_const_primitive_rhs"
+);
+compiler_case!(
+    proxy_flag_red_private_field_opaque_rhs,
+    "runes/state/proxy_flag/red_private_field_opaque_rhs"
+);
+compiler_case!(
+    proxy_flag_guard_raw_bind_this_regular_element,
+    "runes/state/proxy_flag/guard_raw_bind_this_regular_element"
+);
+compiler_case!(
+    proxy_flag_red_raw_component_bind_this,
+    "runes/state/proxy_flag/red_raw_component_bind_this"
+);
+compiler_case!(
+    proxy_flag_red_raw_bindable_prop,
+    "runes/state/proxy_flag/red_raw_bindable_prop"
+);
+compiler_case!(
+    proxy_flag_guard_opaque_rhs_proxies,
+    "runes/state/proxy_flag/guard_opaque_rhs_proxies"
+);
+compiler_case!(
+    proxy_flag_guard_coercive_operator,
+    "runes/state/proxy_flag/guard_coercive_operator"
+);
+compiler_case!(
+    proxy_flag_guard_private_field_literal_rhs,
+    "runes/state/proxy_flag/guard_private_field_literal_rhs"
+);
+compiler_case!(
+    proxy_flag_red_nested_scope_const_rhs,
+    "runes/state/proxy_flag/red_nested_scope_const_rhs"
+);
+compiler_case!(
+    proxy_flag_red_state_init_const_arg,
+    "runes/state/proxy_flag/red_state_init_const_arg"
+);
+compiler_case!(
+    proxy_flag_red_nested_scope_private_const_rhs,
+    "runes/state/proxy_flag/red_nested_scope_private_const_rhs"
+);
+compiler_case!(
+    class_field_public_field_accessor,
+    "runes/state/class_field/public_field_accessor"
+);
+compiler_case!(
+    class_field_nested_member_private,
+    "runes/state/class_field/nested_member_private"
+);
+compiler_case!(
+    class_field_constructor_public_and_private,
+    "runes/state/class_field/constructor_public_and_private"
+);
 compiler_case!(declaration_alias, "runes/state/declaration/alias");
 compiler_case!(declaration_array_hole, "runes/state/declaration/array_hole");
-compiler_case!(declaration_array_of_objects, "runes/state/declaration/array_of_objects");
+compiler_case!(
+    declaration_array_of_objects,
+    "runes/state/declaration/array_of_objects"
+);
 compiler_case!(declaration_array_rest, "runes/state/declaration/array_rest");
-compiler_case!(declaration_array_rest_nested, "runes/state/declaration/array_rest_nested");
-compiler_case!(declaration_computed_key, "runes/state/declaration/computed_key");
-compiler_case!(declaration_default_intermediate_array, "runes/state/declaration/default_intermediate_array");
-compiler_case!(declaration_default_intermediate_object, "runes/state/declaration/default_intermediate_object");
-compiler_case!(declaration_default_leaf_array, "runes/state/declaration/default_leaf_array");
-compiler_case!(declaration_default_leaf_object, "runes/state/declaration/default_leaf_object");
-compiler_case!(declaration_flat_object, "runes/state/declaration/flat_object");
-compiler_case!(declaration_nested_array, "runes/state/declaration/nested_array");
-compiler_case!(declaration_nested_object, "runes/state/declaration/nested_object");
-compiler_case!(declaration_object_in_array_in_object, "runes/state/declaration/object_in_array_in_object");
-compiler_case!(declaration_object_of_arrays, "runes/state/declaration/object_of_arrays");
-compiler_case!(declaration_object_rest, "runes/state/declaration/object_rest");
-compiler_case!(declaration_single_array, "runes/state/declaration/single_array");
+compiler_case!(
+    declaration_array_rest_nested,
+    "runes/state/declaration/array_rest_nested"
+);
+compiler_case!(
+    declaration_computed_key,
+    "runes/state/declaration/computed_key"
+);
+compiler_case!(
+    declaration_default_intermediate_array,
+    "runes/state/declaration/default_intermediate_array"
+);
+compiler_case!(
+    declaration_default_intermediate_object,
+    "runes/state/declaration/default_intermediate_object"
+);
+compiler_case!(
+    declaration_default_leaf_array,
+    "runes/state/declaration/default_leaf_array"
+);
+compiler_case!(
+    declaration_default_leaf_object,
+    "runes/state/declaration/default_leaf_object"
+);
+compiler_case!(
+    declaration_flat_object,
+    "runes/state/declaration/flat_object"
+);
+compiler_case!(
+    declaration_nested_array,
+    "runes/state/declaration/nested_array"
+);
+compiler_case!(
+    declaration_nested_object,
+    "runes/state/declaration/nested_object"
+);
+compiler_case!(
+    declaration_object_in_array_in_object,
+    "runes/state/declaration/object_in_array_in_object"
+);
+compiler_case!(
+    declaration_object_of_arrays,
+    "runes/state/declaration/object_of_arrays"
+);
+compiler_case!(
+    declaration_object_rest,
+    "runes/state/declaration/object_rest"
+);
+compiler_case!(
+    declaration_single_array,
+    "runes/state/declaration/single_array"
+);
 compiler_case!(declaration_string_key, "runes/state/declaration/string_key");

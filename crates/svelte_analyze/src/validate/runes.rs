@@ -6,12 +6,9 @@ use oxc_ast::ast::{
     AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
     ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
     IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
-    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey,
-    StaticMemberExpression, Statement, VariableDeclarator,
+    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey, Statement,
+    StaticMemberExpression, VariableDeclarator,
 };
-use oxc_semantic::{ScopeFlags, ScopeId};
-use oxc_span::Span as OxcSpan;
-use oxc_syntax::symbol::SymbolId;
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
@@ -19,20 +16,53 @@ use oxc_ast_visit::walk::{
     walk_member_expression, walk_method_definition, walk_property_definition,
     walk_static_member_expression,
 };
+use oxc_semantic::{ScopeFlags, ScopeId};
 use oxc_span::GetSpan;
+use oxc_span::Span as OxcSpan;
+use oxc_syntax::symbol::SymbolId;
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::utils::script_info::{detect_rune, detect_rune_from_call};
+use crate::reactivity_semantics::data::{
+    DeclaratorSemantics, DerivedKind, ReactivitySemantics, RuntimeRuneKind,
+};
 use crate::validate::span_already_taken;
-use crate::{AnalysisData, BindingSemantics, StateDeclarationSemantics, StateKind, PropBindingKind, PropBindingSemantics, types::script::RuneKind};
+use crate::{AnalysisData, BindingSemantics, StateDeclarationSemantics, StateKind};
 
-fn is_direct_bindable_call(expr: &Expression<'_>) -> bool {
+fn rune_display_name(sem: &DeclaratorSemantics) -> Option<&'static str> {
+    Some(match sem {
+        DeclaratorSemantics::RuneState { kind } => match kind {
+            StateKind::State => "$state",
+            StateKind::StateRaw => "$state.raw",
+            StateKind::StateEager => "$state.eager",
+        },
+        DeclaratorSemantics::RuneDerived { kind, .. } => match kind {
+            DerivedKind::Derived => "$derived",
+            DerivedKind::DerivedBy => "$derived.by",
+        },
+        DeclaratorSemantics::RuneProps => "$props",
+        DeclaratorSemantics::RuntimeRuneCall { kind } => kind.display_name(),
+        DeclaratorSemantics::None
+        | DeclaratorSemantics::LegacyProps
+        | DeclaratorSemantics::LegacyState
+        | DeclaratorSemantics::ConstTag { .. }
+        | DeclaratorSemantics::LetCarrier { .. }
+        | DeclaratorSemantics::EachItem
+        | DeclaratorSemantics::AwaitValue
+        | DeclaratorSemantics::SnippetParam
+        | DeclaratorSemantics::ClassFieldState(_)
+        | DeclaratorSemantics::ClassFieldDerived(_) => return None,
+    })
+}
+
+fn is_direct_bindable_call(reactivity: &ReactivitySemantics, expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr.get_inner_expression() else {
         return false;
     };
-    matches!(detect_rune_from_call(call), Some(RuneKind::Bindable))
+    reactivity
+        .declarator_semantics(call.node_id())
+        .is_bindable_call()
 }
 
 fn is_this_member_assign(target: &AssignmentTarget<'_>) -> bool {
@@ -114,6 +144,7 @@ pub(super) fn validate_module_props_runes(
 }
 
 struct RuneValidator<'a> {
+    reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
     in_var_declarator_init: bool,
     in_class_property_init: bool,
@@ -141,15 +172,17 @@ struct RuneValidator<'a> {
 
     is_instance_script: bool,
     custom_element: bool,
+    ce_config_has_props: bool,
 }
 
 impl RuneValidator<'_> {
     fn new<'a>(
-        data: &AnalysisData,
+        data: &'a AnalysisData,
         diags: &'a mut Vec<Diagnostic>,
         is_instance_script: bool,
     ) -> RuneValidator<'a> {
         RuneValidator {
+            reactivity: &data.reactivity,
             diags,
             in_var_declarator_init: false,
             in_class_property_init: false,
@@ -166,6 +199,11 @@ impl RuneValidator<'_> {
             in_props_destructure: false,
             is_instance_script,
             custom_element: data.output.is_custom_element_target,
+            ce_config_has_props: data
+                .script
+                .ce_config
+                .as_ref()
+                .is_some_and(|config| !config.props.is_empty()),
         }
     }
 
@@ -213,6 +251,24 @@ impl RuneValidator<'_> {
                 ));
             }
         }
+    }
+
+    fn check_custom_element_props_pattern(&mut self, pattern: &BindingPattern<'_>) {
+        if !self.custom_element || self.ce_config_has_props || !self.is_instance_script {
+            return;
+        }
+        let span = match pattern {
+            BindingPattern::BindingIdentifier(id) => id.span,
+            BindingPattern::ObjectPattern(obj) => match &obj.rest {
+                Some(rest) => rest.span,
+                None => return,
+            },
+            BindingPattern::ArrayPattern(_) | BindingPattern::AssignmentPattern(_) => return,
+        };
+        self.diags.push(Diagnostic::warning(
+            DiagnosticKind::CustomElementPropsIdentifier,
+            Span::new(span.start, span.end),
+        ));
     }
 
     fn check_deprecated_rune(&mut self, call: &CallExpression<'_>) -> bool {
@@ -293,10 +349,7 @@ pub(super) fn validate_invalid_exports(
     }
 }
 
-fn declaration_export_kind(
-    data: &AnalysisData,
-    decl: &Declaration<'_>,
-) -> Option<DiagnosticKind> {
+fn declaration_export_kind(data: &AnalysisData, decl: &Declaration<'_>) -> Option<DiagnosticKind> {
     let Declaration::VariableDeclaration(var_decl) = decl else {
         return None;
     };
@@ -309,12 +362,11 @@ fn declaration_export_kind(
     })
 }
 
-fn export_kind_for_symbol(
-    data: &AnalysisData,
-    sym_id: SymbolId,
-) -> Option<DiagnosticKind> {
+fn export_kind_for_symbol(data: &AnalysisData, sym_id: SymbolId) -> Option<DiagnosticKind> {
     match data.binding_semantics(sym_id) {
-        BindingSemantics::Derived(_) => Some(DiagnosticKind::DerivedInvalidExport),
+        BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => {
+            Some(DiagnosticKind::DerivedInvalidExport)
+        }
         BindingSemantics::State(StateDeclarationSemantics {
             kind: StateKind::State | StateKind::StateRaw,
             ..
@@ -376,7 +428,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         };
         let declaration_semantics = self.data.binding_semantics(sym_id);
         let should_warn = match declaration_semantics {
-            BindingSemantics::Derived(_) => true,
+            BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => true,
             BindingSemantics::State(state) if state.kind == StateKind::StateRaw => true,
             BindingSemantics::State(state) if state.kind == StateKind::State => {
                 self.data.scoping.is_mutated(sym_id) || !state.proxied
@@ -419,8 +471,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        match detect_rune_from_call(call) {
-            Some(RuneKind::State | RuneKind::StateRaw) => {
+        match self.data.reactivity.declarator_semantics(call.node_id()) {
+            DeclaratorSemantics::RuneState {
+                kind: StateKind::State | StateKind::StateRaw,
+            } => {
                 self.visit_expression(&call.callee);
                 let prev = mem::replace(&mut self.in_state_rune_arg, true);
                 for arg in &call.arguments {
@@ -428,15 +482,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
                 }
                 self.in_state_rune_arg = prev;
             }
-            Some(k) if k.is_derived() => {
-                self.visit_expression(&call.callee);
-                self.call_depth_offset += 1;
-                for arg in &call.arguments {
-                    self.visit_argument(arg);
-                }
-                self.call_depth_offset -= 1;
-            }
-            Some(RuneKind::Inspect) => {
+            DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::Inspect,
+            } => {
                 self.visit_expression(&call.callee);
                 self.call_depth_offset += 1;
                 for arg in &call.arguments {
@@ -448,10 +497,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         }
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
         let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_arrow_function_expression(self, arrow);
@@ -459,11 +505,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         self.call_depth_offset = prev_call_depth;
     }
 
-    fn visit_function(
-        &mut self,
-        func: &Function<'a>,
-        flags: ScopeFlags,
-    ) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
         let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
         walk_function(self, func, flags);
@@ -483,10 +525,7 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 
     fn visit_export_specifier(&mut self, _spec: &ExportSpecifier<'a>) {}
 
-    fn visit_export_default_declaration(
-        &mut self,
-        export: &ExportDefaultDeclaration<'a>,
-    ) {
+    fn visit_export_default_declaration(&mut self, export: &ExportDefaultDeclaration<'a>) {
         if matches!(
             export.declaration,
             ExportDefaultDeclarationKind::Identifier(_)
@@ -514,26 +553,35 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             return;
         }
 
-        let Some(rune) = detect_rune_from_call(call) else {
+        let sem = self.reactivity.declarator_semantics(call.node_id());
+        let Some(rune_name) = rune_display_name(&sem) else {
             walk_call_expression(self, call);
             return;
         };
 
         if !self.is_instance_script {
-            match rune {
-                RuneKind::Props => self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsInvalidPlacement,
-                    self.span(call.span),
-                )),
-                RuneKind::PropsId => self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsIdInvalidPlacement,
-                    self.span(call.span),
-                )),
-                RuneKind::Host => {
+            match &sem {
+                DeclaratorSemantics::RuneProps => {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::PropsInvalidPlacement,
+                        self.span(call.span),
+                    ));
+                }
+                DeclaratorSemantics::RuntimeRuneCall {
+                    kind: RuntimeRuneKind::PropsId,
+                } => {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::PropsIdInvalidPlacement,
+                        self.span(call.span),
+                    ));
+                }
+                DeclaratorSemantics::RuntimeRuneCall {
+                    kind: RuntimeRuneKind::Host,
+                } => {
                     if !call.arguments.is_empty() {
                         self.diags.push(Diagnostic::error(
                             DiagnosticKind::RuneInvalidArguments {
-                                rune: rune.display_name().into(),
+                                rune: rune_name.into(),
                             },
                             self.span(call.span),
                         ));
@@ -550,206 +598,253 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             return;
         }
 
-        if matches!(
-            rune,
-            RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy
-        ) {
-            let valid = self.in_var_declarator_init
-                || self.in_class_property_init
-                || self.in_this_assign_rhs;
-            if !valid {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::StateInvalidPlacement {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
+        match &sem {
+            DeclaratorSemantics::RuneState {
+                kind: StateKind::State | StateKind::StateRaw,
+            } => {
+                let valid = self.in_var_declarator_init
+                    || self.in_class_property_init
+                    || self.in_this_assign_rhs;
+                if !valid {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::StateInvalidPlacement {
+                            rune: rune_name.into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
+                if call.arguments.len() > 1 {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::RuneInvalidArgumentsLength {
+                            rune: rune_name.into(),
+                            args: "zero or one arguments".into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
             }
-        }
-
-        if matches!(rune, RuneKind::Effect | RuneKind::EffectPre) && !is_expr_stmt {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::EffectInvalidPlacement,
-                self.span(call.span),
-            ));
-        }
-
-        let arg_violation = match rune {
-            RuneKind::Derived | RuneKind::DerivedBy | RuneKind::StateEager
-                if call.arguments.len() != 1 =>
-            {
-                Some("exactly one argument")
+            DeclaratorSemantics::RuneState {
+                kind: StateKind::StateEager,
+            } => {
+                if call.arguments.len() != 1 {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::RuneInvalidArgumentsLength {
+                            rune: rune_name.into(),
+                            args: "exactly one argument".into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
             }
-            RuneKind::State | RuneKind::StateRaw if call.arguments.len() > 1 => {
-                Some("zero or one arguments")
+            DeclaratorSemantics::RuneDerived { .. } => {
+                let valid = self.in_var_declarator_init
+                    || self.in_class_property_init
+                    || self.in_this_assign_rhs;
+                if !valid {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::StateInvalidPlacement {
+                            rune: rune_name.into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
+                if call.arguments.len() != 1 {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::RuneInvalidArgumentsLength {
+                            rune: rune_name.into(),
+                            args: "exactly one argument".into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
             }
-            RuneKind::Effect | RuneKind::EffectPre | RuneKind::EffectRoot
-                if call.arguments.len() != 1 =>
-            {
-                Some("exactly one argument")
+            DeclaratorSemantics::RuneProps => {
+                if self.has_props_rune {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::PropsDuplicate {
+                            rune: rune_name.into(),
+                        },
+                        self.span(call.span),
+                    ));
+                } else {
+                    self.has_props_rune = true;
+                }
+                if !self.in_var_declarator_init || self.function_depth > 0 {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::PropsInvalidPlacement,
+                        self.span(call.span),
+                    ));
+                }
+                if !call.arguments.is_empty() {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::RuneInvalidArguments {
+                            rune: rune_name.into(),
+                        },
+                        self.span(call.span),
+                    ));
+                }
             }
-            _ => None,
-        };
-        if let Some(args) = arg_violation {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidArgumentsLength {
-                    rune: rune.display_name().into(),
-                    args: args.into(),
-                },
-                self.span(call.span),
-            ));
-        }
-
-        if matches!(rune, RuneKind::EffectTracking) && !call.arguments.is_empty() {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidArguments {
-                    rune: rune.display_name().into(),
-                },
-                self.span(call.span),
-            ));
-        }
-
-        if matches!(rune, RuneKind::Inspect) && call.arguments.is_empty() {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidArgumentsLength {
-                    rune: rune.display_name().into(),
-                    args: "one or more arguments".into(),
-                },
-                self.span(call.span),
-            ));
-        }
-
-        if matches!(rune, RuneKind::InspectWith) && call.arguments.len() != 1 {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidArgumentsLength {
-                    rune: rune.display_name().into(),
-                    args: "exactly one argument".into(),
-                },
-                self.span(call.span),
-            ));
-        }
-
-        if matches!(rune, RuneKind::InspectTrace) {
-            if call.arguments.len() > 1 {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneInvalidArgumentsLength {
-                        rune: rune.display_name().into(),
-                        args: "zero or one arguments".into(),
-                    },
-                    self.span(call.span),
-                ));
-            }
-
-            let is_valid_placement = is_expr_stmt
-                && self
-                    .fn_body_first_stmt_span
-                    .zip(self.current_expr_stmt_span)
-                    .is_some_and(|(first, current)| first == current);
-            if !is_valid_placement {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::InspectTraceInvalidPlacement,
-                    self.span(call.span),
-                ));
-            }
-
-            if self.in_generator {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::InspectTraceGenerator,
-                    self.span(call.span),
-                ));
-            }
-        }
-
-        if matches!(rune, RuneKind::Host) {
-            if !call.arguments.is_empty() {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneInvalidArguments {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
-            } else if !self.custom_element {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::HostInvalidPlacement,
-                    self.span(call.span),
-                ));
-            }
-        }
-
-        if matches!(rune, RuneKind::Bindable) {
-            if call.arguments.len() > 1 {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneInvalidArgumentsLength {
-                        rune: rune.display_name().into(),
-                        args: "zero or one arguments".into(),
-                    },
-                    self.span(call.span),
-                ));
-            }
-            if !allowed_bindable_position {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::BindableInvalidLocation,
-                    self.span(call.span),
-                ));
-            }
-        }
-
-        if matches!(rune, RuneKind::Props) {
-            if self.has_props_rune {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsDuplicate {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
-            } else {
-                self.has_props_rune = true;
-            }
-
-            if !self.in_var_declarator_init || self.function_depth > 0 {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsInvalidPlacement,
-                    self.span(call.span),
-                ));
-            }
-
-            if !call.arguments.is_empty() {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneInvalidArguments {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
-            }
-        }
-
-        if matches!(rune, RuneKind::PropsId) {
-            if self.has_props_id {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsDuplicate {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
-            } else {
-                self.has_props_id = true;
-            }
-
-            if !self.in_var_declarator_init || self.function_depth > 0 {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::PropsIdInvalidPlacement,
-                    self.span(call.span),
-                ));
-            }
-
-            if !call.arguments.is_empty() {
-                self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneInvalidArguments {
-                        rune: rune.display_name().into(),
-                    },
-                    self.span(call.span),
-                ));
-            }
+            DeclaratorSemantics::RuntimeRuneCall { kind } => match kind {
+                RuntimeRuneKind::StateEager => {
+                    if call.arguments.len() != 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "exactly one argument".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::Effect | RuntimeRuneKind::EffectPre => {
+                    if !is_expr_stmt {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::EffectInvalidPlacement,
+                            self.span(call.span),
+                        ));
+                    }
+                    if call.arguments.len() != 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "exactly one argument".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::EffectRoot => {
+                    if call.arguments.len() != 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "exactly one argument".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::EffectTracking => {
+                    if !call.arguments.is_empty() {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArguments {
+                                rune: rune_name.into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::Inspect => {
+                    if call.arguments.is_empty() {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "one or more arguments".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::InspectWith => {
+                    if call.arguments.len() != 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "exactly one argument".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::InspectTrace => {
+                    if call.arguments.len() > 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "zero or one arguments".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                    let is_valid_placement = is_expr_stmt
+                        && self
+                            .fn_body_first_stmt_span
+                            .zip(self.current_expr_stmt_span)
+                            .is_some_and(|(first, current)| first == current);
+                    if !is_valid_placement {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::InspectTraceInvalidPlacement,
+                            self.span(call.span),
+                        ));
+                    }
+                    if self.in_generator {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::InspectTraceGenerator,
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::Host => {
+                    if !call.arguments.is_empty() {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArguments {
+                                rune: rune_name.into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    } else if !self.custom_element {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::HostInvalidPlacement,
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::Bindable => {
+                    if call.arguments.len() > 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "zero or one arguments".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                    if !allowed_bindable_position {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::BindableInvalidLocation,
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::PropsId => {
+                    if self.has_props_id {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::PropsDuplicate {
+                                rune: rune_name.into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    } else {
+                        self.has_props_id = true;
+                    }
+                    if !self.in_var_declarator_init || self.function_depth > 0 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::PropsIdInvalidPlacement,
+                            self.span(call.span),
+                        ));
+                    }
+                    if !call.arguments.is_empty() {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArguments {
+                                rune: rune_name.into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::EffectPending | RuntimeRuneKind::StateSnapshot => {}
+            },
+            _ => {}
         }
 
         walk_call_expression(self, call);
@@ -757,21 +852,26 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
     fn visit_assignment_pattern(&mut self, pat: &AssignmentPattern<'a>) {
         self.visit_binding_pattern(&pat.left);
-        let allow = self.in_props_destructure && is_direct_bindable_call(&pat.right);
+        let allow =
+            self.in_props_destructure && is_direct_bindable_call(self.reactivity, &pat.right);
         let prev = mem::replace(&mut self.in_props_default_position, allow);
         self.visit_expression(&pat.right);
         self.in_props_default_position = prev;
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
-        let is_props_init = it
-            .init
-            .as_ref()
-            .and_then(|e| detect_rune(e))
-            .is_some_and(|r| matches!(r, RuneKind::Props));
+        let is_props_init = it.init.as_ref().is_some_and(|init| {
+            let Expression::CallExpression(call) = init.get_inner_expression() else {
+                return false;
+            };
+            self.reactivity
+                .declarator_semantics(call.node_id())
+                .is_rune_props()
+        });
 
         if is_props_init {
             self.validate_props_pattern(&it.id);
+            self.check_custom_element_props_pattern(&it.id);
         }
 
         let prev_props = self.in_props_destructure;
@@ -791,11 +891,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         }
     }
 
-    fn visit_function(
-        &mut self,
-        func: &Function<'a>,
-        flags: ScopeFlags,
-    ) {
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         self.function_depth += 1;
         let prev_props = mem::replace(&mut self.in_props_destructure, false);
         let prev_first = mem::replace(
@@ -813,10 +909,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         self.function_depth -= 1;
     }
 
-    fn visit_arrow_function_expression(
-        &mut self,
-        arrow: &ArrowFunctionExpression<'a>,
-    ) {
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         self.function_depth += 1;
         let prev_props = mem::replace(&mut self.in_props_destructure, false);
 
@@ -898,10 +991,7 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
         {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::PropsIllegalName,
-                Span::new(
-                    member.property.span.start,
-                    member.property.span.end,
-                ),
+                Span::new(member.property.span.start, member.property.span.end),
             ));
         }
         walk_member_expression(self, expr);
@@ -926,18 +1016,13 @@ fn is_props_illegal_name_member(
     else {
         return false;
     };
-    matches!(
-        data.binding_semantics(sym_id),
-        BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Rest,
-            ..
-        }),
-    )
+    data.binding_semantics(sym_id).is_rest_props()
 }
 
 pub fn validate_const_tag_runes(
     component: &Component,
     parsed: &crate::types::data::JsAst,
+    data: &AnalysisData,
     diags: &mut Vec<Diagnostic>,
 ) {
     for node in component.store.iter_nodes() {
@@ -954,38 +1039,52 @@ pub fn validate_const_tag_runes(
             let Some(init) = &declarator.init else {
                 continue;
             };
-            let mut probe = ConstTagRuneProbe { diags };
+            let mut probe = ConstTagRuneProbe {
+                reactivity: &data.reactivity,
+                diags,
+            };
             probe.visit_expression(init);
         }
     }
 }
 
 struct ConstTagRuneProbe<'d> {
+    reactivity: &'d ReactivitySemantics,
     diags: &'d mut Vec<Diagnostic>,
 }
 
 impl<'a> Visit<'a> for ConstTagRuneProbe<'_> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if let Some(rune) = detect_rune_from_call(call) {
-            let span = Span::new(call.span.start, call.span.end);
-            let kind = match rune {
-                RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy => {
-                    Some(DiagnosticKind::StateInvalidPlacement {
-                        rune: rune.display_name().into(),
-                    })
-                }
-                RuneKind::Props => Some(DiagnosticKind::PropsInvalidPlacement),
-                RuneKind::PropsId => Some(DiagnosticKind::PropsIdInvalidPlacement),
-                RuneKind::Bindable => Some(DiagnosticKind::BindableInvalidLocation),
-                RuneKind::Host => Some(DiagnosticKind::HostInvalidPlacement),
-                RuneKind::Effect | RuneKind::EffectPre => {
-                    Some(DiagnosticKind::EffectInvalidPlacement)
-                }
-                _ => None,
-            };
-            if let Some(kind) = kind {
-                self.diags.push(Diagnostic::error(kind, span));
+        let sem = self.reactivity.declarator_semantics(call.node_id());
+        let kind = match &sem {
+            DeclaratorSemantics::RuneState {
+                kind: StateKind::State | StateKind::StateRaw,
             }
+            | DeclaratorSemantics::RuneDerived { .. } => {
+                Some(DiagnosticKind::StateInvalidPlacement {
+                    rune: rune_display_name(&sem).unwrap_or_default().into(),
+                })
+            }
+            DeclaratorSemantics::RuneProps => Some(DiagnosticKind::PropsInvalidPlacement),
+            DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::PropsId,
+            } => Some(DiagnosticKind::PropsIdInvalidPlacement),
+            DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::Bindable,
+            } => Some(DiagnosticKind::BindableInvalidLocation),
+            DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::Host,
+            } => Some(DiagnosticKind::HostInvalidPlacement),
+            DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::Effect | RuntimeRuneKind::EffectPre,
+            } => Some(DiagnosticKind::EffectInvalidPlacement),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            self.diags.push(Diagnostic::error(
+                kind,
+                Span::new(call.span.start, call.span.end),
+            ));
         }
         walk_call_expression(self, call);
     }

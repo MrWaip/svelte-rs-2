@@ -1,4 +1,5 @@
 use oxc_ast::ast::Expression;
+use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     EachIndexStrategy, EachItemStrategy, PropBindingKind, PropBindingSemantics,
@@ -24,6 +25,10 @@ pub fn read_binding<'a>(
     safety: LegacyStateSafety,
 ) -> Option<Expression<'a>> {
     let name = analysis.scoping.symbol_name(sym);
+    if analysis.reactivity.legacy_reactive().is_mutated_import(sym) {
+        let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(name));
+        return Some(b.call_expr_callee(b.rid_expr(wrapper), []));
+    }
     match analysis.binding_semantics(sym) {
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::NonSource,
@@ -50,20 +55,25 @@ pub fn read_binding<'a>(
                 LegacyStateSafety::Static(s) => s,
                 LegacyStateSafety::FromVarDeclared => state.var_declared,
             };
-            Some(if safe { rune_safe_get(b, name) } else { rune_get(b, name) })
+            Some(if safe {
+                rune_safe_get(b, name)
+            } else {
+                rune_get(b, name)
+            })
         }
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_) => Some(rune_get(b, name)),
         BindingSemantics::Const(ConstBindingSemantics::ConstTag {
             destructured: false,
             ..
         }) => Some(rune_get(b, name)),
         BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-            destructured: true,
-            ..
+            destructured: true, ..
         }) => None,
         BindingSemantics::Contextual(ck) => match ck {
+            ContextualBindingSemantics::EachItem(EachItemStrategy::IndexedLegacy) => None,
             ContextualBindingSemantics::EachItem(EachItemStrategy::Accessor)
             | ContextualBindingSemantics::SnippetParam(SnippetParamStrategy::Accessor) => {
                 Some(thunk_call(b, name))

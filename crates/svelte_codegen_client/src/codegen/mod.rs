@@ -1,5 +1,4 @@
 mod anchor;
-mod async_emit;
 mod attributes;
 mod binding_pattern;
 mod blocks;
@@ -46,7 +45,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.hoisted.push(stmt);
     }
 
-
     pub(in crate::codegen) fn pack_body(
         &mut self,
         state: EmitState<'a>,
@@ -55,6 +53,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         debug_assert!(
             state.pending_element_init.is_empty(),
             "pending_element_init not flushed before pack_body"
+        );
+        debug_assert!(
+            state.pending_element_update.is_empty(),
+            "pending_element_update not flushed before pack_body"
         );
         debug_assert!(
             state.pending_pre_update.is_empty(),

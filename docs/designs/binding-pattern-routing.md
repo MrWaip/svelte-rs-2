@@ -94,12 +94,20 @@ Consumer machinery (not analysis API):
   cannot be produced by mutating a `VariableDeclaration`'s declarator list in place, so the door returns
   `Vec<Statement>` instead. Consequences: (a) async-derived is a **branch inside the same door** (a
   block at top level, a declarator list inside a function) — there is no satellite async statement pass;
-  (b) the door iterates **all** declarators of a declaration (sync kinds accumulate into one grouped
-  declaration via a `flush`, async-derived flushes the pending group then emits its own block), so the
-  earlier single-declarator `[0]` assumption and its reliance on `split_top_level_multi_declarators` are
-  gone. The shared leaf unfold (`unfold_carrier_access` + `walk_bindings`) is identical for sync and
+  (b) the door iterates **all** declarators of a declaration; within one source declarator the sync
+  leaves accumulate into one grouped declaration via a `flush`, async-derived flushes then emits its own
+  block. The shared leaf unfold (`unfold_carrier_access` + `walk_bindings`) is identical for sync and
   async; only the framing differs (declarator vs assignment-in-block). The codegen door
   (`emit_binding_pattern`) is unaffected.
+
+  **Statement granularity.** The Original splits one `VariableDeclaration` per **source declarator** only
+  at the **top level** of the instance body (`calculate_blockers`); nested declarations (`let x, y;`
+  inside a function) stay grouped. The door runs at every scope level, so it does **not** split
+  unconditionally — `rewrite_declaration` groups, correct for nested. Top-level splitting is at the
+  statement-list level: bare → `split_top_level_multi_declarators` (root-scope-gated); export-wrapped →
+  `rewrite_exported_declaration` (one statement per source declarator; `export` is never nested).
+  `split_top_level_multi_declarators` therefore stays; retiring it needs a top-level signal threaded into
+  the door.
 - Dumb shared access-form builders (e.g. the `$.to_array` carrier expression) live in the existing
   `svelte_emit_builders` and are pulled in by the "second consumer → extract" rule. No new crate.
 

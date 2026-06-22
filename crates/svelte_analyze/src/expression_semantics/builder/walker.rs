@@ -1,17 +1,16 @@
-use super::super::ExpressionSemanticsStore;
 use super::super::ContextSignal;
+use super::super::ExpressionSemanticsStore;
 use super::super::data::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier,
+    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier, Volatility,
 };
-use super::super::evaluator::{self, EvalCtx};
-use rustc_hash::{FxHashMap, FxHashSet};
 use super::collector::{ExprFacts, collect};
 use super::derive;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, PropBindingSemantics, SnippetData};
+use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, SnippetData};
 use crate::utils::node_id_utils::{argument_node_id, expression_node_id};
-use oxc_ast::ast::{Argument, BindingPattern, ChainElement, Declaration, Expression, Function, Statement, VariableDeclaration};
+use crate::value_evaluation::{ReadContext, ValueEvaluation, ValueEvaluator};
+use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, Component, ConcatPart, Element, FragmentId, Node, NodeId, StyleDirectiveValue,
@@ -19,6 +18,7 @@ use svelte_ast::{
 };
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn populate<'a>(
     component: &Component,
     parsed: &JsAst<'a>,
@@ -26,85 +26,35 @@ pub(super) fn populate<'a>(
     reactivity: &ReactivitySemantics,
     scoping: &ComponentScoping,
     snippets: &SnippetData,
+    value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
     blockers: &BlockerData,
     runes_mode: svelte_ast::RunesMode,
     store: &mut ExpressionSemanticsStore,
     dev: bool,
 ) {
-    let (bindings_init, function_decls) = collect_bindings_init(parsed);
+    let evaluator = ValueEvaluator::new(
+        parsed,
+        scoping,
+        semantics,
+        reactivity,
+        snippets,
+        ReadContext::Runtime,
+        dev,
+    );
     let ctx = Ctx {
         parsed,
         semantics,
         reactivity,
         scoping,
-        snippets,
+        value_evaluation,
         has_class_state_fields,
         blockers,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
-        bindings_init,
-        function_decls,
-        dev,
+        evaluator,
     };
     let mut sink = Sink { store };
     visit_fragment(component, component.root, &ctx, &mut sink);
-}
-
-fn collect_bindings_init<'c, 'a>(
-    parsed: &'c JsAst<'a>,
-) -> (
-    FxHashMap<SymbolId, &'c Expression<'a>>,
-    FxHashSet<SymbolId>,
-) {
-    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
-    let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
-
-    fn ingest_var_decl<'c, 'a>(
-        vd: &'c VariableDeclaration<'a>,
-        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
-    ) {
-        for decl in &vd.declarations {
-            let Some(init) = decl.init.as_ref() else {
-                continue;
-            };
-            let BindingPattern::BindingIdentifier(id) = &decl.id else {
-                continue;
-            };
-            if let Some(sym) = id.symbol_id.get() {
-                map.insert(sym, init);
-            }
-        }
-    }
-
-    fn ingest_fn_decl<'c, 'a>(
-        fd: &'c Function<'a>,
-        fn_decls: &mut FxHashSet<SymbolId>,
-    ) {
-        if let Some(id) = &fd.id
-            && let Some(sym) = id.symbol_id.get()
-        {
-            fn_decls.insert(sym);
-        }
-    }
-
-    let programs = [parsed.program.as_ref(), parsed.module_program.as_ref()];
-    for prog in programs.into_iter().flatten() {
-        for stmt in &prog.body {
-            match stmt {
-                Statement::VariableDeclaration(vd) => ingest_var_decl(vd, &mut map),
-                Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
-                Statement::ExportNamedDeclaration(en) => match &en.declaration {
-                    Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
-                    Some(Declaration::FunctionDeclaration(fd)) => {
-                        ingest_fn_decl(fd, &mut fn_decls)
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-        }
-    }
-    (map, fn_decls)
 }
 
 pub(super) struct Ctx<'c, 'a> {
@@ -112,17 +62,39 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) semantics: &'c ComponentSemantics<'a>,
     pub(super) reactivity: &'c ReactivitySemantics,
     pub(super) scoping: &'c ComponentScoping<'a>,
-    pub(super) snippets: &'c SnippetData,
+    pub(super) value_evaluation: &'c ValueEvaluation,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
     pub(super) uses_legacy_coarse_wrap: bool,
-    pub(super) bindings_init: FxHashMap<SymbolId, &'c Expression<'a>>,
-    pub(super) function_decls: FxHashSet<SymbolId>,
-    pub(super) dev: bool,
+    pub(super) evaluator: ValueEvaluator<'c, 'a>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SiteContext {
+    Text,
+    ElementAttr,
+    ComponentAttr,
+    ComponentName,
+    Structural,
+    Inert,
 }
 
 struct Sink<'s> {
     store: &'s mut ExpressionSemanticsStore,
+}
+
+impl Sink<'_> {
+    fn set(&mut self, id: NodeId, value: ExpressionSemantics) {
+        self.store.set(id, value);
+    }
+
+    fn set_by_oxc(&mut self, id: OxcNodeId, value: ExpressionSemantics) {
+        self.store.set_by_oxc(id, value);
+    }
+
+    fn note_context(&mut self, signal: ContextSignal) {
+        self.store.note_context(signal);
+    }
 }
 
 fn visit_fragment(
@@ -137,10 +109,10 @@ fn visit_fragment(
         let node = component.store.get(id);
         match node {
             Node::ExpressionTag(tag) => {
-                store_single(tag.id, tag.expression.id(), ctx, sink);
+                store_single(tag.id, tag.expression.id(), ctx, sink, SiteContext::Text);
             }
             Node::HtmlTag(tag) => {
-                store_single(tag.id, tag.expression.id(), ctx, sink);
+                store_single(tag.id, tag.expression.id(), ctx, sink, SiteContext::Text);
             }
             Node::ConstTag(tag) => {
                 store_const_tag(tag.id, tag.decl.id(), ctx, sink);
@@ -148,24 +120,30 @@ fn visit_fragment(
             Node::Element(el) => visit_element(component, el, ctx, sink),
             Node::SvelteElement(el) => {
                 if let Some(expr_ref) = el.this_expr() {
-                    store_single(el.id, expr_ref.id(), ctx, sink);
+                    store_single(el.id, expr_ref.id(), ctx, sink, SiteContext::Inert);
                 }
                 visit_svelte_element(component, el, ctx, sink);
             }
-            Node::SvelteWindow(el) => visit_attributes(&el.attributes, ctx, sink),
-            Node::SvelteDocument(el) => visit_attributes(&el.attributes, ctx, sink),
-            Node::SvelteBody(el) => visit_attributes(&el.attributes, ctx, sink),
+            Node::SvelteWindow(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
+            Node::SvelteDocument(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
+            Node::SvelteBody(el) => {
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr)
+            }
             Node::IfBlock(b) => {
-                store_single(b.id, b.test.id(), ctx, sink);
+                store_single(b.id, b.test.id(), ctx, sink, SiteContext::Text);
                 visit_fragment(component, b.consequent, ctx, sink);
                 if let Some(alt) = b.alternate {
                     visit_fragment(component, alt, ctx, sink);
                 }
             }
             Node::EachBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Text);
                 if let (Some(key_id), Some(key)) = (b.key_id, b.key.as_ref()) {
-                    store_single(key_id, key.id(), ctx, sink);
+                    store_single(key_id, key.id(), ctx, sink, SiteContext::Text);
                 }
                 visit_fragment(component, b.body, ctx, sink);
                 if let Some(fb) = b.fallback {
@@ -177,7 +155,8 @@ fn visit_fragment(
                 store_render_args(t.expression.id(), ctx, sink);
             }
             Node::ComponentNode(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                store_component_name(cn.id, cn.name.id(), ctx, sink);
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -185,7 +164,10 @@ fn visit_fragment(
                 }
             }
             Node::SvelteComponentLegacy(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                if let Some(this_expr) = cn.this_expr() {
+                    store_svelte_component_this(cn.id, this_expr.id(), ctx, sink);
+                }
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ElementAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -193,7 +175,7 @@ fn visit_fragment(
                 }
             }
             Node::SvelteSelf(cn) => {
-                visit_attributes(&cn.attributes, ctx, sink);
+                visit_attributes(&cn.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, cn.fragment, ctx, sink);
                 let slot_frags: Vec<_> = cn.legacy_slots.iter().map(|s| s.fragment).collect();
                 for fid in slot_frags {
@@ -201,12 +183,12 @@ fn visit_fragment(
                 }
             }
             Node::SlotElementLegacy(el) => {
-                visit_attributes(&el.attributes, ctx, sink);
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
                 visit_fragment(component, el.fragment, ctx, sink);
             }
             Node::SnippetBlock(b) => visit_fragment(component, b.body, ctx, sink),
             Node::AwaitBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Structural);
                 if let Some(f) = b.pending {
                     visit_fragment(component, f, ctx, sink);
                 }
@@ -218,13 +200,13 @@ fn visit_fragment(
                 }
             }
             Node::KeyBlock(b) => {
-                store_single(b.id, b.expression.id(), ctx, sink);
+                store_single(b.id, b.expression.id(), ctx, sink, SiteContext::Text);
                 visit_fragment(component, b.fragment, ctx, sink);
             }
             Node::SvelteFragmentLegacy(el) => visit_fragment(component, el.fragment, ctx, sink),
             Node::SvelteHead(el) => visit_fragment(component, el.fragment, ctx, sink),
             Node::SvelteBoundary(el) => {
-                visit_attributes(&el.attributes, ctx, sink);
+                visit_attributes(&el.attributes, ctx, sink, SiteContext::ComponentAttr);
                 visit_fragment(component, el.fragment, ctx, sink);
             }
             _ => {}
@@ -232,13 +214,8 @@ fn visit_fragment(
     }
 }
 
-fn visit_element(
-    component: &Component,
-    el: &Element,
-    ctx: &Ctx<'_, '_>,
-    sink: &mut Sink<'_>,
-) {
-    visit_attributes(&el.attributes, ctx, sink);
+fn visit_element(component: &Component, el: &Element, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
+    visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
     visit_fragment(component, el.fragment, ctx, sink);
 }
 
@@ -248,7 +225,7 @@ fn visit_svelte_element(
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
-    visit_attributes(&el.attributes, ctx, sink);
+    visit_attributes(&el.attributes, ctx, sink, SiteContext::ElementAttr);
     visit_fragment(component, el.fragment, ctx, sink);
 }
 
@@ -256,73 +233,74 @@ fn visit_attributes(
     attrs: &[Attribute],
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     for attr in attrs {
         match attr {
             Attribute::ExpressionAttribute(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::ConcatenationAttribute(a) => {
                 for p in &a.parts {
                     if let ConcatPart::Dynamic { id, expr } = p {
-                        store_single(*id, expr.id(), ctx, sink);
+                        store_single(*id, expr.id(), ctx, sink, context);
                     }
                 }
                 let parts = a.parts.iter().filter_map(|p| match p {
                     ConcatPart::Dynamic { expr, .. } => Some(expr.id()),
                     ConcatPart::Static(_) => None,
                 });
-                store_aggregate(a.id, parts, ctx, sink);
+                store_aggregate(a.id, parts, ctx, sink, context);
             }
             Attribute::SpreadAttribute(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::ClassDirective(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::StyleDirective(a) => match &a.value {
                 StyleDirectiveValue::Concatenation(parts) => {
                     for p in parts {
                         if let ConcatPart::Dynamic { id, expr } = p {
-                            store_single(*id, expr.id(), ctx, sink);
+                            store_single(*id, expr.id(), ctx, sink, context);
                         }
                     }
                     let exprs = parts.iter().filter_map(|p| match p {
                         ConcatPart::Dynamic { expr, .. } => Some(expr.id()),
                         ConcatPart::Static(_) => None,
                     });
-                    store_aggregate(a.id, exprs, ctx, sink);
+                    store_aggregate(a.id, exprs, ctx, sink, context);
                 }
                 StyleDirectiveValue::Expression => {
-                    store_single(a.id, a.expression.id(), ctx, sink);
+                    store_single(a.id, a.expression.id(), ctx, sink, context);
                 }
                 StyleDirectiveValue::String(_) => {}
             },
             Attribute::BindDirective(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::UseDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::TransitionDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::AnimateDirective(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::OnDirectiveLegacy(a) => {
                 if let Some(expr) = &a.expression {
-                    store_single(a.id, expr.id(), ctx, sink);
+                    store_single(a.id, expr.id(), ctx, sink, context);
                 }
             }
             Attribute::AttachTag(a) => {
-                store_single(a.id, a.expression.id(), ctx, sink);
+                store_single(a.id, a.expression.id(), ctx, sink, context);
             }
             Attribute::StringAttribute(_)
             | Attribute::BooleanAttribute(_)
@@ -336,50 +314,68 @@ fn store_single(
     expr_id: OxcNodeId,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
-        sink.store.set(site_id, ExpressionSemantics::Expression(empty_data()));
+        sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
-    let (data, facts) = compute(expr, ctx);
-    update_aggregates(sink.store, &facts, ctx);
+    let (data, facts) = compute(expr, ctx, context);
+    update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
 }
 
-fn store_render_tag(
+fn store_component_name(
     site_id: NodeId,
     expr_id: OxcNodeId,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
-        sink.store.set(site_id, ExpressionSemantics::Expression(empty_data()));
         return;
     };
-    let (data, facts) = compute(expr, ctx);
-    for &sym in facts.member_or_call_roots.iter() {
-        if ctx.scoping.is_rest_prop(sym) {
-            sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
-        }
-    }
-    if facts.has_legacy_props_member_root {
-        sink.store.note_context(ContextSignal::REST_PROP_MEMBER);
-    }
-    if facts.has_store_member_mutation {
-        sink.store.note_context(ContextSignal::STORE_MUTATION);
-    }
-    let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    let (data, _facts) = compute(expr, ctx, SiteContext::ComponentName);
+    sink.set(site_id, ExpressionSemantics::Expression(data));
 }
 
-fn store_render_args(
-    expr_id: OxcNodeId,
+fn store_svelte_component_this(
+    site_id: NodeId,
+    this_expr_id: OxcNodeId,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
+    let Some(expr) = ctx.parsed.expr(this_expr_id) else {
+        return;
+    };
+    let (data, _facts) = compute(expr, ctx, SiteContext::Structural);
+    sink.set(site_id, ExpressionSemantics::Expression(data));
+}
+
+fn store_render_tag(site_id: NodeId, expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
+    let Some(expr) = ctx.parsed.expr(expr_id) else {
+        sink.set(site_id, ExpressionSemantics::Expression(empty_data()));
+        return;
+    };
+    let (data, facts) = compute(expr, ctx, SiteContext::Text);
+    for &sym in facts.member_or_call_roots.iter() {
+        if ctx.reactivity.is_rest_prop(sym) {
+            sink.note_context(ContextSignal::REST_PROP_MEMBER);
+        }
+    }
+    if facts.has_legacy_props_member_root {
+        sink.note_context(ContextSignal::REST_PROP_MEMBER);
+    }
+    if facts.has_store_member_mutation {
+        sink.note_context(ContextSignal::STORE_MUTATION);
+    }
+    let value = ExpressionSemantics::Expression(data);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
+}
+
+fn store_render_args(expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     let Some(expr) = ctx.parsed.expr(expr_id) else {
         return;
     };
@@ -397,21 +393,13 @@ fn store_render_args(
             continue;
         }
         let arg_expr = arg.to_expression();
-        let (data, facts) = compute(arg_expr, ctx);
-        update_aggregates(sink.store, &facts, ctx);
-        sink.store.set_by_oxc(
-            argument_node_id(arg),
-            ExpressionSemantics::Expression(data),
-        );
+        let (data, facts) = compute(arg_expr, ctx, SiteContext::Text);
+        update_aggregates(sink, &facts, ctx);
+        sink.set_by_oxc(argument_node_id(arg), ExpressionSemantics::Expression(data));
     }
 }
 
-fn store_const_tag(
-    site_id: NodeId,
-    stmt_id: OxcNodeId,
-    ctx: &Ctx<'_, '_>,
-    sink: &mut Sink<'_>,
-) {
+fn store_const_tag(site_id: NodeId, stmt_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink: &mut Sink<'_>) {
     let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmt(stmt_id) else {
         return;
     };
@@ -421,11 +409,11 @@ fn store_const_tag(
     let Some(expr) = d.init.as_ref() else {
         return;
     };
-    let (data, facts) = compute(expr, ctx);
-    update_aggregates(sink.store, &facts, ctx);
+    let (data, facts) = compute(expr, ctx, SiteContext::Text);
+    update_aggregates(sink, &facts, ctx);
     let value = ExpressionSemantics::Expression(data);
-    sink.store.set_by_oxc(expression_node_id(expr), value.clone());
-    sink.store.set(site_id, value);
+    sink.set_by_oxc(expression_node_id(expr), value.clone());
+    sink.set(site_id, value);
 }
 
 fn store_aggregate(
@@ -433,6 +421,7 @@ fn store_aggregate(
     expr_ids: impl IntoIterator<Item = OxcNodeId>,
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
+    context: SiteContext,
 ) {
     let mut acc = empty_data();
     let mut any = false;
@@ -441,9 +430,9 @@ fn store_aggregate(
         let Some(expr) = ctx.parsed.expr(expr_id) else {
             continue;
         };
-        let (part, facts) = compute(expr, ctx);
-        update_aggregates(sink.store, &facts, ctx);
-        acc.kind = max_kind(&acc.kind, &part.kind);
+        let (part, facts) = compute(expr, ctx, context);
+        update_aggregates(sink, &facts, ctx);
+        acc.volatility = acc.volatility.max(part.volatility);
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
             if !acc.blockers.contains(&b) {
@@ -460,12 +449,12 @@ fn store_aggregate(
         return;
     }
     acc.blockers.sort_unstable();
-    sink.store.set(site_id, ExpressionSemantics::Expression(acc));
+    sink.set(site_id, ExpressionSemantics::Expression(acc));
 }
 
 fn empty_data() -> ExpressionData {
     ExpressionData {
-        kind: ExprKind::Computed { reactive: false },
+        volatility: Volatility::Static,
         evaluation: Evaluation::unknown(),
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
@@ -476,48 +465,43 @@ fn empty_data() -> ExpressionData {
 fn compute<'a>(
     expr: &Expression<'a>,
     ctx: &Ctx<'_, 'a>,
+    context: SiteContext,
 ) -> (ExpressionData, ExprFacts) {
     let facts = collect(expr, ctx.semantics, ctx.reactivity);
 
-    let eval_ctx = EvalCtx {
-        scoping: ctx.scoping,
-        semantics: ctx.semantics,
-        reactivity: ctx.reactivity,
-        snippets: ctx.snippets,
-        bindings_init: &ctx.bindings_init,
-        function_decls: &ctx.function_decls,
-        dev: ctx.dev,
-    };
-    let evaluation = evaluator::evaluate(expr, &eval_ctx);
+    let evaluation = ctx.evaluator.evaluate(expr);
 
-    let is_dynamic = derive::is_dynamic_template(
-        &facts,
-        ctx.scoping,
-        ctx.reactivity,
-        ctx.has_class_state_fields,
-    );
+    let is_reactive = derive::is_reactive_template(&facts, ctx);
     let blockers = derive::blockers(&facts, ctx.blockers);
-    let kind = derive::kind(
-        &facts,
-        !blockers.is_empty(),
-        is_dynamic,
-        &evaluation,
-        ctx.reactivity,
-    );
-    let has_context_member_root = facts.top_member_or_call_roots.iter().any(|&sym| {
-        matches!(
-            ctx.reactivity.binding_semantics(sym),
-            BindingSemantics::MaybeReactive
-                | BindingSemantics::Prop(PropBindingSemantics {
-                    kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-                    ..
-                })
-                | BindingSemantics::LegacyBindableProp(_)
-                | BindingSemantics::Contextual(_)
-        )
-    });
+    let has_blockers = !blockers.is_empty();
+    let reactive_gate = match context {
+        SiteContext::Text => derive::volatile(
+            &facts,
+            has_blockers,
+            is_reactive,
+            &evaluation,
+            ctx.reactivity,
+        ),
+        SiteContext::ElementAttr => {
+            derive::volatile_element_attr(is_reactive, &facts.references, ctx)
+        }
+        SiteContext::ComponentAttr => is_reactive,
+        SiteContext::ComponentName => derive::volatile_component_name(
+            expr,
+            ctx.reactivity.uses_runes(),
+            ctx.scoping,
+            ctx.reactivity,
+        ),
+        SiteContext::Structural => true,
+        SiteContext::Inert => false,
+    };
+    let has_context_member_root = facts
+        .top_member_or_call_roots
+        .iter()
+        .any(|&sym| is_context_member_root(ctx.reactivity.binding_semantics(sym)));
+    let volatility = derive::volatility(reactive_gate, &facts);
     let data = ExpressionData {
-        kind,
+        volatility,
         evaluation,
         blockers,
         legacy_wrap: derive::legacy_wrap(
@@ -530,63 +514,74 @@ fn compute<'a>(
     (data, facts)
 }
 
-fn update_aggregates(
-    store: &mut ExpressionSemanticsStore,
-    facts: &ExprFacts,
-    ctx: &Ctx<'_, '_>,
-) {
+fn update_aggregates(sink: &mut Sink<'_>, facts: &ExprFacts, ctx: &Ctx<'_, '_>) {
     for &sym in facts.member_or_call_roots.iter() {
         if !is_safe_member_root(ctx.reactivity, sym) {
-            store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+            sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
         }
-        if ctx.scoping.is_rest_prop(sym) {
-            store.note_context(ContextSignal::REST_PROP_MEMBER);
+        if ctx.reactivity.is_rest_prop(sym) {
+            sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
     if facts.has_legacy_props_member_root {
-        store.note_context(ContextSignal::REST_PROP_MEMBER);
+        sink.note_context(ContextSignal::REST_PROP_MEMBER);
     }
     if facts.has_runtime_root {
-        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+        sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
     }
     if facts.has_unsafe_member_root {
-        store.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+        sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+    }
+    if facts.has_unsafe_callee_or_new {
+        sink.note_context(ContextSignal::UNSAFE_CALLEE_OR_NEW);
     }
     if facts.has_store_member_mutation {
-        store.note_context(ContextSignal::STORE_MUTATION);
+        sink.note_context(ContextSignal::STORE_MUTATION);
+    }
+}
+
+fn is_context_member_root(semantics: BindingSemantics) -> bool {
+    match semantics {
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::Contextual(_) => true,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } | PropBindingKind::NonSource => true,
+            PropBindingKind::Identifier | PropBindingKind::Rest => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
     }
 }
 
 fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool {
     match reactivity.binding_semantics(sym) {
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::Prop(PropBindingSemantics {
-            kind: PropBindingKind::Source { .. } | PropBindingKind::NonSource,
-            ..
-        })
-        | BindingSemantics::LegacyBindableProp(_) => false,
+        BindingSemantics::MaybeReactive | BindingSemantics::LegacyBindableProp(_) => false,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            PropBindingKind::Source { .. } | PropBindingKind::NonSource => false,
+            PropBindingKind::Identifier | PropBindingKind::Rest => true,
+        },
         BindingSemantics::Store(store) => is_safe_member_root(reactivity, store.base_symbol),
-        _ => true,
-    }
-}
-
-fn max_kind(a: &ExprKind, b: &ExprKind) -> ExprKind {
-    fn rank(k: &ExprKind) -> u8 {
-        match k {
-            ExprKind::KnownLiteral => 0,
-            ExprKind::SimpleRead { reactive: false } => 1,
-            ExprKind::Computed { reactive: false } => 2,
-            ExprKind::SimpleRead { reactive: true } => 3,
-            ExprKind::Computed { reactive: true } => 4,
-            ExprKind::Call { dynamic: false } => 5,
-            ExprKind::Call { dynamic: true } => 6,
-            ExprKind::Async { .. } => 7,
-        }
-    }
-    if rank(a) >= rank(b) {
-        a.clone()
-    } else {
-        b.clone()
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => true,
     }
 }
 
@@ -602,7 +597,10 @@ fn combine_legacy_wrap(a: LegacyWrap, b: LegacyWrap) -> LegacyWrap {
 }
 
 fn is_coarse(w: LegacyWrap) -> bool {
-    matches!(w, LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSynthetic(_))
+    matches!(
+        w,
+        LegacyWrap::CoarseWrap | LegacyWrap::CoarseAndSynthetic(_)
+    )
 }
 
 fn carrier_of(w: LegacyWrap) -> Option<SyntheticPropsCarrier> {

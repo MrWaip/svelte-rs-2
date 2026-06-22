@@ -34,6 +34,9 @@ dev-debug.log
 *.njsproj
 *.sln
 *.sw?
+**/case-rust.js
+**/case-rust.css
+**/case-rust.json
 # OS specific
 
 # Task files

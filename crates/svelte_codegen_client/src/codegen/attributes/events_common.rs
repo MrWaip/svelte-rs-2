@@ -1,5 +1,5 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
+use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::HandlerEmit;
@@ -141,7 +141,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 fn remove_parens_hint(expr: &Expression<'_>) -> bool {
     if let Expression::CallExpression(call) = expr.get_inner_expression() {
         call.arguments.is_empty()
-            && matches!(call.callee.get_inner_expression(), Expression::Identifier(_))
+            && matches!(
+                call.callee.get_inner_expression(),
+                Expression::Identifier(_)
+            )
     } else {
         false
     }

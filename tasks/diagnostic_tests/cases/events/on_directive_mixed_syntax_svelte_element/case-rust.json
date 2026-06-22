@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "mixed_event_handler_syntaxes",
-    "start": 110,
-    "end": 122
-  }
-]

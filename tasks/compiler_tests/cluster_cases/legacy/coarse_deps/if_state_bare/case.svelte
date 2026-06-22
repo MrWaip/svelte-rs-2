@@ -1,0 +1,1 @@
+<script>let foo = 1; function inc(){foo = foo + 1;}</script><button on:click={inc}>+</button>{#if foo}a{/if}

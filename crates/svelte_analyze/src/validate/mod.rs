@@ -7,7 +7,7 @@ mod stores;
 mod typescript;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, Expression, ExportSpecifier, Function,
+    ArrowFunctionExpression, BindingPattern, Declaration, ExportSpecifier, Expression, Function,
     ImportDeclarationSpecifier, ModuleExportName, NewExpression, Program, Statement,
 };
 use oxc_ast_visit::Visit;
@@ -21,7 +21,6 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::block_semantics::data::BlockSemantics;
-use crate::types::script::RuneKind;
 use crate::{AnalysisData, types::data::JsAst};
 
 pub fn validate(
@@ -29,6 +28,7 @@ pub fn validate(
     data: &AnalysisData,
     parsed: &JsAst,
     runes: bool,
+    legacy_explicit: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     if let Some(program) = &parsed.program {
@@ -36,6 +36,8 @@ pub fn validate(
         runes::validate_invalid_exports(data, program, true, None, diags);
         validate_illegal_default_export(program, diags);
     }
+
+    stores::validate_global_references(data, legacy_explicit, diags);
 
     validate_module_program(parsed, diags);
     if let Some(module_program) = &parsed.module_program {
@@ -54,9 +56,25 @@ pub fn validate(
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, data, parsed, diags);
     validate_svelte_options_warnings(component, data, runes, diags);
-    validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
-    runes::validate_const_tag_runes(component, parsed, diags);
+    runes::validate_const_tag_runes(component, parsed, data, diags);
+    validate_const_tag_cycle_legacy(component, data, diags);
+}
+
+fn validate_const_tag_cycle_legacy(
+    component: &Component,
+    data: &AnalysisData,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(cycle) = data.reactivity.const_tag_cycle_legacy() else {
+        return;
+    };
+    diags.push(Diagnostic::error(
+        DiagnosticKind::ConstTagCycle {
+            cycle: cycle.names.clone(),
+        },
+        component.store.get(cycle.at_node).span(),
+    ));
 }
 
 fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
@@ -85,7 +103,7 @@ pub fn validate_program(
     validate_perf_class_warnings(program, 1, diags);
     experimental_async::validate_instance_program(data, program, diags);
     if runes {
-        class_state_fields::validate(program, diags);
+        class_state_fields::validate(data, program, diags);
     }
     typescript::validate(program, diags);
 }
@@ -170,7 +188,10 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
         if self.function_depth > 0
-            && matches!(expr.callee.get_inner_expression(), Expression::ClassExpression(_))
+            && matches!(
+                expr.callee.get_inner_expression(),
+                Expression::ClassExpression(_)
+            )
         {
             self.diags.push(Diagnostic::warning(
                 DiagnosticKind::PerfAvoidInlineClass,
@@ -189,10 +210,7 @@ fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
     validate_illegal_default_export(module_program, diags);
 }
 
-fn validate_illegal_default_export(
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_illegal_default_export(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
     for stmt in &program.body {
         match stmt {
             Statement::ExportDefaultDeclaration(export) => {
@@ -257,8 +275,7 @@ fn validate_snippet_exports(
             continue;
         }
         for specifier in &export.specifiers {
-            let ModuleExportName::IdentifierReference(ident) = &specifier.local
-            else {
+            let ModuleExportName::IdentifierReference(ident) = &specifier.local else {
                 continue;
             };
             let name = ident.name.as_str();
@@ -369,52 +386,6 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
         }
         BindingPattern::AssignmentPattern(assign) => binding_contains(&assign.left, name),
     }
-}
-
-fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    if !data.output.is_custom_element_target {
-        return;
-    }
-
-    if data
-        .script
-        .ce_config
-        .as_ref()
-        .is_some_and(|c| !c.props.is_empty())
-    {
-        return;
-    }
-
-    let Some(props) = data.script.props_declaration() else {
-        return;
-    };
-
-    let should_warn = props.is_identifier_pattern || props.props.iter().any(|p| p.is_rest);
-    if !should_warn {
-        return;
-    }
-
-    let span = if let Some(rest_span) = props.rest_pattern_span {
-        rest_span
-    } else {
-        data.script
-            .info
-            .as_ref()
-            .and_then(|s| {
-                s.declarations
-                    .iter()
-                    .find(|d| d.is_rune == Some(RuneKind::Props))
-                    .map(|d| d.span)
-            })
-            .unwrap_or_else(|| {
-                panic!("data.props exists but no $props() declaration in script info")
-            })
-    };
-
-    diags.push(Diagnostic::warning(
-        DiagnosticKind::CustomElementPropsIdentifier,
-        span,
-    ));
 }
 
 fn validate_svelte_options_warnings(

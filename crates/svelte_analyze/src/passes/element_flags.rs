@@ -1,16 +1,24 @@
-use svelte_ast::{Attribute, ComponentNode, Element, is_mathml, is_svg, is_void};
+use oxc_ast::ast::Expression;
+use svelte_ast::{
+    Attribute, ComponentNode, Element, Node, NodeId, SlotElementLegacy, is_mathml, is_svg, is_void,
+};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::attribute_semantics::data::ComponentPropMemo;
-use crate::expression_semantics::ExprKind;
+use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindingSemantics, BindTargetSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
+    BindTargetSemantics, BindingSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
     ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
-    ParentKind, PropBindingKind, PropBindingSemantics, RichContentParentKind,
+    JsAst, LegacyDefaultSlot, ParentKind, PropBindingKind, PropBindingSemantics,
+    RichContentParentKind,
 };
-use crate::utils::{is_delegatable_event, is_passive_event, is_simple_identifier, strip_capture_event};
+use crate::utils::{
+    expression_calls_or_awaits, is_delegatable_event, is_passive_event, is_simple_identifier,
+    strip_capture_event,
+};
 use crate::walker::{TemplateVisitor, VisitContext};
+use svelte_component_semantics::OxcNodeId;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
@@ -112,9 +120,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ctx.data.elements.flags.is_selectedcontent.insert(el.id);
         }
 
-        let has_group = el.attributes.iter().any(|attr| {
-            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
-        });
+        let has_group = el
+            .attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::BindDirective(d) if d.name == "group"));
         if has_group {
             ctx.data
                 .template
@@ -124,9 +133,12 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ctx.data.template.bind_semantics.any_bind_group = true;
         }
 
-        let has_contenteditable =
-            ctx.data
-                .has_true_boolean_attribute(el.id, &el.attributes, "contenteditable", self.source);
+        let has_contenteditable = ctx.data.has_true_boolean_attribute(
+            el.id,
+            &el.attributes,
+            "contenteditable",
+            self.source,
+        );
         let has_content_bind = el.attributes.iter().any(|attr| {
             matches!(attr, Attribute::BindDirective(d) if matches!(
                 d.name.as_str(),
@@ -217,6 +229,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
+        if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
+            ctx.data.elements.flags.needs_ref.insert(el_id);
+        }
         match attr {
             Attribute::StringAttribute(sa) if sa.name == "class" => {
                 ctx.data
@@ -264,8 +279,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
-                    let (name, capture) = if let Some(base) = strip_capture_event(raw)
-                    {
+                    let (name, capture) = if let Some(base) = strip_capture_event(raw) {
                         (base, true)
                     } else {
                         (raw, false)
@@ -331,33 +345,120 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     ) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
+        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
+        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
-    fn visit_svelte_self(
-        &mut self,
-        cn: &svelte_ast::SvelteSelf,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
+    fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
+        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
+    }
+
+    fn visit_slot_element_legacy(
+        &mut self,
+        el: &SlotElementLegacy,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        if !ctx.store.fragment_nodes(el.fragment).is_empty() {
+            ctx.data
+                .elements
+                .flags
+                .legacy_slot_has_fallback
+                .insert(el.id);
+        }
+    }
+
+    fn visit_js_expression(
+        &mut self,
+        node_id: NodeId,
+        _expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let parent = ctx.data.expr_parent(node_id);
+        if !parent.map(|p| p.kind).is_some_and(|k| k.is_attr()) {
+            return;
+        }
+        let in_component = ctx.data.expr_ancestors(node_id).nth(1).is_some_and(|gp| {
+            matches!(
+                gp.kind,
+                ParentKind::ComponentNode | ParentKind::SvelteSelf | ParentKind::SvelteBoundary
+            )
+        });
+        if in_component {
+            return;
+        }
+        let Some(data) = ctx.data.expression_data(node_id) else {
+            return;
+        };
+        let is_volatile = match data.volatility {
+            Volatility::Static => false,
+            Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
+        };
+        if !is_volatile {
+            return;
+        }
+        if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
+            ctx.data.elements.flags.needs_ref.insert(el_id);
+        }
     }
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
+    fn record_legacy_default_slot(
+        &self,
+        cn_id: svelte_ast::NodeId,
+        attributes: &[Attribute],
+        fragment: svelte_ast::FragmentId,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let has_children_attr = attributes.iter().any(|a| match a {
+            Attribute::StringAttribute(x) => x.name == "children",
+            Attribute::BooleanAttribute(x) => x.name == "children",
+            Attribute::ExpressionAttribute(x) => x.name == "children",
+            Attribute::ConcatenationAttribute(x) => x.name == "children",
+            _ => false,
+        });
+        let has_let = attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
+            || ctx.store.fragment_nodes(fragment).iter().any(|&child_id| {
+                match ctx.store.get(child_id) {
+                    Node::SvelteFragmentLegacy(el) => el
+                        .attributes
+                        .iter()
+                        .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_))),
+                    _ => false,
+                }
+            });
+        let form = if has_children_attr {
+            LegacyDefaultSlot::SlotDefault
+        } else if has_let {
+            LegacyDefaultSlot::SlotDefaultInvalid
+        } else {
+            LegacyDefaultSlot::ChildrenProp
+        };
+        ctx.data
+            .elements
+            .flags
+            .legacy_default_slot
+            .insert(cn_id, form);
+    }
+
     fn mark_bind_group_if_present(
         &self,
         node_id: svelte_ast::NodeId,
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let has_group = attributes.iter().any(|attr| {
-            matches!(attr, Attribute::BindDirective(d) if d.name == "group")
-        });
+        let has_group = attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::BindDirective(d) if d.name == "group"));
         if has_group {
             ctx.data
                 .template
@@ -374,6 +475,7 @@ impl<'src> ElementFlagsVisitor<'src> {
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        let parsed = ctx.parsed;
         let data = &mut *ctx.data;
         for attr in attributes {
             let css_prop_name: Option<&str> = match attr {
@@ -385,7 +487,7 @@ impl<'src> ElementFlagsVisitor<'src> {
             if let Some(name) = css_prop_name {
                 let (value, memo) = match attr {
                     Attribute::ExpressionAttribute(a) => {
-                        let memo = derive_css_prop_memo(data, a.id);
+                        let memo = derive_css_prop_memo(data, parsed, a.id, a.expression.id());
                         (
                             Some(ComponentCssPropValue::Expression(a.expression.id())),
                             memo,
@@ -470,12 +572,9 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 && !trimmed.starts_with("$$")
                                 && {
                                     let root = data.scoping.root_scope_id();
-                                    data.scoping.find_binding(root, trimmed).is_some_and(|sym| {
-                                        matches!(
-                                            data.binding_semantics(sym),
-                                            BindingSemantics::Store(_),
-                                        )
-                                    })
+                                    data.scoping
+                                        .find_binding(root, trimmed)
+                                        .is_some_and(|sym| data.binding_semantics(sym).is_store())
                                 }
                         });
 
@@ -501,21 +600,18 @@ impl<'src> ElementFlagsVisitor<'src> {
                                 .scoping
                                 .find_binding(root, &source_lookup_name)
                                 .map(|sym| {
-                                    let decl = data
-                                        .reactivity
-                                        .binding_semantics(sym);
+                                    let decl = data.reactivity.binding_semantics(sym);
                                     match decl {
-                                        BindingSemantics::Prop(
-                                            PropBindingSemantics {
-                                                kind: PropBindingKind::Source { .. },
-                                                ..
-                                            },
-                                        )
+                                        BindingSemantics::Prop(PropBindingSemantics {
+                                            kind: PropBindingKind::Source { .. },
+                                            ..
+                                        })
                                         | BindingSemantics::LegacyBindableProp(_) => {
                                             ComponentBindMode::PropSource
                                         }
                                         BindingSemantics::State(_)
                                         | BindingSemantics::Derived(_)
+                                        | BindingSemantics::OptimizedDerived(_)
                                         | BindingSemantics::OptimizedRune(_) => {
                                             ComponentBindMode::Rune
                                         }
@@ -565,24 +661,30 @@ impl<'src> ElementFlagsVisitor<'src> {
                 }
                 _ => continue,
             };
-            let is_dynamic = data.dynamism.is_dynamic_attr(attr.id());
             data.elements
                 .flags
                 .component_props
                 .get_or_default(cn_id)
-                .push(ComponentPropInfo { kind, is_dynamic });
+                .push(ComponentPropInfo { kind });
         }
     }
 }
 
 fn derive_css_prop_memo(
     data: &crate::types::data::AnalysisData,
+    parsed: Option<&JsAst>,
     attr_id: svelte_ast::NodeId,
+    expr_id: OxcNodeId,
 ) -> ComponentPropMemo {
-    match data.expression_data(attr_id) {
-        Some(d) if matches!(d.kind, ExprKind::Call { .. } | ExprKind::Async { .. }) => {
-            ComponentPropMemo::Derived
-        }
-        _ => ComponentPropMemo::Inline,
+    let calls_or_awaits = parsed
+        .and_then(|p| p.expr(expr_id))
+        .is_some_and(expression_calls_or_awaits);
+    let has_blockers = data
+        .expression_data(attr_id)
+        .is_some_and(|d| !d.blockers.is_empty());
+    if calls_or_awaits || has_blockers {
+        ComponentPropMemo::Derived
+    } else {
+        ComponentPropMemo::Inline
     }
 }

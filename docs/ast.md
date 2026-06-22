@@ -1,6 +1,7 @@
 # PRD: AST (корневой)
 
 label: ast
+topics: ast, node, tree shape, fragment, element/RegularElement/Component, *Tag, EachBlock, BindDirective, NodeId/OxcNodeId
 
 Корневой PRD для слоя AST: крэйты `svelte_ast`, `svelte_css`, плюс `oxc_ast` для JS-выражений/стейтментов.
 Owns формы дерева, производимые парсингом. Без семантики, скоупов, логики мутаций.

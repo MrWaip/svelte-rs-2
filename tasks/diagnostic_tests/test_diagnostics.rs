@@ -35,7 +35,11 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
             opts.dev = dev;
         }
         if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = if runes { RunesOption::Runes } else { RunesOption::Legacy };
+            opts.runes = if runes {
+                RunesOption::Runes
+            } else {
+                RunesOption::Legacy
+            };
         }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;
@@ -608,6 +612,30 @@ mod css {
     use super::*;
 
     diagnostic_case!(
+        css_unused_selector_svelte_ignore,
+        "css/css_unused_selector_svelte_ignore"
+    );
+    diagnostic_case!(
+        css_unused_selector_no_ignore,
+        "css/css_unused_selector_no_ignore"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_after_blank_lines,
+        "css/css_unused_selector_ignore_after_blank_lines"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_other_code,
+        "css/css_unused_selector_ignore_other_code"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_broken_by_element,
+        "css/css_unused_selector_ignore_broken_by_element"
+    );
+    diagnostic_case!(
+        css_unused_selector_ignore_unknown_code,
+        "css/css_unused_selector_ignore_unknown_code"
+    );
+    diagnostic_case!(
         css_global_block_invalid_placement,
         "css/css_global_block_invalid_placement"
     );
@@ -818,17 +846,35 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_expression,
-        "bind/validate_bind_invalid_expression",
-        ignore = "known mismatch: analyzer reports extra non_reactive_update alongside bind_invalid_expression"
+        "bind/validate_bind_invalid_expression"
     );
     diagnostic_case!(
         validate_bind_invalid_value,
-        "bind/validate_bind_invalid_value",
-        ignore = "known mismatch: analyzer reports bind_invalid_value while npm svelte/compiler reports no diagnostic"
+        "bind/validate_bind_invalid_value"
     );
     diagnostic_case!(
         validate_bind_plain_let_is_valid,
         "bind/validate_bind_plain_let_is_valid"
+    );
+    diagnostic_case!(
+        validate_bind_group_snippet_parameter_member,
+        "bind/validate_bind_group_snippet_parameter_member"
+    );
+    diagnostic_case!(
+        validate_bind_value_snippet_parameter,
+        "bind/validate_bind_value_snippet_parameter"
+    );
+    diagnostic_case!(
+        validate_bind_value_snippet_parameter_member_no_error,
+        "bind/validate_bind_value_snippet_parameter_member_no_error"
+    );
+    diagnostic_case!(
+        validate_bind_group_each_item,
+        "bind/validate_bind_group_each_item"
+    );
+    diagnostic_case!(
+        validate_bind_group_snippet_parameter_legacy,
+        "bind/validate_bind_group_snippet_parameter_legacy"
     );
     diagnostic_case!(
         validate_attribute_contenteditable_missing,
@@ -840,8 +886,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_name_with_special_element_candidates,
-        "bind/validate_bind_invalid_name_with_special_element_candidates",
-        ignore = "known mismatch: analyzer reports extra attribute_contenteditable_missing alongside bind_invalid_name"
+        "bind/validate_bind_invalid_name_with_special_element_candidates"
     );
     diagnostic_case!(
         validate_bind_invalid_parens,
@@ -861,8 +906,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_group_invalid_snippet_parameter,
-        "bind/validate_bind_group_invalid_snippet_parameter",
-        ignore = "known mismatch: analyzer reports bind_group_invalid_snippet_parameter in addition to npm svelte/compiler snippet_parameter_assignment"
+        "bind/validate_bind_group_invalid_snippet_parameter"
     );
     diagnostic_case!(
         validate_attribute_contenteditable_dynamic,
@@ -878,8 +922,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_invalid_each_rest,
-        "bind/validate_bind_invalid_each_rest",
-        ignore = "known mismatch: analyzer reports bind_invalid_each_rest as a warning while npm svelte/compiler reports an error"
+        "bind/validate_bind_invalid_each_rest"
     );
     diagnostic_case!(
         validate_bind_checked_radio_target,
@@ -891,8 +934,7 @@ mod bind {
     );
     diagnostic_case!(
         validate_bind_member_expression_no_error,
-        "bind/validate_bind_member_expression_no_error",
-        ignore = "known mismatch: analyzer reports extra store_rune_conflict warning"
+        "bind/validate_bind_member_expression_no_error"
     );
     diagnostic_case!(
         validate_bind_getter_setter_no_error,
@@ -1052,6 +1094,18 @@ mod directives {
     diagnostic_case!(
         validate_animate_directive_illegal_await_expression,
         "directives/validate_animate_directive_illegal_await_expression"
+    );
+    diagnostic_case!(
+        quoted_directive_text_value,
+        "directives/quoted_directive_text_value"
+    );
+    diagnostic_case!(
+        quoted_directive_concat_value,
+        "directives/quoted_directive_concat_value"
+    );
+    diagnostic_case!(
+        quoted_directive_empty_value,
+        "directives/quoted_directive_empty_value"
     );
 }
 
@@ -1358,8 +1412,7 @@ mod runes {
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_export_specifier,
-        "runes/validate_state_invalid_export_for_reassigned_state_export_specifier",
-        ignore = "known mismatch: analyzer reports state_invalid_export for module export specifier while npm svelte/compiler reports no diagnostic"
+        "runes/validate_state_invalid_export_for_reassigned_state_export_specifier"
     );
     diagnostic_case!(
         validate_state_invalid_export_for_reassigned_state_default_export,
@@ -1510,6 +1563,26 @@ mod stores {
         validate_store_invalid_subscription_in_module,
         "stores/validate_store_invalid_subscription_in_module"
     );
+    diagnostic_case!(
+        global_ref_invalid_dollar_script,
+        "stores/global_ref_invalid_dollar_script"
+    );
+    diagnostic_case!(
+        global_ref_invalid_dollar_template,
+        "stores/global_ref_invalid_dollar_template"
+    );
+    diagnostic_case!(
+        global_ref_valid_uppercase_global,
+        "stores/global_ref_valid_uppercase_global"
+    );
+    diagnostic_case!(
+        global_ref_declared_store_no_error,
+        "stores/global_ref_declared_store_no_error"
+    );
+    diagnostic_case!(
+        global_ref_explicit_legacy_no_error,
+        "stores/global_ref_explicit_legacy_no_error"
+    );
 }
 
 mod host {
@@ -1618,6 +1691,14 @@ mod special {
         svelte_element_invalid_this_string,
         "special/svelte_element_invalid_this_string"
     );
+    diagnostic_case!(
+        svelte_element_invalid_this_concat,
+        "special/svelte_element_invalid_this_concat"
+    );
+    diagnostic_case!(
+        svelte_element_this_quoted_expr_ok,
+        "special/svelte_element_this_quoted_expr_ok"
+    );
 }
 
 mod module {
@@ -1683,6 +1764,22 @@ mod slots {
     diagnostic_case!(
         slot_attribute_invalid_placement_nested_inside_component,
         "slots/slot_attribute_invalid_placement_nested_inside_component"
+    );
+    diagnostic_case!(
+        slot_attribute_custom_element_child_ok,
+        "slots/slot_attribute_custom_element_child_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_svelte_element_child_ok,
+        "slots/slot_attribute_svelte_element_child_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_custom_element_descendant_ok,
+        "slots/slot_attribute_custom_element_descendant_ok"
+    );
+    diagnostic_case!(
+        slot_attribute_svelte_element_descendant_ok,
+        "slots/slot_attribute_svelte_element_descendant_ok"
     );
     diagnostic_case!(
         slot_element_invalid_name_dynamic,
@@ -1774,6 +1871,10 @@ mod const_tag {
         validate_const_tag_reference_inside_snippet_scope_is_allowed_async,
         "const_tag/validate_const_tag_reference_inside_snippet_scope_is_allowed_async"
     );
+    diagnostic_case!(
+        validate_const_tag_cycle,
+        "const_tag/validate_const_tag_cycle"
+    );
 }
 
 mod each {
@@ -1829,6 +1930,10 @@ mod snippets {
         "snippets/validate_snippet_parameter_assignment"
     );
     diagnostic_case!(
+        validate_snippet_parameter_assignment_legacy,
+        "snippets/validate_snippet_parameter_assignment_legacy"
+    );
+    diagnostic_case!(
         validate_snippet_parameter_assignment_in_nested_target,
         "snippets/validate_snippet_parameter_assignment_in_nested_target"
     );
@@ -1854,8 +1959,7 @@ mod snippets {
     );
     diagnostic_case!(
         validate_snippet_invalid_export,
-        "snippets/validate_snippet_invalid_export",
-        ignore = "known mismatch: analyzer and npm svelte/compiler report snippet_invalid_export on different spans"
+        "snippets/validate_snippet_invalid_export"
     );
     diagnostic_case!(
         validate_snippet_invalid_export_no_false_positive,
@@ -1945,6 +2049,30 @@ mod template {
     diagnostic_case!(
         textarea_invalid_content_fires,
         "template/textarea_invalid_content_fires"
+    );
+    diagnostic_case!(
+        closing_tag_implicitly_closes_element_warns,
+        "template/closing_tag_implicitly_closes_element_warns"
+    );
+    diagnostic_case!(
+        closing_tag_implicitly_closes_multiple_elements_warns,
+        "template/closing_tag_implicitly_closes_multiple_elements_warns"
+    );
+    diagnostic_case!(
+        closing_tag_invalid_on_open_block_errors,
+        "template/closing_tag_invalid_on_open_block_errors"
+    );
+    diagnostic_case!(
+        closing_tag_matching_close_no_diagnostic,
+        "template/closing_tag_matching_close_no_diagnostic"
+    );
+    diagnostic_case!(
+        closing_tag_eof_unclosed_element_errors,
+        "template/closing_tag_eof_unclosed_element_errors"
+    );
+    diagnostic_case!(
+        closing_tag_no_open_element_errors,
+        "template/closing_tag_no_open_element_errors"
     );
     diagnostic_case!(
         textarea_no_conflict_without_value_attr,

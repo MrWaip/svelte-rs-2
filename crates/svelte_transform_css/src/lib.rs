@@ -3,13 +3,13 @@ use std::mem;
 use compact_str::CompactString;
 use rustc_hash::FxHashSet;
 use svelte_css::{
+    AtRule, Block, BlockChild, Combinator, CombinatorKind, ComplexSelector, CssNodeId, Declaration,
+    RelativeSelector, Rule, SelectorList, SimpleSelector, StyleRule, StyleSheet, StyleSheetChild,
+    VisitMut,
     visit::{
         walk_at_rule_mut, walk_complex_selector_mut, walk_selector_list_mut,
         walk_simple_selector_args_mut, walk_style_rule_mut,
     },
-    AtRule, Block, BlockChild, Combinator, CombinatorKind, ComplexSelector, CssNodeId,
-    Declaration, RelativeSelector, Rule, SelectorList, SimpleSelector, StyleRule, StyleSheet,
-    StyleSheetChild, VisitMut,
 };
 use svelte_sourcemap::SourceMap;
 use svelte_span::Span;
@@ -494,41 +494,41 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
         let inner_complex = args.children.remove(0);
         let inner_len = inner_complex.children.len();
         for (i, inner_rel) in inner_complex.children.into_iter().enumerate() {
-                let combinator = if i == 0 {
-                    promoted_first_combinator(outer_combinator, inner_rel.combinator, inner_len)
-                } else {
-                    inner_rel.combinator
-                };
-                let inner_span = inner_rel.span;
-                let inner_id = inner_rel.id;
-                let mut inner_children = svelte_css::RelativeSelectorVec::new();
-                inner_children.push(RelativeSelector {
-                    id: inner_id,
-                    span: inner_span,
-                    combinator: None,
-                    selectors: inner_rel.selectors,
-                });
-                let mut list_children = svelte_css::SelectorVec::new();
-                list_children.push(ComplexSelector {
-                    id: CssNodeId::DUMMY,
-                    span: inner_span,
-                    children: inner_children,
-                });
-                let wrapped_global = SimpleSelector::Global {
-                    span: global_span,
-                    args: Some(Box::new(SelectorList {
-                        span: args_span,
-                        children: list_children,
-                    })),
-                };
-                let mut new_selectors = svelte_css::SimpleSelectorVec::new();
-                new_selectors.push(wrapped_global);
-                out.push(RelativeSelector {
-                    id: inner_id,
-                    span: inner_span,
-                    combinator,
-                    selectors: new_selectors,
-                });
+            let combinator = if i == 0 {
+                promoted_first_combinator(outer_combinator, inner_rel.combinator, inner_len)
+            } else {
+                inner_rel.combinator
+            };
+            let inner_span = inner_rel.span;
+            let inner_id = inner_rel.id;
+            let mut inner_children = svelte_css::RelativeSelectorVec::new();
+            inner_children.push(RelativeSelector {
+                id: inner_id,
+                span: inner_span,
+                combinator: None,
+                selectors: inner_rel.selectors,
+            });
+            let mut list_children = svelte_css::SelectorVec::new();
+            list_children.push(ComplexSelector {
+                id: CssNodeId::DUMMY,
+                span: inner_span,
+                children: inner_children,
+            });
+            let wrapped_global = SimpleSelector::Global {
+                span: global_span,
+                args: Some(Box::new(SelectorList {
+                    span: args_span,
+                    children: list_children,
+                })),
+            };
+            let mut new_selectors = svelte_css::SimpleSelectorVec::new();
+            new_selectors.push(wrapped_global);
+            out.push(RelativeSelector {
+                id: inner_id,
+                span: inner_span,
+                combinator,
+                selectors: new_selectors,
+            });
         }
     }
     node.children = out;
@@ -577,6 +577,7 @@ fn promoted_first_combinator(
 }
 
 fn unwrap_global(complex: &mut ComplexSelector) {
+    let outer_combinator = complex.children[0].combinator;
     let sel = complex.children[0].selectors.remove(0);
     if let SimpleSelector::Global {
         args: Some(args), ..
@@ -585,6 +586,11 @@ fn unwrap_global(complex: &mut ComplexSelector) {
         let mut new_children = svelte_css::RelativeSelectorVec::new();
         for inner_complex in args.children {
             new_children.extend(inner_complex.children);
+        }
+        if let Some(first) = new_children.first_mut()
+            && first.combinator.is_none()
+        {
+            first.combinator = outer_combinator;
         }
         complex.children = new_children;
     }

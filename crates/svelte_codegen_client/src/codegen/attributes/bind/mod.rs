@@ -5,11 +5,14 @@ mod this;
 
 use std::iter;
 
+use oxc_ast::ast::Statement;
 use svelte_analyze::{
-    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind, MediaBindKind,
+    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind,
+    ImageNaturalSizeKind, MediaBindKind,
 };
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::SymbolId;
 
 use super::super::data_structures::EmitState;
 use super::super::{Codegen, CodegenError, Result};
@@ -59,9 +62,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let bind_blockers = payload.blockers.to_vec();
 
         let placement = if matches!(payload.kind, HtmlBindKind::BindableProp)
-            && let Some(p) =
-                self.emit_bind_bindable_prop_shorthand(bind, owner_var, has_use, &bind_blockers)?
-        {
+            && let Some(p) = self.emit_bind_bindable_prop_shorthand(
+                bind,
+                owner_var,
+                owner_tag,
+                has_use,
+                &bind_blockers,
+            )? {
             Some(p)
         } else {
             self.gen_bind_placement(bind, bind_property, owner_var, owner_tag, has_use)?
@@ -91,33 +98,82 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return Ok(None),
         };
         let bind_blockers = payload.blockers.to_vec();
-        let is_this = matches!(payload.property, ElementBindPropertyKind::This);
 
-        if !is_this
-            && let Some(stmt) =
-                self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
-        {
-            let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
-            if has_use_directive {
-                return Ok(Some(BindPlacement::Init(stmt)));
-            }
-            return Ok(Some(BindPlacement::AfterUpdate(stmt)));
+        if payload.property.is_this() {
+            return self.emit_bind_this(bind, el_name, tag_name);
         }
 
-        if !matches!(bind_property, BindPropertyKind::This) {
+        let stmt = match payload.kind {
+            HtmlBindKind::EachItemWriteLegacy { symbol } => self.build_each_item_write_bind_stmt(
+                bind,
+                bind_property,
+                el_name,
+                tag_name,
+                symbol,
+            )?,
+            HtmlBindKind::Plain
+            | HtmlBindKind::Rune
+            | HtmlBindKind::LegacyState
+            | HtmlBindKind::BindableProp
+            | HtmlBindKind::StoreSubscribed { .. } => {
+                self.try_build_bind_get_set_stmt(bind, bind_property, el_name, tag_name)?
+            }
+        };
+        let Some(stmt) = stmt else {
             return CodegenError::unexpected_node(
                 bind.id,
                 "bind without getter/setter must be bind:this",
             );
+        };
+        let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, &bind_blockers);
+        if has_use_directive {
+            Ok(Some(BindPlacement::Init(stmt)))
+        } else {
+            Ok(Some(BindPlacement::AfterUpdate(stmt)))
         }
+    }
 
-        self.emit_bind_this(bind, el_name, tag_name)
+    fn build_each_item_write_bind_stmt(
+        &mut self,
+        bind: &BindDirective,
+        bind_property: BindPropertyKind,
+        el_name: &str,
+        tag_name: &str,
+        symbol: SymbolId,
+    ) -> Result<Option<Statement<'a>>> {
+        let Some(setter_body) = self.build_each_item_writeback_legacy(symbol) else {
+            return Ok(None);
+        };
+        let name = self
+            .ctx
+            .b
+            .alloc_str(self.ctx.query.view.symbol_name(symbol));
+        let reads_via_signal = !self
+            .ctx
+            .query
+            .view
+            .binding_semantics(symbol)
+            .reads_via_each_item_accessor();
+        let getter = if reads_via_signal {
+            self.ctx
+                .b
+                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident(name)]))
+        } else {
+            self.ctx.b.rid_expr(name)
+        };
+        let setter = self.ctx.b.arrow_expr(
+            self.ctx.b.params(["$$value"]),
+            [self.ctx.b.expr_stmt(setter_body)],
+        );
+        self.build_bind_call_stmt(bind, bind_property, el_name, tag_name, getter, setter)
+            .map(Some)
     }
 
     fn emit_bind_bindable_prop_shorthand(
         &mut self,
         bind: &BindDirective,
         el_name: &str,
+        tag_name: &str,
         has_use_directive: bool,
         bind_blockers: &[u32],
     ) -> Result<Option<BindPlacement<'a>>> {
@@ -138,18 +194,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let var_alloc = self.ctx.b.alloc_str(&var_name);
 
         let stmt = match payload.property {
-            ElementBindPropertyKind::Value => self.ctx.b.call_stmt(
-                "$.bind_value",
+            ElementBindPropertyKind::Value if tag_name == "select" => self.ctx.b.call_stmt(
+                "$.bind_select_value",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
+            ElementBindPropertyKind::Value => self
+                .ctx
+                .b
+                .call_stmt("$.bind_value", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Checked => self.ctx.b.call_stmt(
                 "$.bind_checked",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Files => self.ctx.b.call_stmt(
-                "$.bind_files",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Files => self
+                .ctx
+                .b
+                .call_stmt("$.bind_files", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::ElementSize(kind) => self.ctx.b.call_stmt(
                 "$.bind_element_size",
                 [
@@ -194,10 +254,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.bind_volume",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Media(MediaBindKind::Muted) => self.ctx.b.call_stmt(
-                "$.bind_muted",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Muted) => self
+                .ctx
+                .b
+                .call_stmt("$.bind_muted", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Media(MediaBindKind::Buffered) => self.ctx.b.call_stmt(
                 "$.bind_buffered",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
@@ -210,10 +270,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "$.bind_seeking",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
-            ElementBindPropertyKind::Media(MediaBindKind::Ended) => self.ctx.b.call_stmt(
-                "$.bind_ended",
-                [Arg::Ident(el_name), Arg::Ident(var_alloc)],
-            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Ended) => self
+                .ctx
+                .b
+                .call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Ident(var_alloc)]),
             ElementBindPropertyKind::Media(MediaBindKind::ReadyState) => self.ctx.b.call_stmt(
                 "$.bind_ready_state",
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
@@ -225,7 +285,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ElementBindPropertyKind::Group => {
                 let has_value_attr = matches!(
                     self.ctx.query.analysis.attributes.get(bind.id),
-                    AttributeSemantics::ElementBind(b) if b.group_value_attr.is_some()
+                    AttributeSemantics::ElementBind(b) if b.group_value.is_some()
                 );
                 let getter = if has_value_attr {
                     let call = self
@@ -240,6 +300,65 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 let setter = self.ctx.b.rid_expr(var_alloc);
                 self.emit_bind_group(bind, el_name, getter, setter)?
+            }
+            ElementBindPropertyKind::Open => self.ctx.b.bind_property_call_stmt(
+                "open",
+                "toggle",
+                el_name,
+                self.ctx.b.rid_expr(var_alloc),
+                Some(self.ctx.b.rid_expr(var_alloc)),
+            ),
+            ElementBindPropertyKind::Indeterminate => self.ctx.b.bind_property_call_stmt(
+                "indeterminate",
+                "change",
+                el_name,
+                self.ctx.b.rid_expr(var_alloc),
+                Some(self.ctx.b.rid_expr(var_alloc)),
+            ),
+            ElementBindPropertyKind::Media(MediaBindKind::Duration) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "duration",
+                    "durationchange",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::Media(MediaBindKind::VideoWidth) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "videoWidth",
+                    "resize",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::Media(MediaBindKind::VideoHeight) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "videoHeight",
+                    "resize",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalWidth) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "naturalWidth",
+                    "load",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
+            }
+            ElementBindPropertyKind::ImageNaturalSize(ImageNaturalSizeKind::NaturalHeight) => {
+                self.ctx.b.bind_property_call_stmt(
+                    "naturalHeight",
+                    "load",
+                    el_name,
+                    self.ctx.b.rid_expr(var_alloc),
+                    None,
+                )
             }
             _ => return Ok(None),
         };

@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "custom_element_props_identifier",
-    "start": 70,
-    "end": 77
-  }
-]

@@ -1,0 +1,1 @@
+{#if true}<input on:click />{/if}

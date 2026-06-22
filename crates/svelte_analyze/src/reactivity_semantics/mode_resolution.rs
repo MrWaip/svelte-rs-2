@@ -172,10 +172,7 @@ fn has_legacy_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {
     false
 }
 
-fn collect_pattern_names<'a>(
-    pattern: &'a BindingPattern<'a>,
-    out: &mut FxHashSet<&'a str>,
-) {
+fn collect_pattern_names<'a>(pattern: &'a BindingPattern<'a>, out: &mut FxHashSet<&'a str>) {
     match pattern {
         BindingPattern::BindingIdentifier(id) => {
             out.insert(id.name.as_str());
