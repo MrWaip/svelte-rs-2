@@ -55,9 +55,9 @@
 
 Конвенции, сквозные через слои (детали — в `analyze.md`, `compiler.md`, `supporting-crates.md`):
 
-- **Диагностики.** Единый тип `Diagnostic` (`Severity` Error / Warning / Info), crate `svelte_diagnostics`. Производители — только парсер (синтаксис) и анализ (семантика + валидация). Трансформ / кодген / transform-css / compiler entry диагностик не производят. `AnalyzeOptions::warning_filter` — единственное место подавления warning'ов после сбора; compiler entry агрегирует и возвращает единый `Vec<Diagnostic>`.
+- **Диагностики.** Единый тип `Diagnostic` (`Severity` Error / Warning), crate `svelte_diagnostics`. Производители — только парсер (синтаксис) и анализ (семантика + валидация). Трансформ / кодген / transform-css / compiler entry диагностик не производят. `AnalyzeOptions::warning_filter` — единственное место подавления warning'ов после сбора; compiler entry агрегирует и возвращает единый `Vec<Diagnostic>`.
 - **Standalone-модули** (`.svelte.js` / `.svelte.ts`). Вход `svelte_compiler::compile_module` → `svelte_analyze::analyze_module`. Строит dummy-`Component` (без шаблона, пустой `AstStore`, исходник сохранён). Пайплайн пропускает walking шаблона, CSS, fragment-prepare; крутится только JS-скоупинг + rune-трансформы. Код component-path **нельзя** переиспользовать как есть — другие инварианты (нет template-фрагмента, нет `<script>`-различия).
-- **IdentGen.** `svelte_analyze::utils::IdentGen` (+ `IdentGenSnapshot`) — единственный источник свежих JS-идентификаторов через анализ / трансформ / кодген. `gen("prefix")` возвращает имя, не коллидящее ни с одним биндингом из `ComponentSemantics` и ранее сгенерированным. `snapshot` / `restore` для backtracking emit-веток. Анти-паттерн: `format!("__name_{}", counter)` ad-hoc.
+- **IdentGen.** `svelte_analyze::utils::IdentGen` (+ `IdentGenSnapshot`) — единственный источник свежих JS-идентификаторов через анализ / трансформ / кодген. `generate("prefix")` возвращает имя, не коллидящее ни с одним биндингом из `ComponentSemantics` и ранее сгенерированным. `snapshot` / `restore` для backtracking emit-веток. Анти-паттерн: `format!("__name_{}", counter)` ad-hoc.
 - **Тест-харнес.** Компиляторные кейсы — `tasks/compiler_tests/cases2/<name>` (input `.svelte` + reference output). Диагностические — `tasks/diagnostic_tests/cases/<name>`. Файлы `case-*.json` / `case-*.js` генерит `just generate` — руками **не править**. Гейты после задачи: `just test-compiler`, `just test-diagnostics`, `just clippy-strict` — все зелёные. Регистрация кейсов — через skill-флоу (`add-test`, `port`, `diagnose`, `audit`, `quick-check`).
 
 ---
@@ -254,7 +254,7 @@ _Avoid_: одиночное «модуль» / «module» без квалифи�
 - **`Template`-struct в `svelte_codegen_client`** — собранная HTML-строка для эмита, не сам **шаблон**.
 - **`module`** — **module-script** (`<script module>`/`<script context="module">`-блок внутри `.svelte`, код один раз на импорт) vs standalone **`.svelte.js`/`.svelte.ts`-модуль** (отдельный файл с поддержкой рун, компилируется `compile_module`/`generate_module`).
 - **`tag`** — **@-тег** (`{@...}`, в AST `*Tag`) vs HTML-маркер `<...>` (это **элемент**, не тег); в проектной речи всегда конкретно.
-- **`shadow`** — **shadowing** в скоупах vs Shadow DOM в custom-elements (`CeShadowMode`).
+- **`shadow`** — **shadowing** в скоупах vs Shadow DOM в custom-elements (`CeDomMode`).
 - **«синтетический биндинг»** — два источника: парсер (`{@const ...}` представлен как JS-декларация) и анализ (store-sub `$count` для store `count` в legacy-режиме); оба легитимны, контекст уточняется по фазе.
 - **«фрагмент»** — наш **Фрагмент** (`Fragment`-узел) vs `<svelte:fragment slot="…">` в legacy-слотах (это **элемент** под именем `SvelteFragment`).
 - **«компонент»** — единица компиляции `.svelte`-файла (определение) vs use-site в шаблоне `<MyButton />` или `<svelte:component this={…} />` (AST-узел `Component`, категория **элемента**); в проектной речи при риске смешения уточнять «компонент-определение» / «компонент-вызов».

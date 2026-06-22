@@ -19,7 +19,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `binding_semantics(SymbolId) -> BindingSemantics`
 - `declarator_semantics(OxcNodeId) -> DeclaratorSemantics`
 - `reference_semantics(ReferenceId) -> ReferenceSemantics`
-- `class_field_semantics(OxcNodeId) -> ClassFieldSemantics` — семантика доступа к полю класса (`this.field` / `this.#field`) по узлу доступа. Тотальный (`None`-дефолт, `is_field()`); варианты `State { kind, proxy }`, `Derived { kind }`. Композиция: `field_access_target` (резолв в декларацию) + `declarator_semantics` (вид поля) + per-write `proxy`. Трансформ — один запрос, без строк и резолва на своей стороне.
+- `class_field_semantics(OxcNodeId) -> ClassFieldSemantics` — семантика доступа к полю класса (`this.field` / `this.#field`) по узлу доступа. Тотальный (`None`-дефолт, `is_field()`); варианты `State { kind, proxy, tracked }`, `Derived { kind }`. Композиция: `field_access_target` (резолв в декларацию) + `declarator_semantics` (вид поля) + per-write `proxy`. Трансформ — один запрос, без строк и резолва на своей стороне.
 
 **Per-write proxy.** Флаг для `$.set(source, value, should_proxy)` живёт в самом варианте: `ReferenceSemantics::SignalWrite/SignalUpdate { proxy }` (identifier-записи) и `ClassFieldSemantics::State { proxy }` (приватное поле). Init-proxy `$state`-инициализатора — на семантике декларации (`StateDeclarationSemantics.proxied` / `ClassFieldStateSemantics.proxied`), не в сайд-таблице. Считает `finalize_proxy`: `proxy ⟺ kind == State ∧ оператор не-coercive ∧ правая часть проксируема`. Проксируемость — синтаксический `should_proxy` по типу AST-узла (порт Оригинала, не `ValueEvaluation`); для идентификатора — рекурсия по инициализатору через карту `init_proxyable`. Деструктур-листья переиспользуют тот же `ReferenceId`. Трансформ читает готовый флаг.
 
@@ -32,7 +32,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `is_rest_prop(SymbolId) -> bool` (crate) — биндинг объявлен `...rest` в `$props()`-паттерне.
 - `iter_runes_prop_symbols() -> impl Iterator<Item = SymbolId>` — runes-props в порядке объявления, без `Rest` и identifier-формы (`let props = $props()`); основа перечисления accessor-пропов (CE-метаданные, getter/setter `$$exports`). Имена потребитель резолвит сам: ключ — `binding_origin_key`, локальное имя — `symbol_name`.
 - `prop_default_span(SymbolId) -> Option<Span>` — положение default-выражения пропа в исходнике; кодген перепарсит слайс для setter-дефолта (`set x($$value = <default>)`).
-- `legacy_bindable_prop_symbols() / has_legacy_bindable_prop()` — `export let`-props (LEGACY(svelte4)).
+- `legacy_bindable_prop_symbols()` — `export let`-props (LEGACY(svelte4)); компонент-уровневый флаг наличия — `summary().legacy.has_bindable_prop`.
 - `legacy_bindable_prop_alias(SymbolId) -> Option<&str>` — exported-алиас `export { foo as bar }` для bindable-prop (LEGACY(svelte4)). Известное отступление от «identity by id» — хранит строку; кандидат на перенос источника в `ComponentSemantics`.
 
 Узкие предикаты — методы на самих енамах семантик, каждый с exhaustive match по всем вариантам (новый вариант — ошибка компиляции, никаких `_`-проваливаний). У потребителей `matches!` по этим енамам запрещён: либо метод енама, либо локальный exhaustive `match` для сайт-специфичного набора.
