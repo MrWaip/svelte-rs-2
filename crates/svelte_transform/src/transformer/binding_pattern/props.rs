@@ -8,9 +8,7 @@ use oxc_ast::ast::{
 };
 use oxc_span::SPAN;
 
-use svelte_analyze::{
-    BINDABLE_RUNE_NAME, BindingSemantics, PropBindingKind, PropDefaultKind, PropEmitMode,
-};
+use svelte_analyze::{BindingSemantics, PropBindingKind, PropDefaultKind, PropEmitMode};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{OriginKind, SymbolId, walk_bindings};
 
@@ -72,7 +70,7 @@ fn prop_assignment_default_expr<'a>(
         Expression::CallExpression(c)
             if matches!(
                 c.callee.get_inner_expression(),
-                Expression::Identifier(id) if id.name.as_str() == BINDABLE_RUNE_NAME,
+                Expression::Identifier(id) if id.name.as_str() == "$bindable",
             )
     );
     if !is_bindable_call {
@@ -167,9 +165,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                         .map(ExcludedKey::into_arg)
                         .collect::<Vec<_>>(),
                 );
-                let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(v.symbol));
-                let mut args: Vec<Arg<'a, '_>> =
-                    vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
+                let name: &'a str = self
+                    .b
+                    .alloc_str(self.component_scoping.symbol_name(v.symbol));
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
                 if self.dev {
                     args.push(Arg::Str(name.to_string()));
                 }
@@ -187,8 +186,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let BindingSemantics::Prop(leaf_prop) = analysis.binding_semantics(v.symbol) else {
                 return;
             };
-            let local_name: &'a str =
-                self.b.alloc_str(self.component_scoping.symbol_name(v.symbol));
+            let local_name: &'a str = self
+                .b
+                .alloc_str(self.component_scoping.symbol_name(v.symbol));
             let default_expr = defaults.remove(&v.symbol);
 
             match leaf_prop.kind {
@@ -213,9 +213,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     if bindable || !self.runes {
                         flags |= PROPS_IS_BINDABLE;
                     }
-                    if self.accessors
-                        || updated
-                        || matches!(emit_mode, PropEmitMode::CustomElement)
+                    if self.accessors || updated || matches!(emit_mode, PropEmitMode::CustomElement)
                     {
                         flags |= PROPS_IS_UPDATED;
                     }
@@ -261,15 +259,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             } else {
                                 default_expr
                             };
-                            let default_expr =
-                                if matches!(default_lowering, PropDefaultKind::Eager) {
-                                    default_expr
-                                } else {
-                                    let lazy =
-                                        super::super::derived::wrap_lazy(self.b, default_expr);
-                                    self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
-                                    lazy
-                                };
+                            let default_expr = if matches!(default_lowering, PropDefaultKind::Eager)
+                            {
+                                default_expr
+                            } else {
+                                let lazy = super::super::derived::wrap_lazy(self.b, default_expr);
+                                self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
+                                lazy
+                            };
                             args.push(Arg::Expr(default_expr));
                         }
                     }

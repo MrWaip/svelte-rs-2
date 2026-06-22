@@ -2,7 +2,7 @@ use super::super::{
     BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
 };
 use super::walker::Ctx;
-use crate::expression_semantics::{ExprKind, ExpressionData, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use smallvec::SmallVec;
 use svelte_ast::{IfBlock, Node};
 
@@ -12,12 +12,12 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
         ctx.visit_fragment(alt);
     }
 
-    let (root_has_await, root_memoize, root_blockers) = test_facts(ctx, block);
+    let (root_volatility, root_blockers) = test_facts(ctx, block);
 
     let mut branches: SmallVec<[IfBranch; 2]> = SmallVec::new();
     branches.push(IfBranch {
         block_id: block.id,
-        condition: classify_condition(true, root_has_await, root_memoize),
+        condition: classify_condition(true, root_volatility, &root_blockers),
     });
 
     let mut absorbed: SmallVec<[svelte_ast::NodeId; 2]> = SmallVec::new();
@@ -34,9 +34,14 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
             };
         };
 
-        let (n_has_await, n_memoize, n_blockers) = test_facts(ctx, nested);
+        let (n_volatility, n_blockers) = test_facts(ctx, nested);
 
-        let can_flatten = !n_has_await && is_blocker_subset(&n_blockers, &root_blockers);
+        let can_flatten = match n_volatility {
+            Volatility::Asynchronous => false,
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                is_blocker_subset(&n_blockers, &root_blockers)
+            }
+        };
         if !can_flatten {
             break IfAlternate::Fragment {
                 last_branch_block_id: cur.id,
@@ -45,18 +50,24 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
 
         branches.push(IfBranch {
             block_id: nested.id,
-            condition: classify_condition(false, n_has_await, n_memoize),
+            condition: classify_condition(false, n_volatility, &n_blockers),
         });
         absorbed.push(nested.id);
         cur = nested;
     };
 
-    let async_kind = if !root_has_await && root_blockers.is_empty() {
-        IfAsyncKind::Sync
-    } else {
-        IfAsyncKind::Async {
-            root_has_await,
+    let async_kind = match root_volatility {
+        Volatility::Asynchronous => IfAsyncKind::Awaited {
             blockers: root_blockers,
+        },
+        Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+            if root_blockers.is_empty() {
+                IfAsyncKind::Sync
+            } else {
+                IfAsyncKind::Deferred {
+                    blockers: root_blockers,
+                }
+            }
         }
     };
 
@@ -75,19 +86,11 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
     }
 }
 
-fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (bool, bool, SmallVec<[u32; 2]>) {
+fn test_facts(ctx: &Ctx<'_, '_>, block: &IfBlock) -> (Volatility, SmallVec<[u32; 2]>) {
     match ctx.expressions.get(block.id) {
-        ExpressionSemantics::Expression(d) => {
-            let has_await = matches!(d.kind, ExprKind::Async { has_await: true });
-            let memoize = needs_memo(d);
-            (has_await, memoize, d.blockers.clone())
-        }
-        ExpressionSemantics::NonSpecial => (false, false, SmallVec::new()),
+        ExpressionSemantics::Expression(d) => (d.volatility, d.blockers.clone()),
+        ExpressionSemantics::NonSpecial => (Volatility::Static, SmallVec::new()),
     }
-}
-
-fn needs_memo(d: &ExpressionData) -> bool {
-    matches!(d.kind, ExprKind::Call { dynamic: true })
 }
 
 fn elseif_child<'c>(
@@ -109,13 +112,14 @@ fn is_blocker_subset(nested: &[u32], root: &[u32]) -> bool {
     nested.iter().all(|b| root.contains(b))
 }
 
-fn classify_condition(is_root: bool, has_await: bool, memoize: bool) -> IfConditionKind {
-    if is_root && has_await {
-        IfConditionKind::AsyncParam
-    } else if memoize {
-        IfConditionKind::Memo
-    } else {
-        IfConditionKind::Raw
+fn classify_condition(is_root: bool, volatility: Volatility, blockers: &[u32]) -> IfConditionKind {
+    match volatility {
+        Volatility::Asynchronous if is_root => IfConditionKind::AsyncParam,
+        Volatility::Heavy if blockers.is_empty() => IfConditionKind::Memo,
+        Volatility::Static
+        | Volatility::Reactive
+        | Volatility::Heavy
+        | Volatility::Asynchronous => IfConditionKind::Raw,
     }
 }
 
@@ -290,14 +294,10 @@ mod tests {
             |sem| {
                 assert_eq!(sem.branches[0].condition, IfConditionKind::AsyncParam);
                 match &sem.async_kind {
-                    IfAsyncKind::Async {
-                        root_has_await,
-                        blockers,
-                    } => {
-                        assert!(*root_has_await);
+                    IfAsyncKind::Awaited { blockers } => {
                         assert!(blockers.is_empty());
                     }
-                    other => panic!("expected Async, got {other:?}"),
+                    other => panic!("expected Awaited, got {other:?}"),
                 }
             },
         );
@@ -332,13 +332,7 @@ let q = Promise.resolve(true);
             BlockSemantics::If(sem) => {
                 assert!(sem.is_elseif_root);
                 assert_eq!(sem.branches[0].condition, IfConditionKind::AsyncParam);
-                assert!(matches!(
-                    sem.async_kind,
-                    IfAsyncKind::Async {
-                        root_has_await: true,
-                        ..
-                    }
-                ));
+                assert!(matches!(sem.async_kind, IfAsyncKind::Awaited { .. }));
             }
             other => panic!("inner expected If, got {other:?}"),
         }

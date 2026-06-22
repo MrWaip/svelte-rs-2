@@ -1,10 +1,11 @@
 use compact_str::CompactString;
 use svelte_css::{
-    visit as css_visit, AtRule, Block, BlockChild, CombinatorKind, ComplexSelector,
-    RelativeSelector, SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit,
+    AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, RelativeSelector, SelectorList,
+    SimpleSelector, StyleRule, StyleSheet, Visit, visit as css_visit,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;
+use svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore;
 use svelte_span::GetSpan;
 
 use svelte_ast::Component as SvelteComponent;
@@ -48,12 +49,30 @@ pub fn analyze_css_pass(
         used_selectors: rustc_hash::FxHashSet::default(),
     };
 
+    let unused_selector_code = DiagnosticKind::CssUnusedSelector {
+        name: String::new(),
+    }
+    .code();
+    let mut ignores_unused = false;
+    if let Some(comment) = css_block
+        .preceding_comment
+        .and_then(|id| component.store.get(id).as_comment())
+    {
+        let result = extract_svelte_ignore(
+            comment.span.start,
+            comment.data(&component.source),
+            data.script.runes(),
+        );
+        ignores_unused = result.codes.iter().any(|code| code == unused_selector_code);
+        diagnostics.extend(result.warnings);
+    }
+
     super::css_prune::prune_and_warn(
         component,
         stylesheet,
         css_text,
         css_block.content_span.start,
-        !has_css_errors,
+        !has_css_errors && !ignores_unused,
         parsed,
         data,
         diagnostics,

@@ -3,11 +3,11 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use rustc_hash::FxHashMap;
 use smallvec::smallvec;
 use std::slice;
-use svelte_component_semantics::SymbolId;
 use svelte_ast::{
     Attribute, AwaitBlock, BindDirective, ClassDirective, Component, LetDirectiveLegacy, Node,
     NodeId, StyleDirective, StyleDirectiveValue,
 };
+use svelte_component_semantics::SymbolId;
 use svelte_component_semantics::{
     ComponentSemanticsBuilder, ReferenceFlags, TemplateBuildContext, TemplateWalker,
 };
@@ -43,10 +43,8 @@ pub(crate) fn build<'d, 'a>(
 
     builder.finalize_unresolved_references();
 
-    let mut expr_id_map: FxHashMap<u32, OxcNodeId> =
-        FxHashMap::default();
-    let mut stmt_id_map: FxHashMap<u32, OxcNodeId> =
-        FxHashMap::default();
+    let mut expr_id_map: FxHashMap<u32, OxcNodeId> = FxHashMap::default();
+    let mut stmt_id_map: FxHashMap<u32, OxcNodeId> = FxHashMap::default();
     collect_ref_ids(component, &mut expr_id_map, &mut stmt_id_map);
     parsed.drain_pending(&expr_id_map, &stmt_id_map);
 
@@ -601,22 +599,14 @@ fn collect_ref_ids(
     expr_ids: &mut FxHashMap<u32, OxcNodeId>,
     stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
 ) {
-    fn record_expr(
-        r: &svelte_ast::ExprRef,
-        offset: u32,
-        out: &mut FxHashMap<u32, OxcNodeId>,
-    ) {
+    fn record_expr(r: &svelte_ast::ExprRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
         let id = r.oxc_id.get();
         if id != OxcNodeId::DUMMY {
             out.insert(offset, id);
         }
     }
 
-    fn record_stmt(
-        r: &svelte_ast::StmtRef,
-        offset: u32,
-        out: &mut FxHashMap<u32, OxcNodeId>,
-    ) {
+    fn record_stmt(r: &svelte_ast::StmtRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
         let id = r.oxc_id.get();
         if id != OxcNodeId::DUMMY {
             out.insert(offset, id);

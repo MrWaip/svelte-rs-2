@@ -117,6 +117,7 @@ pub(super) enum HoistedKind {
 
 pub(super) enum ChildAnchor {
     ElementChild { parent_var: String },
+    ElementContentChild { parent_var: String },
     FragmentFirstChild { frag_var: String },
     RawIdent(String),
 }

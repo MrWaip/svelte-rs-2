@@ -1,44 +1,33 @@
 use std::iter;
 
-use oxc_ast::ast::{BinaryOperator, Expression};
+use oxc_ast::ast::{BinaryOperator, Expression, Statement};
 use svelte_ast::NodeId;
 use svelte_ast_builder::AssignLeft;
 
 use super::super::Codegen;
+use super::super::Result;
 use super::super::data_structures::EmitState;
-use super::super::expr::evaluation_is_defined;
+
+pub(in super::super) enum OptionValueForm {
+    Reflected { coalesce: bool },
+    Hidden,
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    pub(super) fn emit_option_expr_value(
+    pub(in super::super) fn emit_option_value(
         &mut self,
         state: &mut EmitState<'a>,
         el_name: &str,
-        attr_id: NodeId,
         val_expr: Expression<'a>,
+        form: OptionValueForm,
+        volatile: bool,
     ) {
-        let needs_coalesce = !self
-            .ctx
-            .expression_data(attr_id)
-            .is_some_and(|d| evaluation_is_defined(&d.evaluation));
-        self.emit_option_special_value(state, el_name, val_expr, needs_coalesce);
-    }
+        if !volatile {
+            let value_assign = self.build_option_value_assign(el_name, val_expr, form);
+            state.pending_element_init.push(value_assign);
+            return;
+        }
 
-    pub(super) fn emit_option_concat_value(
-        &mut self,
-        state: &mut EmitState<'a>,
-        el_name: &str,
-        val_expr: Expression<'a>,
-    ) {
-        self.emit_option_special_value(state, el_name, val_expr, false);
-    }
-
-    fn emit_option_special_value(
-        &mut self,
-        state: &mut EmitState<'a>,
-        el_name: &str,
-        val_expr: Expression<'a>,
-        needs_coalesce: bool,
-    ) {
         let mut prefix = String::with_capacity(el_name.len() + 6);
         prefix.push_str(el_name);
         prefix.push_str("_value");
@@ -49,7 +38,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .pending_pre_update
             .push(self.ctx.b.var_stmt(&cache_name, init));
 
-        let val_expr2 = self.ctx.b.clone_expr(&val_expr);
+        let val_for_assign = self.ctx.b.clone_expr(&val_expr);
 
         let cache_assign = self
             .ctx
@@ -63,16 +52,56 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             cache_assign,
         );
 
-        let dunder_value_assign = self.ctx.b.assign_expr(
-            AssignLeft::StaticMember(
-                self.ctx
-                    .b
-                    .static_member(self.ctx.b.rid_expr(el_name), "__value"),
-            ),
-            val_expr2,
-        );
+        let value_assign = self.build_option_value_assign(el_name, val_for_assign, form);
+        let if_body = self.ctx.b.block_stmt(vec![value_assign]);
+        let if_stmt = self.ctx.b.if_stmt(test, if_body, None);
 
-        let value_rhs = if needs_coalesce {
+        state.pending_element_update.push(if_stmt);
+    }
+
+    pub(in super::super) fn emit_option_synthetic_value(
+        &mut self,
+        state: &mut EmitState<'a>,
+        el_name: &str,
+        expr_id: NodeId,
+    ) -> Result<()> {
+        let volatile = self
+            .ctx
+            .expression_data(expr_id)
+            .map(|data| data.volatility.is_volatile())
+            .unwrap_or(false);
+        let expr = self.clone_node_expr(expr_id)?;
+        self.emit_option_value(state, el_name, expr, OptionValueForm::Hidden, volatile);
+        Ok(())
+    }
+
+    fn build_option_value_assign(
+        &self,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        form: OptionValueForm,
+    ) -> Statement<'a> {
+        let dunder_member = self
+            .ctx
+            .b
+            .static_member(self.ctx.b.rid_expr(el_name), "__value");
+
+        let coalesce = match form {
+            OptionValueForm::Hidden => {
+                return self
+                    .ctx
+                    .b
+                    .assign_stmt(AssignLeft::StaticMember(dunder_member), val_expr);
+            }
+            OptionValueForm::Reflected { coalesce } => coalesce,
+        };
+
+        let dunder_value_assign = self
+            .ctx
+            .b
+            .assign_expr(AssignLeft::StaticMember(dunder_member), val_expr);
+
+        let value_rhs = if coalesce {
             self.ctx
                 .b
                 .logical_coalesce(dunder_value_assign, self.ctx.b.str_expr(""))
@@ -80,18 +109,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             dunder_value_assign
         };
 
-        let value_assign = self.ctx.b.assign_stmt(
+        self.ctx.b.assign_stmt(
             AssignLeft::StaticMember(
                 self.ctx
                     .b
                     .static_member(self.ctx.b.rid_expr(el_name), "value"),
             ),
             value_rhs,
-        );
-
-        let if_body = self.ctx.b.block_stmt(vec![value_assign]);
-        let if_stmt = self.ctx.b.if_stmt(test, if_body, None);
-
-        state.update.push(if_stmt);
+        )
     }
 }

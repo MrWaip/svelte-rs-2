@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "svelte_component_invalid_this",
-    "start": 18,
-    "end": 28
-  }
-]

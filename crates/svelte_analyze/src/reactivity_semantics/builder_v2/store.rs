@@ -16,7 +16,9 @@ pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
         let base_name = data.scoping.symbol_name(sym);
         let dollar_name = format!("${}", base_name);
         let span_start = reference_span_start(data, ref_id);
-        let entry = grouped.entry(dollar_name).or_insert((span_start, Vec::new()));
+        let entry = grouped
+            .entry(dollar_name)
+            .or_insert((span_start, Vec::new()));
         entry.0 = entry.0.min(span_start);
         entry.1.push(ref_id);
     }
@@ -75,9 +77,6 @@ pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
                     },
                 );
             }
-            data.reactivity
-                .legacy_reactive_mut()
-                .remove_mutated_import(base_sym);
             seen.insert(dollar_name.clone(), (base_sym, store_sym));
             (base_sym, store_sym)
         };

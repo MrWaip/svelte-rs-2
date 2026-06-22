@@ -1,6 +1,7 @@
 # PRD: ExpressionSemantics (корневой)
 
 label: expression-semantics
+topics: template expression, volatility, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding
 
 Корневой PRD для модуля `svelte_analyze::expression_semantics` (3.A.3).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`.
@@ -30,6 +31,7 @@ Per-expression факты для каждого template/attribute-выраже�
 2. **Один источник истины для `Evaluation` и `LegacyWrap`.** Трансформ / кодген никогда не пере-walk'ают выражение, чтобы их пересчитать.
 3. **Read-only после build.**
 4. **Тотальность.** Публичный `get` всегда возвращает вариант (`NonSpecial` валидный), не `Option`.
+5. **Идентичность ссылки не подменяется.** `references` несёт `SymbolId` именно того биндинга, который выражение реально читает (store-чтение `$x` реально читает синтетический store-sub — он и лежит). Подписка биндинга — производный факт `ReactivitySemantics` (`store_symbol` в `LegacyStateSubscribed*` / `ImportSubscribedRead`, `store_shadow_of_internal`); потребитель, которому нужна подписка, разворачивает её сам — коллектор символ не перепрыгивает.
 
 ## Связь с другими документами
 

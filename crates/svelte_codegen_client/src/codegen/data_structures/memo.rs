@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{ExprKind, ExpressionData};
+use svelte_analyze::{ExpressionData, Volatility};
 use svelte_ast::NodeId;
 
 use crate::context::Ctx;
@@ -53,22 +53,18 @@ impl<'a> TemplateMemoState<'a> {
         expr: Expression<'a>,
     ) -> Option<MemoValueRef> {
         self.push_expression_data(ctx, data);
-        match data.kind {
-            ExprKind::Async { has_await: true } => {
+        match data.volatility {
+            Volatility::Asynchronous => {
                 let index = self.async_values.len();
                 self.async_values.push(expr);
                 Some(MemoValueRef::Async(index))
             }
-            ExprKind::Call { dynamic: true } => {
+            Volatility::Heavy => {
                 let index = self.sync_values.len();
                 self.sync_values.push(expr);
                 Some(MemoValueRef::Sync(index))
             }
-            ExprKind::KnownLiteral
-            | ExprKind::SimpleRead { .. }
-            | ExprKind::Computed { .. }
-            | ExprKind::Call { dynamic: false }
-            | ExprKind::Async { has_await: false } => None,
+            Volatility::Reactive | Volatility::Static => None,
         }
     }
 
@@ -158,4 +154,3 @@ impl<'a> TemplateMemoState<'a> {
         }
     }
 }
-

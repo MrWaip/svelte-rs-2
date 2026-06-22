@@ -1,5 +1,9 @@
-use oxc_ast::ast::{ArrowFunctionExpression, AwaitExpression, Expression, Function};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, AwaitExpression, CallExpression, Expression, Function, SpreadElement,
+    Statement,
+};
 use oxc_ast_visit::Visit;
+use oxc_ast_visit::walk::walk_call_expression;
 use oxc_semantic::ScopeFlags;
 
 struct AwaitFinder {
@@ -16,8 +20,43 @@ impl<'a> Visit<'a> for AwaitFinder {
     fn visit_function(&mut self, _func: &Function<'a>, _flags: ScopeFlags) {}
 }
 
-pub fn expression_has_await(expr: &Expression<'_>) -> bool {
+pub(crate) fn expression_has_await(expr: &Expression<'_>) -> bool {
     let mut finder = AwaitFinder { found: false };
+    finder.visit_expression(expr);
+    finder.found
+}
+
+pub(crate) fn statement_has_await(stmt: &Statement<'_>) -> bool {
+    let mut finder = AwaitFinder { found: false };
+    finder.visit_statement(stmt);
+    finder.found
+}
+
+struct CallOrAwaitFinder {
+    found: bool,
+}
+
+impl<'a> Visit<'a> for CallOrAwaitFinder {
+    fn visit_await_expression(&mut self, _expr: &AwaitExpression<'a>) {
+        self.found = true;
+    }
+
+    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+        self.found = true;
+        walk_call_expression(self, expr);
+    }
+
+    fn visit_spread_element(&mut self, _spread: &SpreadElement<'a>) {
+        self.found = true;
+    }
+
+    fn visit_arrow_function_expression(&mut self, _arrow: &ArrowFunctionExpression<'a>) {}
+
+    fn visit_function(&mut self, _func: &Function<'a>, _flags: ScopeFlags) {}
+}
+
+pub fn expression_calls_or_awaits(expr: &Expression<'_>) -> bool {
+    let mut finder = CallOrAwaitFinder { found: false };
     finder.visit_expression(expr);
     finder.found
 }

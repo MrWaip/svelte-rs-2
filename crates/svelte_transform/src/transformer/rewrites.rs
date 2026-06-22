@@ -2,8 +2,8 @@ use std::iter;
 use std::mem;
 
 use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, Expression, IdentifierReference,
-    SimpleAssignmentTarget, UpdateOperator,
+    Argument, AssignmentOperator, AssignmentTarget, Expression, SimpleAssignmentTarget,
+    UpdateOperator,
 };
 use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
@@ -12,9 +12,10 @@ use svelte_ast_builder::Arg;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, CarrierMemberReadSemantics, ContextualReadKind,
-    ContextualReadSemantics, PropReferenceSemantics, ReferenceSemantics, StateKind,
+    ContextualReadSemantics, DeclaratorSemantics, EachIndexStrategy, PropReferenceSemantics,
+    ReferenceSemantics, RuntimeRuneKind, StateKind,
 };
-use svelte_component_semantics::SymbolId;
+use svelte_component_semantics::{ReferenceId, SymbolId};
 
 use svelte_emit_builders::store::{
     build_store_base_read, make_store_mutate, make_store_set, make_store_update,
@@ -30,6 +31,7 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Prop(_)
         | BindingSemantics::LegacyBindableProp(_)
@@ -44,36 +46,36 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
     }
 }
 
-impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn identifier_is_store_read(
-        &self,
-        ident: &IdentifierReference<'a>,
-    ) -> bool {
-        let Some(analysis) = self.analysis else {
-            return false;
-        };
-        let Some(ref_id) = ident.reference_id.get() else {
-            return false;
-        };
-        matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::StoreRead { .. }
-        )
+fn is_forward_each_item_sibling_read(
+    analysis: &AnalysisData<'_>,
+    kind: ContextualReadKind,
+    ref_id: ReferenceId,
+    ref_start: u32,
+) -> bool {
+    if !matches!(kind, ContextualReadKind::EachItem { .. }) {
+        return false;
     }
+    let Some(symbol) = analysis.scoping.symbol_for_reference(ref_id) else {
+        return false;
+    };
+    analysis.scoping.symbol_span(symbol).start > ref_start
+}
 
+impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn dispatch_identifier_read(&self, expr: &mut Expression<'a>) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        let (name, ref_id) = {
+        let (name, ref_id, ref_start) = {
             let Expression::Identifier(id) = &*expr else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
                 return false;
             };
-            (id.name, ref_id)
+            (id.name, ref_id, id.span.start)
         };
+
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
@@ -108,11 +110,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_thunk_call(name.as_str());
                 true
             }
+            ReferenceSemantics::PropMutation { bindable: true, .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                *expr = self.make_thunk_call(name.as_str());
+                true
+            }
+            ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
+                raw_param: true, ..
+            }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                raw_param: true, ..
+            } => true,
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
-            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
                 if !self.in_bind_setter_traverse =>
             {
                 *expr = self.make_rune_get(name.as_str());
+                true
+            }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym, .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                *expr = self.each_item_member_root_read_legacy(analysis, item_sym, name.as_str());
                 true
             }
             ReferenceSemantics::PropRead(PropReferenceSemantics::NonSourceStatic { symbol }) => {
@@ -138,6 +157,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::ConstAliasRead { owner_node } => {
+                if self.template_owner_node == Some(owner_node) {
+                    return true;
+                }
                 if let Some(tmp) = self.transform_data.const_tag_tmp_names.get(&owner_node) {
                     *expr = self.make_member_get(tmp.as_str(), name.as_str());
                 }
@@ -167,11 +189,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_rune_safe_get(name.as_str());
                 true
             }
+            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+                if self.destructure_lhs_depth > 0 =>
+            {
+                true
+            }
             ReferenceSemantics::LegacyStateMemberMutationRoot { symbol } => {
-                let safe = matches!(
-                    analysis.binding_semantics(symbol),
-                    BindingSemantics::LegacyState(s) if s.var_declared
-                );
+                let safe = analysis
+                    .binding_semantics(symbol)
+                    .legacy_state()
+                    .is_some_and(|s| s.var_declared);
                 *expr = if safe {
                     self.make_rune_safe_get(name.as_str())
                 } else {
@@ -194,15 +221,29 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.b.call_expr_callee(self.b.rid_expr(import_name), []);
                 true
             }
-            ReferenceSemantics::ContextualRead(ContextualReadSemantics {
-                kind,
-                in_key_expression,
-                ..
-            }) => {
-                if in_key_expression {
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+                index_read,
+            } => {
+                if let Some(member) = self
+                    .make_each_item_indexed_read_legacy(analysis, item_sym, index_sym, index_read)
+                {
+                    *expr = member;
+                }
+                true
+            }
+            ReferenceSemantics::ContextualRead(ContextualReadSemantics { kind, .. }) => {
+                if is_forward_each_item_sibling_read(analysis, kind, ref_id, ref_start) {
                     return true;
                 }
                 match kind {
+                    ContextualReadKind::EachItem {
+                        raw_param: true, ..
+                    }
+                    | ContextualReadKind::EachIndex {
+                        raw_param: true, ..
+                    } => {}
                     ContextualReadKind::EachItem { accessor: true, .. }
                     | ContextualReadKind::SnippetParam { accessor: true, .. } => {
                         *expr = self.make_thunk_call(name.as_str());
@@ -210,8 +251,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     ContextualReadKind::EachItem {
                         signal: true,
                         accessor: false,
+                        ..
                     }
-                    | ContextualReadKind::EachIndex { signal: true }
+                    | ContextualReadKind::EachIndex {
+                        signal: true,
+                        raw_param: false,
+                    }
                     | ContextualReadKind::SnippetParam {
                         signal: true,
                         accessor: false,
@@ -224,8 +269,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     ContextualReadKind::EachItem {
                         accessor: false,
                         signal: false,
+                        ..
                     }
-                    | ContextualReadKind::EachIndex { signal: false }
+                    | ContextualReadKind::EachIndex {
+                        signal: false,
+                        raw_param: false,
+                    }
                     | ContextualReadKind::SnippetParam {
                         accessor: false,
                         signal: false,
@@ -248,6 +297,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -255,7 +305,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn dispatch_identifier_assignment(
         &self,
         node: &mut Expression<'a>,
-        suppress_proxy: bool,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -272,20 +322,25 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+                index_read,
+            } => self.rewrite_each_item_reassignment_assignment(
+                node, item_sym, index_sym, index_read, ctx,
+            ),
             ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
-                self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy)
+                self.rewrite_signal_or_store_identifier_assignment(node)
             }
-            ReferenceSemantics::DerivedWrite => {
-                self.rewrite_derived_identifier_assignment(node)
-            }
+            ReferenceSemantics::DerivedWrite => self.rewrite_derived_identifier_assignment(node),
             ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
             | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
-                if !self.rewrite_signal_or_store_identifier_assignment(node, suppress_proxy) {
+                if !self.rewrite_signal_or_store_identifier_assignment(node) {
                     return false;
                 }
                 let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
@@ -318,6 +373,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -343,15 +399,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
         true
     }
 
-    pub(crate) fn dispatch_identifier_update(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn dispatch_identifier_update(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
         let Expression::UpdateExpression(upd) = node else {
             return false;
         };
-        let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
-        else {
+        let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
             return false;
         };
         let Some(ref_id) = id.reference_id.get() else {
@@ -360,6 +419,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let sem = analysis.reference_semantics(ref_id);
 
         match sem {
+            ReferenceSemantics::EachItemIndexedLegacy {
+                item_sym,
+                index_sym,
+                index_read,
+            } => self
+                .rewrite_each_item_reassignment_update(node, item_sym, index_sym, index_read, ctx),
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
@@ -402,6 +467,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -435,18 +501,25 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_legacy_reactive_import_member_assignment(node)
             }
             ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => {
-                self.rewrite_legacy_state_member_assignment(node)
+                self.rewrite_legacy_state_member_assignment(node, ctx)
             }
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_assignment(node, is_expr_stmt, ctx)
             }
-            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
-                self.rewrite_legacy_each_item_member_assignment(node, item_sym, ctx)
-            }
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot {
+                item_sym,
+                raw_param,
+            } => self.rewrite_legacy_each_item_member_assignment(node, item_sym, raw_param, ctx),
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
-                collection_store, ..
-            } => self.rewrite_each_item_member_store_invalidate_assignment(node, collection_store),
+                collection_store,
+                raw_param,
+                ..
+            } => self.rewrite_each_item_member_store_invalidate_assignment(
+                node,
+                collection_store,
+                raw_param,
+            ),
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -470,8 +543,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -504,13 +579,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_legacy_reactive_import_member_update(node)
             }
             ReferenceSemantics::LegacyStateMemberMutationRoot { .. } => {
-                self.rewrite_legacy_state_member_update(node)
+                self.rewrite_legacy_state_member_update(node, ctx)
             }
             ReferenceSemantics::PropSourceMemberMutationRoot { .. }
             | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. } => {
                 self.rewrite_prop_member_update(node)
             }
-            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym } => {
+            ReferenceSemantics::LegacyEachItemMemberMutationRoot { item_sym, .. } => {
                 self.rewrite_legacy_each_item_member_update(node, item_sym, ctx)
             }
             ReferenceSemantics::EachItemMemberMutationStoreInvalidate {
@@ -539,8 +614,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
     }
@@ -549,6 +626,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         node: &mut Expression<'a>,
         collection_store: SymbolId,
+        raw_param: bool,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -568,10 +646,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
-        rune_refs::replace_expr_root_in_assign_target(
-            &mut assign.left,
-            self.make_rune_get(item_name.as_str()),
-        );
+        let root_read = if raw_param {
+            self.b.rid_expr(item_name.as_str())
+        } else {
+            self.make_rune_get(item_name.as_str())
+        };
+        rune_refs::replace_expr_root_in_assign_target(&mut assign.left, root_read);
         let dollar_name = analysis.scoping.symbol_name(collection_store).to_string();
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
@@ -616,7 +696,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_signal_or_store_identifier_assignment(
         &self,
         node: &mut Expression<'a>,
-        suppress_proxy: bool,
     ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
@@ -625,8 +704,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::AssignmentExpression(assign) = &*node else {
                 return false;
             };
-            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-            else {
+            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -651,29 +729,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *node = make_store_set(self.b, base_expr, value);
                 true
             }
-            ReferenceSemantics::SignalWrite { kind } => {
+            ReferenceSemantics::SignalWrite { proxy, .. } => {
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
                 let right = mem::replace(&mut assign.right, self.make_rune_get(""));
-                let needs_proxy = !suppress_proxy
-                    && kind == StateKind::State
-                    && rune_refs::is_non_coercive_operator(operator)
-                    && rune_refs::should_proxy(&right);
+                let needs_proxy = proxy;
                 let left_read = self.make_rune_get(name.as_str());
                 let value = self.build_compound_value(operator, left_read, right);
                 *node = self.make_rune_set(name.as_str(), value, needs_proxy);
                 true
             }
-            ReferenceSemantics::SignalUpdate { kind, safe } => {
+            ReferenceSemantics::SignalUpdate { safe, proxy, .. } => {
                 let Expression::AssignmentExpression(assign) = &mut *node else {
                     unreachable!()
                 };
                 let right = mem::replace(&mut assign.right, self.make_rune_get(""));
-                let needs_proxy = !suppress_proxy
-                    && kind == StateKind::State
-                    && rune_refs::is_non_coercive_operator(operator)
-                    && rune_refs::should_proxy(&right);
+                let needs_proxy = proxy;
                 let left_read = if safe {
                     self.make_rune_safe_get(name.as_str())
                 } else {
@@ -748,9 +820,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::UpdateExpression(upd) = &*node else {
                 return false;
             };
-            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                &upd.argument
-            else {
+            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -768,7 +838,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::StoreUpdate { symbol } => {
                 let base_sym = store_base_symbol(analysis, symbol);
                 let base_name = analysis.scoping.symbol_name(base_sym);
-                *node = make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
+                *node =
+                    make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
                 true
             }
             ReferenceSemantics::SignalUpdate {
@@ -799,8 +870,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::AssignmentExpression(assign) = &*node else {
                 return false;
             };
-            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left
-            else {
+            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -808,10 +878,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (id.name, ref_id, assign.operator)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::PropMutation { .. }
-        ) {
+        if !analysis.reference_semantics(ref_id).is_prop_mutation() {
             return false;
         }
         let Expression::AssignmentExpression(assign) = &mut *node else {
@@ -838,9 +905,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let Expression::UpdateExpression(upd) = &*node else {
                 return false;
             };
-            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                &upd.argument
-            else {
+            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
                 return false;
             };
             let Some(ref_id) = id.reference_id.get() else {
@@ -853,10 +918,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 upd.operator == UpdateOperator::Decrement,
             )
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::PropMutation { .. }
-        ) {
+        if !analysis.reference_semantics(ref_id).is_prop_mutation() {
             return false;
         }
         let fn_name = if is_prefix {
@@ -932,10 +994,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_reactive_import_member_mutation_root()
+        {
             return false;
         }
         let import_name: &'a str = self
@@ -974,10 +1036,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_reactive_import_member_mutation_root()
+        {
             return false;
         }
         let import_name: &'a str = self
@@ -994,7 +1056,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         true
     }
 
-    pub(crate) fn rewrite_legacy_state_member_assignment(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_legacy_state_member_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -1013,10 +1079,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_state_member_mutation_root()
+        {
             return false;
         }
         let Expression::AssignmentExpression(assign) = &mut *node else {
@@ -1028,11 +1094,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        let mutated = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, mutated, ref_id, ctx);
         true
     }
 
-    pub(crate) fn rewrite_legacy_state_member_update(&self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_legacy_state_member_update(
+        &self,
+        node: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
         let Some(analysis) = self.analysis else {
             return false;
         };
@@ -1051,10 +1122,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
             };
             (root.name, ref_id)
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_legacy_state_member_mutation_root()
+        {
             return false;
         }
         let Expression::UpdateExpression(upd) = &mut *node else {
@@ -1066,7 +1137,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        let mutated = self.make_legacy_state_mutate(root_name.as_str(), mutation);
+        *node = self.maybe_wrap_legacy_indirect_invalidate(analysis, mutated, ref_id, ctx);
         true
     }
 
@@ -1074,6 +1146,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &self,
         node: &mut Expression<'a>,
         item_sym: SymbolId,
+        raw_param: bool,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> bool {
         let Some(analysis) = self.analysis else {
@@ -1100,13 +1173,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::AssignmentExpression(assign) = &mut *node else {
             unreachable!()
         };
-        rune_refs::replace_expr_root_in_assign_target(
-            &mut assign.left,
-            self.make_rune_get(item_name.as_str()),
-        );
+        let root_read = if raw_param {
+            self.b.rid_expr(item_name.as_str())
+        } else {
+            self.each_item_member_root_read_legacy(analysis, item_sym, item_name.as_str())
+        };
+        rune_refs::replace_expr_root_in_assign_target(&mut assign.left, root_read);
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 
@@ -1142,11 +1217,96 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         rune_refs::replace_expr_root_in_simple_target(
             &mut upd.argument,
-            self.make_rune_get(item_name.as_str()),
+            self.each_item_member_root_read_legacy(analysis, item_sym, item_name.as_str()),
         );
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
-        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, ctx);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
+        true
+    }
+
+    fn rewrite_each_item_reassignment_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let operator = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            assign.operator
+        };
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        let Some(member) =
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)
+        else {
+            return false;
+        };
+        let value = if operator.is_assign() {
+            None
+        } else {
+            let Some(left_read) =
+                self.make_each_item_indexed_read_legacy(analysis, item_sym, index_sym, index_read)
+            else {
+                return false;
+            };
+            Some(left_read)
+        };
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            unreachable!()
+        };
+        if let Some(left_read) = value {
+            let right = self.b.move_expr(&mut assign.right);
+            assign.right = self.build_compound_value(operator, left_read, right);
+            assign.operator = AssignmentOperator::Assign;
+        }
+        assign.left = AssignmentTarget::ComputedMemberExpression(member);
+        let placeholder = self.make_rune_get("");
+        let mutation = mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
+        true
+    }
+
+    fn rewrite_each_item_reassignment_update(
+        &self,
+        node: &mut Expression<'a>,
+        item_sym: SymbolId,
+        index_sym: Option<SymbolId>,
+        index_read: EachIndexStrategy,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_sym) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        let Some(member) =
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)
+        else {
+            return false;
+        };
+        let Expression::UpdateExpression(upd) = &mut *node else {
+            unreachable!()
+        };
+        upd.argument = SimpleAssignmentTarget::ComputedMemberExpression(member);
+        let placeholder = self.make_rune_get("");
+        let mutation = mem::replace(node, placeholder);
+        *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
         true
     }
 
@@ -1193,20 +1353,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
         expr: &mut Expression<'a>,
         dev_snapshot_uncloneable_ignored: bool,
     ) -> bool {
-        let Expression::CallExpression(call) = expr else {
+        let Some(analysis) = self.analysis else {
             return false;
         };
-        let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+        let Expression::CallExpression(call) = &*expr else {
             return false;
         };
-        let Expression::Identifier(obj) = member.object.get_inner_expression() else {
-            return false;
+        let kind = match analysis.declarator_semantics(call.node_id()) {
+            DeclaratorSemantics::RuntimeRuneCall { kind } => kind,
+            DeclaratorSemantics::None
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => return false,
         };
-        if self.identifier_is_store_read(obj) {
-            return false;
-        }
-        match (obj.name.as_str(), member.property.name.as_str()) {
-            ("$state", "eager") => {
+        match kind {
+            RuntimeRuneKind::StateEager => {
                 if let Expression::CallExpression(call) =
                     mem::replace(expr, self.make_eager_pending())
                 {
@@ -1218,7 +1388,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 true
             }
-            ("$state", "snapshot") => {
+            RuntimeRuneKind::StateSnapshot => {
                 let Expression::CallExpression(call) = expr else {
                     unreachable!()
                 };
@@ -1230,11 +1400,20 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 true
             }
-            ("$effect", "pending") => {
+            RuntimeRuneKind::EffectPending => {
                 *expr = self.make_eager_pending();
                 true
             }
-            _ => false,
+            RuntimeRuneKind::PropsId
+            | RuntimeRuneKind::EffectTracking
+            | RuntimeRuneKind::Host
+            | RuntimeRuneKind::InspectTrace
+            | RuntimeRuneKind::Effect
+            | RuntimeRuneKind::EffectPre
+            | RuntimeRuneKind::EffectRoot
+            | RuntimeRuneKind::Inspect
+            | RuntimeRuneKind::InspectWith
+            | RuntimeRuneKind::Bindable => false,
         }
     }
 
@@ -1254,10 +1433,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(ref_id) = id.reference_id.get() else {
             return false;
         };
-        if !matches!(
-            analysis.reference_semantics(ref_id),
-            ReferenceSemantics::RestPropMemberRewrite
-        ) {
+        if !analysis
+            .reference_semantics(ref_id)
+            .is_rest_prop_member_rewrite()
+        {
             return false;
         }
         member.object = self

@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "error",
-    "code": "transition_duplicate",
-    "start": 100,
-    "end": 103
-  }
-]

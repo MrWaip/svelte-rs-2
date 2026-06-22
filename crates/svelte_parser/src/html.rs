@@ -196,7 +196,10 @@ mod tests {
     #[test]
     fn attr_decodes_unterminated_entity_at_word_boundary() {
         assert_eq!(decode_attribute_value("&lt foo"), Some("< foo".into()));
-        assert_eq!(decode_attribute_value("&copy bar"), Some("\u{a9} bar".into()));
+        assert_eq!(
+            decode_attribute_value("&copy bar"),
+            Some("\u{a9} bar".into())
+        );
     }
 
     #[test]

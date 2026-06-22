@@ -1,18 +1,16 @@
 use oxc_allocator::Vec as OxcVec;
-use oxc_ast::ast::{
-    BindingPattern, Expression, ModuleExportName, Statement, VariableDeclaration,
-};
+use oxc_ast::ast::{BindingPattern, ModuleExportName, Statement, VariableDeclaration};
 use oxc_span::{GetSpan, GetSpanMut};
-use svelte_analyze::{
-    BindingSemantics, LegacyBindablePropSemantics, PropDefaultKind, PropsFlags, is_let_or_var,
-};
-use svelte_ast_builder::Arg;
+use svelte_analyze::{BindingSemantics, is_let_or_var};
+use svelte_emit_builders::props::build_legacy_prop_call;
 
-use super::derived;
 use super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
-    pub(crate) fn rewrite_split_export_props_legacy(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
+    pub(crate) fn rewrite_split_export_props_legacy(
+        &mut self,
+        stmts: &mut OxcVec<'a, Statement<'a>>,
+    ) {
         let mut i = 0;
         let mut renamed: rustc_hash::FxHashMap<String, Option<String>> =
             rustc_hash::FxHashMap::default();
@@ -44,10 +42,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 let Some(sym) = analysis.scoping.find_binding(scope, local.as_str()) else {
                     continue;
                 };
-                if !matches!(
-                    analysis.binding_semantics(sym),
-                    BindingSemantics::LegacyBindableProp(_)
-                ) {
+                if !analysis.binding_semantics(sym).is_legacy_prop() {
                     continue;
                 }
                 let alias = if local != exported {
@@ -137,80 +132,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let local_alloc = self.b.alloc_str(&local_name);
         let init = declarator.init.as_mut().map(|e| self.b.move_expr(e));
         let alias_str = alias.as_deref();
-        let call = self.build_legacy_prop_call(local_alloc, alias_str, legacy, init);
-        Some(vec![self.b.let_multi_stmt(vec![(local_alloc, call)])])
+        let call = build_legacy_prop_call(
+            self.b,
+            self.gen_arrow_scope,
+            local_alloc,
+            alias_str,
+            legacy,
+            init,
+        );
+        Some(vec![
+            self.b
+                .var_decl_multi_stmt(vec![(local_alloc, call)], decl.kind),
+        ])
     }
-
-    fn build_legacy_prop_call(
-        &mut self,
-        local: &'a str,
-        alias: Option<&str>,
-        legacy: LegacyBindablePropSemantics,
-        default_init: Option<Expression<'a>>,
-    ) -> Expression<'a> {
-        let prop_key = alias.unwrap_or(local).to_string();
-        let mut runtime_flags = legacy.flags;
-        if matches!(
-            legacy.default_kind,
-            PropDefaultKind::Lazy | PropDefaultKind::LazyAccessor
-        ) {
-            runtime_flags |= PropsFlags::LAZY_INITIAL;
-        }
-        let flags_bits = runtime_flags.bits();
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Str(prop_key)];
-        let default_init = default_init.map(unwrap_paren_and_ts);
-        match legacy.default_kind {
-            PropDefaultKind::None => {
-                if !runtime_flags.is_empty() {
-                    args.push(Arg::Num(flags_bits as f64));
-                }
-            }
-            PropDefaultKind::Eager => {
-                args.push(Arg::Num(flags_bits as f64));
-                let default_expr = default_init
-                    .unwrap_or_else(|| panic!("eager default missing for legacy prop {local}"));
-                args.push(Arg::Expr(default_expr));
-            }
-            PropDefaultKind::Lazy => {
-                args.push(Arg::Num(flags_bits as f64));
-                let default_expr = default_init
-                    .unwrap_or_else(|| panic!("lazy default missing for legacy prop {local}"));
-                let lazy = derived::wrap_lazy(self.b, default_expr);
-                self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
-                args.push(Arg::Expr(lazy));
-            }
-            PropDefaultKind::LazyAccessor => {
-                args.push(Arg::Num(flags_bits as f64));
-                let default_expr = default_init.unwrap_or_else(|| {
-                    panic!("lazy accessor default missing for legacy prop {local}")
-                });
-                let accessor_name = match &default_expr {
-                    Expression::Identifier(id) => id.name.as_str().to_string(),
-                    Expression::CallExpression(call) if call.arguments.is_empty() => {
-                        match &call.callee {
-                            Expression::Identifier(callee) => callee.name.as_str().to_string(),
-                            _ => panic!(
-                                "lazy accessor default must be a bare-identifier call for legacy prop {local}"
-                            ),
-                        }
-                    }
-                    _ => panic!(
-                        "lazy accessor default must be an identifier or bare-call for legacy prop {local}"
-                    ),
-                };
-                args.push(Arg::Expr(self.b.rid_expr(&accessor_name)));
-            }
-        }
-        self.b.call_expr("$.prop", args)
-    }
-}
-
-fn unwrap_paren_and_ts<'a>(expr: Expression<'a>) -> Expression<'a> {
-    let mut inner = expr.into_inner_expression();
-    match &mut inner {
-        Expression::ArrowFunctionExpression(arrow) => arrow.pife = false,
-        Expression::FunctionExpression(func) => func.pife = false,
-        _ => {}
-    }
-    inner
 }

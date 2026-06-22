@@ -9,10 +9,9 @@ use oxc_traverse::{ReusableTraverseCtx, traverse_mut_with_ctx};
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BindingSemantics, ComponentScoping, HtmlBindKind, IdentGen,
-    JsAst,
+    AnalysisData, AttributeSemantics, ComponentScoping, HtmlBindKind, IdentGen, JsAst,
 };
-use svelte_ast::NodeId as SvelteNodeId;
+use svelte_ast::{Component, NodeId as SvelteNodeId};
 use svelte_ast_builder::{Arg, Builder};
 
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
@@ -28,7 +27,8 @@ pub(crate) fn run_template<'a, 'b>(
     stmt_handles: Vec<(OxcNodeId, Option<SvelteNodeId>)>,
     bind_expr_handles: Vec<BindExprHandle>,
     transform_data: TransformData,
-    parsed: &mut JsAst<'a>,
+    parsed: &'b mut JsAst<'a>,
+    component: &'b Component,
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> TransformData {
@@ -55,14 +55,16 @@ pub(crate) fn run_template<'a, 'b>(
         filename: "",
         next_arrow_name: None,
         ident_gen,
-        class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         experimental_async: false,
         ignore_query: IgnoreQuery::empty(),
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         in_bind_setter_traverse: false,
+        destructure_lhs_depth: 0,
         gen_arrow_scope: None,
+        parsed: Some(parsed),
+        component: Some(component),
     };
 
     let ast = AstBuilder::new(alloc);
@@ -82,7 +84,11 @@ pub(crate) fn run_template<'a, 'b>(
     let mut reusable = ReusableTraverseCtx::new((), oxc_semantic::Scoping::default(), alloc);
 
     for (handle, owner) in expr_handles {
-        let Some(expr) = parsed.take_expr(handle) else {
+        let Some(expr) = transformer
+            .parsed
+            .as_mut()
+            .and_then(|p| p.take_expr(handle))
+        else {
             continue;
         };
         transformer.template_owner_node = owner;
@@ -99,11 +105,18 @@ pub(crate) fn run_template<'a, 'b>(
         else {
             unreachable!()
         };
-        parsed.replace_expr(handle, es.unbox().expression);
+        let new_expr = es.unbox().expression;
+        if let Some(p) = transformer.parsed.as_mut() {
+            p.replace_expr(handle, new_expr);
+        }
     }
 
     for (handle, owner) in stmt_handles {
-        let Some(stmt) = parsed.take_stmt(handle) else {
+        let Some(stmt) = transformer
+            .parsed
+            .as_mut()
+            .and_then(|p| p.take_stmt(handle))
+        else {
             continue;
         };
         transformer.template_owner_node = owner;
@@ -112,13 +125,13 @@ pub(crate) fn run_template<'a, 'b>(
 
         traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
 
-        parsed.replace_stmt(
-            handle,
-            program
-                .body
-                .pop()
-                .expect("body was pushed with a single statement above"),
-        );
+        let new_stmt = program
+            .body
+            .pop()
+            .expect("body was pushed with a single statement above");
+        if let Some(p) = transformer.parsed.as_mut() {
+            p.replace_stmt(handle, new_stmt);
+        }
     }
 
     for BindExprHandle {
@@ -127,33 +140,31 @@ pub(crate) fn run_template<'a, 'b>(
         kind: bind_handle_kind,
     } in bind_expr_handles
     {
-        let Some(orig) = parsed.take_expr(handle) else {
+        let Some(orig) = transformer
+            .parsed
+            .as_mut()
+            .and_then(|p| p.take_expr(handle))
+        else {
             continue;
         };
 
         let setter_lhs_expr = orig.clone_in_with_semantic_ids(alloc);
-        let store_base_symbol: Option<oxc_semantic::SymbolId> =
-            match analysis.attributes.get(owner) {
-                AttributeSemantics::ElementBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
-                AttributeSemantics::WindowBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
-                AttributeSemantics::DocumentBind(b) => match &b.kind {
-                    HtmlBindKind::StoreSubscribed { base_symbol } => {
-                        Some(*base_symbol)
-                    }
-                    _ => None,
-                },
+        let store_base_symbol: Option<oxc_semantic::SymbolId> = match analysis.attributes.get(owner)
+        {
+            AttributeSemantics::ElementBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
                 _ => None,
-            };
+            },
+            AttributeSemantics::WindowBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
+                _ => None,
+            },
+            AttributeSemantics::DocumentBind(b) => match &b.kind {
+                HtmlBindKind::StoreSubscribed { base_symbol } => Some(*base_symbol),
+                _ => None,
+            },
+            _ => None,
+        };
 
         transformer.template_owner_node = Some(owner);
 
@@ -191,28 +202,31 @@ pub(crate) fn run_template<'a, 'b>(
 
         if let BindHandleKind::Component { prop_name } = &bind_handle_kind {
             let obj = transform_component_bind_pair(&b, prop_name, getter_body, setter_body);
-            parsed.replace_expr(handle, obj);
+            if let Some(p) = transformer.parsed.as_mut() {
+                p.replace_expr(handle, obj);
+            }
+            continue;
+        }
+
+        if matches!(bind_handle_kind, BindHandleKind::This) {
+            let getter_body = b.make_optional_chain(getter_body);
+            let getter = b.arrow_expr(b.no_params(), [b.expr_stmt(getter_body)]);
+            let setter = b.arrow_expr(b.params(["$$value"]), [b.expr_stmt(setter_body)]);
+            let seq = b.seq_expr([getter, setter]);
+            if let Some(p) = transformer.parsed.as_mut() {
+                p.replace_expr(handle, seq);
+            }
             continue;
         }
 
         let (getter, setter) = if let Some(base_symbol) = store_base_symbol {
             let base_name = analysis.scoping.symbol_name(base_symbol);
             let dollar_name: &str = b.alloc_str(&format!("${base_name}"));
-            let base_via_legacy_state = matches!(
-                analysis.binding_semantics(base_symbol),
-                BindingSemantics::LegacyState(_)
-            );
+            let base_via_legacy_state = analysis.binding_semantics(base_symbol).is_legacy_state();
             let getter_expr = if base_via_legacy_state {
-                let thunk_call = b.call_expr_callee(
-                    b.rid_expr(dollar_name),
-                    iter::empty::<Arg<'_, '_>>(),
-                );
-                b.named_function_expr(
-                    "get",
-                    b.no_params(),
-                    vec![b.return_stmt(thunk_call)],
-                    false,
-                )
+                let thunk_call =
+                    b.call_expr_callee(b.rid_expr(dollar_name), iter::empty::<Arg<'_, '_>>());
+                b.named_function_expr("get", b.no_params(), vec![b.return_stmt(thunk_call)], false)
             } else {
                 b.rid_expr(dollar_name)
             };
@@ -252,7 +266,9 @@ pub(crate) fn run_template<'a, 'b>(
         };
         let seq = b.seq_expr([getter, setter]);
 
-        parsed.replace_expr(handle, seq);
+        if let Some(p) = transformer.parsed.as_mut() {
+            p.replace_expr(handle, seq);
+        }
     }
 
     transformer.transform_data
@@ -267,11 +283,6 @@ fn transform_component_bind_pair<'a>(
     let key: &'a str = b.alloc_str(prop_name);
     b.object_expr([
         svelte_ast_builder::ObjProp::Getter(key, getter_body),
-        svelte_ast_builder::ObjProp::Setter(
-            key,
-            "$$value",
-            None,
-            vec![b.expr_stmt(setter_body)],
-        ),
+        svelte_ast_builder::ObjProp::Setter(key, "$$value", None, vec![b.expr_stmt(setter_body)]),
     ])
 }

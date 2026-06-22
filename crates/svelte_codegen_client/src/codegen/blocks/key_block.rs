@@ -1,8 +1,8 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{KeyAsyncKind, KeyBlockSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -16,14 +16,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: KeyBlockSemantics,
     ) -> Result<()> {
-        let (needs_async, has_await, blockers) = match &sem.async_kind {
-            KeyAsyncKind::Sync => (false, false, Vec::new()),
-            KeyAsyncKind::Async {
-                has_await,
-                blockers,
-            } => (true, *has_await, blockers.to_vec()),
-        };
-
         let span_start = self.ctx.query.key_block(id).span.start;
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
@@ -45,56 +37,56 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .arrow_block_expr(self.ctx.b.params(["$$anchor"]), body_stmts);
 
-        if needs_async {
-            let async_thunk = if has_await {
-                let expr = self.take_node_expr(id)?;
-                Some(self.ctx.b.async_thunk(expr))
-            } else {
-                None
-            };
-            let key_thunk = self
-                .ctx
-                .b
-                .thunk(rune_get(&self.ctx.b, "$$key"));
-            let key_call = self.ctx.b.call_expr(
-                "$.key",
-                [
-                    Arg::Ident(&anchor_node),
-                    Arg::Expr(key_thunk),
-                    Arg::Expr(body_fn),
-                ],
-            );
-            let key_stmt = self.add_svelte_meta(key_call, span_start, "key");
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-            let wrapped = self.emit_async_call_stmt(
-                has_await,
-                &blockers,
-                anchor_expr,
-                &anchor_node,
-                "$$key",
-                async_thunk,
-                vec![key_stmt],
-            )?;
-            state.init.push(wrapped);
-            return Ok(());
+        match &sem.async_kind {
+            KeyAsyncKind::Awaited { blockers } | KeyAsyncKind::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let async_thunk = match &sem.async_kind {
+                    KeyAsyncKind::Awaited { .. } => {
+                        let expr = self.take_node_expr(id)?;
+                        Some(self.ctx.b.async_thunk(expr))
+                    }
+                    KeyAsyncKind::Deferred { .. } | KeyAsyncKind::Sync => None,
+                };
+                let key_thunk = self.ctx.b.thunk(rune_get(&self.ctx.b, "$$key"));
+                let key_call = self.ctx.b.call_expr(
+                    "$.key",
+                    [
+                        Arg::Ident(&anchor_node),
+                        Arg::Expr(key_thunk),
+                        Arg::Expr(body_fn),
+                    ],
+                );
+                let key_stmt = self.add_svelte_meta(key_call, span_start, "key");
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+                let wrapped = self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    &anchor_node,
+                    "$$key",
+                    async_thunk,
+                    vec![key_stmt],
+                )?;
+                state.init.push(wrapped);
+                Ok(())
+            }
+            KeyAsyncKind::Sync => {
+                let key_expr = self.take_node_expr(id)?;
+                let key_expr = coarse_wrap(self.ctx, key_expr, self.ctx.expression_data(id));
+                let key_thunk = self.ctx.b.thunk(key_expr);
+
+                let key_call = self.ctx.b.call_expr(
+                    "$.key",
+                    [
+                        Arg::Ident(&anchor_node),
+                        Arg::Expr(key_thunk),
+                        Arg::Expr(body_fn),
+                    ],
+                );
+                state
+                    .init
+                    .push(self.add_svelte_meta(key_call, span_start, "key"));
+                Ok(())
+            }
         }
-
-        let key_expr = self.take_node_expr(id)?;
-        let key_expr =
-            coarse_wrap(self.ctx, key_expr, self.ctx.expression_data(id));
-        let key_thunk = self.ctx.b.thunk(key_expr);
-
-        let key_call = self.ctx.b.call_expr(
-            "$.key",
-            [
-                Arg::Ident(&anchor_node),
-                Arg::Expr(key_thunk),
-                Arg::Expr(body_fn),
-            ],
-        );
-        state
-            .init
-            .push(self.add_svelte_meta(key_call, span_start, "key"));
-        Ok(())
     }
 }

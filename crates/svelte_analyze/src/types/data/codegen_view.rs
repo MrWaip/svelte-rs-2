@@ -3,14 +3,21 @@ use std::borrow::Cow;
 use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
-use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
 use crate::passes::fragment_topology::fragment_items;
-use crate::types::data::{ComponentCssProp, ComponentPropKind, DeclaratorSemantics};
-use crate::types::script::PropsDeclaration;
+use crate::types::data::{
+    ComponentCssProp, ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot,
+};
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
     data: &'d AnalysisData<'a>,
+}
+
+pub struct ComponentPropAccessor<'d> {
+    pub key: Cow<'d, str>,
+    pub local: &'d str,
+    pub default_span: Option<svelte_span::Span>,
 }
 
 impl<'d, 'a> CodegenView<'d, 'a> {
@@ -49,41 +56,23 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn component_name(&self) -> &str {
         self.data.component_name()
     }
-    pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_node(id)
-    }
-    pub fn expression_semantics(
-        &self,
-        id: NodeId,
-    ) -> &ExpressionSemantics {
+    pub fn expression_semantics(&self, id: NodeId) -> &ExpressionSemantics {
         self.data.expressions_v2.get(id)
     }
-    pub fn expression_data(
-        &self,
-        id: NodeId,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data(&self, id: NodeId) -> Option<&ExpressionData> {
         match self.expression_semantics(id) {
             ExpressionSemantics::Expression(d) => Some(d),
             ExpressionSemantics::NonSpecial => None,
         }
     }
-    pub fn expression_data_by_oxc(
-        &self,
-        id: SemOxcNodeId,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data_by_oxc(&self, id: SemOxcNodeId) -> Option<&ExpressionData> {
         self.data.expression_data_by_oxc(id)
     }
-    pub fn expression_data_for(
-        &self,
-        expr: &Expression<'_>,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data_for(&self, expr: &Expression<'_>) -> Option<&ExpressionData> {
         self.data.expression_data_for(expr)
     }
-    pub fn exports(&self) -> &[ExportInfo] {
-        &self.data.script.exports
-    }
-    pub fn props(&self) -> Option<&PropsDeclaration> {
-        self.data.script.props_declaration()
+    pub fn exports(&self) -> &[ApiExport] {
+        &self.data.output.api_exports
     }
     pub fn needs_context(&self) -> bool {
         self.data.output.needs_context
@@ -93,7 +82,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn needs_sanitized_legacy_props(&self) -> bool {
-        self.data.reactivity.legacy_uses_props() || self.data.reactivity.legacy_uses_rest_props()
+        let legacy = self.data.reactivity.summary().legacy;
+        legacy.reads_props_object || legacy.reads_rest_props_object
     }
 
     pub fn legacy_sanitized_props_excluded_keys(&self) -> &'static [&'static str] {
@@ -101,7 +91,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn needs_legacy_rest_props(&self) -> bool {
-        self.data.reactivity.legacy_uses_rest_props()
+        self.data
+            .reactivity
+            .summary()
+            .legacy
+            .reads_rest_props_object
     }
 
     pub fn legacy_bindable_prop_keys(&self) -> Vec<String> {
@@ -112,22 +106,17 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .map(|(alias, _)| alias.into_owned())
                 .unwrap_or_else(|| self.data.scoping.symbol_name(sym).to_string())
         };
-        let exported_symbols: Vec<SymbolId> =
-            self.data.script.exports.iter().map(|exp| exp.local).collect();
-        let is_variant = |sym: SymbolId, want_api: bool| match self
+        let mut keys: Vec<String> = self
             .data
-            .reactivity
-            .binding_semantics(sym)
-        {
-            crate::BindingSemantics::LegacyApiExport => want_api,
-            crate::BindingSemantics::LegacyBindableProp(_) => !want_api,
-            _ => false,
-        };
-        let mut keys: Vec<String> = exported_symbols
+            .output
+            .api_exports
             .iter()
-            .copied()
-            .filter(|&sym| is_variant(sym, true))
-            .map(key_for)
+            .map(|exp| {
+                exp.alias
+                    .as_ref()
+                    .map(|alias| alias.to_string())
+                    .unwrap_or_else(|| key_for(exp.local))
+            })
             .collect();
         keys.extend(
             self.data
@@ -135,15 +124,59 @@ impl<'d, 'a> CodegenView<'d, 'a> {
                 .legacy_bindable_prop_symbols()
                 .iter()
                 .copied()
-                .map(key_for),
+                .map(|sym| {
+                    self.data
+                        .reactivity
+                        .legacy_bindable_prop_alias(sym)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| key_for(sym))
+                }),
         );
         keys
+    }
+    pub fn component_prop_accessors(&self) -> Vec<ComponentPropAccessor<'d>> {
+        let mut accessors = Vec::new();
+        if self.data.uses_runes() {
+            for sym in self.data.reactivity.iter_runes_prop_symbols() {
+                let key = self
+                    .data
+                    .scoping
+                    .binding_origin_key(sym)
+                    .map(|(key, _)| key)
+                    .unwrap_or_else(|| Cow::Borrowed(self.data.scoping.symbol_name(sym)));
+                if key.starts_with("$$") {
+                    continue;
+                }
+                accessors.push(ComponentPropAccessor {
+                    key,
+                    local: self.data.scoping.symbol_name(sym),
+                    default_span: self.data.reactivity.prop_default_span(sym),
+                });
+            }
+            return accessors;
+        }
+        for &sym in self.data.reactivity.legacy_bindable_prop_symbols() {
+            let key = match self.data.reactivity.legacy_bindable_prop_alias(sym) {
+                Some(alias) => Cow::Borrowed(alias),
+                None => Cow::Borrowed(self.data.scoping.symbol_name(sym)),
+            };
+            if key.starts_with("$$") {
+                continue;
+            }
+            accessors.push(ComponentPropAccessor {
+                key,
+                local: self.data.scoping.symbol_name(sym),
+                default_span: None,
+            });
+        }
+        accessors
     }
     pub fn custom_element_slot_names(&self) -> &[String] {
         self.data.custom_element_slot_names()
     }
     pub fn props_id(&self) -> Option<&str> {
-        self.data.script.props_id.as_deref()
+        let symbol = self.data.script.props_id?;
+        Some(self.data.scoping.symbol_name(symbol))
     }
     pub fn scoping(&self) -> &ComponentScoping<'a> {
         &self.data.scoping
@@ -198,12 +231,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn attr_expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
         self.data.attr_expression_blockers(id)
     }
-    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.data.needs_expr_memoization(id)
-    }
-    pub fn expr_is_async(&self, id: NodeId) -> bool {
-        self.data.expr_is_async(id)
-    }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.data.node_ref_symbols(id)
     }
@@ -213,10 +240,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
         self.data.bind_target_symbol(id)
     }
-    pub fn symbol_for_reference(
-        &self,
-        ref_id: ReferenceId,
-    ) -> Option<SymbolId> {
+    pub fn symbol_for_reference(&self, ref_id: ReferenceId) -> Option<SymbolId> {
         self.data.symbol_for_reference(ref_id)
     }
     pub fn symbol_for_identifier_reference(
@@ -243,16 +267,10 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
         self.data.binding_semantics(sym)
     }
-    pub fn declarator_semantics(
-        &self,
-        decl_node: SemOxcNodeId,
-    ) -> DeclaratorSemantics {
+    pub fn declarator_semantics(&self, decl_node: SemOxcNodeId) -> DeclaratorSemantics {
         self.data.declarator_semantics(decl_node)
     }
-    pub fn reference_semantics(
-        &self,
-        ref_id: ReferenceId,
-    ) -> ReferenceSemantics {
+    pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         self.data.reference_semantics(ref_id)
     }
     pub fn fragment_items(
@@ -335,12 +353,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.data.elements.flags.needs_var(id)
     }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_attr(id)
-    }
-    pub fn has_state_attr(&self, id: NodeId) -> bool {
-        self.data.dynamism.has_state_attr(id)
-    }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
         self.data.elements.flags.static_class(id)
     }
@@ -353,11 +365,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_use_directive(id)
     }
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.data.elements.flags.has_dynamic_class_directives(id)
-    }
-    pub fn class_needs_state(&self, id: NodeId) -> bool {
-        self.data.class_needs_state(id)
+    pub fn class_state_volatility(&self, id: NodeId) -> Volatility {
+        self.data.class_state_volatility(id)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
         self.data.elements.flags.class_attr_id(id)
@@ -376,12 +385,22 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         if self.data.uses_runes() {
             return false;
         }
+        let has_bind_directive = |p: &ComponentPropInfo| match p.kind {
+            ComponentPropKind::Bind { .. } | ComponentPropKind::BindThis { .. } => true,
+            ComponentPropKind::String { .. }
+            | ComponentPropKind::Boolean { .. }
+            | ComponentPropKind::Expression { .. }
+            | ComponentPropKind::Concatenation { .. }
+            | ComponentPropKind::Spread { .. }
+            | ComponentPropKind::Attach { .. }
+            | ComponentPropKind::Event { .. } => false,
+        };
         self.data
             .elements
             .flags
             .component_props(id)
             .iter()
-            .any(|p| matches!(p.kind, ComponentPropKind::Bind { .. }))
+            .any(has_bind_directive)
     }
     pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
         self.data.elements.flags.component_css_props(id)
@@ -391,9 +410,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.data.template.snippets.component_snippets(id)
-    }
-    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.data.dynamism.is_dynamic_component(id)
     }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
         self.data.elements.flags.event_handler_mode(id)
@@ -412,6 +428,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_fragment_slot(id)
+    }
+    pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
+        self.data.elements.flags.legacy_default_slot(id)
+    }
+    pub fn legacy_slot_has_fallback(&self, id: NodeId) -> bool {
+        self.data.elements.flags.legacy_slot_has_fallback(id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)

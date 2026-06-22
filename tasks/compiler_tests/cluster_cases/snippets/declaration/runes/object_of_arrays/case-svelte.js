@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 const s = ($$anchor, $$arg0) => {
-	var $$array = $.derived(() => $.to_array($$arg0?.().p, 2));
-	var $$array_1 = $.derived(() => $.to_array($$arg0?.().q, 2));
+	var $$array = $.derived(() => $.to_array(($$arg0?.()).p, 2));
+	var $$array_1 = $.derived(() => $.to_array(($$arg0?.()).q, 2));
 	let a = () => $.get($$array)[0];
 	let b = () => $.get($$array)[1];
 	let c = () => $.get($$array_1)[0];

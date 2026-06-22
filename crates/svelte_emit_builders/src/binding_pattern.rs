@@ -77,8 +77,19 @@ pub fn fallback<'a>(
     default: &Expression<'_>,
     scope: Option<ScopeId>,
 ) -> Expression<'a> {
+    let simple = is_simple_expression(default);
+    fallback_with_simple(b, expr, default, scope, simple)
+}
+
+pub fn fallback_with_simple<'a>(
+    b: &Builder<'a>,
+    expr: Expression<'a>,
+    default: &Expression<'_>,
+    scope: Option<ScopeId>,
+    simple: bool,
+) -> Expression<'a> {
     let default = default.clone_in(b.ast.allocator);
-    if is_simple_expression(&default) {
+    if simple {
         b.call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(default)])
     } else {
         let thunk = b.thunk(default);
@@ -138,6 +149,7 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
         | Expression::Identifier(_)
         | Expression::ArrowFunctionExpression(_)
         | Expression::FunctionExpression(_) => true,
+        Expression::ParenthesizedExpression(inner) => is_simple_expression(&inner.expression),
         Expression::ConditionalExpression(cond) => {
             is_simple_expression(&cond.test)
                 && is_simple_expression(&cond.consequent)

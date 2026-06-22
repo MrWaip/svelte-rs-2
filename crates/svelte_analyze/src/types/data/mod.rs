@@ -4,7 +4,6 @@ use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
 use super::node_table::{NodeBitSet, NodeTable};
-use super::script::{ExportInfo, ScriptInfo};
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub use svelte_parser::JsAst;
@@ -21,7 +20,6 @@ mod fragment_facts;
 mod fragment_namespaces;
 mod ignore;
 mod pickled_awaits;
-mod proxy_state_inits;
 mod rich_content_facts;
 mod runtime;
 mod template_data;
@@ -29,17 +27,19 @@ mod template_element_index;
 pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
-    BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics,
+    BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics, ClassFieldSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
-    ContextualReadKind, ContextualReadSemantics, DeclaratorSemantics, DerivedDeclarationSemantics,
-    DerivedKind, DerivedEmit, EachIndexStrategy, EachItemStrategy,
-    LegacyBindablePropSemantics, OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics,
-    PropDefaultKind, PropEmitMode, PropReferenceSemantics, ReactivitySemantics,
-    ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy,
+    LegacyBindablePropSemantics, LegacyDependency, LegacySummary, OptimizedRuneSemantics,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
+    PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, RuntimeRuneKind,
+    SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
+    StoreBindingSemantics,
 };
 pub use analysis::{
-    AnalysisData, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis, TemplateAnalysis,
+    AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis,
+    TemplateAnalysis,
 };
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
@@ -49,21 +49,20 @@ pub use directive_modifier_flags::EventModifier;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentCssProp, ComponentCssPropValue,
-    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode,
+    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode, LegacyDefaultSlot,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;
 pub use ignore::IgnoreData;
 pub use pickled_awaits::PickledAwaits;
-pub use proxy_state_inits::ProxyStateInits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::LegacyInit;
 pub use runtime::RuntimeInfo;
 pub use template_data::{
-    binding_group_name, BindHostKind, BindPropertyKind, BindSemanticsData, BindSource,
-    BindTargetSemantics, ContentEditableKind, DocumentBindKind, ElementSizeKind,
-    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, SnippetData, TemplateSemanticsData,
-    TitleElementData, WindowBindKind,
+    BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
+    ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind, MediaBindKind,
+    ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData, WindowBindKind,
+    binding_group_name,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

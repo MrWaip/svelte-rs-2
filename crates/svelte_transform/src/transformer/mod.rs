@@ -12,9 +12,9 @@ mod location;
 pub(crate) mod model;
 mod props;
 
-mod split_export_props_legacy;
 mod rewrites;
 mod runes;
+mod split_export_props_legacy;
 mod state;
 
 mod state_legacy;
@@ -33,49 +33,27 @@ pub(crate) use svelte_analyze::{
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
     ArrowFunctionExpression, CallExpression, Class, ClassBody, Expression, ForOfStatement,
-    FunctionBody, Function, MethodDefinitionKind, ObjectProperty, Statement, VariableDeclarator,
+    Function, FunctionBody, MethodDefinitionKind, ObjectProperty, Statement, VariableDeclarator,
 };
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
-    fn enter_class_body(
-        &mut self,
-        node: &mut ClassBody<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn exit_class_body(&mut self, node: &mut ClassBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
         }
+
         let info = self.scan_class_state_fields(node);
-        self.class_state_stack.push(info);
-    }
-
-    fn exit_class_body(
-        &mut self,
-        node: &mut ClassBody<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
-
-        let Some(info) = self.class_state_stack.pop() else {
-            return;
-        };
         if info.fields.is_empty() {
             return;
         }
         self.rewrite_class_body(node, &info);
     }
 
-    fn enter_function(
-        &mut self,
-        node: &mut Function<'a>,
-        ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn enter_function(&mut self, node: &mut Function<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
         }
@@ -97,11 +75,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         });
     }
 
-    fn exit_function(
-        &mut self,
-        _node: &mut Function<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn exit_function(&mut self, _node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
         }
@@ -210,6 +184,12 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if self.mode == model::TransformMode::Template {
             return;
         }
+        if !self.runes
+            && let Statement::BreakStatement(brk) = node
+            && brk.label.as_ref().is_some_and(|label| label.name == "$")
+        {
+            *node = self.b.ast.statement_return(SPAN, None);
+        }
         self.enclosing_stmt_start.push(node.span().start);
     }
 
@@ -256,8 +236,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if self.mode == model::TransformMode::Template {
             let is_lhs = matches!(
                 ctx.parent(),
-                Ancestor::AssignmentExpressionLeft(_)
-                    | Ancestor::UpdateExpressionArgument(_)
+                Ancestor::AssignmentExpressionLeft(_) | Ancestor::UpdateExpressionArgument(_)
             );
             template_rewrites::rewrite_template_enter(self, node, is_lhs, ctx);
             return;
@@ -277,7 +256,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
 
     fn exit_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
-            template_rewrites::rewrite_template_exit(self, node);
+            template_rewrites::rewrite_template_exit(self, node, ctx);
             return;
         }
 

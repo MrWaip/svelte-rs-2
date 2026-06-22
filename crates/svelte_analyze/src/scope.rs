@@ -1,4 +1,3 @@
-use rustc_hash::FxHashSet;
 use std::ops::{Deref, DerefMut};
 use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolFlags, SymbolOwner};
 
@@ -11,8 +10,6 @@ mod symbol_class {
 
 pub struct ComponentScoping<'a> {
     semantics: ComponentSemantics<'a>,
-    rest_prop_sym: Option<SymbolId>,
-    init_known_syms: FxHashSet<SymbolId>,
 }
 
 impl<'a> Deref for ComponentScoping<'a> {
@@ -38,11 +35,7 @@ impl<'a> ComponentScoping<'a> {
     }
 
     pub fn from_semantics(semantics: ComponentSemantics<'a>) -> Self {
-        Self {
-            semantics,
-            rest_prop_sym: None,
-            init_known_syms: FxHashSet::default(),
-        }
+        Self { semantics }
     }
 
     pub fn into_semantics(self) -> ComponentSemantics<'a> {
@@ -86,23 +79,6 @@ impl<'a> ComponentScoping<'a> {
     pub(crate) fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
         self.semantics
             .has_symbol_state(sym_id, symbol_class::EACH_INDEX_NON_DYNAMIC)
-    }
-
-    pub(crate) fn mark_rest_prop_sym(&mut self, sym_id: SymbolId) {
-        self.rest_prop_sym = Some(sym_id);
-    }
-
-    pub(crate) fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
-        self.rest_prop_sym == Some(sym_id)
-    }
-
-    pub(crate) fn mark_init_known(&mut self, sym_id: SymbolId) {
-        self.init_known_syms.insert(sym_id);
-    }
-
-    pub fn is_init_known(&self, sym_id: SymbolId) -> bool {
-        !self.semantics.is_reexported_specifier_local(sym_id)
-            && self.init_known_syms.contains(&sym_id)
     }
 
     pub fn add_unique_synthetic_binding(

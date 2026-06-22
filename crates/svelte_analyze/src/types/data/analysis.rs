@@ -1,24 +1,28 @@
 use super::*;
-use crate::types::script::PropsDeclaration;
-use crate::types::data::template_topology::Ancestors;
-use crate::types::data::DeclaratorSemantics;
-use crate::attribute_semantics::{AttributeSemanticsStore, data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics}};
-use crate::block_semantics::{BlockSemanticsStore, BlockSemantics, EachIndexKind, EachItemKind};
-use crate::expression_semantics::{ExpressionSemanticsStore, ExpressionSemantics, ExpressionData, ExprKind};
-use crate::utils::node_id_utils::expression_node_id;
-use oxc_ast::ast::Expression;
-use crate::passes::dynamism::DynamismData;
+use crate::attribute_semantics::{
+    AttributeSemanticsStore,
+    data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
+};
+use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
+use crate::expression_semantics::{
+    ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, Volatility,
+};
 use crate::passes::fragment_topology::fragment_items;
+use crate::types::data::template_topology::Ancestors;
+use crate::types::data::{ClassFieldSemantics, DeclaratorSemantics};
+use crate::utils::node_id_utils::expression_node_id;
+use crate::value_evaluation::ValueEvaluation;
+use oxc_ast::ast::Expression;
 use oxc_ast::ast::IdentifierReference;
 use oxc_semantic::ScopeId;
-use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, RunesMode, StringAttribute};
 use std::borrow::Cow;
+use svelte_ast::{
+    Attribute, BindDirective, ExpressionAttribute, Namespace, RunesMode, StringAttribute,
+};
 use svelte_component_semantics::{OriginKind, OxcNodeId, ReferenceId};
 
 pub struct ScriptAnalysis {
-    pub info: Option<ScriptInfo>,
-    pub props_id: Option<String>,
-    pub exports: Vec<ExportInfo>,
+    pub props_id: Option<SymbolId>,
     pub has_class_state_fields: bool,
     pub has_store_member_mutations: bool,
     pub runes_mode: RunesMode,
@@ -29,16 +33,13 @@ pub struct ScriptAnalysis {
     pub experimental_async: bool,
     pub dev: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
-    pub proxy_state_inits: ProxyStateInits,
     pub blocker_data: BlockerData,
 }
 
 impl ScriptAnalysis {
     pub(crate) fn new() -> Self {
         Self {
-            info: None,
             props_id: None,
-            exports: Vec::new(),
             has_class_state_fields: false,
             has_store_member_mutations: false,
             runes_mode: RunesMode::Runes,
@@ -49,13 +50,8 @@ impl ScriptAnalysis {
             experimental_async: false,
             dev: false,
             ce_config: None,
-            proxy_state_inits: ProxyStateInits::new(),
             blocker_data: BlockerData::default(),
         }
-    }
-
-    pub fn props_declaration(&self) -> Option<&PropsDeclaration> {
-        self.info.as_ref()?.props_declaration.as_ref()
     }
 
     pub fn is_state_source(&self, reassigned: bool) -> bool {
@@ -144,6 +140,13 @@ impl BlockAnalysis {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ApiExport {
+    pub local: svelte_component_semantics::SymbolId,
+    pub reference_id: Option<ReferenceId>,
+    pub alias: Option<compact_str::CompactString>,
+}
+
 pub struct OutputData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
@@ -154,6 +157,8 @@ pub struct OutputData {
     pub runtime_plan: RuntimeInfo,
     pub ignore_data: IgnoreData,
     pub needs_component_bind_ownership: bool,
+    pub api_exports: Vec<ApiExport>,
+    pub legacy_has_export_declaration: bool,
 
     pub css: CssAnalysis,
 }
@@ -170,6 +175,8 @@ impl OutputData {
             runtime_plan: RuntimeInfo::default(),
             ignore_data: IgnoreData::new(),
             needs_component_bind_ownership: false,
+            api_exports: Vec::new(),
+            legacy_has_export_declaration: false,
             css: CssAnalysis::empty(node_count),
         }
     }
@@ -187,7 +194,7 @@ pub struct AnalysisData<'a> {
     pub output: OutputData,
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
-    pub dynamism: DynamismData,
+    pub(crate) value_evaluation: ValueEvaluation,
 }
 
 impl<'a> AnalysisData<'a> {
@@ -204,7 +211,7 @@ impl<'a> AnalysisData<'a> {
             output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
-            dynamism: DynamismData::new(node_count),
+            value_evaluation: ValueEvaluation::default(),
         }
     }
 }
@@ -216,16 +223,24 @@ impl<'a> AnalysisData<'a> {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
     }
-    pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.dynamism.is_dynamic_node(id)
-    }
-    pub fn class_needs_state(&self, element_id: NodeId) -> bool {
-        let class_attr_dynamic = self
+    pub fn class_state_volatility(&self, element_id: NodeId) -> Volatility {
+        let mut volatility = self
             .elements
             .flags
             .class_attr_id(element_id)
-            .is_some_and(|attr_id| self.dynamism.is_dynamic_attr(attr_id));
-        class_attr_dynamic || self.elements.flags.has_dynamic_class_directives(element_id)
+            .and_then(|attr_id| self.expression_data(attr_id))
+            .map(|d| d.volatility)
+            .unwrap_or(Volatility::Static);
+        if let Some(directives) = self.elements.flags.class_directive_info(element_id) {
+            for directive in directives {
+                let directive_volatility = self
+                    .expression_data(directive.id)
+                    .map(|d| d.volatility)
+                    .unwrap_or(Volatility::Static);
+                volatility = volatility.max(directive_volatility);
+            }
+        }
+        volatility
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
@@ -242,19 +257,8 @@ impl<'a> AnalysisData<'a> {
             ExpressionSemantics::NonSpecial => None,
         }
     }
-    pub fn expression_data_for(
-        &self,
-        expr: &Expression<'_>,
-    ) -> Option<&ExpressionData> {
+    pub fn expression_data_for(&self, expr: &Expression<'_>) -> Option<&ExpressionData> {
         self.expression_data_by_oxc(expression_node_id(expr))
-    }
-    pub fn expr_is_async(&self, id: NodeId) -> bool {
-        self.expression_data(id).is_some_and(|d| {
-            matches!(
-                d.kind,
-                ExprKind::Async { has_await: true }
-            )
-        })
     }
     pub fn binding_origin_key(&self, sym: SymbolId) -> Option<(Cow<'_, str>, OriginKind)> {
         self.scoping.binding_origin_key(sym)
@@ -262,10 +266,10 @@ impl<'a> AnalysisData<'a> {
     pub fn each_item_indirect_sources(&self, item_sym: SymbolId) -> Option<&[SymbolId]> {
         self.reactivity.each_item_indirect_sources(item_sym)
     }
-    pub fn symbol_for_reference(
-        &self,
-        ref_id: ReferenceId,
-    ) -> Option<SymbolId> {
+    pub fn legacy_indirect_bindings(&self, root_sym: SymbolId) -> Option<&[SymbolId]> {
+        self.reactivity.legacy_indirect_bindings(root_sym)
+    }
+    pub fn symbol_for_reference(&self, ref_id: ReferenceId) -> Option<SymbolId> {
         self.scoping.symbol_for_reference(ref_id)
     }
     pub fn symbol_for_identifier_reference(
@@ -294,17 +298,14 @@ impl<'a> AnalysisData<'a> {
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
         self.reactivity.binding_semantics(sym)
     }
-    pub fn declarator_semantics(
-        &self,
-        decl_node: OxcNodeId,
-    ) -> DeclaratorSemantics {
+    pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
         self.reactivity.declarator_semantics(decl_node)
     }
-    pub fn reference_semantics(
-        &self,
-        ref_id: ReferenceId,
-    ) -> ReferenceSemantics {
+    pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         self.reactivity.reference_semantics(ref_id)
+    }
+    pub fn class_field_semantics(&self, access_node: OxcNodeId) -> ClassFieldSemantics {
+        self.reactivity.class_field_semantics(access_node)
     }
     pub fn uses_runes(&self) -> bool {
         self.reactivity.uses_runes()
@@ -491,10 +492,7 @@ impl<'a> AnalysisData<'a> {
     pub fn ancestors(&self, id: NodeId) -> Ancestors<'_> {
         self.template.template_topology.ancestors(id)
     }
-    pub fn expr_ancestors(
-        &self,
-        id: NodeId,
-    ) -> Ancestors<'_> {
+    pub fn expr_ancestors(&self, id: NodeId) -> Ancestors<'_> {
         self.template.template_topology.expr_ancestors(id)
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
@@ -602,16 +600,6 @@ impl<'a> AnalysisData<'a> {
                 ComponentPropSemantics::Expression(s),
             ) if matches!(s.memo, ComponentPropMemo::Getter | ComponentPropMemo::Derived),
         )
-    }
-    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expression_data(id).is_some_and(|d| match d.kind {
-            ExprKind::Async { has_await: true } => true,
-            ExprKind::Call { dynamic } => dynamic,
-            ExprKind::KnownLiteral
-            | ExprKind::SimpleRead { .. }
-            | ExprKind::Computed { .. }
-            | ExprKind::Async { has_await: false } => false,
-        })
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
         self.expression_data(id)

@@ -30,7 +30,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: ConstTagBlockSemantics,
     ) -> Result<()> {
-        let out = self.emit_binding_pattern(sem.decl_node_id, BindingPatternSource::ConstTag { id })?;
+        let out =
+            self.emit_binding_pattern(sem.decl_node_id, BindingPatternSource::ConstTag { id })?;
         let BindingPatternOutput::ConstTagDerived(d) = out else {
             return CodegenError::unexpected_child("const tag derived", "statements");
         };
@@ -56,14 +57,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 BlockSemantics::ConstTag(s) => s.clone(),
                 _ => continue,
             };
-            let (has_await, blockers) = match &sem.async_kind {
-                ConstTagAsyncKind::Async {
-                    has_await,
-                    blockers,
-                } => (*has_await, blockers.to_vec()),
-                ConstTagAsyncKind::Sync => (false, Vec::new()),
-            };
-
             let out =
                 self.emit_binding_pattern(sem.decl_node_id, BindingPatternSource::ConstTag { id })?;
             let BindingPatternOutput::ConstTagDerived(d) = out else {
@@ -71,25 +64,41 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
 
             state.init.push(self.ctx.b.let_stmt(d.target));
-            build_blocker_thunks(self.ctx, &blockers, &mut thunks);
 
             let assignment = self
                 .ctx
                 .b
                 .assign_expr(AssignLeft::Ident(d.target.to_string()), d.derived);
-            let body = if self.ctx.state.dev && d.simple {
-                let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
-                let assign_stmt = self.ctx.b.expr_stmt(assignment);
-                let body_stmts = vec![assign_stmt, get_call];
-                if has_await {
-                    self.ctx.b.async_thunk_block(body_stmts)
-                } else {
-                    self.ctx.b.thunk_block(body_stmts)
+            let body = match &sem.async_kind {
+                ConstTagAsyncKind::Awaited { blockers } => {
+                    build_blocker_thunks(self.ctx, blockers, &mut thunks);
+                    if self.ctx.state.dev && d.simple {
+                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
+                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
+                        self.ctx.b.async_thunk_block(vec![assign_stmt, get_call])
+                    } else {
+                        self.ctx.b.async_thunk(assignment)
+                    }
                 }
-            } else if has_await {
-                self.ctx.b.async_thunk(assignment)
-            } else {
-                self.ctx.b.thunk(assignment)
+                ConstTagAsyncKind::Deferred { blockers } => {
+                    build_blocker_thunks(self.ctx, blockers, &mut thunks);
+                    if self.ctx.state.dev && d.simple {
+                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
+                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
+                        self.ctx.b.thunk_block(vec![assign_stmt, get_call])
+                    } else {
+                        self.ctx.b.thunk(assignment)
+                    }
+                }
+                ConstTagAsyncKind::Sync => {
+                    if self.ctx.state.dev && d.simple {
+                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
+                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
+                        self.ctx.b.thunk_block(vec![assign_stmt, get_call])
+                    } else {
+                        self.ctx.b.thunk(assignment)
+                    }
+                }
             };
             thunks.push(body);
             let thunk_idx = thunks.len() - 1;
@@ -109,14 +118,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         Ok(())
     }
-
 }
 
-fn build_blocker_thunks<'a>(
-    ctx: &mut Ctx<'a>,
-    blockers: &[u32],
-    thunks: &mut Vec<Expression<'a>>,
-) {
+fn build_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
     if blockers.is_empty() {
         return;
     }

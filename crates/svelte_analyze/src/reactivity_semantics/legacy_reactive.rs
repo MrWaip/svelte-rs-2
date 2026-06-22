@@ -10,14 +10,20 @@ pub fn legacy_reactive_import_wrapper_name(import_name: &str) -> String {
     format!("{LEGACY_REACTIVE_IMPORT_PREFIX}{import_name}")
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LegacyReactiveDep {
+    Binding(SymbolId),
+    PropsObject,
+    RestPropsObject,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyReactiveStatement {
     pub stmt_node: OxcNodeId,
     pub kind: LegacyReactiveKind,
     pub assignments: SmallVec<[SymbolId; 4]>,
-    pub dependencies: SmallVec<[SymbolId; 8]>,
-    pub uses_props: bool,
-    pub uses_rest_props: bool,
+    pub dependencies: SmallVec<[LegacyReactiveDep; 8]>,
+    pub structural_reads: SmallVec<[LegacyReactiveDep; 8]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,12 +95,19 @@ impl LegacyReactivitySemantics {
         }
     }
 
-    pub(crate) fn remove_mutated_import(&mut self, sym: SymbolId) {
-        self.mutated_imports.retain(|s| *s != sym);
-    }
-
     pub(crate) fn record_statement(&mut self, statement: LegacyReactiveStatement) {
         self.statements.insert(statement.stmt_node, statement);
+    }
+
+    pub(crate) fn set_statement_dependencies(
+        &mut self,
+        stmt_node: OxcNodeId,
+        dependencies: SmallVec<[LegacyReactiveDep; 8]>,
+    ) {
+        let Some(statement) = self.statements.get_mut(&stmt_node) else {
+            return;
+        };
+        statement.dependencies = dependencies;
     }
 
     pub(crate) fn set_topo_order(&mut self, order: SmallVec<[OxcNodeId; 4]>) {

@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "a11y_misplaced_role",
-    "start": 12,
-    "end": 18
-  }
-]

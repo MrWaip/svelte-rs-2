@@ -10,6 +10,12 @@ use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
 
+#[derive(Default)]
+pub(in crate::codegen) struct SnippetParamParsed<'a> {
+    pub pattern: Option<BindingPattern<'a>>,
+    pub default: Option<Expression<'a>>,
+}
+
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_snippet_block(
         &mut self,
@@ -66,8 +72,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::missing_expression(block_id);
         };
 
-        let parsed_patterns =
-            self.take_snippet_param_patterns(&mut parsed_stmt, sem.params.len());
+        let parsed_patterns = self.take_snippet_param_patterns(&mut parsed_stmt, sem.params.len());
 
         let (params, binding_decls) =
             self.build_snippet_params_with_patterns(block_id, sem, parsed_patterns)?;
@@ -115,7 +120,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         _block_id: NodeId,
         sem: &SnippetBlockSemantics,
-        mut parsed_patterns: Vec<Option<BindingPattern<'a>>>,
+        mut parsed_patterns: Vec<SnippetParamParsed<'a>>,
     ) -> Result<(FormalParameters<'a>, Vec<Statement<'a>>)> {
         use oxc_ast::ast::FormalParameterKind;
 
@@ -125,8 +130,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut binding_decls: Vec<Statement<'a>> = Vec::new();
 
         for (idx, param) in sem.params.iter().enumerate() {
-            let pattern = parsed_patterns.get_mut(idx).and_then(|slot| slot.take());
-            let (formal, mut stmts) = self.emit_snippet_param(param, idx, pattern)?;
+            let (pattern, default) = match parsed_patterns.get_mut(idx) {
+                Some(slot) => (slot.pattern.take(), slot.default.take()),
+                None => (None, None),
+            };
+            let (formal, mut stmts) = self.emit_snippet_param(param, idx, pattern, default)?;
             params.push(formal);
             binding_decls.append(&mut stmts);
         }
@@ -179,8 +187,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         stmt: &mut Statement<'a>,
         expected: usize,
-    ) -> Vec<Option<BindingPattern<'a>>> {
-        let mut out: Vec<Option<BindingPattern<'a>>> = Vec::with_capacity(expected);
+    ) -> Vec<SnippetParamParsed<'a>> {
+        let mut out: Vec<SnippetParamParsed<'a>> = Vec::with_capacity(expected);
         let arrow = match stmt {
             Statement::VariableDeclaration(decl) => decl
                 .declarations
@@ -193,22 +201,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => None,
         };
         let Some(arrow) = arrow else {
-            out.resize_with(expected, || None);
+            out.resize_with(expected, SnippetParamParsed::default);
             return out;
         };
         for param in arrow.params.items.iter_mut().take(expected) {
-            if matches!(param.pattern, BindingPattern::BindingIdentifier(_)) {
-                out.push(None);
+            let default = param.initializer.take().map(|init| init.unbox());
+            let pattern = if matches!(param.pattern, BindingPattern::BindingIdentifier(_)) {
+                None
             } else {
                 let dummy = self
                     .ctx
                     .b
                     .ast
                     .binding_pattern_binding_identifier(SPAN, self.ctx.b.ast.atom("$$snip"));
-                out.push(Some(mem::replace(&mut param.pattern, dummy)));
-            }
+                Some(mem::replace(&mut param.pattern, dummy))
+            };
+            out.push(SnippetParamParsed { pattern, default });
         }
-        out.resize_with(expected, || None);
+        out.resize_with(expected, SnippetParamParsed::default);
         out
     }
 }

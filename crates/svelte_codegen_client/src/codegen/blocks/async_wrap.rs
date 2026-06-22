@@ -7,7 +7,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn emit_async_call_stmt(
         &mut self,
-        has_await: bool,
         blockers: &[u32],
         anchor: Expression<'a>,
         node_param: &str,
@@ -20,21 +19,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.promises_array(blockers)
         };
-        let async_values = if has_await {
-            let Some(thunk) = thunk else {
-                return super::super::CodegenError::unexpected_child(
-                    "async thunk",
-                    "missing for await plan",
-                );
-            };
-            Arg::Expr(self.ctx.b.array_expr([thunk]))
-        } else {
-            Arg::Expr(self.ctx.b.void_zero_expr())
-        };
-        let callback_params = if has_await {
-            self.ctx.b.params([node_param, condition_param])
-        } else {
-            self.ctx.b.params([node_param])
+        let (async_values, callback_params) = match thunk {
+            Some(thunk) => (
+                Arg::Expr(self.ctx.b.array_expr([thunk])),
+                self.ctx.b.params([node_param, condition_param]),
+            ),
+            None => (
+                Arg::Expr(self.ctx.b.void_zero_expr()),
+                self.ctx.b.params([node_param]),
+            ),
         };
         let callback = self.ctx.b.arrow_block_expr(callback_params, inner_stmts);
         Ok(self.ctx.b.call_stmt(

@@ -1,16 +1,16 @@
 pub(crate) mod builder;
 pub mod data;
 
-pub use builder::{build, BindingGroupTable};
+pub use builder::{BindingGroupTable, build};
 pub use data::{
     AttributeSemantics, BoundaryPropEmit, BoundaryPropSemantics, ComponentAttachEmit,
     ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
     ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
     ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
-    DocumentBindSemantics, HtmlConcatPart, HtmlConcatSemantics, TemplateEffect,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
-    HtmlBindKind, MustBePropertySemantics, MustBePropertyValue, SpecialValueKind,
-    SpecialValueSemantics, WindowBindSemantics,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
+    StyleDirectivesSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 
 use svelte_ast::NodeId;

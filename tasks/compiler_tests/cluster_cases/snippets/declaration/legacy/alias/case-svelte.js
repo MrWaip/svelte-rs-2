@@ -1,8 +1,8 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 const s = ($$anchor, $$arg0) => {
-	let x = () => $$arg0?.().a;
-	let y = () => $$arg0?.().b;
+	let x = () => ($$arg0?.()).a;
+	let y = () => ($$arg0?.()).b;
 	var button = root_1();
 	var text = $.child(button);
 	$.reset(button);

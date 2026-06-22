@@ -1,9 +1,11 @@
 use std::mem;
 
-use oxc_allocator::CloneIn;
 use oxc_ast::ast::Statement;
+use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
-use svelte_ast_builder::{Arg, AssignLeft};
+use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
+
+use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -133,11 +135,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         };
         let is_ghost = el_name.is_empty();
+        let has_spread = self.ctx.has_spread(el_id);
 
-        if !is_ghost
-            && self.ctx.needs_input_defaults(el_id)
-            && !self.ctx.has_spread(el_id)
-        {
+        let prev_pending_element_init = mem::take(&mut state.pending_element_init);
+        let prev_pending_element_update = mem::take(&mut state.pending_element_update);
+        let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
+        let element_after_update_len_before = state.element_after_update.len();
+
+        if !is_ghost && !is_noscript && !has_spread {
+            self.emit_element_directives(state, el_id, &el_name_hint, &el_name, &attributes)?;
+        }
+
+        if !is_ghost && self.ctx.needs_input_defaults(el_id) && !has_spread {
             state.init.push(
                 self.ctx
                     .b
@@ -148,7 +157,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if !is_ghost
             && el_name_hint == "textarea"
             && !self.ctx.needs_textarea_value_lowering(el_id)
-            && needs_textarea_content_reset(&attributes, self.ctx.has_spread(el_id))
+            && needs_textarea_content_reset(&attributes, has_spread)
         {
             state.init.push(
                 self.ctx
@@ -162,9 +171,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .cloned()
             .partition(|a| matches!(a, Attribute::AttachTag(_)));
 
-        let prev_pending_element_init = mem::take(&mut state.pending_element_init);
-        let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
-        let element_after_update_len_before = state.element_after_update.len();
         if !is_noscript {
             self.emit_dom_attributes(
                 state,
@@ -188,8 +194,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .call_stmt("$.replay_events", [Arg::Ident(&el_name)]),
             );
         }
+        if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
+            self.emit_option_synthetic_value(state, &el_name, expr_id)?;
+        }
         let my_element_init = mem::take(&mut state.pending_element_init);
         state.pending_element_init = prev_pending_element_init;
+        let my_element_update = mem::take(&mut state.pending_element_update);
+        state.pending_element_update = prev_pending_element_update;
         let my_pre_update = mem::take(&mut state.pending_pre_update);
         state.pending_pre_update = prev_pending_pre_update;
 
@@ -199,9 +210,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.last_fragment_needs_reset = true;
             } else if self.ctx.needs_textarea_value_lowering(el_id) {
                 self.emit_textarea_value_lowering(state, el_id, &el_name)?;
-            } else if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
-                self.emit_option_synthetic_value(state, &el_name, expr_id)?;
-                state.last_fragment_needs_reset = true;
+            } else if el_name_hint == "template" && self.ctx.needs_var(el_id) {
+                state.init.push(
+                    self.ctx
+                        .b
+                        .call_stmt("$.hydrate_template", [Arg::Ident(&el_name)]),
+                );
+                let child_ctx = ctx.child_of_element(
+                    self.ctx,
+                    &el_name_hint,
+                    el.fragment,
+                    el_ns,
+                    FragmentAnchor::ElementContentChild {
+                        parent_var: el_name.clone(),
+                    },
+                );
+                self.emit_fragment(state, &child_ctx, el.fragment)?;
+                state
+                    .init
+                    .push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(&el_name)]));
+                state.last_fragment_needs_reset = false;
             } else {
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
@@ -232,6 +260,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         state.init.extend(my_element_init);
         state.init.extend(my_pre_update);
+        state.update.extend(my_element_update);
         let scoped: Vec<Statement<'a>> = state
             .element_after_update
             .split_off(element_after_update_len_before);
@@ -248,33 +277,37 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(el_name)
     }
 
-    fn emit_option_synthetic_value(
+    fn emit_element_directives(
         &mut self,
         state: &mut EmitState<'a>,
-        el_name: &str,
-        expr_id: NodeId,
+        owner_id: NodeId,
+        owner_tag: &str,
+        owner_var: &str,
+        attributes: &[Attribute],
     ) -> Result<()> {
-        let known = self
-            .ctx
-            .query
-            .view
-            .expression_data(expr_id)
-            .and_then(|d| d.evaluation.known_str());
-        let expr = self.take_node_expr(expr_id)?;
-        let text_expr = match known {
-            Some(s) => self.ctx.b.str_expr(&s),
-            None => expr.clone_in(self.ctx.b.ast.allocator),
-        };
-
-        let b = &self.ctx.b;
-        let text_member = b.static_member(b.rid_expr(el_name), "textContent");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(text_member), text_expr));
-        let value_member = b.static_member(b.rid_expr(el_name), "__value");
-        state
-            .init
-            .push(b.assign_stmt(AssignLeft::StaticMember(value_member), expr));
+        let saved_after_update = mem::take(&mut state.after_update);
+        for attr in attributes {
+            match attr {
+                Attribute::OnDirectiveLegacy(d) => {
+                    self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
+                }
+                Attribute::BindDirective(d) => {
+                    self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
+                }
+                Attribute::TransitionDirective(d) => {
+                    self.emit_transition_directive(state, owner_id, owner_var, d)?;
+                }
+                Attribute::UseDirective(d) => {
+                    self.emit_use_directive(state, owner_id, owner_var, d)?;
+                }
+                Attribute::AnimateDirective(d) => {
+                    self.emit_animate_directive(state, owner_id, owner_var, d)?;
+                }
+                _ => {}
+            }
+        }
+        let scoped = mem::replace(&mut state.after_update, saved_after_update);
+        state.element_after_update.extend(scoped);
         Ok(())
     }
 
@@ -449,6 +482,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         el_name: &str,
     ) -> Result<()> {
+        enum Raw {
+            Text(String),
+            Expr(NodeId),
+        }
+
         let el = self.ctx.element(el_id);
         let child_ids: Vec<NodeId> = self
             .ctx
@@ -459,31 +497,94 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .nodes
             .clone();
 
-        let mut expr_id: Option<NodeId> = None;
+        let mut parts: Vec<Raw> = Vec::new();
         for child_id in &child_ids {
             match self.ctx.query.component.store.get(*child_id) {
-                svelte_ast::Node::ExpressionTag(ex) => {
-                    expr_id = Some(ex.id);
-                    break;
+                Node::Text(t) => {
+                    let text = t.value(&self.ctx.query.component.source).to_string();
+                    if let Some(Raw::Text(prev)) = parts.last_mut() {
+                        prev.push_str(&text);
+                    } else {
+                        parts.push(Raw::Text(text));
+                    }
                 }
-                _ => continue,
+                Node::ExpressionTag(ex) => parts.push(Raw::Expr(ex.id)),
+                _ => {}
             }
         }
 
-        let Some(id) = expr_id else {
+        if parts.is_empty() {
             return Ok(());
-        };
-        let expr = self.take_node_expr(id)?;
+        }
+
+        if let Some(Raw::Text(first)) = parts.first_mut() {
+            let stripped = first
+                .strip_prefix("\r\n")
+                .or_else(|| first.strip_prefix('\n'))
+                .map(str::to_string);
+            if let Some(s) = stripped {
+                *first = s;
+            }
+        }
+
+        let volatility = parts
+            .iter()
+            .filter_map(|p| match p {
+                Raw::Expr(id) => self.ctx.expression_data(*id).map(|d| d.volatility),
+                Raw::Text(_) => None,
+            })
+            .max()
+            .unwrap_or(Volatility::Static);
+
         state.init.push(
             self.ctx
                 .b
                 .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
         );
-        state.init.push(
-            self.ctx
+
+        let single_expr_id = match parts.as_slice() {
+            [Raw::Expr(id)] => Some(*id),
+            _ => None,
+        };
+        let value_expr = if let Some(id) = single_expr_id {
+            self.take_node_expr(id)?
+        } else {
+            let mut tpl: Vec<TemplatePart<'a>> = Vec::new();
+            for part in parts {
+                match part {
+                    Raw::Text(s) => tpl.push(TemplatePart::Str(s)),
+                    Raw::Expr(id) => {
+                        let data = self.ctx.expression_data(id).cloned();
+                        let defined = data
+                            .as_ref()
+                            .map(|d| evaluation_is_defined(&d.evaluation))
+                            .unwrap_or(false);
+                        let expr = self.take_node_expr(id)?;
+                        let expr = coarse_wrap(self.ctx, expr, data.as_ref());
+                        tpl.push(TemplatePart::Expr(expr, defined));
+                    }
+                }
+            }
+            self.ctx.b.template_parts_expr(tpl)
+        };
+
+        let set_value = self
+            .ctx
+            .b
+            .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(value_expr)]);
+        if volatility.is_volatile() {
+            let arrow = self
+                .ctx
                 .b
-                .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]),
-        );
+                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(set_value)]);
+            state.init.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.template_effect", [Arg::Expr(arrow)]),
+            );
+        } else {
+            state.init.push(self.ctx.b.expr_stmt(set_value));
+        }
         Ok(())
     }
 }

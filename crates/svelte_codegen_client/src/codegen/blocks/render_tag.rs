@@ -1,5 +1,5 @@
-use svelte_emit_builders::runes::rune_get;
 use std::iter;
+use svelte_emit_builders::runes::rune_get;
 
 use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
@@ -7,10 +7,10 @@ use oxc_span::GetSpan;
 
 use crate::context::Ctx;
 
+use svelte_analyze::scope::SymbolId;
 use svelte_analyze::{
     BindingSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
 };
-use svelte_analyze::scope::SymbolId;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -269,10 +269,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
-fn async_value_thunk<'a>(
-    ctx: &mut Ctx<'a>,
-    expr: Expression<'a>,
-) -> Expression<'a> {
+fn async_value_thunk<'a>(ctx: &mut Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
     if let Expression::AwaitExpression(await_expr) = expr {
         let inner = await_expr.unbox().argument;
         ctx.b
@@ -321,14 +318,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
-fn render_callee_is_static(ctx: &Ctx<'_>, callee_sym: Option<SymbolId>) -> bool {
+pub(crate) fn render_callee_is_static(ctx: &Ctx<'_>, callee_sym: Option<SymbolId>) -> bool {
     let Some(sym) = callee_sym else {
         return false;
     };
-    matches!(
-        ctx.query.view.binding_semantics(sym),
+    match ctx.query.view.binding_semantics(sym) {
         BindingSemantics::MaybeReactive
-            | BindingSemantics::NonReactive
-            | BindingSemantics::Unresolved,
-    )
+        | BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved => true,
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::LegacyApiExport => false,
+    }
 }

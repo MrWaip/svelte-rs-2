@@ -1,49 +1,8 @@
-use oxc_ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, Declaration, Expression, Function, Statement,
-};
-use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_function};
-use oxc_semantic::ScopeFlags;
+use oxc_ast::ast::{Declaration, Expression, Statement};
 use svelte_component_semantics::SymbolId;
 
 use crate::types::data::{AnalysisData, AsyncStmtMeta, JsAst};
-
-fn has_await_in_statement(stmt: &Statement<'_>) -> bool {
-    struct AwaitCheck {
-        found: bool,
-        fn_depth: u32,
-    }
-
-    impl<'a> Visit<'a> for AwaitCheck {
-        fn visit_await_expression(&mut self, _expr: &AwaitExpression<'a>) {
-            if self.fn_depth == 0 {
-                self.found = true;
-            }
-        }
-
-        fn visit_arrow_function_expression(
-            &mut self,
-            arrow: &ArrowFunctionExpression<'a>,
-        ) {
-            self.fn_depth += 1;
-            walk_arrow_function_expression(self, arrow);
-            self.fn_depth -= 1;
-        }
-
-        fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
-            self.fn_depth += 1;
-            walk_function(self, func, flags);
-            self.fn_depth -= 1;
-        }
-    }
-
-    let mut check = AwaitCheck {
-        found: false,
-        fn_depth: 0,
-    };
-    check.visit_statement(stmt);
-    check.found
-}
+use crate::utils::statement_has_await;
 
 pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut AnalysisData) {
     let Some(program) = parsed.program.as_ref() else {
@@ -71,7 +30,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
             stmt
         };
 
-        let has_await = has_await_in_statement(stmt_ref);
+        let has_await = statement_has_await(stmt_ref);
         awaited |= has_await;
 
         if awaited && data.script.blocker_data.first_await_index.is_none() {

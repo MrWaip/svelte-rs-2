@@ -1,4 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
+use svelte_analyze::Volatility;
 use svelte_ast::{Node, NodeId};
 
 use crate::codegen::data_structures::{EmitState, FragmentAnchor, FragmentCtx};
@@ -59,26 +60,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let _ = self.ctx.state.gen_ident("root");
                 self.emit_legacy_slot_like(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
+            Node::SvelteElement(_) => {
+                let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
+                inner_state.init.extend(let_stmts);
+                self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
+            }
             n if n.as_component_like().is_some() => {
                 let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
                 inner_state.init.extend(let_stmts);
-                if matches!(n, Node::ComponentNode(_))
-                    && !self.ctx.is_dynamic_component(slot_el_id)
-                    && self.ctx.has_component_css_props(slot_el_id)
-                {
-                    self.emit_component_with_css_wrapper(
-                        &mut inner_state,
-                        &inner_ctx,
-                        slot_el_id,
-                    )?;
-                } else {
-                    if matches!(n, Node::ComponentNode(_))
-                        && !self.ctx.is_dynamic_component(slot_el_id)
-                    {
-                        let _ = self.ctx.state.gen_ident("fragment");
+                match (
+                    n,
+                    self.ctx.expression_data(slot_el_id).map(|d| d.volatility),
+                ) {
+                    (Node::ComponentNode(_), Some(Volatility::Static) | None) => {
+                        if self.ctx.has_component_css_props(slot_el_id) {
+                            self.emit_component_with_css_wrapper(
+                                &mut inner_state,
+                                &inner_ctx,
+                                slot_el_id,
+                            )?;
+                        } else {
+                            let _ = self.ctx.state.gen_ident("fragment");
+                            let _ = self.ctx.state.gen_ident("root");
+                            self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
+                        }
                     }
-                    let _ = self.ctx.state.gen_ident("root");
-                    self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
+                    _ => {
+                        let _ = self.ctx.state.gen_ident("root");
+                        self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
+                    }
                 }
             }
             _ => {}
@@ -100,6 +110,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(slot_el_id);
         let fragment_id = match node {
             Node::Element(_) => return false,
+            Node::SvelteElement(_) => return false,
             Node::SvelteFragmentLegacy(el) => el.fragment,
             Node::SlotElementLegacy(_) => return false,
             n if n.as_component_like().is_some() => return false,
@@ -148,10 +159,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .legacy_slot_const_tag_start
             .take()
             .unwrap_or(init_len_before);
-        let post_const = state
-            .legacy_slot_const_tag_end
-            .take()
-            .unwrap_or(pre_const);
+        let post_const = state.legacy_slot_const_tag_end.take().unwrap_or(pre_const);
         if pre_const > init_len_before && post_const > pre_const {
             let attr_len = pre_const - init_len_before;
             state.init[init_len_before..post_const].rotate_left(attr_len);

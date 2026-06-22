@@ -42,8 +42,15 @@ pub fn read_sourcemap_module_source(case: &str) -> String {
     read_module_source(SOURCEMAP_BASE, case)
 }
 
+pub fn load_cluster_module_case(case: &str) -> (String, ModuleCompileOptions) {
+    load_module_case(cluster_case_dir(case))
+}
+
 pub fn load_v3_module_case(case: &str) -> (String, ModuleCompileOptions) {
-    let dir = v3_case_dir(case);
+    load_module_case(v3_case_dir(case))
+}
+
+fn load_module_case(dir: PathBuf) -> (String, ModuleCompileOptions) {
     let ts_path = dir.join("case.svelte.ts");
     let js_path = dir.join("case.svelte.js");
     let (input, default_filename) = if ts_path.exists() {

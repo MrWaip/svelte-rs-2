@@ -320,19 +320,27 @@ impl Printer<'_> {
         }
     }
 
+    fn push_combinator(output: &mut String, combinator: &Combinator, is_first: bool) {
+        match combinator.kind {
+            CombinatorKind::Descendant => {
+                if !is_first {
+                    output.push(' ');
+                }
+            }
+            CombinatorKind::Child => output.push_str(if is_first { "> " } else { " > " }),
+            CombinatorKind::NextSibling => output.push_str(if is_first { "+ " } else { " + " }),
+            CombinatorKind::SubsequentSibling => {
+                output.push_str(if is_first { "~ " } else { " ~ " })
+            }
+            CombinatorKind::Column => output.push_str(if is_first { "|| " } else { " || " }),
+        }
+    }
+
     fn render_complex_selector(&self, sel: &ComplexSelector, source: &str) -> String {
         let mut output = String::new();
         for (i, rel) in sel.children.iter().enumerate() {
-            if let Some(combinator) = &rel.combinator
-                && (i > 0 || combinator.kind != CombinatorKind::Descendant)
-            {
-                match combinator.kind {
-                    CombinatorKind::Descendant => output.push(' '),
-                    CombinatorKind::Child => output.push_str(" > "),
-                    CombinatorKind::NextSibling => output.push_str(" + "),
-                    CombinatorKind::SubsequentSibling => output.push_str(" ~ "),
-                    CombinatorKind::Column => output.push_str(" || "),
-                }
+            if let Some(combinator) = &rel.combinator {
+                Self::push_combinator(&mut output, combinator, i == 0);
             }
             for simple in &rel.selectors {
                 Self::render_simple_selector(&mut output, simple, source);
@@ -364,16 +372,8 @@ impl Printer<'_> {
                         }
                         let mut nested = String::new();
                         for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator
-                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
-                            {
-                                match combinator.kind {
-                                    CombinatorKind::Descendant => nested.push(' '),
-                                    CombinatorKind::Child => nested.push_str(" > "),
-                                    CombinatorKind::NextSibling => nested.push_str(" + "),
-                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
-                                    CombinatorKind::Column => nested.push_str(" || "),
-                                }
+                            if let Some(combinator) = &rel.combinator {
+                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
                             }
                             for simple in &rel.selectors {
                                 Self::render_simple_selector(&mut nested, simple, source);
@@ -400,16 +400,8 @@ impl Printer<'_> {
                         }
                         let mut nested = String::new();
                         for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator
-                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
-                            {
-                                match combinator.kind {
-                                    CombinatorKind::Descendant => nested.push(' '),
-                                    CombinatorKind::Child => nested.push_str(" > "),
-                                    CombinatorKind::NextSibling => nested.push_str(" + "),
-                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
-                                    CombinatorKind::Column => nested.push_str(" || "),
-                                }
+                            if let Some(combinator) = &rel.combinator {
+                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
                             }
                             for simple in &rel.selectors {
                                 Self::render_simple_selector(&mut nested, simple, source);
@@ -431,16 +423,8 @@ impl Printer<'_> {
                         }
                         let mut nested = String::new();
                         for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator
-                                && (rel_idx > 0 || combinator.kind != CombinatorKind::Descendant)
-                            {
-                                match combinator.kind {
-                                    CombinatorKind::Descendant => nested.push(' '),
-                                    CombinatorKind::Child => nested.push_str(" > "),
-                                    CombinatorKind::NextSibling => nested.push_str(" + "),
-                                    CombinatorKind::SubsequentSibling => nested.push_str(" ~ "),
-                                    CombinatorKind::Column => nested.push_str(" || "),
-                                }
+                            if let Some(combinator) = &rel.combinator {
+                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
                             }
                             for simple in &rel.selectors {
                                 Self::render_simple_selector(&mut nested, simple, source);

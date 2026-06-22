@@ -1,8 +1,14 @@
+use oxc_allocator::Box as OxcBox;
+use oxc_allocator::CloneIn;
 use oxc_ast::NONE;
-use oxc_ast::ast::{Argument, Expression, NumberBase};
+use oxc_ast::ast::{Argument, ComputedMemberExpression, Expression, NumberBase, Statement};
 use oxc_span::SPAN;
 use oxc_syntax::operator::AssignmentOperator;
 use oxc_traverse::TraverseCtx;
+use svelte_analyze::EachIndexStrategy;
+use svelte_ast::Node;
+use svelte_component_semantics::ReferenceId;
+use svelte_emit_builders::each_item;
 use svelte_emit_builders::props::{props_computed_access, props_member};
 use svelte_emit_builders::runes::{member_get_via_get, rune_get, rune_safe_get, rune_set};
 use svelte_emit_builders::runtime::{thunk_call, untrack_ident};
@@ -97,11 +103,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let ast = self.b.ast;
         let callee = self.make_dollar_member("store_unsub");
         let inner_arg = Argument::from(inner);
-        let label_arg = Argument::from(ast.expression_string_literal(
-            SPAN,
-            ast.atom(dollar_name),
-            None,
-        ));
+        let label_arg =
+            Argument::from(ast.expression_string_literal(SPAN, ast.atom(dollar_name), None));
         let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
         ast.expression_call(
             SPAN,
@@ -123,11 +126,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let ast = self.b.ast;
         let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
-        let label_arg = Argument::from(ast.expression_string_literal(
-            SPAN,
-            ast.atom(dollar_name),
-            None,
-        ));
+        let label_arg =
+            Argument::from(ast.expression_string_literal(SPAN, ast.atom(dollar_name), None));
         let invalidate = ast.expression_call(
             SPAN,
             self.make_dollar_member("invalidate_store"),
@@ -138,32 +138,142 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ast.expression_sequence(SPAN, ast.vec_from_array([mutation, invalidate]))
     }
 
+    pub(crate) fn each_item_member_root_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        name: &str,
+    ) -> Expression<'a> {
+        if analysis
+            .binding_semantics(item_sym)
+            .reads_via_each_item_accessor()
+        {
+            self.make_thunk_call(name)
+        } else {
+            self.make_rune_get(name)
+        }
+    }
+
+    pub(crate) fn each_item_collection_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        source_sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        let hoisted = self
+            .transform_data
+            .each_collection_block_by_item_legacy
+            .get(&item_sym)
+            .and_then(|block_id| {
+                self.transform_data
+                    .each_collection_internal_names_legacy
+                    .get(block_id)
+            })
+            .map(String::as_str);
+        each_item::each_item_collection_read_legacy(self.b, analysis, source_sym, hoisted)
+    }
+
+    fn rebuilt_each_collection_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+    ) -> Option<Expression<'a>> {
+        let hoisted = self
+            .transform_data
+            .each_collection_block_by_item_legacy
+            .get(&item_sym)
+            .and_then(|block_id| {
+                self.transform_data
+                    .each_collection_internal_names_legacy
+                    .get(block_id)
+            });
+        if hoisted.is_some() {
+            return None;
+        }
+        let &block_id = self
+            .transform_data
+            .each_index_block_by_item
+            .get(&item_sym)?;
+        let Node::EachBlock(block) = self.component?.store.get(block_id) else {
+            return None;
+        };
+        let oxc_id = block.expression.id();
+        let raw = self
+            .parsed
+            .as_ref()?
+            .expr(oxc_id)?
+            .clone_in_with_semantic_ids(self.b.ast.allocator);
+        let expr_data = analysis.expression_data_by_oxc(oxc_id)?;
+        Some(each_item::wrap_each_collection_legacy(
+            self.b,
+            analysis,
+            raw,
+            expr_data,
+            self.component_scoping.root_scope_id(),
+        ))
+    }
+
+    pub(crate) fn build_each_item_indexed_member_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        index_sym: Option<svelte_component_semantics::SymbolId>,
+        index_read: EachIndexStrategy,
+    ) -> Option<OxcBox<'a, ComputedMemberExpression<'a>>> {
+        let ast = self.b.ast;
+        let &source_sym = analysis.each_item_indirect_sources(item_sym)?.first()?;
+        let collection = self
+            .rebuilt_each_collection_legacy(analysis, item_sym)
+            .unwrap_or_else(|| {
+                self.each_item_collection_read_legacy(analysis, item_sym, source_sym)
+            });
+        let index_name = match index_sym {
+            Some(index_sym) => self.component_scoping.symbol_name(index_sym),
+            None => {
+                let block_id = self
+                    .transform_data
+                    .each_index_block_by_item
+                    .get(&item_sym)?;
+                self.transform_data
+                    .each_index_internal_names
+                    .get(block_id)?
+                    .as_str()
+            }
+        };
+        let property = match index_read {
+            EachIndexStrategy::Signal => self.make_rune_get(index_name),
+            EachIndexStrategy::Direct => ast.expression_identifier(SPAN, ast.atom(index_name)),
+        };
+        Some(ast.alloc(ast.computed_member_expression(SPAN, collection, property, false)))
+    }
+
+    pub(crate) fn make_each_item_indexed_read_legacy(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        index_sym: Option<svelte_component_semantics::SymbolId>,
+        index_read: EachIndexStrategy,
+    ) -> Option<Expression<'a>> {
+        Some(Expression::ComputedMemberExpression(
+            self.build_each_item_indexed_member_legacy(analysis, item_sym, index_sym, index_read)?,
+        ))
+    }
+
     pub(crate) fn make_each_item_invalidate_seq(
         &self,
         analysis: &svelte_analyze::AnalysisData<'_>,
         mutation: Expression<'a>,
         source_syms: &[svelte_component_semantics::SymbolId],
+        item_sym: svelte_component_semantics::SymbolId,
         ctx: &mut TraverseCtx<'a, ()>,
     ) -> Expression<'a> {
         let ast = self.b.ast;
-        let make_source_read =
-            |sym: svelte_component_semantics::SymbolId| -> Expression<'a> {
-                let name = self.component_scoping.symbol_name(sym);
-                if matches!(
-                    analysis.binding_semantics(sym),
-                    svelte_analyze::BindingSemantics::Store(_)
-                ) {
-                    self.make_thunk_call(name)
-                } else {
-                    self.make_rune_get(name)
-                }
-            };
         let body_expr = match source_syms {
-            [single] => make_source_read(*single),
+            [single] => self.each_item_collection_read_legacy(analysis, item_sym, *single),
             many => {
                 let mut elems = ast.vec_with_capacity(many.len());
                 for &sym in many {
-                    elems.push(make_source_read(sym));
+                    elems.push(self.each_item_collection_read_legacy(analysis, item_sym, sym));
                 }
                 ast.expression_sequence(SPAN, elems)
             }
@@ -177,20 +287,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             false,
         );
         let mut seq_elems = ast.vec_from_array([mutation, invalidate]);
-        if let Some(store_sym) = source_syms.iter().copied().find(|&sym| {
-            matches!(
-                analysis.binding_semantics(sym),
-                svelte_analyze::BindingSemantics::Store(_)
-            )
-        }) {
+        if let Some(store_sym) = source_syms
+            .iter()
+            .copied()
+            .find(|&sym| analysis.binding_semantics(sym).is_store())
+        {
             let store_name = self.component_scoping.symbol_name(store_sym);
-            let stores_arg =
-                Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
-            let label_arg = Argument::from(ast.expression_string_literal(
-                SPAN,
-                ast.atom(store_name),
-                None,
-            ));
+            let stores_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom("$$stores")));
+            let label_arg =
+                Argument::from(ast.expression_string_literal(SPAN, ast.atom(store_name), None));
             let invalidate_store = ast.expression_call(
                 SPAN,
                 self.make_dollar_member("invalidate_store"),
@@ -201,6 +306,56 @@ impl<'a> ComponentTransformer<'_, 'a> {
             seq_elems.push(invalidate_store);
         }
         ast.expression_sequence(SPAN, seq_elems)
+    }
+
+    pub(crate) fn maybe_wrap_legacy_indirect_invalidate(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        expr: Expression<'a>,
+        root_ref_id: ReferenceId,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> Expression<'a> {
+        let Some(root_sym) = analysis.symbol_for_reference(root_ref_id) else {
+            return expr;
+        };
+        let Some(indirect_syms) = analysis.legacy_indirect_bindings(root_sym) else {
+            return expr;
+        };
+        if indirect_syms.is_empty() {
+            return expr;
+        }
+        let ast = self.b.ast;
+        let mut statements: Vec<Statement<'a>> = Vec::with_capacity(indirect_syms.len());
+        for &sym in indirect_syms {
+            let getter = self.make_legacy_indirect_getter(analysis, root_sym, sym);
+            statements.push(self.b.expr_stmt(getter));
+        }
+        let thunk = self.b.thunk_block(statements);
+        self.b
+            .seed_arrow_scope(&thunk, Some(ctx.current_scope_id()));
+        let invalidate = ast.expression_call(
+            SPAN,
+            self.make_dollar_member("invalidate_inner_signals"),
+            NONE,
+            ast.vec1(Argument::from(thunk)),
+            false,
+        );
+        ast.expression_sequence(SPAN, ast.vec_from_array([expr, invalidate]))
+    }
+
+    fn make_legacy_indirect_getter(
+        &self,
+        analysis: &svelte_analyze::AnalysisData<'_>,
+        item_sym: svelte_component_semantics::SymbolId,
+        sym: svelte_component_semantics::SymbolId,
+    ) -> Expression<'a> {
+        if analysis.binding_semantics(sym).is_reactive() {
+            return self.each_item_collection_read_legacy(analysis, item_sym, sym);
+        }
+        let name = self.component_scoping.symbol_name(sym);
+        self.b
+            .ast
+            .expression_identifier(SPAN, self.b.ast.atom(name))
     }
 
     pub(crate) fn make_legacy_state_mutate(

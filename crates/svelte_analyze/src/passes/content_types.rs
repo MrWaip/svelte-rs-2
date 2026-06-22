@@ -60,6 +60,8 @@ fn item_needs_var(id: NodeId, data: &AnalysisData, store: &AstStore) -> bool {
                 .any(|&inner| item_needs_var(inner, data, store))
         }
         Node::ComponentNode(_)
+        | Node::SvelteComponentLegacy(_)
+        | Node::SvelteSelf(_)
         | Node::IfBlock(_)
         | Node::EachBlock(_)
         | Node::RenderTag(_)

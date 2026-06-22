@@ -1,6 +1,7 @@
 # PRD: BlockSemantics (корневой)
 
 label: block-semantics
+topics: block, if-block, each-block/keyed each, await-block, key-block, snippet, each-item/index, key expression, fragment topology, then/else branches
 
 Корневой PRD для модуля `svelte_analyze::block_semantics` (3.A.5).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, плюс AST.

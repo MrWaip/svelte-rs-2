@@ -1,7 +1,7 @@
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
-use svelte_analyze::{AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitWrapper};
+use svelte_analyze::{AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitWrapper, Volatility};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
@@ -21,7 +21,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
         let span_start = self.ctx.query.await_block(id).span.start;
 
-        let expression = self.build_await_expression(id, sem.expression_has_await)?;
+        let expression = self.build_await_expression(id, sem.expression_volatility)?;
         let then_fn = self.build_await_then_fn(ctx, id, &sem.then, &sem.catch)?;
         let catch_fn = self.build_await_catch_fn(ctx, id, &sem.catch)?;
         let pending_fn = self.build_await_pending_fn(ctx, id, &sem.pending)?;
@@ -76,14 +76,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn build_await_expression(
         &mut self,
         block_id: NodeId,
-        has_await: bool,
+        volatility: Volatility,
     ) -> Result<Expression<'a>> {
         let expr = self.take_node_expr(block_id)?;
         let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
-        if has_await {
-            Ok(self.ctx.b.async_thunk(expr))
-        } else {
-            Ok(self.ctx.b.thunk(expr))
+        match volatility {
+            Volatility::Asynchronous => Ok(self.ctx.b.async_thunk(expr)),
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+                Ok(self.ctx.b.thunk(expr))
+            }
         }
     }
 
@@ -227,7 +228,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
     }
-
 }
 
 fn binding_of(branch: &AwaitBranch) -> &AwaitBinding {

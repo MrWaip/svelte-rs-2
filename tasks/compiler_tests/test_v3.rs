@@ -12,10 +12,7 @@ use test_support::strip_reference_only_css_markers;
 
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
-    stripped
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn assert_compiler(case: &str) {
@@ -37,21 +34,13 @@ fn assert_compiler(case: &str) {
     assert_eq!(js, expected_js, "[{case}] JS mismatch");
 
     if let Some(map) = js_output.map.as_ref() {
-        assert_sourcemap_invariants(
-            case,
-            &input,
-            map,
-            svelte_compiler::SourcemapKind::Default,
-        );
+        assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
 
     let expected_css_path = dir.join("case-svelte.css");
     if expected_css_path.exists() {
         let expected_css = read_to_string(&expected_css_path).expect("test invariant");
-        let actual_css = result
-            .css
-            .map(|out| out.code)
-            .unwrap_or_default();
+        let actual_css = result.css.map(|out| out.code).unwrap_or_default();
         File::create(dir.join("case-rust.css"))
             .expect("test invariant")
             .write_all(actual_css.as_bytes())
@@ -135,7 +124,6 @@ fn css_nested_pseudo_element_no_scope_class() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn css_nested_amp_compound_no_scope_class() {
     assert_compiler("css_nested_amp_compound_no_scope_class");
 }
@@ -421,7 +409,6 @@ fn legacy_const_member_mutation_through_ts_non_null() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn css_injected_append_styles_with_stores_order() {
     assert_compiler("css_injected_append_styles_with_stores_order");
 }
@@ -842,13 +829,11 @@ fn class_concat() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn empty_class_attribute_static_elided() {
     assert_compiler("empty_class_attribute_static_elided");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_class_directive_on_svg_is_html_flag() {
     assert_compiler("diagnose_class_directive_on_svg_is_html_flag");
 }
@@ -1634,7 +1619,6 @@ fn store_runes_prop_thunk() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn store_runes_synthetic_thunk_derived_base() {
     assert_compiler("store_runes_synthetic_thunk_derived_base");
 }
@@ -1905,7 +1889,6 @@ fn bind_element_size() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn bind_element_size_bindable_prop_source() {
     assert_compiler("bind_element_size_bindable_prop_source");
 }
@@ -1968,6 +1951,31 @@ fn component_bind_this_variants() {
 #[rstest]
 fn svelte_self_if() {
     assert_compiler("svelte_self_if");
+}
+
+#[rstest]
+fn svelte_self_if_sibling() {
+    assert_compiler("svelte_self_if_sibling");
+}
+
+#[rstest]
+fn svelte_self_if_else_sibling() {
+    assert_compiler("svelte_self_if_else_sibling");
+}
+
+#[rstest]
+fn svelte_self_each_sibling() {
+    assert_compiler("svelte_self_each_sibling");
+}
+
+#[rstest]
+fn svelte_self_element_sibling() {
+    assert_compiler("svelte_self_element_sibling");
+}
+
+#[rstest]
+fn svelte_self_css_props() {
+    assert_compiler("svelte_self_css_props");
 }
 
 #[rstest]
@@ -2392,12 +2400,7 @@ fn assert_compiler_module(case: &str) {
     );
 
     if let Some(map) = js_output.map.as_ref() {
-        assert_sourcemap_invariants(
-            case,
-            &input,
-            map,
-            svelte_compiler::SourcemapKind::Default,
-        );
+        assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
 }
 
@@ -2541,6 +2544,41 @@ fn svelte_options_immutable_legacy() {
 }
 
 #[rstest]
+fn immutable_init_ctx_mutable() {
+    assert_compiler("immutable_init_ctx_mutable");
+}
+
+#[rstest]
+fn immutable_init_noctx_immutable() {
+    assert_compiler("immutable_init_noctx_immutable");
+}
+
+#[rstest]
+fn immutable_init_noctx_mutable() {
+    assert_compiler("immutable_init_noctx_mutable");
+}
+
+#[rstest]
+fn immutable_source_init_immutable() {
+    assert_compiler("immutable_source_init_immutable");
+}
+
+#[rstest]
+fn immutable_source_noinit_immutable() {
+    assert_compiler("immutable_source_noinit_immutable");
+}
+
+#[rstest]
+fn immutable_source_noinit_mutable() {
+    assert_compiler("immutable_source_noinit_mutable");
+}
+
+#[rstest]
+fn immutable_reactive_immutable() {
+    assert_compiler("immutable_reactive_immutable");
+}
+
+#[rstest]
 fn legacy_export_let_required() {
     assert_compiler("legacy_export_let_required");
 }
@@ -2596,13 +2634,11 @@ fn diagnose_legacy_bind_group_radio_attr_update_order() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_bind_group_value_use_action_cache_var_order() {
     assert_compiler("diagnose_legacy_bind_group_value_use_action_cache_var_order");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_bind_group_radio_value_shorthand_spread() {
     assert_compiler("diagnose_legacy_bind_group_radio_value_shorthand_spread");
 }
@@ -2613,7 +2649,6 @@ fn diagnose_legacy_each_bind_group_input_value_merges_with_text() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_each_bind_group_radio_value_index_no_cache() {
     assert_compiler("diagnose_legacy_each_bind_group_radio_value_index_no_cache");
 }
@@ -3475,7 +3510,6 @@ fn diagnose_svelte_element_attribute_effect_call_value_memo() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_svelte_element_use_action_with_on_event_legacy() {
     assert_compiler("diagnose_svelte_element_use_action_with_on_event_legacy");
 }
@@ -4104,7 +4138,6 @@ fn ts_strip_script_types() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn ts_strip_handler_param_annotation() {
     assert_compiler("ts_strip_handler_param_annotation");
 }
@@ -4120,7 +4153,6 @@ fn ts_strip_catch_empty_comment_orphan() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_ts_cast_const_init_marks_attr_dynamic() {
     assert_compiler("diagnose_ts_cast_const_init_marks_attr_dynamic");
 }
@@ -4389,7 +4421,6 @@ fn each_destructured_array_rest_only() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_each_component_css_prop_hoist_derived() {
     assert_compiler("diagnose_legacy_each_component_css_prop_hoist_derived");
 }
@@ -4554,7 +4585,6 @@ fn component_bind_member_path_bindable_root() {
 }
 
 #[rstest]
-#[ignore = "diagnose: dev-mode $.validate_binding for component member-path bind not emitted"]
 fn component_bind_member_path_dev() {
     assert_compiler("component_bind_member_path_dev");
 }
@@ -4610,7 +4640,6 @@ fn diagnose_component_prop_const_tag_destructured_shorthand() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_each_const_tag_shorthand_prop_to_component() {
     assert_compiler("diagnose_each_const_tag_shorthand_prop_to_component");
 }
@@ -4641,13 +4670,11 @@ fn diagnose_svelte_component_css_custom_prop_wrapper() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_prop_computed_member_getter() {
     assert_compiler("diagnose_component_prop_computed_member_getter");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_prop_hyphenated_key_derived() {
     assert_compiler("diagnose_component_prop_hyphenated_key_derived");
 }
@@ -4717,7 +4744,6 @@ fn legacy_each_collection_member_reactive_let_wraps_with_read() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_each_collection_member_nullish_fallback_wraps_with_read() {
     assert_compiler("diagnose_legacy_each_collection_member_nullish_fallback_wraps_with_read");
 }
@@ -4880,6 +4906,21 @@ fn async_derived_nested_function_destructured() {
 #[rstest]
 fn async_for_await_dev() {
     assert_compiler("async_for_await_dev");
+}
+
+#[rstest]
+fn orthogonality_heavy_call() {
+    assert_compiler("orthogonality_heavy_call");
+}
+
+#[rstest]
+fn orthogonality_async_await() {
+    assert_compiler("orthogonality_async_await");
+}
+
+#[rstest]
+fn orthogonality_heavy_async_await_call() {
+    assert_compiler("orthogonality_heavy_async_await_call");
 }
 
 #[rstest]
@@ -5253,7 +5294,6 @@ fn diagnose_component_default_and_named_slot_expr() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_named_slot_child_with_expression_prop() {
     assert_compiler("diagnose_component_named_slot_child_with_expression_prop");
 }
@@ -5284,7 +5324,6 @@ fn diagnose_legacy_slot_forward_inflates_template_root_ids() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_dev_benchmark() {
     assert_compiler("diagnose_legacy_dev_benchmark");
 }
@@ -5335,7 +5374,6 @@ fn auto_softlegacy_member_read() {
 }
 
 #[rstest]
-#[ignore = "missing: HardLegacy template-expression coarse-grained sequence wrap (transform/codegen)"]
 fn auto_hardlegacy_member_read_explicit() {
     assert_compiler("auto_hardlegacy_member_read_explicit");
 }
@@ -5346,7 +5384,6 @@ fn auto_hardlegacy_store_autosub_shadows_rune() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn auto_hardlegacy_import_call_coarse_wrap() {
     assert_compiler("auto_hardlegacy_import_call_coarse_wrap");
 }
@@ -5512,19 +5549,16 @@ fn diagnose_hoisted_snippet_module_order_with_sibling_template() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_snippet_store_autosub_not_hoistable() {
     assert_compiler("diagnose_snippet_store_autosub_not_hoistable");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_on_directive_shorthand_forward() {
     assert_compiler("diagnose_component_on_directive_shorthand_forward");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_pre_effect_order_after_functions() {
     assert_compiler("diagnose_legacy_pre_effect_order_after_functions");
 }
@@ -5644,16 +5678,9 @@ fn diagnose_component_bind_store_derived_base() {
     assert_compiler("diagnose_component_bind_store_derived_base");
 }
 
-
 #[rstest]
 fn diagnose_nested_delegated_transition_order() {
     assert_compiler("diagnose_nested_delegated_transition_order");
-}
-
-#[rstest]
-#[ignore = "diagnose: pending fix"]
-fn diagnose_script_line_comment_between_imports() {
-    assert_compiler("diagnose_script_line_comment_between_imports");
 }
 
 #[rstest]
@@ -5762,7 +5789,6 @@ fn diagnose_style_attr_call_no_references_with_directive_init() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_style_attr_dynamic_with_style_directive_merges_set_style() {
     assert_compiler("diagnose_style_attr_dynamic_with_style_directive_merges_set_style");
 }
@@ -5893,7 +5919,6 @@ fn diagnose_legacy_reactive_store_value_passed_as_bare_prop() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_let_writable_store_only_assign() {
     assert_compiler("diagnose_legacy_let_writable_store_only_assign");
 }
@@ -5904,7 +5929,6 @@ fn diagnose_legacy_bind_store_member_keeps_writable_plain() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_component_bind_base_store_unsub() {
     assert_compiler("diagnose_legacy_component_bind_base_store_unsub");
 }
@@ -5920,19 +5944,16 @@ fn diagnose_ts_type_param_node_skews_anchor_idents() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_prop_const_init_identifier_inline() {
     assert_compiler("diagnose_component_prop_const_init_identifier_inline");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_slot_attribute_const_arrow_shorthand() {
     assert_compiler("diagnose_slot_attribute_const_arrow_shorthand");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_component_prop_object_literal_arrow_value_inline() {
     assert_compiler("diagnose_component_prop_object_literal_arrow_value_inline");
 }
@@ -6063,13 +6084,61 @@ fn diagnose_on_directive_optional_chain_handler_wrap() {
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn diagnose_legacy_slot_let_const_tag_ordering() {
     assert_compiler("diagnose_legacy_slot_let_const_tag_ordering");
 }
 
 #[rstest]
-#[ignore = "diagnose: pending fix"]
 fn legacy_bindable_export_with_api_export() {
     assert_compiler("legacy_bindable_export_with_api_export");
+}
+
+#[rstest]
+fn css_has_leading_plus_global() {
+    assert_compiler("css_has_leading_plus_global");
+}
+
+#[rstest]
+fn css_has_leading_plus_global_flat() {
+    assert_compiler("css_has_leading_plus_global_flat");
+}
+
+#[rstest]
+fn css_has_leading_child_global() {
+    assert_compiler("css_has_leading_child_global");
+}
+
+#[rstest]
+fn css_has_leading_plus_class() {
+    assert_compiler("css_has_leading_plus_class");
+}
+
+#[rstest]
+fn css_has_descendant_global() {
+    assert_compiler("css_has_descendant_global");
+}
+
+#[rstest]
+fn css_has_leading_tilde_global() {
+    assert_compiler("css_has_leading_tilde_global");
+}
+
+#[rstest]
+fn css_nth_child_leading_plus_sign() {
+    assert_compiler("css_nth_child_leading_plus_sign");
+}
+
+#[rstest]
+fn css_nth_child_of_selector_list() {
+    assert_compiler("css_nth_child_of_selector_list");
+}
+
+#[rstest]
+fn css_nth_child_of_combinator() {
+    assert_compiler("css_nth_child_of_combinator");
+}
+
+#[rstest]
+fn css_nth_child_uppercase_name() {
+    assert_compiler("css_nth_child_uppercase_name");
 }

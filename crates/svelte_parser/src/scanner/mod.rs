@@ -433,6 +433,10 @@ impl<'a> Scanner<'a> {
             };
         }
 
+        if name == "textarea" && !self_closing {
+            return self.textarea_rcdata(name, name_span, attributes);
+        }
+
         self.add_token(TokenType::StartTag(StartTag {
             attributes,
             name_span,
@@ -534,7 +538,7 @@ impl<'a> Scanner<'a> {
 
     fn class_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::ClassDirective(ClassDirective {
                 span: SPAN,
@@ -595,7 +599,7 @@ impl<'a> Scanner<'a> {
 
     fn bind_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::BindDirective(BindDirective {
                 span: SPAN,
@@ -619,7 +623,7 @@ impl<'a> Scanner<'a> {
         _name: &str,
     ) -> Result<Attribute, Diagnostic> {
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
                 span: SPAN,
@@ -650,7 +654,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
 
             return Ok(Attribute::UseDirective(UseDirective {
                 span: SPAN,
@@ -679,7 +683,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
                 span: SPAN,
                 name_span,
@@ -721,7 +725,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::TransitionDirective(TransitionDirective {
                 span: SPAN,
                 name_span,
@@ -752,7 +756,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let res = self.directive_expression()?;
             return Ok(Attribute::AnimateDirective(AnimateDirective {
                 span: SPAN,
                 name_span,
@@ -797,6 +801,31 @@ impl<'a> Scanner<'a> {
         }
 
         self.unquoted_attribute_concatenation_or_string()
+    }
+
+    fn directive_expression(&mut self) -> Result<ExpressionTag, Diagnostic> {
+        if let Some(quote) = self.peek().filter(|c| *c == '"' || *c == '\'') {
+            self.advance();
+            let value_start = self.current;
+
+            if self.peek() == Some('{') {
+                let tag = self.expression_tag()?;
+                if self.match_char(quote) {
+                    return Ok(tag);
+                }
+            }
+
+            while self.peek().is_some_and(|c| c != quote) {
+                self.advance();
+            }
+            self.match_char(quote);
+
+            return Err(Diagnostic::directive_invalid_value(
+                self.span(value_start, value_start),
+            ));
+        }
+
+        self.expression_tag()
     }
 
     fn expression_tag(&mut self) -> Result<ExpressionTag, Diagnostic> {
@@ -887,6 +916,10 @@ impl<'a> Scanner<'a> {
                 break;
             }
 
+            if char == '/' && self.peek_next() == Some('>') {
+                break;
+            }
+
             if char == '{' {
                 has_expression = true;
 
@@ -957,6 +990,95 @@ impl<'a> Scanner<'a> {
         self.leave_fragment();
 
         Ok(())
+    }
+
+    fn textarea_rcdata(
+        &mut self,
+        tag_name: &str,
+        name_span: Span,
+        attributes: Vec<Attribute>,
+    ) -> Result<(), Diagnostic> {
+        let open_tag_span = Span::new(self.start as u32, self.current as u32);
+        self.push_token(
+            TokenType::StartTag(StartTag {
+                attributes,
+                name_span,
+                self_closing: false,
+            }),
+            open_tag_span,
+        );
+        self.enter_fragment();
+
+        let mut text_start = self.current;
+        loop {
+            match memchr2(b'<', b'{', &self.bytes[self.current..]) {
+                None => {
+                    if text_start < self.bytes.len() {
+                        self.push_token(TokenType::Text, self.span(text_start, self.bytes.len()));
+                    }
+                    self.current = self.bytes.len();
+                    self.recover(Diagnostic::unexpected_end_of_file(
+                        self.span(text_start, self.current),
+                    ));
+                    self.leave_fragment();
+                    return Ok(());
+                }
+                Some(off) => {
+                    let pos = self.current + off;
+                    if self.bytes[pos] == b'{' {
+                        if text_start < pos {
+                            self.push_token(TokenType::Text, self.span(text_start, pos));
+                        }
+                        self.start = pos;
+                        self.current = pos;
+                        self.advance();
+                        self.skip_whitespace();
+                        self.interpolation()?;
+                        text_start = self.current;
+                    } else {
+                        self.current = pos;
+                        self.advance();
+                        if self.match_char('/') {
+                            let close_name_start = self.current;
+                            let name_matches = self.identifier().eq_ignore_ascii_case(tag_name);
+                            let name_end = self.current;
+                            if name_matches && self.consume_rcdata_close_tail() {
+                                if text_start < pos {
+                                    self.push_token(TokenType::Text, self.span(text_start, pos));
+                                }
+                                self.push_token(
+                                    TokenType::EndTag(token::EndTag {
+                                        name_span: self.span(close_name_start, name_end),
+                                    }),
+                                    self.span(pos, self.current),
+                                );
+                                self.leave_fragment();
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn consume_rcdata_close_tail(&mut self) -> bool {
+        match self.peek() {
+            Some('>') => {
+                self.advance();
+                true
+            }
+            Some(c) if c.is_ascii_whitespace() => {
+                while let Some(c) = self.peek() {
+                    self.advance();
+                    if c == '>' {
+                        return true;
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn raw_text_element(
@@ -1938,27 +2060,26 @@ impl<'a> Scanner<'a> {
             )));
         }
 
+        let content_start = self.current;
+
         while !self.is_at_end() {
             if self.match_char('-') && self.match_char('-') && self.peek() == Some('>') {
-                break;
+                let content_span = self.span(content_start, self.current - 2);
+                self.advance();
+                self.add_token(TokenType::Comment { content_span });
+                return Ok(());
             }
 
             self.advance();
         }
 
-        if self.is_at_end() {
-            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
-                start as u32,
-                self.current as u32,
-            )));
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )));
 
-            self.add_token(TokenType::Comment);
-            return Ok(());
-        }
-
-        self.advance();
-
-        self.add_token(TokenType::Comment);
+        let content_span = self.span(content_start, self.current);
+        self.add_token(TokenType::Comment { content_span });
 
         Ok(())
     }

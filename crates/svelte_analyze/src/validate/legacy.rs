@@ -1,11 +1,12 @@
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentTarget, Declaration, Expression, Function,
-    IdentifierReference, LabeledStatement, ModuleExportName, Program, Statement, VariableDeclarationKind,
+    IdentifierReference, LabeledStatement, ModuleExportName, Program, Statement,
+    VariableDeclarationKind,
 };
-use oxc_syntax::scope::ScopeFlags;
 use oxc_semantic::{ReferenceId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
+use oxc_syntax::scope::ScopeFlags;
 use rustc_hash::FxHashSet;
 use svelte_component_semantics::OxcNodeId;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -44,19 +45,12 @@ fn validate_reactive_declaration_invalid_placement(
         depth: u32,
     }
     impl<'v, 'a> Visit<'a> for Visitor<'v> {
-        fn visit_function(
-            &mut self,
-            func: &Function<'a>,
-            flags: ScopeFlags,
-        ) {
+        fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
             self.depth += 1;
             walk_function(self, func, flags);
             self.depth -= 1;
         }
-        fn visit_arrow_function_expression(
-            &mut self,
-            arrow: &ArrowFunctionExpression<'a>,
-        ) {
+        fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
             self.depth += 1;
             walk_arrow_function_expression(self, arrow);
             self.depth -= 1;
@@ -71,17 +65,11 @@ fn validate_reactive_declaration_invalid_placement(
             walk_labeled_statement(self, stmt);
         }
     }
-    let mut v = Visitor {
-        diags,
-        depth: 0,
-    };
+    let mut v = Visitor { diags, depth: 0 };
     v.visit_program(program);
 }
 
-fn validate_reactive_declaration_cycle(
-    data: &AnalysisData,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_reactive_declaration_cycle(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
     let Some(cycle) = data.reactivity.legacy_reactive().cycle_path() else {
         return;
     };
@@ -134,39 +122,29 @@ fn validate_reactive_declaration_module_script_dependency(
     let Some(module_scope) = data.scoping.module_scope_id() else {
         return;
     };
-    let stmts: Vec<_> = data
+    let stmt_nodes: Vec<_> = data
         .reactivity
         .legacy_reactive()
         .iter_statements_topo()
-        .map(|s| {
-            (
-                s.stmt_node,
-                s.dependencies.iter().copied().collect::<Vec<_>>(),
-            )
-        })
+        .map(|s| s.stmt_node)
         .collect();
-    for (stmt_node, deps) in stmts {
-        for dep_sym in deps {
+    for stmt_node in stmt_nodes {
+        let Some(AstKind::LabeledStatement(labeled)) = data.scoping.js_kind(stmt_node) else {
+            continue;
+        };
+        for (ref_id, span) in collect_reference_sites(&labeled.body) {
+            let Some(dep_sym) = data.scoping.symbol_for_reference(ref_id) else {
+                continue;
+            };
             if data.scoping.symbol_scope_id(dep_sym) != module_scope {
                 continue;
             }
             if !data.scoping.is_mutated_any(dep_sym) {
                 continue;
             }
-            let dep_name = data.scoping.symbol_name(dep_sym).to_string();
-            let Some(labeled) = (match data.scoping.js_kind(stmt_node) {
-                Some(AstKind::LabeledStatement(l)) => Some(l),
-                _ => None,
-            }) else {
-                continue;
-            };
-            let body_span = labeled.body.span();
-            let mut found_span: Option<Span> = None;
-            collect_module_dep_ref_span(&labeled.body, &dep_name, &mut found_span);
-            let span = found_span.unwrap_or_else(|| Span::new(body_span.start, body_span.end));
             diags.push(Diagnostic::warning(
                 DiagnosticKind::ReactiveDeclarationModuleScriptDependency,
-                Span::new(span.start, span.end),
+                span,
             ));
             break;
         }
@@ -174,25 +152,22 @@ fn validate_reactive_declaration_module_script_dependency(
     let _ = program;
 }
 
-fn collect_module_dep_ref_span(
-    body: &Statement<'_>,
-    name: &str,
-    out: &mut Option<Span>,
-) {
+fn collect_reference_sites(body: &Statement<'_>) -> Vec<(ReferenceId, Span)> {
     use oxc_ast_visit::Visit;
-    struct Finder<'a> {
-        name: &'a str,
-        out: &'a mut Option<Span>,
+    struct Finder {
+        out: Vec<(ReferenceId, Span)>,
     }
-    impl<'a, 'b> Visit<'b> for Finder<'a> {
+    impl<'b> Visit<'b> for Finder {
         fn visit_identifier_reference(&mut self, id: &IdentifierReference<'b>) {
-            if self.out.is_none() && id.name.as_str() == self.name {
-                *self.out = Some(Span::new(id.span.start, id.span.end));
+            if let Some(ref_id) = id.reference_id.get() {
+                self.out
+                    .push((ref_id, Span::new(id.span.start, id.span.end)));
             }
         }
     }
-    let mut f = Finder { name, out };
+    let mut f = Finder { out: Vec::new() };
     f.visit_statement(body);
+    f.out
 }
 
 fn validate_legacy_export_invalid(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
@@ -214,18 +189,10 @@ fn validate_legacy_export_invalid(program: &Program<'_>, diags: &mut Vec<Diagnos
 }
 
 fn validate_legacy_props_invalid(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    emit_first_unresolved_read(
-        data,
-        "$$props",
-        diags,
-        DiagnosticKind::LegacyPropsInvalid,
-    );
+    emit_first_unresolved_read(data, "$$props", diags, DiagnosticKind::LegacyPropsInvalid);
 }
 
-fn validate_legacy_rest_props_invalid(
-    data: &AnalysisData,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_legacy_rest_props_invalid(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
     emit_first_unresolved_read(
         data,
         "$$restProps",
@@ -251,10 +218,7 @@ fn emit_first_unresolved_read(
     let Some(span) = identifier_reference_span(data, node_id) else {
         return;
     };
-    diags.push(Diagnostic::error(
-        kind,
-        Span::new(span.start, span.end),
-    ));
+    diags.push(Diagnostic::error(kind, Span::new(span.start, span.end)));
 }
 
 fn identifier_reference_span(data: &AnalysisData, node_id: OxcNodeId) -> Option<OxcSpan> {
@@ -269,8 +233,7 @@ fn validate_export_let_unused(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let symbols: Vec<SymbolId> =
-        data.reactivity.legacy_bindable_prop_symbols().to_vec();
+    let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
     let export_specifier_refs = collect_export_specifier_refs(program);
     for sym in symbols {
         let decl_node = data.scoping.symbol_declaration(sym);

@@ -1,15 +1,15 @@
-use svelte_emit_builders::runes::rune_get;
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlavor, EachIndexKind,
+    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
+use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
@@ -28,9 +28,7 @@ struct EachEmit {
     key_is_index: bool,
     has_fallback: bool,
     collection_source: EachCollectionSource,
-    needs_async: bool,
-    has_await: bool,
-    blockers: Vec<u32>,
+    async_kind: EachAsyncKind,
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -73,11 +71,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let plan = self.build_each_plan(id, &sem, is_controlled)?;
         let context_pattern = self.take_each_context_pattern(id)?;
 
-        let async_thunk = if plan.needs_async {
-            let collection_expr = self.take_node_expr(id)?;
-            Some(self.ctx.b.async_thunk(collection_expr))
-        } else {
-            None
+        let async_thunk = match &plan.async_kind {
+            EachAsyncKind::Awaited { .. } => {
+                let collection_expr = self.take_node_expr(id)?;
+                Some(self.ctx.b.async_thunk(collection_expr))
+            }
+            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => None,
         };
 
         let item_pattern_node = match &sem.item {
@@ -89,34 +88,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let key_fn = self.build_each_key_fn(id, &plan, context_pattern.as_ref())?;
         let frag_fn =
             self.build_each_fragment_fn(ctx, id, &plan, context_pattern, item_pattern_node)?;
-
-        if plan.needs_async {
-            let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-            let mut args: Vec<Arg<'a, '_>> = vec![
-                Arg::Ident(&anchor_node),
-                Arg::Num(plan.flags as f64),
-                Arg::Expr(collection_fn),
-                Arg::Expr(key_fn),
-                Arg::Expr(frag_fn),
-            ];
-            if plan.has_fallback {
-                let fallback_fn = self.build_each_fallback_fn(ctx, id)?;
-                args.push(Arg::Expr(fallback_fn));
-            }
-            let each_call = self.ctx.b.call_expr("$.each", args);
-            let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
-            let wrapped = self.emit_async_call_stmt(
-                plan.has_await,
-                &plan.blockers,
-                anchor_expr,
-                &anchor_node,
-                "$$collection",
-                async_thunk,
-                vec![each_stmt],
-            )?;
-            state.init.push(wrapped);
-            return Ok(());
-        }
 
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident(&anchor_node),
@@ -130,10 +101,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             args.push(Arg::Expr(fallback_fn));
         }
         let each_call = self.ctx.b.call_expr("$.each", args);
-        state
-            .init
-            .push(self.add_svelte_meta(each_call, span_start, "each"));
-        Ok(())
+
+        match &plan.async_kind {
+            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => {
+                let blockers = blockers.to_vec();
+                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+                let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
+                let wrapped = self.emit_async_call_stmt(
+                    &blockers,
+                    anchor_expr,
+                    &anchor_node,
+                    "$$collection",
+                    async_thunk,
+                    vec![each_stmt],
+                )?;
+                state.init.push(wrapped);
+                Ok(())
+            }
+            EachAsyncKind::Sync => {
+                state
+                    .init
+                    .push(self.add_svelte_meta(each_call, span_start, "each"));
+                Ok(())
+            }
+        }
     }
 
     fn build_each_plan(
@@ -164,32 +155,60 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let needs_group_index = matches!(sem.flavor, EachFlavor::BindGroup);
         let needs_collection_id = sem.shadows_outer;
-        let needs_store_index = sem.collection_store.is_some()
+        let needs_store_index = sem.each_flags.contains(EachFlags::ITEM_REACTIVE)
             && match &sem.item {
-                EachItemKind::Identifier(sym) => self.ctx.query.scoping().is_member_mutated(*sym),
-                _ => false,
+                EachItemKind::Identifier(item) => self.ctx.query.scoping().is_member_mutated(*item),
+                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
             };
 
-        let render_index_name = if !(body_uses_index
-            || needs_group_index
-            || needs_collection_id
-            || needs_store_index)
-        {
+        let needs_legacy_writeback_index = user_index_name.is_none()
+            && match &sem.item {
+                EachItemKind::Identifier(item) => self
+                    .ctx
+                    .query
+                    .analysis
+                    .binding_semantics(*item)
+                    .is_each_item_indexed_legacy(),
+                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
+            };
+
+        let internal_index_name = self
+            .ctx
+            .state
+            .transform_data
+            .each_index_internal_names
+            .get(&block_id)
+            .cloned();
+
+        let render_reasons = [
+            body_uses_index,
+            needs_group_index,
+            needs_collection_id,
+            needs_store_index,
+            needs_legacy_writeback_index,
+        ];
+        let needs_render = render_reasons.contains(&true);
+
+        let render_index_name = if !needs_render {
             None
+        } else if needs_group_index {
+            internal_index_name.clone()
         } else if let Some(name) = &user_index_name {
             Some(name.clone())
         } else {
-            let generated = self.ctx.state.gen_ident("$$index");
-            if needs_group_index {
-                self.ctx
-                    .state
-                    .group_index_names
-                    .insert(block_id, generated.clone());
-            }
-            Some(generated)
+            internal_index_name.clone()
         };
 
-        let collection_id_name = needs_collection_id.then(|| self.ctx.state.gen_ident("$$array"));
+        let reserved_collection_name = self
+            .ctx
+            .state
+            .transform_data
+            .each_collection_internal_names_legacy
+            .get(&block_id)
+            .cloned();
+        let collection_id_name = needs_collection_id.then(|| {
+            reserved_collection_name.unwrap_or_else(|| self.ctx.state.gen_ident("$$array"))
+        });
 
         let mut flags: u32 = sem.each_flags.bits() as u32;
         if is_controlled {
@@ -212,14 +231,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             EachItemKind::Pattern(_) | EachItemKind::NoBinding => SYNTHETIC_ITEM_NAME.to_string(),
         };
 
-        let (needs_async, has_await, blockers) = match &sem.async_kind {
-            EachAsyncKind::Sync => (false, false, Vec::new()),
-            EachAsyncKind::Async {
-                has_await,
-                blockers,
-            } => (true, *has_await, blockers.to_vec()),
-        };
-
         Ok(EachEmit {
             flags,
             item_param_name,
@@ -230,9 +241,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             collection_source: sem.collection.source.clone(),
-            needs_async,
-            has_await,
-            blockers,
+            async_kind: sem.async_kind.clone(),
         })
     }
 
@@ -264,19 +273,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
         plan: &EachEmit,
     ) -> Result<Expression<'a>> {
-        if plan.needs_async {
-            return Ok(self
-                .ctx
-                .b
-                .thunk(rune_get(&self.ctx.b, "$$collection")));
+        match &plan.async_kind {
+            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => {
+                Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection")))
+            }
+            EachAsyncKind::Sync => {
+                if let EachCollectionSource::Prop { sym } = &plan.collection_source {
+                    let name = self.ctx.query.symbol_name(*sym).to_string();
+                    return Ok(self.ctx.b.rid_expr(&name));
+                }
+                let expr = self.take_node_expr(block_id)?;
+                let data = self.ctx.expression_data(block_id);
+                let is_static = data.is_some_and(|d| !d.volatility.is_volatile());
+                let collection = if is_static {
+                    expr
+                } else {
+                    coarse_wrap(self.ctx, expr, data)
+                };
+                Ok(self.ctx.b.thunk(collection))
+            }
         }
-        if let EachCollectionSource::Prop { sym } = &plan.collection_source {
-            let name = self.ctx.query.symbol_name(*sym).to_string();
-            return Ok(self.ctx.b.rid_expr(&name));
-        }
-        let expr = self.take_node_expr(block_id)?;
-        let wrapped = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
-        Ok(self.ctx.b.thunk(wrapped))
     }
 
     fn build_each_key_fn(
@@ -352,29 +368,54 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();
+
+        let saved_writeback_places = self.ctx.state.each_item_writeback_places.take();
+        let each_item_decls: Option<Vec<Statement<'a>>> = match (context_pattern, item_pattern_node)
+        {
+            (Some(pattern), Some(decl_node))
+                if matches!(
+                    pattern,
+                    BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
+                ) =>
+            {
+                let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
+                let BindingPatternOutput::EachItem {
+                    decls,
+                    writeback_places,
+                } = self.emit_binding_pattern(
+                    decl_node,
+                    BindingPatternSource::EachItem {
+                        block_id,
+                        pattern: pattern_ref,
+                    },
+                )?
+                else {
+                    return CodegenError::unexpected_child(
+                        "each-item binding output",
+                        "other binding output",
+                    );
+                };
+                self.ctx.state.each_item_writeback_places = Some(writeback_places);
+                Some(decls)
+            }
+            _ => None,
+        };
+
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let mut frag_body = self.pack_callback_body(inner_state, "$$anchor")?;
 
-        if let Some(pattern) = context_pattern
-            && matches!(
-                pattern,
-                BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_)
-            )
-            && let Some(decl_node) = item_pattern_node
-        {
-            let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
-            let BindingPatternOutput::Statements(mut decls) = self.emit_binding_pattern(
-                decl_node,
-                BindingPatternSource::EachItem {
-                    block_id,
-                    pattern: pattern_ref,
-                },
-            )?
-            else {
-                return CodegenError::unexpected_child("each-item statements", "const tag derived");
-            };
+        self.ctx.state.each_item_writeback_places = saved_writeback_places;
+
+        if let Some(mut decls) = each_item_decls {
             decls.append(&mut frag_body);
             frag_body = decls;
+        }
+
+        if let (Some(user), Some(render)) = (&plan.user_index_name, &plan.render_index_name)
+            && user != render
+        {
+            let rebind = self.ctx.b.let_init_stmt(user, self.ctx.b.rid_expr(render));
+            frag_body.insert(0, rebind);
         }
 
         let arrow = match (&plan.render_index_name, &plan.collection_id_name) {

@@ -1,9 +1,9 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, MustBePropertyValue};
+use svelte_analyze::{AttributeSemantics, MustBePropertyValue, Volatility};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
-use svelte_ast_builder::AssignLeft;
+use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::super::data_structures::EmitState;
 use super::super::{Codegen, CodegenError, Result};
@@ -60,9 +60,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     _ => false,
                 }
             };
-            let has_effect_payload = has_spread
-                || has_style_directives
-                || attributes.iter().any(triggers_effect);
+            let has_effect_payload =
+                has_spread || has_style_directives || attributes.iter().any(triggers_effect);
             let fold_class_directives = has_effect_payload && has_class_directives;
 
             for attr in attributes {
@@ -135,32 +134,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let saved_after_update = mem::take(&mut state.after_update);
         let mut event_stmts: Vec<Statement<'a>> = Vec::new();
 
-        let mut on_legacy_emitted: smallvec::SmallVec<[NodeId; 4]> = smallvec::SmallVec::new();
-        let class_needs_state =
-            (has_class_directives || has_class_attribute) && self.ctx.class_needs_state(owner_id);
-        if class_needs_state && !self.ctx.has_use_directive(owner_id) {
-            for attr in attributes {
-                if let Attribute::OnDirectiveLegacy(d) = attr {
-                    self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    on_legacy_emitted.push(attr.id());
-                }
-            }
-        }
-
         for attr in attributes {
             let attr_id = attr.id();
-            if on_legacy_emitted.contains(&attr_id) {
-                continue;
-            }
             match self.ctx.query.analysis.attributes.get(attr_id) {
                 AttributeSemantics::ElementBind(_) => {
-                    let Attribute::BindDirective(d) = attr else {
+                    if !matches!(attr, Attribute::BindDirective(_)) {
                         return CodegenError::semantic_mismatch(
                             attr_id,
                             "ElementBind requires BindDirective",
                         );
-                    };
-                    self.emit_bind_directive(state, owner_id, owner_tag, owner_var, d)?;
+                    }
                 }
                 AttributeSemantics::Event(_) => match attr {
                     Attribute::ExpressionAttribute(a) => {
@@ -168,9 +151,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
                         event_stmts.extend(state.after_update.drain(before..));
                     }
-                    Attribute::OnDirectiveLegacy(d) => {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    }
+                    Attribute::OnDirectiveLegacy(_) => {}
                     _ => {
                         return CodegenError::semantic_mismatch(
                             attr_id,
@@ -182,6 +163,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | AttributeSemantics::DocumentBind(_)
                 | AttributeSemantics::ComponentBind(_)
                 | AttributeSemantics::ComponentProp(_)
+                | AttributeSemantics::SvelteComponentThis(_)
                 | AttributeSemantics::ComponentSpread(_)
                 | AttributeSemantics::ComponentAttach(_)
                 | AttributeSemantics::BoundaryProp(_) => {
@@ -247,6 +229,131 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                     state.init.push(b.assign_stmt(target, value_expr));
                 }
+                AttributeSemantics::Autofocus => {
+                    let value = match attr {
+                        Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
+                        Attribute::StringAttribute(a) => {
+                            let text = a.value(&self.ctx.query.component.source).to_string();
+                            self.ctx.b.str_expr(&text)
+                        }
+                        Attribute::ExpressionAttribute(a) => {
+                            self.take_attr_expr(a.id, &a.expression)?
+                        }
+                        _ => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "Autofocus requires boolean, string, or expression attribute",
+                            );
+                        }
+                    };
+                    state.init.push(
+                        self.ctx
+                            .b
+                            .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(value)]),
+                    );
+                }
+                AttributeSemantics::StyleDirectives(_) => {}
+                AttributeSemantics::NonSpecial
+                    if self.ctx.query.view.is_custom_element(owner_id) =>
+                {
+                    match attr {
+                        Attribute::StringAttribute(a) => {
+                            if a.name == "class" {
+                                let val = a.value(&self.ctx.query.component.source).to_string();
+                                self.emit_custom_element_static_class(
+                                    state, owner_id, owner_var, &val, is_html,
+                                );
+                                emitted_class = true;
+                                continue;
+                            }
+                            if a.name == "style" {
+                                let val = a.value(&self.ctx.query.component.source).to_string();
+                                let style_call = self.ctx.b.call_expr(
+                                    "$.set_style",
+                                    [Arg::Ident(owner_var), Arg::Str(val)],
+                                );
+                                state.init.push(self.ctx.b.expr_stmt(style_call));
+                                continue;
+                            }
+                            if a.name == "is" && is_html {
+                                let val = a.value(&self.ctx.query.component.source);
+                                state.template.set_attribute(&a.name, Some(val.to_string()));
+                                continue;
+                            }
+                            let val = a.value(&self.ctx.query.component.source).to_string();
+                            let value = self.ctx.b.str_expr(&val);
+                            self.emit_custom_element_data(state, owner_var, &a.name, value, false);
+                        }
+                        Attribute::BooleanAttribute(a) => {
+                            let value = self.ctx.b.bool_expr(true);
+                            self.emit_custom_element_data(state, owner_var, &a.name, value, false);
+                        }
+                        Attribute::ExpressionAttribute(a) => {
+                            if a.name == "class" {
+                                if !emitted_class {
+                                    self.emit_class_attribute_and_directives(
+                                        state, owner_id, owner_var, is_html,
+                                    )?;
+                                    emitted_class = true;
+                                }
+                                continue;
+                            }
+                            if a.name == "style" {
+                                if has_style_directives {
+                                    self.emit_style_directives_aggregate(
+                                        state,
+                                        owner_id,
+                                        owner_var,
+                                        Some(a.id),
+                                    )?;
+                                    emitted_style_directives = true;
+                                } else {
+                                    self.emit_attr_expression(
+                                        state, owner_id, owner_tag, owner_var, a,
+                                    )?;
+                                }
+                                continue;
+                            }
+                            let attr_id = a.id;
+                            let value = self.take_attr_expr(attr_id, &a.expression)?;
+                            let reactive =
+                                match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                                    Some(
+                                        Volatility::Reactive
+                                        | Volatility::Heavy
+                                        | Volatility::Asynchronous,
+                                    ) => true,
+                                    Some(Volatility::Static) | None => false,
+                                };
+                            self.emit_custom_element_data(
+                                state, owner_var, &a.name, value, reactive,
+                            );
+                        }
+                        Attribute::ConcatenationAttribute(_) => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "ConcatenationAttribute must classify as HtmlConcat",
+                            );
+                        }
+                        Attribute::SpreadAttribute(_)
+                        | Attribute::ClassDirective(_)
+                        | Attribute::StyleDirective(_)
+                        | Attribute::LetDirectiveLegacy(_) => continue,
+                        Attribute::UseDirective(_)
+                        | Attribute::OnDirectiveLegacy(_)
+                        | Attribute::TransitionDirective(_)
+                        | Attribute::AnimateDirective(_) => {}
+                        Attribute::AttachTag(a) => {
+                            self.emit_attach_tag(state, owner_id, owner_var, a)?;
+                        }
+                        Attribute::BindDirective(_) => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "BindDirective in NonSpecial branch",
+                            );
+                        }
+                    }
+                }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
                         if a.name == "class" {
@@ -284,12 +391,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             continue;
                         }
                         if a.name == "style" && has_style_directives {
-                            self.emit_style_directives_aggregate(
-                                state,
-                                owner_id,
-                                owner_var,
-                                None,
-                            )?;
+                            self.emit_style_directives_aggregate(state, owner_id, owner_var, None)?;
                             emitted_style_directives = true;
                             continue;
                         }
@@ -338,18 +440,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     | Attribute::ClassDirective(_)
                     | Attribute::StyleDirective(_) => continue,
                     Attribute::LetDirectiveLegacy(_) => continue,
-                    Attribute::UseDirective(d) => {
-                        self.emit_use_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::OnDirectiveLegacy(d) => {
-                        self.emit_on_directive_legacy(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::TransitionDirective(d) => {
-                        self.emit_transition_directive(state, owner_id, owner_var, d)?;
-                    }
-                    Attribute::AnimateDirective(d) => {
-                        self.emit_animate_directive(state, owner_id, owner_var, d)?;
-                    }
+                    Attribute::UseDirective(_)
+                    | Attribute::OnDirectiveLegacy(_)
+                    | Attribute::TransitionDirective(_)
+                    | Attribute::AnimateDirective(_) => {}
                     Attribute::AttachTag(a) => {
                         self.emit_attach_tag(state, owner_id, owner_var, a)?;
                     }

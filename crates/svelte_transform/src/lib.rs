@@ -11,16 +11,43 @@ use std::slice;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
-use oxc_ast::ast::Expression;
-use svelte_analyze::{
-    AnalysisData, AttributeSemantics, BlockSemantics, IdentGen, JsAst, PropReferenceSemantics,
-    ReferenceSemantics,
-};
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::scope::ScopeId;
-use svelte_ast::{
-    Attribute, Component, ConcatPart, ExprRef, FragmentId, LegacySlot, Node, NodeId as SvelteNodeId,
-    StyleDirectiveValue,
+use svelte_analyze::{
+    AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, HtmlBindKind, IdentGen, JsAst,
 };
+use svelte_ast::{
+    Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
+    NodeId as SvelteNodeId, StyleDirectiveValue,
+};
+use svelte_component_semantics::walk_bindings;
+
+pub(crate) fn is_simple_expression(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::Identifier(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ParenthesizedExpression(inner) => is_simple_expression(&inner.expression),
+        Expression::ConditionalExpression(cond) => {
+            is_simple_expression(&cond.test)
+                && is_simple_expression(&cond.consequent)
+                && is_simple_expression(&cond.alternate)
+        }
+        Expression::BinaryExpression(bin) => {
+            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
+        }
+        Expression::LogicalExpression(log) => {
+            is_simple_expression(&log.left) && is_simple_expression(&log.right)
+        }
+        _ => false,
+    }
+}
 
 pub fn transform_component<'a>(
     ctx: &mut svelte_types::CompileContext<'a, '_>,
@@ -65,6 +92,7 @@ pub fn transform_component<'a>(
         bind_expr_handles,
         transform_data,
         parsed,
+        component,
         line_index,
         dev,
     )
@@ -84,6 +112,7 @@ struct TransformCtx<'a, 'b> {
 pub(crate) enum BindHandleKind {
     Element,
     Component { prop_name: String },
+    This,
 }
 
 pub(crate) struct BindExprHandle {
@@ -103,6 +132,107 @@ fn walk_fragment<'a>(
     for id in nodes {
         let node = component.store.get(id);
         walk_node(ctx, node, component, parsed, scope);
+    }
+}
+
+fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
+    let name = ctx.ident_gen.generate("$$index");
+    ctx.transform_data
+        .each_index_internal_names
+        .insert(block.id, name);
+
+    if block.index.is_some() {
+        return;
+    }
+    let BlockSemantics::Each(sem) = ctx.analysis.block_semantics(block.id) else {
+        return;
+    };
+    let EachItemKind::Identifier(item_sym) = &sem.item else {
+        return;
+    };
+    if !ctx
+        .analysis
+        .binding_semantics(*item_sym)
+        .is_each_item_indexed_legacy()
+    {
+        return;
+    }
+    ctx.transform_data
+        .each_index_block_by_item
+        .insert(*item_sym, block.id);
+}
+
+fn reserve_destructure_default_simple<'a>(
+    ctx: &mut TransformCtx<'a, '_>,
+    block: &EachBlock,
+    parsed: &JsAst<'a>,
+) {
+    let Some(context) = block.context.as_ref() else {
+        return;
+    };
+    let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(context.id()) else {
+        return;
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return;
+    };
+    walk_bindings(&declarator.id, |v| {
+        let mut flags: Vec<bool> = Vec::new();
+        for step in v.path {
+            if let Some(default) = step.default {
+                flags.push(is_simple_expression(default));
+            }
+        }
+        if !flags.is_empty() {
+            ctx.transform_data
+                .destructure_default_simple
+                .insert(v.symbol, flags);
+        }
+    });
+}
+
+fn reserve_each_collection_name_legacy(
+    ctx: &mut TransformCtx<'_, '_>,
+    block: &EachBlock,
+    body_scope: ScopeId,
+) {
+    let BlockSemantics::Each(sem) = ctx.analysis.block_semantics(block.id) else {
+        return;
+    };
+    if !sem.shadows_outer {
+        return;
+    }
+    let mut writeback_syms: Vec<svelte_component_semantics::SymbolId> = Vec::new();
+    {
+        let storage = ctx.analysis.scoping.semantics();
+        let names: Vec<String> = storage
+            .own_binding_names(body_scope)
+            .map(|name| name.to_string())
+            .collect();
+        for name in &names {
+            let Some(sym) = storage.get_binding(body_scope, name) else {
+                continue;
+            };
+            let writes_back = ctx
+                .analysis
+                .each_item_indirect_sources(sym)
+                .is_some_and(|sources| !sources.is_empty());
+            if writes_back {
+                writeback_syms.push(sym);
+            }
+        }
+    }
+    if writeback_syms.is_empty() {
+        return;
+    }
+    let name = ctx.ident_gen.generate("$$array");
+    ctx.transform_data
+        .each_collection_internal_names_legacy
+        .insert(block.id, name);
+    for sym in writeback_syms {
+        ctx.transform_data
+            .each_collection_block_by_item_legacy
+            .insert(sym, block.id);
     }
 }
 
@@ -157,11 +287,17 @@ fn walk_node<'a>(
             if let Some(key) = block.key.as_ref() {
                 ctx.expr_handles.push((key.id(), Some(block.id)));
             }
+            if let Some(context) = block.context.as_ref() {
+                ctx.stmt_handles.push((context.id(), Some(block.id)));
+            }
+            reserve_destructure_default_simple(ctx, block, parsed);
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {
                 walk_fragment(ctx, fb, component, parsed, scope);
             }
+            reserve_each_index_name(ctx, block);
+            reserve_each_collection_name_legacy(ctx, block, body_scope);
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
@@ -177,8 +313,7 @@ fn walk_node<'a>(
         Node::ConstTag(tag) => {
             ctx.stmt_handles.push((tag.decl.id(), Some(tag.id)));
 
-            if let BlockSemantics::ConstTag(sem) =
-                ctx.analysis.block_semantics(tag.id)
+            if let BlockSemantics::ConstTag(sem) = ctx.analysis.block_semantics(tag.id)
                 && is_destructured_const_tag(ctx.analysis, sem.decl_node_id)
             {
                 let tmp = ctx.ident_gen.generate("computed_const");
@@ -217,6 +352,12 @@ fn walk_node<'a>(
         }
         Node::AwaitBlock(block) => {
             record_expr(ctx, parsed, &block.expression, Some(block.id));
+            if let Some(value) = block.value.as_ref() {
+                ctx.stmt_handles.push((value.id(), Some(block.id)));
+            }
+            if let Some(error) = block.error.as_ref() {
+                ctx.stmt_handles.push((error.id(), Some(block.id)));
+            }
             if let Some(p) = block.pending {
                 let pending_scope = ctx.analysis.effective_fragment_scope(p, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
@@ -292,17 +433,33 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
 
         if let Attribute::BindDirective(bind) = attr {
             let bind_id = bind.expression.id();
-            let is_user_sequence = parsed
-                .expr(bind_id)
-                .is_some_and(|e| matches!(e.get_inner_expression(), Expression::SequenceExpression(_)));
+            let is_user_sequence = parsed.expr(bind_id).is_some_and(|e| {
+                matches!(e.get_inner_expression(), Expression::SequenceExpression(_))
+            });
             if bind.name == "this" {
+                if is_user_sequence {
+                    continue;
+                }
+                let route_this = match ctx.analysis.attributes.get(attr.id()) {
+                    AttributeSemantics::ComponentBind(_) => true,
+                    AttributeSemantics::ElementBind(b) => {
+                        !matches!(b.kind, HtmlBindKind::StoreSubscribed { .. })
+                    }
+                    _ => false,
+                };
+                if route_this {
+                    ctx.bind_expr_handles.push(BindExprHandle {
+                        bind_id,
+                        owner: attr.id(),
+                        kind: BindHandleKind::This,
+                    });
+                }
                 continue;
             }
 
             let is_window_or_document = matches!(
                 ctx.analysis.attributes.get(attr.id()),
-                AttributeSemantics::WindowBind(_)
-                    | AttributeSemantics::DocumentBind(_)
+                AttributeSemantics::WindowBind(_) | AttributeSemantics::DocumentBind(_)
             );
             if is_window_or_document {
                 continue;
@@ -322,18 +479,10 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                             let Some(ref_id) = id.reference_id.get() else {
                                 return false;
                             };
-                            return matches!(
-                                ctx.analysis.reference_semantics(ref_id),
-                                ReferenceSemantics::PropRead(
-                                    PropReferenceSemantics::Source {
-                                        bindable: true,
-                                        ..
-                                    }
-                                ) | ReferenceSemantics::PropMutation {
-                                    bindable: true,
-                                    ..
-                                }
-                            );
+                            return ctx
+                                .analysis
+                                .reference_semantics(ref_id)
+                                .is_bindable_prop_access();
                         }
                         _ => return false,
                     }
@@ -346,11 +495,9 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
                 ctx.expr_handles.push((bind_id, owner));
             } else {
                 let kind = match ctx.analysis.attributes.get(attr.id()) {
-                    AttributeSemantics::ComponentBind(_) => {
-                        BindHandleKind::Component {
-                            prop_name: bind.name.clone(),
-                        }
-                    }
+                    AttributeSemantics::ComponentBind(_) => BindHandleKind::Component {
+                        prop_name: bind.name.clone(),
+                    },
                     AttributeSemantics::ElementBind(_) => BindHandleKind::Element,
                     _ => unreachable!(
                         "bind directive must classify as ElementBind/ComponentBind (window/document filtered above)"
@@ -430,10 +577,7 @@ fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option
     })
 }
 
-fn is_destructured_const_tag(
-    analysis: &AnalysisData<'_>,
-    decl_node_id: SemOxcNodeId,
-) -> bool {
+fn is_destructured_const_tag(analysis: &AnalysisData<'_>, decl_node_id: SemOxcNodeId) -> bool {
     use oxc_ast::{AstKind, ast::BindingPattern};
     let Some(AstKind::VariableDeclaration(decl)) = analysis.scoping.js_kind(decl_node_id) else {
         return false;

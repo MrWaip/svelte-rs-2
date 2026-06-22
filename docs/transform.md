@@ -1,6 +1,7 @@
 # PRD: Трансформ (корневой)
 
 label: transform
+topics: transform, JS AST mutation, dumb transform, transformer passes (runes/state/derived/props/assignments/legacy_reactive), writeback instrumentation
 
 Корневой PRD для слоя трансформа (`svelte_transform`).
 Догма: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.

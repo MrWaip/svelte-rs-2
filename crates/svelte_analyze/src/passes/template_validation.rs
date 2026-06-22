@@ -5,23 +5,22 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective, ComponentNode,
-    ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag,
-    HtmlTag, SpreadAttribute,
-    IfBlock, KeyBlock, LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY,
-    SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
-    SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text, TransitionDirection, TransitionDirective,
-    UseDirective, is_svg,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
+    ComponentNode, ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef,
+    ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy, Node,
+    NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
+    SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock, SpreadAttribute,
+    SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead,
+    SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective, is_svg,
 };
 use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::expression_semantics::ExprKind;
+use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindHostKind, BindingSemantics, BindPropertyKind, BindTargetSemantics, ConstBindingSemantics,
+    BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ConstBindingSemantics,
     ElementSizeKind,
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
@@ -819,8 +818,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
         check_opening_sigil(tag.span, b'@', ctx);
         if let Some(parsed) = ctx.parsed()
-            && let Some(Statement::VariableDeclaration(decl)) =
-                parsed.stmt(tag.decl.id())
+            && let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id())
             && decl.declarations.len() > 1
         {
             ctx.warnings_mut().push(Diagnostic::error(
@@ -934,29 +932,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if has_slot
-            && !ctx.data.parent(el.id).is_some_and(|p| {
-                matches!(
-                    p.kind,
-                    ParentKind::ComponentNode
-                        | ParentKind::SvelteComponentLegacy
-                        | ParentKind::SvelteSelf
-                )
-            })
-        {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::SlotAttributeInvalidPlacement,
-                el.span,
-            ));
-        } else if has_slot && let Some(attr) = slot_attr {
-            if !matches!(attr, Attribute::StringAttribute(_)) {
-                ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::SlotAttributeInvalid,
-                    attr_value_span(attr),
-                ));
-            } else {
-                validate_component_slot_conflicts(el, attr, ctx);
-            }
+        if has_slot && let Some(attr) = slot_attr {
+            validate_slot_attribute_placement(el, attr, ctx);
         }
 
         a11y::check_element_warnings(
@@ -1076,11 +1053,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
-    fn visit_svelte_self(
-        &mut self,
-        cn: &svelte_ast::SvelteSelf,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
+    fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.maybe_warn_legacy_special_element(SVELTE_SELF, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
@@ -1257,7 +1230,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(attr.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_template_await_experimental(ctx, &attr.expression);
         }
@@ -1303,7 +1279,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         } else {
             ctx.parsed()
                 .and_then(|p| p.expr(dir.expression.id()))
-                .is_some_and(|expr| matches!(expr.get_inner_expression(), Expression::Identifier(_)))
+                .is_some_and(|expr| {
+                    matches!(expr.get_inner_expression(), Expression::Identifier(_))
+                })
         };
 
         let shape = bind_expression_kind(dir, ctx);
@@ -1314,7 +1292,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 if is_identifier_target {
                     validate_bind_identifier_value(dir, ctx);
                 }
-                validate_bind_group_binding(dir, ctx);
+                validate_bind_group_binding(dir, is_identifier_target, ctx);
             }
             Some(BindExpressionKind::Sequence { len, has_parens }) => {
                 validate_bind_sequence_expression(dir, len, has_parens, ctx);
@@ -1331,7 +1309,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 if is_identifier_target {
                     validate_bind_identifier_value(dir, ctx);
                 }
-                validate_bind_group_binding(dir, ctx);
+                validate_bind_group_binding(dir, is_identifier_target, ctx);
             }
         }
 
@@ -1339,7 +1317,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, &dir.expression);
         }
@@ -1377,7 +1358,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(dir.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1430,7 +1414,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1552,7 +1539,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_template_await_experimental(ctx, &tag.expression);
         }
@@ -1579,7 +1569,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if ctx
             .data
             .expression_data(tag.id)
-            .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+            .is_some_and(|d| match d.volatility {
+                Volatility::Asynchronous => true,
+                Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            })
         {
             emit_directive_await_diagnostic(ctx, &tag.expression);
         }
@@ -1656,7 +1649,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && ctx
                 .data
                 .expression_data(dir.id)
-                .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+                .is_some_and(|d| match d.volatility {
+                    Volatility::Asynchronous => true,
+                    Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+                })
         {
             emit_directive_await_diagnostic(ctx, expression);
         }
@@ -1709,9 +1705,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
     ) {
         validate_const_tag_invalid_reference_expr(id, expr, ctx);
 
-        if !ctx.runes {
-            return;
-        }
         let is_bind = ctx
             .parent()
             .is_some_and(|p| p.kind == ParentKind::BindDirective);
@@ -1724,14 +1717,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     span,
                 ));
             }
-            Expression::Identifier(ident) if is_bind && is_each_block_var_ref(ident, ctx.data) => {
+            Expression::Identifier(ident)
+                if ctx.runes && is_bind && is_each_block_var_ref(ident, ctx.data) =>
+            {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
                     span,
                 ));
             }
-            _ if !is_bind && contains_invalid_each_assignment(expr, ctx.data) => {
+            _ if ctx.runes && !is_bind && contains_invalid_each_assignment(expr, ctx.data) => {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
@@ -1942,9 +1937,7 @@ fn validate_bind_parent_specifics(
 
     if matches!(
         bind_property,
-        Some(BindPropertyKind::ElementSize(
-            ElementSizeKind::OffsetWidth
-        ))
+        Some(BindPropertyKind::ElementSize(ElementSizeKind::OffsetWidth))
     ) && is_svg(&parent.name)
     {
         emit_bind_error(
@@ -2082,20 +2075,8 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     };
 
     let decl = ctx.data.reactivity.binding_semantics(sym_id);
-    let valid = matches!(
-        decl,
-        crate::BindingSemantics::State(_)
-            | crate::BindingSemantics::Store(_)
-            | crate::BindingSemantics::LegacyState(_)
-            | crate::BindingSemantics::LegacyBindableProp(_)
-            | crate::BindingSemantics::Prop(crate::PropBindingSemantics {
-                kind: crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource,
-                ..
-            })
-    ) || matches!(
-        decl,
-        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::EachItem(_),),
-    ) && bind_targets_each_context(sym_id, dir.id, ctx)
+    let valid = decl_is_bindable_target(&decl)
+        || decl_is_each_item(&decl) && bind_targets_each_context(sym_id, dir.id, ctx)
         || {
             let flags = ctx.data.scoping.symbol_flags(sym_id);
             flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
@@ -2107,7 +2088,11 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     }
 }
 
-fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
+fn validate_bind_group_binding(
+    dir: &BindDirective,
+    identifier_target: bool,
+    ctx: &mut VisitContext<'_, '_>,
+) {
     if dir.name.as_str() != "group" {
         return;
     }
@@ -2116,10 +2101,7 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
         return;
     };
 
-    if matches!(
-        ctx.data.reactivity.binding_semantics(sym_id),
-        crate::BindingSemantics::Contextual(crate::ContextualBindingSemantics::SnippetParam(_),),
-    ) {
+    if !identifier_target && decl_is_snippet_param(&ctx.data.reactivity.binding_semantics(sym_id)) {
         emit_bind_error(
             ctx,
             dir.expression.span,
@@ -2137,10 +2119,7 @@ fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_, '
     }
 }
 
-fn bind_base_symbol(
-    dir: &BindDirective,
-    ctx: &VisitContext<'_, '_>,
-) -> Option<SymbolId> {
+fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_, '_>) -> Option<SymbolId> {
     if dir.shorthand {
         return ctx.data.shorthand_symbol(dir.id);
     }
@@ -2398,9 +2377,7 @@ fn should_emit_snippet_conflict(
                     only_const_tags = false;
                     continue;
                 };
-                let Some(Statement::VariableDeclaration(decl)) =
-                    parsed.stmt(tag.decl.id())
-                else {
+                let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id()) else {
                     only_const_tags = false;
                     continue;
                 };
@@ -2471,6 +2448,74 @@ fn scope_is_within(ctx: &VisitContext<'_, '_>, mut scope: ScopeId, target: Scope
             None => return false,
         }
     }
+}
+
+fn validate_slot_attribute_placement(
+    el: &Element,
+    slot_attr: &Attribute,
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    if ctx
+        .data
+        .parent(el.id)
+        .is_some_and(|parent| parent.kind == ParentKind::SnippetBlock)
+    {
+        if !matches!(slot_attr, Attribute::StringAttribute(_)) {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SlotAttributeInvalid,
+                attr_value_span(slot_attr),
+            ));
+        }
+        return;
+    }
+
+    let owner = ctx.data.ancestors(el.id).find(|ancestor| {
+        matches!(
+            ancestor.kind,
+            ParentKind::ComponentNode
+                | ParentKind::SvelteComponentLegacy
+                | ParentKind::SvelteSelf
+                | ParentKind::SvelteElement
+        ) || ctx.data.is_custom_element(ancestor.id)
+    });
+
+    let Some(owner) = owner else {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalidPlacement,
+            el.span,
+        ));
+        return;
+    };
+
+    let owner_is_component = matches!(
+        owner.kind,
+        ParentKind::ComponentNode | ParentKind::SvelteComponentLegacy | ParentKind::SvelteSelf
+    );
+    if !owner_is_component {
+        return;
+    }
+
+    let is_direct_child = ctx
+        .data
+        .parent(el.id)
+        .is_some_and(|parent| parent.id == owner.id);
+    if !is_direct_child {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalidPlacement,
+            el.span,
+        ));
+        return;
+    }
+
+    if !matches!(slot_attr, Attribute::StringAttribute(_)) {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeInvalid,
+            attr_value_span(slot_attr),
+        ));
+        return;
+    }
+
+    validate_component_slot_conflicts(el, slot_attr, ctx);
 }
 
 fn validate_component_slot_conflicts(
@@ -2575,12 +2620,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
                     None => continue,
                 };
                 if name == parent_element {
-                    if let Some(message) =
-                        is_tag_valid_with_parent(
-                            &el.name,
-                            &parent_element,
-                        )
-                    {
+                    if let Some(message) = is_tag_valid_with_parent(&el.name, &parent_element) {
                         emit_invalid_placement(el, message, only_warn, ctx);
                     }
                     past_parent = true;
@@ -2593,9 +2633,7 @@ fn check_node_invalid_placement(el: &Element, ctx: &mut VisitContext<'_, '_>) {
             };
             ancestors.push(name);
             let refs: Vec<&str> = ancestors.iter().map(String::as_str).collect();
-            if let Some(message) =
-                is_tag_valid_with_ancestor(&el.name, &refs)
-            {
+            if let Some(message) = is_tag_valid_with_ancestor(&el.name, &refs) {
                 emit_invalid_placement(el, message, only_warn, ctx);
             }
         } else if matches!(
@@ -2639,41 +2677,130 @@ fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option
     is_tag_valid_with_parent("#text", element.name.as_str())
 }
 
-fn is_each_block_var_ref(
-    ident: &IdentifierReference<'_>,
-    data: &AnalysisData,
-) -> bool {
+fn is_each_block_var_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
     ident
         .reference_id
         .get()
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| {
-            matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::Contextual(
-                    crate::ContextualBindingSemantics::EachItem(_)
-                        | crate::ContextualBindingSemantics::EachIndex(_),
-                ),
-            )
-        })
+        .is_some_and(|sym| decl_is_each_contextual(&data.reactivity.binding_semantics(sym)))
 }
 
-fn is_snippet_param_ref(
-    ident: &IdentifierReference<'_>,
-    data: &AnalysisData,
-) -> bool {
+fn is_snippet_param_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
     ident
         .reference_id
         .get()
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
-        .is_some_and(|sym| {
-            matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::Contextual(
-                    crate::ContextualBindingSemantics::SnippetParam(_),
-                ),
-            )
-        })
+        .is_some_and(|sym| decl_is_snippet_param(&data.reactivity.binding_semantics(sym)))
+}
+
+fn decl_is_bindable_target(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::State(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::LegacyBindableProp(_) => true,
+        BindingSemantics::Prop(prop) => match &prop.kind {
+            crate::PropBindingKind::Source { .. } | crate::PropBindingKind::NonSource => true,
+            crate::PropBindingKind::Identifier | crate::PropBindingKind::Rest => false,
+        },
+        BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_each_item(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::EachItem(_) => true,
+            crate::ContextualBindingSemantics::EachIndex(_)
+            | crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | crate::ContextualBindingSemantics::SnippetParam(_) => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_each_contextual(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::EachItem(_)
+            | crate::ContextualBindingSemantics::EachIndex(_) => true,
+            crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. }
+            | crate::ContextualBindingSemantics::SnippetParam(_) => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
+fn decl_is_snippet_param(decl: &BindingSemantics) -> bool {
+    match decl {
+        BindingSemantics::Contextual(contextual) => match contextual {
+            crate::ContextualBindingSemantics::SnippetParam(_) => true,
+            crate::ContextualBindingSemantics::EachItem(_)
+            | crate::ContextualBindingSemantics::EachIndex(_)
+            | crate::ContextualBindingSemantics::AwaitValue
+            | crate::ContextualBindingSemantics::AwaitError
+            | crate::ContextualBindingSemantics::LetDirective
+            | crate::ContextualBindingSemantics::LetDirectiveDirect
+            | crate::ContextualBindingSemantics::LetDirectiveCarrierMember { .. } => false,
+        },
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    }
 }
 
 fn validate_const_tag_invalid_reference_expr(
@@ -2720,10 +2847,24 @@ fn maybe_const_tag_invalid_reference(
         .get()
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
 
-    if !matches!(
-        ctx.data.binding_semantics(sym_id),
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
-    ) {
+    let is_const_tag = match ctx.data.binding_semantics(sym_id) {
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. }) => true,
+        BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => false,
+    };
+    if !is_const_tag {
         return None;
     }
 
@@ -2874,9 +3015,7 @@ fn component_has_implicit_default_children(
     None
 }
 
-fn extract_arrow_params<'s, 'a: 's>(
-    stmt: &'s Statement<'a>,
-) -> Option<&'s FormalParameters<'a>> {
+fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s FormalParameters<'a>> {
     let Statement::VariableDeclaration(decl) = stmt else {
         return None;
     };
@@ -3045,6 +3184,15 @@ fn validate_svelte_element_this(el: &SvelteElement, ctx: &mut VisitContext<'_, '
                 DiagnosticKind::SvelteElementInvalidThis,
                 s.span,
             ));
+        }
+        Some(Attribute::ConcatenationAttribute(c)) => {
+            let is_lone_expression = matches!(c.parts.as_slice(), [ConcatPart::Dynamic { .. }]);
+            if !is_lone_expression {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::SvelteElementInvalidThis,
+                    c.span,
+                ));
+            }
         }
         _ => {}
     }
@@ -3323,7 +3471,10 @@ fn check_template_await(ctx: &mut VisitContext<'_, '_>, id: NodeId, expression: 
     if ctx
         .data
         .expression_data(id)
-        .is_some_and(|d| matches!(d.kind, ExprKind::Async { has_await: true }))
+        .is_some_and(|d| match d.volatility {
+            Volatility::Asynchronous => true,
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+        })
     {
         emit_template_await_experimental(ctx, expression);
     }

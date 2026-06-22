@@ -116,18 +116,7 @@ impl<'a> Builder<'a> {
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
         let object = match object {
-            Expression::ChainExpression(chain) => {
-                let chain = chain.unbox();
-                match chain.expression {
-                    ChainElement::CallExpression(c) => Expression::CallExpression(c),
-                    ChainElement::StaticMemberExpression(m) => Expression::StaticMemberExpression(m),
-                    ChainElement::ComputedMemberExpression(m) => {
-                        Expression::ComputedMemberExpression(m)
-                    }
-                    ChainElement::PrivateFieldExpression(m) => Expression::PrivateFieldExpression(m),
-                    ChainElement::TSNonNullExpression(t) => Expression::TSNonNullExpression(t),
-                }
-            }
+            Expression::ChainExpression(_) => self.ast.expression_parenthesized(SPAN, object),
             other => other,
         };
         let property = self.ast.identifier_name(SPAN, self.ast.atom(member));

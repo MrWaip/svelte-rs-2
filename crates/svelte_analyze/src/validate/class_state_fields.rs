@@ -8,26 +8,54 @@ use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::script::RuneKind;
-use crate::utils::script_info::detect_rune_from_call;
+use svelte_component_semantics::OxcNodeId;
 
-pub(super) fn validate(program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
-    let mut walker = ClassStateFieldsValidator { diags };
+use crate::reactivity_semantics::data::ReactivitySemantics;
+use crate::types::data::{AnalysisData, DeclaratorSemantics};
+
+pub(super) fn validate(data: &AnalysisData, program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
+    let mut walker = ClassStateFieldsValidator {
+        reactivity: &data.reactivity,
+        diags,
+    };
     walker.visit_program(program);
 }
 
 struct ClassStateFieldsValidator<'a> {
+    reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
 }
 
 impl<'a> Visit<'a> for ClassStateFieldsValidator<'_> {
     fn visit_class(&mut self, class: &Class<'a>) {
-        check_class(class, self.diags);
+        check_class(class, self.reactivity, self.diags);
         walk_class(self, class);
     }
 }
 
-fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
+fn is_class_field_rune(reactivity: &ReactivitySemantics, node: OxcNodeId) -> bool {
+    match reactivity.declarator_semantics(node) {
+        DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_) => true,
+        DeclaratorSemantics::None
+        | DeclaratorSemantics::RuntimeRuneCall { .. }
+        | DeclaratorSemantics::RuneProps
+        | DeclaratorSemantics::LegacyProps
+        | DeclaratorSemantics::LegacyState
+        | DeclaratorSemantics::RuneState { .. }
+        | DeclaratorSemantics::RuneDerived { .. }
+        | DeclaratorSemantics::ConstTag { .. }
+        | DeclaratorSemantics::LetCarrier { .. }
+        | DeclaratorSemantics::EachItem
+        | DeclaratorSemantics::AwaitValue
+        | DeclaratorSemantics::SnippetParam => false,
+    }
+}
+
+fn check_class<'a>(
+    class: &Class<'a>,
+    reactivity: &ReactivitySemantics,
+    diags: &mut Vec<Diagnostic>,
+) {
     let mut declared: FxHashSet<&'a str> = FxHashSet::default();
 
     for element in &class.body.body {
@@ -40,13 +68,7 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
         let PropertyKey::StaticIdentifier(name_id) = &prop.key else {
             continue;
         };
-        let Some(value) = prop.value.as_ref() else {
-            continue;
-        };
-        let Expression::CallExpression(call) = value.get_inner_expression() else {
-            continue;
-        };
-        if !is_state_creation_rune(detect_rune_from_call(call)) {
+        if !is_class_field_rune(reactivity, prop.node_id()) {
             continue;
         }
         declared.insert(name_id.name.as_str());
@@ -77,10 +99,7 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
         ) {
             continue;
         }
-        let Expression::CallExpression(call) = assign.right.get_inner_expression() else {
-            continue;
-        };
-        if !is_state_creation_rune(detect_rune_from_call(call)) {
+        if !is_class_field_rune(reactivity, assign.node_id()) {
             continue;
         }
         let name = member.property.name.as_str();
@@ -93,11 +112,4 @@ fn check_class<'a>(class: &Class<'a>, diags: &mut Vec<Diagnostic>) {
             ));
         }
     }
-}
-
-fn is_state_creation_rune(kind: Option<RuneKind>) -> bool {
-    matches!(
-        kind,
-        Some(RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy)
-    )
 }

@@ -1,6 +1,7 @@
 # PRD: ComponentSemantics (корневой)
 
 label: component-semantics
+topics: ComponentSemantics, scope, Symbol/SymbolId, Reference/ReferenceId, SymbolTable, shadowing, scope graph, BindingPattern store
 
 Корневой PRD для кластера `svelte_component_semantics` (3.A.1) — generic JS scope-граф.
 Дочерний по слою: `analyze.md`.
@@ -17,6 +18,9 @@ label: component-semantics
 - Присваивает `OxcNodeId` каждому релевантному `oxc_ast`-узлу, contiguous через `<script module>` → `<script>` → шаблон (offset-bookkeeping в `ComponentSemanticsBuilder::next_node_id`).
 - Биндит `OxcNodeId` в `ExprRef` / `StmtRef` на узлах Svelte AST (резолвит `Cell<OxcNodeId>::DUMMY`-слоты, выставленные парсером).
 - Трекает per-binding usage-факты: read, write, mutate (member-мутация, update-выражение).
+- Строит `ClassTable` (форк `oxc_semantic .../class/`) — структурный реестр полей класса, public и private. Собирается в том же проходе `JsSemanticVisitor` (отдельного walk нет). Декларации: body-`PropertyDefinition` (`field` и `#field`) и first-assignment в конструкторе (`this.field` / `this.#field`). Две оси:
+  - `field_access_target(access_node) -> Option<OxcNodeId>` — узел доступа (`this.field` / `this.#field`) → узел декларации поля. Ключ — `OxcNodeId` (у приватных полей нет `SymbolId`/`ReferenceId`); строковый матч имени изолирован здесь (как в Оригинале). Дедуп по имени: body-поле предпочтительнее ctor-assignment.
+  - `class_fields(class_body_node) -> &[ClassFieldDecl]` — все поля (`name`, `is_private`, `decl_node`, `from_constructor`) в порядке объявления; источник истины для генерации аксессоров в трансформе. Семантику поля по `decl_node` даёт `ReactivitySemantics::declarator_semantics`, композицию «доступ → семантика» — `class_field_semantics`.
 
 ## Что НЕ делает
 

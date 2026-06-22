@@ -49,11 +49,7 @@ pub fn rune_set<'a>(
     }
 }
 
-pub fn member_get_via_get<'a>(
-    b: &Builder<'a>,
-    signal_name: &str,
-    prop: &str,
-) -> Expression<'a> {
+pub fn member_get_via_get<'a>(b: &Builder<'a>, signal_name: &str, prop: &str) -> Expression<'a> {
     let ast = b.ast;
     let get_call = rune_get(b, signal_name);
     let property = ast.identifier_name(SPAN, ast.atom(prop));

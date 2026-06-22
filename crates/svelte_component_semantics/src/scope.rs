@@ -19,10 +19,7 @@ impl ScopeBindings {
 
     fn get(&self, name: &str) -> Option<SymbolId> {
         match self {
-            Self::Small(v) => v
-                .iter()
-                .find(|(k, _)| k.as_str() == name)
-                .map(|(_, s)| *s),
+            Self::Small(v) => v.iter().find(|(k, _)| k.as_str() == name).map(|(_, s)| *s),
             Self::Large(m) => m.get(name).copied(),
         }
     }

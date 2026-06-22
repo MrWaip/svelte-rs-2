@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "bidirectional_control_characters",
-    "start": 10,
-    "end": 13
-  }
-]

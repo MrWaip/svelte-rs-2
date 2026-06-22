@@ -5,14 +5,11 @@ pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod css_prune_index;
-pub(crate) mod dynamism;
 pub(crate) mod element_flags;
-pub(crate) mod enrich_script_info;
 mod executor;
 pub(crate) mod finalize_component_name;
 pub(crate) mod fragment_topology;
 pub(crate) mod js_analyze;
-pub(crate) mod post_resolve;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
 
@@ -25,18 +22,16 @@ pub(crate) use executor::execute_pass;
 pub(crate) enum PassKey {
     BuildComponentSemantics,
     AnalyzeScript,
-    EnrichScriptInfo,
     FinalizeComponentName,
     ScanIgnoreComments,
     ExtractCeConfig,
     TemplateSideTables,
     CollectSymbols,
     JsAnalyzePostTemplate,
-    ClassifyNeedsContext,
-    PostResolve,
     BuildReactivitySemantics,
+    BuildValueEvaluation,
+    FinalizeReactivity,
     BuildFragmentTopology,
-    ReactivityWalk,
     TemplateClassificationWalk,
     BuildExpressionSemantics,
     BuildAttributeSemantics,
@@ -49,7 +44,6 @@ pub(crate) enum PassKey {
 pub(crate) enum DataToken {
     ScriptInfo,
     ComponentSemantics,
-    EnrichedScriptInfo,
     ComponentName,
     IgnoreComments,
     CeConfig,
@@ -57,14 +51,13 @@ pub(crate) enum DataToken {
     TemplateSideTables,
     SymbolRefs,
     JsAnalyzePostTemplate,
-    NeedsContext,
-    PostResolve,
     ReactivitySemantics,
+    ValueEvaluation,
+    OptimizedDerived,
     ExpressionSemantics,
     AttributeSemantics,
     BlockSemantics,
     FragmentTopology,
-    Reactivity,
     TemplateClassification,
     TemplateValidation,
     Validation,
@@ -90,13 +83,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::AnalyzeScript,
-        requires: &[],
+        requires: &[
+            DataToken::ComponentSemantics,
+            DataToken::ReactivitySemantics,
+        ],
         produces: &[DataToken::ScriptInfo],
-    },
-    PassDescriptor {
-        key: PassKey::EnrichScriptInfo,
-        requires: &[DataToken::ScriptInfo, DataToken::ComponentSemantics],
-        produces: &[DataToken::EnrichedScriptInfo],
     },
     PassDescriptor {
         key: PassKey::FinalizeComponentName,
@@ -105,7 +96,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::ScanIgnoreComments,
-        requires: &[DataToken::EnrichedScriptInfo, DataToken::ComponentSemantics],
+        requires: &[DataToken::ScriptInfo, DataToken::ComponentSemantics],
         produces: &[DataToken::IgnoreComments],
     },
     PassDescriptor {
@@ -129,16 +120,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::JsAnalyzePostTemplate],
     },
     PassDescriptor {
-        key: PassKey::ClassifyNeedsContext,
-        requires: &[DataToken::SymbolRefs],
-        produces: &[DataToken::NeedsContext],
-    },
-    PassDescriptor {
-        key: PassKey::PostResolve,
-        requires: &[DataToken::NeedsContext],
-        produces: &[DataToken::PostResolve],
-    },
-    PassDescriptor {
         key: PassKey::BuildFragmentTopology,
         requires: &[
             DataToken::ReactivitySemantics,
@@ -147,18 +128,27 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::FragmentTopology],
     },
     PassDescriptor {
-        key: PassKey::ReactivityWalk,
-        requires: &[DataToken::FragmentTopology],
-        produces: &[DataToken::Reactivity],
-    },
-    PassDescriptor {
         key: PassKey::TemplateClassificationWalk,
-        requires: &[DataToken::Reactivity],
+        requires: &[DataToken::FragmentTopology, DataToken::ExpressionSemantics],
         produces: &[DataToken::TemplateClassification],
     },
     PassDescriptor {
+        key: PassKey::BuildValueEvaluation,
+        requires: &[DataToken::ReactivitySemantics],
+        produces: &[DataToken::ValueEvaluation],
+    },
+    PassDescriptor {
+        key: PassKey::FinalizeReactivity,
+        requires: &[DataToken::ValueEvaluation],
+        produces: &[DataToken::OptimizedDerived],
+    },
+    PassDescriptor {
         key: PassKey::BuildExpressionSemantics,
-        requires: &[DataToken::ReactivitySemantics, DataToken::PostResolve],
+        requires: &[
+            DataToken::ReactivitySemantics,
+            DataToken::ValueEvaluation,
+            DataToken::OptimizedDerived,
+        ],
         produces: &[DataToken::ExpressionSemantics],
     },
     PassDescriptor {
@@ -194,7 +184,6 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::BuildComponentSemantics,
     PassKey::BuildReactivitySemantics,
     PassKey::AnalyzeScript,
-    PassKey::EnrichScriptInfo,
     PassKey::FinalizeComponentName,
     PassKey::ScanIgnoreComments,
     PassKey::ExtractCeConfig,
@@ -205,15 +194,14 @@ pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
 
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
-    PassKey::ClassifyNeedsContext,
-    PassKey::PostResolve,
+    PassKey::BuildValueEvaluation,
+    PassKey::FinalizeReactivity,
     PassKey::BuildExpressionSemantics,
     PassKey::BuildAttributeSemantics,
 ];
 
 pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::BuildFragmentTopology,
-    PassKey::ReactivityWalk,
     PassKey::TemplateClassificationWalk,
     PassKey::BuildBlockSemantics,
 ];

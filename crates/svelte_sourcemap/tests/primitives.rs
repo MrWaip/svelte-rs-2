@@ -76,7 +76,10 @@ fn get_relative_path_common_prefix() {
 
 #[test]
 fn get_relative_path_equal_paths() {
-    assert_eq!(get_relative_path("Foo.svelte", "Foo.svelte"), "./Foo.svelte");
+    assert_eq!(
+        get_relative_path("Foo.svelte", "Foo.svelte"),
+        "./Foo.svelte"
+    );
 }
 
 #[test]

@@ -1,8 +1,0 @@
-[
-  {
-    "severity": "warning",
-    "code": "a11y_role_supports_aria_props",
-    "start": 33,
-    "end": 37
-  }
-]

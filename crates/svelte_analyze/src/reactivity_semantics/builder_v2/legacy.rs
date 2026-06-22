@@ -1,32 +1,61 @@
+use compact_str::CompactString;
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, Class, Declaration, ExportNamedDeclaration, Expression, Function,
-        VariableDeclaration, VariableDeclarationKind,
+        BindingPattern, Class, Declaration, ExportNamedDeclaration, ExportSpecifier, Expression,
+        Function, ModuleExportName, VariableDeclaration, VariableDeclarationKind,
     },
 };
-use svelte_component_semantics::{SymbolFlags, walk_bindings};
+use svelte_component_semantics::{OxcNodeId, ReferenceId, walk_bindings};
 
 use crate::scope::SymbolId;
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, ApiExport};
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
     BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
-    ReferenceSemantics,
 };
 use crate::PropsFlags;
 
 const PROPS_NAME: &str = "$$props";
 const REST_PROPS_NAME: &str = "$$restProps";
+const SLOTS_NAME: &str = "$$slots";
+
+#[derive(Clone, Copy)]
+enum LegacyMagicObject {
+    Props,
+    RestProps,
+    Slots,
+}
+
+impl LegacyMagicObject {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            PROPS_NAME => Some(Self::Props),
+            REST_PROPS_NAME => Some(Self::RestProps),
+            SLOTS_NAME => Some(Self::Slots),
+            _ => None,
+        }
+    }
+
+    fn read_fact(self) -> ReferenceFacts {
+        match self {
+            Self::Props => ReferenceFacts::LegacyPropsIdentifierRead,
+            Self::RestProps => ReferenceFacts::LegacyRestPropsIdentifierRead,
+            Self::Slots => ReferenceFacts::LegacySlotsIdentifierRead,
+        }
+    }
+}
 
 pub(super) fn classify_export_named_declaration<'a>(
     data: &mut AnalysisData<'a>,
     export: &ExportNamedDeclaration<'a>,
 ) {
     if data.script.runes() {
+        classify_runes_export(data, export);
         return;
     }
+    data.output.legacy_has_export_declaration = true;
     if let Some(decl) = &export.declaration {
         match decl {
             Declaration::VariableDeclaration(var_decl) if is_let_or_var(var_decl.kind) => {
@@ -48,41 +77,116 @@ pub(super) fn classify_export_named_declaration<'a>(
     }
 }
 
+fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDeclaration<'a>) {
+    for spec in &export.specifiers {
+        let ModuleExportName::IdentifierReference(local) = &spec.local else {
+            continue;
+        };
+        let Some(ref_id) = local.reference_id.get() else {
+            continue;
+        };
+        let Some(symbol) = data.scoping.semantics().symbol_for_reference(ref_id) else {
+            continue;
+        };
+        let exported = spec.exported.name();
+        let alias = if local.name != exported {
+            Some(CompactString::from(exported.as_str()))
+        } else {
+            None
+        };
+        data.output.api_exports.push(ApiExport {
+            local: symbol,
+            reference_id: Some(ref_id),
+            alias,
+        });
+    }
+    let Some(decl) = &export.declaration else {
+        return;
+    };
+    match decl {
+        Declaration::VariableDeclaration(var_decl)
+            if var_decl.kind == VariableDeclarationKind::Const =>
+        {
+            for declarator in &var_decl.declarations {
+                walk_bindings(&declarator.id, |visit| {
+                    data.output.api_exports.push(ApiExport {
+                        local: visit.symbol,
+                        reference_id: None,
+                        alias: None,
+                    });
+                });
+            }
+        }
+        Declaration::VariableDeclaration(_) => {}
+        Declaration::FunctionDeclaration(func) => {
+            if let Some(ident) = &func.id
+                && let Some(symbol) = ident.symbol_id.get()
+            {
+                data.output.api_exports.push(ApiExport {
+                    local: symbol,
+                    reference_id: None,
+                    alias: None,
+                });
+            }
+        }
+        Declaration::ClassDeclaration(cls) => {
+            if let Some(ident) = &cls.id
+                && let Some(symbol) = ident.symbol_id.get()
+            {
+                data.output.api_exports.push(ApiExport {
+                    local: symbol,
+                    reference_id: None,
+                    alias: None,
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
 fn record_api_export_variable_symbols<'a>(
     data: &mut AnalysisData<'a>,
     decl: &VariableDeclaration<'a>,
 ) {
     for declarator in &decl.declarations {
         walk_bindings(&declarator.id, |visit| {
-            data.reactivity.record_legacy_api_export_binding(visit.symbol);
+            record_api_export(data, visit.symbol, None, None);
         });
     }
 }
 
-fn record_api_export_function_symbol<'a>(
-    data: &mut AnalysisData<'a>,
-    func: &Function<'a>,
-) {
+fn record_api_export_function_symbol<'a>(data: &mut AnalysisData<'a>, func: &Function<'a>) {
     let Some(ident) = func.id.as_ref() else {
         return;
     };
     let Some(symbol) = ident.symbol_id.get() else {
         return;
     };
-    data.reactivity.record_legacy_api_export_binding(symbol);
+    record_api_export(data, symbol, None, None);
 }
 
-fn record_api_export_class_symbol<'a>(
-    data: &mut AnalysisData<'a>,
-    cls: &Class<'a>,
-) {
+fn record_api_export_class_symbol<'a>(data: &mut AnalysisData<'a>, cls: &Class<'a>) {
     let Some(ident) = cls.id.as_ref() else {
         return;
     };
     let Some(symbol) = ident.symbol_id.get() else {
         return;
     };
+    record_api_export(data, symbol, None, None);
+}
+
+fn record_api_export(
+    data: &mut AnalysisData<'_>,
+    symbol: SymbolId,
+    reference_id: Option<ReferenceId>,
+    alias: Option<CompactString>,
+) {
     data.reactivity.record_legacy_api_export_binding(symbol);
+    data.output.api_exports.push(ApiExport {
+        local: symbol,
+        reference_id,
+        alias,
+    });
 }
 
 fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &VariableDeclaration<'a>) {
@@ -112,7 +216,7 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
             data.reactivity
                 .record_legacy_bindable_prop_binding(visit.symbol, semantics);
             data.reactivity
-                .record_legacy_bindable_prop_symbol(visit.symbol);
+                .record_legacy_bindable_prop_symbol(visit.symbol, None);
         });
 
         data.reactivity
@@ -125,6 +229,9 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         return;
     };
     for spec in &export.specifiers {
+        if matches!(spec.exported, ModuleExportName::StringLiteral(_)) {
+            continue;
+        }
         let local_name = spec.local.name();
         let Some(symbol) = data
             .scoping
@@ -132,19 +239,24 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         else {
             continue;
         };
-        let Some((kind, init)) = lookup_let_or_var_init(data, symbol) else {
-            if declares_api_export(data, symbol) {
-                data.reactivity.record_legacy_api_export_binding(symbol);
-            }
-            continue;
+        let exported = spec.exported.name();
+        let alias = if local_name != exported {
+            Some(CompactString::from(exported.as_str()))
+        } else {
+            None
         };
-        if !is_let_or_var(kind) {
-            data.reactivity.record_legacy_api_export_binding(symbol);
+        if !data.scoping.is_reassignable_declaration(symbol) {
+            record_api_export(data, symbol, specifier_reference_id(spec), alias);
             continue;
         }
-        let default_lowering = match init {
-            Some(init_expr) => classify_expression_default(data, init_expr),
-            None => PropDefaultKind::None,
+        let destructure_node = specifier_destructure_declarator_node(data, symbol);
+        let default_kind = if destructure_node.is_some() {
+            PropDefaultKind::Lazy
+        } else {
+            match lookup_let_or_var_init(data, symbol).and_then(|(_, init)| init) {
+                Some(init_expr) => classify_expression_default(data, init_expr),
+                None => PropDefaultKind::None,
+            }
         };
 
         let updated = if data.script.immutable {
@@ -156,12 +268,44 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
         data.reactivity.record_legacy_bindable_prop_binding(
             symbol,
             LegacyBindablePropSemantics {
-                default_kind: default_lowering,
+                default_kind,
                 flags,
             },
         );
-        data.reactivity.record_legacy_bindable_prop_symbol(symbol);
+        data.reactivity
+            .record_legacy_bindable_prop_symbol(symbol, alias.map(|a| a.to_string()));
+
+        if let Some(node) = destructure_node {
+            data.reactivity
+                .record_declarator_semantics(node, DeclaratorSemantics::LegacyProps);
+        }
     }
+}
+
+fn specifier_destructure_declarator_node(
+    data: &AnalysisData<'_>,
+    symbol: SymbolId,
+) -> Option<OxcNodeId> {
+    let decl_node = data.scoping.symbol_declaration(symbol);
+    let mut current = data.scoping.js_parent_id(decl_node)?;
+    let mut result = None;
+    loop {
+        match data.scoping.js_kind(current)? {
+            AstKind::VariableDeclarator(declarator) => {
+                result = is_destructured_pattern(&declarator.id).then_some(current);
+            }
+            AstKind::VariableDeclaration(_) => return result,
+            _ => {}
+        }
+        current = data.scoping.js_parent_id(current)?;
+    }
+}
+
+fn specifier_reference_id(spec: &ExportSpecifier<'_>) -> Option<ReferenceId> {
+    let ModuleExportName::IdentifierReference(local) = &spec.local else {
+        return None;
+    };
+    local.reference_id.get()
 }
 
 fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags {
@@ -175,35 +319,38 @@ fn compute_flags(updated: bool, accessors: bool, immutable: bool) -> PropsFlags 
     flags
 }
 
-pub(super) fn classify_unresolved_legacy_identifiers(data: &mut AnalysisData<'_>) {
-    if data.script.runes() {
-        return;
-    }
+pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
+    let runes = data.script.runes();
     let unresolved = data.scoping.root_unresolved_references().clone();
     let mut uses_props = false;
     let mut uses_rest_props = false;
+
     for (name, refs) in &unresolved {
-        let (fact, props_kind) = if name.as_str() == PROPS_NAME {
-            (ReferenceFacts::LegacyPropsIdentifierRead, true)
-        } else if name.as_str() == REST_PROPS_NAME {
-            (ReferenceFacts::LegacyRestPropsIdentifierRead, false)
-        } else {
+        let Some(object) = LegacyMagicObject::from_name(name.as_str()) else {
             continue;
         };
+        let is_slots = matches!(object, LegacyMagicObject::Slots);
+        if runes && !is_slots {
+            continue;
+        }
         for &ref_id in refs {
             let reference = data.scoping.get_reference(ref_id);
             if !reference.is_read() || reference.is_write() {
                 continue;
             }
             data.reactivity
-                .record_reference_semantics(ref_id, fact.clone());
-            if props_kind {
-                uses_props = true;
-            } else {
-                uses_rest_props = true;
+                .record_reference_semantics(ref_id, object.read_fact());
+            match object {
+                LegacyMagicObject::Props => uses_props = true,
+                LegacyMagicObject::RestProps => uses_rest_props = true,
+                LegacyMagicObject::Slots => {}
             }
         }
+        if is_slots {
+            data.output.needs_sanitized_legacy_slots = true;
+        }
     }
+
     data.reactivity
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);
 }
@@ -215,18 +362,18 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
     let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
 
     let is_non_store_ref = |data: &AnalysisData<'_>, r| {
-        !matches!(
-            data.reactivity.reference_semantics(r),
-            ReferenceSemantics::StoreRead { .. }
-                | ReferenceSemantics::StoreWrite { .. }
-                | ReferenceSemantics::StoreUpdate { .. }
-        )
+        !data
+            .reactivity
+            .reference_semantics(r)
+            .is_store_subscription()
     };
     let prop_member_mutated = |data: &AnalysisData<'_>, sym| {
         data.scoping
             .get_resolved_reference_ids(sym)
             .iter()
-            .any(|&r| data.reactivity.is_prop_member_mutation_root_ref(r) && is_non_store_ref(data, r))
+            .any(|&r| {
+                data.reactivity.is_prop_member_mutation_root_ref(r) && is_non_store_ref(data, r)
+            })
     };
 
     let has_member_mutated = symbols.iter().any(|&sym| prop_member_mutated(data, sym));
@@ -245,11 +392,63 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
         let reassigned = non_store_write;
         let updated = if immutable { reassigned } else { updated_any };
         let new_flags = compute_flags(updated, accessors, immutable);
+        let store_default = store_default_kind_override(data, sym);
         if let Some(BindingFacts::LegacyBindableProp(legacy)) =
             data.reactivity.binding_facts_mut(sym)
         {
             legacy.flags = new_flags;
+            if let Some(kind) = store_default {
+                legacy.default_kind = kind;
+            }
         }
+    }
+}
+
+fn store_default_kind_override(data: &AnalysisData<'_>, sym: SymbolId) -> Option<PropDefaultKind> {
+    let Some(BindingFacts::LegacyBindableProp(legacy)) = data.reactivity.binding_facts(sym) else {
+        return None;
+    };
+    if legacy.default_kind != PropDefaultKind::Eager {
+        return None;
+    }
+    let init = lookup_let_or_var_init(data, sym)?.1?;
+    if is_store_subscription_identifier(data, init) {
+        Some(PropDefaultKind::LazyAccessor)
+    } else if references_store_subscription(data, init) {
+        Some(PropDefaultKind::Lazy)
+    } else {
+        None
+    }
+}
+
+fn is_store_subscription_identifier(data: &AnalysisData<'_>, expr: &Expression<'_>) -> bool {
+    let Expression::Identifier(id) = expr.get_inner_expression() else {
+        return false;
+    };
+    id.reference_id.get().is_some_and(|ref_id| {
+        data.reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+    })
+}
+
+fn references_store_subscription(data: &AnalysisData<'_>, expr: &Expression<'_>) -> bool {
+    match expr.get_inner_expression() {
+        Expression::Identifier(_) => is_store_subscription_identifier(data, expr),
+        Expression::ConditionalExpression(c) => {
+            references_store_subscription(data, &c.test)
+                || references_store_subscription(data, &c.consequent)
+                || references_store_subscription(data, &c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            references_store_subscription(data, &b.left)
+                || references_store_subscription(data, &b.right)
+        }
+        Expression::LogicalExpression(b) => {
+            references_store_subscription(data, &b.left)
+                || references_store_subscription(data, &b.right)
+        }
+        _ => false,
     }
 }
 
@@ -264,10 +463,7 @@ fn classify_expression_default<'a>(
     if is_simple_expression(init) {
         if let Expression::Identifier(id) = init
             && let Some(sym) = data.scoping.symbol_for_identifier_reference(id)
-            && matches!(
-                data.reactivity.binding_semantics(sym),
-                crate::BindingSemantics::LegacyBindableProp(_)
-            )
+            && data.reactivity.binding_semantics(sym).is_legacy_prop()
         {
             return PropDefaultKind::LazyAccessor;
         }
@@ -280,20 +476,12 @@ fn classify_expression_default<'a>(
     }
 }
 
-fn references_legacy_bindable_prop<'a>(
-    data: &AnalysisData<'a>,
-    expr: &Expression<'a>,
-) -> bool {
+fn references_legacy_bindable_prop<'a>(data: &AnalysisData<'a>, expr: &Expression<'a>) -> bool {
     match expr {
         Expression::Identifier(id) => data
             .scoping
             .symbol_for_identifier_reference(id)
-            .is_some_and(|sym| {
-                matches!(
-                    data.reactivity.binding_semantics(sym),
-                    crate::BindingSemantics::LegacyBindableProp(_)
-                )
-            }),
+            .is_some_and(|sym| data.reactivity.binding_semantics(sym).is_legacy_prop()),
         Expression::ConditionalExpression(c) => {
             references_legacy_bindable_prop(data, &c.test)
                 || references_legacy_bindable_prop(data, &c.consequent)
@@ -317,12 +505,6 @@ fn references_legacy_bindable_prop<'a>(
         | Expression::TSInstantiationExpression(_) => unreachable!("TS stripped at parse"),
         _ => false,
     }
-}
-
-fn declares_api_export(data: &AnalysisData<'_>, symbol: SymbolId) -> bool {
-    data.scoping
-        .symbol_flags(symbol)
-        .intersects(SymbolFlags::Function | SymbolFlags::Class)
 }
 
 fn lookup_let_or_var_init<'a>(

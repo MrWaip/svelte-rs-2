@@ -2,9 +2,7 @@ use std::{iter, mem};
 
 use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::NONE;
-use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, Expression, Statement,
-};
+use oxc_ast::ast::{Argument, AssignmentOperator, AssignmentTarget, Expression, Statement};
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, TraverseCtx};
 use svelte_ast_builder::Arg;
@@ -12,6 +10,7 @@ use svelte_component_semantics::{WriteAccess, WriteStep, WriteTarget};
 
 use super::async_check::is_expression_async;
 use super::model::ComponentTransformer;
+use crate::is_simple_expression;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(crate) fn rewrite_destructure_assignment_exit(
@@ -29,14 +28,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         ) {
             return false;
         }
+        self.destructure_lhs_depth = self.destructure_lhs_depth.saturating_sub(1);
         if assign_box.operator != AssignmentOperator::Assign {
             return false;
         }
 
-        let is_standalone = ctx
-            .ancestors()
-            .find(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)))
-            .is_some_and(ancestor_is_statement);
+        let is_standalone = destructure_assignment_is_standalone(ctx);
 
         let placeholder = self.b.cheap_expr();
         let owned = mem::replace(node, placeholder);
@@ -57,8 +54,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let mut changed = false;
 
         svelte_component_semantics::walk_assignment_targets(&assign.left, |v| {
-            let access =
-                self.build_destructure_access(v.path, v.excluded, &param_name, &mut decls, &mut temps);
+            let access = self.build_destructure_access(
+                v.path,
+                v.excluded,
+                &param_name,
+                &mut decls,
+                &mut temps,
+            );
             match v.target {
                 WriteTarget::Identifier(id) => {
                     let idref = self.b.rid(id.name.as_str());
@@ -66,7 +68,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     let target =
                         AssignmentTarget::AssignmentTargetIdentifier(self.b.ast.alloc(idref));
                     let mut setter = self.b.assign_expr_raw(target, access);
-                    if self.dispatch_identifier_assignment(&mut setter, false) {
+                    if self.dispatch_identifier_assignment(&mut setter, ctx) {
                         changed = true;
                     }
                     setters.push(setter);
@@ -90,8 +92,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         let rhs = assign.right;
         let use_iife = !decls.is_empty() || should_cache;
-        let is_async =
-            is_expression_async(&rhs) || setters.iter().any(|s| is_expression_async(s));
+        let is_async = is_expression_async(&rhs) || setters.iter().any(|s| is_expression_async(s));
 
         if use_iife {
             let param: &'a str = self.b.alloc_str(&param_name);
@@ -123,7 +124,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.b.ast.vec_from_iter(iter::once(Argument::from(rhs))),
                 false,
             );
-            *node = if is_async { self.b.await_expr(call) } else { call };
+            *node = if is_async {
+                self.b.await_expr(call)
+            } else {
+                call
+            };
         } else {
             debug_assert!(decls.is_empty());
             let mut seq: OxcVec<'a, Expression<'a>> =
@@ -181,10 +186,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
             }
         }
         if !excluded.is_empty() {
-            let keys = self.b.array_from_args(excluded.iter().map(|k| Arg::StrRef(k)));
-            current = self
+            let keys = self
                 .b
-                .call_expr("$.exclude_from_object", [Arg::Expr(current), Arg::Expr(keys)]);
+                .array_from_args(excluded.iter().map(|k| Arg::StrRef(k)));
+            current = self.b.call_expr(
+                "$.exclude_from_object",
+                [Arg::Expr(current), Arg::Expr(keys)],
+            );
         }
         current
     }
@@ -235,23 +243,61 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 return self.b.await_expr(call);
             }
             let thunk = self.b.thunk(aw.argument.clone_in(self.b.ast.allocator));
-            let call =
-                self.b
-                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            let call = self.b.call_expr(
+                "$.fallback",
+                [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+            );
             return self.b.await_expr(call);
         }
         if is_expression_async(fallback) {
             let thunk = self
                 .b
                 .async_arrow_expr_body(fallback.clone_in(self.b.ast.allocator));
-            let call =
-                self.b
-                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)]);
+            let call = self.b.call_expr(
+                "$.fallback",
+                [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+            );
             return self.b.await_expr(call);
         }
         let thunk = self.b.thunk(fallback.clone_in(self.b.ast.allocator));
-        self.b
-            .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)])
+        self.b.call_expr(
+            "$.fallback",
+            [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+        )
+    }
+}
+
+pub(crate) fn is_destructure_assignment_lhs(node: &Expression<'_>) -> bool {
+    matches!(
+        node,
+        Expression::AssignmentExpression(assign)
+            if matches!(
+                assign.left,
+                AssignmentTarget::ArrayAssignmentTarget(_)
+                    | AssignmentTarget::ObjectAssignmentTarget(_)
+            )
+    )
+}
+
+fn destructure_assignment_is_standalone(ctx: &TraverseCtx<'_, ()>) -> bool {
+    let mut ancestors = ctx
+        .ancestors()
+        .filter(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)));
+    let Some(first) = ancestors.next() else {
+        return false;
+    };
+    if !ancestor_is_statement(first) {
+        return false;
+    }
+    if !first.is_expression_statement() {
+        return true;
+    }
+    match ancestors.next() {
+        Some(Ancestor::FunctionBodyStatements(_)) => match ancestors.next() {
+            Some(Ancestor::ArrowFunctionExpressionBody(arrow)) => !*arrow.expression(),
+            _ => true,
+        },
+        _ => true,
     }
 }
 
@@ -301,36 +347,7 @@ fn serialize_prefix(prefix: &[WriteStep<'_>]) -> String {
     out
 }
 
-fn is_simple_expression(node: &Expression<'_>) -> bool {
-    match node {
-        Expression::NullLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_)
-        | Expression::Identifier(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        Expression::ConditionalExpression(cond) => {
-            is_simple_expression(&cond.test)
-                && is_simple_expression(&cond.consequent)
-                && is_simple_expression(&cond.alternate)
-        }
-        Expression::BinaryExpression(bin) => {
-            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
-        }
-        Expression::LogicalExpression(log) => {
-            is_simple_expression(&log.left) && is_simple_expression(&log.right)
-        }
-        _ => false,
-    }
-}
-
-fn copy_member_root_ref<'x, 'y>(
-    cloned: &mut AssignmentTarget<'x>,
-    orig: &AssignmentTarget<'y>,
-) {
+fn copy_member_root_ref<'x, 'y>(cloned: &mut AssignmentTarget<'x>, orig: &AssignmentTarget<'y>) {
     let (cloned_obj, orig_obj) = match (cloned, orig) {
         (
             AssignmentTarget::StaticMemberExpression(c),
@@ -350,15 +367,12 @@ fn copy_root_ref_expr<'x, 'y>(cloned: &mut Expression<'x>, orig: &Expression<'y>
         (Expression::Identifier(c), Expression::Identifier(o)) => {
             c.reference_id.set(o.reference_id.get());
         }
-        (
-            Expression::StaticMemberExpression(c),
-            Expression::StaticMemberExpression(o),
-        ) => copy_root_ref_expr(&mut c.object, &o.object),
-        (
-            Expression::ComputedMemberExpression(c),
-            Expression::ComputedMemberExpression(o),
-        ) => copy_root_ref_expr(&mut c.object, &o.object),
+        (Expression::StaticMemberExpression(c), Expression::StaticMemberExpression(o)) => {
+            copy_root_ref_expr(&mut c.object, &o.object)
+        }
+        (Expression::ComputedMemberExpression(c), Expression::ComputedMemberExpression(o)) => {
+            copy_root_ref_expr(&mut c.object, &o.object)
+        }
         _ => {}
     }
 }
-

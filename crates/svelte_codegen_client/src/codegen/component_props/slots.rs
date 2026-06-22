@@ -14,11 +14,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut wrapper: Option<(NodeId, FragmentId)> = None;
         for &child_id in store.fragment_nodes(fragment) {
             match store.get(child_id) {
-                Node::Text(t)
-                    if t.raw_value(source)
-                        .chars()
-                        .all(|c| c.is_ascii_whitespace()) =>
-                {
+                Node::Text(t) if t.raw_value(source).chars().all(|c| c.is_ascii_whitespace()) => {
                     continue;
                 }
                 Node::SvelteFragmentLegacy(el) => {
@@ -31,39 +27,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
         wrapper
-    }
-
-    pub(in super::super) fn build_component_default_children(
-        &mut self,
-        parent_ctx: &FragmentCtx<'a>,
-        fragment: svelte_ast::FragmentId,
-    ) -> Result<Option<Expression<'a>>> {
-        let wrapped = self.unwrap_default_svelte_fragment_legacy(fragment);
-        let effective_fragment = wrapped.map(|(_, inner)| inner).unwrap_or(fragment);
-        if wrapped.is_some() {
-            let _ = self.ctx.state.gen_ident("root");
-        }
-        let inner_ctx = parent_ctx.child_of_block(
-            self.ctx,
-            effective_fragment,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
-        );
-        let mut inner_state = EmitState::new();
-        inner_state.skip_snippets = true;
-        match self.emit_fragment(&mut inner_state, &inner_ctx, effective_fragment)? {
-            FragmentEmitKind::Empty => return Ok(None),
-            FragmentEmitKind::Rendered => {}
-        }
-        let body: Vec<Statement<'a>> = self.pack_callback_body(inner_state, "$$anchor")?;
-
-        let arrow = self
-            .ctx
-            .b
-            .arrow_block_expr(self.ctx.b.params(["$$anchor", "$$slotProps"]), body);
-        Ok(Some(arrow))
     }
 
     pub(in super::super) fn build_component_default_children_with_let(
@@ -91,6 +54,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
         );
         let mut inner_state = EmitState::new();
+        inner_state.skip_snippets = true;
         for stmt in let_stmts {
             inner_state.init.push(stmt);
         }

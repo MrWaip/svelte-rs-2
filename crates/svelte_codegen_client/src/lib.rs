@@ -19,8 +19,7 @@ use svelte_analyze::{
     AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind,
     StateDeclarationSemantics, StateKind,
 };
-use svelte_component_semantics::SymbolFlags;
-use svelte_ast::{Attribute, Node};
+use svelte_ast::Node;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
 use svelte_transform::TransformData;
@@ -68,6 +67,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::RestPropMemberRewrite
         | ReferenceSemantics::LegacyPropsIdentifierRead
         | ReferenceSemantics::LegacyRestPropsIdentifierRead
+        | ReferenceSemantics::LegacySlotsIdentifierRead
         | ReferenceSemantics::LegacyStateWrite
         | ReferenceSemantics::LegacyStateUpdate { .. }
         | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
@@ -77,6 +77,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::ImportSubscribedRead { .. }
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+        | ReferenceSemantics::EachItemIndexedLegacy { .. }
         | ReferenceSemantics::IllegalWrite => None,
     }
 }
@@ -90,9 +91,14 @@ fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics
             kind: SignalReferenceKind::State(kind),
             safe: false,
         },
-        BindingSemantics::Derived(d) => ReferenceSemantics::SignalRead {
-            kind: SignalReferenceKind::Derived(d.kind),
-            safe: false,
+        BindingSemantics::Derived(d) | BindingSemantics::OptimizedDerived(d) => {
+            ReferenceSemantics::SignalRead {
+                kind: SignalReferenceKind::Derived(d.kind),
+                safe: false,
+            }
+        }
+        BindingSemantics::LegacyState(state) => ReferenceSemantics::LegacyStateRead {
+            safe: state.var_declared,
         },
         _ => ReferenceSemantics::NonReactive,
     }
@@ -153,9 +159,7 @@ pub fn generate<'a>(
 
     if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
-        let call = ctx
-            .b
-            .call_expr("$.props_id", empty::<Arg<'_, '_>>());
+        let call = ctx.b.call_expr("$.props_id", empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
@@ -268,10 +272,7 @@ pub fn generate<'a>(
             let thunk_body = if ctx.state.dev {
                 let validate = ctx.b.call_expr(
                     "$.validate_store",
-                    [
-                        make_base_arg(),
-                        Arg::StrRef(ctx.b.alloc_str(base_name)),
-                    ],
+                    [make_base_arg(), Arg::StrRef(ctx.b.alloc_str(base_name))],
                 );
                 ctx.b.seq_expr([validate, store_get])
             } else {
@@ -281,9 +282,7 @@ pub fn generate<'a>(
             fn_body.push(ctx.b.const_stmt(dollar_name_str, thunk));
         }
 
-        let setup_call = ctx
-            .b
-            .call_expr("$.setup_stores", empty::<Arg<'_, '_>>());
+        let setup_call = ctx.b.call_expr("$.setup_stores", empty::<Arg<'_, '_>>());
         fn_body.push(
             ctx.b
                 .const_array_destruct_stmt(&["$$stores", "$$cleanup"], setup_call),
@@ -343,42 +342,46 @@ pub fn generate<'a>(
                     });
                 let reactive_read = export_reactive_read(&ctx.b, &read_semantics, name);
 
-                let setter_body: Option<Vec<Statement<'_>>> = match ctx
-                    .query
-                    .binding_semantics(local_sym)
-                {
-                    BindingSemantics::Prop(_) => Some(vec![
-                        ctx.b
-                            .expr_stmt(ctx.b.call_expr(name, [Arg::Ident("$$value")])),
-                    ]),
-                    BindingSemantics::State(StateDeclarationSemantics {
-                        kind: kind @ (StateKind::State | StateKind::StateRaw),
-                        ..
-                    }) => {
-                        let value = if matches!(kind, StateKind::State) {
-                            Arg::Expr(ctx.b.call_expr("$.proxy", [Arg::Ident("$$value")]))
-                        } else {
-                            Arg::Ident("$$value")
-                        };
-                        Some(vec![
+                let setter_body: Option<Vec<Statement<'_>>> =
+                    match ctx.query.binding_semantics(local_sym) {
+                        BindingSemantics::Prop(_) => Some(vec![
                             ctx.b
-                                .expr_stmt(ctx.b.call_expr("$.set", [Arg::Ident(name), value])),
-                        ])
-                    }
-                    BindingSemantics::NonReactive => {
-                        let flags = ctx.query.scoping().symbol_flags(local_sym);
-                        let is_let_or_var = flags.contains(SymbolFlags::FunctionScopedVariable)
-                            || (flags.contains(SymbolFlags::BlockScopedVariable)
-                                && !flags.contains(SymbolFlags::ConstVariable));
-                        is_let_or_var.then(|| {
-                            vec![ctx.b.assign_stmt(
-                                AssignLeft::Ident(name.to_string()),
-                                ctx.b.rid_expr("$$value"),
-                            )]
-                        })
-                    }
-                    _ => None,
-                };
+                                .expr_stmt(ctx.b.call_expr(name, [Arg::Ident("$$value")])),
+                        ]),
+                        BindingSemantics::State(StateDeclarationSemantics {
+                            kind: kind @ (StateKind::State | StateKind::StateRaw),
+                            ..
+                        }) => {
+                            let value = if matches!(kind, StateKind::State) {
+                                Arg::Expr(ctx.b.call_expr("$.proxy", [Arg::Ident("$$value")]))
+                            } else {
+                                Arg::Ident("$$value")
+                            };
+                            Some(vec![ctx.b.expr_stmt(
+                                ctx.b.call_expr("$.set", [Arg::Ident(name), value]),
+                            )])
+                        }
+                        BindingSemantics::LegacyState(_) => {
+                            Some(vec![ctx.b.expr_stmt(ctx.b.call_expr(
+                                "$.set",
+                                [
+                                    Arg::Ident(name),
+                                    Arg::Expr(ctx.b.call_expr("$.proxy", [Arg::Ident("$$value")])),
+                                ],
+                            ))])
+                        }
+                        BindingSemantics::NonReactive | BindingSemantics::LegacyApiExport => ctx
+                            .query
+                            .scoping()
+                            .is_reassignable_declaration(local_sym)
+                            .then(|| {
+                                vec![ctx.b.assign_stmt(
+                                    AssignLeft::Ident(name.to_string()),
+                                    ctx.b.rid_expr("$$value"),
+                                )]
+                            }),
+                        _ => None,
+                    };
 
                 if let Some(stmts) = setter_body {
                     let getter_body = reactive_read.unwrap_or_else(|| ctx.b.rid_expr(name));
@@ -395,31 +398,26 @@ pub fn generate<'a>(
                 }
             }
 
-            if (ctx.query.accessors() || runtime.has_ce_props)
-                && let Some(props_decl) = ctx.query.props()
-            {
-                for prop in &props_decl.props {
-                    if prop.is_rest || prop.is_reserved() {
-                        continue;
-                    }
-                    let key: &str = ctx.b.alloc_str(&prop.prop_name);
-                    let local: &str = ctx.b.alloc_str(&prop.local_name);
+            if ctx.query.accessors() || runtime.has_ce_props {
+                for prop in ctx.query.component_prop_accessors() {
+                    let key: &str = ctx.b.alloc_str(&prop.key);
+                    let local: &str = ctx.b.alloc_str(prop.local);
 
                     let getter_expr = ctx.b.call_expr(local, empty::<Arg<'_, '_>>());
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     let default_expr = if ctx.query.runes() {
-                        prop.default_text
-                            .as_deref()
-                            .map(|text| ctx.b.parse_expression(text))
+                        prop.default_span.map(|span| {
+                            let text = &ctx.state.source[span.start as usize..span.end as usize];
+                            ctx.b.parse_expression(text)
+                        })
                     } else {
                         None
                     };
                     let setter_body = vec![
                         ctx.b
                             .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
-                        ctx.b
-                            .call_stmt("$.flush", empty::<Arg<'_, '_>>()),
+                        ctx.b.call_stmt("$.flush", empty::<Arg<'_, '_>>()),
                     ];
                     export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
                 }
@@ -427,9 +425,7 @@ pub fn generate<'a>(
         }
 
         if ctx.state.dev {
-            let legacy_call = ctx
-                .b
-                .call_expr("$.legacy_api", empty::<Arg<'_, '_>>());
+            let legacy_call = ctx.b.call_expr("$.legacy_api", empty::<Arg<'_, '_>>());
             export_props.insert(0, ObjProp::Spread(legacy_call));
         }
 
@@ -443,13 +439,20 @@ pub fn generate<'a>(
                     .as_deref()
                     .map(|a| ctx.b.alloc_str(a))
                     .unwrap_or(name);
+                let value = match ctx.query.binding_semantics(e.local).legacy_state() {
+                    Some(state) => {
+                        let getter = if state.var_declared {
+                            "$.safe_get"
+                        } else {
+                            "$.get"
+                        };
+                        Arg::Expr(ctx.b.call_expr(getter, [Arg::Ident(name)]))
+                    }
+                    None => Arg::Ident(name),
+                };
                 bind_prop_stmts.push(ctx.b.call_stmt(
                     "$.bind_prop",
-                    [
-                        Arg::Ident("$$props"),
-                        Arg::StrRef(key),
-                        Arg::Ident(name),
-                    ],
+                    [Arg::Ident("$$props"), Arg::StrRef(key), value],
                 ));
             }
         }
@@ -473,10 +476,7 @@ pub fn generate<'a>(
         if runtime.needs_pop_with_return && runtime.has_stores {
             let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
-            fn_body.push(
-                ctx.b
-                    .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
-            );
+            fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
         } else if runtime.needs_pop_with_return {
             fn_body.push(
@@ -490,17 +490,11 @@ pub fn generate<'a>(
             );
 
             if runtime.has_stores {
-                fn_body.push(
-                    ctx.b
-                        .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
-                );
+                fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             }
         }
     } else if runtime.has_stores {
-        fn_body.push(
-            ctx.b
-                .call_stmt("$$cleanup", empty::<Arg<'_, '_>>()),
-        );
+        fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
     }
 
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
@@ -521,32 +515,12 @@ pub fn generate<'a>(
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    let has_bubble_events = component
-        .store
-        .fragment(component.root)
-        .nodes
-        .iter()
-        .any(|&id| {
-            let node = component.store.get(id);
-            let attrs = match node {
-                Node::SvelteWindow(w) => Some(&w.attributes),
-                Node::SvelteDocument(d) => Some(&d.attributes),
-                _ => None,
-            };
-            attrs.is_some_and(|attrs| {
-                attrs.iter().any(
-                    |a| matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()),
-                )
-            })
-        });
-
     let has_legacy_slots = (0..component.node_count()).any(|raw_id| {
         let id = svelte_ast::NodeId(raw_id);
         matches!(component.store.get(id), Node::SlotElementLegacy(_))
     });
 
     let fn_params = if runtime.needs_props_param
-        || has_bubble_events
         || has_legacy_slots
         || ctx.query.needs_sanitized_legacy_slots()
     {
@@ -596,9 +570,7 @@ pub fn generate<'a>(
         .iter_mutated_imports()
     {
         let name: &str = b.alloc_str(ctx.query.analysis.scoping.symbol_name(sym));
-        let var_name: &str = b.alloc_str(
-            &legacy_reactive_import_wrapper_name(name),
-        );
+        let var_name: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(name));
         let thunk = b.thunk(b.rid_expr(name));
         let init = b.call_expr("$.reactive_import", [Arg::Expr(thunk)]);
         program_body.push(b.var_stmt(var_name, init));
@@ -631,7 +603,9 @@ pub fn generate<'a>(
 
     let full_source: &'a str = component.source.as_str();
     let span_end = full_source.len() as u32;
-    let program = ctx.b.program(program_body, script_comments, full_source, span_end);
+    let program = ctx
+        .b
+        .program(program_body, script_comments, full_source, span_end);
 
     build_codegen_output(
         &program,

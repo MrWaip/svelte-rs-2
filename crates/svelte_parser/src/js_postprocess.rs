@@ -4,14 +4,14 @@ use std::mem;
 use oxc_allocator::{Allocator, Box as OxcBox};
 use oxc_ast::ast::{
     AccessorProperty, ArrowFunctionExpression, AssignmentTarget, BindingPattern, BlockStatement,
-    CallExpression, CatchParameter, ChainElement, Class, ClassBody, ClassElement,
-    DoWhileStatement, EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement,
-    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody,
-    IfStatement, ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType,
-    NewExpression, NullLiteral, Program, PropertyDefinition, PropertyDefinitionType,
-    SimpleAssignmentTarget, StaticBlock, Statement, TSModuleBlock, TSModuleDeclaration,
-    TSType, TSTypeAnnotation, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
-    TaggedTemplateExpression, VariableDeclarator, WhileStatement, match_member_expression,
+    CallExpression, CatchParameter, ChainElement, Class, ClassBody, ClassElement, DoWhileStatement,
+    EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement, FormalParameter,
+    FormalParameterRest, FormalParameters, Function, FunctionBody, IfStatement,
+    ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression, NullLiteral,
+    Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget, Statement,
+    StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
+    TSTypeParameterDeclaration, TSTypeParameterInstantiation, TaggedTemplateExpression,
+    VariableDeclarator, WhileStatement, match_member_expression,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_span::{GetSpan, SPAN, Span};
@@ -26,7 +26,11 @@ pub(crate) struct JsPostprocessor<'a> {
 
 impl<'a> JsPostprocessor<'a> {
     fn new(alloc: &'a Allocator, delta: i64, strip_ts: bool) -> Self {
-        Self { alloc, delta, strip_ts }
+        Self {
+            alloc,
+            delta,
+            strip_ts,
+        }
     }
 
     fn dummy_expr(&self) -> Expression<'a> {
@@ -70,18 +74,11 @@ impl<'a> JsPostprocessor<'a> {
             && paren.expression.is_typescript_syntax()
         {
             self.unwrap_ts_inner(&mut paren.expression);
+            if matches!(paren.expression, Expression::ChainExpression(_)) {
+                return;
+            }
             let inner = self.take_expr(&mut paren.expression);
-            *node = match inner {
-                Expression::ChainExpression(chain) => match chain.unbox().expression {
-                    ChainElement::CallExpression(c) => Expression::CallExpression(c),
-                    ChainElement::TSNonNullExpression(ts) => {
-                        let mut ts = ts.unbox();
-                        self.take_expr(&mut ts.expression)
-                    }
-                    elem => Expression::from(elem.into_member_expression()),
-                },
-                other => other,
-            };
+            *node = inner;
         }
     }
 
@@ -93,7 +90,9 @@ impl<'a> JsPostprocessor<'a> {
                 expr @ match_member_expression!(Expression) => {
                     ChainElement::from(expr.into_member_expression())
                 }
-                _ => unreachable!("TSNonNullExpression inside ChainExpression must wrap member/call"),
+                _ => {
+                    unreachable!("TSNonNullExpression inside ChainExpression must wrap member/call")
+                }
             };
         }
     }
@@ -220,7 +219,10 @@ fn ts_module_has_runtime_node(decl: &TSModuleDeclaration<'_>) -> bool {
 }
 
 fn ts_module_block_has_runtime_node(block: &TSModuleBlock<'_>) -> bool {
-    block.body.iter().any(|stmt| !is_pure_ts_type_statement(stmt))
+    block
+        .body
+        .iter()
+        .any(|stmt| !is_pure_ts_type_statement(stmt))
 }
 
 impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
@@ -476,10 +478,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
         }
     }
 
-    fn visit_ts_type_parameter_instantiation(
-        &mut self,
-        it: &mut TSTypeParameterInstantiation<'a>,
-    ) {
+    fn visit_ts_type_parameter_instantiation(&mut self, it: &mut TSTypeParameterInstantiation<'a>) {
         if !self.strip_ts {
             walk_mut::walk_ts_type_parameter_instantiation(self, it);
         }

@@ -1,0 +1,1 @@
+<script>export let x; const k = 1;</script><Child prop={k} />

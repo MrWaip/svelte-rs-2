@@ -1,11 +1,10 @@
 pub mod builder;
 pub mod data;
-pub mod evaluator;
 
 pub use builder::build;
 pub use data::{
-    Evaluation, ExprKind, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap,
-    SyntheticPropsCarrier, ValueClass,
+    Evaluation, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap, SyntheticPropsCarrier,
+    ValueClass, Volatility,
 };
 
 use bitflags::bitflags;
@@ -19,6 +18,7 @@ bitflags! {
         const IMPORT_OR_PROP_MEMBER = 1 << 0;
         const REST_PROP_MEMBER      = 1 << 1;
         const STORE_MUTATION        = 1 << 2;
+        const UNSAFE_CALLEE_OR_NEW  = 1 << 3;
     }
 }
 

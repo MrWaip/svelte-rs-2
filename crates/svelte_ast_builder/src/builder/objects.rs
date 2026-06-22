@@ -15,9 +15,7 @@ impl<'a> Builder<'a> {
     fn obj_key_node(&self, key: &str) -> ast::PropertyKey<'a> {
         if is_identifier_name(key) {
             let key_atom = self.ast.atom(key);
-            ast::PropertyKey::StaticIdentifier(
-                self.alloc(self.ast.identifier_name(SPAN, key_atom)),
-            )
+            ast::PropertyKey::StaticIdentifier(self.alloc(self.ast.identifier_name(SPAN, key_atom)))
         } else {
             ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
         }

@@ -1,4 +1,4 @@
-use crate::expression_semantics::LegacyWrap;
+use crate::expression_semantics::{LegacyWrap, Volatility};
 use crate::scope::SymbolId;
 use crate::types::data::{
     ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, ImageNaturalSizeKind,
@@ -6,7 +6,7 @@ use crate::types::data::{
 };
 use compact_str::CompactString;
 use smallvec::SmallVec;
-use svelte_ast::NodeId;
+use svelte_ast::{NodeId, OxcNodeId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum AttributeSemantics {
@@ -20,17 +20,27 @@ pub enum AttributeSemantics {
 
     Event(EventSemantics),
     ComponentProp(ComponentPropSemantics),
+    SvelteComponentThis(SvelteComponentThisSemantics),
     ComponentSpread(ComponentSpreadSemantics),
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
     HtmlConcat(HtmlConcatSemantics),
     MustBeProperty(MustBePropertySemantics),
     SpecialValueAttr(SpecialValueSemantics),
+    StyleDirectives(StyleDirectivesSemantics),
+    Autofocus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StyleDirectivesSemantics {
+    pub volatility: Volatility,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecialValueSemantics {
     pub kind: SpecialValueKind,
+    pub defined: bool,
+    pub volatile: bool,
     pub concat: Option<HtmlConcatSemantics>,
 }
 
@@ -123,6 +133,11 @@ pub enum BoundaryPropEmit {
     Getter,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SvelteComponentThisSemantics {
+    pub expr_id: OxcNodeId,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComponentPropSemantics {
     Expression(ComponentPropExpressionSemantics),
@@ -163,14 +178,18 @@ pub struct EventSemantics {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventEmit {
-    HtmlDelegated { handler: HandlerEmit },
+    HtmlDelegated {
+        handler: HandlerEmit,
+    },
     HtmlDirect {
         capture: bool,
         passive: Option<bool>,
         handler: HandlerEmit,
     },
     HtmlBubble,
-    Component { handler: HandlerEmit },
+    Component {
+        handler: HandlerEmit,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,12 +226,19 @@ pub enum ComponentBindKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComponentBindTarget {
     Plain,
-    Rune,
+    Rune { proxy: bool },
     RuneDerived,
     LegacyState,
     LegacyStateSubscribed,
     PropSource,
     PropSourceOwned,
+    EachItemWriteLegacy { symbol: SymbolId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GroupBindValue {
+    pub expression: OxcNodeId,
+    pub data: NodeId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -222,7 +248,7 @@ pub struct ElementBindSemantics {
     pub blockers: SmallVec<[u32; 2]>,
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
-    pub group_value_attr: Option<NodeId>,
+    pub group_value: Option<GroupBindValue>,
     pub group_id: Option<u32>,
 }
 
@@ -241,6 +267,12 @@ pub enum ElementBindPropertyKind {
     Media(MediaBindKind),
     ImageNaturalSize(ImageNaturalSizeKind),
     Focused,
+}
+
+impl ElementBindPropertyKind {
+    pub fn is_this(self) -> bool {
+        matches!(self, ElementBindPropertyKind::This)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -264,4 +296,5 @@ pub enum HtmlBindKind {
     LegacyState,
     BindableProp,
     StoreSubscribed { base_symbol: SymbolId },
+    EachItemWriteLegacy { symbol: SymbolId },
 }

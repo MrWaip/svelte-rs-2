@@ -6,7 +6,7 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	$.each(node, 1, items, $.index, ($$anchor, item) => {
 		const row = ($$anchor, $$arg0) => {
-			let value = () => $$arg0?.().value;
+			let value = () => ($$arg0?.()).value;
 			Child($$anchor, { get name() {
 				return value(), $.untrack(() => value().name);
 			} });

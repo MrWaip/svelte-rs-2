@@ -10,9 +10,8 @@ use oxc_ast::ast::{
 };
 use oxc_span::SPAN;
 
-use svelte_analyze::{
-    BindingSemantics, DerivedKind, PropBindingKind, PropBindingSemantics, RuneKind,
-};
+use svelte_analyze::DerivedKind;
+
 use svelte_ast_builder::{Arg, AssignLeft};
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
@@ -121,23 +120,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
             block_stmt
         } else {
             let mut decls: OxcVec<'a, VariableDeclarator<'a>> = self.b.ast.vec();
-            decls.push(self.b.ast.variable_declarator(
-                SPAN,
-                decl_kind,
-                self.b
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
-                NONE,
-                Some(tmp_init),
-                false,
-            ));
+            decls.push(
+                self.b.ast.variable_declarator(
+                    SPAN,
+                    decl_kind,
+                    self.b
+                        .ast
+                        .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                    NONE,
+                    Some(tmp_init),
+                    false,
+                ),
+            );
             for carrier in carrier_declarators {
                 decls.push(carrier);
             }
             for (symbol, access) in leaves {
                 decls.push(self.derived_leaf_declarator(symbol, access, decl_kind));
             }
-            let decl = self.b.ast.variable_declaration(SPAN, decl_kind, decls, false);
+            let decl = self
+                .b
+                .ast
+                .variable_declaration(SPAN, decl_kind, decls, false);
             Statement::VariableDeclaration(self.b.alloc(decl))
         }
     }
@@ -236,16 +240,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
     ) -> Expression<'a> {
         let tmp_name = self.ident_gen.generate("$$d");
         let tmp_name_str: &str = self.b.alloc_str(&tmp_name);
-        out.push(self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
-            NONE,
-            Some(init),
-            false,
-        ));
+        out.push(
+            self.b.ast.variable_declarator(
+                SPAN,
+                decl_kind,
+                self.b
+                    .ast
+                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                NONE,
+                Some(init),
+                false,
+            ),
+        );
         self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)])
     }
 
@@ -261,13 +267,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(sym) = self.component_scoping.symbol_for_identifier_reference(id) else {
             return false;
         };
-        matches!(
-            self.binding_semantics_for_symbol(sym),
-            Some(BindingSemantics::Prop(PropBindingSemantics {
-                kind: PropBindingKind::Rest,
-                ..
-            }))
-        )
+        self.binding_semantics_for_symbol(sym)
+            .is_some_and(|sem| sem.is_rest_props())
     }
 
     fn derived_leaf_value(
@@ -276,7 +277,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         accessor: Expression<'a>,
     ) -> (&'a str, Expression<'a>) {
         let name: &'a str = self.b.alloc_str(self.component_scoping.symbol_name(symbol));
-        let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+        let value = self.wrap_derived_value(accessor);
         let value = if self.dev {
             self.b
                 .call_expr("$.tag", [Arg::Expr(value), Arg::Str(name.to_string())])

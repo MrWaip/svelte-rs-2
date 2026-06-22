@@ -1,6 +1,7 @@
 # PRD: Поддерживающие крэйты (корневой)
 
 label: supporting-crates
+topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, IdentGen, emit builders (store/binding/runes/props/legacy_wrap)
 
 Корневой PRD для поддерживающих крэйтов: `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`.
 

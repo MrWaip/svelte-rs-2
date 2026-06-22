@@ -259,7 +259,11 @@ fn format_js_number(n: f64) -> String {
     if n.is_nan() {
         "NaN".to_string()
     } else if n.is_infinite() {
-        if n > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() }
+        if n > 0.0 {
+            "Infinity".to_string()
+        } else {
+            "-Infinity".to_string()
+        }
     } else if n == n.trunc() && n.abs() < 1e21 {
         format!("{}", n as i64)
     } else {

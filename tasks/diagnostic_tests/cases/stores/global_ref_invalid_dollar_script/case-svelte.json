@@ -1,0 +1,8 @@
+[
+  {
+    "code": "global_reference_invalid",
+    "end": 27,
+    "severity": "error",
+    "start": 13
+  }
+]

@@ -15,9 +15,9 @@ use svelte_diagnostics::Diagnostic;
 
 mod html;
 mod html_entities;
+mod js_postprocess;
 pub mod parse_js;
 pub mod scanner;
-mod js_postprocess;
 pub mod types;
 mod walk_js;
 
@@ -25,7 +25,7 @@ mod attr_convert;
 mod handlers;
 mod svelte_elements;
 
-pub use types::{CePropConfig, CeDomMode, JsAst, ParsedCeConfig};
+pub use types::{CeDomMode, CePropConfig, JsAst, ParsedCeConfig};
 
 pub fn parse_module<'a>(
     alloc: &'a Allocator,
@@ -39,11 +39,7 @@ pub fn parse_module<'a>(
 pub fn parse_with_js<'a>(
     alloc: &'a Allocator,
     source: &str,
-) -> (
-    svelte_ast::Component,
-    JsAst<'a>,
-    Vec<Diagnostic>,
-) {
+) -> (svelte_ast::Component, JsAst<'a>, Vec<Diagnostic>) {
     let trimmed = source.trim_end();
     let (component, mut diagnostics) = Parser::new(trimmed).parse();
     let mut result = JsAst::new();
@@ -175,6 +171,22 @@ impl<'a> Parser<'a> {
         self.store.reserve()
     }
 
+    fn preceding_comment_id(&self, siblings: &[NodeId]) -> Option<NodeId> {
+        for &id in siblings.iter().rev() {
+            match self.store.get(id) {
+                Node::Comment(comment) => return Some(comment.id),
+                Node::Text(text) => {
+                    if text.span.source_text(self.source).trim().is_empty() {
+                        continue;
+                    }
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
     pub(crate) fn new_fragment(&mut self, role: FragmentRole, nodes: Vec<NodeId>) -> FragmentId {
         self.store.push_fragment(role, nodes)
     }
@@ -253,10 +265,11 @@ impl<'a> Parser<'a> {
                     }));
                     push_child(&mut children_stack, id);
                 }
-                TokenType::Comment => {
+                TokenType::Comment { content_span } => {
                     let id = self.push_node(Node::Comment(Comment {
                         id: NodeId(0),
                         span: token.span,
+                        content_span,
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -501,9 +514,13 @@ impl<'a> Parser<'a> {
                         continue;
                     }
 
+                    let preceding_comment = children_stack
+                        .last()
+                        .and_then(|siblings| self.preceding_comment_id(siblings));
                     css_data = Some(CssData {
                         span: token.span,
                         content_span: style_tag.content_span,
+                        preceding_comment,
                     });
                 }
                 TokenType::EOF => break,
@@ -535,6 +552,7 @@ impl<'a> Parser<'a> {
         let css = css_data.map(|cd| RawBlock {
             span: cd.span,
             content_span: cd.content_span,
+            preceding_comment: cd.preceding_comment,
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
@@ -689,6 +707,7 @@ struct ScriptData {
 struct CssData {
     span: Span,
     content_span: Span,
+    preceding_comment: Option<NodeId>,
 }
 
 #[cfg(test)]

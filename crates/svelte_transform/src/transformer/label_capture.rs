@@ -24,10 +24,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    pub(crate) fn normalize_object_property_method_shorthand(
-        &self,
-        node: &mut ObjectProperty<'a>,
-    ) {
+    pub(crate) fn normalize_object_property_method_shorthand(&self, node: &mut ObjectProperty<'a>) {
         if node.method || node.kind != PropertyKind::Init {
             return;
         }

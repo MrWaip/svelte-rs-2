@@ -1,8 +1,7 @@
-use svelte_emit_builders::runes::rune_get;
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BindingSemantics, ContextualBindingSemantics};
+use svelte_analyze::{LegacyDefaultSlot, Volatility};
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -53,22 +52,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let node = self.ctx.query.component.store.get(el_id);
         let is_svelte_component_legacy = matches!(node, Node::SvelteComponentLegacy(_));
         let is_svelte_self = matches!(node, Node::SvelteSelf(_));
-        let callee_root_wrapped_through_get = matches!(node, Node::ComponentNode(cn) if {
-            let name = self.ctx.query.component.source_text(cn.name.span);
-            let root = name.split_once('.').map_or(name, |(r, _)| r);
-            self.ctx
-                .query
-                .component
-                .store
-                .node_fragment(el_id)
-                .and_then(|fid| self.ctx.query.view.fragment_scope_by_id(fid))
-                .and_then(|scope| self.ctx.query.view.find_binding(scope, root))
-                .is_some_and(|sym| matches!(
-                    self.ctx.query.view.binding_semantics(sym),
-                    BindingSemantics::Contextual(ContextualBindingSemantics::LetDirective)
-                        | BindingSemantics::LegacyState(_)
-                ))
-        });
 
         let (cn_name, span_start, cn_fragment, named_slots) = {
             let Some(view) = node.as_component_like() else {
@@ -99,38 +82,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
-        let is_dynamic = self.ctx.is_dynamic_component(el_id) || is_svelte_component_legacy;
 
-        let mut props =
-            self.build_component_props(el_id, is_svelte_component_legacy, initial_memo_counter)?;
+        let mut props = self.build_component_props(el_id, initial_memo_counter)?;
 
         let mut init_stmts: Vec<Statement<'a>> = Vec::new();
         let events = mem::take(&mut props.events);
         self.build_component_events(el_id, events, &mut props.items, &mut init_stmts)?;
         let mut bind_init_stmts = mem::take(&mut props.bind_init_stmts);
 
-        let (anchor_expr_early, dynamic_anchor_name) = if is_dynamic {
-            (None, Some(self.comment_anchor_node_name(state, ctx)?))
-        } else {
-            let anchor = self.direct_anchor_expr(state, ctx)?;
-            for stmt in bind_init_stmts.drain(..) {
-                state.init.push(stmt);
-            }
-            for stmt in init_stmts.drain(..) {
-                state.init.push(stmt);
-            }
-            (Some(anchor), None)
-        };
+        let (anchor_expr_early, dynamic_anchor_name) =
+            match self.ctx.expression_data(el_id).map(|d| d.volatility) {
+                Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
+                    (None, Some(self.comment_anchor_node_name(state, ctx)?))
+                }
+                Some(Volatility::Static) | None => {
+                    let anchor = self.direct_anchor_expr(state, ctx)?;
+                    for stmt in bind_init_stmts.drain(..) {
+                        state.init.push(stmt);
+                    }
+                    for stmt in init_stmts.drain(..) {
+                        state.init.push(stmt);
+                    }
+                    (Some(anchor), None)
+                }
+            };
 
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
 
-        let default_has_let = self.default_slot_has_let_directive_legacy(el_id);
-        let children_body = if default_has_let {
-            self.build_component_default_children_with_let(ctx, el_id, cn_fragment)?
-        } else {
-            self.build_component_default_children(ctx, cn_fragment)?
-        };
+        let children_body =
+            self.build_component_default_children_with_let(ctx, el_id, cn_fragment)?;
 
         let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
         for slot_key in &snippet_children.slot_keys {
@@ -138,27 +119,33 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             slot_entries.push(ObjProp::KeyValue(key, self.ctx.b.bool_expr(true)));
         }
         if let Some(arrow) = children_body {
-            let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
-            if default_has_let {
-                props
-                    .items
-                    .push(super::super::component_props::PropOrSpread::Prop(
-                        ObjProp::KeyValue(
-                            "children",
-                            self.ctx.b.static_member_expr(
-                                self.ctx.b.rid_expr("$"),
-                                "invalid_default_snippet",
+            match self.ctx.query.legacy_default_slot(el_id) {
+                LegacyDefaultSlot::ChildrenProp => {
+                    slot_entries.push(ObjProp::KeyValue("default", self.ctx.b.bool_expr(true)));
+                    let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
+                    props
+                        .items
+                        .push(super::super::component_props::PropOrSpread::Prop(
+                            ObjProp::KeyValue("children", arrow),
+                        ));
+                }
+                LegacyDefaultSlot::SlotDefaultInvalid => {
+                    props
+                        .items
+                        .push(super::super::component_props::PropOrSpread::Prop(
+                            ObjProp::KeyValue(
+                                "children",
+                                self.ctx.b.static_member_expr(
+                                    self.ctx.b.rid_expr("$"),
+                                    "invalid_default_snippet",
+                                ),
                             ),
-                        ),
-                    ));
-                slot_entries.push(ObjProp::KeyValue("default", arrow));
-            } else {
-                slot_entries.push(ObjProp::KeyValue("default", self.ctx.b.bool_expr(true)));
-                props
-                    .items
-                    .push(super::super::component_props::PropOrSpread::Prop(
-                        ObjProp::KeyValue("children", arrow),
-                    ));
+                        ));
+                    slot_entries.push(ObjProp::KeyValue("default", arrow));
+                }
+                LegacyDefaultSlot::SlotDefault => {
+                    slot_entries.push(ObjProp::KeyValue("default", arrow));
+                }
             }
         }
         for (slot_name, slot_el_id) in named_slots {
@@ -188,26 +175,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let props_expr = self.build_props_expr(props.items);
 
-        if is_dynamic {
-            let anchor_node = dynamic_anchor_name
-                .expect("dynamic component must have a pre-allocated anchor name");
-            return self.emit_dynamic_component(
-                state,
-                el_id,
-                &cn_name,
-                is_svelte_component_legacy,
-                props.bind_this,
-                props.svelte_component_this,
-                props_expr,
-                snippet_children.decls,
-                props.memo_decls,
-                props.ownership_bindings,
-                bind_init_stmts,
-                init_stmts,
-                props.validate_binding_stmts,
-                span_start,
-                anchor_node,
-            );
+        match self.ctx.expression_data(el_id).map(|d| d.volatility) {
+            Some(Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous) => {
+                let anchor_node = dynamic_anchor_name
+                    .expect("dynamic component must have a pre-allocated anchor name");
+                return self.emit_dynamic_component(
+                    state,
+                    el_id,
+                    &cn_name,
+                    is_svelte_component_legacy,
+                    props.bind_this,
+                    props.svelte_component_this,
+                    props_expr,
+                    snippet_children.decls,
+                    props.memo_decls,
+                    props.ownership_bindings,
+                    bind_init_stmts,
+                    init_stmts,
+                    props.validate_binding_stmts,
+                    span_start,
+                    anchor_node,
+                );
+            }
+            Some(Volatility::Static) | None => {}
         }
 
         let anchor_expr = anchor_expr_early
@@ -219,24 +209,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.alloc_str(&cn_name)
         };
-        let component_call = if callee_root_wrapped_through_get {
-            let (root, rest) = callee.split_once('.').map_or((callee, ""), |(r, s)| (r, s));
-            let root_ident = self.ctx.b.alloc_str(root);
-            let mut wrapped_callee = rune_get(&self.ctx.b, root_ident);
-            if !rest.is_empty() {
-                for seg in rest.split('.') {
-                    wrapped_callee = self.ctx.b.static_member_expr(wrapped_callee, seg);
-                }
-            }
-            self.ctx.b.call_expr_callee(
-                wrapped_callee,
-                [Arg::Expr(anchor_expr), Arg::Expr(props_expr)],
-            )
-        } else {
-            self.ctx
-                .b
-                .call_expr(callee, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)])
+        let name_expr_id = match self.ctx.query.component.store.get(el_id) {
+            Node::ComponentNode(cn) => Some(cn.name.id()),
+            _ => None,
         };
+        let callee_expr = match name_expr_id {
+            Some(id) => self
+                .ctx
+                .state
+                .parsed
+                .take_expr(id)
+                .ok_or(CodegenError::MissingExpression(el_id))?,
+            None => self.ctx.b.rid_expr(callee),
+        };
+        let component_call = self
+            .ctx
+            .b
+            .call_expr_callee(callee_expr, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)]);
 
         let final_expr = if let Some(bind_id) = props.bind_this {
             self.build_bind_this_call(el_id, bind_id, component_call)?

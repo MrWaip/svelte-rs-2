@@ -1,6 +1,8 @@
 ---
 name: write-unit-test
-description: The required format for Rust unit tests in this repo. Use when writing, editing, or reviewing a `#[test]` in `crates/**/src/**`, or adding a test helper or `assert_*`. Not for `tasks/compiler_tests/` (use add-test) or `tasks/diagnostic_tests/` (use add-diagnostic-test).
+description: Use when writing, editing, or reviewing a Rust `#[test]`, a test helper, or an `assert_*` in `crates/**/src/**`. The required unit-test format for this repo. Not for `tasks/compiler_tests/` (use add-test) or `tasks/diagnostic_tests/` (use add-diagnostic-test).
+paths:
+  - "crates/**/src/**/*.rs"
 ---
 
 # Write unit test

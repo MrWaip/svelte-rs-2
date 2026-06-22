@@ -22,6 +22,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             FragmentAnchor::Child { parent_var } => ChildAnchor::ElementChild {
                 parent_var: parent_var.clone(),
             },
+            FragmentAnchor::ElementContentChild { parent_var } => {
+                ChildAnchor::ElementContentChild {
+                    parent_var: parent_var.clone(),
+                }
+            }
             FragmentAnchor::CallbackParam {
                 name,
                 append_inside: true,
@@ -166,7 +171,12 @@ fn emit_child_node<'a, 'ctx>(
     let node = cg.ctx.query.component.store.get(id);
     match node {
         Node::Element(el) => {
-            if !cg.ctx.needs_var(id) {
+            let parent_is_ghost = matches!(
+                &ctx.anchor,
+                FragmentAnchor::Child { parent_var } if parent_var.is_empty()
+            );
+            let force_var = input_value_forces_var(el) && !parent_is_ghost;
+            if !cg.ctx.needs_var(id) && !force_var {
                 cg.emit_element_ghost(state, ctx, id)?;
                 *skipped += 1;
                 return Ok(());
@@ -185,6 +195,7 @@ fn emit_child_node<'a, 'ctx>(
         }
         Node::ComponentNode(_)
         | Node::SvelteComponentLegacy(_)
+        | Node::SvelteSelf(_)
         | Node::SvelteElement(_)
         | Node::SvelteBoundary(_)
         | Node::SlotElementLegacy(_)
@@ -197,7 +208,7 @@ fn emit_child_node<'a, 'ctx>(
         | Node::RenderTag(_) => {
             let is_css_wrapped_component = matches!(
                 node,
-                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_)
+                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_)
             ) && cg.ctx.has_component_css_props(id);
 
             if is_css_wrapped_component {
@@ -272,6 +283,18 @@ fn flush_sibling_var<'a, 'ctx>(
     Ok(id)
 }
 
+fn input_value_forces_var(el: &svelte_ast::Element) -> bool {
+    use svelte_ast::Attribute;
+    if !matches!(el.name.as_str(), "input" | "textarea") {
+        return false;
+    }
+    el.attributes.iter().any(|a| match a {
+        Attribute::StringAttribute(s) => matches!(s.name.as_str(), "value" | "checked"),
+        Attribute::BooleanAttribute(b) => matches!(b.name.as_str(), "value" | "checked"),
+        _ => false,
+    })
+}
+
 fn comment_needs_var_extraction<'a, 'ctx>(
     cg: &Codegen<'a, 'ctx>,
     ctx: &FragmentCtx<'a>,
@@ -327,6 +350,14 @@ fn make_sibling_expr<'a, 'ctx>(
                 b.call_expr("$.child", [Arg::Ident(&parent_var), Arg::Bool(true)])
             } else {
                 b.call_expr("$.child", [Arg::Ident(&parent_var)])
+            }
+        }
+        ChildAnchor::ElementContentChild { parent_var } => {
+            let member = b.static_member_expr(b.rid_expr(&parent_var), "content");
+            if is_text && skipped == 0 {
+                b.call_expr("$.child", [Arg::Expr(member), Arg::Bool(true)])
+            } else {
+                b.call_expr("$.child", [Arg::Expr(member)])
             }
         }
         ChildAnchor::FragmentFirstChild { frag_var } => {

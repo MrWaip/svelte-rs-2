@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Always prefer narsil-mcp for code search'"
+            "command": "echo 'Use narsil-mcp!'"
           }
         ]
       }
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Always prefer narsil-mcp tools for code search (find_symbols, semantic_search, find_references, find_symbol_usages). Use narsil-mcp reindex tool first, when results outdated'"
+            "command": "echo 'Load narsil-mcp tools. Always prefer narsil-mcp tools for code search. Use narsil-mcp reindex tool first, when results outdated.'"
           }
         ]
       }
