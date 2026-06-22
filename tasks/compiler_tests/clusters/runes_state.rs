@@ -64,6 +64,18 @@ compiler_case!(
     "runes/state/proxy_flag/red_const_primitive_rhs"
 );
 compiler_case!(
+    proxy_flag_red_conditional_string_rhs,
+    "runes/state/proxy_flag/red_conditional_string_rhs"
+);
+compiler_case!(
+    proxy_flag_red_call_primitive_rhs,
+    "runes/state/proxy_flag/red_call_primitive_rhs"
+);
+compiler_case!(
+    proxy_flag_red_binary_opaque_rhs,
+    "runes/state/proxy_flag/red_binary_opaque_rhs"
+);
+compiler_case!(
     proxy_flag_red_private_field_opaque_rhs,
     "runes/state/proxy_flag/red_private_field_opaque_rhs"
 );

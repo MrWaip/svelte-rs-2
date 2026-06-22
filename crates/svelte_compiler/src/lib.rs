@@ -292,7 +292,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let js_alloc = oxc_allocator::Allocator::default();
 
     let (analysis, mut parsed, diagnostics) =
-        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+        svelte_analyze::analyze_module(&js_alloc, source, is_ts);
 
     if options.generate == GenerateMode::False
         || diagnostics

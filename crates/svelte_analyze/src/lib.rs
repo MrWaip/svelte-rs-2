@@ -182,7 +182,6 @@ pub fn analyze_module<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &'a str,
     is_ts: bool,
-    dev: bool,
 ) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let mut data = AnalysisData::new_empty(0);
@@ -217,10 +216,7 @@ pub fn analyze_module<'a>(
             reactivity_semantics::finalize_proxy(
                 &parsed,
                 &mut data.reactivity,
-                &data.scoping,
-                &data.template.snippets,
                 data.scoping.semantics(),
-                dev,
             );
         }
         Err(errs) => diags.extend(errs),

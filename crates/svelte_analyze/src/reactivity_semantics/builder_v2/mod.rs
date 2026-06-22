@@ -20,12 +20,10 @@ use super::data::{
 };
 use super::legacy_reactive::LegacyReactiveDep;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{AnalysisData, JsAst, SnippetData};
+use crate::types::data::{AnalysisData, JsAst};
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
-use crate::value_evaluation::{
-    Evaluation, ReadContext, ValueClass, ValueEvaluation, ValueEvaluator,
-};
+use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
     AssignmentExpression, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression,
     Class, ClassElement, ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
@@ -198,13 +196,10 @@ pub(crate) fn finalize_reactivity(
     parsed: &JsAst<'_>,
     reactivity: &mut ReactivitySemantics,
     value_evaluation: &ValueEvaluation,
-    scoping: &ComponentScoping<'_>,
-    snippets: &SnippetData,
     semantics: &ComponentSemantics<'_>,
-    dev: bool,
 ) {
     optimize_derived(reactivity, value_evaluation, semantics);
-    finalize_proxy(parsed, reactivity, scoping, snippets, semantics, dev);
+    finalize_proxy(parsed, reactivity, semantics);
 }
 
 fn promote_legacy_exported_const_state(
@@ -468,29 +463,16 @@ fn is_non_coercive(operator: AssignmentOperator) -> bool {
 pub(crate) fn finalize_proxy(
     parsed: &JsAst<'_>,
     reactivity: &mut ReactivitySemantics,
-    scoping: &ComponentScoping<'_>,
-    snippets: &SnippetData,
     semantics: &ComponentSemantics<'_>,
-    dev: bool,
 ) {
     if !reactivity.uses_runes() {
         return;
     }
 
     let (binding_inits, field_inits, signal_writes, class_fields) = {
-        let evaluator = ValueEvaluator::new(
-            parsed,
-            scoping,
-            semantics,
-            reactivity,
-            snippets,
-            ReadContext::Declaration,
-            dev,
-        );
-        let init_proxyable = collect_init_proxyable(parsed, &evaluator);
+        let init_proxyable = collect_init_proxyable(parsed);
         let mut collector = ProxyCollector {
             reactivity,
-            evaluator: &evaluator,
             semantics,
             init_proxyable: &init_proxyable,
             binding_inits: Vec::new(),
@@ -534,7 +516,6 @@ pub(crate) fn finalize_proxy(
 
 struct ProxyCollector<'c, 'a> {
     reactivity: &'c ReactivitySemantics,
-    evaluator: &'c ValueEvaluator<'c, 'a>,
     semantics: &'c ComponentSemantics<'a>,
     init_proxyable: &'c FxHashMap<SymbolId, bool>,
     binding_inits: Vec<(SymbolId, bool)>,
@@ -766,10 +747,13 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     fn should_proxy(&self, expr: &Expression<'a>) -> bool {
         let expr = expr.get_inner_expression();
         let Expression::Identifier(id) = expr else {
-            return proxies_evaluation(&self.evaluator.evaluate(expr));
+            return should_proxy_node_only(expr);
         };
+        if id.name == "undefined" {
+            return false;
+        }
         let Some(symbol) = self.semantics.symbol_for_identifier_reference(id) else {
-            return proxies_evaluation(&self.evaluator.evaluate(expr));
+            return true;
         };
         if self.semantics.is_mutated(symbol) {
             return true;
@@ -778,12 +762,31 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     }
 }
 
-fn collect_init_proxyable<'a>(
-    parsed: &JsAst<'a>,
-    evaluator: &ValueEvaluator<'_, 'a>,
-) -> FxHashMap<SymbolId, bool> {
+fn should_proxy_node_only(expr: &Expression) -> bool {
+    let expr = expr.get_inner_expression();
+    if expr.is_literal() {
+        return false;
+    }
+    if matches!(
+        expr,
+        Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::UnaryExpression(_)
+            | Expression::BinaryExpression(_)
+    ) {
+        return false;
+    }
+    if let Expression::Identifier(id) = expr
+        && id.name == "undefined"
+    {
+        return false;
+    }
+    true
+}
+
+fn collect_init_proxyable(parsed: &JsAst<'_>) -> FxHashMap<SymbolId, bool> {
     let mut collector = InitProxyableCollector {
-        evaluator,
         proxyable: FxHashMap::default(),
     };
     for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
@@ -801,43 +804,20 @@ fn collect_init_proxyable<'a>(
     collector.proxyable
 }
 
-struct InitProxyableCollector<'c, 'a> {
-    evaluator: &'c ValueEvaluator<'c, 'a>,
+struct InitProxyableCollector {
     proxyable: FxHashMap<SymbolId, bool>,
 }
 
-impl<'c, 'a> Visit<'a> for InitProxyableCollector<'c, 'a> {
+impl<'a> Visit<'a> for InitProxyableCollector {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let BindingPattern::BindingIdentifier(id) = &declarator.id
             && let Some(init) = &declarator.init
             && let Some(symbol) = id.symbol_id.get()
         {
-            let proxyable =
-                proxies_evaluation(&self.evaluator.evaluate(init.get_inner_expression()));
+            let proxyable = should_proxy_node_only(init.get_inner_expression());
             self.proxyable.insert(symbol, proxyable);
         }
         walk_variable_declarator(self, declarator);
-    }
-}
-
-fn proxies_evaluation(evaluation: &Evaluation) -> bool {
-    match evaluation {
-        Evaluation::Known(_) => false,
-        Evaluation::Defined { class } => proxies_value_class(*class),
-        Evaluation::MaybeNullish { .. } => true,
-    }
-}
-
-fn proxies_value_class(class: Option<ValueClass>) -> bool {
-    match class {
-        None | Some(ValueClass::Object) => true,
-        Some(
-            ValueClass::String
-            | ValueClass::Number
-            | ValueClass::Boolean
-            | ValueClass::BigInt
-            | ValueClass::Function,
-        ) => false,
     }
 }
 

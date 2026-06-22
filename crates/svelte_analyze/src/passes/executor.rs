@@ -165,10 +165,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 &mut data.reactivity,
                 &data.value_evaluation,
-                &data.scoping,
-                &data.template.snippets,
                 data.scoping.semantics(),
-                data.script.dev,
             );
         }
         super::PassKey::BuildExpressionSemantics => {
