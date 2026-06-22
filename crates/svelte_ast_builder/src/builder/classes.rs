@@ -131,12 +131,13 @@ impl<'a> Builder<'a> {
 
     pub fn this_private_member(&self, name: &str) -> Expression<'a> {
         let this_expr = self.ast.expression_this(SPAN);
-        let field = self.ast.private_field_expression(
-            SPAN,
-            this_expr,
-            self.private_identifier(name),
-            false,
-        );
+        self.private_member(this_expr, name)
+    }
+
+    pub fn private_member(&self, object: Expression<'a>, name: &str) -> Expression<'a> {
+        let field =
+            self.ast
+                .private_field_expression(SPAN, object, self.private_identifier(name), false);
         Expression::PrivateFieldExpression(self.alloc(field))
     }
 }

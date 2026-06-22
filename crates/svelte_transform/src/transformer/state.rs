@@ -553,12 +553,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         }
     }
 
-    pub(crate) fn in_constructor(&self) -> bool {
-        self.function_info_stack
-            .last()
-            .is_some_and(|f| f.in_constructor)
-    }
-
     pub(crate) fn async_derived_mode(&self) -> AsyncDerivedMode {
         if self.strip_exports && self.function_info_stack.len() > 1 {
             AsyncDerivedMode::Save

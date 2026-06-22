@@ -22,7 +22,6 @@ pub(crate) struct FunctionInfo {
     pub(crate) is_async: bool,
     pub(crate) name: Option<String>,
     pub(crate) span_start: u32,
-    pub(crate) in_constructor: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

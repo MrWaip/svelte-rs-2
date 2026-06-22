@@ -25,19 +25,22 @@ use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
-    AssignmentExpression, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression,
-    Class, ClassElement, ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
-    MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program, PropertyDefinition,
-    PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression, UpdateExpression,
-    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
+    BindingPattern, CallExpression, Class, ClassElement, ExportNamedDeclaration, Expression,
+    Function, IdentifierReference, MemberExpression, MethodDefinition, MethodDefinitionKind,
+    NewExpression, PrivateFieldExpression, Program, PropertyDefinition, PropertyKey, Statement,
+    StaticMemberExpression, TaggedTemplateExpression, UpdateExpression, VariableDeclaration,
+    VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_assignment_expression, walk_call_expression, walk_class, walk_export_named_declaration,
-    walk_member_expression, walk_new_expression, walk_private_field_expression, walk_program,
-    walk_property_definition, walk_static_member_expression, walk_tagged_template_expression,
-    walk_update_expression, walk_variable_declaration, walk_variable_declarator,
+    walk_arrow_function_expression, walk_assignment_expression, walk_call_expression, walk_class,
+    walk_export_named_declaration, walk_function, walk_member_expression, walk_method_definition,
+    walk_new_expression, walk_private_field_expression, walk_program, walk_property_definition,
+    walk_static_member_expression, walk_tagged_template_expression, walk_update_expression,
+    walk_variable_declaration, walk_variable_declarator,
 };
+use oxc_syntax::scope::ScopeFlags;
 use std::mem;
 
 use oxc_span::GetSpan as _;
@@ -78,6 +81,14 @@ const PROPS_RUNE_NAME: &str = "$props";
 const BINDABLE_RUNE_NAME: &str = "$bindable";
 const INSPECT_RUNE_NAME: &str = "$inspect";
 const HOST_RUNE_NAME: &str = "$host";
+
+fn assignment_target_field_access(target: &AssignmentTarget<'_>) -> Option<OxcNodeId> {
+    match target {
+        AssignmentTarget::PrivateFieldExpression(pfe) => Some(pfe.node_id()),
+        AssignmentTarget::StaticMemberExpression(member) => Some(member.node_id()),
+        _ => None,
+    }
+}
 
 fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
@@ -479,6 +490,8 @@ pub(crate) fn finalize_proxy(
             field_inits: Vec::new(),
             signal_writes: Vec::new(),
             class_fields: FxHashMap::default(),
+            in_constructor: false,
+            next_is_constructor: false,
         };
         for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
             .into_iter()
@@ -522,6 +535,8 @@ struct ProxyCollector<'c, 'a> {
     field_inits: Vec<(OxcNodeId, bool)>,
     signal_writes: Vec<ReferenceId>,
     class_fields: FxHashMap<OxcNodeId, ClassFieldSemantics>,
+    in_constructor: bool,
+    next_is_constructor: bool,
 }
 
 impl<'c, 'a> Visit<'a> for ProxyCollector<'c, 'a> {
@@ -550,6 +565,42 @@ impl<'c, 'a> Visit<'a> for ProxyCollector<'c, 'a> {
             self.classify_field_read(expr.node_id());
         }
         walk_static_member_expression(self, expr);
+    }
+
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
+        if method.kind == MethodDefinitionKind::Constructor {
+            self.next_is_constructor = true;
+        }
+        walk_method_definition(self, method);
+    }
+
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
+        let prev = self.in_constructor;
+        self.in_constructor = mem::take(&mut self.next_is_constructor);
+        walk_function(self, func, flags);
+        self.in_constructor = prev;
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        self.next_is_constructor = false;
+        let prev = self.in_constructor;
+        self.in_constructor = false;
+        walk_arrow_function_expression(self, arrow);
+        self.in_constructor = prev;
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if matches!(
+            detect_rune_from_call(call),
+            Some(RuneKind::Derived | RuneKind::DerivedBy)
+        ) {
+            let prev = self.in_constructor;
+            self.in_constructor = false;
+            walk_call_expression(self, call);
+            self.in_constructor = prev;
+        } else {
+            walk_call_expression(self, call);
+        }
     }
 }
 
@@ -588,14 +639,20 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     }
 
     fn classify_assignment(&mut self, expr: &AssignmentExpression<'a>) {
-        if let DeclaratorSemantics::ClassFieldState(state) =
-            self.reactivity.declarator_semantics(expr.node_id())
-        {
-            if state.kind == StateKind::State
+        let decl = self.reactivity.declarator_semantics(expr.node_id());
+        if matches!(
+            &decl,
+            DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_)
+        ) {
+            if let DeclaratorSemantics::ClassFieldState(state) = &decl
+                && state.kind == StateKind::State
                 && let Expression::CallExpression(call) = expr.right.get_inner_expression()
             {
                 let proxied = self.state_arg_proxies(call);
                 self.field_inits.push((expr.node_id(), proxied));
+            }
+            if let Some(access) = assignment_target_field_access(&expr.left) {
+                self.class_fields.insert(access, ClassFieldSemantics::None);
             }
             return;
         }
@@ -668,7 +725,11 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
                 let proxy = kind == StateKind::State
                     && is_non_coercive(operator)
                     && self.write_value_proxies(operator, right);
-                ClassFieldSemantics::State { kind, proxy }
+                ClassFieldSemantics::State {
+                    kind,
+                    proxy,
+                    tracked: self.read_tracked(kind),
+                }
             }
             ClassFieldSemantics::Derived { .. } | ClassFieldSemantics::None => base,
         };
@@ -682,7 +743,19 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
         let Some(base) = self.resolved_field(access_node) else {
             return;
         };
-        self.class_fields.insert(access_node, base);
+        let field = match base {
+            ClassFieldSemantics::State { kind, proxy, .. } => ClassFieldSemantics::State {
+                kind,
+                proxy,
+                tracked: self.read_tracked(kind),
+            },
+            ClassFieldSemantics::Derived { .. } | ClassFieldSemantics::None => base,
+        };
+        self.class_fields.insert(access_node, field);
+    }
+
+    fn read_tracked(&self, kind: StateKind) -> bool {
+        !(self.in_constructor && matches!(kind, StateKind::State | StateKind::StateRaw))
     }
 
     fn resolved_field(&self, access_node: OxcNodeId) -> Option<ClassFieldSemantics> {
@@ -691,6 +764,7 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
             DeclaratorSemantics::ClassFieldState(state) => Some(ClassFieldSemantics::State {
                 kind: state.kind,
                 proxy: false,
+                tracked: true,
             }),
             DeclaratorSemantics::ClassFieldDerived(derived) => {
                 Some(ClassFieldSemantics::Derived { kind: derived.kind })

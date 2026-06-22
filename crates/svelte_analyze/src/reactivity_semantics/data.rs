@@ -858,8 +858,14 @@ pub struct ClassFieldStateSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClassFieldSemantics {
     None,
-    State { kind: StateKind, proxy: bool },
-    Derived { kind: DerivedKind },
+    State {
+        kind: StateKind,
+        proxy: bool,
+        tracked: bool,
+    },
+    Derived {
+        kind: DerivedKind,
+    },
 }
 
 impl ClassFieldSemantics {

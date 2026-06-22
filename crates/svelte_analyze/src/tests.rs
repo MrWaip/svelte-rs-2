@@ -978,6 +978,7 @@ fn class_field_semantics_private_state_write_proxies_opaque_rhs() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1005,6 +1006,7 @@ fn class_field_semantics_private_state_write_nested_scope_const_no_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1029,6 +1031,7 @@ fn class_field_semantics_private_state_write_literal_rhs_no_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1053,6 +1056,7 @@ fn class_field_semantics_private_state_read_ignores_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1077,6 +1081,7 @@ fn class_field_semantics_private_raw_state_never_proxies() {
         ClassFieldSemantics::State {
             kind: StateKind::StateRaw,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1126,6 +1131,7 @@ fn class_field_semantics_constructor_declared_private_state() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1150,6 +1156,7 @@ fn class_field_semantics_public_state_write_proxies_opaque_rhs() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1174,6 +1181,7 @@ fn class_field_semantics_public_state_read() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1198,6 +1206,35 @@ fn class_field_semantics_constructor_declared_public_state() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_constructor_sync_read_untracked() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count;
+        constructor() {
+            this.#count = $state(0);
+            console.log(this.#count);
+        }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        1,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+            tracked: false,
         },
     );
 }

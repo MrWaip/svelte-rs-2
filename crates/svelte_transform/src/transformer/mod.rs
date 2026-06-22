@@ -33,7 +33,7 @@ pub(crate) use svelte_analyze::{
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
     ArrowFunctionExpression, CallExpression, Class, ClassBody, Expression, ForOfStatement,
-    Function, FunctionBody, MethodDefinitionKind, ObjectProperty, Statement, VariableDeclarator,
+    Function, FunctionBody, ObjectProperty, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -53,7 +53,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         self.rewrite_class_body(node, &info);
     }
 
-    fn enter_function(&mut self, node: &mut Function<'a>, ctx: &mut TraverseCtx<'a, ()>) {
+    fn enter_function(&mut self, node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
         }
@@ -62,16 +62,10 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             .as_ref()
             .map(|id| id.name.to_string())
             .or_else(|| self.next_arrow_name.take());
-        let in_constructor = matches!(
-            ctx.parent(),
-            Ancestor::MethodDefinitionValue(md)
-                if *md.kind() == MethodDefinitionKind::Constructor
-        );
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
-            in_constructor,
         });
     }
 
@@ -95,7 +89,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
-            in_constructor: false,
         });
     }
 
