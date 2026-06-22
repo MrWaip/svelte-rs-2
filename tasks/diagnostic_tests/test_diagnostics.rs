@@ -1560,6 +1560,14 @@ mod stores {
         "stores/validate_store_invalid_scoped_subscription"
     );
     diagnostic_case!(
+        scoped_sub_rune_state_nested_decl,
+        "stores/scoped_sub_rune_state_nested_decl"
+    );
+    diagnostic_case!(
+        scoped_sub_rune_state_toplevel_base_nested,
+        "stores/scoped_sub_rune_state_toplevel_base_nested"
+    );
+    diagnostic_case!(
         validate_store_invalid_subscription_in_module,
         "stores/validate_store_invalid_subscription_in_module"
     );

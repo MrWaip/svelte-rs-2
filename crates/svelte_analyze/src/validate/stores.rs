@@ -108,6 +108,9 @@ impl StoreValidator<'_> {
         if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
             return;
         }
+        if self.data.reactivity.uses_runes() && svelte_ast::is_rune_name(name) {
+            return;
+        }
         let base = &name[1..];
 
         let root = self.data.scoping.root_scope_id();
