@@ -35,7 +35,7 @@ use oxc_ast::ast::{
     ArrowFunctionExpression, CallExpression, Class, ClassBody, Expression, ForOfStatement,
     Function, FunctionBody, MethodDefinitionKind, ObjectProperty, Statement, VariableDeclarator,
 };
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 use model::{ComponentTransformer, FunctionInfo};
@@ -183,6 +183,12 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     fn enter_statement(&mut self, node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
+        }
+        if !self.runes
+            && let Statement::BreakStatement(brk) = node
+            && brk.label.as_ref().is_some_and(|label| label.name == "$")
+        {
+            *node = self.b.ast.statement_return(SPAN, None);
         }
         self.enclosing_stmt_start.push(node.span().start);
     }

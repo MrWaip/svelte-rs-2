@@ -85,6 +85,9 @@ mod multi_declarator_split;
 #[path = "clusters/legacy_coarse_deps.rs"]
 mod legacy_coarse_deps;
 
+#[path = "clusters/legacy_reactive_break.rs"]
+mod legacy_reactive_break;
+
 #[path = "clusters/legacy_reactive_import_wrap.rs"]
 mod legacy_reactive_import_wrap;
 
