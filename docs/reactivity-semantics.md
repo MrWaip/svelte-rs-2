@@ -68,6 +68,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 8. **Ортогональные оси — раздельно** (уточнение границы #5). #5 требует завести вариант, когда потребитель собирает **один** доменный ответ из сырых полей на **одном** сайте. Но когда фактов **две независимые оси**, спрашиваемые в **разных** местах, их декартово произведение — **не** доменная категория:
    - (а) **Не плоди N×M вариантов.** Признак нарушения — имя варианта склеено из двух ортогональных прилагательных (`Destructured`+`Default`+`Legacy`). Каждая ось — свой запрос по id (`binding_semantics` / `reference_semantics`), потребитель комбинирует на месте.
    - (б) **Выводимое не храни.** Если ось выводится из другой оси + структуры AST (`walk_bindings`, форма bind-выражения identifier-vs-member), её не держат ни вариантом енама, ни side-table/методом по `SymbolId` — потребитель выводит на месте. Side-table законен только для **невыводимого** факта (как `each_rest_symbols`), не для «срезать угол».
+9. **Two-stage reactivity around evaluation.** Reactivity is built as syntactic stage 1 (`build_v2`) → `ValueEvaluation` → finalizing stage (`FinalizeReactivity`); the evaluation dependency belongs solely to `OptimizedDerived`, which needs the evaluated value of a `$derived` expression. `proxy` and `class_field_semantics` are finalized in the same stage but rest only on stage-1 facts plus the AST — not on evaluation — so they merely co-reside there.
 
 ## Карта реактивных фич (scope корневого PRD)
 
