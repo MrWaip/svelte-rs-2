@@ -177,3 +177,6 @@ mod textarea_content;
 
 #[path = "clusters/element_reset.rs"]
 mod element_reset;
+
+#[path = "clusters/closing_tag.rs"]
+mod closing_tag;

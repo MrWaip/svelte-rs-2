@@ -1364,6 +1364,17 @@ impl Diagnostic {
         Self::error(DiagnosticKind::NoElementToClose, span)
     }
 
+    pub fn element_implicitly_closed(span: Span, tag: String, closing: String) -> Self {
+        Self::warning(
+            DiagnosticKind::ElementImplicitlyClosed { tag, closing },
+            span,
+        )
+    }
+
+    pub fn element_invalid_closing_tag(span: Span, name: String) -> Self {
+        Self::error(DiagnosticKind::ElementInvalidClosingTag { name }, span)
+    }
+
     pub fn no_if_block_to_close(span: Span) -> Self {
         Self::error(DiagnosticKind::NoIfBlockToClose, span)
     }

@@ -2051,6 +2051,30 @@ mod template {
         "template/textarea_invalid_content_fires"
     );
     diagnostic_case!(
+        closing_tag_implicitly_closes_element_warns,
+        "template/closing_tag_implicitly_closes_element_warns"
+    );
+    diagnostic_case!(
+        closing_tag_implicitly_closes_multiple_elements_warns,
+        "template/closing_tag_implicitly_closes_multiple_elements_warns"
+    );
+    diagnostic_case!(
+        closing_tag_invalid_on_open_block_errors,
+        "template/closing_tag_invalid_on_open_block_errors"
+    );
+    diagnostic_case!(
+        closing_tag_matching_close_no_diagnostic,
+        "template/closing_tag_matching_close_no_diagnostic"
+    );
+    diagnostic_case!(
+        closing_tag_eof_unclosed_element_errors,
+        "template/closing_tag_eof_unclosed_element_errors"
+    );
+    diagnostic_case!(
+        closing_tag_no_open_element_errors,
+        "template/closing_tag_no_open_element_errors"
+    );
+    diagnostic_case!(
         textarea_no_conflict_without_value_attr,
         "template/textarea_no_conflict_without_value_attr"
     );
