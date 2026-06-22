@@ -1,6 +1,27 @@
 use super::*;
 
 compiler_case!(
+    coarse_deps_dep_order_props_first,
+    "legacy/coarse_deps/dep_order_props_first"
+);
+compiler_case!(
+    coarse_deps_dep_order_props_last,
+    "legacy/coarse_deps/dep_order_props_last"
+);
+compiler_case!(
+    coarse_deps_dep_order_props_middle,
+    "legacy/coarse_deps/dep_order_props_middle"
+);
+compiler_case!(
+    coarse_deps_dep_order_restprops_first,
+    "legacy/coarse_deps/dep_order_restprops_first"
+);
+compiler_case!(
+    coarse_deps_dep_order_props_restprops_mixed,
+    "legacy/coarse_deps/dep_order_props_restprops_mixed"
+);
+
+compiler_case!(
     coarse_deps_reactive_api_export_fn,
     "legacy/coarse_deps/reactive_api_export_fn"
 );

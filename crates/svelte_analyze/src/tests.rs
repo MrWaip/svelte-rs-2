@@ -4765,8 +4765,10 @@ fn legacy_reactive_materializes_simple_assignment() {
         .scoping
         .find_binding_in_any_scope("count")
         .expect("count binding");
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveDep;
     assert!(
-        s.dependencies.contains(&count_sym),
+        s.dependencies
+            .contains(&LegacyReactiveDep::Binding(count_sym)),
         "deps must include count"
     );
 }
@@ -4821,8 +4823,11 @@ fn legacy_reactive_dep_filter_includes_bindable_prop() {
         .scoping
         .find_binding_in_any_scope("label")
         .expect("label binding");
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveDep;
     assert!(
-        stmts[0].dependencies.contains(&label_sym),
+        stmts[0]
+            .dependencies
+            .contains(&LegacyReactiveDep::Binding(label_sym)),
         "bindable prop must be a dep"
     );
 }
@@ -4841,11 +4846,18 @@ fn legacy_reactive_dep_filter_excludes_plain_let() {
     assert_eq!(stmts.len(), 1);
     let a_sym = data.scoping.find_binding_in_any_scope("a").expect("a");
     let b_sym = data.scoping.find_binding_in_any_scope("b").expect("b");
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveDep;
     assert!(
-        !stmts[0].dependencies.contains(&a_sym),
+        !stmts[0]
+            .dependencies
+            .contains(&LegacyReactiveDep::Binding(a_sym)),
         "non-mutated plain let must not be a dep"
     );
-    assert!(!stmts[0].dependencies.contains(&b_sym));
+    assert!(
+        !stmts[0]
+            .dependencies
+            .contains(&LegacyReactiveDep::Binding(b_sym))
+    );
 }
 
 #[test]
@@ -4897,8 +4909,11 @@ fn legacy_reactive_indirect_call_does_not_subscribe_to_closure_state() {
         .iter_statements_topo()
         .collect();
     assert_eq!(stmts.len(), 1);
+    use crate::reactivity_semantics::legacy_reactive::LegacyReactiveDep;
     assert!(
-        !stmts[0].dependencies.contains(&count_sym),
+        !stmts[0]
+            .dependencies
+            .contains(&LegacyReactiveDep::Binding(count_sym)),
         "$: doubled = double() must not subscribe to closure-captured count (reference docs limitation)"
     );
 }

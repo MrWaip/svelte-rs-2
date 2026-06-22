@@ -18,6 +18,7 @@ use super::data::{
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
+use super::legacy_reactive::LegacyReactiveDep;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{AnalysisData, JsAst, SnippetData};
 use crate::utils::expression_has_await;
@@ -268,14 +269,17 @@ fn promote_each_sources_transitive_legacy(
     }
 
     let mut reads_by_target: FxHashMap<SymbolId, SmallVec<[SymbolId; 8]>> = FxHashMap::default();
-    let mut statements: Vec<(OxcNodeId, SmallVec<[SymbolId; 8]>)> = Vec::new();
+    let mut statements: Vec<(OxcNodeId, SmallVec<[LegacyReactiveDep; 8]>)> = Vec::new();
     for statement in reactivity.legacy_reactive().iter_statements_topo() {
         statements.push((statement.stmt_node, statement.structural_reads.clone()));
         for &target in &statement.assignments {
             let reads = reads_by_target.entry(target).or_default();
-            for &read in &statement.structural_reads {
-                if !reads.contains(&read) {
-                    reads.push(read);
+            for read in &statement.structural_reads {
+                let LegacyReactiveDep::Binding(read) = read else {
+                    continue;
+                };
+                if !reads.contains(read) {
+                    reads.push(*read);
                 }
             }
         }
@@ -331,13 +335,20 @@ fn promote_each_sources_transitive_legacy(
         return;
     }
 
-    let mut rederived: Vec<(OxcNodeId, SmallVec<[SymbolId; 8]>)> =
+    let mut rederived: Vec<(OxcNodeId, SmallVec<[LegacyReactiveDep; 8]>)> =
         Vec::with_capacity(statements.len());
     for (stmt_node, structural_reads) in &statements {
-        let mut dependencies: SmallVec<[SymbolId; 8]> = SmallVec::new();
-        for &sym in structural_reads {
-            if legacy_reactive::is_reactive_legacy_dep(reactivity.binding_semantics(sym)) {
-                dependencies.push(sym);
+        let mut dependencies: SmallVec<[LegacyReactiveDep; 8]> = SmallVec::new();
+        for read in structural_reads {
+            match read {
+                LegacyReactiveDep::Binding(sym) => {
+                    if legacy_reactive::is_reactive_legacy_dep(reactivity.binding_semantics(*sym)) {
+                        dependencies.push(*read);
+                    }
+                }
+                LegacyReactiveDep::PropsObject | LegacyReactiveDep::RestPropsObject => {
+                    dependencies.push(*read);
+                }
             }
         }
         rederived.push((*stmt_node, dependencies));

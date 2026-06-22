@@ -6,7 +6,8 @@ use oxc_span::SPAN;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::AnalysisData;
 use svelte_analyze::reactivity_semantics::legacy_reactive::{
-    LegacyReactiveKind, LegacyReactiveStatement, legacy_reactive_import_wrapper_name,
+    LegacyReactiveDep, LegacyReactiveKind, LegacyReactiveStatement,
+    legacy_reactive_import_wrapper_name,
 };
 use svelte_analyze::types::data::{BindingSemantics, binding_group_name};
 use svelte_ast_builder::{Arg, Builder};
@@ -151,19 +152,19 @@ fn build_deps_thunk<'a>(
     stmt: &LegacyReactiveStatement,
     analysis: &AnalysisData<'a>,
 ) -> Expression<'a> {
-    let mut dep_exprs: Vec<Expression<'a>> = stmt
-        .dependencies
-        .iter()
-        .map(|&sym| build_dep_read(b, sym, analysis))
-        .collect();
-    if stmt.uses_props {
-        dep_exprs.push(b.call_expr(
-            "$.deep_read_state",
-            [Arg::Expr(b.rid_expr("$$sanitized_props"))],
-        ));
-    }
-    if stmt.uses_rest_props {
-        dep_exprs.push(b.call_expr("$.deep_read_state", [Arg::Expr(b.rid_expr("$$restProps"))]));
+    let mut dep_exprs: Vec<Expression<'a>> = Vec::with_capacity(stmt.dependencies.len());
+    for dep in &stmt.dependencies {
+        let expr = match dep {
+            LegacyReactiveDep::Binding(sym) => build_dep_read(b, *sym, analysis),
+            LegacyReactiveDep::PropsObject => b.call_expr(
+                "$.deep_read_state",
+                [Arg::Expr(b.rid_expr("$$sanitized_props"))],
+            ),
+            LegacyReactiveDep::RestPropsObject => {
+                b.call_expr("$.deep_read_state", [Arg::Expr(b.rid_expr("$$restProps"))])
+            }
+        };
+        dep_exprs.push(expr);
     }
 
     if dep_exprs.is_empty() {

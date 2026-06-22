@@ -17,7 +17,9 @@ use svelte_component_semantics::{
 };
 
 use super::super::data::{BindingSemantics, LegacyStateSemantics, ReferenceFacts};
-use super::super::legacy_reactive::{LegacyReactiveKind, LegacyReactiveStatement};
+use super::super::legacy_reactive::{
+    LegacyReactiveDep, LegacyReactiveKind, LegacyReactiveStatement,
+};
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 
@@ -420,20 +422,21 @@ fn build_statement<'a>(
         structural_reads: SmallVec::new(),
         seen_structural: FxHashSet::default(),
         direct_assign_skip: FxHashSet::default(),
-        uses_props: false,
-        uses_rest_props: false,
+        seen_props_dep: false,
+        seen_rest_props_dep: false,
     };
     analyzer.visit_statement(&labeled.body);
     let read_deps = analyzer.read_deps;
-    analyzer.dependencies.retain(|s| read_deps.contains(s));
+    analyzer.dependencies.retain(|dep| match dep {
+        LegacyReactiveDep::Binding(sym) => read_deps.contains(sym),
+        LegacyReactiveDep::PropsObject | LegacyReactiveDep::RestPropsObject => true,
+    });
     LegacyReactiveStatement {
         stmt_node: labeled.node_id(),
         kind,
         assignments: analyzer.assignments,
         dependencies: analyzer.dependencies,
         structural_reads: analyzer.structural_reads,
-        uses_props: analyzer.uses_props,
-        uses_rest_props: analyzer.uses_rest_props,
     }
 }
 
@@ -441,15 +444,15 @@ struct LegacyBodyAnalyzer<'d, 'a> {
     data: &'d AnalysisData<'a>,
     implicit_map: &'d FxHashMap<CompactString, SymbolId>,
     assignments: SmallVec<[SymbolId; 4]>,
-    dependencies: SmallVec<[SymbolId; 8]>,
+    dependencies: SmallVec<[LegacyReactiveDep; 8]>,
     seen_assignments: FxHashSet<SymbolId>,
     seen_deps: FxHashSet<SymbolId>,
     read_deps: FxHashSet<SymbolId>,
-    structural_reads: SmallVec<[SymbolId; 8]>,
+    structural_reads: SmallVec<[LegacyReactiveDep; 8]>,
     seen_structural: FxHashSet<SymbolId>,
     direct_assign_skip: FxHashSet<ReferenceId>,
-    uses_props: bool,
-    uses_rest_props: bool,
+    seen_props_dep: bool,
+    seen_rest_props_dep: bool,
 }
 
 impl<'a> LegacyBodyAnalyzer<'_, 'a> {
@@ -542,7 +545,7 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
             return;
         }
         if self.seen_deps.insert(sym) {
-            self.dependencies.push(sym);
+            self.dependencies.push(LegacyReactiveDep::Binding(sym));
         }
     }
 
@@ -558,7 +561,7 @@ impl<'a> LegacyBodyAnalyzer<'_, 'a> {
                 self.assignments.push(sym);
             }
             if self.is_reactive_dep(sym) && self.seen_deps.insert(sym) {
-                self.dependencies.push(sym);
+                self.dependencies.push(LegacyReactiveDep::Binding(sym));
             }
         }
     }
@@ -622,21 +625,34 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
             .or_else(|| self.implicit_map.get(ident.name.as_str()).copied());
         let Some(sym) = sym else {
             match ident.name.as_str() {
-                "$$props" => self.uses_props = true,
-                "$$restProps" => self.uses_rest_props = true,
+                "$$props" => {
+                    if !self.seen_props_dep {
+                        self.seen_props_dep = true;
+                        self.dependencies.push(LegacyReactiveDep::PropsObject);
+                        self.structural_reads.push(LegacyReactiveDep::PropsObject);
+                    }
+                }
+                "$$restProps" => {
+                    if !self.seen_rest_props_dep {
+                        self.seen_rest_props_dep = true;
+                        self.dependencies.push(LegacyReactiveDep::RestPropsObject);
+                        self.structural_reads
+                            .push(LegacyReactiveDep::RestPropsObject);
+                    }
+                }
                 _ => {}
             }
             return;
         };
         if self.data.scoping.is_component_top_level_symbol(sym) && self.seen_structural.insert(sym)
         {
-            self.structural_reads.push(sym);
+            self.structural_reads.push(LegacyReactiveDep::Binding(sym));
         }
         if !self.is_reactive_dep(sym) {
             return;
         }
         if self.seen_deps.insert(sym) {
-            self.dependencies.push(sym);
+            self.dependencies.push(LegacyReactiveDep::Binding(sym));
         }
         self.read_deps.insert(sym);
     }
@@ -762,7 +778,11 @@ fn visit_node(
     visiting.push(idx);
     visiting_set.insert(idx);
     let stmt = &statements[idx];
-    for &dep_sym in &stmt.dependencies {
+    for dep in &stmt.dependencies {
+        let LegacyReactiveDep::Binding(dep_sym) = dep else {
+            continue;
+        };
+        let dep_sym = *dep_sym;
         if stmt.assignments.contains(&dep_sym) {
             continue;
         }
