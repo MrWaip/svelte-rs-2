@@ -1568,6 +1568,10 @@ mod stores {
         "stores/scoped_sub_rune_state_toplevel_base_nested"
     );
     diagnostic_case!(
+        scoped_sub_store_sibling_scope_not_flagged,
+        "stores/scoped_sub_store_sibling_scope_not_flagged"
+    );
+    diagnostic_case!(
         validate_store_invalid_subscription_in_module,
         "stores/validate_store_invalid_subscription_in_module"
     );

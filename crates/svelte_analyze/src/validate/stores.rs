@@ -86,6 +86,19 @@ pub(super) fn validate(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    for &ref_id in data.scoping.scoped_store_subscription_refs() {
+        let Some(span) = earliest_reference_span(data, &[ref_id]) else {
+            continue;
+        };
+        diags.push(Diagnostic::error(
+            DiagnosticKind::StoreInvalidScopedSubscription,
+            Span {
+                start: span.start,
+                end: span.end,
+            },
+        ));
+    }
+
     let mut v = StoreValidator { diags, data };
     v.visit_program(program);
 }
@@ -100,30 +113,6 @@ impl StoreValidator<'_> {
         Span {
             start: oxc_span.start,
             end: oxc_span.end,
-        }
-    }
-
-    fn check_scoped_subscription(&mut self, ident: &IdentifierReference<'_>) {
-        let name = ident.name.as_str();
-        if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
-            return;
-        }
-        if self.data.reactivity.uses_runes() && svelte_ast::is_rune_name(name) {
-            return;
-        }
-        let base = &name[1..];
-
-        let root = self.data.scoping.root_scope_id();
-
-        if self.data.scoping.find_binding(root, base).is_some() {
-            return;
-        }
-
-        if self.data.scoping.find_binding_in_any_scope(base).is_some() {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::StoreInvalidScopedSubscription,
-                self.span(ident.span()),
-            ));
         }
     }
 }
@@ -181,16 +170,14 @@ impl StandaloneModuleStoreValidator<'_> {
 
 impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
-        let name = ident.name.as_str();
-        if !name.starts_with('$') || name.len() <= 1 || name.starts_with("$$") {
+        let Some(ref_id) = ident.reference_id.get() else {
             return;
-        }
-        let root = self.data.scoping.root_scope_id();
+        };
         if self
             .data
-            .scoping
-            .find_binding(root, name)
-            .is_some_and(|sym| self.data.binding_semantics(sym).is_store())
+            .reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
         {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::StoreInvalidSubscription,
@@ -262,10 +249,6 @@ impl StoreValidator<'_> {
 }
 
 impl<'ast> Visit<'ast> for StoreValidator<'_> {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
-        self.check_scoped_subscription(ident);
-    }
-
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
         self.check_store_rune_conflict(call);
         walk_call_expression(self, call);
