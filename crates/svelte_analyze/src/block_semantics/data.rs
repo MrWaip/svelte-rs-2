@@ -180,11 +180,27 @@ pub enum AwaitWrapper {
     AsyncWrap { blockers: SmallVec<[u32; 2]> },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnippetPlacement {
+    ModuleLevel,
+    InstanceLevel,
+    Local,
+}
+
+impl SnippetPlacement {
+    pub fn is_module_level(self) -> bool {
+        match self {
+            SnippetPlacement::ModuleLevel => true,
+            SnippetPlacement::InstanceLevel | SnippetPlacement::Local => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetBlockSemantics {
     pub name: SymbolId,
 
-    pub hoistable: bool,
+    pub placement: SnippetPlacement,
 
     pub params: SmallVec<[SnippetParam; 4]>,
 }

@@ -34,7 +34,7 @@ pub use block_semantics::{
     EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
     EachKeyKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
     KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
-    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

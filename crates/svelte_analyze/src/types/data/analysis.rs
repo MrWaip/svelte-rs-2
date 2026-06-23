@@ -380,6 +380,12 @@ impl<'a> AnalysisData<'a> {
             .lookup_by_id(id)
             .is_some_and(FragmentFactsEntry::has_direct_animate_child)
     }
+    pub fn fragment_has_direct_snippet_child_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_direct_snippet_child)
+    }
     pub fn fragment_has_rich_content_by_id(
         &self,
         id: svelte_ast::FragmentId,

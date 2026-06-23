@@ -40,6 +40,9 @@ mod component_props;
 #[path = "clusters/snippet_hoist.rs"]
 mod snippet_hoist;
 
+#[path = "clusters/snippet_placement.rs"]
+mod snippet_placement;
+
 #[path = "clusters/css_scope_svelte_fragment.rs"]
 mod css_scope_svelte_fragment;
 

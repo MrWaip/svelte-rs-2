@@ -256,7 +256,7 @@ fn validate_snippet_exports(
             let snippet = component.store.get(id).as_snippet_block()?;
             let hoistable = matches!(
                 data.block_semantics(id),
-                BlockSemantics::Snippet(sem) if sem.hoistable
+                BlockSemantics::Snippet(sem) if sem.placement.is_module_level()
             );
             Some((snippet.name(&component.source), hoistable))
         })

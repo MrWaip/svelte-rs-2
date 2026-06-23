@@ -1,4 +1,4 @@
-use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
+use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement};
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
 use super::walker::{Ctx, SnippetScope};
 use oxc_ast::ast::{
@@ -32,7 +32,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
         block.id,
         BlockSemantics::Snippet(SnippetBlockSemantics {
             name,
-            hoistable: false,
+            placement: SnippetPlacement::Local,
             params,
         }),
     );
@@ -91,7 +91,7 @@ fn classify_param<'a>(param: &FormalParameter<'a>) -> Option<SnippetParam> {
 #[cfg(test)]
 mod tests {
     use crate::tests::analyze_source;
-    use crate::{BlockSemantics, SnippetBlockSemantics, SnippetParam};
+    use crate::{BlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement};
     use svelte_ast::{Component, Node, SnippetBlock};
 
     fn first_snippet(component: &Component) -> &SnippetBlock {
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn snippet_plain_ident() {
         with_snippet(r#"{#snippet row(item)}<p>{item()}</p>{/snippet}"#, |sem| {
-            assert!(sem.hoistable);
+            assert_eq!(sem.placement, SnippetPlacement::ModuleLevel);
             assert_eq!(sem.params.len(), 1);
             assert!(matches!(sem.params[0], SnippetParam::Identifier { .. }));
         });
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn snippet_hoistable_top_level() {
         with_snippet(r#"{#snippet row(a)}<p>{a()}</p>{/snippet}"#, |sem| {
-            assert!(sem.hoistable);
+            assert_eq!(sem.placement, SnippetPlacement::ModuleLevel);
         });
     }
 
@@ -223,7 +223,7 @@ mod tests {
         with_snippet(
             r#"{#if true}{#snippet row(a)}<p>{a()}</p>{/snippet}{/if}"#,
             |sem| {
-                assert!(!sem.hoistable);
+                assert_eq!(sem.placement, SnippetPlacement::Local);
             },
         );
     }
@@ -234,7 +234,7 @@ mod tests {
             r#"<script>import { noop } from "./helpers.js";</script>
 {#snippet row()}<p>{noop}</p>{/snippet}"#,
             |sem| {
-                assert!(sem.hoistable);
+                assert_eq!(sem.placement, SnippetPlacement::ModuleLevel);
             },
         );
     }
@@ -245,7 +245,7 @@ mod tests {
             r#"<script>let x = $state(10);</script>
 {#snippet row(a = x)}<p>{a()}</p>{/snippet}"#,
             |sem| {
-                assert!(!sem.hoistable);
+                assert_eq!(sem.placement, SnippetPlacement::InstanceLevel);
             },
         );
     }

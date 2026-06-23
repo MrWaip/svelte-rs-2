@@ -1258,7 +1258,7 @@ fn assert_snippet_hoistable(
     let block = find_snippet_block(component.root, component, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     let actual = match data.block_semantics(block.id) {
-        BlockSemantics::Snippet(s) => s.hoistable,
+        BlockSemantics::Snippet(s) => s.placement.is_module_level(),
         other => panic!("expected Snippet payload for '{name}', got {other:?}"),
     };
     assert_eq!(

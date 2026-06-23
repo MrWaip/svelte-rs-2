@@ -16,7 +16,6 @@ pub(crate) struct EmitState<'a> {
     pub shared_memo: TemplateMemoState<'a>,
     pub script_blockers: Vec<u32>,
     pub extra_blockers: Vec<Expression<'a>>,
-    pub local_snippet_decls: Option<Vec<Statement<'a>>>,
     pub skip_snippets: bool,
     pub last_fragment_needs_reset: bool,
     pub pending_element_init: Vec<Statement<'a>>,

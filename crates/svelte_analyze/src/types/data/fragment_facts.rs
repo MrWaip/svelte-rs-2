@@ -9,6 +9,7 @@ pub struct FragmentFactsEntry {
     has_expression_child: bool,
     single_expression_child: Option<NodeId>,
     has_direct_animate_child: bool,
+    has_direct_snippet_child: bool,
 }
 
 impl FragmentFactsEntry {
@@ -36,6 +37,10 @@ impl FragmentFactsEntry {
                 .any(|attr| matches!(attr, Attribute::AnimateDirective(_))),
             _ => false,
         });
+        let has_direct_snippet_child = fragment
+            .nodes
+            .iter()
+            .any(|&id| matches!(store.get(id), Node::SnippetBlock(_)));
         let mut non_trivial_children = fragment
             .nodes
             .iter()
@@ -61,6 +66,7 @@ impl FragmentFactsEntry {
             has_expression_child,
             single_expression_child,
             has_direct_animate_child,
+            has_direct_snippet_child,
         }
     }
 
@@ -98,6 +104,10 @@ impl FragmentFactsEntry {
 
     pub fn has_direct_animate_child(&self) -> bool {
         self.has_direct_animate_child
+    }
+
+    pub fn has_direct_snippet_child(&self) -> bool {
+        self.has_direct_snippet_child
     }
 }
 

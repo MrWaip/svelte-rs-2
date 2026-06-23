@@ -10,7 +10,7 @@ use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
 use svelte_analyze::{
     AttributeSemantics, ComponentCssProp, ComponentCssPropValue, ComponentPropMemo,
-    ComponentPropSemantics, Volatility,
+    ComponentPropSemantics, SnippetPlacement, Volatility,
 };
 use svelte_ast::{FragmentRole, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
@@ -144,6 +144,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | ContentStrategy::CssWrappedComponent(_)
         );
 
+        let mut local_snippets: SmallVec<[NodeId; 4]> = SmallVec::new();
+        let mut hoisted_snippets: SmallVec<[NodeId; 4]> = SmallVec::new();
+        for &id in &bucket.snippets {
+            match self.snippet_placement(id) {
+                SnippetPlacement::Local => local_snippets.push(id),
+                SnippetPlacement::ModuleLevel | SnippetPlacement::InstanceLevel => {
+                    hoisted_snippets.push(id)
+                }
+            }
+        }
+        local_snippets.sort_by_key(|id| id.0);
+        for id in local_snippets {
+            self.emit_inline_snippet_block(state, id)?;
+        }
+
         {
             use svelte_analyze::{BlockSemantics, ConstTagAsyncKind};
             let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
@@ -230,12 +245,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let init_len_before = state.init.len();
-        let emit_snippets_here = is_root_anchor;
         let mut ordered: SmallVec<[(NodeId, HoistedDispatchKind); 4]> = SmallVec::new();
-        if emit_snippets_here {
-            for &id in &bucket.snippets {
-                ordered.push((id, HoistedDispatchKind::Snippet));
-            }
+        for &id in &hoisted_snippets {
+            ordered.push((id, HoistedDispatchKind::Snippet));
         }
         for &id in &bucket.svelte_head {
             ordered.push((id, HoistedDispatchKind::SvelteHead));
@@ -263,11 +275,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for (id, kind) in ordered {
             match kind {
                 HoistedDispatchKind::Snippet => {
-                    if ctx.in_block_callback {
-                        self.emit_inline_snippet_block(state, id)?;
-                    } else {
-                        self.emit_hoisted_snippet(state, ctx, id)?;
-                    }
+                    self.emit_hoisted_snippet(state, ctx, id)?;
                 }
                 HoistedDispatchKind::SvelteHead => {
                     self.emit_hoisted_svelte_head(state, ctx, id)?;
@@ -417,11 +425,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         state.last_fragment_needs_reset = needs_reset;
 
-        if !is_root_anchor {
-            for &id in &bucket.snippets {
-                self.emit_local_snippet_block(state, id)?;
-            }
-        }
         for &id in &bucket.titles {
             self.emit_title_element(state, ctx, id)?;
         }

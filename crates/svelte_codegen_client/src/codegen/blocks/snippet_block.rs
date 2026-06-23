@@ -2,7 +2,7 @@ use std::mem;
 
 use oxc_ast::ast::{BindingPattern, Expression, FormalParameter, FormalParameters, Statement};
 use oxc_span::SPAN;
-use svelte_analyze::SnippetBlockSemantics;
+use svelte_analyze::{SnippetBlockSemantics, SnippetPlacement};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -27,14 +27,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if state.skip_snippets {
             return Ok(());
         }
-        let is_hoistable = sem.hoistable;
         let stmt = self.build_snippet_const(id, &sem)?;
-        if let Some(local) = state.local_snippet_decls.as_mut() {
-            local.push(stmt);
-        } else if is_hoistable {
-            self.hoistable_snippets.push(stmt);
-        } else {
-            self.instance_snippets.push(stmt);
+        match sem.placement {
+            SnippetPlacement::ModuleLevel => self.hoistable_snippets.push(stmt),
+            SnippetPlacement::InstanceLevel | SnippetPlacement::Local => {
+                self.instance_snippets.push(stmt)
+            }
         }
         Ok(())
     }

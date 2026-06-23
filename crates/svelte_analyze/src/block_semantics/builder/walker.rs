@@ -2,7 +2,7 @@ use crate::expression_semantics::{ExpressionSemantics, ExpressionSemanticsStore}
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
 
-use super::super::BlockSemanticsStore;
+use super::super::{BlockSemanticsStore, SnippetPlacement};
 use super::common::declarator_from_stmt;
 
 use oxc_ast::ast::IdentifierReference;
@@ -109,9 +109,12 @@ fn finalize_hoistable(
         if !entry.top_level {
             continue;
         }
-        if !tainted.contains(&entry.block_id) {
-            store.set_snippet_hoistable(entry.block_id, true);
-        }
+        let placement = if tainted.contains(&entry.block_id) {
+            SnippetPlacement::InstanceLevel
+        } else {
+            SnippetPlacement::ModuleLevel
+        };
+        store.set_snippet_placement(entry.block_id, placement);
     }
 }
 

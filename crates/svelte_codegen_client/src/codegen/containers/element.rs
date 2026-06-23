@@ -204,6 +204,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let my_pre_update = mem::take(&mut state.pending_pre_update);
         state.pending_pre_update = prev_pending_pre_update;
 
+        let mut snippet_wrap_start: Option<usize> = None;
+
         if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
                 self.emit_customizable_select(state, ctx, el_id, &el_name, el_ns)?;
@@ -231,6 +233,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(&el_name)]));
                 state.last_fragment_needs_reset = false;
             } else {
+                if self.element_emits_local_snippet(state, el.fragment) {
+                    snippet_wrap_start = Some(state.init.len());
+                }
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
                     &el_name_hint,
@@ -272,9 +277,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
+        if let Some(start) = snippet_wrap_start {
+            let drained: Vec<Statement<'a>> = state.init.drain(start..).collect();
+            state.init.push(self.ctx.b.block_stmt(drained));
+        }
+
         state.template.pop_element();
 
         Ok(el_name)
+    }
+
+    fn element_emits_local_snippet(
+        &self,
+        state: &EmitState<'a>,
+        fragment_id: svelte_ast::FragmentId,
+    ) -> bool {
+        if state.skip_snippets {
+            return false;
+        }
+        self.ctx
+            .query
+            .analysis
+            .fragment_has_direct_snippet_child_by_id(fragment_id)
     }
 
     fn emit_element_directives(
