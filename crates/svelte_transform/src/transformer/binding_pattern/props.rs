@@ -263,7 +263,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             {
                                 default_expr
                             } else {
-                                let lazy = super::super::derived::wrap_lazy(self.b, default_expr);
+                                let lazy = super::derived::wrap_lazy(self.b, default_expr);
                                 self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
                                 lazy
                             };

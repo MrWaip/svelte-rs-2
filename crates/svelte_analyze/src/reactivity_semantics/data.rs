@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -533,6 +535,14 @@ pub enum DerivedEmit {
     Async,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DerivedSource {
+    #[default]
+    Computed,
+
+    Passthrough,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PropBindingSemantics {
     pub emit_mode: PropEmitMode,
@@ -689,6 +699,7 @@ pub enum DeclaratorSemantics {
     RuneDerived {
         kind: DerivedKind,
         emit: DerivedEmit,
+        source: DerivedSource,
     },
 
     ConstTag {
@@ -1588,6 +1599,10 @@ pub struct ReactivitySemantics {
 
     declarators: IndexVec<OxcNodeId, Option<DeclaratorSemantics>>,
 
+    declarator_node_by_symbol: FxHashMap<SymbolId, OxcNodeId>,
+
+    deferred_derived_sources: Vec<(OxcNodeId, ReferenceId)>,
+
     store_declaration_symbols: Vec<SymbolId>,
 
     reference_facts: IndexVec<ReferenceId, Option<ReferenceFacts>>,
@@ -1647,6 +1662,8 @@ impl ReactivitySemantics {
         Self {
             bindings: IndexVec::new(),
             declarators,
+            declarator_node_by_symbol: FxHashMap::default(),
+            deferred_derived_sources: Vec::new(),
             store_declaration_symbols: Vec::new(),
             reference_facts: IndexVec::new(),
             class_field_semantics: FxHashMap::default(),
@@ -1765,6 +1782,61 @@ impl ReactivitySemantics {
             .and_then(|slot| slot.as_ref())
             .cloned()
             .unwrap_or(DeclaratorSemantics::None)
+    }
+
+    pub(crate) fn record_declarator_node_for_symbol(&mut self, sym: SymbolId, node: OxcNodeId) {
+        self.declarator_node_by_symbol.entry(sym).or_insert(node);
+    }
+
+    pub(crate) fn consolidate_legacy_state_declarators(&mut self) {
+        let pending: Vec<OxcNodeId> = self
+            .bindings
+            .iter_enumerated()
+            .filter_map(|(sym, facts)| {
+                if !matches!(facts, Some(BindingFacts::LegacyState(_))) {
+                    return None;
+                }
+                let node = self.declarator_node_by_symbol.get(&sym).copied()?;
+                self.declarators
+                    .get(node)
+                    .and_then(|slot| slot.as_ref())
+                    .is_none()
+                    .then_some(node)
+            })
+            .collect();
+        for node in pending {
+            self.write_declarator(node, DeclaratorSemantics::LegacyState);
+        }
+    }
+
+    pub(crate) fn record_deferred_derived_source(&mut self, node: OxcNodeId, source: ReferenceId) {
+        self.deferred_derived_sources.push((node, source));
+    }
+
+    pub(crate) fn classify_derived_sources(&mut self) {
+        let deferred = mem::take(&mut self.deferred_derived_sources);
+        for (node, ref_id) in deferred {
+            let is_passthrough = matches!(
+                self.reference_semantics(ref_id),
+                ReferenceSemantics::StoreRead { .. }
+                    | ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+            );
+            if !is_passthrough {
+                continue;
+            }
+            if let DeclaratorSemantics::RuneDerived { kind, emit, .. } =
+                self.declarator_semantics(node)
+            {
+                self.write_declarator(
+                    node,
+                    DeclaratorSemantics::RuneDerived {
+                        kind,
+                        emit,
+                        source: DerivedSource::Passthrough,
+                    },
+                );
+            }
+        }
     }
 
     pub fn iter_store_bindings(

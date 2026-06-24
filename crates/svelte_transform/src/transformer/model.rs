@@ -84,9 +84,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) runes: bool,
     pub(crate) accessors: bool,
     pub(crate) immutable: bool,
-    pub(crate) derived_pending: FxHashSet<SymbolId>,
-
-    pub(crate) async_derived_pending: FxHashMap<SymbolId, AsyncDerivedMode>,
     pub(crate) strip_exports: bool,
     pub(crate) dev: bool,
     pub(crate) function_info_stack: Vec<FunctionInfo>,

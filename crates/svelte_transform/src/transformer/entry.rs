@@ -42,8 +42,6 @@ pub fn transform_script<'a, 'b>(
         runes,
         accessors,
         immutable,
-        derived_pending: rustc_hash::FxHashSet::default(),
-        async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports,
         dev,
         function_info_stack: Vec::new(),
@@ -72,21 +70,6 @@ pub fn transform_script<'a, 'b>(
 
     if let Some(analysis) = analysis {
         super::legacy_reactive::rewrite_legacy_reactive(b, program, analysis);
-    }
-
-    if !transformer.derived_pending.is_empty() {
-        let dev_ctx = dev.then_some(super::derived::DevContext {
-            component_line_index,
-            filename,
-            ignore_query: transformer.ignore_query,
-        });
-        super::derived::wrap_derived_thunks(
-            b,
-            program,
-            &transformer.derived_pending,
-            &transformer.async_derived_pending,
-            dev_ctx.as_ref(),
-        );
     }
 
     TransformScriptOutput {

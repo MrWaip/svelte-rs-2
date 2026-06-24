@@ -1,6 +1,22 @@
 use super::*;
 
 compiler_case!(
+    declaration_nested_function_sync,
+    "runes/derived/declaration/nested_function_sync"
+);
+compiler_case!(
+    declaration_nested_effect_sync,
+    "runes/derived/declaration/nested_effect_sync"
+);
+compiler_case!(
+    declaration_nested_effect_root_sync,
+    "runes/derived/declaration/nested_effect_root_sync"
+);
+compiler_case!(
+    declaration_nested_function_derived_by,
+    "runes/derived/declaration/nested_function_derived_by"
+);
+compiler_case!(
     declaration_array_with_object,
     "runes/derived/declaration/array_with_object"
 );

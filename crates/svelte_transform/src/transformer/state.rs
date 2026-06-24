@@ -17,7 +17,7 @@ use svelte_analyze::{
 
 use svelte_ast_builder::Arg;
 
-use super::model::{AsyncDerivedMode, ClassStateField, ClassStateInfo, ComponentTransformer};
+use super::model::{ClassStateField, ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     pub(crate) fn state_destructure_dev_label(
@@ -42,47 +42,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             | DeclaratorSemantics::ClassFieldDerived(_)) => Some(declarator),
             _ => None,
         }
-    }
-
-    pub(crate) fn wrap_state_value(
-        &self,
-        value: Expression<'a>,
-        state_kind: StateKind,
-        is_signal_source: bool,
-        proxied: bool,
-    ) -> Expression<'a> {
-        let value = value.into_inner_expression();
-        match state_kind {
-            StateKind::State => {
-                let proxied = if proxied {
-                    self.b.call_expr("$.proxy", [Arg::Expr(value)])
-                } else {
-                    value
-                };
-                if is_signal_source {
-                    self.b.call_expr("$.state", [Arg::Expr(proxied)])
-                } else {
-                    proxied
-                }
-            }
-            StateKind::StateRaw => {
-                if is_signal_source {
-                    self.b.call_expr("$.state", [Arg::Expr(value)])
-                } else {
-                    value
-                }
-            }
-            StateKind::StateEager => value,
-        }
-    }
-
-    pub(crate) fn wrap_derived_value(&self, value: Expression<'a>) -> Expression<'a> {
-        let value = value.into_inner_expression();
-        let thunk = self
-            .b
-            .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
-        self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
-        self.b.call_expr("$.derived", [Arg::Expr(thunk)])
     }
 
     pub(crate) fn scan_class_state_fields(&self, body: &ClassBody<'a>) -> ClassStateInfo {
@@ -550,14 +509,6 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                     }
                 }
             }
-        }
-    }
-
-    pub(crate) fn async_derived_mode(&self) -> AsyncDerivedMode {
-        if self.strip_exports && self.function_info_stack.len() > 1 {
-            AsyncDerivedMode::Save
-        } else {
-            AsyncDerivedMode::Await
         }
     }
 

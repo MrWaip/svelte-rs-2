@@ -42,8 +42,6 @@ pub(crate) fn run_template<'a, 'b>(
         runes: false,
         accessors: false,
         immutable: false,
-        derived_pending: rustc_hash::FxHashSet::default(),
-        async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports: false,
         dev,
         function_info_stack: Vec::new(),

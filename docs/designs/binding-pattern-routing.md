@@ -146,6 +146,13 @@ Consumer machinery (not analysis API):
    from the payload — precisely because they violate "no emit-form in analysis" and "flat per-id
    semantics".
 
+### Single-identifier declarations
+
+`rewrite_binding_declarations` is the door for both forms — `const a = $rune(…)` and
+`const {a} = $rune(…)`: analysis records `declarator_semantics` for the single identifier too, so it
+dispatches by kind like any other declarator, with the single-identifier case as the degenerate
+`walk_bindings` (empty path).
+
 ## Unfold (client emit)
 
 The heart of the unfold in each door is traversing `BindingPattern` via `walk_bindings`: at each leaf the
