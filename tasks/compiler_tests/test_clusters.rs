@@ -183,3 +183,6 @@ mod element_reset;
 
 #[path = "clusters/closing_tag.rs"]
 mod closing_tag;
+
+#[path = "clusters/template_runes.rs"]
+mod template_runes;
