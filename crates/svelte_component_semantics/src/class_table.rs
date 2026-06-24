@@ -5,6 +5,8 @@ use oxc_ast::ast::{
 use oxc_syntax::node::NodeId as OxcNodeId;
 use rustc_hash::FxHashMap;
 
+use crate::storage::format_numeric_origin;
+
 #[derive(Debug, Clone)]
 pub struct ClassFieldDecl {
     pub name: CompactString,
@@ -63,7 +65,7 @@ fn collect_fields(class: &Class<'_>) -> Vec<ClassFieldDecl> {
         let ClassElement::PropertyDefinition(prop) = element else {
             continue;
         };
-        if prop.value.is_none() {
+        if prop.value.is_none() || prop.computed {
             continue;
         }
         let Some((name, is_private)) = key_name(&prop.key) else {
@@ -136,6 +138,20 @@ fn assignment_target_field(target: &AssignmentTarget<'_>) -> Option<(CompactStri
             }
             Some((CompactString::from(member.field.name.as_str()), true))
         }
+        AssignmentTarget::ComputedMemberExpression(member) => {
+            if !matches!(&member.object, Expression::ThisExpression(_)) {
+                return None;
+            }
+            match &member.expression {
+                Expression::StringLiteral(s) => {
+                    Some((CompactString::from(s.value.as_str()), false))
+                }
+                Expression::NumericLiteral(n) => {
+                    Some((CompactString::from(format_numeric_origin(n.value)), false))
+                }
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -147,6 +163,10 @@ fn key_name(key: &PropertyKey<'_>) -> Option<(CompactString, bool)> {
         }
         PropertyKey::StaticIdentifier(ident) => {
             Some((CompactString::from(ident.name.as_str()), false))
+        }
+        PropertyKey::StringLiteral(s) => Some((CompactString::from(s.value.as_str()), false)),
+        PropertyKey::NumericLiteral(n) => {
+            Some((CompactString::from(format_numeric_origin(n.value)), false))
         }
         _ => None,
     }

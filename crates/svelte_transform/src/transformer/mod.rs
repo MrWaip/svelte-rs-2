@@ -46,7 +46,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         }
 
         let info = self.scan_class_state_fields(node);
-        if info.fields.is_empty() {
+        if info.is_empty() {
             return;
         }
         self.rewrite_class_body(node, &info);

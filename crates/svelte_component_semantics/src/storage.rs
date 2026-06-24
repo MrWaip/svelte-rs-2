@@ -26,7 +26,7 @@ pub enum OriginKind {
     Numeric,
 }
 
-fn format_numeric_origin(value: f64) -> String {
+pub(crate) fn format_numeric_origin(value: f64) -> String {
     if value.is_finite() && value.fract() == 0.0 {
         format!("{}", value as i64)
     } else {

@@ -129,6 +129,13 @@ impl<'a> Builder<'a> {
         )
     }
 
+    pub fn key(&self, name: &str) -> ast::PropertyKey<'a> {
+        if is_valid_identifier(name) {
+            return self.public_key(name);
+        }
+        ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(name)))
+    }
+
     pub fn this_private_member(&self, name: &str) -> Expression<'a> {
         let this_expr = self.ast.expression_this(SPAN);
         self.private_member(this_expr, name)
@@ -139,5 +146,45 @@ impl<'a> Builder<'a> {
             self.ast
                 .private_field_expression(SPAN, object, self.private_identifier(name), false);
         Expression::PrivateFieldExpression(self.alloc(field))
+    }
+}
+
+pub fn is_valid_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_' || first == '$') {
+        return false;
+    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_identifier;
+
+    #[track_caller]
+    fn assert_identifier_validity(cases: &[(&str, bool)]) {
+        for &(name, expected) in cases {
+            let got = is_valid_identifier(name);
+            assert_eq!(
+                got, expected,
+                "is_valid_identifier({name:?}): expected {expected}, got {got}"
+            );
+        }
+    }
+
+    #[test]
+    fn distinguishes_identifiers_from_literal_keys() {
+        assert_identifier_validity(&[
+            ("count", true),
+            ("$x", true),
+            ("_y", true),
+            ("0", false),
+            ("1", false),
+            ("aria-pressed", false),
+            ("", false),
+        ]);
     }
 }

@@ -2296,7 +2296,10 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             }
             if !matches!(
                 &prop.key,
-                PropertyKey::StaticIdentifier(_) | PropertyKey::PrivateIdentifier(_)
+                PropertyKey::StaticIdentifier(_)
+                    | PropertyKey::PrivateIdentifier(_)
+                    | PropertyKey::StringLiteral(_)
+                    | PropertyKey::NumericLiteral(_)
             ) {
                 continue;
             }
@@ -2340,6 +2343,15 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
                     member.object.get_inner_expression()
                 }
                 AssignmentTarget::PrivateFieldExpression(member) => {
+                    member.object.get_inner_expression()
+                }
+                AssignmentTarget::ComputedMemberExpression(member) => {
+                    if !matches!(
+                        member.expression.get_inner_expression(),
+                        Expression::StringLiteral(_) | Expression::NumericLiteral(_)
+                    ) {
+                        continue;
+                    }
                     member.object.get_inner_expression()
                 }
                 _ => continue,

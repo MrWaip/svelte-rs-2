@@ -163,6 +163,22 @@ compiler_case!(
     class_field_typescript_private_field,
     "runes/state/class_field/typescript_private_field"
 );
+compiler_case!(
+    class_field_numeric_keys,
+    "runes/state/class_field/numeric_keys"
+);
+compiler_case!(
+    class_field_string_literal_key,
+    "runes/state/class_field/string_literal_key"
+);
+compiler_case!(
+    class_field_numeric_key_ctor_computed,
+    "runes/state/class_field/numeric_key_ctor_computed"
+);
+compiler_case!(
+    class_field_private_method_collision,
+    "runes/state/class_field/private_method_collision"
+);
 compiler_case!(declaration_alias, "runes/state/declaration/alias");
 compiler_case!(declaration_array_hole, "runes/state/declaration/array_hole");
 compiler_case!(

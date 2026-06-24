@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::iter;
 use std::mem;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Box as OxcBox;
 use oxc_ast::ast::{
@@ -16,8 +15,9 @@ use svelte_analyze::{
 };
 
 use svelte_ast_builder::Arg;
+use svelte_component_semantics::ClassFieldDecl;
 
-use super::model::{ClassStateField, ClassStateInfo, ComponentTransformer};
+use super::model::{ClassStateInfo, ComponentTransformer};
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
     pub(crate) fn state_destructure_dev_label(
@@ -54,89 +54,80 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         let mut body_private_field_names: FxHashSet<String> = FxHashSet::default();
         let mut placeholder_public_names: FxHashSet<String> = FxHashSet::default();
         for element in &body.body {
-            let ClassElement::PropertyDefinition(prop) = element else {
-                continue;
-            };
-            match &prop.key {
-                PropertyKey::PrivateIdentifier(id) => {
-                    existing_private.insert(id.name.to_string());
-                    body_private_field_names.insert(id.name.to_string());
-                }
-                PropertyKey::StaticIdentifier(id) if prop.value.is_none() => {
-                    placeholder_public_names.insert(id.name.to_string());
+            match element {
+                ClassElement::PropertyDefinition(prop) => match &prop.key {
+                    PropertyKey::PrivateIdentifier(id) => {
+                        existing_private.insert(id.name.to_string());
+                        body_private_field_names.insert(id.name.to_string());
+                    }
+                    PropertyKey::StaticIdentifier(id) if prop.value.is_none() => {
+                        placeholder_public_names.insert(id.name.to_string());
+                    }
+                    _ => {}
+                },
+                ClassElement::MethodDefinition(method) => {
+                    if let PropertyKey::PrivateIdentifier(id) = &method.key {
+                        existing_private.insert(id.name.to_string());
+                    }
                 }
                 _ => {}
             }
         }
 
-        let mut fields = Vec::new();
-        let mut ctor_synth_names = FxHashSet::default();
-        let mut ctor_placeholder_names = FxHashSet::default();
+        let mut info = ClassStateInfo::default();
         let mut seen_public: FxHashSet<String> = FxHashSet::default();
         let mut seen_private: FxHashSet<String> = FxHashSet::default();
 
         for declaration in declarations {
-            let Some(declarator) = self.class_field_declarator(declaration.decl_node) else {
+            if self.class_field_declarator(declaration.decl_node).is_none() {
                 continue;
-            };
+            }
             let name = declaration.name.to_string();
 
             if declaration.is_private {
                 if declaration.from_constructor && !body_private_field_names.contains(&name) {
                     continue;
                 }
-                if !seen_private.insert(name.clone()) {
+                if !seen_private.insert(name) {
                     continue;
                 }
-                fields.push(ClassStateField {
-                    public_name: None,
-                    private_name: name,
-                    declarator,
-                });
+                info.has_rune_field = true;
                 continue;
             }
 
             if !seen_public.insert(name.clone()) {
                 continue;
             }
-            let mut backing = format!("#{}", name);
-            while existing_private.contains(backing.trim_start_matches('#')) {
-                backing = format!("#_{}", backing.trim_start_matches('#'));
+            let mut backing = fold_to_private_identifier(&name);
+            while existing_private.contains(&backing) {
+                backing = format!("_{}", backing);
             }
-            existing_private.insert(backing.trim_start_matches('#').to_string());
+            existing_private.insert(backing.clone());
             if declaration.from_constructor {
-                ctor_synth_names.insert(name.clone());
+                info.ctor_synth_nodes.push(declaration.decl_node);
                 if placeholder_public_names.contains(&name) {
-                    ctor_placeholder_names.insert(name.clone());
+                    info.ctor_placeholder_names.insert(name);
                 }
             }
-            fields.push(ClassStateField {
-                public_name: Some(name),
-                private_name: backing.trim_start_matches('#').to_string(),
-                declarator,
-            });
+            info.has_rune_field = true;
+            info.backing.insert(declaration.decl_node, backing);
         }
 
-        ClassStateInfo {
-            fields,
-            ctor_synth_names,
-            ctor_placeholder_names,
-        }
+        info
     }
 
     pub(crate) fn rewrite_class_body(&self, body: &mut ClassBody<'a>, info: &ClassStateInfo) {
         use ClassElement;
 
-        let public_fields: HashMap<&str, &ClassStateField> = info
-            .fields
+        let Some(analysis) = self.analysis else {
+            return;
+        };
+        let decls: FxHashMap<OxcNodeId, &ClassFieldDecl> = analysis
+            .scoping
+            .semantics()
+            .class_fields(body.node_id())
             .iter()
-            .filter_map(|f| f.public_name.as_deref().map(|n| (n, f)))
-            .collect();
-        let private_fields: FxHashSet<&str> = info
-            .fields
-            .iter()
-            .filter(|f| f.public_name.is_none())
-            .map(|f| f.private_name.as_str())
+            .map(|decl| (decl.decl_node, decl))
             .collect();
 
         let old_elements: Vec<ClassElement<'a>> = {
@@ -147,25 +138,30 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
 
         let mut new_body: Vec<ClassElement<'a>> = Vec::new();
 
-        for field_info in info.fields.iter().filter(|f| {
-            f.public_name
-                .as_deref()
-                .is_some_and(|n| info.ctor_synth_names.contains(n))
-        }) {
-            let name = field_info
-                .public_name
-                .as_deref()
-                .expect("field_info with public_name is required by caller filter");
-            new_body.push(self.b.class_private_field(&field_info.private_name, None));
-            self.emit_getter_setter(&mut new_body, field_info, name);
+        for node in &info.ctor_synth_nodes {
+            let (Some(decl), Some(backing), Some(declarator)) = (
+                decls.get(node),
+                info.backing.get(node),
+                self.class_field_declarator(*node),
+            ) else {
+                continue;
+            };
+            let get_key = self.b.key(decl.name.as_str());
+            let set_key = self.b.key(decl.name.as_str());
+            new_body.push(self.b.class_private_field(backing, None));
+            self.emit_getter_setter(&mut new_body, backing, declarator, get_key, set_key);
         }
 
         for element in old_elements {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
-                    let is_rune_prop = prop.value.is_some()
-                        && self.class_field_declarator(prop.node_id()).is_some();
-                    if !is_rune_prop {
+                    let node = prop.node_id();
+                    let declarator = if prop.value.is_some() {
+                        self.class_field_declarator(node)
+                    } else {
+                        None
+                    };
+                    let Some(declarator) = declarator else {
                         let is_ctor_placeholder = prop.value.is_none()
                             && match &prop.key {
                                 PropertyKey::StaticIdentifier(id) if !prop.computed => {
@@ -177,37 +173,37 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             new_body.push(ClassElement::PropertyDefinition(prop));
                         }
                         continue;
+                    };
+
+                    if matches!(&prop.key, PropertyKey::PrivateIdentifier(_)) {
+                        self.rewrite_private_field_callee(&mut prop);
+                        new_body.push(ClassElement::PropertyDefinition(prop));
+                        continue;
                     }
 
-                    match &prop.key {
-                        PropertyKey::PrivateIdentifier(id) => {
-                            let name = id.name.to_string();
-                            if private_fields.contains(name.as_str()) {
-                                self.rewrite_private_field_callee(&mut prop);
-                            }
-                            new_body.push(ClassElement::PropertyDefinition(prop));
-                        }
-                        PropertyKey::StaticIdentifier(id) if !prop.computed => {
-                            let name = id.name.to_string();
-                            if let Some(field_info) = public_fields.get(name.as_str()) {
-                                self.emit_public_field_rewrite(
-                                    &mut new_body,
-                                    &mut prop,
-                                    field_info,
-                                    &name,
-                                );
-                            } else {
-                                new_body.push(ClassElement::PropertyDefinition(prop));
-                            }
-                        }
-                        _ => {
-                            new_body.push(ClassElement::PropertyDefinition(prop));
-                        }
-                    }
+                    let Some(backing) = info.backing.get(&node) else {
+                        new_body.push(ClassElement::PropertyDefinition(prop));
+                        continue;
+                    };
+                    let name = decls
+                        .get(&node)
+                        .map(|decl| decl.name.as_str())
+                        .unwrap_or("");
+                    let get_key = self.b.clone_key(&prop.key);
+                    let set_key = self.b.clone_key(&prop.key);
+                    self.emit_public_field_rewrite(
+                        &mut new_body,
+                        &mut prop,
+                        name,
+                        backing,
+                        declarator,
+                        get_key,
+                        set_key,
+                    );
                 }
                 ClassElement::MethodDefinition(mut method) => {
                     if method.kind == MethodDefinitionKind::Constructor {
-                        self.rewrite_constructor(&mut method, info);
+                        self.rewrite_constructor(&mut method, info, &decls);
                     }
                     new_body.push(ClassElement::MethodDefinition(method));
                 }
@@ -293,8 +289,11 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         &self,
         new_body: &mut Vec<ClassElement<'a>>,
         prop: &mut PropertyDefinition<'a>,
-        field_info: &ClassStateField,
         name: &str,
+        backing: &str,
+        declarator: DeclaratorSemantics,
+        get_key: PropertyKey<'a>,
+        set_key: PropertyKey<'a>,
     ) {
         let arg = if let Some(Expression::CallExpression(mut call)) =
             prop.value.take().map(|v| v.into_inner_expression())
@@ -310,7 +309,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             None
         };
 
-        let init_call = match &field_info.declarator {
+        let init_call = match &declarator {
             DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
                 kind: DerivedKind::Derived,
                 ..
@@ -360,68 +359,56 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             init_call
         };
 
-        new_body.push(
-            self.b
-                .class_private_field(&field_info.private_name, Some(init_call)),
-        );
-        self.emit_getter_setter(new_body, field_info, name);
+        new_body.push(self.b.class_private_field(backing, Some(init_call)));
+        self.emit_getter_setter(new_body, backing, declarator, get_key, set_key);
     }
 
     fn emit_getter_setter(
         &self,
         new_body: &mut Vec<ClassElement<'a>>,
-        field_info: &ClassStateField,
-        name: &str,
+        backing: &str,
+        declarator: DeclaratorSemantics,
+        get_key: PropertyKey<'a>,
+        set_key: PropertyKey<'a>,
     ) {
-        let get_call = self.b.call_expr(
-            "$.get",
-            [Arg::Expr(
-                self.b.this_private_member(&field_info.private_name),
-            )],
-        );
+        let get_call = self
+            .b
+            .call_expr("$.get", [Arg::Expr(self.b.this_private_member(backing))]);
         let return_stmt = self.b.return_stmt(get_call);
-        new_body.push(
-            self.b
-                .class_getter(self.b.public_key(name), vec![return_stmt]),
-        );
+        new_body.push(self.b.class_getter(get_key, vec![return_stmt]));
 
         let mut set_args: Vec<Arg<'a, '_>> = vec![
-            Arg::Expr(self.b.this_private_member(&field_info.private_name)),
+            Arg::Expr(self.b.this_private_member(backing)),
             Arg::Ident("value"),
         ];
-        if field_info
-            .declarator
+        if declarator
             .class_field_state()
             .is_some_and(|state| state.kind == StateKind::State)
         {
             set_args.push(Arg::Bool(true));
         }
         let set_call = self.b.call_stmt("$.set", set_args);
-        new_body.push(
-            self.b
-                .class_setter(self.b.public_key(name), "value", vec![set_call]),
-        );
+        new_body.push(self.b.class_setter(set_key, "value", vec![set_call]));
     }
 
     pub(crate) fn rewrite_constructor(
         &self,
         method: &mut OxcBox<'a, MethodDefinition<'a>>,
         info: &ClassStateInfo,
+        decls: &FxHashMap<OxcNodeId, &ClassFieldDecl>,
     ) {
         let Some(func_body) = &mut method.value.body else {
             return;
         };
 
-        let ctor_fields: HashMap<&str, &ClassStateField> = info
-            .fields
+        let name_to_backing: FxHashMap<&str, &str> = info
+            .backing
             .iter()
-            .filter_map(|f| f.public_name.as_deref().map(|n| (n, f)))
-            .collect();
-        let ctor_private_fields: HashMap<&str, &ClassStateField> = info
-            .fields
-            .iter()
-            .filter(|f| f.public_name.is_none())
-            .map(|f| (f.private_name.as_str(), f))
+            .filter_map(|(node, backing)| {
+                decls
+                    .get(node)
+                    .map(|decl| (decl.name.as_str(), backing.as_str()))
+            })
             .collect();
 
         for stmt in func_body.statements.iter_mut() {
@@ -429,27 +416,14 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                 && let Expression::AssignmentExpression(assign) = &mut es.expression
                 && assign.operator == AssignmentOperator::Assign
             {
-                let (resolved_field, is_private_target, public_name) = match &assign.left {
-                    AssignmentTarget::StaticMemberExpression(member)
-                        if matches!(&member.object, Expression::ThisExpression(_)) =>
-                    {
-                        let name = member.property.name.to_string();
-                        let field = ctor_fields.get(name.as_str()).copied();
-                        (field, false, Some(name))
-                    }
-                    AssignmentTarget::PrivateFieldExpression(member)
-                        if matches!(&member.object, Expression::ThisExpression(_)) =>
-                    {
-                        let name = member.field.name.to_string();
-                        let field = ctor_private_fields.get(name.as_str()).copied();
-                        (field, true, None)
-                    }
-                    _ => (None, false, None),
+                let node = assign.node_id();
+                let (Some(decl), Some(declarator)) =
+                    (decls.get(&node).copied(), self.class_field_declarator(node))
+                else {
+                    continue;
                 };
-                if let Some(field_info) = resolved_field
-                    && let Expression::CallExpression(call) = &mut assign.right
-                {
-                    match &field_info.declarator {
+                if let Expression::CallExpression(call) = &mut assign.right {
+                    match &declarator {
                         DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
                             kind: DerivedKind::Derived,
                             ..
@@ -473,8 +447,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                             proxied,
                         }) => {
                             call.callee = self.b.rid_expr("$.state");
-                            let needs_proxy = *proxied;
-                            if needs_proxy {
+                            if *proxied {
                                 let mut dummy = Argument::from(self.b.cheap_expr());
                                 mem::swap(&mut call.arguments[0], &mut dummy);
                                 let inner = dummy.into_expression();
@@ -493,16 +466,15 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         }
                     }
                     if self.dev {
-                        let label_name = public_name
-                            .as_deref()
-                            .unwrap_or(field_info.private_name.as_str());
-                        let label = self.class_tag_label(label_name);
+                        let label = self.class_tag_label(decl.name.as_str());
                         let rhs = self.b.move_expr(&mut assign.right);
                         assign.right = self.b.call_expr("$.tag", [Arg::Expr(rhs), Arg::Str(label)]);
                     }
 
-                    if !is_private_target {
-                        let new_left = self.b.this_private_member(&field_info.private_name);
+                    if !decl.is_private
+                        && let Some(backing) = name_to_backing.get(decl.name.as_str())
+                    {
+                        let new_left = self.b.this_private_member(backing);
                         if let Expression::PrivateFieldExpression(pfe) = new_left {
                             assign.left = AssignmentTarget::PrivateFieldExpression(pfe);
                         }
@@ -519,5 +491,47 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
             .and_then(|n| n.as_deref())
             .unwrap_or("[class]");
         format!("{}.{}", class_name, field_name)
+    }
+}
+
+fn fold_to_private_identifier(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    for (index, ch) in name.chars().enumerate() {
+        let valid = if index == 0 {
+            ch.is_ascii_alphabetic() || ch == '_' || ch == '$'
+        } else {
+            ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'
+        };
+        result.push(if valid { ch } else { '_' });
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fold_to_private_identifier;
+
+    #[track_caller]
+    fn assert_folds(cases: &[(&str, &str)]) {
+        for &(input, expected) in cases {
+            let got = fold_to_private_identifier(input);
+            assert_eq!(
+                got, expected,
+                "fold_to_private_identifier({input:?}): expected {expected:?}, got {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn folds_invalid_identifier_chars_to_underscore() {
+        assert_folds(&[
+            ("0", "_"),
+            ("1", "_"),
+            ("aria-pressed", "aria_pressed"),
+            ("tree", "tree"),
+            ("$x", "$x"),
+            ("_y", "_y"),
+            ("0abc", "_abc"),
+        ]);
     }
 }
