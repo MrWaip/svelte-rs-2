@@ -2,7 +2,7 @@ use oxc_span::GetSpan;
 use rustc_hash::FxHashMap;
 use svelte_component_semantics::ReferenceId;
 
-use super::super::data::{ReferenceFacts, StoreBindingSemantics};
+use super::super::data::{BindingSemantics, ReferenceFacts, StoreBindingSemantics};
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 
@@ -35,7 +35,7 @@ pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
             if !s.starts_with('$') || s.len() <= 1 || s.starts_with("$$") {
                 return None;
             }
-            if data.reactivity.uses_runes() && svelte_ast::is_rune_name(s) {
+            if is_literal_rune_reference(data, s) {
                 return None;
             }
             Some((s.to_string(), earliest_span(data, refs), refs.clone()))
@@ -84,6 +84,42 @@ pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
         for ref_id in refs {
             record_store_reference(data, store_sym, ref_id);
         }
+    }
+}
+
+fn is_literal_rune_reference(data: &AnalysisData, dollar_name: &str) -> bool {
+    if !data.reactivity.uses_runes() {
+        return false;
+    }
+    if !svelte_ast::is_rune_name(dollar_name) {
+        return false;
+    }
+    if rune_named_base_is_store(data, &dollar_name[1..]) {
+        return false;
+    }
+    true
+}
+
+fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
+    let root = data.scoping.root_scope_id();
+    let Some(base_sym) = data.scoping.find_binding(root, base_name) else {
+        return false;
+    };
+    match data.reactivity.binding_semantics(base_sym) {
+        BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_) => base_name != "props",
+        BindingSemantics::NonReactive
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Unresolved => false,
     }
 }
 

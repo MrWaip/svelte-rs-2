@@ -3679,6 +3679,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3687,6 +3688,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
             kind: StateKind::State,
             safe: true,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3824,6 +3826,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3839,6 +3842,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
             kind: StateKind::State,
             safe: false,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3908,6 +3912,7 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
             kind: StateKind::StateRaw,
             safe: true,
             proxy: false,
+            store_unsub: None,
         }
     );
 }

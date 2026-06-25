@@ -329,6 +329,22 @@ impl<'a> ComponentTransformer<'_, 'a> {
             } => self.rewrite_each_item_reassignment_assignment(
                 node, item_sym, index_sym, index_read, ctx,
             ),
+            ReferenceSemantics::SignalWrite {
+                store_unsub: Some(store_symbol),
+                ..
+            }
+            | ReferenceSemantics::SignalUpdate {
+                store_unsub: Some(store_symbol),
+                ..
+            } => {
+                if !self.rewrite_signal_or_store_identifier_assignment(node) {
+                    return false;
+                }
+                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
+                let inner = self.b.move_expr(node);
+                *node = self.make_store_unsub(inner, &dollar_name);
+                true
+            }
             ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreWrite { .. }
@@ -425,6 +441,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 index_read,
             } => self
                 .rewrite_each_item_reassignment_update(node, item_sym, index_sym, index_read, ctx),
+            ReferenceSemantics::SignalUpdate {
+                store_unsub: Some(store_symbol),
+                ..
+            } => {
+                if !self.rewrite_signal_or_store_identifier_update(node) {
+                    return false;
+                }
+                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
+                let inner = self.b.move_expr(node);
+                *node = self.make_store_unsub(inner, &dollar_name);
+                true
+            }
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
@@ -837,9 +865,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         match analysis.reference_semantics(ref_id) {
             ReferenceSemantics::StoreUpdate { symbol } => {
                 let base_sym = store_base_symbol(analysis, symbol);
-                let base_name = analysis.scoping.symbol_name(base_sym);
-                *node =
-                    make_store_update(self.b, base_name, name.as_str(), is_prefix, is_increment);
+                let base = build_store_base_read(self.b, analysis, base_sym);
+                *node = make_store_update(self.b, base, name.as_str(), is_prefix, is_increment);
                 true
             }
             ReferenceSemantics::SignalUpdate {

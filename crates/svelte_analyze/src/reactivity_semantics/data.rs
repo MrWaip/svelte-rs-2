@@ -908,12 +908,14 @@ pub enum ReferenceSemantics {
     SignalWrite {
         kind: StateKind,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
 
     SignalUpdate {
         kind: StateKind,
         safe: bool,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
 
     DerivedWrite,
@@ -1450,11 +1452,13 @@ pub(crate) enum ReferenceFacts {
     SignalWrite {
         kind: StateKind,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
     SignalUpdate {
         kind: StateKind,
         safe: bool,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
     DerivedWrite,
     StoreRead {
@@ -1963,17 +1967,26 @@ impl ReactivitySemantics {
                 kind: *kind,
                 safe: *safe,
             },
-            Some(ReferenceFacts::SignalWrite { kind, proxy }) => ReferenceSemantics::SignalWrite {
+            Some(ReferenceFacts::SignalWrite {
+                kind,
+                proxy,
+                store_unsub,
+            }) => ReferenceSemantics::SignalWrite {
                 kind: *kind,
                 proxy: *proxy,
+                store_unsub: *store_unsub,
             },
-            Some(ReferenceFacts::SignalUpdate { kind, safe, proxy }) => {
-                ReferenceSemantics::SignalUpdate {
-                    kind: *kind,
-                    safe: *safe,
-                    proxy: *proxy,
-                }
-            }
+            Some(ReferenceFacts::SignalUpdate {
+                kind,
+                safe,
+                proxy,
+                store_unsub,
+            }) => ReferenceSemantics::SignalUpdate {
+                kind: *kind,
+                safe: *safe,
+                proxy: *proxy,
+                store_unsub: *store_unsub,
+            },
             Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }
