@@ -64,8 +64,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 SpecialValueKind::Select => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
-                    self.emit_select_value(state, owner_var, val, coalesce, volatile);
-                    return Ok(());
+                    return self.emit_select_value(state, owner_var, attr.id, val, coalesce);
                 }
                 SpecialValueKind::InputBindChecked => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;

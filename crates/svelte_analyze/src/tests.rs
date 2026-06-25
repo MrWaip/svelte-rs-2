@@ -7827,19 +7827,25 @@ async function baz() { return 2; }
     }
 
     #[test]
-    fn evaluation_array_expression_is_object_class() {
+    fn evaluation_array_expression_is_unknown() {
         let source = "<p>{[1, 2]}</p>";
         let ev = evaluate_first_expr(source, "[1, 2]");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Object));
+        assert!(
+            !ev.is_defined(),
+            "ArrayExpression has no scope.js branch, defaults to Unknown"
+        );
+        assert_eq!(ev.class(), None);
     }
 
     #[test]
-    fn evaluation_object_expression_is_object_class() {
+    fn evaluation_object_expression_is_unknown() {
         let source = "<p>{({})}</p>";
         let ev = evaluate_first_expr(source, "({})");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Object));
+        assert!(
+            !ev.is_defined(),
+            "ObjectExpression has no scope.js branch, defaults to Unknown"
+        );
+        assert_eq!(ev.class(), None);
     }
 
     #[test]

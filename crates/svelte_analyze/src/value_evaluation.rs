@@ -349,9 +349,6 @@ fn eval_set(
         Expression::LogicalExpression(le) => eval_logical(le, ctx, guard),
         Expression::ConditionalExpression(c) => eval_conditional(c, ctx, guard),
         Expression::UnaryExpression(u) => eval_unary(u, ctx, guard),
-        Expression::ArrayExpression(_) | Expression::ObjectExpression(_) => {
-            smallvec![EvalAtom::Class(ValueClass::Object)]
-        }
         Expression::FunctionExpression(_)
         | Expression::ArrowFunctionExpression(_)
         | Expression::ClassExpression(_) => {

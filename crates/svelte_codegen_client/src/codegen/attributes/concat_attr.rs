@@ -54,7 +54,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     return Ok(());
                 }
                 SpecialValueKind::Select => {
-                    self.emit_select_value(state, owner_var, val, coalesce, volatile);
+                    self.emit_select_value_core(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
                 SpecialValueKind::InputBindGroup => {

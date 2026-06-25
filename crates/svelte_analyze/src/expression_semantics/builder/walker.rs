@@ -500,6 +500,10 @@ fn compute<'a>(
         .iter()
         .any(|&sym| is_context_member_root(ctx.reactivity.binding_semantics(sym)));
     let volatility = derive::volatility(reactive_gate, &facts);
+    let evaluation = match volatility {
+        Volatility::Heavy | Volatility::Asynchronous => Evaluation::unknown(),
+        Volatility::Static | Volatility::Reactive => evaluation,
+    };
     let data = ExpressionData {
         volatility,
         evaluation,
