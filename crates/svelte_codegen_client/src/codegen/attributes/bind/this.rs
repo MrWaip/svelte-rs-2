@@ -114,13 +114,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .rewrap_arrow_with_params(get_expr, each_names.iter());
 
-        let mut setter_params: Vec<String> = Vec::with_capacity(each_names.len() + 1);
-        setter_params.push("$$value".to_string());
-        setter_params.extend(each_names.iter().cloned());
         let setter = self
             .ctx
             .b
-            .rewrap_arrow_with_params(set_expr, setter_params.iter());
+            .rewrap_arrow_first_param_then(set_expr, each_names.iter());
 
         let dep_args: Vec<Arg<'_, '_>> = each_context
             .iter()

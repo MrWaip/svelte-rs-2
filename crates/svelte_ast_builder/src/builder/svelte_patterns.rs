@@ -74,6 +74,30 @@ impl<'a> Builder<'a> {
         self.arrow_expr(params, body_stmts)
     }
 
+    pub fn rewrap_arrow_first_param_then(
+        &self,
+        expr: Expression<'a>,
+        extra_params: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Expression<'a> {
+        let Expression::ArrowFunctionExpression(arrow) = expr else {
+            return expr;
+        };
+        let arrow = arrow.unbox();
+        let body_stmts: Vec<_> = arrow.body.unbox().statements.into_iter().collect();
+        let first_param = arrow.params.unbox().items.into_iter().next();
+        let mut items: Vec<ast::FormalParameter<'a>> = Vec::new();
+        if let Some(param) = first_param {
+            items.push(param);
+        } else {
+            items.push(self.formal_parameter_from_str("_"));
+        }
+        for name in extra_params {
+            items.push(self.formal_parameter_from_str(name.as_ref()));
+        }
+        let params = self.formal_parameters(items);
+        self.arrow_expr(params, body_stmts)
+    }
+
     pub fn try_extract_expression_stmt_expr(expr: Expression<'a>) -> Option<Expression<'a>> {
         let Expression::ArrowFunctionExpression(arrow) = expr else {
             return None;

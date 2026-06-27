@@ -438,6 +438,7 @@ fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &
             });
             if bind.name == "this" {
                 if is_user_sequence {
+                    ctx.expr_handles.push((bind_id, owner));
                     continue;
                 }
                 let route_this = match ctx.analysis.attributes.get(attr.id()) {

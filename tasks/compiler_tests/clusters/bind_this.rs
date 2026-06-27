@@ -43,3 +43,18 @@ compiler_case!(
     legacy_each_collection_untrack,
     "bind_this/legacy_each_collection_untrack"
 );
+
+compiler_case!(seq_runes_state, "bind_this/seq_runes_state");
+compiler_case!(
+    seq_component_runes_state,
+    "bind_this/seq_component_runes_state"
+);
+compiler_case!(seq_each_member, "bind_this/seq_each_member");
+compiler_case!(
+    seq_snippet_param_member,
+    "bind_this/seq_snippet_param_member"
+);
+compiler_case!(
+    guard_value_seq_non_this,
+    "bind_this/guard_value_seq_non_this"
+);
