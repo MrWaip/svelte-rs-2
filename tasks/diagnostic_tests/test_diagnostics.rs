@@ -2043,6 +2043,26 @@ mod template {
         "template/validate_expression_tag_invalid_placement"
     );
     diagnostic_case!(
+        expression_tag_js_parse_error_let_declaration,
+        "template/expression_tag_js_parse_error_let_declaration"
+    );
+    diagnostic_case!(
+        expression_tag_js_parse_error_const_declaration,
+        "template/expression_tag_js_parse_error_const_declaration"
+    );
+    diagnostic_case!(
+        expression_tag_js_parse_error_let_multiple_declarators,
+        "template/expression_tag_js_parse_error_let_multiple_declarators"
+    );
+    diagnostic_case!(
+        expression_tag_valid_no_diagnostic,
+        "template/expression_tag_valid_no_diagnostic"
+    );
+    diagnostic_case!(
+        expression_tag_const_tag_still_ok,
+        "template/expression_tag_const_tag_still_ok"
+    );
+    diagnostic_case!(
         node_invalid_placement_ssr_in_if_block,
         "template/node_invalid_placement_ssr_in_if_block"
     );

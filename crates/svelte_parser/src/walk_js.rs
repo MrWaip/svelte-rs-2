@@ -3,9 +3,10 @@ use svelte_ast::{AstStore, Attribute, Component, ConcatPart, FragmentId, Node, S
 use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
-    parse_const_declaration_with_alloc, parse_each_context_with_alloc, parse_each_index_with_alloc,
-    parse_expression_with_alloc, parse_script_with_alloc, parse_slot_let_decl_with_alloc,
-    parse_snippet_decl_with_alloc,
+    ExpressionTagBody, parse_const_declaration_with_alloc, parse_each_context_with_alloc,
+    parse_each_index_with_alloc, parse_expression_tag_body, parse_expression_with_alloc,
+    parse_script_with_alloc, parse_slot_let_decl_with_alloc, parse_snippet_decl_with_alloc,
+    placeholder_expression,
 };
 use crate::types::JsAst;
 
@@ -82,7 +83,13 @@ fn parse_directive_name_span<'a>(
         Ok(expr) => {
             result.alloc_expr(name_span.start, expr);
         }
-        Err(diag) => diags.push(diag),
+        Err(diag) => {
+            diags.push(diag);
+            result.alloc_expr(
+                name_span.start,
+                placeholder_expression(alloc, name_span.start),
+            );
+        }
     }
 }
 
@@ -125,11 +132,20 @@ fn parse_span<'a>(
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
-    match parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
-        Ok(expr) => {
+    match parse_expression_tag_body(alloc, arena_source, span.start, typescript) {
+        ExpressionTagBody::Expression(expr) => {
             result.alloc_expr(span.start, expr);
         }
-        Err(diag) => diags.push(diag),
+        ExpressionTagBody::Declaration(stmt) => {
+            result.alloc_stmt(span.start, stmt);
+            result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
+        }
+        ExpressionTagBody::Invalid => {
+            diags.push(Diagnostic::invalid_expression(svelte_span::Span::new(
+                span.start, span.end,
+            )));
+            result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
+        }
     }
 }
 
