@@ -23,22 +23,22 @@ topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/
 - `ComponentProp(ComponentPropSemantics)` — prop в дочерний компонент.
 - `ComponentSpread(ComponentSpreadSemantics)` — `{...spread}` на компоненте.
 - `ComponentAttach(ComponentAttachSemantics)` — `{@attach …}`.
-- `BoundaryProp(BoundaryPropSemantics)` — prop на `<svelte:boundary>`.
+- `BoundaryProp(BoundaryPropSemantics)` — prop на `<svelte:boundary>`; несёт `Volatility` значения, не emit-форму.
 - `HtmlConcat(HtmlConcatSemantics)` — concat-атрибут на обычном элементе.
 - `StyleDirectives(StyleDirectivesSemantics)` — агрегат style-директив элемента
 - `NonSpecial` — default.
 
-Каждый вариант несёт выбранную emit-форму (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, `HtmlConcatPart`, `TemplateEffect`, `ElementBindPropertyKind`, …). Кодген читает, не комбинирует.
+Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма.
 
 ## Архитектурные инварианты
 
 1. **Одна запись на атрибут / директиву `NodeId`.**
-2. **Пред-вычисленная emit-форма живёт на варианте.** Кодген ветвится на варианте и печатает.
+2. **Вариант несёт доменный вердикт, не форму печати.** Кодген ветвится на варианте и выбирает форму. Имя варианта/поля не называет форму печати или runtime-вызов — это связало бы анализ с кодгеном (см. §«Codegen-агностичность анализа»). Где форму определяет доменный вердикт (например `Volatility` — реактивность значения), на варианте лежит он.
 3. **Read-only после build.**
 
 ## Связь с другими документами
 
-- `context.md` §«Компонент, шаблон и его узлы» (атрибут vs директива), §«Эмит-форма семантики» (граница: emit-форма допустима только тут как выбранная runtime-форма на варианте, не как поле «как эмитить» без доменного смысла).
+- `context.md` §«Компонент, шаблон и его узлы» (атрибут vs директива), §«Codegen-агностичность анализа» (вариант несёт доменный вердикт, форму выбирает кодген — без исключений) и §«Эмит-форма семантики» (нарушение — анти-паттерн).
 - `analyze.md` — место в build order.
 - `expression-semantics.md` — источник фактов для значений атрибутов.
 - `codegen.md` — единственный потребитель.
