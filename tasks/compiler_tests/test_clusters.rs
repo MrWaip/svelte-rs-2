@@ -52,6 +52,9 @@ mod css_scope_svelte_fragment;
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
 
+#[path = "clusters/text_node_marker.rs"]
+mod text_node_marker;
+
 #[path = "clusters/style_directive.rs"]
 mod style_directive;
 

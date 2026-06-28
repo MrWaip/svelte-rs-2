@@ -3,7 +3,7 @@ use std::iter;
 use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
 use svelte_ast::{Node, NodeId};
-use svelte_ast_builder::Arg;
+use svelte_ast_builder::{Arg, Builder};
 
 use crate::codegen::concatenation::ConcatenationAnchor;
 use crate::codegen::data_structures::{ConcatPart, EmitState, FragmentAnchor, FragmentCtx};
@@ -343,25 +343,18 @@ fn make_sibling_expr<'a, 'ctx>(
             "anchor already consumed by previous child",
         );
     };
+    let with_text_marker = is_text && skipped == 0;
     let base_expr = match anchor {
         ChildAnchor::RawIdent(name) => b.rid_expr(&name),
         ChildAnchor::ElementChild { parent_var } => {
-            if is_text && skipped == 0 {
-                b.call_expr("$.child", [Arg::Ident(&parent_var), Arg::Bool(true)])
-            } else {
-                b.call_expr("$.child", [Arg::Ident(&parent_var)])
-            }
+            child_navigation_call(b, "$.child", Arg::Ident(&parent_var), with_text_marker)
         }
         ChildAnchor::ElementContentChild { parent_var } => {
             let member = b.static_member_expr(b.rid_expr(&parent_var), "content");
-            if is_text && skipped == 0 {
-                b.call_expr("$.child", [Arg::Expr(member), Arg::Bool(true)])
-            } else {
-                b.call_expr("$.child", [Arg::Expr(member)])
-            }
+            child_navigation_call(b, "$.child", Arg::Expr(member), with_text_marker)
         }
         ChildAnchor::FragmentFirstChild { frag_var } => {
-            b.call_expr("$.first_child", [Arg::Ident(&frag_var)])
+            child_navigation_call(b, "$.first_child", Arg::Ident(&frag_var), with_text_marker)
         }
     };
     if skipped == 0 {
@@ -376,4 +369,18 @@ fn make_sibling_expr<'a, 'ctx>(
         args.push(Arg::Bool(true));
     }
     Ok(b.call_expr("$.sibling", args))
+}
+
+fn child_navigation_call<'a, 'short>(
+    b: &Builder<'a>,
+    callee: &str,
+    first: Arg<'a, 'short>,
+    with_text_marker: bool,
+) -> Expression<'a> {
+    let mut args: SmallVec<[Arg<'a, 'short>; 2]> = SmallVec::new();
+    args.push(first);
+    if with_text_marker {
+        args.push(Arg::Bool(true));
+    }
+    b.call_expr(callee, args)
 }
