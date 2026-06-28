@@ -61,16 +61,16 @@ pub(super) fn is_reactive_template(facts: &ExprFacts, ctx: &Ctx<'_, '_>) -> bool
                 return true;
             }
             facts
-                .references
+                .top_level_reads
                 .iter()
                 .any(|&sym| call_root_is_reactive(ctx, sym))
         }
-        TopLevelForm::Member => facts.has_runtime_root || !facts.references.is_empty(),
+        TopLevelForm::Member => facts.has_runtime_root || !facts.top_level_reads.is_empty(),
         TopLevelForm::Identifier
         | TopLevelForm::Assignment
         | TopLevelForm::Update
         | TopLevelForm::Other => facts
-            .references
+            .top_level_reads
             .iter()
             .any(|&sym| identifier_read_is_reactive(ctx, sym)),
     }
@@ -119,9 +119,10 @@ fn symbol_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
             }
             !symbol_read_is_static(ctx.value_evaluation, ctx.semantics, sym)
         }
-        BindingSemantics::Unresolved | BindingSemantics::OptimizedRune(_) => {
-            !ctx.scoping.is_component_top_level_symbol(sym)
+        BindingSemantics::OptimizedRune(_) => {
+            !matches!(ctx.value_evaluation.evaluation(sym), Evaluation::Known(_))
         }
+        BindingSemantics::Unresolved => !ctx.scoping.is_component_top_level_symbol(sym),
         BindingSemantics::LegacyApiExport => false,
     }
 }

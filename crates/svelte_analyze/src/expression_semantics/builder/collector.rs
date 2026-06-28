@@ -29,6 +29,7 @@ pub(super) enum TopLevelForm {
 
 pub(super) struct ExprFacts {
     pub references: SmallVec<[SymbolId; 2]>,
+    pub top_level_reads: SmallVec<[SymbolId; 2]>,
     pub member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub has_await: bool,
@@ -57,6 +58,7 @@ pub(super) fn collect<'a>(
         semantics,
         reactivity,
         references: SmallVec::new(),
+        top_level_reads: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
         has_call: false,
@@ -76,6 +78,7 @@ pub(super) fn collect<'a>(
     visitor.visit_expression(expr);
     ExprFacts {
         references: visitor.references,
+        top_level_reads: visitor.top_level_reads,
         member_or_call_roots: visitor.member_or_call_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
         has_await: expression_has_await(expr),
@@ -258,6 +261,7 @@ struct Collector<'c, 'a> {
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
     references: SmallVec<[SymbolId; 2]>,
+    top_level_reads: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     has_call: bool,
@@ -385,6 +389,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         let Some(sym) = sym else { return };
         if !self.references.contains(&sym) {
             self.references.push(sym);
+        }
+        if self.fn_depth == 0 && !self.top_level_reads.contains(&sym) {
+            self.top_level_reads.push(sym);
         }
     }
 

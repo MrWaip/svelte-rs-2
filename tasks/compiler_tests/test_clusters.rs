@@ -189,3 +189,6 @@ mod closing_tag;
 
 #[path = "clusters/template_runes.rs"]
 mod template_runes;
+
+#[path = "clusters/boundary.rs"]
+mod boundary;

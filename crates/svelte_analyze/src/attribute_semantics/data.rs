@@ -125,13 +125,7 @@ pub enum ComponentAttachEmit {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoundaryPropSemantics {
-    pub emit: BoundaryPropEmit,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BoundaryPropEmit {
-    KeyValue,
-    Getter,
+    pub volatility: Volatility,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

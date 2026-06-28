@@ -7,12 +7,12 @@ pub mod reactivity_semantics;
 pub mod value_evaluation;
 
 pub use attribute_semantics::{
-    AttributeSemantics, AttributeSemanticsStore, BoundaryPropEmit, BoundaryPropSemantics,
-    ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
-    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
-    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
-    EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    AttributeSemantics, AttributeSemanticsStore, BoundaryPropSemantics, ComponentAttachEmit,
+    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
+    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
+    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
     MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
     StyleDirectivesSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };

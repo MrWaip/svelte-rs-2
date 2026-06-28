@@ -1,13 +1,13 @@
 use super::AttributeSemanticsStore;
 use super::data::{
-    AttributeSemantics, BoundaryPropEmit, BoundaryPropSemantics, ComponentAttachEmit,
-    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
-    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
-    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
-    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
-    StyleDirectivesSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    AttributeSemantics, BoundaryPropSemantics, ComponentAttachEmit, ComponentAttachSemantics,
+    ComponentBindKind, ComponentBindSemantics, ComponentBindTarget, ComponentPropConcatSemantics,
+    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DocumentBindSemantics,
+    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
+    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, MustBePropertySemantics,
+    MustBePropertyValue, SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -190,8 +190,53 @@ fn expression_is_plain_read(expr: &Expression<'_>) -> bool {
     )
 }
 
-fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
+fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: SymbolId) -> bool {
     use crate::expression_semantics::{Evaluation, ValueClass};
+    if ctx
+        .semantics
+        .symbol_flags(sym)
+        .contains(SymbolFlags::Import)
+    {
+        return true;
+    }
+    match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+            reactive,
+            initial_is_function,
+            ..
+        }) => reactive && !initial_is_function,
+        BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
+            EachIndexStrategy::Direct,
+        )) => false,
+        BindingSemantics::NonReactive => {
+            if symbol_read_is_static(ctx.value_evaluation, ctx.semantics, sym) {
+                return false;
+            }
+            if matches!(data.evaluation, Evaluation::Known(_)) {
+                return false;
+            }
+            if ctx.snippets.snippet_by_symbol(sym).is_some() {
+                return true;
+            }
+            !matches!(data.evaluation.class(), Some(ValueClass::Function))
+        }
+        BindingSemantics::OptimizedRune(_) => !matches!(data.evaluation, Evaluation::Known(_)),
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::Unresolved => true,
+    }
+}
+
+fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
     match data.volatility {
         Volatility::Reactive if data.references.is_empty() => return true,
         Volatility::Static
@@ -199,50 +244,9 @@ fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
         | Volatility::Heavy
         | Volatility::Asynchronous => {}
     }
-    data.references.iter().any(|&sym| {
-        if ctx
-            .semantics
-            .symbol_flags(sym)
-            .contains(SymbolFlags::Import)
-        {
-            return true;
-        }
-        match ctx.reactivity.binding_semantics(sym) {
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-                reactive,
-                initial_is_function,
-                ..
-            }) => reactive && !initial_is_function,
-            BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
-                EachIndexStrategy::Direct,
-            )) => false,
-            BindingSemantics::NonReactive => {
-                if symbol_read_is_static(ctx.value_evaluation, ctx.semantics, sym) {
-                    return false;
-                }
-                if matches!(data.evaluation, Evaluation::Known(_)) {
-                    return false;
-                }
-                if ctx.snippets.snippet_by_symbol(sym).is_some() {
-                    return true;
-                }
-                !matches!(data.evaluation.class(), Some(ValueClass::Function))
-            }
-            BindingSemantics::OptimizedRune(_) => !matches!(data.evaluation, Evaluation::Known(_)),
-            BindingSemantics::Prop(_)
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedDerived(_)
-            | BindingSemantics::RuntimeRune { .. }
-            | BindingSemantics::Store(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Contextual(_)
-            | BindingSemantics::MaybeReactive
-            | BindingSemantics::LegacyApiExport
-            | BindingSemantics::Unresolved => true,
-        }
-    })
+    data.references
+        .iter()
+        .any(|&sym| reference_symbol_needs_wrap(ctx, data, sym))
 }
 
 fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool {
@@ -1728,24 +1732,18 @@ fn bind_root_reference_semantics(
 fn classify_boundary(ctx: &Ctx<'_, '_>, b: &SvelteBoundary, store: &mut AttributeSemanticsStore) {
     for attr in &b.attributes {
         if let Attribute::ExpressionAttribute(ea) = attr {
-            let emit = derive_boundary_prop_emit(ctx, ea);
+            let volatility = derive_boundary_prop_volatility(ctx, ea);
             store.set(
                 ea.id,
-                AttributeSemantics::BoundaryProp(BoundaryPropSemantics { emit }),
+                AttributeSemantics::BoundaryProp(BoundaryPropSemantics { volatility }),
             );
         }
     }
 }
 
-fn derive_boundary_prop_emit(ctx: &Ctx<'_, '_>, ea: &ExpressionAttribute) -> BoundaryPropEmit {
-    let Some(data) = ctx.expression_data(ea.id) else {
-        return BoundaryPropEmit::KeyValue;
-    };
-    if references_need_wrap(ctx, data) {
-        BoundaryPropEmit::Getter
-    } else {
-        BoundaryPropEmit::KeyValue
-    }
+fn derive_boundary_prop_volatility(ctx: &Ctx<'_, '_>, ea: &ExpressionAttribute) -> Volatility {
+    ctx.expression_data(ea.id)
+        .map_or(Volatility::Static, |data| data.volatility)
 }
 
 fn classify_window(ctx: &Ctx<'_, '_>, w: &SvelteWindow, store: &mut AttributeSemanticsStore) {

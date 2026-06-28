@@ -8588,10 +8588,11 @@ mod attribute_semantics_skeleton_tests {
     use super::*;
     use crate::AttributeSemantics;
     use crate::attribute_semantics::data::{
-        BoundaryPropEmit, ComponentAttachEmit, ComponentBindKind, ComponentBindTarget,
-        ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
+        ComponentAttachEmit, ComponentBindKind, ComponentBindTarget, ComponentPropMemo,
+        ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
         ElementBindPropertyKind, EventEmit, HandlerEmit, HtmlBindKind, WindowBindSemantics,
     };
+    use crate::expression_semantics::Volatility;
     use crate::{DocumentBindKind, WindowBindKind};
     use svelte_ast::Attribute;
 
@@ -8805,7 +8806,7 @@ mod attribute_semantics_skeleton_tests {
 
         match data.attributes.get(attr_id) {
             AttributeSemantics::BoundaryProp(b) => {
-                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+                assert_ne!(b.volatility, Volatility::Static);
             }
             other => panic!("expected BoundaryProp, got {other:?}"),
         }
@@ -8820,7 +8821,7 @@ mod attribute_semantics_skeleton_tests {
 
         match data.attributes.get(attr_id) {
             AttributeSemantics::BoundaryProp(b) => {
-                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+                assert_ne!(b.volatility, Volatility::Static);
             }
             other => panic!("expected BoundaryProp, got {other:?}"),
         }

@@ -2,8 +2,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use rustc_hash::FxHashSet;
 use svelte_analyze::{
-    AttributeSemantics, BlockSemantics, BoundaryPropEmit, BoundaryPropSemantics,
-    ConstTagBlockSemantics,
+    AttributeSemantics, BlockSemantics, BoundaryPropSemantics, ConstTagBlockSemantics, Volatility,
 };
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
@@ -81,17 +80,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             })
             .collect();
 
-        let attr_infos: Vec<(String, NodeId, OxcNodeId, BoundaryPropEmit)> = boundary
+        let attr_infos: Vec<(String, NodeId, OxcNodeId, Volatility)> = boundary
             .attributes
             .iter()
             .map(|attr| {
                 let attr_id = attr.id();
                 match self.ctx.query.analysis.attributes.get(attr_id) {
-                    AttributeSemantics::BoundaryProp(BoundaryPropSemantics { emit }) => {
+                    AttributeSemantics::BoundaryProp(BoundaryPropSemantics { volatility }) => {
                         match attr {
-                            Attribute::ExpressionAttribute(a) => {
-                                Ok(Some((a.name.to_string(), a.id, a.expression.id(), *emit)))
-                            }
+                            Attribute::ExpressionAttribute(a) => Ok(Some((
+                                a.name.to_string(),
+                                a.id,
+                                a.expression.id(),
+                                *volatility,
+                            ))),
                             _ => CodegenError::semantic_mismatch(
                                 attr_id,
                                 "BoundaryProp payload requires ExpressionAttribute",
@@ -113,14 +115,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for (name, attr_id, expr_id, emit) in attr_infos {
+        for (name, attr_id, expr_id, volatility) in attr_infos {
             let key = self.ctx.b.alloc_str(&name);
             let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                 return CodegenError::missing_expression(attr_id);
             };
-            match emit {
-                BoundaryPropEmit::Getter => props.push(ObjProp::Getter(key, expr)),
-                BoundaryPropEmit::KeyValue => props.push(ObjProp::KeyValue(key, expr)),
+            match volatility {
+                Volatility::Static => props.push(ObjProp::KeyValue(key, expr)),
+                Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => {
+                    props.push(ObjProp::Getter(key, expr))
+                }
             }
         }
         for (_, snippet_name) in &snippet_children {
