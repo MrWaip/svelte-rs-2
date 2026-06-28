@@ -250,6 +250,11 @@ impl<'a> Builder<'a> {
             .expression_logical(SPAN, left, ast::LogicalOperator::Coalesce, right)
     }
 
+    pub fn logical_or(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
+        self.ast
+            .expression_logical(SPAN, left, ast::LogicalOperator::Or, right)
+    }
+
     pub fn function_decl(
         &self,
         id: BindingIdentifier<'a>,

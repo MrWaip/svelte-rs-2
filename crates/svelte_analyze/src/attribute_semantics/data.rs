@@ -120,6 +120,7 @@ pub struct ComponentAttachSemantics {
 pub enum ComponentAttachEmit {
     Inline,
     Wrapped,
+    WrappedFallback,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

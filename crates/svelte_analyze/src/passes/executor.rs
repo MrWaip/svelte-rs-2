@@ -192,6 +192,7 @@ pub(crate) fn execute_pass<'a>(
             let (attributes, binding_groups) = attribute_semantics::build(
                 component,
                 parsed,
+                &data.scoping,
                 data.scoping.semantics(),
                 &data.reactivity,
                 &data.expressions_v2,

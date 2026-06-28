@@ -37,6 +37,9 @@ mod special_element_order;
 #[path = "clusters/component_props.rs"]
 mod component_props;
 
+#[path = "clusters/attach_component.rs"]
+mod attach_component;
+
 #[path = "clusters/snippet_hoist.rs"]
 mod snippet_hoist;
 

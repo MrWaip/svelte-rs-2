@@ -18,6 +18,7 @@ use crate::reactivity_semantics::data::{
     EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
     ReferenceSemantics, StateKind,
 };
+use crate::scope::ComponentScoping;
 use crate::scope::SymbolId;
 use crate::types::data::{
     BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, IgnoreData,
@@ -25,7 +26,9 @@ use crate::types::data::{
 };
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
 use crate::utils::expression_calls_or_awaits;
-use crate::value_evaluation::{ValueEvaluation, symbol_read_is_static};
+use crate::value_evaluation::{
+    ReadContext, ValueEvaluation, ValueEvaluator, symbol_read_is_static,
+};
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
     Expression, Function, ObjectPropertyKind, UpdateExpression,
@@ -34,9 +37,9 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
-    Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute, FragmentId,
-    Node, NodeId, OnDirectiveLegacy, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument,
-    SvelteWindow,
+    AttachTag, Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute,
+    FragmentId, Node, NodeId, OnDirectiveLegacy, StyleDirective, SvelteBody, SvelteBoundary,
+    SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -70,6 +73,7 @@ impl BindingGroupTable {
 pub fn build<'a>(
     component: &Component,
     parsed: &JsAst<'a>,
+    scoping: &ComponentScoping<'a>,
     semantics: &ComponentSemantics<'a>,
     reactivity: &ReactivitySemantics,
     expressions: &ExpressionSemanticsStore,
@@ -80,6 +84,15 @@ pub fn build<'a>(
     dev: bool,
     node_count: u32,
 ) -> (AttributeSemanticsStore, BindingGroupTable) {
+    let attach_eval = ValueEvaluator::new(
+        parsed,
+        scoping,
+        semantics,
+        reactivity,
+        snippets,
+        ReadContext::Declaration,
+        dev,
+    );
     let ctx = Ctx {
         component,
         parsed,
@@ -88,6 +101,7 @@ pub fn build<'a>(
         expressions,
         snippets,
         value_evaluation,
+        attach_eval,
         blockers,
         ignore_data,
         dev,
@@ -160,6 +174,7 @@ struct Ctx<'a, 'p> {
     expressions: &'p ExpressionSemanticsStore,
     snippets: &'p SnippetData,
     value_evaluation: &'p ValueEvaluation,
+    attach_eval: ValueEvaluator<'p, 'a>,
     blockers: &'p BlockerData,
     ignore_data: &'p IgnoreData,
     dev: bool,
@@ -1128,7 +1143,7 @@ fn classify_component_attrs(
                 );
             }
             Attribute::AttachTag(at) => {
-                let emit = derive_component_attach_emit(ctx, at.id);
+                let emit = derive_component_attach_emit(ctx, at);
                 store.set(
                     at.id,
                     AttributeSemantics::ComponentAttach(ComponentAttachSemantics { emit }),
@@ -1396,14 +1411,24 @@ fn component_prop_memo(plan: &[ConcatPartEmit]) -> ComponentPropMemo {
     }
 }
 
-fn derive_component_attach_emit(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> ComponentAttachEmit {
-    let Some(data) = ctx.expression_data(attr_id) else {
+fn derive_component_attach_emit(ctx: &Ctx<'_, '_>, at: &AttachTag) -> ComponentAttachEmit {
+    use crate::expression_semantics::ValueClass;
+    let Some(data) = ctx.expression_data(at.id) else {
         return ComponentAttachEmit::Inline;
     };
-    if references_need_wrap(ctx, data) {
+    if !references_need_wrap(ctx, data) {
+        return ComponentAttachEmit::Inline;
+    }
+    let provably_function = ctx.parsed.expr(at.expression.id()).is_some_and(|expr| {
+        matches!(
+            ctx.attach_eval.evaluate(expr).class(),
+            Some(ValueClass::Function)
+        )
+    });
+    if provably_function {
         ComponentAttachEmit::Wrapped
     } else {
-        ComponentAttachEmit::Inline
+        ComponentAttachEmit::WrappedFallback
     }
 }
 
