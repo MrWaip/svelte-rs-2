@@ -48,7 +48,6 @@ fn main() {
     let output = Command::new("node")
         .arg("./tasks/generate_test_cases/generate.mjs")
         .env("INPUT_FILE", &tmp_input)
-        .env("NODE_PATH", "./tasks/generate_test_cases/node_modules")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

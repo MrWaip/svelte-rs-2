@@ -107,6 +107,11 @@ npm-build:
     npm pack ./packages/svelte-rs2-darwin-arm64 --silent
     npm pack ./packages/svelte-rs2-darwin-x64 --silent
 
-# Build local tarballs, reinstall the sweep package clean, and run it against a pathname (extra flags: --dry-run --dev --print-diffs)
-sweep-run pathname *flags: npm-build
-    cd packages/svelte-rs2-sweep/ && rm -rf node_modules package-lock.json && npm --registry=https://registry.npmjs.org/ i && svelte-rs2-sweep {{pathname}} {{flags}}
+# Build the native addon and stage it into the local dev path of the main package (shared by sweep)
+build-native:
+    cargo build -p napi_compiler --release
+    node packages/svelte-rs2/scripts/stage-native-dev.mjs
+
+# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --print-diffs)
+sweep-run pathname *flags: build-native
+    node packages/svelte-rs2-sweep/cli.mjs {{pathname}} {{flags}}
