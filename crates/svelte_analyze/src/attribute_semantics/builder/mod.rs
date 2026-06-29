@@ -3,10 +3,10 @@ use super::data::{
     AttributeSemantics, BoundaryPropSemantics, ComponentAttachEmit, ComponentAttachSemantics,
     ComponentBindKind, ComponentBindSemantics, ComponentBindTarget, ComponentPropConcatSemantics,
     ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
-    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
-    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, MustBePropertySemantics,
-    MustBePropertyValue, SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
     SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
@@ -21,8 +21,9 @@ use crate::reactivity_semantics::data::{
 use crate::scope::ComponentScoping;
 use crate::scope::SymbolId;
 use crate::types::data::{
-    BlockerData, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, IgnoreData,
-    ImageNaturalSizeKind, JsAst, MediaBindKind, ResizeObserverKind, SnippetData, WindowBindKind,
+    BlockerData, ContentEditableKind, DocumentBindKind, ElementFacts, ElementSizeKind,
+    EventModifier, IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind, NamespaceKind,
+    ResizeObserverKind, SnippetData, WindowBindKind,
 };
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
 use crate::utils::expression_calls_or_awaits;
@@ -81,6 +82,7 @@ pub fn build<'a>(
     value_evaluation: &ValueEvaluation,
     blockers: &BlockerData,
     ignore_data: &IgnoreData,
+    element_facts: &ElementFacts,
     dev: bool,
     node_count: u32,
 ) -> (AttributeSemanticsStore, BindingGroupTable) {
@@ -104,6 +106,7 @@ pub fn build<'a>(
         attach_eval,
         blockers,
         ignore_data,
+        element_facts,
         dev,
     };
     let mut store = AttributeSemanticsStore::new(node_count);
@@ -177,6 +180,7 @@ struct Ctx<'a, 'p> {
     attach_eval: ValueEvaluator<'p, 'a>,
     blockers: &'p BlockerData,
     ignore_data: &'p IgnoreData,
+    element_facts: &'p ElementFacts,
     dev: bool,
 }
 
@@ -559,46 +563,29 @@ fn classify_element_attrs(
             Attribute::StringAttribute(a) if a.name == "autofocus" => {
                 store.set(a.id, AttributeSemantics::Autofocus);
             }
-            Attribute::BooleanAttribute(a) if a.name == "muted" => {
-                store.set(
-                    a.id,
-                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
-                        property: "muted".into(),
-                        value: MustBePropertyValue::BoolTrue,
-                    }),
-                );
-            }
-            Attribute::StringAttribute(a) if a.name == "muted" => {
-                let value = a.value(&ctx.component.source).to_string();
-                store.set(
-                    a.id,
-                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
-                        property: "muted".into(),
-                        value: MustBePropertyValue::Str(value.into()),
-                    }),
-                );
+            Attribute::StringAttribute(a)
+                if a.name == "is"
+                    && matches!(
+                        ctx.element_facts.namespace(owner_id),
+                        Some(NamespaceKind::Html)
+                    ) =>
+            {
+                store.set(a.id, AttributeSemantics::StaticAttr);
             }
             Attribute::BooleanAttribute(a)
-                if a.name == "defaultValue" || a.name == "defaultChecked" =>
+                if matches!(a.name.as_str(), "muted" | "defaultValue" | "defaultChecked") =>
             {
                 store.set(
                     a.id,
-                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
-                        property: a.name.clone().into(),
-                        value: MustBePropertyValue::BoolTrue,
-                    }),
+                    AttributeSemantics::CannotBeStatic(default_attr_kind(ctx, el, &a.name)),
                 );
             }
             Attribute::StringAttribute(a)
-                if a.name == "defaultValue" || a.name == "defaultChecked" =>
+                if matches!(a.name.as_str(), "muted" | "defaultValue" | "defaultChecked") =>
             {
-                let value = a.value(&ctx.component.source).to_string();
                 store.set(
                     a.id,
-                    AttributeSemantics::MustBeProperty(MustBePropertySemantics {
-                        property: a.name.clone().into(),
-                        value: MustBePropertyValue::Str(value.into()),
-                    }),
+                    AttributeSemantics::CannotBeStatic(default_attr_kind(ctx, el, &a.name)),
                 );
             }
             _ => {}
@@ -733,6 +720,30 @@ fn each_collection_symbols(ctx: &Ctx<'_, '_>, each_id: NodeId) -> SmallVec<[Symb
         return SmallVec::new();
     };
     data.references.iter().copied().collect()
+}
+
+fn default_attr_kind(ctx: &Ctx<'_, '_>, el: Option<&Element>, name: &str) -> DefaultAttrKind {
+    let Some(el) = el else {
+        return DefaultAttrKind::PlainProperty;
+    };
+    let reconcile = match name {
+        "defaultValue" => {
+            el.attributes
+                .iter()
+                .any(|a| matches!(a, Attribute::StringAttribute(s) if s.name == "value"))
+                || (el.name == "textarea" && !ctx.component.fragment_nodes(el.fragment).is_empty())
+        }
+        "defaultChecked" => el
+            .attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::BooleanAttribute(b) if b.name == "checked")),
+        _ => false,
+    };
+    if reconcile {
+        DefaultAttrKind::ReconcileWithValue
+    } else {
+        DefaultAttrKind::PlainProperty
+    }
 }
 
 fn special_value_kind_for(el: Option<&Element>, attr_name: &str) -> Option<SpecialValueKind> {

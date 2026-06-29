@@ -1,7 +1,7 @@
 use std::mem;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, MustBePropertyValue, Volatility};
+use svelte_analyze::{AttributeSemantics, DefaultAttrKind, Volatility};
 use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -218,16 +218,51 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                 },
-                AttributeSemantics::MustBeProperty(s) => {
-                    let b = &self.ctx.b;
-                    let value_expr = match &s.value {
-                        MustBePropertyValue::BoolTrue => b.bool_expr(true),
-                        MustBePropertyValue::Str(text) => b.str_expr(text.as_str()),
+                AttributeSemantics::StaticAttr => {
+                    if let Attribute::StringAttribute(a) = attr {
+                        let val = a.value(&self.ctx.query.component.source).to_string();
+                        state.template.set_attribute(&a.name, Some(val));
+                    }
+                }
+                AttributeSemantics::CannotBeStatic(kind) => {
+                    let property = attr.name().unwrap_or_default().to_string();
+                    let value_expr = match attr {
+                        Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
+                        Attribute::StringAttribute(a) => {
+                            let text = a.value(&self.ctx.query.component.source).to_string();
+                            self.ctx.b.str_expr(&text)
+                        }
+                        _ => {
+                            return CodegenError::semantic_mismatch(
+                                attr_id,
+                                "CannotBeStatic requires boolean or string attribute",
+                            );
+                        }
                     };
-                    let target = AssignLeft::StaticMember(
-                        b.static_member(b.rid_expr(owner_var), s.property.as_str()),
-                    );
-                    state.init.push(b.assign_stmt(target, value_expr));
+                    let setter_fn = match (property.as_str(), *kind) {
+                        ("defaultValue", DefaultAttrKind::ReconcileWithValue) => {
+                            Some("$.set_default_value")
+                        }
+                        ("defaultChecked", DefaultAttrKind::ReconcileWithValue) => {
+                            Some("$.set_default_checked")
+                        }
+                        _ => None,
+                    };
+                    let b = &self.ctx.b;
+                    match setter_fn {
+                        Some(setter_fn) => {
+                            state.init.push(b.call_stmt(
+                                setter_fn,
+                                [Arg::Ident(owner_var), Arg::Expr(value_expr)],
+                            ));
+                        }
+                        None => {
+                            let target = AssignLeft::StaticMember(
+                                b.static_member(b.rid_expr(owner_var), &property),
+                            );
+                            state.init.push(b.assign_stmt(target, value_expr));
+                        }
+                    }
                 }
                 AttributeSemantics::Autofocus => {
                     let value = match attr {
@@ -273,11 +308,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                                     [Arg::Ident(owner_var), Arg::Str(val)],
                                 );
                                 state.init.push(self.ctx.b.expr_stmt(style_call));
-                                continue;
-                            }
-                            if a.name == "is" && is_html {
-                                let val = a.value(&self.ctx.query.component.source);
-                                state.template.set_attribute(&a.name, Some(val.to_string()));
                                 continue;
                             }
                             let val = a.value(&self.ctx.query.component.source).to_string();
@@ -465,8 +495,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
         }
 
-        if is_scoped && !wrote_class_attr && !has_class_directives && !has_class_attribute {
-            state.template.set_attribute("class", Some(css_hash));
+        if is_scoped
+            && !emitted_class
+            && !wrote_class_attr
+            && !has_class_directives
+            && !has_class_attribute
+        {
+            if self.ctx.query.view.is_custom_element(owner_id) {
+                if !css_hash.is_empty() {
+                    let call = self.ctx.b.call_expr(
+                        "$.set_class",
+                        [
+                            Arg::Ident(owner_var),
+                            Arg::Num(if is_html { 1.0 } else { 0.0 }),
+                            Arg::Str(css_hash),
+                        ],
+                    );
+                    state.init.push(self.ctx.b.expr_stmt(call));
+                }
+            } else {
+                state.template.set_attribute("class", Some(css_hash));
+            }
         }
 
         if !emitted_style_directives {

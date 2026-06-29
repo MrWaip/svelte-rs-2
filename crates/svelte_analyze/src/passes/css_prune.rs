@@ -161,6 +161,28 @@ pub(crate) fn prune_and_warn(
     pruner.visit_stylesheet(stylesheet);
     data.output.css.used_selectors = used;
 
+    let scoped_custom: Vec<NodeId> = data
+        .output
+        .css
+        .scoped_elements
+        .iter()
+        .filter(|id| data.is_custom_element(*id))
+        .collect();
+    let mut to_mark: Vec<NodeId> = Vec::new();
+    for id in scoped_custom {
+        let mut cur = Some(id);
+        while let Some(node) = cur {
+            if data.elements.flags.needs_var.contains(&node) {
+                break;
+            }
+            to_mark.push(node);
+            cur = data.template_element_parent(node);
+        }
+    }
+    for id in to_mark {
+        data.elements.flags.needs_var.insert(id);
+    }
+
     if emit_warnings {
         warn_unused(
             stylesheet,

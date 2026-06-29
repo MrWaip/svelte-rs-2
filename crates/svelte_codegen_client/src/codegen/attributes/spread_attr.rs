@@ -71,6 +71,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 Attribute::StringAttribute(a) => {
                     let val = a.value(&self.ctx.query.component.source).to_string();
+                    if matches!(
+                        self.ctx.query.analysis.attributes.get(a.id),
+                        AttributeSemantics::StaticAttr
+                    ) {
+                        state.template.set_attribute(&a.name, Some(val));
+                        continue;
+                    }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(name_alloc, self.ctx.b.str_expr(&val)));
                 }

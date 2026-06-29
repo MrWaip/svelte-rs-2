@@ -6,10 +6,10 @@ pub use data::{
     AttributeSemantics, BoundaryPropSemantics, ComponentAttachEmit, ComponentAttachSemantics,
     ComponentBindKind, ComponentBindSemantics, ComponentBindTarget, ComponentPropConcatSemantics,
     ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
-    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
-    HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, MustBePropertySemantics,
-    MustBePropertyValue, SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
+    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
+    EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
+    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
     SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 

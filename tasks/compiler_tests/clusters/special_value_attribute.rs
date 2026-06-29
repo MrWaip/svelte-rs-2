@@ -32,3 +32,7 @@ compiler_case!(
     select_oneway_reactive_options,
     "special_value_attribute/select_oneway_reactive_options"
 );
+compiler_case!(
+    input_default_value_in_static_parent,
+    "special_value_attribute/input_default_value_in_static_parent"
+);

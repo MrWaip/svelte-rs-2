@@ -91,15 +91,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         is_html: bool,
     ) {
         let hash = self.ctx.css_hash().to_string();
-        let scope_hash = (self.ctx.is_css_scoped(owner_id) && !hash.is_empty()).then_some(hash);
-        let class_value = self.ctx.b.str_expr(value);
+        let scoped = self.ctx.is_css_scoped(owner_id) && !hash.is_empty();
+        let folded = if scoped {
+            if value.is_empty() {
+                hash
+            } else {
+                format!("{value} {hash}")
+            }
+        } else {
+            value.to_string()
+        };
+        let class_value = self.ctx.b.str_expr(&folded);
         emit_set_class_call(
             self.ctx,
             &mut state.init,
             &mut state.update,
             owner_var,
             class_value,
-            scope_hash.as_deref(),
+            None,
             None,
             Volatility::Static,
             is_html,

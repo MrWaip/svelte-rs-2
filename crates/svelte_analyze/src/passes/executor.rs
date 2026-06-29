@@ -200,6 +200,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.value_evaluation,
                 &data.script.blocker_data,
                 &data.output.ignore_data,
+                &data.elements.facts,
                 options.dev,
                 component.node_count(),
             );

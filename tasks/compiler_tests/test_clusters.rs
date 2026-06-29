@@ -154,6 +154,9 @@ mod attribute_single_expr;
 #[path = "clusters/attribute_unquoted_value.rs"]
 mod attribute_unquoted_value;
 
+#[path = "clusters/attribute_img_loading.rs"]
+mod attribute_img_loading;
+
 #[path = "clusters/custom_element.rs"]
 mod custom_element;
 
