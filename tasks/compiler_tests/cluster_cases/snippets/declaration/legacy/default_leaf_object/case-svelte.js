@@ -1,8 +1,8 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 const s = ($$anchor, $$arg0) => {
-	let a = $.derived_safe_equal(() => $.fallback(($$arg0?.()).a, 10));
-	let b = $.derived_safe_equal(() => $.fallback(($$arg0?.()).b, 20));
+	let a = $.derived_safe_equal(() => $.fallback($$arg0?.().a, 10));
+	let b = $.derived_safe_equal(() => $.fallback($$arg0?.().b, 20));
 	var button = root_1();
 	var text = $.child(button);
 	$.reset(button);

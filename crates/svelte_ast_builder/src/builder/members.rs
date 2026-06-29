@@ -81,6 +81,34 @@ impl<'a> Builder<'a> {
         self.array_expr(elements)
     }
 
+    pub fn unwrap_chain(&self, expr: Expression<'a>) -> Expression<'a> {
+        let Expression::ChainExpression(chain) = expr else {
+            return expr;
+        };
+        match chain.unbox().expression {
+            ChainElement::CallExpression(call) => Expression::CallExpression(call),
+            ChainElement::TSNonNullExpression(node) => Expression::TSNonNullExpression(node),
+            ChainElement::StaticMemberExpression(node) => Expression::StaticMemberExpression(node),
+            ChainElement::ComputedMemberExpression(node) => {
+                Expression::ComputedMemberExpression(node)
+            }
+            ChainElement::PrivateFieldExpression(node) => Expression::PrivateFieldExpression(node),
+        }
+    }
+
+    pub fn wrap_chain(&self, expr: Expression<'a>) -> Expression<'a> {
+        let element = match expr {
+            Expression::CallExpression(call) => ChainElement::CallExpression(call),
+            Expression::StaticMemberExpression(node) => ChainElement::StaticMemberExpression(node),
+            Expression::ComputedMemberExpression(node) => {
+                ChainElement::ComputedMemberExpression(node)
+            }
+            Expression::PrivateFieldExpression(node) => ChainElement::PrivateFieldExpression(node),
+            other => return other,
+        };
+        Expression::ChainExpression(self.alloc(self.ast.chain_expression(SPAN, element)))
+    }
+
     pub fn make_optional_chain(&self, mut expr: Expression<'a>) -> Expression<'a> {
         {
             let mut current = &mut expr;

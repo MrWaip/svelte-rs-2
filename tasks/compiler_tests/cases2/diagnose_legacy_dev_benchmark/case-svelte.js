@@ -117,11 +117,11 @@ export default function App($$anchor, $$props) {
 	const binding_group = [];
 	const metricSummary = $.wrap_snippet(App, function($$anchor, $$arg0) {
 		$.validate_snippet_args(...arguments);
-		let label = () => ($$arg0?.()).label;
+		let label = () => $$arg0?.().label;
 		label();
-		let values = $.derived_safe_equal(() => $.fallback(($$arg0?.()).values, () => [$.get(counter)], true));
+		let values = $.derived_safe_equal(() => $.fallback($$arg0?.().values, () => [$.get(counter)], true));
 		$.get(values);
-		let id = $.derived_safe_equal(() => $.fallback($.fallback(($$arg0?.()).meta, () => ({}), true).id, propsId));
+		let id = $.derived_safe_equal(() => $.fallback($.fallback($$arg0?.().meta, () => ({}), true).id, propsId));
 		$.get(id);
 		var section = root_4();
 		var h4 = $.child(section);

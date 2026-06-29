@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 const s = ($$anchor, $$arg0) => {
-	let a = () => ($$arg0?.()).a;
-	let b = () => ($$arg0?.()).b;
+	let a = () => $$arg0?.().a;
+	let b = () => $$arg0?.().b;
 	var button = root_1();
 	var text = $.child(button);
 	$.reset(button);

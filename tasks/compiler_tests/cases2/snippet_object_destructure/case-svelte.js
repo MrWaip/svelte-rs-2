@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 const greeting = ($$anchor, $$arg0) => {
-	let name = () => ($$arg0?.()).name;
-	let age = () => ($$arg0?.()).age;
+	let name = () => $$arg0?.().name;
+	let age = () => $$arg0?.().age;
 	var p = root_1();
 	var text = $.child(p);
 	$.reset(p);
@@ -9,7 +9,7 @@ const greeting = ($$anchor, $$arg0) => {
 	$.append($$anchor, p);
 };
 const withDefault = ($$anchor, $$arg0) => {
-	let label = $.derived_safe_equal(() => $.fallback(($$arg0?.()).label, "default"));
+	let label = $.derived_safe_equal(() => $.fallback($$arg0?.().label, "default"));
 	var span = root_2();
 	var text_1 = $.child(span, true);
 	$.reset(span);
@@ -17,7 +17,7 @@ const withDefault = ($$anchor, $$arg0) => {
 	$.append($$anchor, span);
 };
 const withRest = ($$anchor, $$arg0) => {
-	let id = () => ($$arg0?.()).id;
+	let id = () => $$arg0?.().id;
 	let rest = () => $.exclude_from_object($$arg0?.(), ["id"]);
 	var div = root_3();
 	var text_2 = $.child(div, true);

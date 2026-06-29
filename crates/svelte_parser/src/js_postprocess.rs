@@ -4,9 +4,9 @@ use std::mem;
 use oxc_allocator::{Allocator, Box as OxcBox};
 use oxc_ast::ast::{
     AccessorProperty, ArrowFunctionExpression, AssignmentTarget, BindingPattern, BlockStatement,
-    CallExpression, CatchParameter, ChainElement, Class, ClassBody, ClassElement, DoWhileStatement,
-    EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement, FormalParameter,
-    FormalParameterRest, FormalParameters, Function, FunctionBody, IfStatement,
+    CallExpression, CatchParameter, ChainElement, ChainExpression, Class, ClassBody, ClassElement,
+    DoWhileStatement, EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement,
+    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody, IfStatement,
     ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression, NullLiteral,
     Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget, Statement,
     StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
@@ -97,6 +97,38 @@ impl<'a> JsPostprocessor<'a> {
         }
     }
 
+    fn flatten_chain_spine(&self, element: &mut ChainElement<'a>) {
+        match element {
+            ChainElement::StaticMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::ComputedMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::PrivateFieldExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::CallExpression(c) => self.flatten_chain_object(&mut c.callee),
+            ChainElement::TSNonNullExpression(_) => {}
+        }
+    }
+
+    fn flatten_chain_object(&self, expr: &mut Expression<'a>) {
+        if let Expression::ParenthesizedExpression(paren) = expr
+            && matches!(paren.expression, Expression::ChainExpression(_))
+        {
+            let inner = self.take_expr(&mut paren.expression);
+            *expr = inner;
+        }
+        if let Expression::ChainExpression(_) = expr {
+            let Expression::ChainExpression(chain) = self.take_expr(expr) else {
+                return;
+            };
+            *expr = chain_element_into_expression(chain.unbox().expression);
+        }
+        match expr {
+            Expression::StaticMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::ComputedMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::PrivateFieldExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::CallExpression(c) => self.flatten_chain_object(&mut c.callee),
+            _ => {}
+        }
+    }
+
     fn strip_simple_assignment_target(&self, node: &mut SimpleAssignmentTarget<'a>) {
         let Some(expr) = node.get_expression_mut() else {
             return;
@@ -176,6 +208,16 @@ impl<'a> JsPostprocessor<'a> {
                 _ => true,
             }
         });
+    }
+}
+
+fn chain_element_into_expression<'a>(element: ChainElement<'a>) -> Expression<'a> {
+    match element {
+        ChainElement::CallExpression(c) => Expression::CallExpression(c),
+        ChainElement::TSNonNullExpression(t) => Expression::TSNonNullExpression(t),
+        ChainElement::StaticMemberExpression(m) => Expression::StaticMemberExpression(m),
+        ChainElement::ComputedMemberExpression(m) => Expression::ComputedMemberExpression(m),
+        ChainElement::PrivateFieldExpression(m) => Expression::PrivateFieldExpression(m),
     }
 }
 
@@ -273,6 +315,11 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
             self.strip_chain_element_wrappers(it);
         }
         walk_mut::walk_chain_element(self, it);
+    }
+
+    fn visit_chain_expression(&mut self, it: &mut ChainExpression<'a>) {
+        walk_mut::walk_chain_expression(self, it);
+        self.flatten_chain_spine(&mut it.expression);
     }
 
     fn visit_simple_assignment_target(&mut self, it: &mut SimpleAssignmentTarget<'a>) {

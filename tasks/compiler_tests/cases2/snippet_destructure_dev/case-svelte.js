@@ -2,9 +2,9 @@ App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
 const greeting = $.wrap_snippet(App, function($$anchor, $$arg0) {
 	$.validate_snippet_args(...arguments);
-	let label = () => ($$arg0?.()).label;
+	let label = () => $$arg0?.().label;
 	label();
-	let name = $.derived_safe_equal(() => $.fallback(($$arg0?.()).name, "world"));
+	let name = $.derived_safe_equal(() => $.fallback($$arg0?.().name, "world"));
 	$.get(name);
 	var p = root_1();
 	var text = $.child(p);

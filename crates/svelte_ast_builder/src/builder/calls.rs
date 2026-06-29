@@ -115,10 +115,7 @@ impl<'a> Builder<'a> {
         member: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
-        let object = match object {
-            Expression::ChainExpression(_) => self.ast.expression_parenthesized(SPAN, object),
-            other => other,
-        };
+        let object = self.unwrap_chain(object);
         let property = self.ast.identifier_name(SPAN, self.ast.atom(member));
         let callee_inner = self
             .ast

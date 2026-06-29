@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 const row = ($$anchor, label = $.noop, $$arg1, $$arg2) => {
-	let id = () => ($$arg1?.()).id;
+	let id = () => $$arg1?.().id;
 	var $$array = $.derived(() => $.to_array($$arg2?.(), 1));
 	let value = () => $.get($$array)[0];
 	var p = root_1();

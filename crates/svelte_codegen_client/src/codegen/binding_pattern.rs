@@ -719,23 +719,18 @@ fn param_member_access<'a, 'ctx>(
     key: &PropertyKey<'_>,
     computed: bool,
 ) -> Expression<'a> {
-    let object = break_optional_chain(cg, object);
-    if !computed && let PropertyKey::StaticIdentifier(id) = key {
-        return cg.ctx.b.static_member_expr(object, id.name.as_str());
+    let was_chain = matches!(object, Expression::ChainExpression(_));
+    let object = cg.ctx.b.unwrap_chain(object);
+    let member = if !computed && let PropertyKey::StaticIdentifier(id) = key {
+        cg.ctx.b.static_member_expr(object, id.name.as_str())
+    } else {
+        let key_expr = clone_property_key_expr(cg, key);
+        cg.ctx.b.computed_member_expr(object, key_expr)
+    };
+    if !was_chain {
+        return member;
     }
-    let key_expr = clone_property_key_expr(cg, key);
-    cg.ctx.b.computed_member_expr(object, key_expr)
-}
-
-fn break_optional_chain<'a, 'ctx>(
-    cg: &Codegen<'a, 'ctx>,
-    object: Expression<'a>,
-) -> Expression<'a> {
-    use oxc_span::SPAN;
-    match object {
-        Expression::ChainExpression(_) => cg.ctx.b.ast.expression_parenthesized(SPAN, object),
-        other => other,
-    }
+    cg.ctx.b.wrap_chain(member)
 }
 
 fn clone_property_key_expr<'a, 'ctx>(
