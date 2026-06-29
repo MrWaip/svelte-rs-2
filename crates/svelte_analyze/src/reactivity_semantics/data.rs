@@ -920,6 +920,8 @@ pub enum ReferenceSemantics {
 
     DerivedWrite,
 
+    DerivedUpdate,
+
     StoreRead {
         symbol: SymbolId,
     },
@@ -1034,6 +1036,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1079,6 +1082,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::PropRead(_)
             | ReferenceSemantics::PropMutation { .. }
             | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
@@ -1117,6 +1121,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1156,6 +1161,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1203,6 +1209,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1242,6 +1249,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1282,6 +1290,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1322,6 +1331,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1461,6 +1471,7 @@ pub(crate) enum ReferenceFacts {
         store_unsub: Option<SymbolId>,
     },
     DerivedWrite,
+    DerivedUpdate,
     StoreRead {
         symbol: SymbolId,
     },
@@ -1564,6 +1575,7 @@ impl ReferenceFacts {
             | ReferenceFacts::SignalWrite { .. }
             | ReferenceFacts::SignalUpdate { .. }
             | ReferenceFacts::DerivedWrite
+            | ReferenceFacts::DerivedUpdate
             | ReferenceFacts::PropRead(_)
             | ReferenceFacts::PropMutation { .. }
             | ReferenceFacts::PropSourceMemberMutationRoot { .. }
@@ -1988,6 +2000,7 @@ impl ReactivitySemantics {
                 store_unsub: *store_unsub,
             },
             Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
+            Some(ReferenceFacts::DerivedUpdate) => ReferenceSemantics::DerivedUpdate,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }
             }

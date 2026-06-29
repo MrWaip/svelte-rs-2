@@ -246,10 +246,10 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::Derived(derived) | BindingFacts::OptimizedDerived(derived) => {
-            if is_write && !is_read {
-                Some(ReferenceFacts::DerivedWrite)
+            if is_write && is_read {
+                Some(ReferenceFacts::DerivedUpdate)
             } else if is_write {
-                Some(ReferenceFacts::IllegalWrite)
+                Some(ReferenceFacts::DerivedWrite)
             } else if is_read {
                 Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::Derived(derived.decl.kind),

@@ -56,6 +56,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::SignalWrite { .. }
         | ReferenceSemantics::SignalUpdate { .. }
         | ReferenceSemantics::DerivedWrite
+        | ReferenceSemantics::DerivedUpdate
         | ReferenceSemantics::StoreWrite { .. }
         | ReferenceSemantics::StoreUpdate { .. }
         | ReferenceSemantics::PropMutation { .. }

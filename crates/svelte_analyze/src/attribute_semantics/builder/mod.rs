@@ -843,7 +843,8 @@ fn classify_identifier_kind(
         | ReferenceSemantics::PropMutation { bindable: true, .. } => HtmlBindKind::BindableProp,
         ReferenceSemantics::SignalRead { .. }
         | ReferenceSemantics::SignalWrite { .. }
-        | ReferenceSemantics::SignalUpdate { .. } => HtmlBindKind::Rune,
+        | ReferenceSemantics::SignalUpdate { .. }
+        | ReferenceSemantics::DerivedUpdate => HtmlBindKind::Rune,
         ReferenceSemantics::LegacyStateRead { .. }
         | ReferenceSemantics::LegacyStateWrite
         | ReferenceSemantics::LegacyStateUpdate { .. }

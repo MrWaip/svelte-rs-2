@@ -86,6 +86,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::SignalRead { safe: false, .. }
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { safe: false, .. }
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::LegacyStateWrite
             | ReferenceSemantics::LegacyStateUpdate { safe: false }
             | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
@@ -353,7 +354,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_assignment(node)
             }
-            ReferenceSemantics::DerivedWrite => self.rewrite_derived_identifier_assignment(node),
+            ReferenceSemantics::DerivedWrite | ReferenceSemantics::DerivedUpdate => {
+                self.rewrite_signal_or_store_identifier_assignment(node)
+            }
             ReferenceSemantics::LegacyStateSubscribedWrite { store_symbol }
             | ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
                 if !self.rewrite_signal_or_store_identifier_assignment(node) {
@@ -392,27 +395,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
         }
-    }
-
-    fn rewrite_derived_identifier_assignment(&self, node: &mut Expression<'a>) -> bool {
-        let (name, operator) = {
-            let Expression::AssignmentExpression(assign) = &*node else {
-                return false;
-            };
-            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
-                return false;
-            };
-            (id.name, assign.operator)
-        };
-        if !matches!(operator, AssignmentOperator::Assign) {
-            return false;
-        }
-        let Expression::AssignmentExpression(assign) = &mut *node else {
-            unreachable!()
-        };
-        let right = mem::replace(&mut assign.right, self.make_rune_get(""));
-        *node = self.make_rune_set(name.as_str(), right, false);
-        true
     }
 
     pub(crate) fn dispatch_identifier_update(
@@ -454,6 +436,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
             ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreUpdate { .. }
             | ReferenceSemantics::LegacyStateUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_update(node)
@@ -573,6 +556,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
@@ -644,6 +628,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::LegacySlotsIdentifierRead
             | ReferenceSemantics::Unresolved => false,
@@ -783,6 +768,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *node = self.make_rune_set(name.as_str(), value, needs_proxy);
                 true
             }
+            ReferenceSemantics::DerivedWrite | ReferenceSemantics::DerivedUpdate => {
+                let Expression::AssignmentExpression(assign) = &mut *node else {
+                    unreachable!()
+                };
+                let right = mem::replace(&mut assign.right, self.make_rune_get(""));
+                let left_read = self.make_rune_get(name.as_str());
+                let value = self.build_compound_value(operator, left_read, right);
+                *node = self.make_rune_set(name.as_str(), value, false);
+                true
+            }
 
             ReferenceSemantics::LegacyStateWrite => {
                 let Expression::AssignmentExpression(assign) = &mut *node else {
@@ -877,6 +872,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
 
+            ReferenceSemantics::DerivedUpdate => {
+                *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
+                true
+            }
             ReferenceSemantics::LegacyStateUpdate { .. } => {
                 *node = self.make_rune_update(name.as_str(), is_prefix, is_increment);
                 true
