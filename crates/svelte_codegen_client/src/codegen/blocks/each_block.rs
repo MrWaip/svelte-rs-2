@@ -216,18 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let item_param_name = match &sem.item {
-            EachItemKind::Identifier(_) => block
-                .context
-                .as_ref()
-                .map(|r| {
-                    self.ctx
-                        .query
-                        .component
-                        .source_text(r.span)
-                        .trim()
-                        .to_string()
-                })
-                .unwrap_or_else(|| SYNTHETIC_ITEM_NAME.to_string()),
+            EachItemKind::Identifier(sym) => self.ctx.query.symbol_name(*sym).to_string(),
             EachItemKind::Pattern(_) | EachItemKind::NoBinding => SYNTHETIC_ITEM_NAME.to_string(),
         };
 

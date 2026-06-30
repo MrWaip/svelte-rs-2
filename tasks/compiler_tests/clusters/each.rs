@@ -195,3 +195,25 @@ compiler_case!(
     kiw_keyed_by_index_guard,
     "each/keyed_index_writeback/legacy/keyed_by_index_guard"
 );
+
+compiler_case!(typed_context_typed_ident, "each/typed_context/typed_ident");
+compiler_case!(
+    typed_context_typed_ident_index,
+    "each/typed_context/typed_ident_index"
+);
+compiler_case!(
+    typed_context_plain_ident_guard,
+    "each/typed_context/plain_ident_guard"
+);
+compiler_case!(
+    typed_context_plain_ident_index_guard,
+    "each/typed_context/plain_ident_index_guard"
+);
+compiler_case!(
+    typed_context_typed_object_guard,
+    "each/typed_context/typed_object_guard"
+);
+compiler_case!(
+    typed_context_typed_array_guard,
+    "each/typed_context/typed_array_guard"
+);
