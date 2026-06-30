@@ -31,6 +31,7 @@ pub(super) struct ExprFacts {
     pub references: SmallVec<[SymbolId; 2]>,
     pub top_level_reads: SmallVec<[SymbolId; 2]>,
     pub member_or_call_roots: SmallVec<[SymbolId; 2]>,
+    pub member_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub has_await: bool,
     pub has_call: bool,
@@ -60,6 +61,7 @@ pub(super) fn collect<'a>(
         references: SmallVec::new(),
         top_level_reads: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
+        member_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
         has_call: false,
         has_impure_call: false,
@@ -80,6 +82,7 @@ pub(super) fn collect<'a>(
         references: visitor.references,
         top_level_reads: visitor.top_level_reads,
         member_or_call_roots: visitor.member_or_call_roots,
+        member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
         has_await: expression_has_await(expr),
         has_call: visitor.has_call,
@@ -263,6 +266,7 @@ struct Collector<'c, 'a> {
     references: SmallVec<[SymbolId; 2]>,
     top_level_reads: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
+    member_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     has_call: bool,
     has_impure_call: bool,
@@ -427,6 +431,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             if let Some(sym) = self.expression_root_sym(obj) {
                 if !self.member_or_call_roots.contains(&sym) {
                     self.member_or_call_roots.push(sym);
+                }
+                if !self.member_roots.contains(&sym) {
+                    self.member_roots.push(sym);
                 }
                 if self.fn_depth == 0 && !self.top_member_or_call_roots.contains(&sym) {
                     self.top_member_or_call_roots.push(sym);

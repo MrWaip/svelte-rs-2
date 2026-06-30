@@ -364,6 +364,11 @@ fn store_render_tag(site_id: NodeId, expr_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink
             sink.note_context(ContextSignal::REST_PROP_MEMBER);
         }
     }
+    for &sym in facts.member_roots.iter() {
+        if !is_safe_member_root(ctx.reactivity, sym) {
+            sink.note_context(ContextSignal::IMPORT_OR_PROP_MEMBER);
+        }
+    }
     if facts.has_legacy_props_member_root {
         sink.note_context(ContextSignal::REST_PROP_MEMBER);
     }

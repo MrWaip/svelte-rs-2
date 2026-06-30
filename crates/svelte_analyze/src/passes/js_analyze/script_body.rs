@@ -21,7 +21,6 @@ pub(crate) fn analyze_script(data: &mut AnalysisData, program: &Program<'_>) {
     data.script.has_store_member_mutations = body.has_store_member_mutations;
     data.script.has_class_state_fields = body.has_class_state_fields;
     data.output.needs_context = body.has_effects
-        || body.has_class_state_fields
         || body.has_store_member_mutations
         || NeedsContextVisitor::check(program, &data.scoping, &data.reactivity);
 }
@@ -32,9 +31,7 @@ pub(crate) fn needs_context_for_program(
     reactivity: &ReactivitySemantics,
 ) -> bool {
     let body = analyze_script_body(program, reactivity);
-    body.has_effects
-        || body.has_class_state_fields
-        || NeedsContextVisitor::check(program, scoping, reactivity)
+    body.has_effects || NeedsContextVisitor::check(program, scoping, reactivity)
 }
 
 pub(crate) fn analyze_script_body<'r>(
