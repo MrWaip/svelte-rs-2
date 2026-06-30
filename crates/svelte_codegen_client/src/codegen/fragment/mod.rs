@@ -863,45 +863,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    fn template_from_fn(
-        &self,
-        ctx: &FragmentCtx<'a>,
-        fragment_id: svelte_ast::FragmentId,
-        strategy_kind: StrategyKind,
-    ) -> &'static str {
-        let fragment = self.ctx.query.component.store.fragment(fragment_id);
-        if let StrategyKind::SingleElement = strategy_kind {
-            for &id in &fragment.nodes {
-                if matches!(
-                    self.ctx.query.component.store.get(id),
-                    svelte_ast::Node::Element(_)
-                ) {
-                    if let Some(ns) = self.ctx.query.view.creation_namespace(id) {
-                        return super::namespace::from_namespace(ns);
-                    }
-                    break;
-                }
-            }
-        }
-        if let StrategyKind::Multi = strategy_kind {
-            let mut acc: Option<svelte_ast::Namespace> = None;
-            for &id in &fragment.nodes {
-                if let Some(ns) = self.ctx.query.view.creation_namespace(id) {
-                    acc = match acc {
-                        None => Some(ns),
-                        Some(prev) if prev == ns => Some(prev),
-                        Some(_) => Some(svelte_ast::Namespace::Html),
-                    };
-                    if matches!(acc, Some(svelte_ast::Namespace::Html)) {
-                        break;
-                    }
-                }
-            }
-            if let Some(ns) = acc {
-                return super::namespace::from_namespace(ns);
-            }
-        }
-        super::namespace::from_namespace(ctx.namespace)
+    fn template_from_fn(&self, fragment_id: svelte_ast::FragmentId) -> &'static str {
+        super::namespace::from_namespace(self.ctx.query.view.fragment_namespace(fragment_id))
     }
 
     pub(crate) fn finalize_slot_root_template(
@@ -954,7 +917,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         fragment_id: svelte_ast::FragmentId,
         slot_root_id: Option<NodeId>,
     ) -> Result<()> {
-        let from_fn = self.template_from_fn(ctx, fragment_id, strategy_kind);
+        let from_fn = self.template_from_fn(fragment_id);
         let html_str = state.template.as_html();
         let needs_import = state.template.needs_import_node;
         let mut from_html = {

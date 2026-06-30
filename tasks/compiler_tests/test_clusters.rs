@@ -61,6 +61,9 @@ mod style_directive;
 #[path = "clusters/customizable_select.rs"]
 mod customizable_select;
 
+#[path = "clusters/element_namespace.rs"]
+mod element_namespace;
+
 #[path = "clusters/special_value_attribute.rs"]
 mod special_value_attribute;
 

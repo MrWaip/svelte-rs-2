@@ -107,6 +107,7 @@ pub(crate) fn execute_pass<'a>(
                 );
             }
             data.template.template_elements.finalize();
+            super::template_side_tables::promote_anchor_namespaces(component, data);
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
             for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
