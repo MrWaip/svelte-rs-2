@@ -6,10 +6,10 @@ use oxc_ast::ast::{
     AccessorProperty, ArrowFunctionExpression, AssignmentTarget, BindingPattern, BlockStatement,
     CallExpression, CatchParameter, ChainElement, ChainExpression, Class, ClassBody, ClassElement,
     DoWhileStatement, EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement,
-    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody, IfStatement,
-    ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression, NullLiteral,
-    Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget, Statement,
-    StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
+    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody, FunctionType,
+    IfStatement, ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression,
+    NullLiteral, Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget,
+    Statement, StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
     TSTypeParameterDeclaration, TSTypeParameterInstantiation, TaggedTemplateExpression,
     VariableDeclarator, WhileStatement, match_member_expression,
 };
@@ -232,7 +232,7 @@ fn is_pure_ts_type_statement(stmt: &Statement<'_>) -> bool {
         Statement::TSModuleDeclaration(m) => !ts_module_has_runtime_node(m),
         Statement::TSGlobalDeclaration(g) => !ts_module_block_has_runtime_node(&g.body),
         Statement::VariableDeclaration(d) => d.declare,
-        Statement::FunctionDeclaration(f) => f.declare,
+        Statement::FunctionDeclaration(f) => is_pure_ts_function(f),
         Statement::ClassDeclaration(c) => c.declare,
         Statement::ExportNamedDeclaration(e) => match &e.declaration {
             Some(Declaration::TSTypeAliasDeclaration(_))
@@ -241,12 +241,16 @@ fn is_pure_ts_type_statement(stmt: &Statement<'_>) -> bool {
             Some(Declaration::TSModuleDeclaration(m)) => !ts_module_has_runtime_node(m),
             Some(Declaration::TSGlobalDeclaration(g)) => !ts_module_block_has_runtime_node(&g.body),
             Some(Declaration::VariableDeclaration(v)) => v.declare,
-            Some(Declaration::FunctionDeclaration(f)) => f.declare,
+            Some(Declaration::FunctionDeclaration(f)) => is_pure_ts_function(f),
             Some(Declaration::ClassDeclaration(c)) => c.declare,
             _ => false,
         },
         _ => false,
     }
+}
+
+fn is_pure_ts_function(func: &Function<'_>) -> bool {
+    func.declare || func.r#type == FunctionType::TSDeclareFunction
 }
 
 fn ts_module_has_runtime_node(decl: &TSModuleDeclaration<'_>) -> bool {

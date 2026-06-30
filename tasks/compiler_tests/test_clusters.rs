@@ -142,6 +142,9 @@ mod const_tag;
 #[path = "clusters/snippets.rs"]
 mod snippets;
 
+#[path = "clusters/typescript.rs"]
+mod typescript;
+
 #[path = "clusters/attribute_memo.rs"]
 mod attribute_memo;
 
