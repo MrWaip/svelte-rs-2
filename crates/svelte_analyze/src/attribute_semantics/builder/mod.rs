@@ -1507,7 +1507,11 @@ fn derive_component_prop_memo_core(
             | Expression::ComputedMemberExpression(_)
     );
     let needs_wrap = references_need_wrap(ctx, data);
-    if expression_calls_or_awaits(expr_raw) || !data.blockers.is_empty() {
+    if matches!(
+        data.volatility,
+        Volatility::Heavy | Volatility::Asynchronous
+    ) || !data.blockers.is_empty()
+    {
         ComponentPropMemo::Derived
     } else if needs_wrap && simple_shape {
         ComponentPropMemo::Getter

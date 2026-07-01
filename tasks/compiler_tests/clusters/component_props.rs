@@ -30,3 +30,19 @@ compiler_case!(
     snippet_shorthand_getter,
     "component_props/snippet_shorthand_getter"
 );
+compiler_case!(
+    call_pure_global_inline,
+    "component_props/call_pure_global_inline"
+);
+compiler_case!(
+    call_local_fn_derived,
+    "component_props/call_local_fn_derived"
+);
+compiler_case!(
+    call_pure_callee_state_arg_derived,
+    "component_props/call_pure_callee_state_arg_derived"
+);
+compiler_case!(
+    call_pure_global_nested_inline,
+    "component_props/call_pure_global_nested_inline"
+);
