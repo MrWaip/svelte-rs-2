@@ -19,17 +19,21 @@ Find the one place in the Original that caused a divergence, discover everything
 ## When not to use
 
 - One-off parity check on a scratch component, no persistent tests wanted → `/quick-check`.
-- A whole-directory survey of mismatches → `just sweep-run <dir> --dry-run`.
+- Only the list of what mismatches, with no cluster to pin yet → `just sweep-run <dir> --dry-run`.
 - A brand-new feature test with no Original divergence to chase → `/add-test` or
   `/add-diagnostic-test`.
 
 ## Steps
 
-1. **Reproduce what the user gave you.** Get our output and the reference side by side and read
-   the actual outcome — the wrong JS, the panic, the missing/extra diagnostic, the CSS.
-   - a file or inline source → `/quick-check`
-   - a directory → `just sweep-run <dir>` finds the first mismatch; that file is your input,
-     then `/quick-check` it.
+1. **Reproduce what the user gave you.** The input is whatever they hand over — a file, inline
+   source, a path, a `just sweep-run` you kick off, a sweep log already produced, a single diff.
+   Normalize it to one diverging FILE and read its actual outcome side by side with the
+   reference — the wrong JS, the panic, the missing/extra diagnostic, the CSS.
+   - one file or inline source → `/quick-check`
+   - only a directory in hand → `just sweep-run <dir>`, then `/quick-check` the file it flags.
+   - **several divergences at once** (a sweep log, a directory) → before digging, pick ONE
+     cluster: scan for a shared root across the mismatches, then take the one that covers the
+     most. That file is your input.
 
    Build everything from the input FILE, not from the sample's name.
    **Done when** you have both outputs in front of you and can say exactly what differs.
