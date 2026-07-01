@@ -1,0 +1,79 @@
+---
+name: dig-better
+description: 🧩 PARITY · Turn one divergence from the Original into a test per affected case (does not fix).
+disable-model-invocation: true
+allowed-tools: Bash, Read, Write, Edit, Grep, Glob, mcp__narsil-mcp__*, Agent
+---
+
+# dig-better
+
+Find the one place in the Original that caused a divergence, discover everything else in that same area that also diverges, and leave a test on disk for each case — without fixing the compiler.
+
+## Read first (every time — don't skip because it's "already in session")
+
+- `docs/context.md` §«Language» — the real project vocabulary (Original, parser / analyze /
+  transform / codegen) and the layer dogmas (smart analyzer, dumb codegen).
+- If the area belongs to a cluster with a root PRD (CLAUDE.md «Architectural root PRDs»),
+  read it — its invariants may mean the fix is bigger than a local tweak.
+
+## When not to use
+
+- One-off parity check on a scratch component, no persistent tests wanted → `/quick-check`.
+- A whole-directory survey of mismatches → `just sweep-run <dir> --dry-run`.
+- A brand-new feature test with no Original divergence to chase → `/add-test` or
+  `/add-diagnostic-test`.
+
+## Steps
+
+1. **Reproduce what the user gave you.** Get our output and the reference side by side and read
+   the actual outcome — the wrong JS, the panic, the missing/extra diagnostic, the CSS.
+   - a file or inline source → `/quick-check`
+   - a directory → `just sweep-run <dir>` finds the first mismatch; that file is your input,
+     then `/quick-check` it.
+
+   Build everything from the input FILE, not from the sample's name.
+   **Done when** you have both outputs in front of you and can say exactly what differs.
+
+2. **Follow the divergence to the Original.** Find the ONE decision in `original/compiler/`
+   whose logic produced the difference. The branch is not always an `if` / `switch` / early
+   return — often it is a **strategy**: which function, visitor, or lambda gets selected,
+   wrapped, nested, or substituted for this input is itself the branch. Read how that decision
+   is composed, not just the line that fired.
+   **Done when** you can paste the deciding code (`file:line` + the real body) and name the
+   finite set of branches it chooses between — explicit conditionals or swapped strategies
+   alike. Never conclude from a name or from memory.
+
+3. **Collect every case in that area — this is the point of the skill.** The divergence the
+   user hit is one branch of a finite set: cover every branch and you are done, miss one and
+   it stays broken. Turn each branch from step 2 into a planned case, plus the edge cases and
+   options the Original handles there. Add the cases that already match and MUST stay matching
+   after a fix (`_guard` cases). For recursive structures (destructuring patterns, nested
+   nodes) — one case per shape; a single shallow case does not cover a tree.
+   **Done when** every branch from step 2 maps to a case in your list, plus the guard cases.
+
+4. **Write a test for every case — do not skip this, do not defer it to "after we decide".**
+   Go through the sanctioned path — that is where the mechanics live, and they are easy to get
+   subtly wrong from memory. Do not hand-roll a case:
+   - compiler-output cases → `/add-test`
+   - diagnostic cases → `/add-diagnostic-test`
+
+   Run each case in the same mode/options as the divergence, or its red/green means nothing.
+   **Done when** every branch has a real case on disk that is registered, runs, and shows
+   red = the divergences / green = the guards. A table in chat is not the artifact — a case
+   that isn't registered and run does not exist.
+
+5. **Summarize — short, plain, free-form.** In Svelte and behavior terms only — no internal
+   jargon, and never make a function or type name the subject of a sentence (the user
+   reads behavior, not identifiers): what the user pasted + options ·
+   what our output does wrong versus the Original, as the running component would behave · how
+   the Original does it (narrate the mechanism, no `file:line`) · the tests you created and
+   which are red vs green. If the fix looks bigger than a local tweak (touches several crates
+   or needs machinery that isn't there yet), say so in one plain sentence.
+   **Done when** the summary names the tests that now exist on disk — which you cannot write
+   honestly if step 4 was skipped.
+
+## Sub-agents — mcp-first
+
+If you dispatch a sub-agent to explore the Original or our code, tell it to use narsil-mcp
+(sub-agents don't inherit the project hook; they load schemas via `ToolSearch` first). Ask
+for facts backed by `file:line` + the real body — never for a conclusion.
