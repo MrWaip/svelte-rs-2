@@ -53,9 +53,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     }
 
     fn enter_function(&mut self, node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         let name = node
             .id
             .as_ref()
@@ -69,9 +66,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     }
 
     fn exit_function(&mut self, _node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.function_info_stack.pop();
     }
 
@@ -80,9 +74,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         let name = self.next_arrow_name.take();
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
@@ -96,9 +87,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         _node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.function_info_stack.pop();
     }
 
@@ -115,6 +103,9 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            if !self.function_info_stack.is_empty() {
+                self.rewrite_binding_declarations(stmts, ctx);
+            }
             return;
         }
         if ctx.current_scope_id() == ctx.scoping().root_scope_id() {

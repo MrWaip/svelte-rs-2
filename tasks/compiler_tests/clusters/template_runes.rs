@@ -19,16 +19,27 @@ compiler_case!(
     "template_runes/state_snapshot_in_text"
 );
 compiler_case!(
-    guard_effect_tracking_in_script,
-    "template_runes/guard_effect_tracking_in_script"
+    effect_tracking_in_script_guard,
+    "template_runes/effect_tracking_in_script_guard"
 );
 compiler_case!(
-    guard_state_call_in_script,
-    "template_runes/guard_state_call_in_script"
+    state_call_in_script_guard,
+    "template_runes/state_call_in_script_guard"
 );
 
 compiler_case!(
     state_call_in_handler,
-    "template_runes/state_call_in_handler",
-    ignore = "$state в template-выражении — отдельная проработка"
+    "template_runes/state_call_in_handler"
+);
+compiler_case!(
+    derived_call_in_handler,
+    "template_runes/derived_call_in_handler"
+);
+compiler_case!(
+    state_primitive_in_handler,
+    "template_runes/state_primitive_in_handler"
+);
+compiler_case!(
+    state_call_in_nested_block_in_handler,
+    "template_runes/state_call_in_nested_block_in_handler"
 );
