@@ -45,19 +45,23 @@ Find the one place in the Original that caused a divergence, discover everything
 
 3. **Collect every case in that area — this is the point of the skill.** The divergence the
    user hit is one branch of a finite set: cover every branch and you are done, miss one and
-   it stays broken. Turn each branch from step 2 into a planned case, plus the edge cases and
+   it stays broken. Turn each branch from step 2 into a case, plus the edge cases and
    options the Original handles there. Add the cases that already match and MUST stay matching
    after a fix (`_guard` cases). For recursive structures (destructuring patterns, nested
-   nodes) — one case per shape; a single shallow case does not cover a tree.
+   nodes) — one case per form; a single shallow case does not cover a tree.
    **Done when** every branch from step 2 maps to a case in your list, plus the guard cases.
 
-4. **Write a test for every case — do not skip this, do not defer it to "after we decide".**
+4. **Write a test for every case — do not skip this.**
    Go through the sanctioned path — that is where the mechanics live, and they are easy to get
    subtly wrong from memory. Do not hand-roll a case:
    - compiler-output cases → `/add-test`
    - diagnostic cases → `/add-diagnostic-test`
 
    Run each case in the same mode/options as the divergence, or its red/green means nothing.
+   Validate every green before trusting it: both sides non-empty, and the case actually
+   exercises its branch — an input the compiler trivializes (a const-folded value, a
+   statically-known condition, a binding that never updates) matches for the wrong reason.
+   Force the branch live, or its green proves nothing.
    **Done when** every branch has a real case on disk that is registered, runs, and shows
    red = the divergences / green = the guards. A table in chat is not the artifact — a case
    that isn't registered and run does not exist.
