@@ -105,10 +105,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_thunk_call(name.as_str());
                 true
             }
-            ReferenceSemantics::PropSourceMemberMutationRoot { bindable: true, .. }
+            ReferenceSemantics::PropSourceMemberMutationRoot { .. }
                 if !self.in_bind_setter_traverse =>
             {
                 *expr = self.make_thunk_call(name.as_str());
+                true
+            }
+            ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+                if !self.in_bind_setter_traverse =>
+            {
+                let wrapper = legacy_reactive_import_wrapper_name(name.as_str());
+                *expr = self.make_thunk_call(&wrapper);
                 true
             }
             ReferenceSemantics::PropMutation { bindable: true, .. }
