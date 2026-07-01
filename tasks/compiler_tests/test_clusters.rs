@@ -124,6 +124,9 @@ mod svelte_component_this_tag;
 #[path = "clusters/let_directive.rs"]
 mod let_directive;
 
+#[path = "clusters/directive_member_name.rs"]
+mod directive_member_name;
+
 #[path = "clusters/stores.rs"]
 mod stores;
 

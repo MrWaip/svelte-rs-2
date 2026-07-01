@@ -619,13 +619,27 @@ fn walk_attrs<'a>(
                 if let Some(r) = a.expression.as_ref() {
                     parse_span(alloc, component, r.span, typescript, result, diags);
                 }
-                parse_span(alloc, component, a.name_ref.span, typescript, result, diags);
+                parse_directive_name_span(
+                    alloc,
+                    component,
+                    a.name_ref.span,
+                    typescript,
+                    result,
+                    diags,
+                );
             }
             Attribute::AnimateDirective(a) => {
                 if let Some(r) = a.expression.as_ref() {
                     parse_span(alloc, component, r.span, typescript, result, diags);
                 }
-                parse_span(alloc, component, a.name_ref.span, typescript, result, diags);
+                parse_directive_name_span(
+                    alloc,
+                    component,
+                    a.name_ref.span,
+                    typescript,
+                    result,
+                    diags,
+                );
             }
             Attribute::AttachTag(a) => {
                 parse_span(
