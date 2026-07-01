@@ -374,6 +374,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
         self.data.elements.flags.class_directive_info(id)
     }
+    pub fn class_directives_volatility(&self, id: NodeId) -> Volatility {
+        self.data.elements.flags.class_directives_volatility(id)
+    }
+    pub fn style_directives_volatility(&self, id: NodeId) -> Volatility {
+        self.data.elements.flags.style_directives_volatility(id)
+    }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_expression_shorthand(id)
     }

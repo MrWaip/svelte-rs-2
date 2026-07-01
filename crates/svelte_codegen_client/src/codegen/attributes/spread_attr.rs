@@ -212,6 +212,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if let Some(class_obj) = class_directives_obj {
+            let volatility = self.ctx.query.view.class_directives_volatility(owner_id);
+            let class_obj =
+                super::hoist_directives_object(self.ctx, &mut memo, volatility, class_obj);
             let class_key_expr = self
                 .ctx
                 .b
@@ -230,6 +233,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
             };
+            let volatility = self.ctx.query.view.style_directives_volatility(owner_id);
+            let style_obj =
+                super::hoist_directives_object(self.ctx, &mut memo, volatility, style_obj);
             let style_key_expr = self
                 .ctx
                 .b

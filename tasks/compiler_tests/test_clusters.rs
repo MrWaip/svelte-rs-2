@@ -169,6 +169,9 @@ mod custom_element;
 #[path = "clusters/attribute_autofocus.rs"]
 mod attribute_autofocus;
 
+#[path = "clusters/attribute_svelte_element.rs"]
+mod attribute_svelte_element;
+
 #[path = "clusters/runes_imports.rs"]
 mod runes_imports;
 

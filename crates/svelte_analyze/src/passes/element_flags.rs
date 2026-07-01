@@ -248,9 +248,13 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::ClassDirective(cd) => {
-                ctx.data
-                    .elements
-                    .flags
+                let volatility = ctx
+                    .data
+                    .expression_data(cd.id)
+                    .map(|data| data.volatility)
+                    .unwrap_or(Volatility::Static);
+                let flags = &mut ctx.data.elements.flags;
+                flags
                     .class_directive_info
                     .get_or_default(el_id)
                     .push(ClassDirectiveInfo {
@@ -259,14 +263,34 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         has_expression: true,
                         expr_id: cd.expression.id(),
                     });
+                let accumulated = flags
+                    .class_directives_volatility
+                    .get(el_id)
+                    .copied()
+                    .unwrap_or(Volatility::Static);
+                flags
+                    .class_directives_volatility
+                    .insert(el_id, accumulated.max(volatility));
             }
             Attribute::StyleDirective(sd) => {
-                ctx.data
-                    .elements
-                    .flags
+                let volatility = ctx
+                    .data
+                    .expression_data(sd.id)
+                    .map(|data| data.volatility)
+                    .unwrap_or(Volatility::Static);
+                let flags = &mut ctx.data.elements.flags;
+                flags
                     .style_directives
                     .get_or_default(el_id)
                     .push(sd.clone());
+                let accumulated = flags
+                    .style_directives_volatility
+                    .get(el_id)
+                    .copied()
+                    .unwrap_or(Volatility::Static);
+                flags
+                    .style_directives_volatility
+                    .insert(el_id, accumulated.max(volatility));
             }
             Attribute::ExpressionAttribute(ea) => {
                 if ea.name == "class" {
