@@ -42,6 +42,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
     if let Some(body_scope) = ctx.semantics.fragment_scope_by_id(block.body) {
         ctx.snippet_scopes.push(SnippetScope {
             block_id: block.id,
+            name_symbol: name,
             body_scope,
             top_level,
         });

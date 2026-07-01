@@ -524,7 +524,7 @@ fn classify_element_attrs(
             Attribute::ExpressionAttribute(ea) => {
                 if ea.event_name.is_some() {
                     classify_html_event(ctx, ea, store);
-                } else if ea.name == "autofocus" {
+                } else if is_autofocus_attr(ctx, owner_id, &ea.name) {
                     store.set(ea.id, AttributeSemantics::Autofocus);
                 } else if let Some(kind) = special_value_kind_for(el, &ea.name) {
                     store.set(
@@ -557,10 +557,10 @@ fn classify_element_attrs(
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);
             }
-            Attribute::BooleanAttribute(a) if a.name == "autofocus" => {
+            Attribute::BooleanAttribute(a) if is_autofocus_attr(ctx, owner_id, &a.name) => {
                 store.set(a.id, AttributeSemantics::Autofocus);
             }
-            Attribute::StringAttribute(a) if a.name == "autofocus" => {
+            Attribute::StringAttribute(a) if is_autofocus_attr(ctx, owner_id, &a.name) => {
                 store.set(a.id, AttributeSemantics::Autofocus);
             }
             Attribute::StringAttribute(a)
@@ -743,6 +743,21 @@ fn default_attr_kind(ctx: &Ctx<'_, '_>, el: Option<&Element>, name: &str) -> Def
         DefaultAttrKind::ReconcileWithValue
     } else {
         DefaultAttrKind::PlainProperty
+    }
+}
+
+fn is_autofocus_attr(ctx: &Ctx<'_, '_>, owner_id: NodeId, name: &str) -> bool {
+    let normalized = match ctx.element_facts.namespace(owner_id) {
+        Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) => false,
+        Some(NamespaceKind::Html)
+        | Some(NamespaceKind::ForeignObject)
+        | Some(NamespaceKind::AnnotationXml)
+        | None => true,
+    };
+    if normalized {
+        name.eq_ignore_ascii_case("autofocus")
+    } else {
+        name == "autofocus"
     }
 }
 
