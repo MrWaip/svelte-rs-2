@@ -16,31 +16,27 @@ pub(crate) fn parse_js<'a>(
     result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let template_typescript = component
-        .instance_script
-        .as_ref()
-        .or(component.module_script.as_ref())
-        .is_some_and(|s| matches!(s.language, ScriptLanguage::TypeScript));
+    let is_ts_lang = |s: &svelte_ast::Script| matches!(s.language, ScriptLanguage::TypeScript);
+    let is_ts = component.instance_script.as_ref().is_some_and(is_ts_lang)
+        || component.module_script.as_ref().is_some_and(is_ts_lang);
 
     if let Some(script) = &component.instance_script {
-        let typescript = matches!(script.language, ScriptLanguage::TypeScript);
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
             Ok(program) => {
                 result.program = Some(program);
                 result.script_content_span = Some(script.content_span);
             }
             Err(errs) => diags.extend(errs),
         }
-        result.typescript = typescript;
+        result.typescript = is_ts;
     }
 
     if let Some(script) = &component.module_script {
-        let typescript = matches!(script.language, ScriptLanguage::TypeScript);
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
             Ok(program) => {
                 result.module_program = Some(program);
                 result.module_script_content_span = Some(script.content_span);
@@ -54,7 +50,7 @@ pub(crate) fn parse_js<'a>(
         component.root,
         &component.store,
         component,
-        template_typescript,
+        is_ts,
         result,
         diags,
     );
@@ -64,7 +60,7 @@ pub(crate) fn parse_js<'a>(
         .as_ref()
         .and_then(|o| o.custom_element.as_ref())
     {
-        parse_span(alloc, component, *span, template_typescript, result, diags);
+        parse_span(alloc, component, *span, is_ts, result, diags);
     }
 }
 

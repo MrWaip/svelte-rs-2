@@ -240,7 +240,7 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
         SourceType::default()
     };
     let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
-    if !result.errors.is_empty() {
+    if !result.errors.is_empty() && (!typescript || result.panicked) {
         return None;
     }
     let mut stmt = result.program.body.into_iter().next()?;

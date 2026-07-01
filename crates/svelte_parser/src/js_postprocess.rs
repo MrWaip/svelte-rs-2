@@ -203,6 +203,9 @@ impl<'a> JsPostprocessor<'a> {
                     import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
                 }
                 Statement::ExportNamedDeclaration(export) => {
+                    if export.export_kind.is_type() {
+                        return false;
+                    }
                     export.declaration.is_some() || !export.specifiers.is_empty()
                 }
                 _ => true,
