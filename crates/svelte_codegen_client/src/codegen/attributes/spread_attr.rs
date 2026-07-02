@@ -152,6 +152,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
+                    if let Some(concat_expr) = svelte_analyze::concat_single_dynamic_expr(a)
+                        && a.name.strip_prefix("on").is_some()
+                        && matches!(
+                            self.ctx.query.analysis.attributes.get(attr_id),
+                            AttributeSemantics::Event(_)
+                        )
+                    {
+                        let expr = self.take_attr_expr(attr_id, concat_expr)?;
+                        let expr = {
+                            let data = self.ctx.expression_data(attr_id).cloned();
+                            coarse_wrap(self.ctx, expr, data.as_ref())
+                        };
+                        let is_fn = matches!(
+                            expr.get_inner_expression(),
+                            Expression::ArrowFunctionExpression(_)
+                                | Expression::FunctionExpression(_)
+                        );
+                        let name_alloc = self.ctx.b.alloc_str(&a.name);
+                        if is_fn {
+                            let handler_name = self.ctx.state.gen_ident("event_handler");
+                            state.init.push(self.ctx.b.var_stmt(&handler_name, expr));
+                            props.push(ObjProp::KeyValue(
+                                name_alloc,
+                                self.ctx.b.rid_expr(&handler_name),
+                            ));
+                        } else {
+                            props.push(ObjProp::KeyValue(name_alloc, expr));
+                        }
+                        continue;
+                    }
                     let semantics = match self.ctx.query.analysis.attributes.get(attr_id) {
                         AttributeSemantics::HtmlConcat(s) => s.clone(),
                         _ => {

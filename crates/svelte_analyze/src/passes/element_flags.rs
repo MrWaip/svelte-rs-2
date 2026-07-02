@@ -14,8 +14,8 @@ use crate::types::data::{
     RichContentParentKind,
 };
 use crate::utils::{
-    expression_calls_or_awaits, is_delegatable_event, is_passive_event, is_simple_identifier,
-    strip_capture_event,
+    concat_single_dynamic_expr, expression_calls_or_awaits, is_delegatable_event, is_passive_event,
+    is_simple_identifier, strip_capture_event,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 use svelte_component_semantics::OxcNodeId;
@@ -330,6 +330,26 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     && !Self::skip_input_defaults_gate(ctx, el_id)
                 {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
+                if concat_single_dynamic_expr(attr).is_some()
+                    && let Some(raw) = attr.name.strip_prefix("on")
+                {
+                    let (name, capture) = if let Some(base) = strip_capture_event(raw) {
+                        (base, true)
+                    } else {
+                        (raw, false)
+                    };
+                    let passive = is_passive_event(name);
+                    let mode = if !capture && is_delegatable_event(name) {
+                        EventHandlerMode::Delegated { passive }
+                    } else {
+                        EventHandlerMode::Direct { capture, passive }
+                    };
+                    ctx.data
+                        .elements
+                        .flags
+                        .event_handler_mode
+                        .insert(attr.id, mode);
                 }
             }
             Attribute::BooleanAttribute(ba) => {

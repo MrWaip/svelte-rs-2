@@ -113,3 +113,12 @@ compiler_case!(
     nospread_memo_on_with_use,
     "events/nospread_memo_on_with_use"
 );
+
+compiler_case!(window_quoted_handler, "events/window_quoted_handler");
+compiler_case!(document_quoted_handler, "events/document_quoted_handler");
+compiler_case!(body_quoted_handler, "events/body_quoted_handler");
+compiler_case!(element_quoted_handler, "events/element_quoted_handler");
+compiler_case!(
+    window_unquoted_handler_guard,
+    "events/window_unquoted_handler_guard"
+);

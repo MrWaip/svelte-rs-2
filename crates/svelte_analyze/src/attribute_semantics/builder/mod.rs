@@ -25,6 +25,7 @@ use crate::types::data::{
     EventModifier, IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind, NamespaceKind,
     ResizeObserverKind, SnippetData, WindowBindKind,
 };
+use crate::utils::attributes::event_attribute;
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
 use crate::utils::expression_calls_or_awaits;
 use crate::value_evaluation::{
@@ -522,8 +523,8 @@ fn classify_element_attrs(
                 }
             }
             Attribute::ExpressionAttribute(ea) => {
-                if ea.event_name.is_some() {
-                    classify_html_event(ctx, ea, store);
+                if let Some(raw_event_name) = ea.event_name.as_deref() {
+                    classify_html_event(ctx, ea.id, raw_event_name, ea.expression.id(), store);
                 } else if is_autofocus_attr(ctx, owner_id, &ea.name) {
                     store.set(ea.id, AttributeSemantics::Autofocus);
                 } else if let Some(kind) = special_value_kind_for(el, &ea.name) {
@@ -539,19 +540,23 @@ fn classify_element_attrs(
                 }
             }
             Attribute::ConcatenationAttribute(ca) => {
-                let semantics = derive_html_concat_semantics(ctx, ca);
-                if let Some(kind) = special_value_kind_for(el, &ca.name) {
+                if let Some((raw_event_name, expr)) = event_attribute(attr) {
+                    classify_html_event(ctx, ca.id, raw_event_name, expr.id(), store);
+                } else if let Some(kind) = special_value_kind_for(el, &ca.name) {
                     store.set(
                         ca.id,
                         AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
                             kind,
                             defined: concat_special_value_defined(ctx, ca),
                             volatile: special_value_volatile(ctx, ca.id),
-                            concat: Some(semantics),
+                            concat: Some(derive_html_concat_semantics(ctx, ca)),
                         }),
                     );
                 } else {
-                    store.set(ca.id, AttributeSemantics::HtmlConcat(semantics));
+                    store.set(
+                        ca.id,
+                        AttributeSemantics::HtmlConcat(derive_html_concat_semantics(ctx, ca)),
+                    );
                 }
             }
             Attribute::OnDirectiveLegacy(d) => {
@@ -923,19 +928,17 @@ fn bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> HtmlBindKind {
 
 fn classify_html_event(
     ctx: &Ctx<'_, '_>,
-    ea: &ExpressionAttribute,
+    attr_id: NodeId,
+    raw_event_name: &str,
+    expr_id: svelte_component_semantics::OxcNodeId,
     store: &mut AttributeSemanticsStore,
 ) {
-    let raw = ea
-        .event_name
-        .as_deref()
-        .expect("classify_html_event requires event_name");
-    let (name, capture) = match strip_capture_event(raw) {
+    let (name, capture) = match strip_capture_event(raw_event_name) {
         Some(base) => (base, true),
-        None => (raw, false),
+        None => (raw_event_name, false),
     };
     let passive = is_passive_event(name);
-    let handler = derive_handler_emit(ctx, ea.expression.id());
+    let handler = derive_handler_emit(ctx, expr_id);
     let emit = if !capture && is_delegatable_event(name) {
         EventEmit::HtmlDelegated { handler }
     } else {
@@ -946,7 +949,7 @@ fn classify_html_event(
         }
     };
     store.set(
-        ea.id,
+        attr_id,
         AttributeSemantics::Event(EventSemantics {
             modifiers: EventModifier::empty(),
             emit,
@@ -1791,8 +1794,10 @@ fn classify_window(ctx: &Ctx<'_, '_>, w: &SvelteWindow, store: &mut AttributeSem
                     );
                 }
             }
-            Attribute::ExpressionAttribute(ea) if ea.event_name.is_some() => {
-                classify_html_event(ctx, ea, store);
+            Attribute::ExpressionAttribute(_) | Attribute::ConcatenationAttribute(_) => {
+                if let Some((raw_event_name, expr)) = event_attribute(attr) {
+                    classify_html_event(ctx, attr.id(), raw_event_name, expr.id(), store);
+                }
             }
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);
@@ -1817,8 +1822,10 @@ fn classify_document(ctx: &Ctx<'_, '_>, d: &SvelteDocument, store: &mut Attribut
                     );
                 }
             }
-            Attribute::ExpressionAttribute(ea) if ea.event_name.is_some() => {
-                classify_html_event(ctx, ea, store);
+            Attribute::ExpressionAttribute(_) | Attribute::ConcatenationAttribute(_) => {
+                if let Some((raw_event_name, expr)) = event_attribute(attr) {
+                    classify_html_event(ctx, attr.id(), raw_event_name, expr.id(), store);
+                }
             }
             Attribute::OnDirectiveLegacy(dir) => {
                 classify_html_on_directive_legacy(ctx, dir, store);
@@ -1831,8 +1838,10 @@ fn classify_document(ctx: &Ctx<'_, '_>, d: &SvelteDocument, store: &mut Attribut
 fn classify_body(ctx: &Ctx<'_, '_>, b: &SvelteBody, store: &mut AttributeSemanticsStore) {
     for attr in &b.attributes {
         match attr {
-            Attribute::ExpressionAttribute(ea) if ea.event_name.is_some() => {
-                classify_html_event(ctx, ea, store);
+            Attribute::ExpressionAttribute(_) | Attribute::ConcatenationAttribute(_) => {
+                if let Some((raw_event_name, expr)) = event_attribute(attr) {
+                    classify_html_event(ctx, attr.id(), raw_event_name, expr.id(), store);
+                }
             }
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);

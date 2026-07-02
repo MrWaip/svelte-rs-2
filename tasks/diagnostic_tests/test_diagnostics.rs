@@ -606,6 +606,14 @@ mod attributes {
         svelte_element_attribute_unquoted_sequence_errors,
         "attributes/svelte_element_attribute_unquoted_sequence_errors"
     );
+    diagnostic_case!(
+        event_handler_string_value_errors,
+        "attributes/event_handler_string_value_errors"
+    );
+    diagnostic_case!(
+        event_handler_concat_value_errors,
+        "attributes/event_handler_concat_value_errors"
+    );
 }
 
 mod css {
@@ -1628,6 +1636,14 @@ mod special {
     diagnostic_case!(
         svelte_window_illegal_attribute_spread,
         "special/svelte_window_illegal_attribute_spread"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_single_expr,
+        "special/svelte_window_illegal_attribute_single_expr"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_concat_handler,
+        "special/svelte_window_illegal_attribute_concat_handler"
     );
     diagnostic_case!(
         svelte_document_illegal_attribute_class,

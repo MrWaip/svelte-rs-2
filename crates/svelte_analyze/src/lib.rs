@@ -76,9 +76,10 @@ pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
-    expression_calls_or_awaits, is_capture_event, is_delegatable_event, is_let_or_var,
-    is_passive_event, is_regular_dom_property, is_simple_expression, is_simple_identifier,
-    normalize_regular_attribute_name, property_key_static_name, strip_capture_event,
+    concat_single_dynamic_expr, event_attribute, expression_calls_or_awaits, is_capture_event,
+    is_delegatable_event, is_let_or_var, is_passive_event, is_regular_dom_property,
+    is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
+    property_key_static_name, strip_capture_event,
 };
 
 use svelte_ast::Component;

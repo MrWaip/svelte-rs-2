@@ -70,6 +70,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         )?;
                     }
                 }
+                Attribute::ConcatenationAttribute(ca) => {
+                    if let Some(expr) = svelte_analyze::concat_single_dynamic_expr(ca)
+                        && let Some(raw_event_name) = ca.name.strip_prefix("on")
+                    {
+                        self.emit_special_target_event_attr(
+                            state,
+                            attr_id,
+                            expr.id(),
+                            owner_var,
+                            raw_event_name,
+                            expr.span.start,
+                        )?;
+                    }
+                }
                 Attribute::OnDirectiveLegacy(od) => {
                     let after_len_before = state.after_update.len();
                     self.emit_on_directive_legacy(state, el_id, owner_var, od)?;

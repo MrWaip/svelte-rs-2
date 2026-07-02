@@ -3,7 +3,7 @@ use svelte_analyze::{
     AttributeSemantics, EventEmit, EventSemantics, SpecialValueKind, Volatility,
     normalize_regular_attribute_name,
 };
-use svelte_ast::{ExpressionAttribute, NodeId};
+use svelte_ast::{ConcatenationAttribute, ExprRef, ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
 
 use super::super::data_structures::{EmitState, MemoValueRef};
@@ -30,7 +30,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .event_name
                 .as_deref()
                 .expect("Event semantics requires event_name on AST node");
-            return self.emit_event_attribute(state, owner_var, attr, raw_event_name, emit);
+            return self.emit_event_attribute(
+                state,
+                owner_var,
+                attr.id,
+                &attr.expression,
+                raw_event_name,
+                emit,
+            );
         }
 
         if let AttributeSemantics::SpecialValueAttr(s) =
@@ -125,15 +132,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
+    pub(in super::super) fn emit_concat_event(
+        &mut self,
+        state: &mut EmitState<'a>,
+        owner_var: &str,
+        attr: &ConcatenationAttribute,
+    ) -> Result<()> {
+        let Some(expr) = svelte_analyze::concat_single_dynamic_expr(attr) else {
+            return Ok(());
+        };
+        let Some(raw_event_name) = attr.name.strip_prefix("on") else {
+            return Ok(());
+        };
+        let AttributeSemantics::Event(EventSemantics { emit, .. }) =
+            self.ctx.query.analysis.attributes.get(attr.id)
+        else {
+            return Ok(());
+        };
+        self.emit_event_attribute(state, owner_var, attr.id, expr, raw_event_name, emit)
+    }
+
     fn emit_event_attribute(
         &mut self,
         state: &mut EmitState<'a>,
         owner_var: &str,
-        attr: &ExpressionAttribute,
+        attr_id: NodeId,
+        expression: &ExprRef,
         raw_event_name: &str,
         emit: &EventEmit,
     ) -> Result<()> {
-        let attr_id = attr.id;
         let event_name = svelte_analyze::strip_capture_event(raw_event_name)
             .unwrap_or(raw_event_name)
             .to_string();
@@ -145,8 +172,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             EventEmit::HtmlBubble | EventEmit::Component { .. } => return Ok(()),
         };
 
-        let expr_offset = attr.expression.span.start;
-        let expr = self.take_attr_expr(attr_id, &attr.expression)?;
+        let expr_offset = expression.span.start;
+        let expr = self.take_attr_expr(attr_id, expression)?;
 
         let handler =
             self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);

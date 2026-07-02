@@ -151,6 +151,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
                         event_stmts.extend(state.after_update.drain(before..));
                     }
+                    Attribute::ConcatenationAttribute(a) => {
+                        let before = state.after_update.len();
+                        self.emit_concat_event(state, owner_var, a)?;
+                        event_stmts.extend(state.after_update.drain(before..));
+                    }
                     Attribute::OnDirectiveLegacy(_) => {}
                     _ => {
                         return CodegenError::semantic_mismatch(

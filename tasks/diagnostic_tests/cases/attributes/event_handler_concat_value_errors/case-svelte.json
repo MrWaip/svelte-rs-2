@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_invalid_event_handler",
+    "end": 24,
+    "severity": "error",
+    "start": 8
+  }
+]

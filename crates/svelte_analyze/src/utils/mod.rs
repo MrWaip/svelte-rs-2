@@ -10,7 +10,10 @@ pub(crate) mod property_key;
 pub(crate) mod simple_expression;
 pub(crate) mod var_decl_kind;
 
-pub use attributes::{is_regular_dom_property, normalize_regular_attribute_name};
+pub use attributes::{
+    concat_single_dynamic_expr, event_attribute, is_regular_dom_property,
+    normalize_regular_attribute_name,
+};
 pub use events::{
     is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
     strip_capture_event,

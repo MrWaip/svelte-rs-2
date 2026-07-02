@@ -1030,8 +1030,11 @@ fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
     attrs
         .iter()
         .filter_map(|attr| match attr {
-            Attribute::ExpressionAttribute(attr) => attr.event_name.clone(),
-            Attribute::OnDirectiveLegacy(attr) => Some(attr.name.clone()),
+            Attribute::ExpressionAttribute(ea) => ea.event_name.clone(),
+            Attribute::ConcatenationAttribute(_) => {
+                event_attribute(attr).map(|(event_name, _)| event_name.to_string())
+            }
+            Attribute::OnDirectiveLegacy(dir) => Some(dir.name.clone()),
             _ => None,
         })
         .collect()
