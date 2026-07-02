@@ -196,6 +196,9 @@ mod bind_group;
 #[path = "clusters/bind_property.rs"]
 mod bind_property;
 
+#[path = "clusters/bind_prop_accessor.rs"]
+mod bind_prop_accessor;
+
 #[path = "clusters/template_element.rs"]
 mod template_element;
 

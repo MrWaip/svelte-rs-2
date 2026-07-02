@@ -854,8 +854,8 @@ fn classify_identifier_kind(
             };
             HtmlBindKind::StoreSubscribed { base_symbol }
         }
-        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { bindable: true, .. })
-        | ReferenceSemantics::PropMutation { bindable: true, .. } => HtmlBindKind::BindableProp,
+        ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+        | ReferenceSemantics::PropMutation { .. } => HtmlBindKind::BindableProp,
         ReferenceSemantics::SignalRead { .. }
         | ReferenceSemantics::SignalWrite { .. }
         | ReferenceSemantics::SignalUpdate { .. }
@@ -868,7 +868,6 @@ fn classify_identifier_kind(
         | ReferenceSemantics::Proxy
         | ReferenceSemantics::DerivedWrite
         | ReferenceSemantics::PropRead(_)
-        | ReferenceSemantics::PropMutation { .. }
         | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
         | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
         | ReferenceSemantics::ConstAliasRead { .. }
