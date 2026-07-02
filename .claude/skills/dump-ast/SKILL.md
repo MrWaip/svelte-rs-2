@@ -7,22 +7,13 @@ allowed-tools: Bash
 
 # Dump OXC AST: $ARGUMENTS
 
-Parses JavaScript through OXC and displays ESTree-compatible JSON AST.
-
-## Step 1: Parse
+Parses JavaScript through OXC and displays the ESTree-compatible JSON AST.
 
 ```
 just dump-ast '$ARGUMENTS'
 ```
 
-## Step 2: Display
+Show the JSON output. If parsing fails:
 
-Show the JSON output.
-
-If parsing fails:
-- Wrap in parentheses if OXC expects a statement: `($ARGUMENTS)`
-- Try as module-level code if it's a declaration
-
-## When to use proactively
-
-Use this skill whenever you need to understand how OXC represents a specific JS construct — for example when implementing codegen, writing transforms, or debugging parser output mismatches.
+- wrap in parentheses if OXC expects a statement: `($ARGUMENTS)`
+- try as module-level code if it's a declaration
