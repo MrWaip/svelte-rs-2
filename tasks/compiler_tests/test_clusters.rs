@@ -37,6 +37,9 @@ mod special_element_order;
 #[path = "clusters/component_props.rs"]
 mod component_props;
 
+#[path = "clusters/component_dynamic_name.rs"]
+mod component_dynamic_name;
+
 #[path = "clusters/attach_component.rs"]
 mod attach_component;
 
