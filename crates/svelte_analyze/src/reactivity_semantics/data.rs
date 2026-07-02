@@ -519,6 +519,7 @@ pub struct OptimizedRuneSemantics {
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
+    pub var_declared: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

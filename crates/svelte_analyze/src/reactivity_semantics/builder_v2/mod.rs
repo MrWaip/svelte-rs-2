@@ -1564,6 +1564,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
                         emit,
+                        var_declared,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
@@ -1583,6 +1584,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
                         emit,
+                        var_declared,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);

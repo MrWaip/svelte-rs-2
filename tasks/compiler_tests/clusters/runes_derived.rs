@@ -91,3 +91,20 @@ compiler_case!(
     write_derived_read_guard,
     "runes/derived/write/derived_read_guard"
 );
+
+compiler_case!(
+    read_var_declared_safe_get,
+    "runes/derived/read/var_declared_safe_get"
+);
+compiler_case!(
+    read_derived_by_var_declared_safe_get,
+    "runes/derived/read/derived_by_var_declared_safe_get"
+);
+compiler_case!(
+    read_let_declared_get_guard,
+    "runes/derived/read/let_declared_get_guard"
+);
+compiler_case!(
+    read_const_declared_get_guard,
+    "runes/derived/read/const_declared_get_guard"
+);
